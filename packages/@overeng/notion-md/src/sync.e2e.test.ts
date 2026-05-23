@@ -6,7 +6,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { NmdStorage } from '@overeng/notion-effect-client'
+import type { NmdPageState, NmdStorage } from '@overeng/notion-effect-client'
 
 import { runWatch } from './cli-program.ts'
 import {
@@ -35,6 +35,10 @@ interface FakePage {
   readonly pageId: string
   readonly title: string
   readonly markdown: string
+  readonly icon?: NmdPageState['icon']
+  readonly cover?: NmdPageState['cover']
+  readonly inTrash?: boolean
+  readonly isLocked?: boolean
   readonly storage?: NmdStorage
   readonly properties?: Record<string, unknown>
   readonly unknownBlockIds?: readonly string[]
@@ -106,6 +110,10 @@ class FakeNotion {
         },
         properties: {},
         unknownBlockIds: [],
+        icon: null,
+        cover: null,
+        inTrash: false,
+        isLocked: false,
         lastEditedTime: '2026-05-22T12:00:00.000Z',
         ...page,
       })
@@ -195,6 +203,19 @@ class FakeNotion {
         this.pages.set(id, next)
         return this.toPullResult(next).page
       }),
+    updatePageMetadata: ({ pageId: id, metadata }) =>
+      Effect.sync(() => {
+        const page = this.requirePage(id)
+        const next = {
+          ...page,
+          icon: metadata.icon === undefined ? page.icon : metadata.icon,
+          cover: metadata.cover === undefined ? page.cover : metadata.cover,
+          inTrash: metadata.in_trash === undefined ? page.inTrash : metadata.in_trash,
+          isLocked: metadata.is_locked === undefined ? page.isLocked : metadata.is_locked,
+        }
+        this.pages.set(id, next)
+        return this.toPullResult(next).page
+      }),
   })
 
   mutateRemote(pageIdToMutate: string, markdown: string): void {
@@ -229,6 +250,21 @@ class FakeNotion {
     return this.requirePage(pageIdToRead).properties
   }
 
+  remoteMetadata(pageIdToRead: string): {
+    readonly icon: NmdPageState['icon']
+    readonly cover: NmdPageState['cover']
+    readonly in_trash: boolean
+    readonly is_locked: boolean
+  } {
+    const page = this.requirePage(pageIdToRead)
+    return {
+      icon: page.icon,
+      cover: page.cover,
+      in_trash: page.inTrash,
+      is_locked: page.isLocked,
+    }
+  }
+
   private requirePage(id: string): Required<FakePage> {
     const page = this.pages.get(id)
     if (page === undefined) {
@@ -244,10 +280,10 @@ class FakeNotion {
         title: page.title,
         url: `https://www.notion.so/${page.pageId.replaceAll('-', '')}`,
         parent: { type: 'page_id', page_id: pageId },
-        icon: null,
-        cover: null,
-        in_trash: false,
-        is_locked: false,
+        icon: page.icon,
+        cover: page.cover,
+        in_trash: page.inTrash,
+        is_locked: page.isLocked,
         last_edited_time: page.lastEditedTime,
         properties: page.properties,
       },
@@ -653,6 +689,141 @@ describe('notion-md e2e prototype', () => {
         _tag: 'read_only',
         property_type: 'unknown',
         value: { checkbox: true },
+      })
+    })
+  })
+
+  it('pushes explicit frontmatter page metadata edits through the page metadata API', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          icon: { type: 'icon', icon: { name: 'flask', color: 'gray' } },
+          cover: null,
+          inTrash: false,
+          isLocked: false,
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              page: {
+                ...parsed.frontmatter.notion_md.page,
+                icon: { type: 'icon', icon: { name: 'lock', color: 'gray' } },
+                cover: {
+                  type: 'external',
+                  external: { url: 'https://example.com/notion-md-cover.png' },
+                },
+                in_trash: true,
+                is_locked: true,
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      const beforePushStatus = await runWithFake(statusPage({ path }), fake)
+      const pushed = await runWithFake(pushPage({ path }), fake)
+      const refreshed = await parseFile(path)
+
+      expect(beforePushStatus.localPageMetadataChanged).toBe(true)
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteMetadata(pageId)).toMatchObject({
+        icon: { type: 'icon', icon: { name: 'lock', color: 'gray' } },
+        cover: {
+          type: 'external',
+          external: { url: 'https://example.com/notion-md-cover.png' },
+        },
+        in_trash: true,
+        is_locked: true,
+      })
+      expect(refreshed.frontmatter.notion_md.page.icon).toEqual({
+        type: 'icon',
+        icon: { name: 'lock', color: 'gray' },
+      })
+      expect(refreshed.frontmatter.notion_md.page.cover).toEqual({
+        type: 'external',
+        external: { url: 'https://example.com/notion-md-cover.png' },
+      })
+      expect(refreshed.frontmatter.notion_md.page.in_trash).toBe(true)
+      expect(refreshed.frontmatter.notion_md.page.is_locked).toBe(true)
+    })
+  })
+
+  it('pushes newer typed place and verification property values from frontmatter', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          properties: {
+            Place: { type: 'place', place: null },
+            Verification: { type: 'verification', verification: { state: 'unverified' } },
+          },
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Place: {
+                  _tag: 'place',
+                  value: {
+                    lat: 47.3769,
+                    lon: 8.5417,
+                    name: 'Zurich',
+                    address: 'Zurich, Switzerland',
+                  },
+                },
+                Verification: {
+                  _tag: 'verification',
+                  value: {
+                    state: 'verified',
+                    date: { start: '2026-05-23', end: null, time_zone: null },
+                  },
+                },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteProperties(pageId).Place).toEqual({
+        place: {
+          lat: 47.3769,
+          lon: 8.5417,
+          name: 'Zurich',
+          address: 'Zurich, Switzerland',
+        },
+      })
+      expect(fake.remoteProperties(pageId).Verification).toEqual({
+        verification: {
+          state: 'verified',
+          date: { start: '2026-05-23', end: null, time_zone: null },
+        },
       })
     })
   })

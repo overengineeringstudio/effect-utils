@@ -80,27 +80,46 @@ Notion may normalize Markdown on pull. A clean round trip means semantic
 equivalence through Notion's Markdown endpoint, not byte-for-byte preservation of
 local formatting.
 
+## Writable Page Metadata
+
+The `notion_md.page` object models page state that Notion does not expose in the
+Markdown body.
+
+| Field       | Local form                                | Push behavior                          |
+| ----------- | ----------------------------------------- | -------------------------------------- |
+| `title`     | string                                    | preserved on pull; title property TBD  |
+| `icon`      | `null`, emoji, native icon, external file | pushed with `PATCH /pages/{id}`        |
+| `cover`     | `null`, external or Notion-hosted file    | external/null pushed; hosted read-only |
+| `in_trash`  | boolean                                   | pushed with `PATCH /pages/{id}`        |
+| `is_locked` | boolean                                   | pushed with `PATCH /pages/{id}`        |
+
+Notion-hosted files and custom emojis are strict schema-valid because they can
+appear on pull, but they are not blindly written back as local edits until the
+write API surface is proven for those shapes.
+
 ## Writable Properties
 
 Modeled writable page properties can be edited in frontmatter:
 
-| `_tag`         | `value` shape                    |
-| -------------- | -------------------------------- |
-| `title`        | string                           |
-| `rich_text`    | string or null                   |
-| `number`       | number or null                   |
-| `select`       | option name or null              |
-| `multi_select` | array of option names            |
-| `status`       | option name or null              |
-| `date`         | `{ start, end, time_zone }` null |
-| `people`       | array of Notion user IDs         |
-| `files`        | array of tagged file refs        |
-| `checkbox`     | boolean                          |
-| `url`          | string or null                   |
-| `email`        | string or null                   |
-| `phone_number` | string or null                   |
-| `relation`     | array of Notion page IDs         |
-| `read_only`    | preserved, not pushed            |
+| `_tag`         | `value` shape                      |
+| -------------- | ---------------------------------- |
+| `title`        | string                             |
+| `rich_text`    | string or null                     |
+| `number`       | number or null                     |
+| `select`       | option name or null                |
+| `multi_select` | array of option names              |
+| `status`       | option name or null                |
+| `date`         | `{ start, end, time_zone }` null   |
+| `people`       | array of Notion user IDs           |
+| `files`        | array of tagged file refs          |
+| `checkbox`     | boolean                            |
+| `url`          | string or null                     |
+| `email`        | string or null                     |
+| `phone_number` | string or null                     |
+| `relation`     | array of Notion page IDs           |
+| `place`        | `{ lat, lon, name, address, ... }` |
+| `verification` | state `verified` or `unverified`   |
+| `read_only`    | preserved, not pushed              |
 
 Generated Notion properties remain visible as `read_only` values and are not
 pushed.

@@ -16,9 +16,12 @@ import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 import {
   NotionMdGateway,
+  type PageMetadataUpdate,
   type PullPageResult,
   type RemoteMarkdownSnapshot,
   type RemotePageSnapshot,
+  type WritablePageCover,
+  type WritablePageIcon,
 } from './model.ts'
 import {
   NmdStateStore,
@@ -53,6 +56,7 @@ export interface StatusResult {
   readonly path: string
   readonly pageId: string
   readonly localChanged: boolean
+  readonly localPageMetadataChanged: boolean
   readonly localPropertiesChanged: boolean
   readonly remoteChanged: boolean
   readonly remoteBodyChanged: boolean
@@ -144,6 +148,55 @@ const inferPropertyType = (value: unknown): string => {
 const hasWritablePropertyValues = (properties: Record<string, NmdPropertyValue>): boolean =>
   Object.values(properties).some((property) => property._tag !== 'read_only')
 
+const stableJson = (value: unknown): string => JSON.stringify(value) ?? 'undefined'
+
+const isWritablePageFile = (
+  value: NmdFrontmatterV1['notion_md']['page']['cover'],
+): value is WritablePageCover => {
+  if (value === null) return true
+  return value.type === 'external'
+}
+
+const isWritablePageIcon = (
+  value: NmdFrontmatterV1['notion_md']['page']['icon'],
+): value is WritablePageIcon => {
+  if (value === null) return true
+  return value.type === 'emoji' || value.type === 'icon' || value.type === 'external'
+}
+
+const pageMetadataUpdate = (opts: {
+  readonly local: NmdFrontmatterV1['notion_md']['page']
+  readonly remote: RemotePageSnapshot
+}): PageMetadataUpdate => {
+  const update: {
+    icon?: WritablePageIcon
+    cover?: WritablePageCover
+    in_trash?: boolean
+    is_locked?: boolean
+  } = {}
+
+  if (stableJson(opts.local.icon) !== stableJson(opts.remote.icon)) {
+    if (isWritablePageIcon(opts.local.icon) === true) update.icon = opts.local.icon
+  }
+
+  if (stableJson(opts.local.cover) !== stableJson(opts.remote.cover)) {
+    if (isWritablePageFile(opts.local.cover) === true) update.cover = opts.local.cover
+  }
+
+  if (opts.local.in_trash !== opts.remote.in_trash) {
+    update.in_trash = opts.local.in_trash
+  }
+
+  if (opts.local.is_locked !== opts.remote.is_locked) {
+    update.is_locked = opts.local.is_locked
+  }
+
+  return update
+}
+
+const hasPageMetadataUpdate = (update: PageMetadataUpdate): boolean =>
+  Object.keys(update).length > 0
+
 const richText = (value: string): readonly unknown[] => [{ type: 'text', text: { content: value } }]
 
 const encodePropertyValue = (property: NmdPropertyValue): unknown | undefined => {
@@ -176,6 +229,10 @@ const encodePropertyValue = (property: NmdPropertyValue): unknown | undefined =>
       return { phone_number: property.value }
     case 'relation':
       return { relation: property.value.map((id) => ({ id })) }
+    case 'place':
+      return { place: property.value }
+    case 'verification':
+      return { verification: property.value }
     case 'files':
       return {
         files: property.value
@@ -456,6 +513,12 @@ const statusFromSnapshots = (opts: {
   const remoteBodyHash = sha256Digest(remoteBody)
   const bodyHash = opts.local.frontmatter.notion_md.body.hash
   const localChanged = localBodyHash !== bodyHash
+  const localPageMetadataChanged = hasPageMetadataUpdate(
+    pageMetadataUpdate({
+      local: opts.local.frontmatter.notion_md.page,
+      remote: opts.remote.page,
+    }),
+  )
   const localPropertiesChanged = hasWritablePropertyValues(
     opts.local.frontmatter.notion_md.properties,
   )
@@ -473,6 +536,7 @@ const statusFromSnapshots = (opts: {
     path: opts.path,
     pageId: opts.local.frontmatter.notion_md.page_id,
     localChanged,
+    localPageMetadataChanged,
     localPropertiesChanged,
     remoteChanged,
     remoteBodyChanged,
@@ -498,6 +562,7 @@ export const statusPage = (
       Effect.annotateCurrentSpan({
         'notion_md.page_id': status.pageId,
         'notion_md.status.local_changed': status.localChanged,
+        'notion_md.status.local_page_metadata_changed': status.localPageMetadataChanged,
         'notion_md.status.local_properties_changed': status.localPropertiesChanged,
         'notion_md.status.remote_changed': status.remoteChanged,
         'notion_md.status.remote_body_changed': status.remoteBodyChanged,
@@ -524,8 +589,16 @@ export const pushPage = (
       pageId: local.frontmatter.notion_md.page_id,
     })
     const status = statusFromSnapshots({ path: opts.path, local, remote: remoteForStatus })
+    const metadataUpdate = pageMetadataUpdate({
+      local: local.frontmatter.notion_md.page,
+      remote: remoteForStatus.page,
+    })
 
-    if (status.localChanged === false && status.localPropertiesChanged === false) {
+    if (
+      status.localChanged === false &&
+      status.localPageMetadataChanged === false &&
+      status.localPropertiesChanged === false
+    ) {
       return { path: opts.path, pageId: status.pageId, pushed: false, status }
     }
 
@@ -569,14 +642,25 @@ export const pushPage = (
             })
           : undefined
 
-      if (status.localChanged === false && status.localPropertiesChanged === true) {
+      if (
+        status.localChanged === false &&
+        (status.localPageMetadataChanged === true || status.localPropertiesChanged === true)
+      ) {
         yield* Effect.annotateCurrentSpan({
-          'notion_md.push.decision': 'property_only_remote_body_changed',
+          'notion_md.push.decision': 'metadata_only_remote_body_changed',
         })
-        yield* gateway.updatePageProperties({
-          pageId: status.pageId,
-          properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
-        })
+        if (hasPageMetadataUpdate(metadataUpdate) === true) {
+          yield* gateway.updatePageMetadata({
+            pageId: status.pageId,
+            metadata: metadataUpdate,
+          })
+        }
+        if (status.localPropertiesChanged === true) {
+          yield* gateway.updatePageProperties({
+            pageId: status.pageId,
+            properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
+          })
+        }
         const pulled = yield* gateway.pullPage({ pageId: status.pageId })
         yield* writeNmdWithStoragePolicy({
           path: opts.path,
@@ -615,6 +699,12 @@ export const pushPage = (
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
+          })
+        }
+        if (hasPageMetadataUpdate(metadataUpdate) === true) {
+          yield* gateway.updatePageMetadata({
+            pageId: status.pageId,
+            metadata: metadataUpdate,
           })
         }
         const pulled = yield* gateway.pullPage({ pageId: status.pageId })
@@ -699,6 +789,12 @@ export const pushPage = (
         properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
       })
     }
+    if (hasPageMetadataUpdate(metadataUpdate) === true) {
+      yield* gateway.updatePageMetadata({
+        pageId: status.pageId,
+        metadata: metadataUpdate,
+      })
+    }
     const pulled = yield* gateway.pullPage({ pageId: status.pageId })
     yield* writeNmdWithStoragePolicy({
       path: opts.path,
@@ -738,7 +834,11 @@ export const syncPage = (
   Effect.gen(function* () {
     const status = yield* statusPage({ path: opts.path })
 
-    if (status.localChanged === true || status.localPropertiesChanged === true) {
+    if (
+      status.localChanged === true ||
+      status.localPageMetadataChanged === true ||
+      status.localPropertiesChanged === true
+    ) {
       const push = yield* pushPage(opts)
       return {
         _tag: 'pushed',

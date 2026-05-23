@@ -245,7 +245,10 @@ const createScratchPage = (label: string) =>
   })
 
 const archiveScratchPage = (pageId: string) =>
-  NotionPages.archive({ pageId }).pipe(
+  Effect.zipRight(
+    NotionPages.update({ pageId, is_locked: false }).pipe(Effect.ignore),
+    NotionPages.archive({ pageId }),
+  ).pipe(
     Effect.asVoid,
     Effect.catchAll(() => Effect.void),
   )
@@ -515,6 +518,45 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
 
         expect(pushed.pushed).toBe(true)
         expect(refreshed.frontmatter.notion_md.page.title).toBe(nextTitle)
+      })
+    })
+  })
+
+  liveIt('pushes explicit page lock metadata edits against Notion', async () => {
+    await withScratchPage('page-lock', async (pageId) => {
+      await withTempDir(async (dir) => {
+        const path = join(dir, 'lock.nmd')
+        await runLive(pullPage({ pageId, outPath: path }))
+        const parsed = await runLive(
+          Effect.promise(() => readFile(path, 'utf8')).pipe(
+            Effect.flatMap((content) => parseNmdFile({ path, content })),
+          ),
+        )
+        await writeFile(
+          path,
+          renderNmdFile({
+            frontmatter: {
+              notion_md: {
+                ...parsed.frontmatter.notion_md,
+                page: {
+                  ...parsed.frontmatter.notion_md.page,
+                  is_locked: true,
+                },
+              },
+            },
+            body: parsed.body,
+          }),
+        )
+
+        const pushed = await runLive(pushPage({ path }))
+        const refreshed = await runLive(
+          Effect.promise(() => readFile(path, 'utf8')).pipe(
+            Effect.flatMap((content) => parseNmdFile({ path, content })),
+          ),
+        )
+
+        expect(pushed.pushed).toBe(true)
+        expect(refreshed.frontmatter.notion_md.page.is_locked).toBe(true)
       })
     })
   })

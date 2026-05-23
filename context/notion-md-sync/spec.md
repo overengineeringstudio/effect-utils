@@ -168,9 +168,30 @@ Property frontmatter is human-editable only for modeled writable forms. Unknown 
 | `phone_number`       | string or null             | phone number                  |
 | `relation`           | page IDs                   | relation IDs                  |
 | `files`              | file refs                  | future file-upload resolution |
+| `place`              | place object or null       | place object                  |
+| `verification`       | verification state object  | verification object           |
 | generated properties | read-only wrapper          | not pushed                    |
 
 Property IDs must be preserved when available. Display names are for readability; IDs win on rename or schema drift.
+
+### Writable Page Metadata
+
+The page metadata surface covers page state that is not part of the Markdown
+body and is not a data-source property.
+
+| Field       | Local form                              | Push encoding              |
+| ----------- | --------------------------------------- | -------------------------- |
+| `title`     | string                                  | preserved; title write TBD |
+| `icon`      | null, emoji, native icon, external file | page `icon`                |
+| `cover`     | null, external or Notion-hosted file    | external/null cover        |
+| `in_trash`  | boolean                                 | page `in_trash`            |
+| `is_locked` | boolean                                 | page `is_locked`           |
+
+Strict frontmatter accepts the read shapes Notion can return. The write planner
+only emits page metadata patches for shapes Notion's page update API accepts:
+null/external covers, null/emoji/native/external icons, `in_trash`, and
+`is_locked`. Notion-hosted file URLs and custom emojis are preserved as pulled
+state until their write behavior is verified.
 
 ## Object Store
 
@@ -211,8 +232,8 @@ Requirement trace: R01-R05, R11-R15.
 | Surface            | Local state                   | Pull API                   | Push API                    | Conflict unit      | Current status            |
 | ------------------ | ----------------------------- | -------------------------- | --------------------------- | ------------------ | ------------------------- |
 | Body               | `.nmd` body + `base_snapshot` | `GET /pages/{id}/markdown` | Markdown update endpoint    | canonical Markdown | implemented               |
-| Page metadata      | frontmatter page fields       | `GET /pages/{id}`          | `PATCH /pages/{id}`         | field              | partial                   |
-| Properties         | frontmatter property map      | `GET /pages/{id}`          | `PATCH /pages/{id}`         | property           | simple writable forms     |
+| Page metadata      | frontmatter page fields       | `GET /pages/{id}`          | `PATCH /pages/{id}`         | field              | lock/trash/icon/cover     |
+| Properties         | frontmatter property map      | `GET /pages/{id}`          | `PATCH /pages/{id}`         | property           | modeled writable forms    |
 | Unsupported blocks | frontmatter/object storage    | Markdown + block API       | preserve or explicit delete | block id           | guard + preserve metadata |
 | Data-source schema | future object payload         | `GET /data_sources/{id}`   | schema APIs when supported  | schema hash        | not implemented           |
 | Comments           | future comment payload        | comments API               | comments API                | discussion/comment | designed, not implemented |
@@ -251,7 +272,7 @@ Status distinguishes `remoteBodyChanged` from `remotePageMetadataChanged`. The c
 2. Pull remote state once for status.
 3. Reject unresolved Roughdraft review markup unless explicitly allowed.
 4. Reject body pushes that could delete unknown blocks unless destructive intent is explicit.
-5. If only properties changed and the remote body changed, patch properties and refresh local body from remote.
+5. If only page metadata or properties changed and the remote body changed, patch those surfaces and refresh local body from remote.
 6. If the remote body changed and local body changed, attempt a conservative three-way merge.
 7. If merge succeeds, update Markdown and then properties.
 8. If merge fails, write a Roughdraft conflict artifact and leave remote unchanged.
@@ -306,7 +327,8 @@ Requirement trace: R01-R05.
 
 | Notion feature              | Local body representation               | Non-body state                | Fidelity / policy                      |
 | --------------------------- | --------------------------------------- | ----------------------------- | -------------------------------------- |
-| Page title/icon/cover       | not body                                | frontmatter page fields       | metadata surface                       |
+| Page title/icon/cover       | not body                                | frontmatter page fields       | title preserved; icon/cover modeled    |
+| Page lock/trash state       | not body                                | frontmatter page fields       | field-level page API patch             |
 | Paragraphs, headings, lists | stock Markdown/enhanced Markdown        | none                          | supported with Notion normalization    |
 | To-dos, quotes, dividers    | stock Markdown/enhanced Markdown        | none                          | supported                              |
 | Code blocks                 | fenced blocks                           | language normalization        | supported; aliases may normalize       |
@@ -316,7 +338,7 @@ Requirement trace: R01-R05.
 | Images/files/media          | Markdown/enhanced media tags            | future file payloads          | not fully implemented                  |
 | Bookmark/embed/link preview | `<unknown ...>` placeholder             | unsupported block unit/object | preserve or explicit delete            |
 | Child page/database         | enhanced reference tags or placeholders | future ownership records      | preserve by default                    |
-| Data-source row properties  | not body                                | typed property map            | simple writable properties implemented |
+| Data-source row properties  | not body                                | typed property map            | modeled writable properties            |
 | Data-source schema/views    | not body                                | future schema snapshot        | not implemented                        |
 | Comments                    | not body                                | future comment bridge         | not implemented                        |
 | Suggestions/review          | Roughdraft local layer                  | review state                  | reject unresolved by default           |

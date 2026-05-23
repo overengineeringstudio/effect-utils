@@ -233,6 +233,29 @@ export const NotionMdGatewayLive = Layer.effect(
             attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
           }),
         ),
+      updatePageMetadata: ({ pageId, metadata }) =>
+        provideHttp(
+          NotionPages.update({
+            pageId,
+            ...(metadata.icon !== undefined ? { icon: metadata.icon } : {}),
+            ...(metadata.cover !== undefined ? { cover: metadata.cover } : {}),
+            ...(metadata.in_trash !== undefined ? { in_trash: metadata.in_trash } : {}),
+            ...(metadata.is_locked !== undefined ? { is_locked: metadata.is_locked } : {}),
+          }),
+        ).pipe(
+          Effect.map(toRemotePage),
+          Effect.mapError(mapGatewayError({ operation: 'update_page_metadata', pageId })),
+          Effect.withSpan('notion-md.gateway.update-page-metadata', {
+            attributes: {
+              'span.label': pageId.slice(0, 8),
+              'notion_md.page_id': pageId,
+              'notion_md.page_metadata.icon': metadata.icon !== undefined,
+              'notion_md.page_metadata.cover': metadata.cover !== undefined,
+              'notion_md.page_metadata.in_trash': metadata.in_trash !== undefined,
+              'notion_md.page_metadata.is_locked': metadata.is_locked !== undefined,
+            },
+          }),
+        ),
     }
   }),
 )

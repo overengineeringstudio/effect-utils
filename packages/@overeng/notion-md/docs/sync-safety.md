@@ -8,7 +8,7 @@ surfaces and refusing ambiguous writes.
 | Surface            | Local state               | Push behavior                        |
 | ------------------ | ------------------------- | ------------------------------------ |
 | Body               | `.nmd` body + base object | guarded Markdown update              |
-| Page metadata      | frontmatter page fields   | partial support                      |
+| Page metadata      | frontmatter page fields   | field-level patch for modeled values |
 | Properties         | frontmatter properties    | modeled writable values only         |
 | Unsupported blocks | frontmatter/object store  | preserve metadata or explicit delete |
 | Review markup      | Roughdraft body markup    | rejected unless explicitly allowed   |
@@ -59,6 +59,15 @@ Property-only edits can be pushed even when the remote body changed. The CLI
 patches the property surface, then refreshes the local body and base from the
 current remote body. This avoids turning independent property and body edits into
 a false conflict.
+
+## Page Metadata Edits
+
+Page metadata edits are independent from body edits. `icon`, `cover`,
+`in_trash`, and `is_locked` are patched through the page API and then refreshed
+from Notion. The current writable subset is intentionally narrower than the
+schema-preserved pull subset: external covers and null covers are writable,
+emoji/native/external icons and null icons are writable, and Notion-hosted files
+or custom emojis are preserved until their write behavior is proven.
 
 ## Object Integrity
 

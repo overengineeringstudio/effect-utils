@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import {
+  IconSchema as NotionIcon,
   ISO8601DateTimeSchema as ISO8601DateTime,
   NotionUUIDSchema as NotionUUID,
 } from '@overeng/notion-effect-schema'
@@ -97,11 +98,52 @@ export const NmdBodyState = Schema.Struct({
 
 export type NmdBodyState = typeof NmdBodyState.Type
 
+/** Page icon state preserved outside the Markdown body. */
+export const NmdPageIcon = Schema.NullOr(NotionIcon).annotations({
+  identifier: 'NotionMd.PageIcon',
+})
+
+export type NmdPageIcon = typeof NmdPageIcon.Type
+
+/** Page cover backed by an external URL. */
+export const NmdExternalFile = Schema.Struct({
+  type: Schema.Literal('external'),
+  external: Schema.Struct({
+    url: Schema.String,
+  }),
+}).annotations({
+  identifier: 'NotionMd.ExternalFile',
+})
+
+export type NmdExternalFile = typeof NmdExternalFile.Type
+
+/** Page cover backed by an expiring Notion-hosted URL. */
+export const NmdNotionFile = Schema.Struct({
+  type: Schema.Literal('file'),
+  file: Schema.Struct({
+    url: Schema.String,
+    expiry_time: ISO8601DateTime,
+  }),
+}).annotations({
+  identifier: 'NotionMd.NotionFile',
+})
+
+export type NmdNotionFile = typeof NmdNotionFile.Type
+
+/** Page cover state preserved outside the Markdown body. */
+export const NmdPageCover = Schema.NullOr(Schema.Union(NmdExternalFile, NmdNotionFile)).annotations(
+  {
+    identifier: 'NotionMd.PageCover',
+  },
+)
+
+export type NmdPageCover = typeof NmdPageCover.Type
+
 /** Page-level state that lives outside the Markdown body. */
 export const NmdPageState = Schema.Struct({
   title: Schema.String,
-  icon: Schema.Unknown,
-  cover: Schema.Unknown,
+  icon: NmdPageIcon,
+  cover: NmdPageCover,
   in_trash: Schema.Boolean,
   is_locked: Schema.Boolean,
 }).annotations({
@@ -143,6 +185,35 @@ export const NmdPropertyFileRef = Schema.Union(
 
 export type NmdPropertyFileRef = typeof NmdPropertyFileRef.Type
 
+/** Place value used by typed page-property frontmatter. */
+export const NmdPlaceValue = Schema.Struct({
+  lat: Schema.Number,
+  lon: Schema.Number,
+  name: Schema.optional(Schema.NullOr(Schema.String)),
+  address: Schema.optional(Schema.NullOr(Schema.String)),
+  google_place_id: Schema.optional(Schema.NullOr(Schema.String)),
+  aws_place_id: Schema.optional(Schema.NullOr(Schema.String)),
+}).annotations({
+  identifier: 'NotionMd.PlaceValue',
+})
+
+export type NmdPlaceValue = typeof NmdPlaceValue.Type
+
+/** Verification value used by typed page-property frontmatter. */
+export const NmdVerificationValue = Schema.Union(
+  Schema.Struct({
+    state: Schema.Literal('verified'),
+    date: Schema.optional(NmdDateValue),
+  }),
+  Schema.Struct({
+    state: Schema.Literal('unverified'),
+  }),
+).annotations({
+  identifier: 'NotionMd.VerificationValue',
+})
+
+export type NmdVerificationValue = typeof NmdVerificationValue.Type
+
 /** Typed, human-editable page-property value stored in frontmatter. */
 export const NmdPropertyValue = Schema.Union(
   Schema.TaggedStruct('title', { value: Schema.String }),
@@ -159,6 +230,8 @@ export const NmdPropertyValue = Schema.Union(
   Schema.TaggedStruct('email', { value: Schema.NullOr(Schema.String) }),
   Schema.TaggedStruct('phone_number', { value: Schema.NullOr(Schema.String) }),
   Schema.TaggedStruct('relation', { value: Schema.Array(NotionUUID) }),
+  Schema.TaggedStruct('place', { value: Schema.NullOr(NmdPlaceValue) }),
+  Schema.TaggedStruct('verification', { value: NmdVerificationValue }),
   Schema.TaggedStruct('read_only', {
     property_type: Schema.String,
     value: Schema.Unknown,

@@ -1,6 +1,6 @@
 import { Context, type Effect } from 'effect'
 
-import type { NmdStorage } from '@overeng/notion-effect-client'
+import type { NmdPageState, NmdStorage } from '@overeng/notion-effect-client'
 
 import type { NmdGatewayError } from './errors.ts'
 
@@ -19,8 +19,8 @@ export interface RemotePageSnapshot {
   readonly title: string
   readonly url: string | undefined
   readonly parent: RemoteParent
-  readonly icon: unknown
-  readonly cover: unknown
+  readonly icon: NmdPageState['icon']
+  readonly cover: NmdPageState['cover']
   readonly in_trash: boolean
   readonly is_locked: boolean
   readonly last_edited_time: string
@@ -44,6 +44,26 @@ export interface PullPageResult {
 /** Markdown update response from the live Notion gateway. */
 export interface UpdateMarkdownResult {
   readonly markdown: RemoteMarkdownSnapshot
+}
+
+/** Page icon values the Notion page update API accepts through frontmatter. */
+export type WritablePageIcon = null | Extract<
+  NonNullable<NmdPageState['icon']>,
+  { readonly type: 'emoji' | 'external' | 'icon' }
+>
+
+/** Page cover values the Notion page update API accepts through frontmatter. */
+export type WritablePageCover = null | Extract<
+  NonNullable<NmdPageState['cover']>,
+  { readonly type: 'external' }
+>
+
+/** Field-level page metadata patch derived from strict frontmatter. */
+export interface PageMetadataUpdate {
+  readonly icon?: WritablePageIcon
+  readonly cover?: WritablePageCover
+  readonly in_trash?: boolean
+  readonly is_locked?: boolean
 }
 
 /** Exact search-and-replace operation for Notion's `update_content` command. */
@@ -78,6 +98,10 @@ export interface NotionMdGatewayShape {
   readonly updatePageProperties: (opts: {
     readonly pageId: string
     readonly properties: Record<string, unknown>
+  }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
+  readonly updatePageMetadata: (opts: {
+    readonly pageId: string
+    readonly metadata: PageMetadataUpdate
   }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
 }
 
