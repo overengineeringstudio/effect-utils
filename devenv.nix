@@ -82,6 +82,13 @@ let
       lockfile = "pnpm-lock.yaml";
       packageJson = "packages/@overeng/notion-cli/package.json";
     }
+    {
+      name = "notion-md";
+      flakeRef = ".#notion-md";
+      hashSource = "packages/@overeng/notion-md/nix/build.nix";
+      lockfile = "pnpm-lock.yaml";
+      packageJson = "packages/@overeng/notion-md/package.json";
+    }
   ];
 
   # Explicit workspace members for the repo-root pnpm workspace.
@@ -105,6 +112,7 @@ let
     "packages/@overeng/notion-cli"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
+    "packages/@overeng/notion-md"
     "packages/@overeng/notion-react"
     "packages/@overeng/oxc-config"
     "packages/@overeng/pty-effect"
@@ -158,6 +166,10 @@ let
     {
       path = "packages/@overeng/notion-effect-schema";
       name = "notion-effect-schema";
+    }
+    {
+      path = "packages/@overeng/notion-md";
+      name = "notion-md";
     }
     {
       path = "packages/@overeng/notion-react";
@@ -236,6 +248,11 @@ let
       path = "packages/@overeng/notion-react";
       name = "notion-react";
       port = 6014;
+    }
+    {
+      path = "packages/@overeng/notion-md";
+      name = "notion-md";
+      port = 6015;
     }
   ];
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;

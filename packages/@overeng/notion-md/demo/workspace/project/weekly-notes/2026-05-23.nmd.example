@@ -1,0 +1,53 @@
+---
+{
+  "notion_md": {
+    "version": 1,
+    "api_version": "2026-03-11",
+    "object": "page",
+    "page_id": "<replace-by-running-notion-md-pull>",
+    "url": "https://www.notion.so/<replace-by-running-notion-md-pull>",
+    "parent": {
+      "_tag": "workspace"
+    },
+    "body": {
+      "format": "notion-enhanced-markdown",
+      "hash": "sha256:<replace-by-running-notion-md-pull>",
+      "base": {
+        "_tag": "object_ref",
+        "role": "base_snapshot",
+        "hash": "sha256:<replace-by-running-notion-md-pull>",
+        "path": ".notion-md/objects/sha256/...",
+        "media_type": "application/json",
+        "byte_length": 0
+      },
+      "last_pulled_at": "2026-05-23T00:00:00.000Z",
+      "remote_last_edited_time": "2026-05-23T00:00:00.000Z",
+      "truncated": false,
+      "unknown_block_ids": []
+    },
+    "page": {
+      "title": "Weekly Notes",
+      "icon": null,
+      "cover": null,
+      "in_trash": false,
+      "is_locked": false
+    },
+    "data_source": null,
+    "properties": {},
+    "storage": {
+      "_tag": "self_contained",
+      "unsupported_blocks": [],
+      "files": [],
+      "comments": []
+    }
+  }
+}
+---
+
+# Weekly Notes
+
+## 2026-05-23
+
+- Review local edits with `notion-md status packages/@overeng/notion-md/demo/workspace --recursive`.
+- Sync the folder only after each page has a distinct Notion page id.
+- Restart watch mode after adding new `.nmd` files because recursive watch resolves its file set at startup.

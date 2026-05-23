@@ -7,12 +7,7 @@ import {
   vercelDeployJobs as buildVercelDeployJobs,
   vercelDeployStep as buildVercelDeployStep,
 } from '../deploy-preview/vercel.ts'
-import {
-  bashShellDefaults,
-  linuxX64Runner,
-  runDevenvTasksBefore,
-  shellSingleQuote,
-} from './shared.ts'
+import { bashShellDefaults, linuxX64Runner, runDevenvTasksBefore } from './shared.ts'
 
 /** Job-level permissions required by `deployCommentStep` to post/edit PR comments. */
 export const deployCommentPermissions = {

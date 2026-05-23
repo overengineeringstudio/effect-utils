@@ -89,7 +89,8 @@ const ciCancelInProgress = (opts?: Pick<CiConcurrencyOptions, 'measurementBaseli
 
 export const ciJobConcurrency = (jobId: string, opts?: CiConcurrencyOptions) =>
   ({
-    group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-" +
+    group:
+      '${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-' +
       ciConcurrencyScope(opts) +
       `-${jobId}` +
       (opts?.matrix === true ? '-${{ strategy.job-index }}' : ''),
@@ -107,8 +108,15 @@ const workflowDispatchBaselineRefInput = {
   type: 'string',
 } as const
 
-const withJobConcurrencyDispatchInputs = (on: GitHubWorkflowArgs['on']): GitHubWorkflowArgs['on'] => {
-  if (typeof on !== 'object' || on === null || !('workflow_dispatch' in on) || on.workflow_dispatch === null) {
+const withJobConcurrencyDispatchInputs = (
+  on: GitHubWorkflowArgs['on'],
+): GitHubWorkflowArgs['on'] => {
+  if (
+    typeof on !== 'object' ||
+    on === null ||
+    !('workflow_dispatch' in on) ||
+    on.workflow_dispatch === null
+  ) {
     return on
   }
 
@@ -125,7 +133,10 @@ const withJobConcurrencyDispatchInputs = (on: GitHubWorkflowArgs['on']): GitHubW
 }
 
 const supportsMeasurementBaselineBackfill = (on: GitHubWorkflowArgs['on']) =>
-  typeof on === 'object' && on !== null && 'workflow_dispatch' in on && on.workflow_dispatch !== null
+  typeof on === 'object' &&
+  on !== null &&
+  'workflow_dispatch' in on &&
+  on.workflow_dispatch !== null
 
 const withDefaultJobConcurrency = (
   jobs: GitHubWorkflowArgs['jobs'],
@@ -141,7 +152,8 @@ const withDefaultJobConcurrency = (
   )
 
 export const ciWorkflowConcurrency = {
-  group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-" + ciConcurrencyScope(),
+  group:
+    '${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-' + ciConcurrencyScope(),
   'cancel-in-progress': ciCancelInProgress(),
 } as const
 
@@ -159,11 +171,12 @@ export const ciWorkflow = (args: GitHubWorkflowArgs) =>
       on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
       ...(concurrency === undefined ? {} : { concurrency }),
       actionlint: actionlint ?? defaultActionlintConfig,
-      jobs: concurrency === undefined
-        ? withDefaultJobConcurrency(jobs, {
-          measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
-        })
-        : jobs,
+      jobs:
+        concurrency === undefined
+          ? withDefaultJobConcurrency(jobs, {
+              measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
+            })
+          : jobs,
     }))(args)
 
 export type NixConfigOptions = {

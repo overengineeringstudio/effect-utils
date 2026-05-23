@@ -5,6 +5,7 @@ tmp
 .context
 .cache/
 .codex/
+.evergreen/
 
 # Node.js
 node_modules
