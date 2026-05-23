@@ -2,6 +2,8 @@ import { Context, type Effect } from 'effect'
 
 import type { NmdStorage } from '@overeng/notion-effect-client'
 
+import type { NmdGatewayError } from './errors.ts'
+
 /** Remote Notion parent shapes normalized for `.nmd` frontmatter. */
 export type RemoteParent =
   | { readonly type: 'page_id'; readonly page_id: string }
@@ -46,16 +48,18 @@ export interface UpdateMarkdownResult {
 
 /** Minimal gateway boundary between sync logic and the Notion API. */
 export interface NotionMdGatewayShape {
-  readonly pullPage: (opts: { readonly pageId: string }) => Effect.Effect<PullPageResult, unknown>
+  readonly pullPage: (opts: {
+    readonly pageId: string
+  }) => Effect.Effect<PullPageResult, NmdGatewayError>
   readonly updateMarkdown: (opts: {
     readonly pageId: string
     readonly markdown: string
     readonly allowDeletingContent: boolean
-  }) => Effect.Effect<UpdateMarkdownResult, unknown>
+  }) => Effect.Effect<UpdateMarkdownResult, NmdGatewayError>
   readonly updatePageProperties: (opts: {
     readonly pageId: string
     readonly properties: Record<string, unknown>
-  }) => Effect.Effect<RemotePageSnapshot, unknown>
+  }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
 }
 
 /** Effect service tag for Notion Markdown sync operations. */

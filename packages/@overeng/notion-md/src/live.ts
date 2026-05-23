@@ -10,6 +10,7 @@ import {
 import type { Page } from '@overeng/notion-effect-schema'
 import type { Block } from '@overeng/notion-effect-schema'
 
+import { NmdGatewayError } from './errors.ts'
 import { canonicalizeMarkdown } from './hash.ts'
 import { NotionMdGateway, type RemotePageSnapshot } from './model.ts'
 
@@ -81,6 +82,20 @@ const storageFromUnknownBlocks = (opts: {
 const unknownPlaceholders = (markdown: string): readonly string[] =>
   [...markdown.matchAll(/<unknown\b[^>]*\/>/giu)].map((match) => match[0])
 
+const mapGatewayError =
+  (opts: { readonly operation: string; readonly pageId?: string; readonly blockId?: string }) =>
+  (cause: unknown): NmdGatewayError =>
+    new NmdGatewayError({
+      operation: opts.operation,
+      page_id: opts.pageId,
+      block_id: opts.blockId,
+      cause,
+      message:
+        opts.pageId === undefined
+          ? `Notion gateway operation failed: ${opts.operation}`
+          : `Notion gateway operation failed for page ${opts.pageId}: ${opts.operation}`,
+    })
+
 /** Live Notion-backed gateway for page Markdown and page property operations. */
 export const NotionMdGatewayLive = Layer.effect(
   NotionMdGateway,
@@ -122,7 +137,12 @@ export const NotionMdGatewayLive = Layer.effect(
                   placeholders: unknownPlaceholders(markdown.markdown),
                 }),
               }
-        }),
+        }).pipe(
+          Effect.mapError(mapGatewayError({ operation: 'pull_page', pageId })),
+          Effect.withSpan('notion-md.gateway.pull-page', {
+            attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
+          }),
+        ),
       updateMarkdown: ({ pageId, markdown, allowDeletingContent }) =>
         provideHttp(
           NotionPages.updateMarkdown({
@@ -139,9 +159,19 @@ export const NotionMdGatewayLive = Layer.effect(
               unknown_block_ids: markdownResult.unknown_block_ids,
             },
           })),
+          Effect.mapError(mapGatewayError({ operation: 'update_markdown', pageId })),
+          Effect.withSpan('notion-md.gateway.update-markdown', {
+            attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
+          }),
         ),
       updatePageProperties: ({ pageId, properties }) =>
-        provideHttp(NotionPages.update({ pageId, properties })).pipe(Effect.map(toRemotePage)),
+        provideHttp(NotionPages.update({ pageId, properties })).pipe(
+          Effect.map(toRemotePage),
+          Effect.mapError(mapGatewayError({ operation: 'update_page_properties', pageId })),
+          Effect.withSpan('notion-md.gateway.update-page-properties', {
+            attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
+          }),
+        ),
     }
   }),
 )

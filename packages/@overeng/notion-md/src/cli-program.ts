@@ -3,13 +3,24 @@ import { basename, dirname } from 'node:path'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient } from '@effect/platform'
-import { Cause, Console, Effect, Layer, Option, Redacted, Schema } from 'effect'
+import {
+  Cause,
+  Console,
+  Duration,
+  Effect,
+  Layer,
+  Option,
+  Queue,
+  Redacted,
+  Runtime,
+  Schema,
+} from 'effect'
 
 import { NotionConfigLive } from '@overeng/notion-effect-client'
 
 import { NmdTokenMissingError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
-import { NotionMdGateway } from './model.ts'
+import type { NotionMdGateway } from './model.ts'
 import { pullPage, pushPage, statusPage, syncPage, type SyncOptions } from './sync.ts'
 
 const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
@@ -114,105 +125,105 @@ const safeJsonError = (error: unknown): Record<string, unknown> => {
   return { message: String(error) }
 }
 
-const writeJsonLine = (value: unknown): void => {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
+const writeJsonLine = (value: unknown): Effect.Effect<void> =>
+  Effect.sync(() => {
+    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
+  })
+
+type WatchReason = 'file' | 'initial' | 'poll'
+
+interface WatchEvent {
+  readonly reason: WatchReason
+}
+
+const nextWatchReason = (opts: {
+  readonly initial: WatchEvent
+  readonly pending: Iterable<WatchEvent>
+}): WatchReason => {
+  let reason = opts.initial.reason
+  for (const event of opts.pending) {
+    reason = event.reason
+  }
+  return reason
 }
 
 /** Run continuous one-file sync with debounced local changes and remote polling. */
 export const runWatch = (opts: {
   readonly syncOptions: SyncOptions
   readonly pollIntervalMs: number
+  readonly emit?: (value: unknown) => Effect.Effect<void>
 }): Effect.Effect<never, never, NotionMdGateway> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const gateway = yield* NotionMdGateway
+      const queue = yield* Queue.sliding<WatchEvent>(1024)
+      const runtime = yield* Effect.runtime<never>()
+      const emit = opts.emit ?? writeJsonLine
       const path = opts.syncOptions.path
       const watchedFile = basename(path)
       const watchedDir = dirname(path)
 
-      const state = yield* Effect.acquireRelease(
+      const offer = (event: WatchEvent): void => {
+        void Runtime.runFork(runtime)(Queue.offer(queue, event))
+      }
+
+      const pass = (reason: WatchReason) =>
+        syncPage(opts.syncOptions).pipe(
+          Effect.tap((result) =>
+            Effect.annotateCurrentSpan({
+              'notion_md.sync.result': result._tag,
+              'notion_md.watch.reason': reason,
+            }),
+          ),
+          Effect.tap((result) => emit({ event: 'sync', reason, result })),
+          Effect.catchAll((error: unknown) =>
+            emit({ event: 'sync_error', reason, error: safeJsonError(error) }),
+          ),
+          Effect.withSpan('notion-md.watch.sync-pass', {
+            root: true,
+            attributes: {
+              'span.label': `${watchedFile}:${reason}`,
+              'notion_md.command': 'sync',
+              'notion_md.watch': true,
+              'notion_md.watch.reason': reason,
+              'notion_md.path.basename': watchedFile,
+            },
+          }),
+        )
+
+      yield* Effect.acquireRelease(
         Effect.sync(() => {
-          let debounceTimer: ReturnType<typeof setTimeout> | undefined
-          let running = false
-          let pendingReason: string | undefined
-
-          const run = (reason: string): void => {
-            if (running === true) {
-              pendingReason = reason
-              return
-            }
-
-            running = true
-            pendingReason = undefined
-            void Effect.runPromise(
-              syncPage(opts.syncOptions).pipe(
-                Effect.provideService(NotionMdGateway, gateway),
-                Effect.tap((result) =>
-                  Effect.annotateCurrentSpan({
-                    'notion_md.sync.result': result._tag,
-                    'notion_md.watch.reason': reason,
-                  }),
-                ),
-                Effect.withSpan('notion-md.watch.sync-pass', {
-                  root: true,
-                  attributes: {
-                    'span.label': `${watchedFile}:${reason}`,
-                    'notion_md.command': 'sync',
-                    'notion_md.watch': true,
-                    'notion_md.watch.reason': reason,
-                    'notion_md.path.basename': watchedFile,
-                  },
-                }),
-              ),
-            )
-              .then((result) => writeJsonLine({ event: 'sync', reason, result }))
-              .catch((error: unknown) =>
-                writeJsonLine({ event: 'sync_error', reason, error: safeJsonError(error) }),
-              )
-              .finally(() => {
-                running = false
-                if (pendingReason !== undefined) {
-                  const nextReason = pendingReason
-                  pendingReason = undefined
-                  schedule(nextReason)
-                }
-              })
-          }
-
-          const schedule = (reason: string): void => {
-            if (debounceTimer !== undefined) {
-              clearTimeout(debounceTimer)
-            }
-            debounceTimer = setTimeout(() => run(reason), 250)
-          }
-
           const watcher = watchFile(watchedDir, (_eventType, filename) => {
             if (filename === watchedFile) {
-              schedule('file')
+              offer({ reason: 'file' })
             }
           })
           watcher.on('error', (error) => {
-            writeJsonLine({ event: 'watch_error', path, error: safeJsonError(error) })
+            void Runtime.runFork(runtime)(
+              emit({ event: 'watch_error', path, error: safeJsonError(error) }),
+            )
           })
-
-          const pollTimer = setInterval(() => schedule('poll'), opts.pollIntervalMs)
-          run('initial')
-
-          return {
-            cleanup: (): void => {
-              if (debounceTimer !== undefined) {
-                clearTimeout(debounceTimer)
-              }
-              clearInterval(pollTimer)
-              watcher.close()
-            },
-          }
+          return watcher
         }),
-        (resource) => Effect.sync(() => resource.cleanup()),
+        (watcher) => Effect.sync(() => watcher.close()),
       )
 
-      void state
-      return yield* Effect.never
+      yield* Queue.offer(queue, { reason: 'initial' })
+      yield* Effect.forkScoped(
+        Effect.forever(
+          Effect.sleep(Duration.millis(opts.pollIntervalMs)).pipe(
+            Effect.zipRight(Queue.offer(queue, { reason: 'poll' })),
+          ),
+        ),
+      )
+
+      return yield* Effect.forever(
+        Effect.gen(function* () {
+          const initial = yield* Queue.take(queue)
+          yield* Effect.sleep(Duration.millis(250))
+          const pending = yield* Queue.takeAll(queue)
+          yield* pass(nextWatchReason({ initial, pending }))
+        }),
+      )
     }),
   ).pipe(
     Effect.withSpan('notion-md.watch', {

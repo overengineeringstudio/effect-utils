@@ -2,11 +2,12 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Effect, Layer } from 'effect'
+import { Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type { NmdStorage } from '@overeng/notion-effect-client'
 
+import { runWatch } from './cli-program.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown } from './hash.ts'
 import { NotionMdGateway, type PullPageResult } from './model.ts'
@@ -285,6 +286,36 @@ describe('notion-md e2e prototype', () => {
       expect(fake.remoteMarkdown(pageId)).toContain('Local body')
       expect(status.localChanged).toBe(false)
       expect(status.remoteChanged).toBe(false)
+    })
+  })
+
+  it('watch mode runs sync passes inside an interruptible Effect fiber', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Body', 'Watched body'))
+
+      await runWithFake(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.fork(
+              runWatch({
+                syncOptions: { path },
+                pollIntervalMs: 10_000,
+                emit: () => Effect.void,
+              }),
+            )
+            yield* Effect.sleep('500 millis')
+            yield* Fiber.interrupt(fiber)
+          }),
+        ),
+        fake,
+      )
+
+      expect(fake.remoteMarkdown(pageId)).toContain('Watched body')
     })
   })
 

@@ -20,13 +20,16 @@ const decodeNmdFrontmatterJsonSync = Schema.decodeUnknownSync(
     onExcessProperty: 'error',
   },
 )
+const encodeNmdFrontmatterJsonSync = Schema.encodeSync(
+  Schema.parseJson(NmdFrontmatterV1Schema, { space: 2 }),
+)
 
 /** Render strict frontmatter as JSON-compatible YAML to keep parsing dependency-free. */
 export const renderNmdFile = (opts: {
   readonly frontmatter: NmdFrontmatterV1
   readonly body: string
 }): string =>
-  `---\n${JSON.stringify(opts.frontmatter, null, 2)}\n---\n\n${canonicalizeMarkdown(opts.body)}`
+  `---\n${encodeNmdFrontmatterJsonSync(opts.frontmatter)}\n---\n\n${canonicalizeMarkdown(opts.body)}`
 
 /** Parse the local `.nmd` envelope and validate it with the Effect schema. */
 export const parseNmdFile = (opts: {

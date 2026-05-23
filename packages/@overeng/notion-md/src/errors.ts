@@ -26,6 +26,27 @@ export class NmdConflictError extends Schema.TaggedError<NmdConflictError>()('Nm
   local_changed: Schema.Boolean,
   remote_changed: Schema.Boolean,
   conflict_path: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Defect),
+}) {}
+
+/** Raised when local filesystem IO fails while reading or writing sync state. */
+export class NmdFileSystemError extends Schema.TaggedError<NmdFileSystemError>()(
+  'NmdFileSystemError',
+  {
+    operation: Schema.String,
+    path: Schema.String,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+/** Raised when a Notion gateway operation fails at the API boundary. */
+export class NmdGatewayError extends Schema.TaggedError<NmdGatewayError>()('NmdGatewayError', {
+  operation: Schema.String,
+  page_id: Schema.optional(Schema.String),
+  block_id: Schema.optional(Schema.String),
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect),
 }) {}
 
 /** Raised when a command needs a Notion token and none was supplied. */
@@ -40,3 +61,11 @@ export class NmdTokenMissingError extends Schema.TaggedError<NmdTokenMissingErro
 export class NmdCliError extends Schema.TaggedError<NmdCliError>()('NmdCliError', {
   message: Schema.String,
 }) {}
+
+/** Expected failures surfaced by the notion-md sync engine. */
+export type NmdError =
+  | NmdFrontmatterError
+  | NmdSidecarError
+  | NmdConflictError
+  | NmdFileSystemError
+  | NmdGatewayError

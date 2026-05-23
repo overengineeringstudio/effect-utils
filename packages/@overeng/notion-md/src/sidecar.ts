@@ -5,7 +5,7 @@ import { Effect, Schema } from 'effect'
 
 import { NmdStorageSchema, type NmdFrontmatterV1 } from '@overeng/notion-effect-client'
 
-import { NmdSidecarError } from './errors.ts'
+import { NmdFileSystemError, NmdSidecarError } from './errors.ts'
 import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
 
 /** Strict schema for overflow `.nmd` storage sidecars. */
@@ -38,9 +38,15 @@ const decodeBaseSnapshotJson = Schema.decodeUnknownSync(
   Schema.parseJson(NmdBaseSnapshotV1),
   strictOptions,
 )
+const encodeSidecarJson = Schema.encodeSync(Schema.parseJson(NmdSidecarV1, { space: 2 }))
+const encodeBaseSnapshotJson = Schema.encodeSync(Schema.parseJson(NmdBaseSnapshotV1, { space: 2 }))
 
 /** Path for the last clean body snapshot next to a `.nmd` file. */
 export const baseSnapshotPath = (path: string): string => `${path}.base.json`
+
+/** Render a validated storage sidecar payload. */
+export const renderSidecarFile = (sidecar: NmdSidecarV1): string =>
+  `${encodeSidecarJson(sidecar)}\n`
 
 const sameIds = (opts: {
   readonly left: readonly string[]
@@ -86,19 +92,25 @@ const validateSidecarReferences = (opts: {
   readonly frontmatter: NmdFrontmatterV1
   readonly sidecar: NmdSidecarV1
 }): Effect.Effect<void, NmdSidecarError> =>
-  Effect.sync(() => {
+  Effect.gen(function* () {
     const storage = opts.frontmatter.notion_md.storage
     if (storage._tag !== 'sidecar') return
 
     if (opts.sidecar.page_id !== opts.frontmatter.notion_md.page_id) {
-      throw new Error(
-        `Sidecar page id ${opts.sidecar.page_id} does not match ${opts.frontmatter.notion_md.page_id}`,
-      )
+      return yield* new NmdSidecarError({
+        path: opts.path,
+        sidecar_path: opts.sidecarPath,
+        message: `Sidecar page id ${opts.sidecar.page_id} does not match ${opts.frontmatter.notion_md.page_id}`,
+      })
     }
 
     const sidecarStorage = opts.sidecar.storage
     if (sidecarStorage._tag !== 'self_contained') {
-      throw new Error('Sidecar payload must contain self-contained storage')
+      return yield* new NmdSidecarError({
+        path: opts.path,
+        sidecar_path: opts.sidecarPath,
+        message: 'Sidecar payload must contain self-contained storage',
+      })
     }
 
     if (
@@ -107,7 +119,11 @@ const validateSidecarReferences = (opts: {
         right: sidecarStorage.unsupported_blocks.map((block) => block.block_id),
       }) === false
     ) {
-      throw new Error('Sidecar unsupported block ids do not match frontmatter')
+      return yield* new NmdSidecarError({
+        path: opts.path,
+        sidecar_path: opts.sidecarPath,
+        message: 'Sidecar unsupported block ids do not match frontmatter',
+      })
     }
 
     if (
@@ -116,7 +132,11 @@ const validateSidecarReferences = (opts: {
         right: sidecarStorage.files.map((file) => file.id),
       }) === false
     ) {
-      throw new Error('Sidecar file ids do not match frontmatter')
+      return yield* new NmdSidecarError({
+        path: opts.path,
+        sidecar_path: opts.sidecarPath,
+        message: 'Sidecar file ids do not match frontmatter',
+      })
     }
 
     if (
@@ -125,19 +145,13 @@ const validateSidecarReferences = (opts: {
         right: sidecarStorage.comments.map((comment) => comment.id),
       }) === false
     ) {
-      throw new Error('Sidecar comment ids do not match frontmatter')
+      return yield* new NmdSidecarError({
+        path: opts.path,
+        sidecar_path: opts.sidecarPath,
+        message: 'Sidecar comment ids do not match frontmatter',
+      })
     }
-  }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new NmdSidecarError({
-          path: opts.path,
-          sidecar_path: opts.sidecarPath,
-          cause,
-          message: `Invalid .nmd sidecar ${opts.sidecarPath}`,
-        }),
-    ),
-  )
+  })
 
 /** Load and validate sidecar storage referenced by frontmatter, if present. */
 export const validateReferencedSidecar = (opts: {
@@ -191,28 +205,24 @@ export const writeBaseSnapshot = (opts: {
   readonly path: string
   readonly frontmatter: NmdFrontmatterV1
   readonly body: string
-}): Effect.Effect<void, NmdSidecarError> =>
+}): Effect.Effect<void, NmdFileSystemError> =>
   Effect.tryPromise({
     try: () => {
       const body = canonicalizeMarkdown(opts.body)
       return writeFile(
         baseSnapshotPath(opts.path),
-        `${JSON.stringify(
-          {
-            version: 1,
-            page_id: opts.frontmatter.notion_md.page_id,
-            body_hash: opts.frontmatter.notion_md.body.hash,
-            body,
-          },
-          null,
-          2,
-        )}\n`,
+        `${encodeBaseSnapshotJson({
+          version: 1,
+          page_id: opts.frontmatter.notion_md.page_id,
+          body_hash: opts.frontmatter.notion_md.body.hash,
+          body,
+        })}\n`,
       )
     },
     catch: (cause) =>
-      new NmdSidecarError({
-        path: opts.path,
-        sidecar_path: baseSnapshotPath(opts.path),
+      new NmdFileSystemError({
+        operation: 'write_base_snapshot',
+        path: baseSnapshotPath(opts.path),
         cause,
         message: `Failed to write .nmd base snapshot ${baseSnapshotPath(opts.path)}`,
       }),
