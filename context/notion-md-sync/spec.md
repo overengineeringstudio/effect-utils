@@ -467,7 +467,18 @@ Implemented verification currently includes:
 - pure merge planner tests,
 - fake-gateway E2E tests,
 - live Notion E2E against a configured parent page,
+- live E2E ledger updates on the configured parent page,
+- a durable automated demo page synced from `packages/@overeng/notion-md/demo/showcase.nmd`,
 - local `check:quick` and `check:all`.
+
+Live E2E uses `NOTION_MD_TEST_PARENT_PAGE_ID` as a scratch parent. Test-created
+child pages are archived during teardown. A stable `notion-md e2e run ledger`
+child page records the latest live run so the parent page remains visibly tied
+to the test suite without retaining every scratch fixture.
+
+The automated demo page is not a test scratch page. It is the durable 1:1
+showcase for local `.nmd` and Notion state. Its local file and reachable object
+store entries are committed under `packages/@overeng/notion-md/demo/`.
 
 Follow-up hardening is tracked in the PR issue for required live-lane policy, OTEL span assertions, stable CLI output modes, deterministic watch-core tests, and broader storage/comment coverage.
 

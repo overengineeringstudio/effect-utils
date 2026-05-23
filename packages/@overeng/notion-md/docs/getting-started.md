@@ -92,4 +92,3 @@ recoverable sync error.
 
 Keep one watch process per `.nmd` file. Concurrent writers can still create real
 conflicts, and those should be resolved through the same guarded conflict flow.
-

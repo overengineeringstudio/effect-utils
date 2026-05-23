@@ -1,0 +1,131 @@
+---
+{
+  "notion_md": {
+    "version": 1,
+    "api_version": "2026-03-11",
+    "object": "page",
+    "page_id": "369f141b-18dc-80e4-850c-ff344ad5b48e",
+    "url": "https://www.notion.so/overeng-notion-md-demo-automated-369f141b18dc80e4850cff344ad5b48e",
+    "parent": {
+      "_tag": "workspace"
+    },
+    "body": {
+      "format": "notion-enhanced-markdown",
+      "hash": "sha256:cef2021a0d68449c83913db1a43650825d43620fe7843a420ad4e3e640f3fc85",
+      "base": {
+        "_tag": "object_ref",
+        "role": "base_snapshot",
+        "hash": "sha256:dbf898f49cd6f8d9d7186961698f7cb76a80580795b1df37523fca85146ea1d7",
+        "path": ".notion-md/objects/sha256/db/f898f49cd6f8d9d7186961698f7cb76a80580795b1df37523fca85146ea1d7.json",
+        "media_type": "application/json",
+        "byte_length": 2221
+      },
+      "last_pulled_at": "2026-05-23T05:30:41.527Z",
+      "remote_last_edited_time": "2026-05-23T05:30:00.000Z",
+      "truncated": false,
+      "unknown_block_ids": []
+    },
+    "page": {
+      "title": "@overeng/notion-md demo (automated)",
+      "icon": null,
+      "cover": null,
+      "in_trash": false,
+      "is_locked": false
+    },
+    "data_source": null,
+    "properties": {
+      "title": {
+        "_tag": "read_only",
+        "property_type": "title",
+        "value": {
+          "id": "title",
+          "type": "title",
+          "title": [
+            {
+              "type": "text",
+              "text": {
+                "content": "@overeng/notion-md demo (automated)",
+                "link": null
+              },
+              "annotations": {
+                "bold": false,
+                "italic": false,
+                "strikethrough": false,
+                "underline": false,
+                "code": false,
+                "color": "default"
+              },
+              "plain_text": "@overeng/notion-md demo (automated)",
+              "href": null
+            }
+          ]
+        }
+      }
+    },
+    "storage": {
+      "_tag": "self_contained",
+      "unsupported_blocks": [],
+      "files": [],
+      "comments": []
+    }
+  }
+}
+---
+
+# notion-md automated demo
+This page is the durable live showcase for `@overeng/notion-md`: a local `.nmd` file synced 1:1 with a Notion page through the same CLI used by the E2E tests.
+## Body surface
+- Stock Notion enhanced Markdown stays in the body.
+- Strict sync metadata stays in frontmatter.
+- Content-addressed merge evidence stays in `.notion-md/objects`.
+## Editable Markdown
+### Lists
+1. Pull the Notion page into `demo/showcase.nmd`.
+2. Edit the Markdown body locally.
+3. Run guarded `push` or `sync`.
+- Bulleted content round-trips through the Markdown endpoint.
+- Local-only metadata is stripped before writing to Notion.
+### Tasks
+- [x] Pull demo page
+- [x] Push local Markdown edits
+- [x] Verify clean status
+- [ ] Extend once file bytes and comment projection are implemented
+### Callout
+> The demo intentionally avoids local frontmatter prose in the Notion body. If you can see this page in Notion, you are seeing only the synced Markdown body.
+### Code
+```typescript
+const command = 'notion-md sync packages/@overeng/notion-md/demo/showcase.nmd'
+```
+### Table
+<table header-row="true">
+<tr>
+<td>Surface</td>
+<td>Local representation</td>
+<td>Current policy</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>Stock Notion enhanced Markdown</td>
+<td>Guarded two-way sync</td>
+</tr>
+<tr>
+<td>Properties</td>
+<td>Strict frontmatter</td>
+<td>Modeled writable forms</td>
+</tr>
+<tr>
+<td>Unknown blocks</td>
+<td>Frontmatter or object store</td>
+<td>Preserve or explicit delete</td>
+</tr>
+<tr>
+<td>Review</td>
+<td>Roughdraft markup</td>
+<td>Refuse unresolved by default</td>
+</tr>
+</table>
+## Conflict model
+`notion-md` compares base, local, and remote body hashes. Non-overlapping edits can merge automatically; overlapping edits produce a Roughdraft conflict artifact.
+## Demo identity
+- Notion page: <mention-page url="https://www.notion.so/369f141b18dc80e4850cff344ad5b48e">@overeng/notion-md demo (automated)</mention-page>
+- Local file: `packages/@overeng/notion-md/demo/showcase.nmd`

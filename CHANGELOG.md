@@ -39,6 +39,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-md**: Extract body merge/update planning into a focused pure module with unit coverage
 - **@overeng/notion-md docs**: Consolidate scattered research/spec notes into the VRS `context/notion-md-sync/spec.md` source of truth
 - **@overeng/notion-md docs**: Add package-local usage docs for getting started, CLI workflows, `.nmd` format, sync safety, and troubleshooting
+- **@overeng/notion-md**: Add a durable Notion live E2E run ledger and a committed demo `.nmd` fixture synced with the automated Notion showcase page
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
 
 ### Fixed

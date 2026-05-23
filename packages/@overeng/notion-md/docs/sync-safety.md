@@ -5,27 +5,27 @@ surfaces and refusing ambiguous writes.
 
 ## Surfaces
 
-| Surface            | Local state               | Push behavior                         |
-| ------------------ | ------------------------- | ------------------------------------- |
-| Body               | `.nmd` body + base object | guarded Markdown update               |
-| Page metadata      | frontmatter page fields   | partial support                       |
-| Properties         | frontmatter properties    | modeled writable values only          |
-| Unsupported blocks | frontmatter/object store  | preserve metadata or explicit delete  |
-| Review markup      | Roughdraft body markup    | rejected unless explicitly allowed    |
-| Files              | storage units             | modeled, upload/download incomplete   |
-| Comments           | storage units             | modeled, bridge incomplete            |
+| Surface            | Local state               | Push behavior                        |
+| ------------------ | ------------------------- | ------------------------------------ |
+| Body               | `.nmd` body + base object | guarded Markdown update              |
+| Page metadata      | frontmatter page fields   | partial support                      |
+| Properties         | frontmatter properties    | modeled writable values only         |
+| Unsupported blocks | frontmatter/object store  | preserve metadata or explicit delete |
+| Review markup      | Roughdraft body markup    | rejected unless explicitly allowed   |
+| Files              | storage units             | modeled, upload/download incomplete  |
+| Comments           | storage units             | modeled, bridge incomplete           |
 
 ## Body Conflicts
 
 Every pull writes a base snapshot. Push compares base, local, and remote bodies:
 
-| Case                       | Result                       |
-| -------------------------- | ---------------------------- |
-| local changed, remote same | push local body              |
-| local same, remote changed | pull remote body             |
-| both changed, no overlap   | auto-merge and push          |
-| both changed, overlap      | write conflict artifact      |
-| remote changed + `--force` | overwrite remote body        |
+| Case                       | Result                  |
+| -------------------------- | ----------------------- |
+| local changed, remote same | push local body         |
+| local same, remote changed | pull remote body        |
+| both changed, no overlap   | auto-merge and push     |
+| both changed, overlap      | write conflict artifact |
+| remote changed + `--force` | overwrite remote body   |
 
 Conflict artifacts are written beside the `.nmd` file using Roughdraft markup.
 Resolve by editing the `.nmd` body to the intended final content, then rerun
@@ -68,4 +68,3 @@ logical paths fail early.
 
 Do not edit `.notion-md/objects` by hand. If an object-store error appears, pull
 again from the remote page or restore the referenced object from version control.
-

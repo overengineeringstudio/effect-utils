@@ -91,4 +91,3 @@ when the literal markup should be pushed.
 resolution, token repair, object restore, or unknown-block deletion approval.
 
 Stop the watcher, fix the file, confirm with `status`, then restart watch mode.
-

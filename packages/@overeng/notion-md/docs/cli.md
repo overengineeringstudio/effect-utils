@@ -53,9 +53,9 @@ Pushes local body and modeled property edits after safety checks.
 
 Options:
 
-| Option                          | Meaning                                                       |
-| ------------------------------- | ------------------------------------------------------------- |
-| `--force`                       | Allow overwriting remote body changes                         |
+| Option                          | Meaning                                                        |
+| ------------------------------- | -------------------------------------------------------------- |
+| `--force`                       | Allow overwriting remote body changes                          |
 | `--allow-delete-unknown-blocks` | Allow a body replacement that can delete unsupported blocks    |
 | `--allow-review-markup`         | Allow unresolved Roughdraft review markup to be sent to Notion |
 
@@ -98,4 +98,3 @@ Watch event examples:
 
 The exact stable output envelope is still a design question. Treat command
 output as operational signal for now, not a public machine contract.
-

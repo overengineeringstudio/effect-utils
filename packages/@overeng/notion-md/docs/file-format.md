@@ -84,23 +84,23 @@ local formatting.
 
 Modeled writable page properties can be edited in frontmatter:
 
-| `_tag`          | `value` shape                    |
-| --------------- | -------------------------------- |
-| `title`         | string                           |
-| `rich_text`     | string or null                   |
-| `number`        | number or null                   |
-| `select`        | option name or null              |
-| `multi_select`  | array of option names            |
-| `status`        | option name or null              |
-| `date`          | `{ start, end, time_zone }` null |
-| `people`        | array of Notion user IDs         |
-| `files`         | array of tagged file refs        |
-| `checkbox`      | boolean                          |
-| `url`           | string or null                   |
-| `email`         | string or null                   |
-| `phone_number`  | string or null                   |
-| `relation`      | array of Notion page IDs         |
-| `read_only`     | preserved, not pushed            |
+| `_tag`         | `value` shape                    |
+| -------------- | -------------------------------- |
+| `title`        | string                           |
+| `rich_text`    | string or null                   |
+| `number`       | number or null                   |
+| `select`       | option name or null              |
+| `multi_select` | array of option names            |
+| `status`       | option name or null              |
+| `date`         | `{ start, end, time_zone }` null |
+| `people`       | array of Notion user IDs         |
+| `files`        | array of tagged file refs        |
+| `checkbox`     | boolean                          |
+| `url`          | string or null                   |
+| `email`        | string or null                   |
+| `phone_number` | string or null                   |
+| `relation`     | array of Notion page IDs         |
+| `read_only`    | preserved, not pushed            |
 
 Generated Notion properties remain visible as `read_only` values and are not
 pushed.
@@ -121,4 +121,3 @@ inventory mismatches.
 
 The object store is part of the sync state. It is content-addressed, but it is
 not optional once referenced by frontmatter.
-

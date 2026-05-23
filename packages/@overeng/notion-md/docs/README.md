@@ -14,5 +14,7 @@ Start here:
   content-addressed local objects.
 - [Sync Safety](./sync-safety.md): conflict policy, unknown-block guards,
   Roughdraft review handling, and destructive flags.
+- [Demo Fixture](./demo.md): the committed `.nmd` showcase synced with the
+  automated Notion demo page.
+- [Testing](./testing.md): fake E2E, live Notion E2E, and the durable run ledger.
 - [Troubleshooting](./troubleshooting.md): common failures and principled fixes.
-
