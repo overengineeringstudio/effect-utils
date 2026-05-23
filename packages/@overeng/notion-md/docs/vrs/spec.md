@@ -4,7 +4,7 @@ This document specifies the Notion Markdown sync system. It builds on [requireme
 
 ## Status
 
-Draft -- the implemented `@overeng/notion-md` package covers the core body/property sync path, strict `.nmd` frontmatter, content-addressed local state, guarded push/sync/watch behavior, Effect Platform file watching, and live Notion E2E coverage. File bytes, comment projection, full data-source property merging, and webhook delivery are designed surfaces that remain outside the implemented core.
+Draft -- the implemented `@overeng/notion-md` package covers the core body/property sync path, strict `.nmd` frontmatter, content-addressed local state, guarded push/sync/watch behavior, batch multi-file and recursive folder orchestration, Effect Platform file watching, and live Notion E2E coverage. File bytes, comment projection, full data-source property merging, and webhook delivery are designed surfaces that remain outside the implemented core.
 
 ## Scope
 
@@ -13,7 +13,7 @@ This spec defines:
 - the `.nmd` local file contract,
 - the `.notion-md` content-addressed local state store,
 - sync surfaces and guarded conflict policy,
-- CLI and watch behavior,
+- CLI, batch, and watch behavior,
 - Effect service boundaries,
 - OpenTelemetry conventions,
 - verification expectations and known limitations.
@@ -30,7 +30,11 @@ This spec does not define:
 ```
 notion-md CLI
   |
-  |  pull/status/push/sync/watch
+  |  pull/status/push/sync/watch/batch
+  v
+Batch/workspace orchestrator
+  |
+  |-- target discovery, duplicate page-id preflight, bounded concurrency
   v
 Sync coordinator
   |
@@ -45,6 +49,11 @@ Sync coordinator
 Requirement trace: R01-R05, R16-R24.
 
 The system treats Notion enhanced Markdown as one sync surface, not the whole page. The body surface is stock Notion enhanced Markdown. Local metadata, page properties, unsupported block preservation, files, comments, and review state are modeled outside the body so they are never silently sent as Notion Markdown.
+
+Batch and folder support do not change the ownership unit: one `.nmd` file maps
+to one Notion page, and every mutation still passes through the same page-local
+guards. The batch layer only owns target discovery, duplicate page-id preflight,
+bounded concurrency, per-file result reporting, and multi-file watch scheduling.
 
 ## Local Format
 
@@ -423,6 +432,28 @@ notion-md doctor <page-id-or-url|file.nmd>
 notion-md store verify|gc|export <file.nmd>
 ```
 
+Batch commands:
+
+```bash
+notion-md status <target...> [--recursive] [--concurrency 4]
+notion-md push <target...> [--recursive] [--concurrency 4]
+notion-md sync <target...> [--recursive] [--concurrency 4] [--watch]
+```
+
+Rules:
+
+- A single file target keeps the original single-result JSON shape.
+- Multiple file targets or recursive directory targets emit a batch envelope.
+- Directory targets require `--recursive`.
+- Recursive discovery includes existing `*.nmd` files and skips `.notion-md`,
+  `.git`, and `node_modules`.
+- Duplicate `page_id` values in the same batch are rejected before any Notion
+  mutation.
+- Missing or malformed files are reported as per-file errors when other valid
+  targets can still run.
+- Local file deletion, local rename, and remote page moves are not destructive
+  intent. Remote archive/delete remains explicit future behavior.
+
 ## Watch Lifecycle
 
 Requirement trace: R19-R20, R28.
@@ -442,6 +473,10 @@ Rules:
 - Interruption closes the watcher, stops polling, and cancels queued work.
 - File events come from the Effect Platform `FileSystem.watch` stream. Production
   adapters are thin stream producers; coalescing policy stays in the watch loop.
+- Multi-file watch resolves the target set at startup, watches the containing
+  directories for those files, coalesces by path, and runs batch sync passes with
+  bounded concurrency. New files discovered after startup require restarting the
+  watcher until a workspace manifest/daemon owns dynamic discovery.
 
 The watch core uses a sliding queue and debounce window. Future tests may inject
 source streams and `TestClock`, but production code must stay on Effect Platform
@@ -458,6 +493,7 @@ Requirement trace: R01-R24.
 | Property merge bases        | Keep compact bases inline; move large or volatile bases into content-addressed objects by policy.                                                                           |
 | Comment anchoring           | Bridge Roughdraft comments only when exact selected text is unique in a known block; otherwise fall back to page-level comments.                                            |
 | Store index                 | Derive reachability from `.nmd` frontmatter and object refs. Add a JSON index only when repo-scale GC or multi-page watch needs it.                                         |
+| Batch sync                  | Keep the page/file sync engine as the correctness boundary. Batch and folder modes are orchestration only, with duplicate page-id preflight and per-file results.            |
 | Webhooks                    | Polling remains the correctness baseline. A local daemon/tunnel may accelerate refresh; hosted relay is a separate product/security decision.                               |
 | CLI output                  | Use explicit output modes with versioned envelopes. Watch mode uses NDJSON events.                                                                                          |
 | Watch events                | Use Effect Platform streams plus a deterministic reducer/queue policy. Avoid raw `fs.watch` ownership in package code.                                                      |

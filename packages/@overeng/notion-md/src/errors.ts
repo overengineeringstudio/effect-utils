@@ -72,3 +72,4 @@ export type NmdError =
   | NmdConflictError
   | NmdFileSystemError
   | NmdGatewayError
+  | NmdCliError

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { NmdPageState, NmdStorage } from '@overeng/notion-effect-client'
 
+import { resolveNmdTargets, runBatchWatch, syncMany } from './batch.ts'
 import { runWatch } from './cli-program.ts'
 import {
   NmdConflictError,
@@ -28,6 +29,7 @@ import {
 import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
 
 const pageId = '00000000-0000-4000-8000-000000000001'
+const secondPageId = '00000000-0000-4000-8000-000000000011'
 const blockId = '00000000-0000-4000-8000-000000000002'
 const fileBlockId = '00000000-0000-4000-8000-000000000003'
 const hash = `sha256:${'a'.repeat(64)}` as const
@@ -563,6 +565,176 @@ describe('notion-md e2e prototype', () => {
       expect(parsed.body).toContain('Remote body')
       expect(status.localChanged).toBe(false)
       expect(status.remoteChanged).toBe(false)
+    })
+  })
+
+  it('batch sync reconciles independent local and remote edits across files', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        { pageId, title: 'Local', markdown: '# Local\n\nBody' },
+        { pageId: secondPageId, title: 'Remote', markdown: '# Remote\n\nBody' },
+      ])
+      const localPath = join(dir, 'local.nmd')
+      const remotePath = join(dir, 'nested', 'remote.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: localPath }), fake)
+      await runWithFake(pullPage({ pageId: secondPageId, outPath: remotePath }), fake)
+      await writeFile(
+        localPath,
+        (await readFile(localPath, 'utf8')).replace('Body', 'Local body'),
+      )
+      fake.mutateRemote(secondPageId, '# Remote\n\nRemote body')
+
+      const batch = await runWithFake(
+        syncMany({ targets: [localPath, remotePath], concurrency: 2 }),
+        fake,
+      )
+      const localStatus = await runWithFake(statusPage({ path: localPath }), fake)
+      const remoteStatus = await runWithFake(statusPage({ path: remotePath }), fake)
+      const remoteParsed = await parseFile(remotePath)
+
+      expect(batch).toMatchObject({
+        _tag: 'batch',
+        operation: 'sync',
+        total: 2,
+        succeeded: 2,
+        failed: 0,
+      })
+      expect(batch.items).toContainEqual(
+        expect.objectContaining({
+          _tag: 'success',
+          path: localPath,
+          result: expect.objectContaining({ _tag: 'pushed' }),
+        }),
+      )
+      expect(batch.items).toContainEqual(
+        expect.objectContaining({
+          _tag: 'success',
+          path: remotePath,
+          result: expect.objectContaining({ _tag: 'pulled' }),
+        }),
+      )
+      expect(fake.remoteMarkdown(pageId)).toContain('Local body')
+      expect(remoteParsed.body).toContain('Remote body')
+      expect(localStatus.remoteChanged).toBe(false)
+      expect(remoteStatus.remoteChanged).toBe(false)
+    })
+  })
+
+  it('batch sync rejects duplicate page ids before mutating either file', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Duplicate', markdown: '# Duplicate\n\nBody' }])
+      const firstPath = join(dir, 'first.nmd')
+      const secondPath = join(dir, 'second.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: firstPath }), fake)
+      await writeFile(secondPath, await readFile(firstPath, 'utf8'))
+      await writeFile(
+        firstPath,
+        (await readFile(firstPath, 'utf8')).replace('Body', 'First local body'),
+      )
+      await writeFile(
+        secondPath,
+        (await readFile(secondPath, 'utf8')).replace('Body', 'Second local body'),
+      )
+
+      const batch = await runWithFake(
+        syncMany({ targets: [firstPath, secondPath], concurrency: 2 }),
+        fake,
+      )
+
+      expect(batch).toMatchObject({
+        _tag: 'batch',
+        operation: 'sync',
+        total: 2,
+        succeeded: 0,
+        failed: 2,
+      })
+      expect(fake.updateMarkdownCalls).toEqual([])
+      expect(fake.remoteMarkdown(pageId)).toContain('Body')
+      expect(batch.items).toEqual([
+        expect.objectContaining({ _tag: 'error', path: firstPath }),
+        expect.objectContaining({ _tag: 'error', path: secondPath }),
+      ])
+    })
+  })
+
+  it('recursive target discovery finds nested .nmd files and ignores .notion-md objects', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        { pageId, title: 'Root', markdown: '# Root\n\nBody' },
+        { pageId: secondPageId, title: 'Nested', markdown: '# Nested\n\nBody' },
+      ])
+      const rootPath = join(dir, 'root.nmd')
+      const nestedPath = join(dir, 'docs', 'nested.nmd')
+      const ignoredDir = join(dir, '.notion-md')
+      const ignoredPath = join(ignoredDir, 'ignored.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: rootPath }), fake)
+      await runWithFake(pullPage({ pageId: secondPageId, outPath: nestedPath }), fake)
+      await mkdir(ignoredDir, { recursive: true })
+      await writeFile(ignoredPath, 'not a real nmd')
+
+      const resolved = await runWithFake(
+        resolveNmdTargets({ targets: [dir], recursive: true, operation: 'status' }),
+        fake,
+      )
+
+      expect(resolved.errors).toEqual([])
+      expect(resolved.paths).toEqual([nestedPath, rootPath].toSorted())
+    })
+  })
+
+  it('batch watch coalesces multiple files into batch sync passes', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        { pageId, title: 'Local', markdown: '# Local\n\nBody' },
+        { pageId: secondPageId, title: 'Remote', markdown: '# Remote\n\nBody' },
+      ])
+      const localPath = join(dir, 'local.nmd')
+      const remotePath = join(dir, 'remote.nmd')
+      const events: unknown[] = []
+
+      await runWithFake(pullPage({ pageId, outPath: localPath }), fake)
+      await runWithFake(pullPage({ pageId: secondPageId, outPath: remotePath }), fake)
+      await writeFile(
+        localPath,
+        (await readFile(localPath, 'utf8')).replace('Body', 'Watched local body'),
+      )
+      fake.mutateRemote(secondPageId, '# Remote\n\nWatched remote body')
+
+      await runWithFake(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.fork(
+              runBatchWatch({
+                paths: [localPath, remotePath],
+                pollIntervalMs: 50,
+                concurrency: 2,
+                emit: (event) =>
+                  Effect.sync(() => {
+                    events.push(event)
+                  }),
+              }),
+            )
+            yield* Effect.sleep('700 millis')
+            yield* Fiber.interrupt(fiber)
+          }),
+        ),
+        fake,
+      )
+
+      expect(fake.remoteMarkdown(pageId)).toContain('Watched local body')
+      expect((await parseFile(remotePath)).body).toContain('Watched remote body')
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          event: 'sync',
+          result: expect.objectContaining({
+            _tag: 'batch',
+            succeeded: 2,
+          }),
+        }),
+      )
     })
   })
 

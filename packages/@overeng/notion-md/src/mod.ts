@@ -58,3 +58,25 @@ export type {
   SyncResult,
 } from './sync.ts'
 export { NOTION_MD_VERSION } from './version.ts'
+export {
+  isSingleFileTarget,
+  pushMany,
+  resolveNmdTargets,
+  runBatchWatch,
+  statusMany,
+  syncMany,
+} from './batch.ts'
+export type {
+  BatchFailure,
+  BatchItemResult,
+  BatchOperation,
+  BatchResult,
+  BatchSuccess,
+  BatchWatchOptions,
+  PushManyOptions,
+  ResolveTargetsOptions,
+  ResolveTargetsResult,
+  StatusManyOptions,
+  SyncManyOptions,
+  WatchReason,
+} from './batch.ts'

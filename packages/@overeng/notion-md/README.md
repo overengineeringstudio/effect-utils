@@ -26,12 +26,16 @@ An `.nmd` file is:
 ```sh
 notion-md pull <page-id> --out page.nmd
 notion-md status page.nmd
+notion-md status docs --recursive
 notion-md push page.nmd
+notion-md push docs/a.nmd docs/b.nmd
 notion-md push page.nmd --force
 notion-md push page.nmd --allow-delete-unknown-blocks
 notion-md push page.nmd --allow-review-markup
 notion-md sync page.nmd
+notion-md sync docs --recursive --concurrency 4
 notion-md sync page.nmd --watch --poll-interval-ms 30000
+notion-md sync docs --recursive --watch --poll-interval-ms 30000
 ```
 
 The CLI reads `NOTION_TOKEN`.
@@ -45,6 +49,7 @@ The CLI reads `NOTION_TOKEN`.
 - `push` automatically merges simple non-overlapping line edits, insertions, and deletions using the base snapshot.
 - `sync` runs one reconciliation pass: local changes use guarded `push`, remote-only changes use `pull`, and clean files are left untouched.
 - `sync --watch` runs the same reconciliation pass after local file changes and on a remote polling interval.
+- Multi-file and recursive folder sync are orchestration only: each `.nmd` still maps to one Notion page and duplicate page ids are rejected before mutation.
 - `push` refuses to update pages with unresolved unknown Notion blocks unless destructive deletion is explicit.
 - `push` writes a Roughdraft conflict artifact next to the `.nmd` file when remote body content changed.
 - `push` refuses unresolved Roughdraft review markup unless `--allow-review-markup` is explicit.

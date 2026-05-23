@@ -71,7 +71,12 @@ notion-md push notes.nmd --force
 notion-md sync notes.nmd
 ```
 
-`sync` runs one reconciliation pass:
+`sync` runs one reconciliation pass. It accepts a single `.nmd`, multiple
+`.nmd` files, or a directory with `--recursive`:
+
+```sh
+notion-md sync docs --recursive --concurrency 4
+```
 
 - local-only changes are pushed through the guarded push path,
 - remote-only changes are pulled,
@@ -88,5 +93,13 @@ Watch mode runs the same reconciliation pass after local file changes and on a
 remote polling interval. It emits one compact JSON line per sync event or
 recoverable sync error.
 
-Keep one watch process per `.nmd` file. Concurrent writers can still create real
-conflicts, and those should be resolved through the same guarded conflict flow.
+Multiple file targets and recursive directory targets can share one watch
+process:
+
+```sh
+notion-md sync docs --recursive --watch --poll-interval-ms 30000
+```
+
+The watched file set is resolved at startup. Restart the watcher after adding a
+new `.nmd` file. Concurrent writers can still create real conflicts, and those
+should be resolved through the same guarded conflict flow.
