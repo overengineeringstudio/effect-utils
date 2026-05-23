@@ -64,6 +64,11 @@ const typeLabels: readonly LabelDef[] = [
 const stateLabels: readonly LabelDef[] = [
   { name: 'state:triage', color: colors.yellow, description: 'Needs classification or owner decision' },
   { name: 'state:blocked', color: colors.pink, description: 'Blocked on an external dependency or decision' },
+  {
+    name: 'state:needs-research',
+    color: colors.lightBlue,
+    description: 'Needs research / investigation before scope or approach is clear',
+  },
 ]
 
 // ============================================================================

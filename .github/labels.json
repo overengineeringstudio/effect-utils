@@ -196,6 +196,11 @@
       "description": "Blocked on an external dependency or decision"
     },
     {
+      "name": "state:needs-research",
+      "color": "1f8fb8",
+      "description": "Needs research / investigation before scope or approach is clear"
+    },
+    {
       "name": "state:triage",
       "color": "fbca04",
       "description": "Needs classification or owner decision"
