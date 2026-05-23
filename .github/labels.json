@@ -1,0 +1,282 @@
+{
+  "labels": [
+    {
+      "name": "andon:claimed",
+      "color": "0e8a16",
+      "description": "Andon: someone is actively triaging · Set: andon CLI"
+    },
+    {
+      "name": "andon:degraded",
+      "color": "d93f0b",
+      "description": "Andon: partial impact / workaround available · Set: andon CLI"
+    },
+    {
+      "name": "andon:firing",
+      "color": "b60205",
+      "description": "Andon: actively impacting development right now · Set: andon CLI"
+    },
+    {
+      "name": "andon:watching",
+      "color": "fbca04",
+      "description": "Andon: known concern, not yet impacting · Set: andon CLI"
+    },
+    {
+      "name": "area:ci",
+      "color": "1d76db",
+      "description": "CI workflows, runners, and pipeline configuration · Set: manual"
+    },
+    {
+      "name": "area:devenv",
+      "color": "1d76db",
+      "description": "devenv tasks, inputs, and environment configuration · Set: manual"
+    },
+    {
+      "name": "area:effect",
+      "color": "1d76db",
+      "description": "Effect framework usage · Set: manual"
+    },
+    {
+      "name": "area:genie",
+      "color": "1d76db",
+      "description": "genie config generator runtime + CLI · Set: manual"
+    },
+    {
+      "name": "area:megarepo",
+      "color": "1d76db",
+      "description": "megarepo CLI and conventions · Set: manual"
+    },
+    {
+      "name": "area:nix",
+      "color": "1d76db",
+      "description": "Nix flakes, derivations, FOD hashes, builders · Set: manual"
+    },
+    {
+      "name": "area:nix-hash",
+      "color": "1d76db",
+      "description": "Nix hash determinism/staleness (pnpmDepsHash, lockfileHash, FOD cache) · Set: manual"
+    },
+    {
+      "name": "area:notion",
+      "color": "1d76db",
+      "description": "Notion API client / react / schema packages · Set: manual"
+    },
+    {
+      "name": "area:pty-effect",
+      "color": "1d76db",
+      "description": "pty-effect client and server · Set: manual"
+    },
+    {
+      "name": "area:rust",
+      "color": "1d76db",
+      "description": "Rust code and tooling · Set: manual"
+    },
+    {
+      "name": "area:storybook",
+      "color": "1d76db",
+      "description": "Storybook configuration and stories · Set: manual"
+    },
+    {
+      "name": "area:tooling",
+      "color": "1d76db",
+      "description": "Developer tooling, scripts, and utilities · Set: manual"
+    },
+    {
+      "name": "area:tui",
+      "color": "1d76db",
+      "description": "tui-react / tui-stories / TUI rendering · Set: manual"
+    },
+    {
+      "name": "area:typescript",
+      "color": "1d76db",
+      "description": "TypeScript code, tsconfig, and type definitions · Set: manual"
+    },
+    {
+      "name": "close-after-review",
+      "color": "ededed",
+      "description": "Close after the review/validation artifact has been inspected · Set: manual"
+    },
+    {
+      "name": "debug-pr",
+      "color": "ededed",
+      "description": "Temporary PR used to debug or validate automation · Set: manual"
+    },
+    {
+      "name": "measurement-validation",
+      "color": "ededed",
+      "description": "Temporary PR validates CI measurement/reporting behavior · Set: manual"
+    },
+    {
+      "name": "mq:agent-active",
+      "color": "0969da",
+      "description": "Hypermerge has dispatched an agent · Set: Hypermerge daemon"
+    },
+    {
+      "name": "mq:blocked",
+      "color": "b60205",
+      "description": "Hypermerge is not currently advancing this PR · Set: Hypermerge daemon"
+    },
+    {
+      "name": "mq:ci-admitted",
+      "color": "1f883d",
+      "description": "Hypermerge admitted this PR to scarce-runner CI · Set: Hypermerge daemon"
+    },
+    {
+      "name": "mq:enrolled",
+      "color": "5319e7",
+      "description": "PR is enrolled in Hypermerge · Set: manual (mirrors GH auto-merge)"
+    },
+    {
+      "name": "mq:merge-held",
+      "color": "bfd4f2",
+      "description": "Hypermerge may prove this PR green but must not merge it · Set: manual"
+    },
+    {
+      "name": "mq:needs-agent",
+      "color": "d93f0b",
+      "description": "Hypermerge needs agentic intervention · Set: Hypermerge daemon"
+    },
+    {
+      "name": "mq:needs-human",
+      "color": "8250df",
+      "description": "Hypermerge needs human review · Set: Hypermerge daemon"
+    },
+    {
+      "name": "mq:priority-0",
+      "color": "0e8a16",
+      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
+    },
+    {
+      "name": "mq:priority-1",
+      "color": "0e8a16",
+      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
+    },
+    {
+      "name": "mq:priority-10",
+      "color": "0e8a16",
+      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
+    },
+    {
+      "name": "mq:priority-100",
+      "color": "0e8a16",
+      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
+    },
+    {
+      "name": "mq:priority-20",
+      "color": "0e8a16",
+      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
+    },
+    {
+      "name": "mq:priority-30",
+      "color": "0e8a16",
+      "description": "Hypermerge priority mirror · Set: manual (via mq-cli)"
+    },
+    {
+      "name": "mq:queue-head",
+      "color": "fbca04",
+      "description": "Current Hypermerge head for this repository · Set: Hypermerge daemon"
+    },
+    {
+      "name": "mq:status",
+      "color": "5319e7",
+      "description": "Pinned Hypermerge status issue · Set: Hypermerge daemon"
+    },
+    {
+      "name": "origin:agent",
+      "color": "a371f7",
+      "description": "Filed or primarily produced by an AI agent · Set: AI agent or manual"
+    },
+    {
+      "name": "origin:janitor",
+      "color": "6f42c1",
+      "description": "Filed by janitor automation · Set: janitor-cli"
+    },
+    {
+      "name": "state:blocked",
+      "color": "e99695",
+      "description": "Blocked on an external dependency or decision · Set: manual"
+    },
+    {
+      "name": "state:needs-research",
+      "color": "1f8fb8",
+      "description": "Needs research / investigation before scope or approach is clear · Set: manual"
+    },
+    {
+      "name": "state:triage",
+      "color": "fbca04",
+      "description": "Needs classification or owner decision · Set: manual"
+    },
+    {
+      "name": "type:agent-tooling",
+      "color": "1f8fb8",
+      "description": "Agent, automation, AI workflow, or developer-agent tooling · Set: manual"
+    },
+    {
+      "name": "type:bug",
+      "color": "d73a4a",
+      "description": "Something broken or a regression · Set: manual"
+    },
+    {
+      "name": "type:chore",
+      "color": "bfd4e2",
+      "description": "Maintenance, cleanup, dependencies, CI, or refactoring · Set: manual"
+    },
+    {
+      "name": "type:docs",
+      "color": "0075ca",
+      "description": "Documentation-only change or documentation task · Set: manual"
+    },
+    {
+      "name": "type:epic",
+      "color": "1d76db",
+      "description": "Large tracking issue with child tasks · Set: manual"
+    },
+    {
+      "name": "type:feature",
+      "color": "0e8a16",
+      "description": "New user-visible or system capability · Set: manual"
+    },
+    {
+      "name": "type:incident",
+      "color": "b60205",
+      "description": "Live or recent operational incident · Set: manual or andon CLI"
+    },
+    {
+      "name": "type:rca",
+      "color": "5319e7",
+      "description": "Root-cause analysis or investigation record · Set: manual"
+    }
+  ],
+  "deprecated": [
+    "bug",
+    "devenv",
+    "documentation",
+    "duplicate",
+    "enhancement",
+    "invalid",
+    "nix-hash",
+    "question",
+    "wontfix"
+  ],
+  "legacyMigrations": [
+    {
+      "from": "bug",
+      "to": "type:bug"
+    },
+    {
+      "from": "devenv",
+      "to": "area:devenv"
+    },
+    {
+      "from": "documentation",
+      "to": "type:docs"
+    },
+    {
+      "from": "enhancement",
+      "to": "type:feature"
+    },
+    {
+      "from": "nix-hash",
+      "to": "area:nix-hash"
+    }
+  ]
+}
