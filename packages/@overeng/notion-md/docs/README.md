@@ -1,8 +1,7 @@
 # notion-md Docs
 
 These docs describe how to use `@overeng/notion-md`. The design source of truth
-lives in the VRS spec at
-[context/notion-md-sync/spec.md](../../../../context/notion-md-sync/spec.md).
+lives in the package-local [VRS](./vrs/README.md).
 
 Start here:
 
@@ -18,3 +17,5 @@ Start here:
   automated Notion demo page.
 - [Testing](./testing.md): fake E2E, live Notion E2E, and the durable run ledger.
 - [Troubleshooting](./troubleshooting.md): common failures and principled fixes.
+- [VRS](./vrs/README.md): vision, requirements, spec, experiments, and open
+  design questions.

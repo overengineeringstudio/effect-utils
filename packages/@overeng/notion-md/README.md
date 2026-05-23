@@ -11,7 +11,7 @@ CLI and library for syncing Notion pages with local `.nmd` files.
 - [Demo Fixture](./docs/demo.md)
 - [Testing](./docs/testing.md)
 - [Troubleshooting](./docs/troubleshooting.md)
-- [VRS Spec](../../../context/notion-md-sync/spec.md)
+- [VRS](./docs/vrs/README.md)
 
 An `.nmd` file is:
 

@@ -19,6 +19,18 @@ The fixture demonstrates the intended local shape:
 - content-addressed base evidence under `.notion-md/objects`,
 - clean `status` against the remote page after a successful pull.
 
+## Git Policy
+
+Commit the demo `.nmd` file and every reachable object referenced from its
+frontmatter. For the automated demo this means the current
+`demo/showcase.nmd` file plus its current `base_snapshot` object under
+`demo/.notion-md/objects/sha256/...`.
+
+Do not keep stale unreachable demo objects. They are immutable evidence for old
+base snapshots, but once the committed `.nmd` frontmatter no longer references
+them they only add noise and can make reviewers think multiple local states are
+authoritative.
+
 ## Verify
 
 ```sh

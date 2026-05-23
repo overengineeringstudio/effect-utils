@@ -37,7 +37,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-md**: Replace ad hoc sidecar/base files with strict frontmatter object refs and an Effect-native content-addressed `.notion-md` state store
 - **@overeng/notion-md**: Use Notion Markdown `update_content` for proven unique body edits, with guarded `replace_content` fallback and live Notion E2E coverage
 - **@overeng/notion-md**: Extract body merge/update planning into a focused pure module with unit coverage
-- **@overeng/notion-md docs**: Consolidate scattered research/spec notes into the VRS `context/notion-md-sync/spec.md` source of truth
+- **@overeng/notion-md docs**: Consolidate scattered research/spec notes into the package-local VRS docs under `packages/@overeng/notion-md/docs/vrs/`
 - **@overeng/notion-md docs**: Add package-local usage docs for getting started, CLI workflows, `.nmd` format, sync safety, and troubleshooting
 - **@overeng/notion-md**: Add a durable Notion live E2E run ledger and a committed demo `.nmd` fixture synced with the automated Notion showcase page
 - **@overeng/notion-md**: Push modeled page metadata from strict frontmatter, including page lock/trash state plus writable icon and cover shapes, and add typed `place`/`verification` property frontmatter values
