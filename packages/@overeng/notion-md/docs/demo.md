@@ -39,7 +39,7 @@ authoritative.
 ## Verify
 
 ```sh
-export NOTION_TOKEN="secret_..."
+export NOTION_API_TOKEN="secret_..."
 notion-md status packages/@overeng/notion-md/demo/showcase.nmd
 ```
 
@@ -59,7 +59,7 @@ Populate the workspace by pulling real pages into `.nmd` files next to the
 examples:
 
 ```sh
-export NOTION_TOKEN="secret_..."
+export NOTION_API_TOKEN="secret_..."
 
 notion-md pull <overview-page-id> \
   --out packages/@overeng/notion-md/demo/workspace/project/overview.nmd

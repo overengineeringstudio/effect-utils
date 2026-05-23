@@ -9,7 +9,7 @@ large or immutable evidence, `.notion-md/objects`.
 Set the Notion token before running commands:
 
 ```sh
-export NOTION_TOKEN="secret_..."
+export NOTION_API_TOKEN="secret_..."
 ```
 
 The integration must have access to the page you sync. If a command can

@@ -60,6 +60,7 @@ export type WritablePageCover = null | Extract<
 
 /** Field-level page metadata patch derived from strict frontmatter. */
 export interface PageMetadataUpdate {
+  readonly title?: string
   readonly icon?: WritablePageIcon
   readonly cover?: WritablePageCover
   readonly in_trash?: boolean

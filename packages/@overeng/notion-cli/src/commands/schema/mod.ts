@@ -77,24 +77,24 @@ const getGeneratorVersion = Effect.gen(function* () {
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 
-/** Resolve the Notion API token from CLI option or `NOTION_TOKEN`. */
+/** Resolve the Notion API token from CLI option or `NOTION_API_TOKEN`. */
 export const resolveNotionToken = (token: Option.Option<string>) =>
-  Effect.sync(() => (Option.isSome(token) === true ? token.value : process.env.NOTION_TOKEN)).pipe(
+  Effect.sync(() => (Option.isSome(token) === true ? token.value : process.env.NOTION_API_TOKEN)).pipe(
     Effect.flatMap((t) =>
       t !== undefined
         ? Effect.succeed(t)
         : Effect.fail(
             new NotionTokenMissingError({
-              message: 'NOTION_TOKEN env var or --token is required',
+              message: 'NOTION_API_TOKEN env var or --token is required',
             }),
           ),
     ),
   )
 
-/** CLI option for providing a Notion API token (defaults to `NOTION_TOKEN`). */
+/** CLI option for providing a Notion API token (defaults to `NOTION_API_TOKEN`). */
 export const tokenOption = Options.text('token').pipe(
   Options.withAlias('t'),
-  Options.withDescription('Notion API token (defaults to NOTION_TOKEN env var)'),
+  Options.withDescription('Notion API token (defaults to NOTION_API_TOKEN env var)'),
   Options.optional,
 )
 

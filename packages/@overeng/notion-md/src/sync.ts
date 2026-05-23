@@ -174,11 +174,16 @@ const pageMetadataUpdate = (opts: {
   readonly remote: RemotePageSnapshot
 }): PageMetadataUpdate => {
   const update: {
+    title?: string
     icon?: WritablePageIcon
     cover?: WritablePageCover
     in_trash?: boolean
     is_locked?: boolean
   } = {}
+
+  if (opts.local.title !== opts.remote.title) {
+    update.title = opts.local.title
+  }
 
   if (stableJson(opts.local.icon) !== stableJson(opts.remote.icon)) {
     if (isWritablePageIcon(opts.local.icon) === true) update.icon = opts.local.icon

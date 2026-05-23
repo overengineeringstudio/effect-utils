@@ -15,7 +15,7 @@ import { NotionBlocks, NotionConfig, NotionPages } from '@overeng/notion-effect-
  */
 
 /** Skip e2e tests when either credential is missing. */
-export const SKIP_E2E = !process.env.NOTION_TOKEN || !process.env.NOTION_TEST_PARENT_PAGE_ID
+export const SKIP_E2E = !process.env.NOTION_API_TOKEN || !process.env.NOTION_TEST_PARENT_PAGE_ID
 
 /** Parent page under which each test creates a scratch child page. */
 export const TEST_PARENT_PAGE_ID = process.env.NOTION_TEST_PARENT_PAGE_ID ?? ''
@@ -26,9 +26,9 @@ export const TEST_PARENT_PAGE_ID = process.env.NOTION_TEST_PARENT_PAGE_ID ?? ''
  * before every test body.
  */
 export const assertEnv = (env: NodeJS.ProcessEnv = process.env): void => {
-  if (!env.NOTION_TOKEN) {
+  if (!env.NOTION_API_TOKEN) {
     throw new Error(
-      'NOTION_TOKEN is not set. See packages/@overeng/notion-react/devenv.local.nix for the expected value.',
+      'NOTION_API_TOKEN is not set. See packages/@overeng/notion-react/devenv.local.nix for the expected value.',
     )
   }
   if (!env.NOTION_TEST_PARENT_PAGE_ID) {
@@ -38,9 +38,9 @@ export const assertEnv = (env: NodeJS.ProcessEnv = process.env): void => {
   }
 }
 
-/** Live `NotionConfig` layer driven by `NOTION_TOKEN`. */
+/** Live `NotionConfig` layer driven by `NOTION_API_TOKEN`. */
 export const NotionConfigLive = Layer.succeed(NotionConfig, {
-  authToken: Redacted.make(process.env.NOTION_TOKEN ?? ''),
+  authToken: Redacted.make(process.env.NOTION_API_TOKEN ?? ''),
   retryEnabled: true,
   maxRetries: 5,
   retryBaseDelay: 1000,

@@ -71,7 +71,7 @@ importers:
         version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -86,7 +86,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/effect-ai-claude-cli:
     devDependencies:
@@ -98,7 +98,7 @@ importers:
         version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -113,7 +113,7 @@ importers:
         version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/effect-path:
     devDependencies:
@@ -125,7 +125,7 @@ importers:
         version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -140,7 +140,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/effect-react:
     devDependencies:
@@ -185,7 +185,7 @@ importers:
         version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/effect-rpc-tanstack:
     devDependencies:
@@ -233,7 +233,7 @@ importers:
         version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/effect-rpc-tanstack/examples/basic:
     dependencies:
@@ -303,7 +303,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/effect-schema-form-aria:
     dependencies:
@@ -355,7 +355,7 @@ importers:
         version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/genie:
     dependencies:
@@ -388,7 +388,7 @@ importers:
         version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@effect/workflow':
         specifier: 0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
@@ -424,7 +424,7 @@ importers:
         version: 0.33.0(react@19.2.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -440,7 +440,7 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(e8641af2ddb0a142f1bbcf1b4a10877f)
+        version: file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -473,7 +473,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -488,7 +488,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/kdl-effect:
     dependencies:
@@ -498,7 +498,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -513,7 +513,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/megarepo:
     dependencies:
@@ -546,7 +546,7 @@ importers:
         version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@effect/workflow':
         specifier: 0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
@@ -567,7 +567,7 @@ importers:
         version: link:../kdl-effect
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(e8641af2ddb0a142f1bbcf1b4a10877f)
+        version: file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -597,7 +597,7 @@ importers:
         version: 0.33.0(react@19.2.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -670,7 +670,7 @@ importers:
         version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@effect/workflow':
         specifier: 0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
@@ -694,7 +694,7 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(e8641af2ddb0a142f1bbcf1b4a10877f)
+        version: file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -724,7 +724,7 @@ importers:
         version: 0.33.0(react@19.2.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -786,7 +786,7 @@ importers:
         version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -804,13 +804,13 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/notion-effect-schema:
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -825,7 +825,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/notion-md:
     dependencies:
@@ -838,6 +838,21 @@ importers:
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
+      remark-stringify:
+        specifier: ^11.0.0
+        version: 11.0.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
+      unist-util-visit:
+        specifier: ^5.1.0
+        version: 5.1.0
     devDependencies:
       '@effect-atom/atom':
         specifier: 0.5.3
@@ -865,7 +880,7 @@ importers:
         version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@effect/workflow':
         specifier: 0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
@@ -919,7 +934,7 @@ importers:
         version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/notion-react:
     dependencies:
@@ -943,7 +958,7 @@ importers:
         version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@effect/workflow':
         specifier: 0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
@@ -961,7 +976,7 @@ importers:
         version: 3.21.2
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
     devDependencies:
       '@opentelemetry/api':
         specifier: 1.9.0
@@ -1047,7 +1062,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/pty-effect:
     dependencies:
@@ -1057,7 +1072,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -1072,7 +1087,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/react-inspector:
     dependencies:
@@ -1127,7 +1142,7 @@ importers:
         version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/tui-core:
     devDependencies:
@@ -1139,7 +1154,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/tui-react:
     dependencies:
@@ -1163,7 +1178,7 @@ importers:
         version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@effect/workflow':
         specifier: 0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
@@ -1199,7 +1214,7 @@ importers:
         version: 7.2.0
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       yoga-layout:
         specifier: 3.2.1
         version: 3.2.1
@@ -1296,7 +1311,7 @@ importers:
         version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@effect/workflow':
         specifier: 0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
@@ -1311,7 +1326,7 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(e8641af2ddb0a142f1bbcf1b4a10877f)
+        version: file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -1341,7 +1356,7 @@ importers:
         version: 0.33.0(react@19.2.3)
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
     dependenciesMeta:
       '@overeng/tui-react':
         injected: true
@@ -1375,7 +1390,7 @@ importers:
         version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@noble/hashes':
         specifier: 1.7.1
         version: 1.7.1
@@ -1393,7 +1408,7 @@ importers:
         version: 5.6.1
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
     devDependencies:
       '@effect/cluster':
         specifier: 0.58.2
@@ -1463,7 +1478,7 @@ importers:
         version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@types/node':
         specifier: 25.3.3
         version: 25.3.3
@@ -1475,7 +1490,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.4
-        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
 packages:
 
@@ -3223,6 +3238,9 @@ packages:
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
+  '@types/debug@4.1.13':
+    resolution: {integrity: sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw==}
+
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
@@ -3249,6 +3267,9 @@ packages:
 
   '@types/mdast@4.0.4':
     resolution: {integrity: sha512-kGaNbPh1k7AFzgpud/gMdvIm5xuECykRR+JnWKQno9TAXVa6WIVCGTPvYGekIDL4uwCZQSYbUxNBSb1aUo79oA==}
+
+  '@types/ms@2.1.0':
+    resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
   '@types/node@16.9.1':
     resolution: {integrity: sha512-QpLcX9ZSsq3YYUUnD3nFDY8H7wctAhQj/TFKL8Ya8v5fMm3CFXxo8zStsLAl780ltoYoo1WvKUVGBQK+1ifr7g==}
@@ -3464,6 +3485,9 @@ packages:
   babel-dead-code-elimination@1.0.12:
     resolution: {integrity: sha512-GERT7L2TiYcYDtYk1IpD+ASAYXjKbLTDPhBtYj7X1NuRMDTMtAx9kyBenub1Ev41lo91OHCKdmP+egTDmfQ7Ig==}
 
+  bail@2.0.2:
+    resolution: {integrity: sha512-0xO6mYd7JB2YesxDKplafRpsiOzPt9V02ddPCLbY1xYGPOX24NTyN50qnUxgCPcSoYMhKpAuBTjQoRZCAkUDRw==}
+
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
@@ -3574,6 +3598,9 @@ packages:
   character-entities-legacy@3.0.0:
     resolution: {integrity: sha512-RpPp0asT/6ufRm//AJVwpViZbGM/MkjQFxJccQRHmISF/22NBtsHqAWmL+/pmkPWoIUJdWyeVleTl1wydHATVQ==}
 
+  character-entities@2.0.2:
+    resolution: {integrity: sha512-shx7oQ0Awen/BRIdkjkvz54PnEEI/EjwXDSIZp86/KKdbafHh1Df/RYGBhn4hbe2+uKC9FnT5UCEdyPz3ai9hQ==}
+
   check-error@2.1.3:
     resolution: {integrity: sha512-PAJdDJusoxnwm1VwW07VWwUN1sl7smmC3OKggvndJFadxxDRyFJBX/ggnu/KE4kQAB7a3Dp8f/YXC1FlUprWmA==}
     engines: {node: '>= 16'}
@@ -3655,6 +3682,9 @@ packages:
 
   decimal.js@10.6.0:
     resolution: {integrity: sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==}
+
+  decode-named-character-reference@1.3.0:
+    resolution: {integrity: sha512-GtpQYB283KrPp6nRw50q3U9/VfOutZOe103qlN7BPP6Ad27xYnOIWv4lPzo8HCAL+mMZofJ9KEy30fq6MfaK6Q==}
 
   deep-eql@5.0.2:
     resolution: {integrity: sha512-h5k/5U50IJJFpzfL6nO9jaaumfjO/f2NjK/oYB2Djzm4p9L+3T9qWpZqZ2hAbLPuuYq9wrU08WQyBTL5GbPk5Q==}
@@ -3786,6 +3816,10 @@ packages:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
 
+  escape-string-regexp@5.0.0:
+    resolution: {integrity: sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw==}
+    engines: {node: '>=12'}
+
   eslint-plugin-storybook@10.2.3:
     resolution: {integrity: sha512-5wy+OKe6VexZecAedroKv+GR+agciZqK/Su7cdo6b1mICWaWwejU/XjjTLL9zr6wiEjCN/0mhYg7yz70DoaMQQ==}
     peerDependencies:
@@ -3862,6 +3896,9 @@ packages:
 
   exsolve@1.0.8:
     resolution: {integrity: sha512-LmDxfWXwcTArk8fUEnOfSZpHOJ6zOMUJKOtFLFqJLoKJetuQG874Uc7/Kki7zFLzYybmZhp1M7+98pfMqeX8yA==}
+
+  extend@3.0.2:
+    resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
 
   fast-check@3.23.2:
     resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
@@ -4067,6 +4104,10 @@ packages:
   is-object@1.0.2:
     resolution: {integrity: sha512-2rRIahhZr2UWb45fIOuvZGpFtz0TyOZLf32KxBbSoUCeZR495zCKlWUKKUByk3geS2eAs7ZAABt0Y/Rx0GiQGA==}
 
+  is-plain-obj@4.1.0:
+    resolution: {integrity: sha512-+Pgi+vMuUNkJyExiMBt5IlFoMyKnr5zhJ4Uspz58WOhBF5QoIZkFyNHIbBAtHwzVAgk5RtndVNsDRN61/mmDqg==}
+    engines: {node: '>=12'}
+
   is-window@1.0.2:
     resolution: {integrity: sha512-uj00kdXyZb9t9RcAUAwMZAnkBUwdYGhYlt7djMXhfyhUCzwNba50tIiBKR7q0l7tdoBtFVw/3JmLY6fI3rmZmg==}
 
@@ -4222,6 +4263,9 @@ packages:
   lodash.merge@4.6.2:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
 
+  longest-streak@3.1.0:
+    resolution: {integrity: sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g==}
+
   loose-envify@1.4.0:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
@@ -4243,28 +4287,133 @@ packages:
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
+  markdown-table@3.0.4:
+    resolution: {integrity: sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw==}
+
   marked@17.0.1:
     resolution: {integrity: sha512-boeBdiS0ghpWcSwoNm/jJBwdpFaMnZWRzjA6SkUMYb40SVaN1x7mmfGKp0jvexGcx+7y2La5zRZsYFZI6Qpypg==}
     engines: {node: '>= 20'}
     hasBin: true
 
+  mdast-util-find-and-replace@3.0.2:
+    resolution: {integrity: sha512-Tmd1Vg/m3Xz43afeNxDIhWRtFZgM2VLyaf4vSTYwudTyeuTneoL3qtWMA5jeLyz/O1vDJmmV4QuScFCA2tBPwg==}
+
+  mdast-util-from-markdown@2.0.3:
+    resolution: {integrity: sha512-W4mAWTvSlKvf8L6J+VN9yLSqQ9AOAAvHuoDAmPkz4dHf553m5gVj2ejadHJhoJmcmxEnOv6Pa8XJhpxE93kb8Q==}
+
+  mdast-util-gfm-autolink-literal@2.0.1:
+    resolution: {integrity: sha512-5HVP2MKaP6L+G6YaxPNjuL0BPrq9orG3TsrZ9YXbA3vDw/ACI4MEsnoDpn6ZNm7GnZgtAcONJyPhOP8tNJQavQ==}
+
+  mdast-util-gfm-footnote@2.1.0:
+    resolution: {integrity: sha512-sqpDWlsHn7Ac9GNZQMeUzPQSMzR6Wv0WKRNvQRg0KqHh02fpTz69Qc1QSseNX29bhz1ROIyNyxExfawVKTm1GQ==}
+
+  mdast-util-gfm-strikethrough@2.0.0:
+    resolution: {integrity: sha512-mKKb915TF+OC5ptj5bJ7WFRPdYtuHv0yTRxK2tJvi+BDqbkiG7h7u/9SI89nRAYcmap2xHQL9D+QG/6wSrTtXg==}
+
+  mdast-util-gfm-table@2.0.0:
+    resolution: {integrity: sha512-78UEvebzz/rJIxLvE7ZtDd/vIQ0RHv+3Mh5DR96p7cS7HsBhYIICDBCu8csTNWNO6tBWfqXPWekRuj2FNOGOZg==}
+
+  mdast-util-gfm-task-list-item@2.0.0:
+    resolution: {integrity: sha512-IrtvNvjxC1o06taBAVJznEnkiHxLFTzgonUdy8hzFVeDun0uTjxxrRGVaNFqkU1wJR3RBPEfsxmU6jDWPofrTQ==}
+
+  mdast-util-gfm@3.1.0:
+    resolution: {integrity: sha512-0ulfdQOM3ysHhCJ1p06l0b0VKlhU0wuQs3thxZQagjcjPrlFRqY215uZGHHJan9GEAXd9MbfPjFJz+qMkVR6zQ==}
+
+  mdast-util-phrasing@4.1.0:
+    resolution: {integrity: sha512-TqICwyvJJpBwvGAMZjj4J2n0X8QWp21b9l0o7eXyVJ25YNWYbJDVIyD1bZXE6WtV6RmKJVYmQAKWa0zWOABz2w==}
+
   mdast-util-to-hast@13.2.1:
     resolution: {integrity: sha512-cctsq2wp5vTsLIcaymblUriiTcZd0CwWtCbLvrOzYCDZoWyMNV8sZ7krj09FSnsiJi3WVsHLM4k6Dq/yaPyCXA==}
+
+  mdast-util-to-markdown@2.1.2:
+    resolution: {integrity: sha512-xj68wMTvGXVOKonmog6LwyJKrYXZPvlwabaryTjLh9LuvovB/KAH+kvi8Gjj+7rJjsFi23nkUxRQv1KqSroMqA==}
+
+  mdast-util-to-string@4.0.0:
+    resolution: {integrity: sha512-0H44vDimn51F0YwvxSJSm0eCDOJTRlmN0R1yBh4HLj9wiV1Dn0QoXGbvFAWj2hSItVTlCmBF1hqKlIyUBVFLPg==}
+
+  micromark-core-commonmark@2.0.3:
+    resolution: {integrity: sha512-RDBrHEMSxVFLg6xvnXmb1Ayr2WzLAWjeSATAoxwKYJV94TeNavgoIdA0a9ytzDSVzBy2YKFK+emCPOEibLeCrg==}
+
+  micromark-extension-gfm-autolink-literal@2.1.0:
+    resolution: {integrity: sha512-oOg7knzhicgQ3t4QCjCWgTmfNhvQbDDnJeVu9v81r7NltNCVmhPy1fJRX27pISafdjL+SVc4d3l48Gb6pbRypw==}
+
+  micromark-extension-gfm-footnote@2.1.0:
+    resolution: {integrity: sha512-/yPhxI1ntnDNsiHtzLKYnE3vf9JZ6cAisqVDauhp4CEHxlb4uoOTxOCJ+9s51bIB8U1N1FJ1RXOKTIlD5B/gqw==}
+
+  micromark-extension-gfm-strikethrough@2.1.0:
+    resolution: {integrity: sha512-ADVjpOOkjz1hhkZLlBiYA9cR2Anf8F4HqZUO6e5eDcPQd0Txw5fxLzzxnEkSkfnD0wziSGiv7sYhk/ktvbf1uw==}
+
+  micromark-extension-gfm-table@2.1.1:
+    resolution: {integrity: sha512-t2OU/dXXioARrC6yWfJ4hqB7rct14e8f7m0cbI5hUmDyyIlwv5vEtooptH8INkbLzOatzKuVbQmAYcbWoyz6Dg==}
+
+  micromark-extension-gfm-tagfilter@2.0.0:
+    resolution: {integrity: sha512-xHlTOmuCSotIA8TW1mDIM6X2O1SiX5P9IuDtqGonFhEK0qgRI4yeC6vMxEV2dgyr2TiD+2PQ10o+cOhdVAcwfg==}
+
+  micromark-extension-gfm-task-list-item@2.1.0:
+    resolution: {integrity: sha512-qIBZhqxqI6fjLDYFTBIa4eivDMnP+OZqsNwmQ3xNLE4Cxwc+zfQEfbs6tzAo2Hjq+bh6q5F+Z8/cksrLFYWQQw==}
+
+  micromark-extension-gfm@3.0.0:
+    resolution: {integrity: sha512-vsKArQsicm7t0z2GugkCKtZehqUm31oeGBV/KVSorWSy8ZlNAv7ytjFhvaryUiCUJYqs+NoE6AFhpQvBTM6Q4w==}
+
+  micromark-factory-destination@2.0.1:
+    resolution: {integrity: sha512-Xe6rDdJlkmbFRExpTOmRj9N3MaWmbAgdpSrBQvCFqhezUn4AHqJHbaEnfbVYYiexVSs//tqOdY/DxhjdCiJnIA==}
+
+  micromark-factory-label@2.0.1:
+    resolution: {integrity: sha512-VFMekyQExqIW7xIChcXn4ok29YE3rnuyveW3wZQWWqF4Nv9Wk5rgJ99KzPvHjkmPXF93FXIbBp6YdW3t71/7Vg==}
+
+  micromark-factory-space@2.0.1:
+    resolution: {integrity: sha512-zRkxjtBxxLd2Sc0d+fbnEunsTj46SWXgXciZmHq0kDYGnck/ZSGj9/wULTV95uoeYiK5hRXP2mJ98Uo4cq/LQg==}
+
+  micromark-factory-title@2.0.1:
+    resolution: {integrity: sha512-5bZ+3CjhAd9eChYTHsjy6TGxpOFSKgKKJPJxr293jTbfry2KDoWkhBb6TcPVB4NmzaPhMs1Frm9AZH7OD4Cjzw==}
+
+  micromark-factory-whitespace@2.0.1:
+    resolution: {integrity: sha512-Ob0nuZ3PKt/n0hORHyvoD9uZhr+Za8sFoP+OnMcnWK5lngSzALgQYKMr9RJVOWLqQYuyn6ulqGWSXdwf6F80lQ==}
 
   micromark-util-character@2.1.1:
     resolution: {integrity: sha512-wv8tdUTJ3thSFFFJKtpYKOYiGP2+v96Hvk4Tu8KpCAsTMs6yi+nVmGh1syvSCsaxz45J6Jbw+9DD6g97+NV67Q==}
 
+  micromark-util-chunked@2.0.1:
+    resolution: {integrity: sha512-QUNFEOPELfmvv+4xiNg2sRYeS/P84pTW0TCgP5zc9FpXetHY0ab7SxKyAQCNCc1eK0459uoLI1y5oO5Vc1dbhA==}
+
+  micromark-util-classify-character@2.0.1:
+    resolution: {integrity: sha512-K0kHzM6afW/MbeWYWLjoHQv1sgg2Q9EccHEDzSkxiP/EaagNzCm7T/WMKZ3rjMbvIpvBiZgwR3dKMygtA4mG1Q==}
+
+  micromark-util-combine-extensions@2.0.1:
+    resolution: {integrity: sha512-OnAnH8Ujmy59JcyZw8JSbK9cGpdVY44NKgSM7E9Eh7DiLS2E9RNQf0dONaGDzEG9yjEl5hcqeIsj4hfRkLH/Bg==}
+
+  micromark-util-decode-numeric-character-reference@2.0.2:
+    resolution: {integrity: sha512-ccUbYk6CwVdkmCQMyr64dXz42EfHGkPQlBj5p7YVGzq8I7CtjXZJrubAYezf7Rp+bjPseiROqe7G6foFd+lEuw==}
+
+  micromark-util-decode-string@2.0.1:
+    resolution: {integrity: sha512-nDV/77Fj6eH1ynwscYTOsbK7rR//Uj0bZXBwJZRfaLEJ1iGBR6kIfNmlNqaqJf649EP0F3NWNdeJi03elllNUQ==}
+
   micromark-util-encode@2.0.1:
     resolution: {integrity: sha512-c3cVx2y4KqUnwopcO9b/SCdo2O67LwJJ/UyqGfbigahfegL9myoEFoDYZgkT7f36T0bLrM9hZTAaAyH+PCAXjw==}
 
+  micromark-util-html-tag-name@2.0.1:
+    resolution: {integrity: sha512-2cNEiYDhCWKI+Gs9T0Tiysk136SnR13hhO8yW6BGNyhOC4qYFnwF1nKfD3HFAIXA5c45RrIG1ub11GiXeYd1xA==}
+
+  micromark-util-normalize-identifier@2.0.1:
+    resolution: {integrity: sha512-sxPqmo70LyARJs0w2UclACPUUEqltCkJ6PhKdMIDuJ3gSf/Q+/GIe3WKl0Ijb/GyH9lOpUkRAO2wp0GVkLvS9Q==}
+
+  micromark-util-resolve-all@2.0.1:
+    resolution: {integrity: sha512-VdQyxFWFT2/FGJgwQnJYbe1jjQoNTS4RjglmSjTUlpUMa95Htx9NHeYW4rGDJzbjvCsl9eLjMQwGeElsqmzcHg==}
+
   micromark-util-sanitize-uri@2.0.1:
     resolution: {integrity: sha512-9N9IomZ/YuGGZZmQec1MbgxtlgougxTodVwDzzEouPKo3qFWvymFHWcnDi2vzV1ff6kas9ucW+o3yzJK9YB1AQ==}
+
+  micromark-util-subtokenize@2.1.0:
+    resolution: {integrity: sha512-XQLu552iSctvnEcgXw6+Sx75GflAPNED1qx7eBJ+wydBb2KCbRZe+NwvIEEMM83uml1+2WSXpBAcp9IUCgCYWA==}
 
   micromark-util-symbol@2.0.1:
     resolution: {integrity: sha512-vs5t8Apaud9N28kgCrRUdEed4UJ+wWNvicHLPxCa9ENlYuAY31M0ETy5y1vA33YoNPDFTghEbnh6efaE8h4x0Q==}
 
   micromark-util-types@2.0.2:
     resolution: {integrity: sha512-Yw0ECSpJoViF1qTU4DC6NwtC4aWGt1EkzaQB8KPPyCRR8z9TWeV0HbEFGTO+ZY1wB22zmxnJqhPyTpOVCpeHTA==}
+
+  micromark@4.0.2:
+    resolution: {integrity: sha512-zpe98Q6kvavpCr1NPVSCMebCKfD7CA2NqZ+rykeNhONIJBpc1tFKt9hucLGwha3jNTNI8lHpctWJWoimVF4PfA==}
 
   mime@3.0.0:
     resolution: {integrity: sha512-jSCU7/VB1loIWBZe14aEYHU/+1UMEHoaO7qxCOVJOw9GgH72VAWppxNcjU+x9a2k3GSIBXNKxXQFqRvvZ7vr3A==}
@@ -4610,6 +4759,15 @@ packages:
   regex@6.1.0:
     resolution: {integrity: sha512-6VwtthbV4o/7+OaAF9I5L5V3llLEsoPyq9P1JVXkedTP33c7MfCG0/5NOPcSJn0TzXcG9YUrR0gQSWioew3LDg==}
 
+  remark-gfm@4.0.1:
+    resolution: {integrity: sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==}
+
+  remark-parse@11.0.0:
+    resolution: {integrity: sha512-FCxlKLNGknS5ba/1lmpYijMUzX2esxW5xQqjWxw2eHFfS2MSdaHVINFmhjo+qN1WhZhNimq0dZATN9pH0IDrpA==}
+
+  remark-stringify@11.0.0:
+    resolution: {integrity: sha512-1OSmLd3awB/t8qdoEOMazZkNsfVTeY4fTsgzcQFdXNq8ToTN4ZGwrMnlda4K6smTFKD+GRV6O48i6Z4iKgPPpw==}
+
   resolve-from@4.0.0:
     resolution: {integrity: sha512-pb/MYmXstAkysRFx8piNI1tGFNQIFA3vkE3Gq4EuA1dF6gHp/+vgZqsCGJapvy8N3Q+4o7FwvquPJcnZ7RYy4g==}
     engines: {node: '>=4'}
@@ -4850,6 +5008,9 @@ packages:
   trim-lines@3.0.1:
     resolution: {integrity: sha512-kRj8B+YHZCc9kQYdWfJB2/oUl9rA99qbowYYBtr4ui4mZyAQ2JpvVBd/6U2YloATfqBhBTSMhTpgBHtU0Mf3Rg==}
 
+  trough@2.2.0:
+    resolution: {integrity: sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw==}
+
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
     engines: {node: '>=18.12'}
@@ -4893,6 +5054,9 @@ packages:
   undici@7.25.0:
     resolution: {integrity: sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ==}
     engines: {node: '>=20.18.1'}
+
+  unified@11.0.5:
+    resolution: {integrity: sha512-xKvGhPWw3k84Qjh8bI3ZeJjqnyadK+GEFtazSfZv/rKeTkTjOJho6mFqh2SM96iIcZokxiOpg78GazTSg8+KHA==}
 
   unist-util-is@6.0.1:
     resolution: {integrity: sha512-LsiILbtBETkDz8I9p1dQ0uyRUWuaQzd/cuEeS1hoRSyW5E5XGmTzlwY1OrNzzakGowI9Dr/I8HVaw4hTtnxy8g==}
@@ -5417,10 +5581,10 @@ snapshots:
     dependencies:
       effect: 3.21.2
 
-  '@effect/vitest@0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))':
+  '@effect/vitest@0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))':
     dependencies:
       effect: 3.21.2
-      vitest: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+      vitest: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   '@effect/workflow@0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
     dependencies:
@@ -5984,7 +6148,7 @@ snapshots:
       - typescript
       - web-tree-sitter
 
-  '@overeng/tui-react@file:packages/@overeng/tui-react(e8641af2ddb0a142f1bbcf1b4a10877f)':
+  '@overeng/tui-react@file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)':
     dependencies:
       '@effect-atom/atom': 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect-atom/atom-react': 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
@@ -5995,7 +6159,7 @@ snapshots:
       '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node': 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
-      '@effect/vitest': 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+      '@effect/vitest': 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
       '@effect/workflow': 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@opentui/core': 0.1.88(stage-js@1.0.2)(typescript@5.9.3)(web-tree-sitter@0.25.10)
       '@opentui/react': 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.2)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.20.0)
@@ -6015,7 +6179,7 @@ snapshots:
       react-dom: 19.2.3(react@19.2.3)
       react-reconciler: 0.33.0(react@19.2.3)
       string-width: 7.2.0
-      vitest: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+      vitest: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       yoga-layout: 3.2.1
     transitivePeerDependencies:
       - '@edge-runtime/vm'
@@ -7020,6 +7184,10 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
+  '@types/debug@4.1.13':
+    dependencies:
+      '@types/ms': 2.1.0
+
   '@types/deep-eql@4.0.2': {}
 
   '@types/doctrine@0.0.9': {}
@@ -7044,6 +7212,8 @@ snapshots:
   '@types/mdast@4.0.4':
     dependencies:
       '@types/unist': 3.0.3
+
+  '@types/ms@2.1.0': {}
 
   '@types/node@16.9.1': {}
 
@@ -7286,6 +7456,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  bail@2.0.2: {}
+
   balanced-match@1.0.2: {}
 
   balanced-match@4.0.4: {}
@@ -7389,6 +7561,8 @@ snapshots:
 
   character-entities-legacy@3.0.0: {}
 
+  character-entities@2.0.2: {}
+
   check-error@2.1.3: {}
 
   cheerio-select@2.1.0:
@@ -7478,6 +7652,10 @@ snapshots:
       ms: 2.1.3
 
   decimal.js@10.6.0: {}
+
+  decode-named-character-reference@1.3.0:
+    dependencies:
+      character-entities: 2.0.2
 
   deep-eql@5.0.2: {}
 
@@ -7608,6 +7786,8 @@ snapshots:
 
   escape-string-regexp@4.0.0: {}
 
+  escape-string-regexp@5.0.0: {}
+
   eslint-plugin-storybook@10.2.3(eslint@9.39.2(jiti@2.6.1))(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.8.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3):
     dependencies:
       '@typescript-eslint/utils': 8.52.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
@@ -7702,6 +7882,8 @@ snapshots:
   expect-type@1.3.0: {}
 
   exsolve@1.0.8: {}
+
+  extend@3.0.2: {}
 
   fast-check@3.23.2:
     dependencies:
@@ -7905,6 +8087,8 @@ snapshots:
 
   is-object@1.0.2: {}
 
+  is-plain-obj@4.1.0: {}
+
   is-window@1.0.2: {}
 
   is-wsl@3.1.1:
@@ -8041,6 +8225,8 @@ snapshots:
 
   lodash.merge@4.6.2: {}
 
+  longest-streak@3.1.0: {}
+
   loose-envify@1.4.0:
     dependencies:
       js-tokens: 4.0.0
@@ -8059,7 +8245,95 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  markdown-table@3.0.4: {}
+
   marked@17.0.1: {}
+
+  mdast-util-find-and-replace@3.0.2:
+    dependencies:
+      '@types/mdast': 4.0.4
+      escape-string-regexp: 5.0.0
+      unist-util-is: 6.0.1
+      unist-util-visit-parents: 6.0.2
+
+  mdast-util-from-markdown@2.0.3:
+    dependencies:
+      '@types/mdast': 4.0.4
+      '@types/unist': 3.0.3
+      decode-named-character-reference: 1.3.0
+      devlop: 1.1.0
+      mdast-util-to-string: 4.0.0
+      micromark: 4.0.2
+      micromark-util-decode-numeric-character-reference: 2.0.2
+      micromark-util-decode-string: 2.0.1
+      micromark-util-normalize-identifier: 2.0.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+      unist-util-stringify-position: 4.0.0
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-gfm-autolink-literal@2.0.1:
+    dependencies:
+      '@types/mdast': 4.0.4
+      ccount: 2.0.1
+      devlop: 1.1.0
+      mdast-util-find-and-replace: 3.0.2
+      micromark-util-character: 2.1.1
+
+  mdast-util-gfm-footnote@2.1.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+      devlop: 1.1.0
+      mdast-util-from-markdown: 2.0.3
+      mdast-util-to-markdown: 2.1.2
+      micromark-util-normalize-identifier: 2.0.1
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-gfm-strikethrough@2.0.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+      mdast-util-from-markdown: 2.0.3
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-gfm-table@2.0.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+      devlop: 1.1.0
+      markdown-table: 3.0.4
+      mdast-util-from-markdown: 2.0.3
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-gfm-task-list-item@2.0.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+      devlop: 1.1.0
+      mdast-util-from-markdown: 2.0.3
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-gfm@3.1.0:
+    dependencies:
+      mdast-util-from-markdown: 2.0.3
+      mdast-util-gfm-autolink-literal: 2.0.1
+      mdast-util-gfm-footnote: 2.1.0
+      mdast-util-gfm-strikethrough: 2.0.0
+      mdast-util-gfm-table: 2.0.0
+      mdast-util-gfm-task-list-item: 2.0.0
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-phrasing@4.1.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+      unist-util-is: 6.0.1
 
   mdast-util-to-hast@13.2.1:
     dependencies:
@@ -8073,12 +8347,173 @@ snapshots:
       unist-util-visit: 5.1.0
       vfile: 6.0.3
 
+  mdast-util-to-markdown@2.1.2:
+    dependencies:
+      '@types/mdast': 4.0.4
+      '@types/unist': 3.0.3
+      longest-streak: 3.1.0
+      mdast-util-phrasing: 4.1.0
+      mdast-util-to-string: 4.0.0
+      micromark-util-classify-character: 2.0.1
+      micromark-util-decode-string: 2.0.1
+      unist-util-visit: 5.1.0
+      zwitch: 2.0.4
+
+  mdast-util-to-string@4.0.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+
+  micromark-core-commonmark@2.0.3:
+    dependencies:
+      decode-named-character-reference: 1.3.0
+      devlop: 1.1.0
+      micromark-factory-destination: 2.0.1
+      micromark-factory-label: 2.0.1
+      micromark-factory-space: 2.0.1
+      micromark-factory-title: 2.0.1
+      micromark-factory-whitespace: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-chunked: 2.0.1
+      micromark-util-classify-character: 2.0.1
+      micromark-util-html-tag-name: 2.0.1
+      micromark-util-normalize-identifier: 2.0.1
+      micromark-util-resolve-all: 2.0.1
+      micromark-util-subtokenize: 2.1.0
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-extension-gfm-autolink-literal@2.1.0:
+    dependencies:
+      micromark-util-character: 2.1.1
+      micromark-util-sanitize-uri: 2.0.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-extension-gfm-footnote@2.1.0:
+    dependencies:
+      devlop: 1.1.0
+      micromark-core-commonmark: 2.0.3
+      micromark-factory-space: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-normalize-identifier: 2.0.1
+      micromark-util-sanitize-uri: 2.0.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-extension-gfm-strikethrough@2.1.0:
+    dependencies:
+      devlop: 1.1.0
+      micromark-util-chunked: 2.0.1
+      micromark-util-classify-character: 2.0.1
+      micromark-util-resolve-all: 2.0.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-extension-gfm-table@2.1.1:
+    dependencies:
+      devlop: 1.1.0
+      micromark-factory-space: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-extension-gfm-tagfilter@2.0.0:
+    dependencies:
+      micromark-util-types: 2.0.2
+
+  micromark-extension-gfm-task-list-item@2.1.0:
+    dependencies:
+      devlop: 1.1.0
+      micromark-factory-space: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-extension-gfm@3.0.0:
+    dependencies:
+      micromark-extension-gfm-autolink-literal: 2.1.0
+      micromark-extension-gfm-footnote: 2.1.0
+      micromark-extension-gfm-strikethrough: 2.1.0
+      micromark-extension-gfm-table: 2.1.1
+      micromark-extension-gfm-tagfilter: 2.0.0
+      micromark-extension-gfm-task-list-item: 2.1.0
+      micromark-util-combine-extensions: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-factory-destination@2.0.1:
+    dependencies:
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-factory-label@2.0.1:
+    dependencies:
+      devlop: 1.1.0
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-factory-space@2.0.1:
+    dependencies:
+      micromark-util-character: 2.1.1
+      micromark-util-types: 2.0.2
+
+  micromark-factory-title@2.0.1:
+    dependencies:
+      micromark-factory-space: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-factory-whitespace@2.0.1:
+    dependencies:
+      micromark-factory-space: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
   micromark-util-character@2.1.1:
     dependencies:
       micromark-util-symbol: 2.0.1
       micromark-util-types: 2.0.2
 
+  micromark-util-chunked@2.0.1:
+    dependencies:
+      micromark-util-symbol: 2.0.1
+
+  micromark-util-classify-character@2.0.1:
+    dependencies:
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-util-combine-extensions@2.0.1:
+    dependencies:
+      micromark-util-chunked: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-util-decode-numeric-character-reference@2.0.2:
+    dependencies:
+      micromark-util-symbol: 2.0.1
+
+  micromark-util-decode-string@2.0.1:
+    dependencies:
+      decode-named-character-reference: 1.3.0
+      micromark-util-character: 2.1.1
+      micromark-util-decode-numeric-character-reference: 2.0.2
+      micromark-util-symbol: 2.0.1
+
   micromark-util-encode@2.0.1: {}
+
+  micromark-util-html-tag-name@2.0.1: {}
+
+  micromark-util-normalize-identifier@2.0.1:
+    dependencies:
+      micromark-util-symbol: 2.0.1
+
+  micromark-util-resolve-all@2.0.1:
+    dependencies:
+      micromark-util-types: 2.0.2
 
   micromark-util-sanitize-uri@2.0.1:
     dependencies:
@@ -8086,9 +8521,38 @@ snapshots:
       micromark-util-encode: 2.0.1
       micromark-util-symbol: 2.0.1
 
+  micromark-util-subtokenize@2.1.0:
+    dependencies:
+      devlop: 1.1.0
+      micromark-util-chunked: 2.0.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
   micromark-util-symbol@2.0.1: {}
 
   micromark-util-types@2.0.2: {}
+
+  micromark@4.0.2:
+    dependencies:
+      '@types/debug': 4.1.13
+      debug: 4.4.3
+      decode-named-character-reference: 1.3.0
+      devlop: 1.1.0
+      micromark-core-commonmark: 2.0.3
+      micromark-factory-space: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-chunked: 2.0.1
+      micromark-util-combine-extensions: 2.0.1
+      micromark-util-decode-numeric-character-reference: 2.0.2
+      micromark-util-encode: 2.0.1
+      micromark-util-normalize-identifier: 2.0.1
+      micromark-util-resolve-all: 2.0.1
+      micromark-util-sanitize-uri: 2.0.1
+      micromark-util-subtokenize: 2.1.0
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+    transitivePeerDependencies:
+      - supports-color
 
   mime@3.0.0: {}
 
@@ -8494,6 +8958,32 @@ snapshots:
     dependencies:
       regex-utilities: 2.3.0
 
+  remark-gfm@4.0.1:
+    dependencies:
+      '@types/mdast': 4.0.4
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
+      remark-parse: 11.0.0
+      remark-stringify: 11.0.0
+      unified: 11.0.5
+    transitivePeerDependencies:
+      - supports-color
+
+  remark-parse@11.0.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+      mdast-util-from-markdown: 2.0.3
+      micromark-util-types: 2.0.2
+      unified: 11.0.5
+    transitivePeerDependencies:
+      - supports-color
+
+  remark-stringify@11.0.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+      mdast-util-to-markdown: 2.1.2
+      unified: 11.0.5
+
   resolve-from@4.0.0: {}
 
   resolve-pkg-maps@1.0.0: {}
@@ -8724,6 +9214,8 @@ snapshots:
 
   trim-lines@3.0.1: {}
 
+  trough@2.2.0: {}
+
   ts-api-utils@2.5.0(typescript@5.9.3):
     dependencies:
       typescript: 5.9.3
@@ -8758,6 +9250,16 @@ snapshots:
   undici-types@7.18.2: {}
 
   undici@7.25.0: {}
+
+  unified@11.0.5:
+    dependencies:
+      '@types/unist': 3.0.3
+      bail: 2.0.2
+      devlop: 1.1.0
+      extend: 3.0.2
+      is-plain-obj: 4.1.0
+      trough: 2.2.0
+      vfile: 6.0.3
 
   unist-util-is@6.0.1:
     dependencies:
@@ -8860,7 +9362,7 @@ snapshots:
     optionalDependencies:
       vite: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
-  vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3):
+  vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.4
@@ -8886,6 +9388,7 @@ snapshots:
       vite-node: 3.2.4(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      '@types/debug': 4.1.13
       '@types/node': 25.3.3
       happy-dom: 18.0.1
     transitivePeerDependencies:

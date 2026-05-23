@@ -52,13 +52,13 @@ const program = renderToNotion(<Page />, {
 
 const runtime = Layer.mergeAll(
   NodeHttpClient.layer,
-  NotionConfig.layerFromEnv, // reads NOTION_TOKEN
+  NotionConfig.layerFromEnv, // reads NOTION_API_TOKEN
 )
 
 await Effect.runPromise(Effect.provide(program, runtime))
 ```
 
-Run it (`NOTION_TOKEN=secret_... NOTION_PAGE_ID=... bun run ./script.tsx`)
+Run it (`NOTION_API_TOKEN=secret_... NOTION_PAGE_ID=... bun run ./script.tsx`)
 and the page should now contain the heading and paragraph.
 
 ## Incremental sync (warm path)

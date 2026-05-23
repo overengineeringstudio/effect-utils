@@ -20,7 +20,7 @@ bun add @overeng/notion-effect-cli
 
 ```bash
 # Set your Notion API token
-export NOTION_TOKEN="secret_..."
+export NOTION_API_TOKEN="secret_..."
 
 # Generate schema for a database
 notion-effect-cli generate <database-id> -o ./src/schemas/tasks.ts
@@ -56,7 +56,7 @@ notion-effect-cli generate <database-id> -o <output-file> [options]
 | --------------------- | ----------------------------------------------------- |
 | `-o, --output`        | Output file path (required)                           |
 | `-n, --name`          | Custom schema name (defaults to database title)       |
-| `-t, --token`         | Notion API token (defaults to `NOTION_TOKEN` env var) |
+| `-t, --token`         | Notion API token (defaults to `NOTION_API_TOKEN` env var) |
 | `-w, --include-write` | Generate write schemas for creating/updating pages    |
 | `-a, --include-api`   | Generate a typed API wrapper                          |
 | `--typed-options`     | Generate literal unions for select/status options     |
@@ -194,7 +194,7 @@ const program = Effect.gen(function* () {
 })
 
 const MainLayer = Layer.mergeAll(
-  NotionConfigLive({ authToken: process.env.NOTION_TOKEN! }),
+  NotionConfigLive({ authToken: process.env.NOTION_API_TOKEN! }),
   FetchHttpClient.layer,
 )
 
@@ -240,7 +240,7 @@ const program = Effect.gen(function* () {
 })
 
 const MainLayer = Layer.mergeAll(
-  NotionConfigLive({ authToken: process.env.NOTION_TOKEN! }),
+  NotionConfigLive({ authToken: process.env.NOTION_API_TOKEN! }),
   FetchHttpClient.layer,
 )
 
@@ -335,7 +335,7 @@ const program = Effect.gen(function* () {
 })
 
 const MainLayer = Layer.mergeAll(
-  NotionConfigLive({ authToken: process.env.NOTION_TOKEN! }),
+  NotionConfigLive({ authToken: process.env.NOTION_API_TOKEN! }),
   FetchHttpClient.layer,
   NodeContext.layer,
   CurrentWorkingDirectory.live,

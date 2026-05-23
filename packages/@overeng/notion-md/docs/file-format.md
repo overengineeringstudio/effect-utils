@@ -87,7 +87,7 @@ Markdown body.
 
 | Field       | Local form                                | Push behavior                          |
 | ----------- | ----------------------------------------- | -------------------------------------- |
-| `title`     | string                                    | preserved on pull; title property TBD  |
+| `title`     | string                                    | pushed via the page properties endpoint |
 | `icon`      | `null`, emoji, native icon, external file | pushed with `PATCH /pages/{id}`        |
 | `cover`     | `null`, external or Notion-hosted file    | external/null pushed; hosted read-only |
 | `in_trash`  | boolean                                   | pushed with `PATCH /pages/{id}`        |

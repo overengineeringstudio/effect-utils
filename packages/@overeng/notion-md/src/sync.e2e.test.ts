@@ -215,6 +215,7 @@ class FakeNotion {
         const page = this.requirePage(id)
         const next = {
           ...page,
+          title: metadata.title === undefined ? page.title : metadata.title,
           icon: metadata.icon === undefined ? page.icon : metadata.icon,
           cover: metadata.cover === undefined ? page.cover : metadata.cover,
           inTrash: metadata.in_trash === undefined ? page.inTrash : metadata.in_trash,
@@ -268,6 +269,7 @@ class FakeNotion {
   }
 
   remoteMetadata(pageIdToRead: string): {
+    readonly title: string
     readonly icon: NmdPageState['icon']
     readonly cover: NmdPageState['cover']
     readonly in_trash: boolean
@@ -275,6 +277,7 @@ class FakeNotion {
   } {
     const page = this.requirePage(pageIdToRead)
     return {
+      title: page.title,
       icon: page.icon,
       cover: page.cover,
       in_trash: page.inTrash,
@@ -1016,6 +1019,48 @@ describe('notion-md e2e prototype', () => {
       })
       expect(refreshed.frontmatter.notion_md.page.in_trash).toBe(true)
       expect(refreshed.frontmatter.notion_md.page.is_locked).toBe(true)
+    })
+  })
+
+  it('pushes a renamed page title through the page metadata API', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Original Title',
+          markdown: '# Original Title\n\nBody',
+          inTrash: false,
+          isLocked: false,
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              page: {
+                ...parsed.frontmatter.notion_md.page,
+                title: 'New Title',
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      const beforePushStatus = await runWithFake(statusPage({ path }), fake)
+      const pushed = await runWithFake(pushPage({ path }), fake)
+      const refreshed = await parseFile(path)
+
+      expect(beforePushStatus.localPageMetadataChanged).toBe(true)
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteMetadata(pageId).title).toBe('New Title')
+      expect(refreshed.frontmatter.notion_md.page.title).toBe('New Title')
     })
   })
 

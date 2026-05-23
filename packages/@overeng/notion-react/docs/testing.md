@@ -64,7 +64,7 @@ pnpm --filter @overeng/notion-react test:integration:e2e
 
 Required environment variables:
 
-- `NOTION_TOKEN` — an integration token with access to the test page
+- `NOTION_API_TOKEN` — an integration token with access to the test page
 - `NOTION_TEST_PARENT_PAGE_ID` — the page id each scratch page is
   nested under
 
@@ -108,7 +108,7 @@ Missing either env var silently skips the whole E2E suite via
 
 ## Pointing at a different Notion workspace
 
-Export `NOTION_TOKEN` and `NOTION_TEST_PARENT_PAGE_ID` in the local shell, or add op-proxy references for them under `[x-op-proxy.refs]` in `secretspec.toml`.
+Export `NOTION_API_TOKEN` and `NOTION_TEST_PARENT_PAGE_ID` in the local shell, or add op-proxy references for them under `[x-op-proxy.refs]` in `secretspec.toml`.
 
 Notes:
 

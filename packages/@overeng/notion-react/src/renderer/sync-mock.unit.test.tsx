@@ -33,7 +33,7 @@ import { sync } from './sync.ts'
  *
  * These are the same scenarios as `mutations.integration.test.tsx`, but
  * executed against an in-memory fake Notion so they run in CI on every PR
- * (no NOTION_TOKEN, no network, ~100x faster). Live integration stays the
+ * (no NOTION_API_TOKEN, no network, ~100x faster). Live integration stays the
  * nightly/on-demand check for the real API envelope.
  *
  * What this catches that the pure diff unit tests do not:

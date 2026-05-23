@@ -108,18 +108,18 @@ const cliVersion = resolveCliVersion({
   buildStamp,
 })
 
-const resolveToken = Config.redacted('NOTION_TOKEN').pipe(
+const resolveToken = Config.redacted('NOTION_API_TOKEN').pipe(
   Effect.filterOrFail(
     (token) => Redacted.value(token).length > 0,
     () =>
       new NmdTokenMissingError({
-        message: 'NOTION_TOKEN is required',
+        message: 'NOTION_API_TOKEN is required',
       }),
   ),
   Effect.mapError(
     () =>
       new NmdTokenMissingError({
-        message: 'NOTION_TOKEN is required',
+        message: 'NOTION_API_TOKEN is required',
       }),
   ),
 )
@@ -147,6 +147,17 @@ const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   resolveToken.pipe(Effect.zipRight(Effect.provide(effect, MainLayer)))
 
 const logJson = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value, null, 2))
+
+/*
+ * Print a one-line hint to stderr when stdout is attached to a TTY. stdout
+ * stays pure JSON so scripts can pipe it; humans see the next step they need.
+ */
+const logHumanHint = (message: string): Effect.Effect<void> =>
+  Effect.sync(() => {
+    if (process.stdout.isTTY === true) {
+      process.stderr.write(`hint: ${message}\n`)
+    }
+  })
 
 const safeJsonError = (error: unknown): Record<string, unknown> => {
   if (typeof error === 'object' && error !== null && '_tag' in error) {
@@ -323,7 +334,14 @@ const pullCommand = Command.make(
       command: 'pull',
       label: basename(outPath),
       effect: withNotion(pullPage({ pageId, outPath })),
-    }).pipe(Effect.flatMap(logJson)),
+    }).pipe(
+      Effect.flatMap(logJson),
+      Effect.zipLeft(
+        logHumanHint(
+          `edit body below the second --- in ${outPath}, then 'notion-md push ${outPath}'`,
+        ),
+      ),
+    ),
 ).pipe(Command.withDescription('Pull a Notion page into a local .nmd file'))
 
 const statusCommand = Command.make(

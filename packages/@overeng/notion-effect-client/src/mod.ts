@@ -195,7 +195,7 @@ export { NotionViews } from './views.ts'
  * })
  *
  * const MainLayer = Layer.mergeAll(
- *   NotionConfigLive({ authToken: Redacted.make(process.env.NOTION_TOKEN ?? '') }),
+ *   NotionConfigLive({ authToken: Redacted.make(process.env.NOTION_API_TOKEN ?? '') }),
  *   HttpClient.layer,
  * )
  *

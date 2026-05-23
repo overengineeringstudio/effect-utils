@@ -11,6 +11,7 @@ import {
 import type { Page } from '@overeng/notion-effect-schema'
 import type { Block } from '@overeng/notion-effect-schema'
 
+import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markdown.ts'
 import { NmdGatewayError } from './errors.ts'
 import { canonicalizeMarkdown } from './hash.ts'
 import { type MarkdownUpdateCommand, NotionMdGateway, type RemotePageSnapshot } from './model.ts'
@@ -125,7 +126,13 @@ const toNotionUpdateMarkdownOptions = (opts: {
       return {
         pageId: opts.pageId,
         type: 'replace_content',
-        new_str: canonicalizeMarkdown(opts.command.markdown),
+        /*
+         * Pre-canonicalize the body at the wire boundary so Notion stores one
+         * Notion block per logical paragraph instead of one block per soft-wrap
+         * line. Without this, hard-wrapped source paragraphs render as a chain
+         * of broken lines on Notion.
+         */
+        new_str: canonicalizeBlockMarkdown(opts.command.markdown),
         allow_deleting_content: opts.allowDeletingContent,
       }
   }
@@ -194,9 +201,19 @@ export const NotionMdGatewayLive = Layer.effect(
               truncated: markdownResult.truncated,
               unknown_block_ids: markdownResult.unknown_block_ids,
             }
+            /*
+             * Compare semantically rather than byte-equal. Notion reserializes
+             * received Markdown into its own block model (collapses blank
+             * lines, switches list-indent style); a strict byte-equal check
+             * fails on every push of non-trivial content even though the
+             * page was updated correctly. semanticEquivalent reduces both
+             * sides to whitespace-collapsed canonical tokens, so genuine
+             * content drift still trips the guard while Notion's reflow no
+             * longer does.
+             */
             if (
               command._tag === 'update_content' &&
-              remoteMarkdown.markdown !== canonicalizeMarkdown(command.expectedMarkdown)
+              semanticEquivalent(remoteMarkdown.markdown, command.expectedMarkdown) === false
             ) {
               return Effect.fail(
                 new NmdGatewayError({
@@ -237,6 +254,23 @@ export const NotionMdGatewayLive = Layer.effect(
         provideHttp(
           NotionPages.update({
             pageId,
+            /*
+             * Title is a Notion *property* (`properties.title`) rather than a
+             * top-level page field, so we encode it into the same `properties`
+             * payload `updatePageProperties` would use. Keeping it here lets
+             * the sync engine treat title as part of the page metadata block
+             * (alongside icon/cover/lock) instead of forcing every caller to
+             * synthesize a properties update.
+             */
+            ...(metadata.title !== undefined
+              ? {
+                  properties: {
+                    title: {
+                      title: [{ type: 'text', text: { content: metadata.title } }],
+                    },
+                  },
+                }
+              : {}),
             ...(metadata.icon !== undefined ? { icon: metadata.icon } : {}),
             ...(metadata.cover !== undefined ? { cover: metadata.cover } : {}),
             ...(metadata.in_trash !== undefined ? { in_trash: metadata.in_trash } : {}),
@@ -249,6 +283,7 @@ export const NotionMdGatewayLive = Layer.effect(
             attributes: {
               'span.label': pageId.slice(0, 8),
               'notion_md.page_id': pageId,
+              'notion_md.page_metadata.title': metadata.title !== undefined,
               'notion_md.page_metadata.icon': metadata.icon !== undefined,
               'notion_md.page_metadata.cover': metadata.cover !== undefined,
               'notion_md.page_metadata.in_trash': metadata.in_trash !== undefined,

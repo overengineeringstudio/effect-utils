@@ -414,7 +414,7 @@ Environment:
 
 | Variable       | Meaning          |
 | -------------- | ---------------- |
-| `NOTION_TOKEN` | Notion API token |
+| `NOTION_API_TOKEN` | Notion API token |
 
 Output:
 

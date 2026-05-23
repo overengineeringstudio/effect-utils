@@ -5,7 +5,7 @@ This document describes the Notion workspace structure used for integration test
 ## Prerequisites
 
 - A Notion integration token with access to the test workspace
-- Set `NOTION_TOKEN` environment variable with the integration token
+- Set `NOTION_API_TOKEN` environment variable with the integration token
 
 ## Workspace Structure
 
@@ -111,7 +111,7 @@ This structure tests recursive block fetching with configurable depth limits.
 
 Tests use the `setup.ts` file which exports:
 
-- `SKIP_INTEGRATION` - Set to `true` when `NOTION_TOKEN` is not available
+- `SKIP_INTEGRATION` - Set to `true` when `NOTION_API_TOKEN` is not available
 - `SKIP_MUTATIONS` - Set to `true` in CI to prevent fixture corruption
 - `TEST_IDS` - Object containing all fixture IDs
 - `NotionConfigLive` - Layer with configured Notion token
