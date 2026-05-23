@@ -8,6 +8,7 @@ import { NmdStorageSchema, type NmdFrontmatterV1 } from '@overeng/notion-effect-
 import { NmdSidecarError } from './errors.ts'
 import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
 
+/** Strict schema for overflow `.nmd` storage sidecars. */
 export const NmdSidecarV1 = Schema.Struct({
   version: Schema.Literal(1),
   page_id: Schema.String,
@@ -17,6 +18,7 @@ export const NmdSidecarV1 = Schema.Struct({
 
 export type NmdSidecarV1 = typeof NmdSidecarV1.Type
 
+/** Strict schema for the last clean body snapshot used by guarded merges. */
 export const NmdBaseSnapshotV1 = Schema.Struct({
   version: Schema.Literal(1),
   page_id: Schema.String,
@@ -34,9 +36,14 @@ const strictOptions = {
 const decodeSidecar = Schema.decodeUnknownSync(NmdSidecarV1, strictOptions)
 const decodeBaseSnapshot = Schema.decodeUnknownSync(NmdBaseSnapshotV1, strictOptions)
 
+/** Path for the last clean body snapshot next to a `.nmd` file. */
 export const baseSnapshotPath = (path: string): string => `${path}.base.json`
 
-const sameIds = (left: readonly string[], right: readonly string[]): boolean => {
+const sameIds = (opts: {
+  readonly left: readonly string[]
+  readonly right: readonly string[]
+}): boolean => {
+  const { left, right } = opts
   if (left.length !== right.length) return false
   const rightSet = new Set(right)
   return left.every((id) => rightSet.has(id))
@@ -64,28 +71,28 @@ const validateSidecarReferences = (opts: {
     }
 
     if (
-      sameIds(
-        storage.unsupported_block_ids,
-        sidecarStorage.unsupported_blocks.map((block) => block.block_id),
-      ) === false
+      sameIds({
+        left: storage.unsupported_block_ids,
+        right: sidecarStorage.unsupported_blocks.map((block) => block.block_id),
+      }) === false
     ) {
       throw new Error('Sidecar unsupported block ids do not match frontmatter')
     }
 
     if (
-      sameIds(
-        storage.file_ids,
-        sidecarStorage.files.map((file) => file.id),
-      ) === false
+      sameIds({
+        left: storage.file_ids,
+        right: sidecarStorage.files.map((file) => file.id),
+      }) === false
     ) {
       throw new Error('Sidecar file ids do not match frontmatter')
     }
 
     if (
-      sameIds(
-        storage.comment_ids,
-        sidecarStorage.comments.map((comment) => comment.id),
-      ) === false
+      sameIds({
+        left: storage.comment_ids,
+        right: sidecarStorage.comments.map((comment) => comment.id),
+      }) === false
     ) {
       throw new Error('Sidecar comment ids do not match frontmatter')
     }

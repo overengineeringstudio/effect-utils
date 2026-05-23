@@ -22,11 +22,13 @@ import {
 import { readBaseSnapshot, validateReferencedSidecar, writeBaseSnapshot } from './sidecar.ts'
 import { decideStorage } from './storage-policy.ts'
 
+/** Inputs for pulling a Notion page into a local `.nmd` file. */
 export interface PullOptions {
   readonly pageId: string
   readonly outPath: string
 }
 
+/** Result of writing a pulled Notion page locally. */
 export interface PullResult {
   readonly path: string
   readonly pageId: string
@@ -34,10 +36,12 @@ export interface PullResult {
   readonly sidecarPath?: string
 }
 
+/** Inputs for checking local and remote page state. */
 export interface StatusOptions {
   readonly path: string
 }
 
+/** Local-vs-remote state summary for a `.nmd` file. */
 export interface StatusResult {
   readonly path: string
   readonly pageId: string
@@ -50,6 +54,7 @@ export interface StatusResult {
   readonly unresolvedUnknownBlocks: readonly string[]
 }
 
+/** Inputs for pushing local `.nmd` edits through the guarded sync path. */
 export interface PushOptions {
   readonly path: string
   readonly force?: boolean
@@ -57,12 +62,39 @@ export interface PushOptions {
   readonly allowReviewMarkup?: boolean
 }
 
+/** Result of a guarded push attempt. */
 export interface PushResult {
   readonly path: string
   readonly pageId: string
   readonly pushed: boolean
   readonly status: StatusResult
 }
+
+/** Inputs for one-shot or watched two-way reconciliation. */
+export interface SyncOptions extends PushOptions {}
+
+/** Tagged result of one reconciliation pass. */
+export type SyncResult =
+  | {
+      readonly _tag: 'noop'
+      readonly path: string
+      readonly pageId: string
+      readonly status: StatusResult
+    }
+  | {
+      readonly _tag: 'pulled'
+      readonly path: string
+      readonly pageId: string
+      readonly status: StatusResult
+      readonly pull: PullResult
+    }
+  | {
+      readonly _tag: 'pushed'
+      readonly path: string
+      readonly pageId: string
+      readonly status: StatusResult
+      readonly push: PushResult
+    }
 
 const toParentRef = (page: RemotePageSnapshot): NmdParentRef => {
   switch (page.parent.type) {
@@ -210,19 +242,21 @@ const tryMergeBodies = (opts: {
   const localLines = local.split('\n')
   const remoteLines = remote.split('\n')
 
-  const localRange = changedRange(baseLines, localLines)
-  const remoteRange = changedRange(baseLines, remoteLines)
+  const localRange = changedRange({ baseLines, changedLines: localLines })
+  const remoteRange = changedRange({ baseLines, changedLines: remoteLines })
 
-  if (sameRange(localRange, remoteRange) === true) {
-    return sameLines(localRange.replacement, remoteRange.replacement) === true ? local : undefined
+  if (sameRange({ left: localRange, right: remoteRange }) === true) {
+    return sameLines({ left: localRange.replacement, right: remoteRange.replacement }) === true
+      ? local
+      : undefined
   }
 
   if (localRange.end <= remoteRange.start) {
-    return applyRanges(baseLines, [remoteRange, localRange])
+    return applyRanges({ baseLines, rangesDescending: [remoteRange, localRange] })
   }
 
   if (remoteRange.end <= localRange.start) {
-    return applyRanges(baseLines, [localRange, remoteRange])
+    return applyRanges({ baseLines, rangesDescending: [localRange, remoteRange] })
   }
 
   return undefined
@@ -234,10 +268,11 @@ interface ChangedRange {
   readonly replacement: readonly string[]
 }
 
-const changedRange = (
-  baseLines: readonly string[],
-  changedLines: readonly string[],
-): ChangedRange => {
+const changedRange = (opts: {
+  readonly baseLines: readonly string[]
+  readonly changedLines: readonly string[]
+}): ChangedRange => {
+  const { baseLines, changedLines } = opts
   let prefix = 0
   while (
     prefix < baseLines.length &&
@@ -263,18 +298,22 @@ const changedRange = (
   }
 }
 
-const sameRange = (left: ChangedRange, right: ChangedRange): boolean =>
-  left.start === right.start && left.end === right.end
+const sameRange = (opts: { readonly left: ChangedRange; readonly right: ChangedRange }): boolean =>
+  opts.left.start === opts.right.start && opts.left.end === opts.right.end
 
-const sameLines = (left: readonly string[], right: readonly string[]): boolean =>
-  left.length === right.length && left.every((line, index) => line === right[index])
+const sameLines = (opts: {
+  readonly left: readonly string[]
+  readonly right: readonly string[]
+}): boolean =>
+  opts.left.length === opts.right.length &&
+  opts.left.every((line, index) => line === opts.right[index])
 
-const applyRanges = (
-  baseLines: readonly string[],
-  rangesDescending: readonly ChangedRange[],
-): string => {
-  const merged = [...baseLines]
-  for (const range of rangesDescending) {
+const applyRanges = (opts: {
+  readonly baseLines: readonly string[]
+  readonly rangesDescending: readonly ChangedRange[]
+}): string => {
+  const merged = [...opts.baseLines]
+  for (const range of opts.rangesDescending) {
     merged.splice(range.start, range.end - range.start, ...range.replacement)
   }
   return merged.join('\n')
@@ -407,7 +446,7 @@ const writeNmdWithStoragePolicy = (opts: {
       }
     }
 
-    await writeFile(opts.path, renderNmdFile(frontmatter, opts.body))
+    await writeFile(opts.path, renderNmdFile({ frontmatter, body: opts.body }))
     await Effect.runPromise(
       writeBaseSnapshot({
         path: opts.path,
@@ -432,6 +471,7 @@ const writeNmdWithStoragePolicy = (opts: {
         }
   })
 
+/** Pull a Notion page through the Markdown endpoint and write a local `.nmd` file. */
 export const pullPage = (opts: PullOptions): Effect.Effect<PullResult, unknown, NotionMdGateway> =>
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
@@ -460,6 +500,7 @@ const readNmd = (path: string) =>
     Effect.tap((local) => validateReferencedSidecar({ path, frontmatter: local.frontmatter })),
   )
 
+/** Compare local body/frontmatter state with the current remote Notion page. */
 export const statusPage = (
   opts: StatusOptions,
 ): Effect.Effect<StatusResult, unknown, NotionMdGateway> =>
@@ -494,6 +535,7 @@ export const statusPage = (
     }
   }).pipe(Effect.withSpan('notion-md.statusPage'))
 
+/** Push local `.nmd` edits to Notion after conflict, unknown-block, and review-markup checks. */
 export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, NotionMdGateway> =>
   Effect.gen(function* () {
     const local = yield* readNmd(opts.path)
@@ -627,6 +669,42 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, 
     }
   }).pipe(Effect.withSpan('notion-md.pushPage'))
 
+/** Run one two-way reconciliation pass for a `.nmd` file. */
+export const syncPage = (opts: SyncOptions): Effect.Effect<SyncResult, unknown, NotionMdGateway> =>
+  Effect.gen(function* () {
+    const status = yield* statusPage({ path: opts.path })
+
+    if (status.localChanged === true || status.localPropertiesChanged === true) {
+      const push = yield* pushPage(opts)
+      return {
+        _tag: 'pushed',
+        path: opts.path,
+        pageId: status.pageId,
+        status,
+        push,
+      } as const
+    }
+
+    if (status.remoteChanged === true) {
+      const pull = yield* pullPage({ pageId: status.pageId, outPath: opts.path })
+      return {
+        _tag: 'pulled',
+        path: opts.path,
+        pageId: status.pageId,
+        status,
+        pull,
+      } as const
+    }
+
+    return {
+      _tag: 'noop',
+      path: opts.path,
+      pageId: status.pageId,
+      status,
+    } as const
+  }).pipe(Effect.withSpan('notion-md.syncPage'))
+
+/** Build strict `.nmd` frontmatter from a remote pull result. */
 export const buildFrontmatterFromPull = (pulled: PullPageResult): NmdFrontmatterV1 =>
   buildFrontmatter({
     page: pulled.page,

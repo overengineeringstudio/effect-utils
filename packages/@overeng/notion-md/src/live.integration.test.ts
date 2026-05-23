@@ -17,7 +17,7 @@ import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { baseSnapshotPath } from './sidecar.ts'
-import { pullPage, pushPage, statusPage } from './sync.ts'
+import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
 
 const token = process.env.NOTION_TOKEN ?? process.env.NOTION_API_TOKEN
 const testParentPageId = process.env.NOTION_MD_TEST_PARENT_PAGE_ID
@@ -209,6 +209,36 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
     })
   })
 
+  it('sync pulls remote-only edits against Notion', async () => {
+    await withScratchPage('sync-remote-only', async (pageId) => {
+      await withTempDir(async (dir) => {
+        const path = join(dir, 'sync.nmd')
+        await runLive(pullPage({ pageId, outPath: path }))
+        await runLive(
+          NotionPages.updateMarkdown({
+            pageId,
+            type: 'replace_content',
+            new_str: '# Notion MD Live E2E\n\nRemote sync body',
+            allow_deleting_content: true,
+          }),
+        )
+
+        const synced = await runLive(syncPage({ path }))
+        const parsed = await runLive(
+          Effect.promise(() => readFile(path, 'utf8')).pipe(
+            Effect.flatMap((content) => parseNmdFile({ path, content })),
+          ),
+        )
+        const refreshed = await runLive(statusPage({ path }))
+
+        expect(synced._tag).toBe('pulled')
+        expect(parsed.body).toContain('Remote sync body')
+        expect(refreshed.localChanged).toBe(false)
+        expect(refreshed.remoteChanged).toBe(false)
+      })
+    })
+  })
+
   it('auto-merges non-overlapping local insertions and remote deletions against Notion', async () => {
     await withScratchPage('auto-merge-insert-delete', async (pageId) => {
       await withTempDir(async (dir) => {
@@ -259,8 +289,8 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
         const nextTitle = `notion-md property updated ${new Date().toISOString()}`
         await writeFile(
           path,
-          renderNmdFile(
-            {
+          renderNmdFile({
+            frontmatter: {
               notion_md: {
                 ...parsed.frontmatter.notion_md,
                 properties: {
@@ -269,8 +299,8 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
                 },
               },
             },
-            parsed.body,
-          ),
+            body: parsed.body,
+          }),
         )
 
         const pushed = await runLive(pushPage({ path }))

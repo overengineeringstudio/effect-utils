@@ -1,6 +1,7 @@
 import type { NmdFrontmatterV1 } from '@overeng/notion-effect-client'
 import { classifyNmdFrontmatterPayload } from '@overeng/notion-effect-client'
 
+/** Decision for whether `.nmd` auxiliary storage stays inline or moves to sidecar. */
 export type StorageDecision =
   | {
       readonly _tag: 'keep_self_contained'

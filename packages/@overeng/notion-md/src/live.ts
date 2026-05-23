@@ -52,16 +52,16 @@ const blockPayload = (block: Block): unknown => {
   return value === undefined ? {} : value
 }
 
-const storageFromUnknownBlocks = (
-  blocks: readonly Block[],
-  placeholders: readonly string[],
-): NmdStorage => ({
+const storageFromUnknownBlocks = (opts: {
+  readonly blocks: readonly Block[]
+  readonly placeholders: readonly string[]
+}): NmdStorage => ({
   _tag: 'self_contained',
-  unsupported_blocks: blocks.map((block, index) => ({
+  unsupported_blocks: opts.blocks.map((block, index) => ({
     _tag: 'unsupported_block',
     block_id: block.id,
     block_type: block.type,
-    placeholder: placeholders[index] ?? `<unknown alt="${block.type}"/>`,
+    placeholder: opts.placeholders[index] ?? `<unknown alt="${block.type}"/>`,
     snapshot: {
       object: 'block',
       id: block.id,
@@ -81,6 +81,7 @@ const storageFromUnknownBlocks = (
 const unknownPlaceholders = (markdown: string): readonly string[] =>
   [...markdown.matchAll(/<unknown\b[^>]*\/>/giu)].map((match) => match[0])
 
+/** Live Notion-backed gateway for page Markdown and page property operations. */
 export const NotionMdGatewayLive = Layer.effect(
   NotionMdGateway,
   Effect.gen(function* () {
@@ -116,10 +117,10 @@ export const NotionMdGatewayLive = Layer.effect(
             : {
                 page: toRemotePage(page),
                 markdown: remoteMarkdown,
-                storage: storageFromUnknownBlocks(
-                  unknownBlocks,
-                  unknownPlaceholders(markdown.markdown),
-                ),
+                storage: storageFromUnknownBlocks({
+                  blocks: unknownBlocks,
+                  placeholders: unknownPlaceholders(markdown.markdown),
+                }),
               }
         }),
       updateMarkdown: ({ pageId, markdown, allowDeletingContent }) =>

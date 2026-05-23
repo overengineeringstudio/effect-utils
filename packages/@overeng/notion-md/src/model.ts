@@ -2,6 +2,7 @@ import { Context, type Effect } from 'effect'
 
 import type { NmdStorage } from '@overeng/notion-effect-client'
 
+/** Remote Notion parent shapes normalized for `.nmd` frontmatter. */
 export type RemoteParent =
   | { readonly type: 'page_id'; readonly page_id: string }
   | { readonly type: 'data_source_id'; readonly data_source_id: string }
@@ -10,6 +11,7 @@ export type RemoteParent =
   | { readonly type: 'workspace'; readonly workspace: true }
   | { readonly type: 'unknown'; readonly raw: unknown }
 
+/** Stable page metadata needed to rebuild `.nmd` frontmatter after a pull. */
 export interface RemotePageSnapshot {
   readonly id: string
   readonly title: string
@@ -23,22 +25,26 @@ export interface RemotePageSnapshot {
   readonly properties: Record<string, unknown>
 }
 
+/** Markdown export result returned by Notion's enhanced Markdown endpoint. */
 export interface RemoteMarkdownSnapshot {
   readonly markdown: string
   readonly truncated: boolean
   readonly unknown_block_ids: readonly string[]
 }
 
+/** Complete remote page snapshot used by the sync engine. */
 export interface PullPageResult {
   readonly page: RemotePageSnapshot
   readonly markdown: RemoteMarkdownSnapshot
   readonly storage?: NmdStorage
 }
 
+/** Markdown update response from the live Notion gateway. */
 export interface UpdateMarkdownResult {
   readonly markdown: RemoteMarkdownSnapshot
 }
 
+/** Minimal gateway boundary between sync logic and the Notion API. */
 export interface NotionMdGatewayShape {
   readonly pullPage: (opts: { readonly pageId: string }) => Effect.Effect<PullPageResult, unknown>
   readonly updateMarkdown: (opts: {
@@ -52,6 +58,7 @@ export interface NotionMdGatewayShape {
   }) => Effect.Effect<RemotePageSnapshot, unknown>
 }
 
+/** Effect service tag for Notion Markdown sync operations. */
 export class NotionMdGateway extends Context.Tag('NotionMdGateway')<
   NotionMdGateway,
   NotionMdGatewayShape

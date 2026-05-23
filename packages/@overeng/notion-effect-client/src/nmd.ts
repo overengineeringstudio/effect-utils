@@ -258,14 +258,17 @@ export const decodeNmdFrontmatterV1Sync = Schema.decodeUnknownSync(
   nmdStrictParseOptions,
 )
 
+/** Size class for deciding whether `.nmd` metadata can stay in frontmatter. */
 export type NmdFrontmatterPayloadClass = 'small' | 'large' | 'too_large'
 
+/** Byte thresholds for `.nmd` frontmatter storage classification. */
 export interface ClassifyNmdFrontmatterPayloadOptions {
   readonly smallBytes?: number
   readonly largeBytes?: number
 }
 
 /** Classify whether frontmatter metadata should remain self-contained or move to sidecar. */
+// oxlint-disable-next-line overeng/named-args -- public helper already accepts value plus optional thresholds.
 export const classifyNmdFrontmatterPayload = (
   value: NmdFrontmatterV1,
   options?: ClassifyNmdFrontmatterPayloadOptions,

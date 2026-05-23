@@ -10,6 +10,7 @@ import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const peerDepNames = [
+  '@effect/cli',
   '@effect/cluster',
   '@effect/experimental',
   '@effect/opentelemetry',

@@ -11,7 +11,7 @@ import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown } from './hash.ts'
 import { NotionMdGateway, type PullPageResult } from './model.ts'
 import { baseSnapshotPath } from './sidecar.ts'
-import { pullPage, pushPage, statusPage } from './sync.ts'
+import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
 
 const pageId = '00000000-0000-4000-8000-000000000001'
 const blockId = '00000000-0000-4000-8000-000000000002'
@@ -255,6 +255,44 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('sync pushes local-only edits through the guarded push path', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Body', 'Local body'))
+
+      const synced = await runWithFake(syncPage({ path }), fake)
+      const status = await runWithFake(statusPage({ path }), fake)
+
+      expect(synced._tag).toBe('pushed')
+      expect(fake.remoteMarkdown(pageId)).toContain('Local body')
+      expect(status.localChanged).toBe(false)
+      expect(status.remoteChanged).toBe(false)
+    })
+  })
+
+  it('sync pulls remote-only edits into the existing local file', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      fake.mutateRemote(pageId, '# Probe\n\nRemote body')
+
+      const synced = await runWithFake(syncPage({ path }), fake)
+      const parsed = await parseFile(path)
+      const status = await runWithFake(statusPage({ path }), fake)
+
+      expect(synced._tag).toBe('pulled')
+      expect(parsed.body).toContain('Remote body')
+      expect(status.localChanged).toBe(false)
+      expect(status.remoteChanged).toBe(false)
+    })
+  })
+
   it('auto-merges non-overlapping local and remote body edits from the base snapshot', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([
@@ -373,8 +411,8 @@ describe('notion-md e2e prototype', () => {
       const parsed = await parseFile(path)
       await writeFile(
         path,
-        renderNmdFile(
-          {
+        renderNmdFile({
+          frontmatter: {
             notion_md: {
               ...parsed.frontmatter.notion_md,
               properties: {
@@ -383,8 +421,8 @@ describe('notion-md e2e prototype', () => {
               },
             },
           },
-          parsed.body,
-        ),
+          body: parsed.body,
+        }),
       )
 
       const pushed = await runWithFake(pushPage({ path }), fake)

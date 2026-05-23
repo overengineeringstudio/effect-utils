@@ -836,6 +836,9 @@ importers:
         specifier: workspace:^
         version: link:../notion-effect-schema
     devDependencies:
+      '@effect/cli':
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/cluster':
         specifier: 0.58.2
         version: 0.58.2(f335cd339cca8128b299febedcdd4641)

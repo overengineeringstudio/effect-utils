@@ -5,6 +5,7 @@ import { decodeNmdFrontmatterV1Sync, type NmdFrontmatterV1 } from '@overeng/noti
 import { NmdFrontmatterError } from './errors.ts'
 import { canonicalizeMarkdown } from './hash.ts'
 
+/** Parsed `.nmd` file split into validated frontmatter and canonical body. */
 export interface ParsedNmdFile {
   readonly frontmatter: NmdFrontmatterV1
   readonly body: string
@@ -13,8 +14,11 @@ export interface ParsedNmdFile {
 const frontmatterEndMarker = '\n---\n'
 
 /** Render strict frontmatter as JSON-compatible YAML to keep parsing dependency-free. */
-export const renderNmdFile = (frontmatter: NmdFrontmatterV1, body: string): string =>
-  `---\n${JSON.stringify(frontmatter, null, 2)}\n---\n\n${canonicalizeMarkdown(body)}`
+export const renderNmdFile = (opts: {
+  readonly frontmatter: NmdFrontmatterV1
+  readonly body: string
+}): string =>
+  `---\n${JSON.stringify(opts.frontmatter, null, 2)}\n---\n\n${canonicalizeMarkdown(opts.body)}`
 
 /** Parse the local `.nmd` envelope and validate it with the Effect schema. */
 export const parseNmdFile = (opts: {
