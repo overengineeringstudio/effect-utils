@@ -363,7 +363,7 @@ export const netlifyStorybookCommentStep = (site: string, deployModeScript: stri
     'if [ ! -s /tmp/storybook-preview-comment.md ]; then',
     '  exit 0',
     'fi',
-    'node -e "const fs=require(\'node:fs\'); fs.writeFileSync(process.argv[2], JSON.stringify({ body: fs.readFileSync(process.argv[1], \'utf8\') }))" /tmp/storybook-preview-comment.md /tmp/storybook-preview-comment-payload.json',
+    "node -e \"const fs=require('node:fs'); fs.writeFileSync(process.argv[2], JSON.stringify({ body: fs.readFileSync(process.argv[1], 'utf8') }))\" /tmp/storybook-preview-comment.md /tmp/storybook-preview-comment-payload.json",
     `export NIX_CONFIG="\${NIX_CONFIG:+$NIX_CONFIG$'\\n'}access-tokens = github.com=\${GH_TOKEN}"`,
     'if [ "${{ github.event_name }}" != "pull_request" ]; then',
     '  exit 0',

@@ -126,7 +126,12 @@ Batch result example:
   "failed": 1,
   "items": [
     { "_tag": "success", "operation": "sync", "path": "a.nmd", "result": { "_tag": "pushed" } },
-    { "_tag": "error", "operation": "sync", "path": "b.nmd", "error": { "_tag": "NmdConflictError" } }
+    {
+      "_tag": "error",
+      "operation": "sync",
+      "path": "b.nmd",
+      "error": { "_tag": "NmdConflictError" }
+    }
   ]
 }
 ```

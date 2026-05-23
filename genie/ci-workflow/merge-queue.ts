@@ -28,7 +28,7 @@ export const requiredCiMaterializingEvent =
   `(${fullPullRequestCiEvent}) && (github.event_name != 'pull_request' || (${mergeQueueAdmissionEvidence}))` as const
 
 export const nonScheduleRequiredGateIf =
-  '${{ always() && github.event_name != \'schedule\' }}' as const
+  "${{ always() && github.event_name != 'schedule' }}" as const
 
 export const mergeQueueWorkflowConcurrency = {
   group:
@@ -68,8 +68,7 @@ const mergeRequiredAdmissionPermissions = (
     ...permissions,
     contents: permissions.contents ?? defaultMergeQueuePermissions.contents,
     issues: permissions.issues ?? defaultMergeQueuePermissions.issues,
-    'pull-requests':
-      permissions['pull-requests'] ?? defaultMergeQueuePermissions['pull-requests'],
+    'pull-requests': permissions['pull-requests'] ?? defaultMergeQueuePermissions['pull-requests'],
   }
 }
 
@@ -163,15 +162,16 @@ export const mergeQueueAdmissionStep = (opts: MergeQueueAdmissionStepOptions = {
   run: [
     'set -euo pipefail',
     ...mergeQueueAdmissionCheckLines({
-      failureMessage:
-        opts.failureMessage ?? 'waiting for Hypermerge admission (mq:ci-admitted).',
-      notice:
-        opts.notice ?? 'Semantic gates fail closed until Hypermerge admits the queue head.',
+      failureMessage: opts.failureMessage ?? 'waiting for Hypermerge admission (mq:ci-admitted).',
+      notice: opts.notice ?? 'Semantic gates fail closed until Hypermerge admits the queue head.',
     }),
   ].join('\n'),
 })
 
-export type MergeQueueAdmittedJobOptions = Omit<WorkflowJob, 'if' | 'permissions' | 'runs-on' | 'steps'> & {
+export type MergeQueueAdmittedJobOptions = Omit<
+  WorkflowJob,
+  'if' | 'permissions' | 'runs-on' | 'steps'
+> & {
   readonly runsOn?: string | readonly string[]
   readonly permissions?: WorkflowJob['permissions']
   readonly steps: readonly WorkflowStep[]
@@ -194,8 +194,7 @@ export const mergeQueueAdmittedJob = ({
   permissions: mergeRequiredAdmissionPermissions(permissions),
   steps: [
     mergeQueueAdmissionStep({
-      failureMessage:
-        'legacy required check is waiting for Hypermerge admission (mq:ci-admitted).',
+      failureMessage: 'legacy required check is waiting for Hypermerge admission (mq:ci-admitted).',
       notice:
         'The full CI lane is intentionally gated so non-admitted PRs do not consume scarce Nix runners ahead of the queue head.',
       ...admission,

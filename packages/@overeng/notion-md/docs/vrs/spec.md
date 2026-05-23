@@ -493,7 +493,7 @@ Requirement trace: R01-R24.
 | Property merge bases        | Keep compact bases inline; move large or volatile bases into content-addressed objects by policy.                                                                           |
 | Comment anchoring           | Bridge Roughdraft comments only when exact selected text is unique in a known block; otherwise fall back to page-level comments.                                            |
 | Store index                 | Derive reachability from `.nmd` frontmatter and object refs. Add a JSON index only when repo-scale GC or multi-page watch needs it.                                         |
-| Batch sync                  | Keep the page/file sync engine as the correctness boundary. Batch and folder modes are orchestration only, with duplicate page-id preflight and per-file results.            |
+| Batch sync                  | Keep the page/file sync engine as the correctness boundary. Batch and folder modes are orchestration only, with duplicate page-id preflight and per-file results.           |
 | Webhooks                    | Polling remains the correctness baseline. A local daemon/tunnel may accelerate refresh; hosted relay is a separate product/security decision.                               |
 | CLI output                  | Use explicit output modes with versioned envelopes. Watch mode uses NDJSON events.                                                                                          |
 | Watch events                | Use Effect Platform streams plus a deterministic reducer/queue policy. Avoid raw `fs.watch` ownership in package code.                                                      |
