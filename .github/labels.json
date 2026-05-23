@@ -36,9 +36,34 @@
       "description": "Effect framework usage"
     },
     {
+      "name": "area:genie",
+      "color": "1d76db",
+      "description": "genie config generator runtime + CLI"
+    },
+    {
+      "name": "area:megarepo",
+      "color": "1d76db",
+      "description": "megarepo CLI and conventions"
+    },
+    {
       "name": "area:nix",
       "color": "1d76db",
       "description": "Nix flakes, derivations, FOD hashes, builders"
+    },
+    {
+      "name": "area:nix-hash",
+      "color": "1d76db",
+      "description": "Nix hash determinism/staleness (pnpmDepsHash, lockfileHash, FOD cache behavior)"
+    },
+    {
+      "name": "area:notion",
+      "color": "1d76db",
+      "description": "Notion API client / react / schema packages"
+    },
+    {
+      "name": "area:pty-effect",
+      "color": "1d76db",
+      "description": "pty-effect client and server"
     },
     {
       "name": "area:rust",
@@ -218,10 +243,12 @@
   ],
   "deprecated": [
     "bug",
+    "devenv",
     "documentation",
     "duplicate",
     "enhancement",
     "invalid",
+    "nix-hash",
     "question",
     "wontfix"
   ],
@@ -231,12 +258,20 @@
       "to": "type:bug"
     },
     {
+      "from": "devenv",
+      "to": "area:devenv"
+    },
+    {
       "from": "documentation",
       "to": "type:docs"
     },
     {
       "from": "enhancement",
       "to": "type:feature"
+    },
+    {
+      "from": "nix-hash",
+      "to": "area:nix-hash"
     }
   ]
 }

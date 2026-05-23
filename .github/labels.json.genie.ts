@@ -15,6 +15,15 @@ import { githubLabels, type LabelDef } from '../packages/@overeng/genie/src/runt
 const effectUtilsAreaLabels: readonly LabelDef[] = [
   { name: 'area:rust', color: '1d76db', description: 'Rust code and tooling' },
   { name: 'area:tui', color: '1d76db', description: 'tui-react / tui-stories / TUI rendering' },
+  {
+    name: 'area:nix-hash',
+    color: '1d76db',
+    description: 'Nix hash determinism/staleness (pnpmDepsHash, lockfileHash, FOD cache behavior)',
+  },
+  { name: 'area:notion', color: '1d76db', description: 'Notion API client / react / schema packages' },
+  { name: 'area:pty-effect', color: '1d76db', description: 'pty-effect client and server' },
+  { name: 'area:genie', color: '1d76db', description: 'genie config generator runtime + CLI' },
+  { name: 'area:megarepo', color: '1d76db', description: 'megarepo CLI and conventions' },
 ]
 
 /** Repo-local utility labels used by automation in this repo. */
@@ -36,6 +45,13 @@ const effectUtilsAutomationLabels: readonly LabelDef[] = [
   },
 ]
 
+/** Repo-local orphans being migrated into the structured `area:*` axis. */
+const repoLocalDeprecated: readonly string[] = ['devenv', 'nix-hash']
+const repoLocalLegacyMigrations = [
+  { from: 'devenv', to: 'area:devenv' },
+  { from: 'nix-hash', to: 'area:nix-hash' },
+] as const
+
 export default githubLabels({
   labels: [
     ...commonLabels,
@@ -44,6 +60,6 @@ export default githubLabels({
     ...effectUtilsAreaLabels,
     ...effectUtilsAutomationLabels,
   ],
-  deprecated: deprecatedDefaults,
-  legacyMigrations,
+  deprecated: [...deprecatedDefaults, ...repoLocalDeprecated],
+  legacyMigrations: [...legacyMigrations, ...repoLocalLegacyMigrations],
 })
