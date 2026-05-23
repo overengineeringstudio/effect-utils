@@ -1,10 +1,11 @@
 import type { HttpClient } from '@effect/platform'
-import { Effect, type Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 
 import { type Page, PageMarkdownSchema, PageSchema } from '@overeng/notion-effect-schema'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
+import { NotionApiError as NotionApiErrorClass } from './error.ts'
 import { get, patch, post } from './internal/http.ts'
 import { decodePage, type PageDecodeError, type TypedPage } from './typed-page.ts'
 
@@ -117,6 +118,31 @@ export type UpdateMarkdownOptions = {
       readonly allow_deleting_content?: boolean
     }
 )
+
+const MarkdownContentUpdateSchema = Schema.Struct({
+  old_str: Schema.String,
+  new_str: Schema.String,
+  replace_all_matches: Schema.optional(Schema.Boolean),
+}).annotations({ identifier: 'NotionPages.MarkdownContentUpdate' })
+
+const UpdateMarkdownRequestSchema = Schema.Union(
+  Schema.Struct({
+    type: Schema.Literal('update_content'),
+    update_content: Schema.Struct({
+      content_updates: Schema.NonEmptyArray(MarkdownContentUpdateSchema),
+      allow_deleting_content: Schema.optional(Schema.Boolean),
+    }),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('replace_content'),
+    replace_content: Schema.Struct({
+      new_str: Schema.String,
+      allow_deleting_content: Schema.optional(Schema.Boolean),
+    }),
+  }),
+).annotations({ identifier: 'NotionPages.UpdateMarkdownRequest' })
+
+const decodeUpdateMarkdownRequest = Schema.decodeUnknown(UpdateMarkdownRequestSchema)
 
 /** Options for moving a page */
 export interface MovePageOptions {
@@ -295,7 +321,20 @@ export const updateMarkdown = Effect.fn('NotionPages.updateMarkdown')(function* 
   opts: UpdateMarkdownOptions,
 ) {
   const { pageId, type, ...rest } = opts
-  const body = { type, [type]: rest }
+  const body = yield* decodeUpdateMarkdownRequest({ type, [type]: rest }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotionApiErrorClass({
+          status: 0,
+          code: 'invalid_request',
+          message: `Invalid page markdown update request: ${cause.message}`,
+          retryAfterSeconds: Option.none(),
+          requestId: Option.none(),
+          url: Option.some(`/pages/${pageId}/markdown`),
+          method: Option.some('PATCH'),
+        }),
+    ),
+  )
 
   return yield* patch({
     path: `/pages/${pageId}/markdown`,

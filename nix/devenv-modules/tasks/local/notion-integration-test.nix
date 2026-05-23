@@ -20,6 +20,10 @@ let
       path = "packages/@overeng/notion-cli";
       name = "notion-cli";
     }
+    {
+      path = "packages/@overeng/notion-md";
+      name = "notion-md";
+    }
   ];
   vitestExec = ''
     set -euo pipefail

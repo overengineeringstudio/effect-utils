@@ -30,6 +30,21 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-client**: Add `markdown` option to `CreatePageOptions` (alternative to `children`)
 - **@overeng/notion-effect-client**: Add `is_locked` and `erase_content` to `UpdatePageOptions`
 - **@overeng/notion-effect-client**: Add `filterProperties` and `inTrash` to data source query options
+- **@overeng/notion-effect-client**: Add strict `.nmd` frontmatter schemas and a storage-size classifier for Notion enhanced Markdown sync metadata
+- **@overeng/notion-md**: Add prototype `notion-md` CLI package for self-contained `.nmd` pull/status/push flows with guarded conflict detection and sidecar escalation tests
+- **@overeng/notion-md**: Add live Notion E2E coverage for pull/status/push/conflict detection and wire it into the Notion integration CI job
+- **@overeng/notion-md**: Expose `notion-md` as a Nix flake package with managed pnpm dependency hash refresh support
+- **@overeng/notion-md**: Harden push safety for unknown blocks, Roughdraft review markup, body conflicts with base snapshots, and explicit typed property writes
+- **@overeng/notion-md**: Add conservative automatic three-way body merge for non-overlapping line edits, insertions, and deletions
+- **@overeng/notion-md**: Replace ad hoc sidecar/base files with strict frontmatter object refs and an Effect-native content-addressed `.notion-md` state store
+- **@overeng/notion-md**: Use Notion Markdown `update_content` for proven unique body edits, with guarded `replace_content` fallback and live Notion E2E coverage
+- **@overeng/notion-md**: Extract body merge/update planning into a focused pure module with unit coverage
+- **@overeng/notion-md docs**: Consolidate scattered research/spec notes into the package-local VRS docs under `packages/@overeng/notion-md/docs/vrs/`
+- **@overeng/notion-md docs**: Add package-local usage docs for getting started, CLI workflows, `.nmd` format, sync safety, and troubleshooting
+- **@overeng/notion-md**: Add a durable Notion live E2E run ledger and a committed demo `.nmd` fixture synced with the automated Notion showcase page
+- **@overeng/notion-md**: Push modeled page metadata from strict frontmatter, including page lock/trash state plus writable icon and cover shapes, and add typed `place`/`verification` property frontmatter values
+- **@overeng/notion-md docs**: Fold the remaining VRS design decisions into `spec.md` and remove the companion question log
+- **@overeng/notion-md**: Add a TUI Storybook for CLI output states and wire it into the shared Storybook task registry
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
 
 ### Fixed
@@ -39,6 +54,12 @@ All notable changes to this project will be documented in this file.
   - Restores the intended `dt nix:hash:genie` workflow for package-version bumps that only need the fixed-output deps hash refreshed
 - **@overeng/notion-react**: Route `<ChildPage>` title updates through `pages.update` instead of `blocks.update` (#618). Notion's `PATCH /v1/blocks/{id}` rejects a `{ child_page: { title } }` body with `validation_error`; the sync driver now emits `PATCH /v1/pages/{id}` with a properly-shaped `title` property for `child_page` updates.
 - **@overeng/pty-effect/client**: Fix flaky timeout in `followEvents` (#577) — `asyncScoped`'s setup ran lazily inside the forked consumer fiber, missing events fired before the fiber started. Replaced with `Stream.asyncPush` (setup still lazy, but `emit.single` is now correctly synchronous for `fs.watch` callbacks). Test updated to watch `session_exit` instead of `session_start`, since `EventFollower.watchFile` starts reading at the current end-of-file when a new session is discovered, making `session_start` unreachable via live following.
+- **@overeng/notion-md**: Verify content-addressed object bytes exactly, reject object-store inventory mismatches, and emit structured watch errors as compact JSON lines
+- **@overeng/notion-md**: Allow property-only pushes across concurrent remote body edits, clear stale unknown-block storage after destructive replacements, and normalize object-ref path checks cross-platform
+- **@overeng/notion-md**: Route watch file events through Effect Platform `FileSystem.watch` while preserving scoped cancellation, polling, debounce, and recoverable sync-error behavior
+- **@overeng/notion-md**: Add batch multi-file and recursive folder orchestration for `status`, `push`, and `sync`, including duplicate page-id preflight, per-file result envelopes, bounded concurrency, and multi-file watch mode
+- **@overeng/notion-md docs**: Add a recursive workspace demo template that shows multi-file folder sync setup without committing placeholder pages as live targets
+- **@overeng/notion-md**: Give CLI subprocess e2e checks explicit timeouts so CI load does not fail the help-path smoke test at Vitest's default 5s limit
 
 ### Changed
 
@@ -62,6 +83,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-schema**: Add `data_source_id` parent variant to `PageParent` schema
 - **@overeng/notion-effect-schema**: Rename `DataSource` → `DataSourceRef` for lightweight reference in `DatabaseSchema.data_sources`
 - **@overeng/notion-effect-client**: Widen `SchemaHelpers` to accept both `DatabaseSchema` and `DataSourceSchema`
+- **@overeng/notion-md**: Require `NOTION_TOKEN` as the only Notion credential environment variable across code, docs, tests, and SecretSpec
 
 ### Fixed
 

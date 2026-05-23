@@ -4,7 +4,6 @@ import { applyMegarepoLockStep } from './megarepo.ts'
 import {
   bashShellDefaults,
   cachixHostsFromBinaryCaches,
-  devenvBinaryCache,
   jobLocalCiDiagnosticsDir,
   jobLocalPnpmHome,
   jobLocalPnpmStatePaths,
