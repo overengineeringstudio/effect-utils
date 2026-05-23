@@ -21,39 +21,56 @@ import {
   type RemotePageSnapshot,
 } from './model.ts'
 
-const titleFromProperties = (properties: Record<string, unknown>): string => {
-  for (const property of Object.values(properties)) {
+/*
+ * Notion's title property is named "title" on standalone pages but is named
+ * after the database column on database/data-source pages (commonly "Name").
+ * The only stable signal is `type === 'title'` on the property value. We
+ * return both the plain text and the property *key* so writers (which need
+ * the key to call `properties.update`) don't have to re-scan.
+ */
+const findTitleProperty = (
+  properties: Record<string, unknown>,
+): { readonly key: string; readonly title: string } => {
+  for (const [key, property] of Object.entries(properties)) {
     if (typeof property !== 'object' || property === null || 'type' in property === false) {
       continue
     }
-
     const typed = property as {
       readonly type?: unknown
       readonly title?: readonly { readonly plain_text?: unknown }[]
     }
-
     if (typed.type === 'title' && Array.isArray(typed.title) === true) {
-      return typed.title
+      const title = typed.title
         .map((part) => (typeof part.plain_text === 'string' ? part.plain_text : ''))
         .join('')
+      return { key, title }
     }
   }
-
-  return 'Untitled'
+  /*
+   * Default key matches Notion's standalone-page convention. If we reach
+   * here the property scan didn't find a title property at all (unusual
+   * but possible for archived/locked pages); the title is empty and any
+   * later write keyed on `"title"` will fail loudly at the API.
+   */
+  return { key: 'title', title: 'Untitled' }
 }
 
-const toRemotePage = (page: Page): RemotePageSnapshot => ({
-  id: page.id,
-  title: titleFromProperties(page.properties),
-  url: page.url,
-  parent: page.parent,
-  icon: page.icon,
-  cover: page.cover,
-  in_trash: page.in_trash,
-  is_locked: page.is_locked ?? false,
-  last_edited_time: page.last_edited_time,
-  properties: page.properties,
-})
+const toRemotePage = (page: Page): RemotePageSnapshot => {
+  const titleProperty = findTitleProperty(page.properties)
+  return {
+    id: page.id,
+    title: titleProperty.title,
+    title_property_key: titleProperty.key,
+    url: page.url,
+    parent: page.parent,
+    icon: page.icon,
+    cover: page.cover,
+    in_trash: page.in_trash,
+    is_locked: page.is_locked ?? false,
+    last_edited_time: page.last_edited_time,
+    properties: page.properties,
+  }
+}
 
 const blockPayload = (block: Block): unknown => {
   const value = block[block.type]
@@ -166,7 +183,18 @@ export const NotionMdGatewayLive = Layer.effect(
             provideHttp(NotionBlocks.retrieve({ blockId })),
           )
           const remoteMarkdown = {
-            markdown: canonicalizeMarkdown(markdown.markdown),
+            /*
+             * Canonicalize on pull so the on-disk body, the base snapshot,
+             * and every diff `planMarkdownUpdate` sees are all in the
+             * canonical form. This makes the wire boundary canonical
+             * *by construction* for both `replace_content` and
+             * `update_content` — without it, `update_content`'s
+             * `old_str`/`new_str` would still reference user-wrap-form
+             * text and Notion would render new paragraphs with soft
+             * breaks intact (the gap called out in the proposal's
+             * "Apply on pull too" guidance).
+             */
+            markdown: canonicalizeBlockMarkdown(markdown.markdown),
             truncated: markdown.truncated,
             unknown_block_ids: markdown.unknown_block_ids,
           }
@@ -260,18 +288,17 @@ export const NotionMdGatewayLive = Layer.effect(
           NotionPages.update({
             pageId,
             /*
-             * Title is a Notion *property* (`properties.title`) rather than a
-             * top-level page field, so we encode it into the same `properties`
-             * payload `updatePageProperties` would use. Keeping it here lets
-             * the sync engine treat title as part of the page metadata block
-             * (alongside icon/cover/lock) instead of forcing every caller to
-             * synthesize a properties update.
+             * Title is a Notion *property* rather than a top-level page field.
+             * Database/data-source pages name that property after the database
+             * column (often `"Name"`), so we route the update through the key
+             * `RemotePageSnapshot.title_property_key` captured at pull time —
+             * never assume `properties.title`.
              */
             ...(metadata.title !== undefined
               ? {
                   properties: {
-                    title: {
-                      title: [{ type: 'text', text: { content: metadata.title } }],
+                    [metadata.title.key]: {
+                      title: [{ type: 'text', text: { content: metadata.title.value } }],
                     },
                   },
                 }

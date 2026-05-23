@@ -44,6 +44,13 @@ export type RemoteParent =
 export interface RemotePageSnapshot {
   readonly id: string
   readonly title: string
+  /*
+   * Property key under which Notion stores the title rich-text. On standalone
+   * pages this is `"title"`; on database/data-source pages it matches the
+   * database column name (commonly `"Name"`). Carried alongside so writes
+   * can target the correct key without re-scanning the property bag.
+   */
+  readonly title_property_key: string
   readonly url: string | undefined
   readonly parent: RemoteParent
   readonly icon: NmdPageState['icon']
@@ -87,7 +94,13 @@ export type WritablePageCover = null | Extract<
 
 /** Field-level page metadata patch derived from strict frontmatter. */
 export interface PageMetadataUpdate {
-  readonly title?: string
+  /*
+   * Title update carries the property *key* under which Notion stores the
+   * title rich-text — required because database/data-source pages name
+   * that property after the database column, not always `"title"`. The
+   * sync engine sources `title_property_key` from `RemotePageSnapshot`.
+   */
+  readonly title?: { readonly key: string; readonly value: string }
   readonly icon?: WritablePageIcon
   readonly cover?: WritablePageCover
   readonly in_trash?: boolean

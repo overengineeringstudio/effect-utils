@@ -215,7 +215,7 @@ class FakeNotion {
         const page = this.requirePage(id)
         const next = {
           ...page,
-          title: metadata.title === undefined ? page.title : metadata.title,
+          title: metadata.title === undefined ? page.title : metadata.title.value,
           icon: metadata.icon === undefined ? page.icon : metadata.icon,
           cover: metadata.cover === undefined ? page.cover : metadata.cover,
           inTrash: metadata.in_trash === undefined ? page.inTrash : metadata.in_trash,
@@ -226,7 +226,13 @@ class FakeNotion {
       }),
     createPage: (input) =>
       Effect.sync(() => {
-        const newId = `00000000-0000-4000-8000-${(this.pages.size + 1)
+        /*
+         * Seed the fake-id counter above the maximum hand-rolled fixture
+         * id so a `new FakeNotion([])` + create never collides with the
+         * top-of-file `pageId` constant (`…000001`). Any future test that
+         * relies on the constant after a create gets stable distinct ids.
+         */
+        const newId = `00000000-0000-4000-8000-${(this.pages.size + 1001)
           .toString()
           .padStart(12, '0')}`
         const page: Required<FakePage> = {
@@ -324,6 +330,7 @@ class FakeNotion {
       page: {
         id: page.pageId,
         title: page.title,
+        title_property_key: 'title',
         url: `https://www.notion.so/${page.pageId.replaceAll('-', '')}`,
         parent: { type: 'page_id', page_id: pageId },
         icon: page.icon,
@@ -1681,6 +1688,74 @@ describe('notion-md e2e prototype', () => {
         throw new Error('Expected statusPage to fail')
       }
       expect(result.left).toBeInstanceOf(NmdFrontmatterError)
+    })
+  })
+
+  it('fails loudly when the sidecar is missing for a materialized page', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      /*
+       * Simulate a fresh-clone-of-gitignored-`.notion-md/` scenario by
+       * wiping the sidecar. With a materialized `.nmd` (page_id set) the
+       * engine must refuse to operate rather than silently treat the
+       * local body as a baseline — that path produced silent no-op
+       * pushes in the original §6 implementation.
+       */
+      await rm(join(dir, '.notion-md'), { recursive: true, force: true })
+
+      const result = await runEitherWithFake(statusPage({ path }), fake)
+
+      expect(result).toMatchObject({
+        _tag: 'Left',
+        left: {
+          _tag: 'NmdFrontmatterError',
+          path,
+        },
+      })
+      if (result._tag !== 'Left') {
+        throw new Error('Expected statusPage to fail')
+      }
+      expect(result.left.message).toContain('Missing sidecar sync state')
+      expect(result.left.message).toContain(pageId)
+    })
+  })
+
+  it('keeps derived sync state in the sidecar, not the frontmatter', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          properties: { Status: { type: 'select', select: { name: 'Ready' } } },
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+
+      /*
+       * Shape contract for the V2 split: derived bookkeeping must live in
+       * the sidecar (`.notion-md/sync/{page_id}.json`), the on-disk `.nmd`
+       * must only carry user-facing state. Anything we accidentally
+       * resurrect on the frontmatter side defeats the §6 design goal.
+       */
+      const parsed = await parseFile(path)
+      const frontmatter = parsed.frontmatter.notion_md as Record<string, unknown>
+      expect(frontmatter.body).toBeUndefined()
+      expect(frontmatter.storage).toBeUndefined()
+      expect(frontmatter.data_source).toBeUndefined()
+      expect(frontmatter.version).toBe(2)
+
+      const syncState = await readSyncStateFile(path)
+      expect(syncState.body.hash).toMatch(/^sha256:[a-f0-9]{64}$/u)
+      expect(syncState.storage._tag).toBe('self_contained')
+      expect(syncState.read_only_properties.Status).toEqual({
+        property_type: 'select',
+        value: { type: 'select', select: { name: 'Ready' } },
+      })
     })
   })
 

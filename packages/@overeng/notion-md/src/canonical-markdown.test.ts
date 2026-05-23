@@ -73,4 +73,16 @@ describe('semanticEquivalent', () => {
     const returnedFromNotion = 'three two one\n'
     expect(semanticEquivalent(sent, returnedFromNotion)).toBe(false)
   })
+
+  it('flags whitespace-significant diffs inside fenced code blocks', () => {
+    const sent = 'Intro.\n\n```ts\nconst x = 1\n  const y = 2\n```\n'
+    const drifted = 'Intro.\n\n```ts\nconst x = 1\nconst y = 2\n```\n'
+    expect(semanticEquivalent(sent, drifted)).toBe(false)
+  })
+
+  it('accepts equivalent fenced code blocks verbatim', () => {
+    const sent = 'Intro.\n\n```ts\nconst x = 1\nconst y = 2\n```\n'
+    const same = 'Intro.\n```ts\nconst x = 1\nconst y = 2\n```\n'
+    expect(semanticEquivalent(sent, same)).toBe(true)
+  })
 })

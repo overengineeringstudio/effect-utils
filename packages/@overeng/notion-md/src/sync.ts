@@ -200,7 +200,7 @@ const pageMetadataUpdate = (opts: {
   readonly remote: RemotePageSnapshot
 }): PageMetadataUpdate => {
   const update: {
-    title?: string
+    title?: { readonly key: string; readonly value: string }
     icon?: WritablePageIcon
     cover?: WritablePageCover
     in_trash?: boolean
@@ -208,7 +208,7 @@ const pageMetadataUpdate = (opts: {
   } = {}
 
   if (opts.local.title !== opts.remote.title) {
-    update.title = opts.local.title
+    update.title = { key: opts.remote.title_property_key, value: opts.local.title }
   }
 
   if (stableJson(opts.local.icon) !== stableJson(opts.remote.icon)) {
@@ -588,11 +588,25 @@ const readNmd = (
      */
     let syncState: NmdSyncStateV1 | undefined
     if (pageId === null) {
+      /* Unmaterialized `.nmd` — no sidecar yet, push will create one. */
       syncState = undefined
     } else {
-      syncState = yield* store.readSyncStateOptional({ path, pageId })
-    }
-    if (syncState !== undefined) {
+      const loaded = yield* store.readSyncStateOptional({ path, pageId })
+      if (loaded === undefined) {
+        /*
+         * A materialized `.nmd` (page_id set) without a sidecar is the
+         * fresh-clone case: `.notion-md/sync/` is gitignored, the user
+         * checked out the working tree without it. Treating the local
+         * body as the baseline silently no-ops `push` when the user has
+         * also edited (the "remote changed, local clean" branch fires).
+         * Fail fast with a clear instruction to re-pull instead.
+         */
+        return yield* new NmdFrontmatterError({
+          path,
+          message: `Missing sidecar sync state for page ${pageId}. Run \`notion-md pull ${pageId} --out ${path}\` to rebuild it.`,
+        })
+      }
+      syncState = loaded
       yield* validateReferencedObjects({ path, syncState })
     }
     return {
