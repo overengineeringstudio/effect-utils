@@ -319,9 +319,12 @@ const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
 const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
 
 const runWithFake = <A>(
-  effect: Effect.Effect<A, unknown, NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, unknown, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
   fake: FakeNotion,
-) => Effect.runPromise(effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer))))
+) =>
+  Effect.runPromise(
+    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+  )
 
 const runEitherWithFake = <A, E>(
   effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore>,

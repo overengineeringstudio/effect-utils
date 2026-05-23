@@ -4,7 +4,7 @@ This document specifies the Notion Markdown sync system. It builds on [requireme
 
 ## Status
 
-Draft -- the implemented `@overeng/notion-md` package covers the core body/property sync path, strict `.nmd` frontmatter, content-addressed local state, guarded push/sync/watch behavior, and live Notion E2E coverage. File bytes, comment projection, full data-source property merging, webhook delivery, and stable CLI output modes remain design questions.
+Draft -- the implemented `@overeng/notion-md` package covers the core body/property sync path, strict `.nmd` frontmatter, content-addressed local state, guarded push/sync/watch behavior, Effect Platform file watching, and live Notion E2E coverage. File bytes, comment projection, full data-source property merging, and webhook delivery are designed surfaces that remain outside the implemented core.
 
 ## Scope
 
@@ -325,23 +325,23 @@ Normal push refuses unresolved Roughdraft review markup. Explicit modes may late
 
 Requirement trace: R01-R05.
 
-| Notion feature              | Local body representation               | Non-body state                | Fidelity / policy                      |
-| --------------------------- | --------------------------------------- | ----------------------------- | -------------------------------------- |
-| Page title/icon/cover       | not body                                | frontmatter page fields       | title preserved; icon/cover modeled    |
-| Page lock/trash state       | not body                                | frontmatter page fields       | field-level page API patch             |
-| Paragraphs, headings, lists | stock Markdown/enhanced Markdown        | none                          | supported with Notion normalization    |
-| To-dos, quotes, dividers    | stock Markdown/enhanced Markdown        | none                          | supported                              |
-| Code blocks                 | fenced blocks                           | language normalization        | supported; aliases may normalize       |
-| Equations                   | Markdown/enhanced math syntax           | DQ1                           | block equations supported; inline open |
-| Callouts, toggles, tables   | enhanced Markdown tags                  | color/attribute normalization | supported with normalization caveats   |
-| Columns                     | enhanced column tags                    | none                          | supported by endpoint, needs coverage  |
-| Images/files/media          | Markdown/enhanced media tags            | future file payloads          | not fully implemented                  |
-| Bookmark/embed/link preview | `<unknown ...>` placeholder             | unsupported block unit/object | preserve or explicit delete            |
-| Child page/database         | enhanced reference tags or placeholders | future ownership records      | preserve by default                    |
-| Data-source row properties  | not body                                | typed property map            | modeled writable properties            |
-| Data-source schema/views    | not body                                | future schema snapshot        | not implemented                        |
-| Comments                    | not body                                | future comment bridge         | not implemented                        |
-| Suggestions/review          | Roughdraft local layer                  | review state                  | reject unresolved by default           |
+| Notion feature              | Local body representation               | Non-body state                  | Fidelity / policy                     |
+| --------------------------- | --------------------------------------- | ------------------------------- | ------------------------------------- |
+| Page title/icon/cover       | not body                                | frontmatter page fields         | title preserved; icon/cover modeled   |
+| Page lock/trash state       | not body                                | frontmatter page fields         | field-level page API patch            |
+| Paragraphs, headings, lists | stock Markdown/enhanced Markdown        | none                            | supported with Notion normalization   |
+| To-dos, quotes, dividers    | stock Markdown/enhanced Markdown        | none                            | supported                             |
+| Code blocks                 | fenced blocks                           | language normalization          | supported; aliases may normalize      |
+| Equations                   | Markdown/enhanced math syntax           | raw rich-text fallback if lossy | block supported; inline conservative  |
+| Callouts, toggles, tables   | enhanced Markdown tags                  | color/attribute normalization   | supported with normalization caveats  |
+| Columns                     | enhanced column tags                    | none                            | supported by endpoint, needs coverage |
+| Images/files/media          | Markdown/enhanced media tags            | future file payloads            | not fully implemented                 |
+| Bookmark/embed/link preview | `<unknown ...>` placeholder             | unsupported block unit/object   | preserve or explicit delete           |
+| Child page/database         | enhanced reference tags or placeholders | future ownership records        | preserve by default                   |
+| Data-source row properties  | not body                                | typed property map              | modeled writable properties           |
+| Data-source schema/views    | not body                                | future schema snapshot          | not implemented                       |
+| Comments                    | not body                                | future comment bridge           | not implemented                       |
+| Suggestions/review          | Roughdraft local layer                  | review state                    | reject unresolved by default          |
 
 Known Notion enhanced Markdown limitations:
 
@@ -409,9 +409,10 @@ Environment:
 
 Output:
 
-- One-shot commands currently emit pretty JSON results.
-- Watch emits compact JSON lines.
+- One-shot commands emit pretty JSON results by default.
+- Watch emits compact NDJSON event lines by default.
 - Watch `sync_error` events include structured typed error fields.
+- The long-term stable contract is explicit `--output human|json|ndjson`, with `auto` allowed only as a convenience alias after envelope schemas are versioned.
 
 Future CLI contract:
 
@@ -421,8 +422,6 @@ notion-md comments pull|push <file.nmd>
 notion-md doctor <page-id-or-url|file.nmd>
 notion-md store verify|gc|export <file.nmd>
 ```
-
-DQ: stable output modes should distinguish human, JSON, and NDJSON envelopes.
 
 ## Watch Lifecycle
 
@@ -441,8 +440,27 @@ Rules:
 - Each pass emits `sync` or `sync_error`.
 - Sync-pass spans observe failures before the watch loop recovers.
 - Interruption closes the watcher, stops polling, and cancels queued work.
+- File events come from the Effect Platform `FileSystem.watch` stream. Production
+  adapters are thin stream producers; coalescing policy stays in the watch loop.
 
-Known gap: the current implementation uses Node `fs.watch` callbacks and real sleeps. Future work should isolate the event/clock core so coalescing and self-write suppression are deterministic in tests.
+The watch core uses a sliding queue and debounce window. Future tests may inject
+source streams and `TestClock`, but production code must stay on Effect Platform
+watch primitives instead of raw runtime callbacks.
+
+## Long-Term Decisions
+
+Requirement trace: R01-R24.
+
+| Area                        | Decision                                                                                                                                                                    |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inline equations            | Treat inline equations conservatively until raw rich-text evidence proves Notion's Markdown endpoint preserves equation semantics. If not, preserve spans outside the body. |
+| Page/data-source references | Use stock enhanced Markdown where Notion round-trips references. Preserve unsupported references with block API snapshots and object refs.                                  |
+| Property merge bases        | Keep compact bases inline; move large or volatile bases into content-addressed objects by policy.                                                                           |
+| Comment anchoring           | Bridge Roughdraft comments only when exact selected text is unique in a known block; otherwise fall back to page-level comments.                                            |
+| Store index                 | Derive reachability from `.nmd` frontmatter and object refs. Add a JSON index only when repo-scale GC or multi-page watch needs it.                                         |
+| Webhooks                    | Polling remains the correctness baseline. A local daemon/tunnel may accelerate refresh; hosted relay is a separate product/security decision.                               |
+| CLI output                  | Use explicit output modes with versioned envelopes. Watch mode uses NDJSON events.                                                                                          |
+| Watch events                | Use Effect Platform streams plus a deterministic reducer/queue policy. Avoid raw `fs.watch` ownership in package code.                                                      |
 
 ## OpenTelemetry
 
@@ -501,15 +519,6 @@ The automated demo page is not a test scratch page. It is the durable 1:1
 showcase for local `.nmd` and Notion state. Its local file and reachable object
 store entries are committed under `packages/@overeng/notion-md/demo/`.
 
-Follow-up hardening is tracked in the PR issue for required live-lane policy, OTEL span assertions, stable CLI output modes, deterministic watch-core tests, and broader storage/comment coverage.
-
-## Design Questions
-
-- **DQ1 Inline equation fidelity:** Determine whether escaped inline equation pull output is a rendering artifact or loss of equation semantics.
-- **DQ2 Page/database reference writes:** Determine the supported write path for page and database references.
-- **DQ3 Property snapshots:** Decide whether last-clean property snapshots stay inline or become content-addressed objects.
-- **DQ4 Comment anchoring:** Define when Roughdraft anchors are stable enough to project to Notion comments.
-- **DQ5 Store index backend:** Choose JSON or SQLite for `.notion-md/index` based on repository size and concurrent watch requirements.
-- **DQ6 Webhook deployment:** Decide whether webhook support is local daemon, hosted service, or optional integration point.
-- **DQ7 CLI output modes:** Define stable human, JSON, and NDJSON envelopes.
-- **DQ8 Watch event core:** Define how file events, self-writes, poll events, and webhook marks coalesce deterministically.
+Follow-up hardening is tracked in the PR issue for required live-lane policy,
+OTEL span assertions, versioned CLI output schemas, deterministic watch-core
+tests, and broader storage/comment coverage.

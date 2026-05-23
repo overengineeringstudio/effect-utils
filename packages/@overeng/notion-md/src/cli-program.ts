@@ -1,8 +1,7 @@
-import { watch as watchFile } from 'node:fs'
-import { basename, dirname } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 
 import { Args, Command, Options } from '@effect/cli'
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient, FileSystem } from '@effect/platform'
 import {
   Cause,
   Console,
@@ -12,8 +11,8 @@ import {
   Option,
   Queue,
   Redacted,
-  Runtime,
   Schema,
+  Stream,
 } from 'effect'
 
 import { NotionConfigLive } from '@overeng/notion-effect-client'
@@ -155,13 +154,13 @@ const writeJsonLine = (value: unknown): Effect.Effect<void> =>
 
 type WatchReason = 'file' | 'initial' | 'poll'
 
-interface WatchEvent {
+interface WatchTrigger {
   readonly reason: WatchReason
 }
 
 const nextWatchReason = (opts: {
-  readonly initial: WatchEvent
-  readonly pending: Iterable<WatchEvent>
+  readonly initial: WatchTrigger
+  readonly pending: Iterable<WatchTrigger>
 }): WatchReason => {
   let reason = opts.initial.reason
   for (const event of opts.pending) {
@@ -175,19 +174,16 @@ export const runWatch = (opts: {
   readonly syncOptions: SyncOptions
   readonly pollIntervalMs: number
   readonly emit?: (value: unknown) => Effect.Effect<void>
-}): Effect.Effect<never, never, NotionMdGateway | NmdStateStore> =>
+}): Effect.Effect<never, never, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const queue = yield* Queue.sliding<WatchEvent>(1024)
-      const runtime = yield* Effect.runtime<never>()
+      const fs = yield* FileSystem.FileSystem
+      const queue = yield* Queue.sliding<WatchTrigger>(1024)
       const emit = opts.emit ?? writeJsonLine
       const path = opts.syncOptions.path
       const watchedFile = basename(path)
       const watchedDir = dirname(path)
-
-      const offer = (event: WatchEvent): void => {
-        void Runtime.runFork(runtime)(Queue.offer(queue, event))
-      }
+      const watchedPath = resolve(path)
 
       const pass = (reason: WatchReason) =>
         syncPage(opts.syncOptions).pipe(
@@ -224,31 +220,30 @@ export const runWatch = (opts: {
           ),
         )
 
-      yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          const watcher = watchFile(watchedDir, (_eventType, filename) => {
-            if (filename === watchedFile) {
-              offer({ reason: 'file' })
-            }
-          })
-          watcher.on('error', (error) => {
-            void Runtime.runFork(runtime)(
-              emit({ event: 'watch_error', path, error: safeJsonError(error) }),
-            )
-          })
-          return watcher
-        }),
-        (watcher) => Effect.sync(() => watcher.close()),
-      )
-
-      yield* Queue.offer(queue, { reason: 'initial' })
-      yield* Effect.forkScoped(
-        Effect.forever(
-          Effect.sleep(Duration.millis(opts.pollIntervalMs)).pipe(
-            Effect.zipRight(Queue.offer(queue, { reason: 'poll' })),
+      const initialEvents = Stream.succeed<WatchTrigger>({ reason: 'initial' })
+      const fileEvents = fs.watch(watchedDir).pipe(
+        Stream.filter((event) => resolve(watchedDir, event.path) === watchedPath),
+        Stream.map((): WatchTrigger => ({ reason: 'file' })),
+        Stream.catchAll((error) =>
+          Stream.fromEffect(
+            emit({ event: 'watch_error', path, error: safeJsonError(error) }).pipe(
+              Effect.as<WatchTrigger>({ reason: 'poll' }),
+            ),
           ),
         ),
       )
+      const pollEvents = Effect.forever(
+        Effect.sleep(Duration.millis(opts.pollIntervalMs)).pipe(
+          Effect.zipRight(Queue.offer(queue, { reason: 'poll' })),
+        ),
+      )
+
+      yield* Effect.forkScoped(
+        Stream.mergeAll([initialEvents, fileEvents], { concurrency: 'unbounded' }).pipe(
+          Stream.runForEach((event) => Queue.offer(queue, event)),
+        ),
+      )
+      yield* Effect.forkScoped(pollEvents)
 
       return yield* Effect.forever(
         Effect.gen(function* () {

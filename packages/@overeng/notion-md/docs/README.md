@@ -17,5 +17,5 @@ Start here:
   automated Notion demo page.
 - [Testing](./testing.md): fake E2E, live Notion E2E, and the durable run ledger.
 - [Troubleshooting](./troubleshooting.md): common failures and principled fixes.
-- [VRS](./vrs/README.md): vision, requirements, spec, experiments, and open
-  design questions.
+- [VRS](./vrs/README.md): vision, requirements, spec, experiments, and design
+  decisions.

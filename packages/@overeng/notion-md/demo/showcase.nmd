@@ -11,17 +11,17 @@
     },
     "body": {
       "format": "notion-enhanced-markdown",
-      "hash": "sha256:44564817026c96d97a4b489d96ce1397cf8600df8a3146ab8c09fc0dfe1c52db",
+      "hash": "sha256:1c52e468187248155ee5203977b6a26845829f3ef6e273c533fd7c0391d1a030",
       "base": {
         "_tag": "object_ref",
         "role": "base_snapshot",
-        "hash": "sha256:ec5a46b8a4f5cbf80b619416821e715c9cc444c40bb3b893bf25cb65b3d2bb57",
-        "path": ".notion-md/objects/sha256/ec/5a46b8a4f5cbf80b619416821e715c9cc444c40bb3b893bf25cb65b3d2bb57.json",
+        "hash": "sha256:710d5a1f5ff1a33766255d03325bdf39d7da4096d1bce02e142a14d48c5a7216",
+        "path": ".notion-md/objects/sha256/71/0d5a1f5ff1a33766255d03325bdf39d7da4096d1bce02e142a14d48c5a7216.json",
         "media_type": "application/json",
-        "byte_length": 6999
+        "byte_length": 7062
       },
-      "last_pulled_at": "2026-05-23T05:57:21.052Z",
-      "remote_last_edited_time": "2026-05-23T05:57:00.000Z",
+      "last_pulled_at": "2026-05-23T06:24:11.977Z",
+      "remote_last_edited_time": "2026-05-23T06:24:00.000Z",
       "truncated": false,
       "unknown_block_ids": []
     },
@@ -212,7 +212,7 @@ Block equation:
 $$
 E = mc^2
 $$
-Inline equation input is tracked as a known fidelity question: \$a\^2 + b\^2 = c\^2\$.
+Inline equation input is preserved conservatively until raw Notion rich-text evidence proves full Markdown endpoint fidelity: \$a\^2 + b\^2 = c\^2\$.
 ### Enhanced references
 - Page mention: <mention-page url="https://www.notion.so/369f141b18dc80e4850cff344ad5b48e">@overeng/notion-md demo (automated)</mention-page>
 - Table of contents:

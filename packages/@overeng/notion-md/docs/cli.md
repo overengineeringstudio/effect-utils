@@ -95,5 +95,6 @@ Watch event examples:
 {"event":"sync_error","reason":"poll","error":{"_tag":"NmdConflictError","message":"Remote page changed since the last clean pull"}}
 ```
 
-The exact stable output envelope is still a design question. Treat command
-output as operational signal for now, not a public machine contract.
+The long-term machine contract is explicit output modes with versioned JSON and
+NDJSON envelopes. The current implementation emits the operational envelope
+shown above.
