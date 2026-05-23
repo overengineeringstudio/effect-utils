@@ -133,7 +133,55 @@ let
           ''echo "${legacyMetadataPrefix}: $deploy_metadata_json"''
       }
     '';
+  # Shared alias-name resolver for static-directory deploys (Netlify drafts /
+  # Vercel previews are aliased the same way: prod → `<prefix>[-<suffix>]`,
+  # PR → `<prefix>-pr-<n>[-<suffix>]`, preview/draft → no alias). Providers
+  # still own URL construction; this only normalizes the alias slug.
+  #
+  # Inputs:
+  #   prefix         — required string, alias base (e.g. `${name}`)
+  #   suffix         — optional string appended as `-${suffix}` (Vercel team
+  #                    qualifier; Netlify usually leaves this null)
+  #   previewKeyword — deploy-type value for the unaliased case
+  #                    (Netlify uses `draft`; Vercel uses `preview`)
+  #
+  # Reads shell variable `deploy_type` and (when type=pr) `input` (the raw
+  # `DEVENV_TASK_INPUT` JSON parsed earlier by `mkDeployTypeParser`).
+  # Writes shell variable `alias_name` (empty string when no alias).
+  mkAliasResolver =
+    {
+      prefix,
+      suffix ? null,
+      previewKeyword ? "preview",
+    }:
+    let
+      suffixFragment = if suffix == null then "" else "-${suffix}";
+    in
+    ''
+      alias_name=""
+      case "$deploy_type" in
+        prod)
+          alias_name="${prefix}${suffixFragment}"
+          ;;
+        pr)
+          pr_number="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.pr // empty')"
+          if [ -z "$pr_number" ]; then
+            echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
+            exit 1
+          fi
+          alias_name="${prefix}-pr-''${pr_number}${suffixFragment}"
+          ;;
+        ${previewKeyword})
+          alias_name=""
+          ;;
+      esac
+    '';
 in
 {
-  inherit mkDeployTypeParser mkRequiredEnvCheck mkDeployMetadataEmitter;
+  inherit
+    mkDeployTypeParser
+    mkRequiredEnvCheck
+    mkDeployMetadataEmitter
+    mkAliasResolver
+    ;
 }
