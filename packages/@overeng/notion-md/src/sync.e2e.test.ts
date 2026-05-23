@@ -92,6 +92,7 @@ const unsupportedStorage = (payload: unknown = { url: 'https://www.notion.com/' 
 class FakeNotion {
   private readonly pages = new Map<string, Required<FakePage>>()
   private tick = 0
+  private afterPagePropertiesUpdate: (() => void) | undefined
   readonly updateMarkdownCalls: Array<{
     readonly pageId: string
     readonly allowDeletingContent: boolean
@@ -201,6 +202,9 @@ class FakeNotion {
           properties: { ...page.properties, ...properties },
         }
         this.pages.set(id, next)
+        const afterUpdate = this.afterPagePropertiesUpdate
+        this.afterPagePropertiesUpdate = undefined
+        afterUpdate?.()
         return this.toPullResult(next).page
       }),
     updatePageMetadata: ({ pageId: id, metadata }) =>
@@ -226,6 +230,12 @@ class FakeNotion {
       markdown: canonicalizeMarkdown(markdown),
       lastEditedTime: `2026-05-22T12:00:0${this.tick}.000Z`,
     })
+  }
+
+  mutateRemoteAfterNextPropertyUpdate(pageIdToMutate: string, markdown: string): void {
+    this.afterPagePropertiesUpdate = () => {
+      this.mutateRemote(pageIdToMutate, markdown)
+    }
   }
 
   touchRemoteMetadata(pageIdToMutate: string): void {
@@ -1107,6 +1117,53 @@ describe('notion-md e2e prototype', () => {
 
       expect(fake.updateMarkdownCalls).toEqual([])
       expect(fake.remoteProperties(pageId).Done).toEqual({ checkbox: true })
+    })
+  })
+
+  it('refreshes the local body from Notion after a property-only push race', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+      fake.mutateRemoteAfterNextPropertyUpdate(pageId, '# Probe\n\nRemote race body')
+
+      const beforePushStatus = await runWithFake(statusPage({ path }), fake)
+      const pushed = await runWithFake(pushPage({ path }), fake)
+      const afterPushStatus = await runWithFake(statusPage({ path }), fake)
+      const refreshed = await parseFile(path)
+
+      expect(beforePushStatus.localChanged).toBe(false)
+      expect(beforePushStatus.remoteBodyChanged).toBe(false)
+      expect(pushed.pushed).toBe(true)
+      expect(fake.updateMarkdownCalls).toEqual([])
+      expect(fake.remoteMarkdown(pageId)).toBe('# Probe\n\nRemote race body\n')
+      expect(refreshed.body).toBe('# Probe\n\nRemote race body\n')
+      expect(afterPushStatus.localChanged).toBe(false)
+      expect(afterPushStatus.remoteChanged).toBe(false)
     })
   })
 

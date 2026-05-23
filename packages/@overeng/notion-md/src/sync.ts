@@ -744,45 +744,44 @@ export const pushPage = (
       })
     }
 
-    const updated =
-      status.localChanged === true
-        ? yield* Effect.gen(function* () {
-            const baseSnapshot = yield* readBaseSnapshot({
-              path: opts.path,
-              frontmatter: local.frontmatter,
-            })
-            const remote = yield* gateway.pullPage({ pageId: status.pageId })
-            if (
-              opts.force !== true &&
-              sha256Digest(remote.markdown.markdown) !== status.remoteBodyHash
-            ) {
-              return yield* new NmdConflictError({
-                path: opts.path,
-                page_id: status.pageId,
-                local_changed: status.localChanged,
-                remote_changed: true,
-                message: 'Remote page changed while preparing guarded Markdown push',
-              })
-            }
-            const command =
-              opts.force === true
-                ? ({ _tag: 'replace_content', markdown: local.body } as const)
-                : planMarkdownUpdate({
-                    baseBody: baseSnapshot.body,
-                    remoteBody: remote.markdown.markdown,
-                    desiredBody: local.body,
-                  })
-            yield* Effect.annotateCurrentSpan({
-              'notion_md.push.decision': opts.force === true ? 'force_replace' : 'guarded_update',
-              'notion_md.push.markdown_command': command._tag,
-            })
-            return yield* gateway.updateMarkdown({
-              pageId: status.pageId,
-              command,
-              allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
-            })
+    if (status.localChanged === true) {
+      yield* Effect.gen(function* () {
+        const baseSnapshot = yield* readBaseSnapshot({
+          path: opts.path,
+          frontmatter: local.frontmatter,
+        })
+        const remote = yield* gateway.pullPage({ pageId: status.pageId })
+        if (
+          opts.force !== true &&
+          sha256Digest(remote.markdown.markdown) !== status.remoteBodyHash
+        ) {
+          return yield* new NmdConflictError({
+            path: opts.path,
+            page_id: status.pageId,
+            local_changed: status.localChanged,
+            remote_changed: true,
+            message: 'Remote page changed while preparing guarded Markdown push',
           })
-        : undefined
+        }
+        const command =
+          opts.force === true
+            ? ({ _tag: 'replace_content', markdown: local.body } as const)
+            : planMarkdownUpdate({
+                baseBody: baseSnapshot.body,
+                remoteBody: remote.markdown.markdown,
+                desiredBody: local.body,
+              })
+        yield* Effect.annotateCurrentSpan({
+          'notion_md.push.decision': opts.force === true ? 'force_replace' : 'guarded_update',
+          'notion_md.push.markdown_command': command._tag,
+        })
+        yield* gateway.updateMarkdown({
+          pageId: status.pageId,
+          command,
+          allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
+        })
+      })
+    }
     if (status.localPropertiesChanged === true) {
       yield* gateway.updatePageProperties({
         pageId: status.pageId,
@@ -799,9 +798,9 @@ export const pushPage = (
     yield* writeNmdWithStoragePolicy({
       path: opts.path,
       page: pulled.page,
-      markdown: updated?.markdown ?? pulled.markdown,
+      markdown: pulled.markdown,
       storage: pulled.storage ?? emptyStorage(),
-      body: local.body,
+      body: pulled.markdown.markdown,
     })
 
     return {
