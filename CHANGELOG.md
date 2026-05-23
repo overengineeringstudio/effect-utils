@@ -56,6 +56,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-md**: Allow property-only pushes across concurrent remote body edits, clear stale unknown-block storage after destructive replacements, and normalize object-ref path checks cross-platform
 - **@overeng/notion-md**: Route watch file events through Effect Platform `FileSystem.watch` while preserving scoped cancellation, polling, debounce, and recoverable sync-error behavior
 - **@overeng/notion-md**: Add batch multi-file and recursive folder orchestration for `status`, `push`, and `sync`, including duplicate page-id preflight, per-file result envelopes, bounded concurrency, and multi-file watch mode
+- **@overeng/notion-md docs**: Add a recursive workspace demo template that shows multi-file folder sync setup without committing placeholder pages as live targets
 
 ### Changed
 

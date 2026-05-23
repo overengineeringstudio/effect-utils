@@ -5,6 +5,7 @@ The package includes a durable local Notion Markdown fixture:
 ```text
 packages/@overeng/notion-md/demo/showcase.nmd
 packages/@overeng/notion-md/demo/.notion-md/objects/sha256/...
+packages/@overeng/notion-md/demo/workspace/
 ```
 
 It syncs with this Notion page:
@@ -18,6 +19,10 @@ The fixture demonstrates the intended local shape:
 - a stock Notion enhanced Markdown body,
 - content-addressed base evidence under `.notion-md/objects`,
 - clean `status` against the remote page after a successful pull.
+
+The `demo/workspace/` tree is a recursive workspace template. It contains
+`.nmd.example` files in nested folders so users can see the intended shape
+without making broad recursive commands contact placeholder page ids.
 
 ## Git Policy
 
@@ -47,6 +52,32 @@ A clean fixture reports:
   "remoteBodyChanged": false
 }
 ```
+
+## Recursive Workspace
+
+Populate the workspace by pulling real pages into `.nmd` files next to the
+examples:
+
+```sh
+export NOTION_TOKEN="secret_..."
+
+notion-md pull <overview-page-id> \
+  --out packages/@overeng/notion-md/demo/workspace/project/overview.nmd
+
+notion-md pull <weekly-notes-page-id> \
+  --out packages/@overeng/notion-md/demo/workspace/project/weekly-notes/2026-05-23.nmd
+```
+
+Then exercise the batch envelope and recursive discovery:
+
+```sh
+notion-md status packages/@overeng/notion-md/demo/workspace --recursive
+notion-md sync packages/@overeng/notion-md/demo/workspace --recursive --concurrency 4
+notion-md sync packages/@overeng/notion-md/demo/workspace --recursive --watch --poll-interval-ms 30000
+```
+
+Keep the durable `showcase.nmd` fixture separate from this workspace template.
+It is the only checked-in live page fixture today.
 
 ## Edit
 

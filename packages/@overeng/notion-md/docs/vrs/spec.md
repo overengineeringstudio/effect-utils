@@ -544,6 +544,7 @@ Implemented verification currently includes:
 - live Notion E2E against a configured parent page,
 - live E2E ledger updates on the configured parent page,
 - a durable automated demo page synced from `packages/@overeng/notion-md/demo/showcase.nmd`,
+- a recursive workspace demo template under `packages/@overeng/notion-md/demo/workspace/`,
 - local `check:quick` and `check:all`.
 
 Live E2E uses `NOTION_MD_TEST_PARENT_PAGE_ID` as a scratch parent. Test-created
@@ -554,6 +555,10 @@ to the test suite without retaining every scratch fixture.
 The automated demo page is not a test scratch page. It is the durable 1:1
 showcase for local `.nmd` and Notion state. Its local file and reachable object
 store entries are committed under `packages/@overeng/notion-md/demo/`.
+
+The workspace demo is intentionally a template, not another live fixture set.
+Checked-in examples use `.nmd.example` so recursive commands only operate after a
+user has pulled distinct real Notion pages into `.nmd` files.
 
 Follow-up hardening is tracked in the PR issue for required live-lane policy,
 OTEL span assertions, versioned CLI output schemas, deterministic watch-core

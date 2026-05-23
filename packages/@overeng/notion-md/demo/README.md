@@ -15,3 +15,13 @@ notion-md sync packages/@overeng/notion-md/demo/showcase.nmd
 The committed `.notion-md/objects` entry is part of the fixture. It contains
 the last clean base snapshot used for status, merge planning, and conflict
 evidence.
+
+`workspace/` demonstrates the recommended folder shape for multi-file and
+recursive sync. Its checked-in files are `.nmd.example` templates, not live sync
+targets. Pull real pages into matching `.nmd` paths before running recursive
+commands:
+
+```sh
+notion-md status packages/@overeng/notion-md/demo/workspace --recursive
+notion-md sync packages/@overeng/notion-md/demo/workspace --recursive --concurrency 4
+```
