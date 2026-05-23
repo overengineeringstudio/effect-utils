@@ -1,29 +1,45 @@
-# Netlify deploy tasks for storybook packages
+# Netlify deploy tasks for a single Netlify site.
 #
-# Deploys storybook builds to a single Netlify site using per-package aliases.
+# Supports two shapes:
+#
+#   1. Multi-package storybook deploys (original use case). Each package's
+#      `storybook-static/` output ships to a per-package alias on one site.
+#   2. Single-artifact site deploys (e.g. an Astro/Vite app's `dist/`).
+#      Pass `packages = [{ path = "."; name = "<slug>"; }]` and
+#      `deployDirSuffix = "dist"` (and usually `useWorkspaceFilter = false`).
+#
 # Deploy context is passed via DEVENV_TASK_INPUT (devenv --input flag).
 #
 # Usage in devenv.nix:
-#   imports = [
-#     (inputs.effect-utils.devenvModules.tasks.netlify {
-#       siteName = "my-netlify-site";
-#       siteId = "01234567-89ab-cdef-0123-456789abcdef";
-#       packages = [
-#         { path = "packages/@overeng/tui-react"; name = "tui-react"; }
-#         { path = "packages/@overeng/megarepo"; name = "megarepo"; }
-#       ];
-#     })
-#   ];
+#
+#   # Storybook multi-package deploy (default `deployDirSuffix = "storybook-static"`):
+#   (inputs.effect-utils.devenvModules.tasks.netlify {
+#     siteName = "my-netlify-site";
+#     siteId = "01234567-89ab-cdef-0123-456789abcdef";
+#     packages = [
+#       { path = "packages/@overeng/tui-react"; name = "tui-react"; }
+#       { path = "packages/@overeng/megarepo"; name = "megarepo"; }
+#     ];
+#   })
+#
+#   # Single-artifact Astro site:
+#   (inputs.effect-utils.devenvModules.tasks.netlify {
+#     siteName = "livestore-v2";
+#     deployDirSuffix = "dist";
+#     useWorkspaceFilter = false;
+#     buildTaskPrefix = "site:build";
+#     packages = [ { path = "."; name = "livestore-website"; } ];
+#   })
 #
 # Deploy modes (via --input):
-#   dt storybook:build:tui-react && dt netlify:deploy:tui-react                          # draft (unique URL)
-#   dt storybook:build:tui-react && dt netlify:deploy:tui-react --input type=prod        # prod alias
-#   dt storybook:build:tui-react && dt netlify:deploy:tui-react --input type=pr --input pr=42  # PR preview alias
+#   dt netlify:deploy:<name>                          # draft (unique URL)
+#   dt netlify:deploy:<name> --input type=prod        # prod alias
+#   dt netlify:deploy:<name> --input type=pr --input pr=42  # PR preview alias
 #
 # Provides:
 #   Tasks:
-#     - netlify:deploy:<name> - Deploy storybook for specific package
-#     - netlify:deploy        - Aggregate: deploy all storybooks
+#     - netlify:deploy:<name> - Deploy a single package/site to Netlify
+#     - netlify:deploy        - Aggregate: deploy all entries in `packages`
 #
 # NOTE: pkg.name must be a valid Netlify alias slug (lowercase, alphanumeric, hyphens only).
 {
@@ -32,6 +48,14 @@
   site ? null, # Legacy alias for siteName
   siteId ? null, # Preferred — stable Netlify site ID used for CLI targeting
   buildTaskPrefix ? "storybook:build",
+  # Subdirectory of `pkg.path` that holds the build output to upload. Defaults
+  # to `storybook-static` for backwards compatibility; set to `dist` (or
+  # similar) for a non-storybook site.
+  deployDirSuffix ? "storybook-static",
+  # When `true` (default), passes `--filter=<workspace-name>` from each
+  # package.json `.name` to the Netlify CLI for pnpm-workspace monorepo
+  # support. Set to `false` for non-workspace consumers.
+  useWorkspaceFilter ? true,
 }:
 { lib, pkgs, ... }:
 let
@@ -50,8 +74,8 @@ let
 
   mkDeployTask = pkg: {
     "netlify:deploy:${pkg.name}" = {
-      description = "Deploy ${pkg.name} storybook to Netlify";
-      # Ensure the storybook exists before deploying.
+      description = "Deploy ${pkg.name} to Netlify";
+      # Ensure the build output exists before deploying.
       # `dt` runs tasks in "before" mode by default, so this will build first in CI and locally.
       after = [ "${buildTaskPrefix}:${pkg.name}" ];
       exec = ''
@@ -63,8 +87,13 @@ let
           hint = "Run through: secrets-run --reason 'deploy Netlify preview' -- dt netlify:deploy:<target>";
         }}
 
-        deploy_dir="${pkg.path}/storybook-static"
-        workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' "${pkg.path}/package.json")"
+        deploy_dir="${pkg.path}/${deployDirSuffix}"
+        ${
+          if useWorkspaceFilter then
+            ''workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' "${pkg.path}/package.json")"''
+          else
+            ''workspace_filter=""''
+        }
 
         if [ ! -d "$deploy_dir" ]; then
           echo "Skipping ${pkg.name}: no build output at $deploy_dir" >&2
@@ -126,11 +155,16 @@ let
           site_target_args+=("--site=${resolvedSiteName}")
         fi
 
+        filter_args=()
+        if [ -n "$workspace_filter" ]; then
+          filter_args+=("--filter=$workspace_filter")
+        fi
+
         # shellcheck disable=SC2086
         ${netlify} deploy \
           --dir="$deploy_dir" \
           --auth="$NETLIFY_AUTH_TOKEN" \
-          --filter="$workspace_filter" \
+          "''${filter_args[@]}" \
           --no-build \
           "''${site_target_args[@]}" \
           $alias_flag \
@@ -227,7 +261,7 @@ in
     ++ [
       (cliGuard.stripGuards {
         "netlify:deploy" = {
-          description = "Deploy all storybooks to Netlify";
+          description = "Deploy all packages to Netlify";
           exec = null;
           after = if hasPackages then map (pkg: "netlify:deploy:${pkg.name}") packages else [ ];
         };
