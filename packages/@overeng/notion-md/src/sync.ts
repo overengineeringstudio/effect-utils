@@ -17,7 +17,7 @@ import {
   type NmdError,
   type NmdFileSystemError,
 } from './errors.ts'
-import { parseNmdFile, renderNmdFile, type ParsedNmdFile } from './frontmatter.ts'
+import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 import {
@@ -33,7 +33,6 @@ import {
 import {
   NmdStateStore,
   readBaseSnapshot,
-  readSyncStateOptional,
   validateReferencedObjects,
   writeBaseSnapshot,
   writeStorageObject,
