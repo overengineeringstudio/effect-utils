@@ -10,7 +10,7 @@ import {
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
-import { get, post } from './internal/http.ts'
+import { get, patch, post } from './internal/http.ts'
 import {
   PaginatedResponse,
   type PaginatedResult,
@@ -74,6 +74,64 @@ export interface RetrieveDatabaseOptions {
   readonly databaseId: string
 }
 
+/** Options for creating a database */
+export interface CreateDatabaseOptions {
+  /** Parent page/block/workspace for the database */
+  readonly parent:
+    | { readonly type: 'page_id'; readonly page_id: string }
+    | { readonly type: 'block_id'; readonly block_id: string }
+    | { readonly type: 'workspace'; readonly workspace: true }
+  /** Database title rich text */
+  readonly title: readonly unknown[]
+  /** Property schema definitions */
+  readonly properties: Record<string, unknown>
+  /** Database description rich text */
+  readonly description?: readonly unknown[]
+  /** Whether the database should be displayed inline */
+  readonly is_inline?: boolean
+  /** Database icon */
+  readonly icon?:
+    | { readonly type: 'emoji'; readonly emoji: string }
+    | { readonly type: 'external'; readonly external: { readonly url: string } }
+    | { readonly type: 'icon'; readonly icon: { readonly name: string; readonly color?: string } }
+  /** Database cover image */
+  readonly cover?: {
+    readonly type: 'external'
+    readonly external: { readonly url: string }
+  }
+}
+
+/** Options for updating a database */
+export interface UpdateDatabaseOptions {
+  /** Database ID to update */
+  readonly databaseId: string
+  /** Database title rich text */
+  readonly title?: readonly unknown[]
+  /** Property schema definitions */
+  readonly properties?: Record<string, unknown>
+  /** Database description rich text */
+  readonly description?: readonly unknown[]
+  /** Whether the database is in trash */
+  readonly in_trash?: boolean
+  /** Database icon */
+  readonly icon?:
+    | { readonly type: 'emoji'; readonly emoji: string }
+    | { readonly type: 'external'; readonly external: { readonly url: string } }
+    | { readonly type: 'icon'; readonly icon: { readonly name: string; readonly color?: string } }
+    | null
+  /** Database cover image */
+  readonly cover?: {
+    readonly type: 'external'
+    readonly external: { readonly url: string }
+  } | null
+}
+
+/** Options for archiving a database */
+export interface ArchiveDatabaseOptions {
+  /** Database ID to archive */
+  readonly databaseId: string
+}
+
 /** Options for resolving a database query target */
 export interface ResolveQueryTargetOptions {
   /** Database ID to resolve */
@@ -107,6 +165,53 @@ export const retrieve = Effect.fn('NotionDatabases.retrieve')(function* (
     responseSchema: DatabaseSchema,
   })
 })
+
+/**
+ * Create a database.
+ *
+ * @see https://developers.notion.com/reference/create-a-database
+ */
+export const create = Effect.fn('NotionDatabases.create')(function* (opts: CreateDatabaseOptions) {
+  const body: Record<string, unknown> = {
+    parent: opts.parent,
+    title: opts.title,
+    properties: opts.properties,
+  }
+
+  if (opts.description !== undefined) body.description = opts.description
+  if (opts.is_inline !== undefined) body.is_inline = opts.is_inline
+  if (opts.icon !== undefined) body.icon = opts.icon
+  if (opts.cover !== undefined) body.cover = opts.cover
+
+  return yield* post({
+    path: '/databases',
+    body,
+    responseSchema: DatabaseSchema,
+  })
+})
+
+/**
+ * Update a database.
+ *
+ * @see https://developers.notion.com/reference/update-a-database
+ */
+export const update = Effect.fn('NotionDatabases.update')(function* (opts: UpdateDatabaseOptions) {
+  const { databaseId, ...body } = opts
+
+  return yield* patch({
+    path: `/databases/${databaseId}`,
+    body,
+    responseSchema: DatabaseSchema,
+  })
+})
+
+/**
+ * Archive a database by moving it to trash.
+ *
+ * @see https://developers.notion.com/reference/update-a-database
+ */
+export const archive = (opts: ArchiveDatabaseOptions) =>
+  update({ databaseId: opts.databaseId, in_trash: true })
 
 /**
  * Resolve the query target for a database.
@@ -337,6 +442,9 @@ export function queryStream<TProperties, I, R>(
 /** Notion Databases API */
 export const NotionDatabases = {
   retrieve,
+  create,
+  update,
+  archive,
   resolveQueryTarget,
   query,
   queryStream,

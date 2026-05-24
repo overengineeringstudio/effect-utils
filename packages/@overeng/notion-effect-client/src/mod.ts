@@ -38,6 +38,8 @@ export {
   NotionConfig,
 } from './config.ts'
 export type {
+  ArchiveDatabaseOptions,
+  CreateDatabaseOptions,
   DatabaseQueryTarget,
   DatabaseFilter,
   DatabaseSort,
@@ -47,6 +49,7 @@ export type {
   RetrieveDatabaseOptions,
   ResolveQueryTargetOptions,
   TypedPaginatedResult,
+  UpdateDatabaseOptions,
 } from './databases.ts'
 // Custom emojis
 export type { CustomEmoji } from './custom-emojis.ts'

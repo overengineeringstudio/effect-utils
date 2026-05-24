@@ -1,5 +1,5 @@
 import { HttpClient } from '@effect/platform'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Stream } from 'effect'
 
 import {
   NotionBlocks,
@@ -15,9 +15,9 @@ import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markd
 import { NmdGatewayError } from './errors.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
 import {
-  type CreatePageInput,
   type MarkdownUpdateCommand,
   NotionMdGateway,
+  type RemoteChildPage,
   type RemotePageSnapshot,
 } from './model.ts'
 
@@ -70,6 +70,20 @@ const toRemotePage = (page: Page): RemotePageSnapshot => {
     last_edited_time: page.last_edited_time,
     properties: page.properties,
   }
+}
+
+const toRemoteChildPage = (block: Block): RemoteChildPage | undefined => {
+  if (block.type !== 'child_page') return undefined
+  const childPage = block.child_page
+  if (
+    typeof childPage !== 'object' ||
+    childPage === null ||
+    'title' in childPage === false ||
+    typeof childPage.title !== 'string'
+  ) {
+    return undefined
+  }
+  return { pageId: block.id, title: childPage.title }
 }
 
 const blockPayload = (block: Block): unknown => {
@@ -324,38 +338,20 @@ export const NotionMdGatewayLive = Layer.effect(
             },
           }),
         ),
-      createPage: (input: CreatePageInput) =>
-        provideHttp(
-          NotionPages.create({
-            parent:
-              input.parent._tag === 'page'
-                ? { type: 'page_id', page_id: input.parent.id }
-                : input.parent._tag === 'data_source'
-                  ? { type: 'data_source_id', data_source_id: input.parent.id }
-                  : { type: 'database_id', database_id: input.parent.id },
-            properties: {
-              title: {
-                title: [{ type: 'text', text: { content: input.title } }],
-              },
-            },
-            /*
-             * Send the initial body through the same canonicalization the
-             * push path uses so the very first server-side render already
-             * has unwrapped paragraphs — no first-pull surprises.
-             */
-            ...(input.body !== undefined
-              ? { markdown: canonicalizeBlockMarkdown(input.body) }
-              : {}),
-          }),
-        ).pipe(
-          Effect.map(toRemotePage),
-          Effect.mapError(mapGatewayError({ operation: 'create_page' })),
-          Effect.withSpan('notion-md.gateway.create-page', {
-            attributes: {
-              'notion_md.create.parent_kind': input.parent._tag,
-              'notion_md.create.parent_id': input.parent.id,
-              'notion_md.create.has_body': input.body !== undefined,
-            },
+      listChildPages: ({ pageId }) =>
+        NotionBlocks.retrieveChildrenStream({ blockId: pageId }).pipe(
+          Stream.provideService(NotionConfig, config),
+          Stream.provideService(HttpClient.HttpClient, client),
+          Stream.runCollect,
+          Effect.map((blocks) =>
+            Array.from(blocks).flatMap((block) => {
+              const childPage = toRemoteChildPage(block)
+              return childPage === undefined ? [] : [childPage]
+            }),
+          ),
+          Effect.mapError(mapGatewayError({ operation: 'list_child_pages', pageId })),
+          Effect.withSpan('notion-md.gateway.list-child-pages', {
+            attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
           }),
         ),
     }

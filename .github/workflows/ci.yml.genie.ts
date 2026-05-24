@@ -623,7 +623,7 @@ const extraJobs: Record<string, any> = {
       }),
     ],
   },
-  /** Integration tests for Notion API (requires NOTION_API_TOKEN secret) */
+  /** Integration tests for Notion API (requires package-specific Notion token secrets) */
   'test-integration-notion': {
     if: normalCiIf,
     'runs-on': namespaceRunner({
@@ -635,7 +635,7 @@ const extraJobs: Record<string, any> = {
     env: {
       ...standardCIEnv,
       NOTION_API_TOKEN: '${{ secrets.NOTION_API_TOKEN }}',
-      NOTION_MD_TEST_PARENT_PAGE_ID: '368f141b18dc8069976ac54ae50ea3eb',
+      NOTION_TEST_PARENT_PAGE_ID: '${{ secrets.NOTION_TEST_PARENT_PAGE_ID }}',
     },
     steps: [
       ...baseSteps,

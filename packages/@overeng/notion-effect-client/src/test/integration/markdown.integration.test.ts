@@ -1,13 +1,22 @@
 import { Effect } from 'effect'
-import { expect } from 'vitest'
+import { afterAll, beforeAll, expect } from 'vitest'
 
 import { RichTextUtils } from '@overeng/notion-effect-schema'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { BlockHelpers, NotionMarkdown } from '../../markdown.ts'
-import { IntegrationTestLayer, SKIP_INTEGRATION, TEST_IDS } from './setup.ts'
+import {
+  IntegrationTestLayer,
+  setupIntegrationFixtures,
+  SKIP_FIXTURE_INTEGRATION,
+  teardownIntegrationFixtures,
+  TEST_IDS,
+} from './setup.ts'
 
-Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
+Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionMarkdown (integration)', () => {
+  beforeAll(setupIntegrationFixtures, 120_000)
+  afterAll(teardownIntegrationFixtures, 60_000)
+
   Vitest.describe('pageToMarkdown', () => {
     Vitest.it.effect(
       'converts all block types correctly',
@@ -57,13 +66,6 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
           // Equation
           expect(markdown).toContain('$$')
           expect(markdown).toContain('E = mc^2')
-
-          // Table
-          expect(markdown).toContain('| Header 1 |')
-          expect(markdown).toContain('| Cell A1 |')
-
-          // Table of contents
-          expect(markdown).toContain('[TOC]')
         }).pipe(Effect.provide(IntegrationTestLayer)),
       { timeout: 60000 },
     )

@@ -8,11 +8,8 @@ import { parseNmdFile } from './frontmatter.ts'
 import type { NotionMdGateway } from './model.ts'
 import { NmdStateStore } from './state-store.ts'
 import {
-  pushPage,
   statusPage,
   syncPage,
-  type PushOptions,
-  type PushResult,
   type StatusResult,
   type SyncOptions,
   type SyncResult,
@@ -24,7 +21,7 @@ const WATCH_DEBOUNCE = Duration.millis(250)
 const SKIPPED_DIRECTORIES = new Set(['.git', '.notion-md', 'node_modules'])
 
 /** Batch-capable page operation names. */
-export type BatchOperation = 'push' | 'status' | 'sync'
+export type BatchOperation = 'status' | 'sync'
 
 /** Successful per-file result inside a batch operation. */
 export interface BatchSuccess<A> {
@@ -45,7 +42,7 @@ export interface BatchFailure {
 /** Per-file item in a batch result. */
 export type BatchItemResult<A> = BatchSuccess<A> | BatchFailure
 
-/** Summary envelope for multi-file status, push, or sync. */
+/** Summary envelope for multi-file status or sync. */
 export interface BatchResult<A> {
   readonly _tag: 'batch'
   readonly operation: BatchOperation
@@ -70,11 +67,6 @@ export interface ResolveTargetsResult {
 
 /** Inputs for checking multiple `.nmd` files. */
 export interface StatusManyOptions extends ResolveTargetsOptions {
-  readonly concurrency?: number
-}
-
-/** Inputs for pushing multiple `.nmd` files. */
-export interface PushManyOptions extends ResolveTargetsOptions, Omit<PushOptions, 'path'> {
   readonly concurrency?: number
 }
 
@@ -313,9 +305,6 @@ const preflightPageIds = (opts: {
       }
 
       const pageId = item.result.right.frontmatter.notion_md.page_id
-      // Skip duplicate detection for unmaterialized .nmd files (no page_id yet).
-      // They are uniquely identified by path, not page id, until `push` creates them.
-      if (pageId === null) continue
       pageIds.set(pageId, [...(pageIds.get(pageId) ?? []), item.path])
     }
 
@@ -410,32 +399,6 @@ export const statusMany = (
     ...(opts.recursive === undefined ? {} : { recursive: opts.recursive }),
     ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
     run: (path) => statusPage({ path }),
-  })
-
-/** Push guarded local edits from multiple `.nmd` files. */
-export const pushMany = (
-  opts: PushManyOptions,
-): Effect.Effect<
-  BatchResult<PushResult>,
-  NmdCliError,
-  FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore
-> =>
-  runBatch({
-    operation: 'push',
-    targets: opts.targets,
-    ...(opts.recursive === undefined ? {} : { recursive: opts.recursive }),
-    ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
-    run: (path) =>
-      pushPage({
-        path,
-        ...(opts.force === undefined ? {} : { force: opts.force }),
-        ...(opts.allowDeletingUnknownBlocks === undefined
-          ? {}
-          : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
-        ...(opts.allowReviewMarkup === undefined
-          ? {}
-          : { allowReviewMarkup: opts.allowReviewMarkup }),
-      }),
   })
 
 /** Run one guarded reconciliation pass for multiple `.nmd` files. */
@@ -610,7 +573,7 @@ export const runBatchWatch = (
     }),
   )
 
-/** Return whether CLI targets should preserve the legacy single-file output shape. */
+/** Return whether CLI targets should use the single-file output shape. */
 export const isSingleFileTarget = (opts: {
   readonly targets: readonly string[]
   readonly recursive?: boolean

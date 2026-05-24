@@ -46,21 +46,18 @@ export type {
 } from './state-store.ts'
 export { decideStorage } from './storage-policy.ts'
 export type { StorageDecision } from './storage-policy.ts'
-export { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
-export type {
-  PullOptions,
-  PullResult,
-  PushOptions,
-  PushResult,
-  StatusOptions,
-  StatusResult,
-  SyncOptions,
-  SyncResult,
-} from './sync.ts'
+export { statusPage, syncPage } from './sync.ts'
+export type { StatusOptions, StatusResult, SyncOptions, SyncResult } from './sync.ts'
 export { NOTION_MD_VERSION } from './version.ts'
 export {
+  isManagedWorkspace,
+  statusWorkspace,
+  syncRemoteToTarget,
+  syncWorkspace,
+} from './workspace.ts'
+export type { WorkspaceStatusResult, WorkspaceSyncResult } from './workspace.ts'
+export {
   isSingleFileTarget,
-  pushMany,
   resolveNmdTargets,
   runBatchWatch,
   statusMany,
@@ -73,7 +70,6 @@ export type {
   BatchResult,
   BatchSuccess,
   BatchWatchOptions,
-  PushManyOptions,
   ResolveTargetsOptions,
   ResolveTargetsResult,
   StatusManyOptions,

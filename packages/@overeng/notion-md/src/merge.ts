@@ -49,6 +49,79 @@ const sameLines = (opts: {
   opts.left.length === opts.right.length &&
   opts.left.every((line, index) => line === opts.right[index])
 
+const changedRanges = (opts: {
+  readonly baseLines: readonly string[]
+  readonly changedLines: readonly string[]
+}): readonly ChangedRange[] => {
+  const { baseLines, changedLines } = opts
+  const lcs = Array.from({ length: baseLines.length + 1 }, () =>
+    Array.from({ length: changedLines.length + 1 }, () => 0),
+  )
+
+  for (let baseIndex = baseLines.length - 1; baseIndex >= 0; baseIndex -= 1) {
+    for (let changedIndex = changedLines.length - 1; changedIndex >= 0; changedIndex -= 1) {
+      lcs[baseIndex]![changedIndex] =
+        baseLines[baseIndex] === changedLines[changedIndex]
+          ? lcs[baseIndex + 1]![changedIndex + 1]! + 1
+          : Math.max(lcs[baseIndex + 1]![changedIndex]!, lcs[baseIndex]![changedIndex + 1]!)
+    }
+  }
+
+  const ranges: ChangedRange[] = []
+  let baseIndex = 0
+  let changedIndex = 0
+  let current: ChangedRange | undefined
+
+  const startCurrent = (): ChangedRange => {
+    current ??= { start: baseIndex, end: baseIndex, replacement: [] }
+    return current
+  }
+
+  const flush = () => {
+    if (current === undefined) return
+    ranges.push(current)
+    current = undefined
+  }
+
+  while (baseIndex < baseLines.length || changedIndex < changedLines.length) {
+    if (
+      baseIndex < baseLines.length &&
+      changedIndex < changedLines.length &&
+      baseLines[baseIndex] === changedLines[changedIndex]
+    ) {
+      flush()
+      baseIndex += 1
+      changedIndex += 1
+      continue
+    }
+
+    const active = startCurrent()
+    if (
+      changedIndex < changedLines.length &&
+      (baseIndex >= baseLines.length ||
+        lcs[baseIndex]![changedIndex + 1]! >= lcs[baseIndex + 1]![changedIndex]!)
+    ) {
+      current = {
+        start: active.start,
+        end: active.end,
+        replacement: [...active.replacement, changedLines[changedIndex]!],
+      }
+      changedIndex += 1
+      continue
+    }
+
+    current = {
+      start: active.start,
+      replacement: active.replacement,
+      end: baseIndex + 1,
+    }
+    baseIndex += 1
+  }
+
+  flush()
+  return ranges
+}
+
 const applyRanges = (opts: {
   readonly baseLines: readonly string[]
   readonly rangesDescending: readonly ChangedRange[]
@@ -95,7 +168,39 @@ export const tryMergeMarkdownBodies = (opts: {
     return applyRanges({ baseLines, rangesDescending: [localRange, remoteRange] })
   }
 
-  return undefined
+  const localRanges = changedRanges({ baseLines, changedLines: localLines })
+  const remoteRanges = changedRanges({ baseLines, changedLines: remoteLines })
+  const mergedRanges: ChangedRange[] = []
+
+  for (const localChangedRange of localRanges) {
+    let keepLocalRange = true
+    for (const remoteChangedRange of remoteRanges) {
+      const rangesOverlap =
+        localChangedRange.start < remoteChangedRange.end &&
+        remoteChangedRange.start < localChangedRange.end
+      if (rangesOverlap === false) continue
+
+      if (
+        sameRange({ left: localChangedRange, right: remoteChangedRange }) === true &&
+        sameLines({
+          left: localChangedRange.replacement,
+          right: remoteChangedRange.replacement,
+        }) === true
+      ) {
+        keepLocalRange = false
+        continue
+      }
+
+      return undefined
+    }
+
+    if (keepLocalRange === true) mergedRanges.push(localChangedRange)
+  }
+
+  mergedRanges.push(...remoteRanges)
+  mergedRanges.sort((left, right) => right.start - left.start)
+
+  return applyRanges({ baseLines, rangesDescending: mergedRanges })
 }
 
 const countOccurrences = (opts: { readonly haystack: string; readonly needle: string }): number => {

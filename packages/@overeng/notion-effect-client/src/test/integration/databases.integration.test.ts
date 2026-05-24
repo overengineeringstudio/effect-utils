@@ -1,12 +1,21 @@
 import { Effect, Option, Stream } from 'effect'
-import { expect } from 'vitest'
+import { afterAll, beforeAll, expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionDatabases } from '../../databases.ts'
-import { IntegrationTestLayer, SKIP_INTEGRATION, TEST_IDS } from './setup.ts'
+import {
+  IntegrationTestLayer,
+  setupIntegrationFixtures,
+  SKIP_FIXTURE_INTEGRATION,
+  teardownIntegrationFixtures,
+  TEST_IDS,
+} from './setup.ts'
 
-Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => {
+Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionDatabases (integration)', () => {
+  beforeAll(setupIntegrationFixtures, 120_000)
+  afterAll(teardownIntegrationFixtures, 60_000)
+
   Vitest.describe('retrieve', () => {
     Vitest.it.effect('fetches database by ID', () =>
       Effect.gen(function* () {
