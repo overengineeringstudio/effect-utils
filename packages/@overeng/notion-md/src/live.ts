@@ -246,7 +246,7 @@ export const NotionMdGatewayLive = Layer.effect(
              */
             if (
               command._tag === 'update_content' &&
-              semanticEquivalent(remoteMarkdown.markdown, command.expectedMarkdown) === false
+              semanticEquivalent({ a: remoteMarkdown.markdown, b: command.expectedMarkdown }) === false
             ) {
               return Effect.fail(
                 new NmdGatewayError({

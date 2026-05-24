@@ -53,36 +53,36 @@ describe('semanticEquivalent', () => {
   it('treats Notion-collapsed blank lines as equivalent to the sent form', () => {
     const sent = 'First paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n'
     const returnedFromNotion = 'First paragraph.\nSecond paragraph.\nThird paragraph.\n'
-    expect(semanticEquivalent(sent, returnedFromNotion)).toBe(true)
+    expect(semanticEquivalent({ a: sent, b: returnedFromNotion })).toBe(true)
   })
 
   it('ignores list-indent style differences (spaces vs tabs)', () => {
     const sent = '- item one\n  continued\n- item two\n'
     const returnedFromNotion = '- item one\n\tcontinued\n- item two\n'
-    expect(semanticEquivalent(sent, returnedFromNotion)).toBe(true)
+    expect(semanticEquivalent({ a: sent, b: returnedFromNotion })).toBe(true)
   })
 
   it('flags real content drift', () => {
     const sent = 'Hello world.\n'
     const returnedFromNotion = 'Hello mars.\n'
-    expect(semanticEquivalent(sent, returnedFromNotion)).toBe(false)
+    expect(semanticEquivalent({ a: sent, b: returnedFromNotion })).toBe(false)
   })
 
   it('flags reordered tokens as drift', () => {
     const sent = 'one two three\n'
     const returnedFromNotion = 'three two one\n'
-    expect(semanticEquivalent(sent, returnedFromNotion)).toBe(false)
+    expect(semanticEquivalent({ a: sent, b: returnedFromNotion })).toBe(false)
   })
 
   it('flags whitespace-significant diffs inside fenced code blocks', () => {
     const sent = 'Intro.\n\n```ts\nconst x = 1\n  const y = 2\n```\n'
     const drifted = 'Intro.\n\n```ts\nconst x = 1\nconst y = 2\n```\n'
-    expect(semanticEquivalent(sent, drifted)).toBe(false)
+    expect(semanticEquivalent({ a: sent, b: drifted })).toBe(false)
   })
 
   it('accepts equivalent fenced code blocks verbatim', () => {
     const sent = 'Intro.\n\n```ts\nconst x = 1\nconst y = 2\n```\n'
     const same = 'Intro.\n```ts\nconst x = 1\nconst y = 2\n```\n'
-    expect(semanticEquivalent(sent, same)).toBe(true)
+    expect(semanticEquivalent({ a: sent, b: same })).toBe(true)
   })
 })

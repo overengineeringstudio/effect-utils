@@ -40,7 +40,7 @@ import {
 } from './state-store.ts'
 import { decideStorage } from './storage-policy.ts'
 
-/*
+/**
  * Combined local view of a `.nmd` file plus its sidecar sync state.
  *
  * After the V1→V2 schema split, derived sync bookkeeping (body hash, base

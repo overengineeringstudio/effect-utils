@@ -24,7 +24,7 @@ import { visit } from 'unist-util-visit'
  */
 const unwrapSoftBreaks: () => (tree: unknown) => void = () => (tree) => {
   visit(tree as never, 'text', (node: { value: string }) => {
-    if (node.value.includes('\n')) {
+    if (node.value.includes('\n') === true) {
       node.value = node.value.replace(/[ \t]*\n[ \t]*/g, ' ')
     }
   })
@@ -50,7 +50,7 @@ const processor = unified()
 export const canonicalizeBlockMarkdown = (markdown: string): string => {
   const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const rendered = processor.processSync(normalized).toString()
-  return rendered.endsWith('\n') ? rendered : `${rendered}\n`
+  return rendered.endsWith('\n') === true ? rendered : `${rendered}\n`
 }
 
 /*
@@ -79,7 +79,7 @@ const splitFences = (
   return segments
 }
 
-/*
+/**
  * Post-push integrity check: did Notion store what we sent?
  *
  * Both sides go through `canonicalizeBlockMarkdown` (paragraphs unwrapped,
@@ -92,7 +92,7 @@ const splitFences = (
  * this check. The earlier `replace(/\s+/gu, ' ')` implementation collapsed
  * all whitespace globally and would have masked those real diffs.
  */
-export const semanticEquivalent = (a: string, b: string): boolean => {
+export const semanticEquivalent = (opts: { readonly a: string; readonly b: string }): boolean => {
   const compact = (s: string): string =>
     splitFences(canonicalizeBlockMarkdown(s))
       .map((segment) =>
@@ -100,5 +100,5 @@ export const semanticEquivalent = (a: string, b: string): boolean => {
       )
       .join('\n')
       .trim()
-  return compact(a) === compact(b)
+  return compact(opts.a) === compact(opts.b)
 }

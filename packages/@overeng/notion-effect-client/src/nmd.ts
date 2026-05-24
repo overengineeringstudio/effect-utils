@@ -349,7 +349,7 @@ export const NmdFrontmatterV1 = Schema.Struct({
 
 export type NmdFrontmatterV1 = typeof NmdFrontmatterV1.Type
 
-/*
+/**
  * Writable subset of `NmdPropertyValue`, used by the V2 split: read-only
  * echoes move to the sidecar sync state, so the frontmatter only carries
  * the property tags a user can actually edit.
@@ -375,7 +375,7 @@ export const NmdWritablePropertyValue = Schema.Union(
 
 export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
 
-/*
+/**
  * V2 frontmatter — user-facing state only.
  *
  * Two-tier split from V1: derived sync bookkeeping (body hash, base
@@ -403,7 +403,7 @@ export const NmdFrontmatterV2 = Schema.Struct({
 
 export type NmdFrontmatterV2 = typeof NmdFrontmatterV2.Type
 
-/*
+/**
  * Sidecar sync state — machine-managed bookkeeping that lives at
  * `.notion-md/sync/{page_id}.json`. Mirrors the `.git/` model: working
  * tree is human-facing, sidecar is machine state. Files survive `git mv`

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 import type { Sha256Digest } from '@overeng/notion-effect-client'
 
-/*
+/**
  * Lightweight line-ending normalizer for body hashing and on-disk storage.
  *
  * Folds CRLF/CR to LF, trims trailing whitespace, ensures a final newline.
