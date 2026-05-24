@@ -11,11 +11,10 @@
 Live Notion tests require:
 
 - `NOTION_API_TOKEN`
-- `NOTION_MD_TEST_PARENT_PAGE_ID`
+- `NOTION_TEST_PARENT_PAGE_ID`
 
-The CI parent page is:
-
-https://www.notion.so/overeng-notion-md-e2e-tests-368f141b18dc8069976ac54ae50ea3eb
+The configured parent must be a dedicated scratch page shared with the
+integration token.
 
 ## Live E2E Page Policy
 

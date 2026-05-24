@@ -22,8 +22,11 @@ import { NmdStateStoreLive, objectPath, type NmdStateStore } from './state-store
 import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
 
 const token = process.env.NOTION_API_TOKEN
-const testParentPageId = process.env.NOTION_MD_TEST_PARENT_PAGE_ID
-const defaultAllowedTestParentPageIds = ['368f141b18dc8069976ac54ae50ea3eb']
+const testParentPageId =
+  process.env.NOTION_TEST_PARENT_PAGE_ID ?? process.env.NOTION_MD_TEST_PARENT_PAGE_ID
+const defaultAllowedTestParentPageIds = [testParentPageId].filter(
+  (id): id is string => id !== undefined && id.length > 0,
+)
 const allowedTestParentPageIds = new Set(
   (process.env.NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST ?? defaultAllowedTestParentPageIds.join(','))
     .split(',')
@@ -51,7 +54,7 @@ describe('notion-md live integration configuration', () => {
           testParentPageId !== undefined &&
           allowedTestParentPageIds.has(testParentPageId.replaceAll('-', '')),
       },
-      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_API_TOKEN, NOTION_MD_TEST_PARENT_PAGE_ID, and an allowed test parent',
+      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_API_TOKEN, NOTION_TEST_PARENT_PAGE_ID, and an allowed test parent',
     ).toEqual({
       hasToken: true,
       hasParentPage: true,
@@ -413,7 +416,7 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
           NotionPages.updateMarkdown({
             pageId,
             type: 'replace_content',
-            new_str: 'Line A\nLine B',
+            new_str: '- Line A\n- Line B',
             allow_deleting_content: true,
           }),
         )
@@ -425,7 +428,7 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
           NotionPages.updateMarkdown({
             pageId,
             type: 'replace_content',
-            new_str: 'Line A\nRemote line B',
+            new_str: '- Line A\n- Remote line B',
             allow_deleting_content: true,
           }),
         )

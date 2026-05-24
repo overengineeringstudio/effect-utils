@@ -65,6 +65,10 @@ export const BlockParent = Schema.Union(
     database_id: NotionUUID,
   }),
   Schema.Struct({
+    type: Schema.Literal('data_source_id'),
+    data_source_id: NotionUUID,
+  }),
+  Schema.Struct({
     type: Schema.Literal('page_id'),
     page_id: NotionUUID,
   }),

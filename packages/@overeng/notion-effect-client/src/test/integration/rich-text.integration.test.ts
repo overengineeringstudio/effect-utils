@@ -1,15 +1,24 @@
 import { Effect, Stream } from 'effect'
-import { expect } from 'vitest'
+import { afterAll, beforeAll, expect } from 'vitest'
 
 import { RichTextUtils } from '@overeng/notion-effect-schema'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionBlocks } from '../../blocks.ts'
-import { IntegrationTestLayer, SKIP_INTEGRATION, TEST_IDS } from './setup.ts'
+import {
+  IntegrationTestLayer,
+  setupIntegrationFixtures,
+  SKIP_FIXTURE_INTEGRATION,
+  teardownIntegrationFixtures,
+  TEST_IDS,
+} from './setup.ts'
 
-Vitest.describe.skipIf(SKIP_INTEGRATION)(
+Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
   'RichTextUtils with real Notion data (integration)',
   () => {
+    beforeAll(setupIntegrationFixtures, 120_000)
+    afterAll(teardownIntegrationFixtures, 60_000)
+
     Vitest.it.effect(
       'converts paragraph rich text to plain text',
       () =>

@@ -1,13 +1,23 @@
 import { Effect, Stream } from 'effect'
-import { expect } from 'vitest'
+import { afterAll, beforeAll, expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionBlocks } from '../../blocks.ts'
 import { NotionPages } from '../../pages.ts'
-import { IntegrationTestLayer, SKIP_INTEGRATION, SKIP_MUTATIONS, TEST_IDS } from './setup.ts'
+import {
+  IntegrationTestLayer,
+  setupIntegrationFixtures,
+  SKIP_FIXTURE_INTEGRATION,
+  SKIP_MUTATIONS,
+  teardownIntegrationFixtures,
+  TEST_IDS,
+} from './setup.ts'
 
-Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
+Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionBlocks (integration)', () => {
+  beforeAll(setupIntegrationFixtures, 120_000)
+  afterAll(teardownIntegrationFixtures, 60_000)
+
   Vitest.describe('retrieveChildren', () => {
     Vitest.it.effect('fetches children of a page', () =>
       Effect.gen(function* () {

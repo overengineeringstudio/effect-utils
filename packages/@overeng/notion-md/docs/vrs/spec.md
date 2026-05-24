@@ -550,7 +550,7 @@ Implemented verification currently includes:
 - a recursive workspace demo template under `packages/@overeng/notion-md/demo/workspace/`,
 - local `check:quick` and `check:all`.
 
-Live E2E uses `NOTION_MD_TEST_PARENT_PAGE_ID` as a scratch parent. Test-created
+Live E2E uses `NOTION_TEST_PARENT_PAGE_ID` as a scratch parent. Test-created
 child pages are archived during teardown. A stable `notion-md e2e run ledger`
 child page records the latest live run so the parent page remains visibly tied
 to the test suite without retaining every scratch fixture.

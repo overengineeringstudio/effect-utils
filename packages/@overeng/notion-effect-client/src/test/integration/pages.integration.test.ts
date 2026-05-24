@@ -1,12 +1,22 @@
 import { Effect } from 'effect'
-import { expect } from 'vitest'
+import { afterAll, beforeAll, expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NotionPages } from '../../pages.ts'
-import { IntegrationTestLayer, SKIP_INTEGRATION, SKIP_MUTATIONS, TEST_IDS } from './setup.ts'
+import {
+  IntegrationTestLayer,
+  setupIntegrationFixtures,
+  SKIP_FIXTURE_INTEGRATION,
+  SKIP_MUTATIONS,
+  teardownIntegrationFixtures,
+  TEST_IDS,
+} from './setup.ts'
 
-Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
+Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionPages (integration)', () => {
+  beforeAll(setupIntegrationFixtures, 120_000)
+  afterAll(teardownIntegrationFixtures, 60_000)
+
   Vitest.describe('retrieve', () => {
     Vitest.it.effect('fetches page by ID', () =>
       Effect.gen(function* () {
@@ -41,7 +51,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
       () =>
         Effect.gen(function* () {
           const page = yield* NotionPages.create({
-            parent: { type: 'database_id', database_id: TEST_IDS.database },
+            parent: { type: 'data_source_id', data_source_id: TEST_IDS.dataSource },
             properties: {
               Name: {
                 title: [{ text: { content: 'Integration Test Page' } }],
@@ -73,7 +83,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
         Effect.gen(function* () {
           // Create a temporary page for update testing
           const created = yield* NotionPages.create({
-            parent: { type: 'database_id', database_id: TEST_IDS.database },
+            parent: { type: 'data_source_id', data_source_id: TEST_IDS.dataSource },
             properties: {
               Name: {
                 title: [{ text: { content: 'Update Test Page' } }],
@@ -111,7 +121,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionPages (integration)', () => {
         Effect.gen(function* () {
           // Create a temporary page to archive
           const created = yield* NotionPages.create({
-            parent: { type: 'database_id', database_id: TEST_IDS.database },
+            parent: { type: 'data_source_id', data_source_id: TEST_IDS.dataSource },
             properties: {
               Name: {
                 title: [{ text: { content: 'Archive Test Page' } }],
