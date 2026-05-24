@@ -14,7 +14,7 @@ const runCli = (args: readonly string[]) =>
     timeout: 10_000,
     env: {
       ...process.env,
-      NOTION_TOKEN: '',
+      NOTION_API_TOKEN: '',
       OTEL_EXPORTER_OTLP_ENDPOINT: '',
     },
   })
@@ -59,7 +59,7 @@ describe('notion-md CLI boundary', () => {
         stdout: expect.stringContaining('NmdTokenMissingError'),
       })
       await expect(runCli(['status', 'page.nmd'])).rejects.toMatchObject({
-        stdout: expect.stringContaining('NOTION_TOKEN is required'),
+        stdout: expect.stringContaining('NOTION_API_TOKEN is required'),
       })
     },
     cliTestTimeoutMs,

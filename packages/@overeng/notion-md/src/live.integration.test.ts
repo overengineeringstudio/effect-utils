@@ -21,7 +21,7 @@ import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, objectPath, type NmdStateStore } from './state-store.ts'
 import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
 
-const token = process.env.NOTION_TOKEN
+const token = process.env.NOTION_API_TOKEN
 const testParentPageId = process.env.NOTION_TEST_PARENT_PAGE_ID
 const defaultAllowedTestParentPageIds = [testParentPageId].filter(
   (id): id is string => id !== undefined && id.length > 0,
@@ -53,7 +53,7 @@ describe('notion-md live integration configuration', () => {
           testParentPageId !== undefined &&
           allowedTestParentPageIds.has(testParentPageId.replaceAll('-', '')),
       },
-      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_TOKEN, NOTION_TEST_PARENT_PAGE_ID, and an allowed test parent',
+      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_API_TOKEN, NOTION_TEST_PARENT_PAGE_ID, and an allowed test parent',
     ).toEqual({
       hasToken: true,
       hasParentPage: true,

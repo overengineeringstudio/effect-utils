@@ -8,7 +8,7 @@ Notion page ids by accident.
 Create a real workspace by syncing each Notion page into a matching `.nmd` path:
 
 ```sh
-export NOTION_TOKEN="secret_..."
+export NOTION_API_TOKEN="secret_..."
 
 notion-md sync <overview-page-id> \
   packages/@overeng/notion-md/demo/workspace/project/overview.nmd

@@ -66,7 +66,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - **@overeng/notion-md**: Breaking CLI simplification: collapse the user-facing page workflow around `sync` and `status`; replace the old explicit `pull` / `push` entrypoints with `sync <page-id-or-url> <file.nmd>` for bootstrap and guarded `sync <file.nmd>` for reconciliation.
-- **@overeng/notion-md**: Remove legacy compatibility paths for batch `push`, local-first `page_id: null` page creation, and `NOTION_API_TOKEN`; notion-md now requires `NOTION_TOKEN` and existing Notion pages must be materialized with `sync <page-id-or-url> <target>`.
+- **@overeng/notion-md**: Remove legacy compatibility paths for batch `push` and local-first `page_id: null` page creation; existing Notion pages must be materialized with `sync <page-id-or-url> <target>`.
 - **@overeng/pty-effect/client**: `spawnDaemon` now delegates to `@myobie/pty.spawnDaemon` instead of duplicating the daemon spawn pipeline. The Bun-on-Node case is routed through upstream's new `launcher` option (still honors `NODE_BIN`). Eliminates a divergent in-house spawn path so consumers automatically inherit upstream improvements such as bundle-safe spawn (myobie/pty#38). Public API and `PtyDaemonSpec` schema unchanged.
 - **@overeng/notion-react**: `<Page>` and `<ChildPage>` accept `icon={null}` and `cover={null}` as explicit clear sentinels (#618). Dropping the prop is still "no claim" (preserves server state); passing `null` emits `pages.update({icon: null})` / `pages.update({cover: null})`. On a fresh page with no prior icon/cover, `null` is a no-op.
 - **@overeng/notion-react**: Same-parent `<ChildPage>` creates are now sequential — JSX order is preserved 1:1 on the server (#618). Parallel `pages.create` under a common parent yields nondeterministic `child_page` ordering; the driver issues sequential POSTs so no post-create re-fetch is needed. T08 (formerly "concurrent sibling-page order is not authoritative") is now a normative invariant; the deferred `ensureSiblingOrder` sync option is dropped.
@@ -88,7 +88,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-schema**: Add `data_source_id` parent variant to `BlockParent` schema for blocks returned from data-source-backed pages.
 - **@overeng/notion-effect-schema**: Rename `DataSource` → `DataSourceRef` for lightweight reference in `DatabaseSchema.data_sources`
 - **@overeng/notion-effect-client**: Widen `SchemaHelpers` to accept both `DatabaseSchema` and `DataSourceSchema`
-- **@overeng/notion-md**: Require `NOTION_TOKEN` as the only Notion credential environment variable across code, docs, tests, and SecretSpec
+- **@overeng/notion-md**: Use `NOTION_API_TOKEN` as the only Notion credential environment variable across code, docs, tests, and SecretSpec
 
 ### Fixed
 
@@ -847,7 +847,7 @@ All notable changes to this project will be documented in this file.
   - `generate` subcommand: Introspects a Notion database and generates Effect schemas
     - `--output` / `-o`: Output file path for generated schema
     - `--name` / `-n`: Custom name for the generated schema (defaults to database title)
-    - `--token` / `-t`: Notion API token (defaults to NOTION_TOKEN env var)
+    - `--token` / `-t`: Notion API token (defaults to NOTION_API_TOKEN env var)
     - `--transform`: Per-property transform configuration (e.g., `Status=raw`)
     - `--dry-run` / `-d`: Preview generated code without writing to file
     - `--include-write` / `-w`: Include Write schemas for creating/updating pages

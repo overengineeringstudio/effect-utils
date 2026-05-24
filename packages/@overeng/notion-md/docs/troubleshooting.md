@@ -5,13 +5,13 @@
 Symptom:
 
 ```text
-NOTION_TOKEN is required
+NOTION_API_TOKEN is required
 ```
 
 Fix:
 
 ```sh
-export NOTION_TOKEN="secret_..."
+export NOTION_API_TOKEN="secret_..."
 ```
 
 Use a token whose integration has access to the target page.

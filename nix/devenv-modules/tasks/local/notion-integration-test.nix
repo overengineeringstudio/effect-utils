@@ -25,7 +25,7 @@ let
     {
       path = "packages/@overeng/notion-md";
       name = "notion-md";
-      tokenEnv = "NOTION_TOKEN";
+      tokenEnv = "NOTION_API_TOKEN";
     }
   ];
   vitestExec = tokenEnv: ''
