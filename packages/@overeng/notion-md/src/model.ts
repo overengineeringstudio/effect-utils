@@ -17,6 +17,12 @@ export interface CreatePageInput {
   readonly body?: string
 }
 
+/** Child page discovered under a Notion page. */
+export interface RemoteChildPage {
+  readonly pageId: string
+  readonly title: string
+}
+
 /** Map a strict `NmdParentRef` (from V2 frontmatter) to the createPage subset. */
 export const toCreatePageParent = (parent: NmdParentRef): CreatePageParent | undefined => {
   switch (parent._tag) {
@@ -149,11 +155,15 @@ export interface NotionMdGatewayShape {
    * (optional) initial body. Returns the new page snapshot; callers
    * follow up with `pullPage` to populate the sidecar sync state.
    * Supports the convention-driven create flow: a `.nmd` file with
-   * `page_id: null` + `parent` set materializes itself on first `push`.
+   * `page_id: null` + `parent` set materializes itself on first sync.
    */
   readonly createPage: (
     input: CreatePageInput,
   ) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
+  /** List direct child pages under a Notion page. */
+  readonly listChildPages: (opts: {
+    readonly pageId: string
+  }) => Effect.Effect<readonly RemoteChildPage[], NmdGatewayError>
 }
 
 /** Effect service tag for Notion Markdown sync operations. */

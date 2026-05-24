@@ -1,8 +1,8 @@
 # Getting Started
 
-`notion-md` syncs one Notion page with one local `.nmd` file. The Markdown body is
-stock Notion enhanced Markdown; sync metadata lives in strict frontmatter and, for
-large or immutable evidence, `.notion-md/objects`.
+`notion-md` syncs Notion pages with local `.nmd` files. The Markdown body is
+stock Notion enhanced Markdown; sync metadata lives in strict frontmatter and,
+for large or immutable evidence, `.notion-md/objects`.
 
 ## Credentials
 
@@ -16,10 +16,10 @@ The integration must have access to the page you sync. If a command can
 authenticate but cannot read the page, share the page with the integration in
 Notion.
 
-## First Pull
+## First Sync
 
 ```sh
-notion-md pull 00000000000040008000000000000001 --out notes.nmd
+notion-md sync 00000000000040008000000000000001 notes.nmd
 ```
 
 This writes:
@@ -35,12 +35,25 @@ This writes:
 Commit both the `.nmd` file and its reachable `.notion-md` objects when using
 Git. The object store is part of the local sync state, not a disposable cache.
 The sidecar can be gitignored — if it goes missing, `notion-md` will tell you
-to re-`pull` to rebuild it rather than silently sync against a non-baseline.
+to re-sync from the Notion page id to rebuild it rather than silently sync
+against a non-baseline.
+
+To start from a Notion page tree instead of a single page, use a directory
+target:
+
+```sh
+notion-md sync 00000000000040008000000000000001 docs
+```
+
+This creates `docs/.notion-md/workspace.json`, writes the root page to
+`docs/index.nmd`, and materializes child pages using deterministic slug paths.
+Later, `notion-md sync docs` keeps the workspace current and pulls newly added
+remote child pages into local files.
 
 ## Creating A New Page From Markdown
 
 Author a `.nmd` file with `page_id: null` and a `parent` set; the first
-`push` materializes the Notion page and fills in `page_id` plus the
+`sync` materializes the Notion page and fills in `page_id` plus the
 sidecar:
 
 ```
@@ -82,20 +95,20 @@ notion-md status notes.nmd
 - modeled local property edits,
 - referenced object-store integrity.
 
-## Push Local Edits
+## Sync Local Edits
 
 ```sh
-notion-md push notes.nmd
+notion-md sync notes.nmd
 ```
 
-A normal push is guarded. It refuses to overwrite remote body edits unless the
+A normal sync is guarded. It refuses to overwrite remote body edits unless the
 remote body still matches the last clean base or a conservative automatic merge
 can prove the edits do not overlap.
 
 Use `--force` only after inspecting the remote change:
 
 ```sh
-notion-md push notes.nmd --force
+notion-md sync notes.nmd --force
 ```
 
 ## One-Shot Sync
@@ -104,8 +117,8 @@ notion-md push notes.nmd --force
 notion-md sync notes.nmd
 ```
 
-`sync` runs one reconciliation pass. It accepts a single `.nmd`, multiple
-`.nmd` files, or a directory with `--recursive`:
+`sync` runs one reconciliation pass. It accepts a single `.nmd`, a managed
+workspace directory, or an unmanaged directory with `--recursive`:
 
 ```sh
 notion-md sync docs --recursive --concurrency 4
@@ -126,8 +139,7 @@ Watch mode runs the same reconciliation pass after local file changes and on a
 remote polling interval. It emits one compact JSON line per sync event or
 recoverable sync error.
 
-Multiple file targets and recursive directory targets can share one watch
-process:
+Unmanaged recursive directory targets can share one watch process:
 
 ```sh
 notion-md sync docs --recursive --watch --poll-interval-ms 30000
@@ -136,3 +148,7 @@ notion-md sync docs --recursive --watch --poll-interval-ms 30000
 The watched file set is resolved at startup. Restart the watcher after adding a
 new `.nmd` file. Concurrent writers can still create real conflicts, and those
 should be resolved through the same guarded conflict flow.
+
+Managed workspace watch is not implemented yet. Use one-shot
+`notion-md sync docs` when you want to refresh the remote tree and materialize
+new child pages.

@@ -404,10 +404,11 @@ Implementation rules:
 Current commands:
 
 ```bash
-notion-md pull <page-id> --out page.nmd
+notion-md sync <page-id-or-url> page.nmd
+notion-md sync <page-id-or-url> docs
 notion-md status page.nmd
-notion-md push page.nmd [--force] [--allow-delete-unknown-blocks] [--allow-review-markup]
 notion-md sync page.nmd [--watch] [--poll-interval-ms 30000]
+notion-md sync docs
 ```
 
 Environment:
@@ -436,15 +437,17 @@ Batch commands:
 
 ```bash
 notion-md status <target...> [--recursive] [--concurrency 4]
-notion-md push <target...> [--recursive] [--concurrency 4]
-notion-md sync <target...> [--recursive] [--concurrency 4] [--watch]
+notion-md sync <target> [--recursive] [--concurrency 4] [--watch]
 ```
 
 Rules:
 
 - A single file target keeps the original single-result JSON shape.
-- Multiple file targets or recursive directory targets emit a batch envelope.
-- Directory targets require `--recursive`.
+- Multiple status targets or recursive unmanaged directory targets emit a batch envelope.
+- Managed workspace directories read `.notion-md/workspace.json`; `sync`
+  materializes missing remote child pages, while `status` reports them without
+  writing files.
+- Unmanaged directory targets require `--recursive`.
 - Recursive discovery includes existing `*.nmd` files and skips `.notion-md`,
   `.git`, and `node_modules`.
 - Duplicate `page_id` values in the same batch are rejected before any Notion

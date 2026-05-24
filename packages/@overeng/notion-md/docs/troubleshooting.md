@@ -35,7 +35,7 @@ Common causes:
 - a tagged value was rewritten without `_tag`.
 
 Fix the frontmatter from the schema, restore the file from version control, or
-run `pull` again into a fresh file and reapply body edits.
+run `sync <page-id-or-url> <path>` again into a fresh file and reapply body edits.
 
 ## Object Store Error
 
@@ -43,7 +43,7 @@ Symptoms include `NmdObjectStoreError`, missing object paths, hash mismatches, o
 inventory mismatches.
 
 The `.nmd` file references immutable evidence under `.notion-md/objects`. Restore
-the referenced objects from version control or pull the page again into a clean
+the referenced objects from version control or sync the page again into a clean
 file. Do not patch object hashes by hand.
 
 ## Missing Sidecar Sync State
@@ -52,13 +52,13 @@ Symptom:
 
 ```text
 NmdFrontmatterError: Missing sidecar sync state for page <id>.
-Run `notion-md pull <id> --out <path>` to rebuild it.
+Run `notion-md sync <id> <path>` to rebuild it.
 ```
 
 `.notion-md/sync/<page_id>.json` holds the derived bookkeeping (body hash, base
 ref, last-pulled timestamps, storage inventory). It is keyed by the immutable
 page id and is typically gitignored. A fresh clone of a repo that gitignores
-`.notion-md/` will not have it. Run the suggested `pull` to rebuild it; sync
+`.notion-md/` will not have it. Run the suggested sync to rebuild it; sync
 will then resume from the freshly captured remote baseline.
 
 ## H1 Heading Disappears After Create
@@ -84,29 +84,29 @@ base, local, and remote evidence. Inspect base/local/remote sections, edit the
 
 ```sh
 notion-md status notes.nmd
-notion-md push notes.nmd
+notion-md sync notes.nmd
 ```
 
 Use `--force` only when overwriting the remote body is the intended outcome.
 
-## Unknown Blocks Block Push
+## Unknown Blocks Block Sync
 
-Normal push refuses to delete unsupported Notion blocks. Pull again if the remote
+Normal sync refuses to delete unsupported Notion blocks. Sync again if the remote
 page has changed, or explicitly allow deletion:
 
 ```sh
-notion-md push notes.nmd --allow-delete-unknown-blocks
+notion-md sync notes.nmd --allow-delete-unknown-blocks
 ```
 
 Use the flag only when the unknown blocks are no longer needed.
 
-## Roughdraft Markup Blocks Push
+## Roughdraft Markup Blocks Sync
 
-Normal push refuses unresolved Roughdraft review markup so review annotations do
+Normal sync refuses unresolved Roughdraft review markup so review annotations do
 not accidentally become visible Notion content.
 
-Resolve or remove the markup before pushing. Use `--allow-review-markup` only
-when the literal markup should be pushed.
+Resolve or remove the markup before syncing. Use `--allow-review-markup` only
+when the literal markup should be written to Notion.
 
 ## Watch Emits Repeated Errors
 

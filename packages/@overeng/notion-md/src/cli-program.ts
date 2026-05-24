@@ -21,7 +21,6 @@ import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import {
   isSingleFileTarget,
-  pushMany,
   resolveNmdTargets,
   runBatchWatch,
   statusMany,
@@ -31,8 +30,14 @@ import { NmdCliError, NmdTokenMissingError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
-import { pullPage, pushPage, statusPage, syncPage, type SyncOptions } from './sync.ts'
+import { statusPage, syncPage, type SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
+import {
+  isManagedWorkspace,
+  statusWorkspace,
+  syncRemoteToTarget,
+  syncWorkspace,
+} from './workspace.ts'
 
 const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
   identifier: 'NotionMd.Cli.NonEmptyText',
@@ -42,21 +47,21 @@ const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive()).anno
   identifier: 'NotionMd.Cli.PositiveInteger',
 })
 
-const pageIdArg = Args.text({ name: 'page-id' }).pipe(
-  Args.withDescription('Notion page id to pull'),
-  Args.withSchema(NonEmptyCliText),
-)
-
 const nmdTargetsArg = Args.text({ name: 'target' }).pipe(
   Args.withDescription('Local .nmd file path or directory with --recursive'),
   Args.withSchema(NonEmptyCliText),
   Args.atLeast(1),
 )
 
-const outOption = Options.text('out').pipe(
-  Options.withAlias('o'),
-  Options.withDescription('Output .nmd file path'),
-  Options.withSchema(NonEmptyCliText),
+const syncSourceArg = Args.text({ name: 'source' }).pipe(
+  Args.withDescription('Local target, or Notion page id/url when a local target is also provided'),
+  Args.withSchema(NonEmptyCliText),
+)
+
+const syncTargetArg = Args.text({ name: 'target' }).pipe(
+  Args.withDescription('Local .nmd file or workspace directory to establish from Notion'),
+  Args.withSchema(NonEmptyCliText),
+  Args.optional,
 )
 
 const forceOption = Options.boolean('force').pipe(
@@ -148,16 +153,19 @@ const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 const logJson = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value, null, 2))
 
-/*
- * Print a one-line hint to stderr when stdout is attached to a TTY. stdout
- * stays pure JSON so scripts can pipe it; humans see the next step they need.
- */
-const logHumanHint = (message: string): Effect.Effect<void> =>
-  Effect.sync(() => {
-    if (process.stdout.isTTY === true) {
-      process.stderr.write(`hint: ${message}\n`)
-    }
-  })
+const parseNotionPageRef = (value: string): string | undefined => {
+  const compact = value.replaceAll('-', '')
+  const direct = /^[0-9a-f]{32}$/iu.test(compact) === true ? compact : undefined
+  const fromUrl = direct ?? value.match(/[0-9a-f]{32}/iu)?.[0]
+  if (fromUrl === undefined) return undefined
+  return [
+    fromUrl.slice(0, 8),
+    fromUrl.slice(8, 12),
+    fromUrl.slice(12, 16),
+    fromUrl.slice(16, 20),
+    fromUrl.slice(20),
+  ].join('-')
+}
 
 const safeJsonError = (error: unknown): Record<string, unknown> => {
   if (typeof error === 'object' && error !== null && '_tag' in error) {
@@ -323,27 +331,6 @@ const commandSpan = <A, E, R>(opts: {
     }),
   )
 
-const pullCommand = Command.make(
-  'pull',
-  {
-    pageId: pageIdArg,
-    outPath: outOption,
-  },
-  ({ pageId, outPath }) =>
-    commandSpan({
-      command: 'pull',
-      label: basename(outPath),
-      effect: withNotion(pullPage({ pageId, outPath })),
-    }).pipe(
-      Effect.flatMap(logJson),
-      Effect.zipLeft(
-        logHumanHint(
-          `edit body below the second --- in ${outPath}, then 'notion-md push ${outPath}'`,
-        ),
-      ),
-    ),
-).pipe(Command.withDescription('Pull a Notion page into a local .nmd file'))
-
 const statusCommand = Command.make(
   'status',
   {
@@ -356,12 +343,22 @@ const statusCommand = Command.make(
       command: 'status',
       label: targets.length === 1 ? basename(targets[0] ?? 'target') : `${targets.length} targets`,
       effect: withNotion(
-        isSingleFileTarget({ targets, recursive }).pipe(
-          Effect.flatMap((singleFile) =>
-            singleFile === true
-              ? statusPage({ path: targets[0] ?? '' }).pipe(Effect.map((result): unknown => result))
-              : statusMany({ targets, recursive, concurrency }).pipe(
+        isManagedWorkspace(targets[0] ?? '').pipe(
+          Effect.flatMap((managedWorkspace) =>
+            managedWorkspace === true && targets.length === 1
+              ? statusWorkspace({ root: targets[0] ?? '' }).pipe(
                   Effect.map((result): unknown => result),
+                )
+              : isSingleFileTarget({ targets, recursive }).pipe(
+                  Effect.flatMap((singleFile) =>
+                    singleFile === true
+                      ? statusPage({ path: targets[0] ?? '' }).pipe(
+                          Effect.map((result): unknown => result),
+                        )
+                      : statusMany({ targets, recursive, concurrency }).pipe(
+                          Effect.map((result): unknown => result),
+                        ),
+                  ),
                 ),
           ),
         ),
@@ -369,84 +366,89 @@ const statusCommand = Command.make(
     }).pipe(Effect.flatMap(logJson)),
 ).pipe(Command.withDescription('Compare local .nmd state with the remote Notion page'))
 
-const pushCommand = Command.make(
-  'push',
-  {
-    targets: nmdTargetsArg,
-    recursive: recursiveOption,
-    concurrency: concurrencyOption,
-    ...pushSafetyOptions,
-  },
-  (opts) =>
-    commandSpan({
-      command: 'push',
-      label:
-        opts.targets.length === 1
-          ? basename(opts.targets[0] ?? 'target')
-          : `${opts.targets.length} targets`,
-      effect: withNotion(
-        isSingleFileTarget({ targets: opts.targets, recursive: opts.recursive }).pipe(
-          Effect.flatMap((singleFile) =>
-            singleFile === true
-              ? pushPage({
-                  path: opts.targets[0] ?? '',
-                  ...(opts.force === undefined ? {} : { force: opts.force }),
-                  ...(opts.allowDeletingUnknownBlocks === undefined
-                    ? {}
-                    : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
-                  ...(opts.allowReviewMarkup === undefined
-                    ? {}
-                    : { allowReviewMarkup: opts.allowReviewMarkup }),
-                }).pipe(Effect.map((result): unknown => result))
-              : pushMany(opts).pipe(Effect.map((result): unknown => result)),
-          ),
-        ),
-      ),
-    }).pipe(Effect.flatMap(logJson)),
-).pipe(Command.withDescription('Push guarded local .nmd edits to Notion'))
-
 const syncCommand = Command.make(
   'sync',
   {
-    targets: nmdTargetsArg,
+    source: syncSourceArg,
+    target: syncTargetArg,
     watch: watchOption,
     pollIntervalMs: pollIntervalMsOption,
     recursive: recursiveOption,
     concurrency: concurrencyOption,
     ...pushSafetyOptions,
   },
-  ({ watch, pollIntervalMs, targets, recursive, concurrency, ...syncOptions }) => {
+  ({ watch, pollIntervalMs, source, target, recursive, concurrency, ...syncOptions }) => {
+    const targets = [source]
     const label =
       targets.length === 1 ? basename(targets[0] ?? 'target') : `${targets.length} targets`
     const singleFile = isSingleFileTarget({ targets, recursive })
 
+    if (Option.isSome(target) === true) {
+      const pageId = parseNotionPageRef(source)
+      if (pageId === undefined) {
+        return Effect.fail(
+          new NmdCliError({
+            message: `Expected ${source} to be a Notion page id or URL when a local target is provided`,
+          }),
+        )
+      }
+      if (watch === true) {
+        return Effect.fail(
+          new NmdCliError({
+            message:
+              'Use `notion-md sync <target> --watch` after the local target has been established',
+          }),
+        )
+      }
+      return commandSpan({
+        command: 'sync',
+        label: basename(target.value),
+        effect: withNotion(
+          syncRemoteToTarget({ pageId, target: target.value, syncOptions }).pipe(
+            Effect.map((result): unknown => result),
+          ),
+        ),
+      }).pipe(Effect.flatMap(logJson))
+    }
+
     return watch === true
       ? withNotion(
-          singleFile.pipe(
-            Effect.flatMap((isSingleFile) =>
-              isSingleFile === true
-                ? runWatch({
-                    syncOptions: { ...syncOptions, path: targets[0] ?? '' },
-                    pollIntervalMs,
-                  })
-                : resolveNmdTargets({ targets, recursive, operation: 'sync' }).pipe(
-                    Effect.flatMap((resolved) => {
-                      const firstError = resolved.errors[0]
-                      if (firstError !== undefined) return Effect.fail(firstError.error)
-                      if (resolved.paths.length === 0) {
-                        return Effect.fail(
-                          new NmdCliError({
-                            message: 'No .nmd files matched the requested watch targets',
-                          }),
-                        )
-                      }
-                      return runBatchWatch({
-                        ...syncOptions,
-                        paths: resolved.paths,
-                        concurrency,
-                        pollIntervalMs,
-                      })
+          isManagedWorkspace(source).pipe(
+            Effect.flatMap((managedWorkspace) =>
+              managedWorkspace === true
+                ? Effect.fail(
+                    new NmdCliError({
+                      message:
+                        'Managed workspace watch is not implemented yet. Run `notion-md sync <workspace>` periodically, or watch specific .nmd files.',
                     }),
+                  )
+                : singleFile.pipe(
+                    Effect.flatMap((isSingleFile) =>
+                      isSingleFile === true
+                        ? runWatch({
+                            syncOptions: { ...syncOptions, path: targets[0] ?? '' },
+                            pollIntervalMs,
+                          })
+                        : resolveNmdTargets({ targets, recursive, operation: 'sync' }).pipe(
+                            Effect.flatMap((resolved) => {
+                              const firstError = resolved.errors[0]
+                              if (firstError !== undefined) return Effect.fail(firstError.error)
+                              if (resolved.paths.length === 0) {
+                                return Effect.fail(
+                                  new NmdCliError({
+                                    message: 'No .nmd files matched the requested watch targets',
+                                  }),
+                                )
+                              }
+                              return runBatchWatch({
+                                ...syncOptions,
+                                paths: resolved.paths,
+                                concurrency,
+                                pollIntervalMs,
+                              })
+                            }),
+                          ),
+                    ),
                   ),
             ),
           ),
@@ -455,25 +457,37 @@ const syncCommand = Command.make(
           command: 'sync',
           label,
           effect: withNotion(
-            singleFile.pipe(
-              Effect.flatMap((isSingleFile) =>
-                isSingleFile === true
-                  ? syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
+            isManagedWorkspace(source).pipe(
+              Effect.flatMap((managedWorkspace) =>
+                managedWorkspace === true
+                  ? syncWorkspace({ root: source, syncOptions }).pipe(
                       Effect.map((result): unknown => result),
                     )
-                  : syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
-                      Effect.map((result): unknown => result),
+                  : singleFile.pipe(
+                      Effect.flatMap((isSingleFile) =>
+                        isSingleFile === true
+                          ? syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
+                              Effect.map((result): unknown => result),
+                            )
+                          : syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
+                              Effect.map((result): unknown => result),
+                            ),
+                      ),
                     ),
               ),
             ),
           ),
         }).pipe(Effect.flatMap(logJson))
   },
-).pipe(Command.withDescription('Reconcile a local .nmd file with its Notion page'))
+).pipe(
+  Command.withDescription(
+    'Sync a local target, or establish a local file/workspace from a Notion page',
+  ),
+)
 
 /** Effect CLI command tree for the notion-md binary. */
 export const notionMdCommand = Command.make('notion-md').pipe(
-  Command.withSubcommands([pullCommand, statusCommand, pushCommand, syncCommand]),
+  Command.withSubcommands([statusCommand, syncCommand]),
   Command.withDescription('Two-way Notion enhanced Markdown sync'),
 )
 

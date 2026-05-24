@@ -5,16 +5,16 @@ This directory is the local shape for exercising multi-file and recursive
 files end in `.nmd.example`, so recursive commands do not contact placeholder
 Notion page ids by accident.
 
-Create a real workspace by pulling each Notion page into a matching `.nmd` path:
+Create a real workspace by syncing each Notion page into a matching `.nmd` path:
 
 ```sh
 export NOTION_API_TOKEN="secret_..."
 
-notion-md pull <overview-page-id> \
-  --out packages/@overeng/notion-md/demo/workspace/project/overview.nmd
+notion-md sync <overview-page-id> \
+  packages/@overeng/notion-md/demo/workspace/project/overview.nmd
 
-notion-md pull <weekly-notes-page-id> \
-  --out packages/@overeng/notion-md/demo/workspace/project/weekly-notes/2026-05-23.nmd
+notion-md sync <weekly-notes-page-id> \
+  packages/@overeng/notion-md/demo/workspace/project/weekly-notes/2026-05-23.nmd
 ```
 
 Then run the batch and recursive flows against the directory:
@@ -27,4 +27,4 @@ notion-md sync packages/@overeng/notion-md/demo/workspace --recursive --watch --
 
 The committed examples are shaped like real pulled files, but they are not sync
 state. Do not rename them to `.nmd` without replacing the placeholder page ids by
-pulling real Notion pages first.
+syncing real Notion pages first.

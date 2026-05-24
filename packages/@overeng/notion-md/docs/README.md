@@ -5,7 +5,7 @@ lives in the package-local [VRS](./vrs/README.md).
 
 Start here:
 
-- [Getting Started](./getting-started.md): pull a page, edit locally, push, and
+- [Getting Started](./getting-started.md): sync a page, edit locally, sync back, and
   run watch mode.
 - [CLI Reference](./cli.md): commands, flags, environment variables, and output
   shape.

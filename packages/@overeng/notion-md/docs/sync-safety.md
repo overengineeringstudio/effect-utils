@@ -5,7 +5,7 @@ surfaces and refusing ambiguous writes.
 
 ## Surfaces
 
-| Surface            | Local state               | Push behavior                        |
+| Surface            | Local state               | Write behavior                       |
 | ------------------ | ------------------------- | ------------------------------------ |
 | Body               | `.nmd` body + base object | guarded Markdown update              |
 | Page metadata      | frontmatter page fields   | field-level patch for modeled values |
@@ -17,19 +17,19 @@ surfaces and refusing ambiguous writes.
 
 ## Body Conflicts
 
-Every pull writes a base snapshot. Push compares base, local, and remote bodies:
+Every pull writes a base snapshot. Sync compares base, local, and remote bodies:
 
 | Case                       | Result                  |
 | -------------------------- | ----------------------- |
-| local changed, remote same | push local body         |
+| local changed, remote same | write local body        |
 | local same, remote changed | pull remote body        |
-| both changed, no overlap   | auto-merge and push     |
+| both changed, no overlap   | auto-merge and write    |
 | both changed, overlap      | write conflict artifact |
 | remote changed + `--force` | overwrite remote body   |
 
 Conflict artifacts are written beside the `.nmd` file using Roughdraft markup.
 Resolve by editing the `.nmd` body to the intended final content, then rerun
-`status` or `push`.
+`status` or `sync`.
 
 ## Roughdraft Review Markup
 
@@ -39,7 +39,7 @@ Unresolved Roughdraft markers are local review state:
 {==old text==}{>>review note<<}{id="r1"}
 ```
 
-Normal push refuses to send these markers to Notion. Use
+Normal sync refuses to send these markers to Notion. Use
 `--allow-review-markup` only when you deliberately want the markers to become
 visible Notion content.
 
@@ -49,13 +49,13 @@ Some Notion blocks cannot be represented by the Markdown endpoint and appear as
 unknown placeholders. `notion-md` records their block IDs and compact snapshots in
 frontmatter or object storage.
 
-Normal push refuses body updates that could delete unresolved unknown blocks. Use
+Normal sync refuses body updates that could delete unresolved unknown blocks. Use
 `--allow-delete-unknown-blocks` only after deciding that deleting those Notion
 blocks is acceptable.
 
 ## Property-Only Edits
 
-Property-only edits can be pushed even when the remote body changed. The CLI
+Property-only edits can be synced even when the remote body changed. The CLI
 patches the property surface, then refreshes the local body and base from the
 current remote body. This avoids turning independent property and body edits into
 a false conflict.
@@ -71,9 +71,9 @@ or custom emojis are preserved until their write behavior is proven.
 
 ## Object Integrity
 
-`status`, `push`, and `sync` validate referenced objects before trusting local
+`status` and `sync` validate referenced objects before trusting local
 state. Tampered object bytes, missing objects, stale inventory, and invalid
 logical paths fail early.
 
-Do not edit `.notion-md/objects` by hand. If an object-store error appears, pull
-again from the remote page or restore the referenced object from version control.
+Do not edit `.notion-md/objects` by hand. If an object-store error appears, sync
+again from the remote page id or restore the referenced object from version control.

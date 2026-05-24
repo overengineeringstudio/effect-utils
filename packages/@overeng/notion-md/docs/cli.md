@@ -3,10 +3,10 @@
 The binary is `notion-md`.
 
 ```sh
-notion-md pull <page-id> --out <file.nmd>
+notion-md sync <page-id-or-url> <file.nmd>
+notion-md sync <page-id-or-url> <dir>
+notion-md sync <target> [--recursive] [--concurrency <n>] [--watch] [--poll-interval-ms <ms>] [--force] [--allow-delete-unknown-blocks] [--allow-review-markup]
 notion-md status <target...> [--recursive] [--concurrency <n>]
-notion-md push <target...> [--recursive] [--concurrency <n>] [--force] [--allow-delete-unknown-blocks] [--allow-review-markup]
-notion-md sync <target...> [--recursive] [--concurrency <n>] [--watch] [--poll-interval-ms <ms>] [--force] [--allow-delete-unknown-blocks] [--allow-review-markup]
 ```
 
 ## Environment
@@ -16,29 +16,36 @@ notion-md sync <target...> [--recursive] [--concurrency <n>] [--watch] [--poll-i
 | `NOTION_API_TOKEN`                        | yes      | Notion API token                                  |
 | `NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST` | live e2e | Comma-separated parent page ids cleanup may touch |
 
-## `pull`
+## `sync <page> <target>`
 
 ```sh
-notion-md pull <page-id> --out <file.nmd>
+notion-md sync <page-id-or-url> <file.nmd>
+notion-md sync <page-id-or-url> <dir>
 ```
 
-Pulls page metadata, page properties, Notion enhanced Markdown, unknown-block
-metadata, and local storage evidence into a `.nmd` file.
+With a Notion page id or URL plus a local target, `sync` establishes local sync
+state:
 
-Options:
+- file targets materialize one page into one `.nmd` file,
+- directory targets create a managed workspace at `<dir>/.notion-md/workspace.json`
+  and materialize the root page plus child pages.
 
-| Option        | Meaning                 |
-| ------------- | ----------------------- |
-| `--out`, `-o` | Output `.nmd` file path |
+After a workspace has been established, `notion-md sync <dir>` refreshes the
+workspace and materializes newly discovered remote child pages.
 
 ## Targets
 
-`status`, `push`, and `sync` accept one or more file targets. Passing a single
+`status` accepts one or more file targets. Passing a single
 file preserves the original single-result JSON output. Passing multiple files,
 or a directory with `--recursive`, emits a batch result envelope.
 
-Directory targets require `--recursive`; discovery walks nested directories,
-finds existing `*.nmd` files, and skips `.notion-md`, `.git`, and
+`sync` accepts one local target. If that target is a managed workspace directory,
+workspace metadata supplies the Notion root and `--recursive` is not required.
+If the target is an unmanaged directory, pass `--recursive` to reconcile existing
+local `.nmd` files only.
+
+Unmanaged directory targets require `--recursive`; discovery walks nested
+directories, finds existing `*.nmd` files, and skips `.notion-md`, `.git`, and
 `node_modules`.
 
 Batch options:
@@ -61,16 +68,20 @@ notion-md status <target...>
 Reads local files, validates all referenced objects, pulls remote state, and
 prints JSON status results.
 
-Use this before a push when you want to know whether the local file, remote page,
+For managed workspace directories, `status` also checks the configured remote
+tree and reports missing local files without materializing them.
+
+Use this before a sync when you want to know whether the local file, remote page,
 or both have changed.
 
-## `push`
+## `sync`
 
 ```sh
-notion-md push <target...>
+notion-md sync <target>
 ```
 
-Pushes local body and modeled property edits after safety checks.
+Runs one reconciliation pass for a local file, local folder, or
+managed workspace.
 
 Options:
 
@@ -80,25 +91,20 @@ Options:
 | `--allow-delete-unknown-blocks` | Allow a body replacement that can delete unsupported blocks    |
 | `--allow-review-markup`         | Allow unresolved Roughdraft review markup to be sent to Notion |
 
-## `sync`
-
-```sh
-notion-md sync <target...>
-```
-
-Runs one pull-or-push reconciliation pass per target. It uses the same safety
-flags as `push`.
-
 ## `sync --watch`
 
 ```sh
-notion-md sync <target...> --watch --poll-interval-ms 30000
+notion-md sync <target> --watch --poll-interval-ms 30000
 ```
 
 Runs continuous sync. Local file events and remote poll events are coalesced.
 One file target uses the original one-file watch envelope. Multiple files or
 recursive directory targets use a batch watch envelope and reconcile affected
 files with bounded concurrency.
+
+Managed workspace watch is not implemented yet. Run one-shot
+`notion-md sync <workspace>` periodically, or watch specific `.nmd` files /
+unmanaged recursive directories when you need a long-running process.
 
 Options:
 

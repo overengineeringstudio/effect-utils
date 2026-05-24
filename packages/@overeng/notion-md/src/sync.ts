@@ -376,7 +376,7 @@ const writeRoughdraftConflict = (opts: {
         path: conflictPath,
         content: `# notion-md body conflict
 
-{==Body conflict==}{>>Remote and local body content both changed since the last clean pull. Resolve the chosen content back into the .nmd file, then rerun status/push.<<}{id="body-conflict" by="notion-md" at="${now}"}
+{==Body conflict==}{>>Remote and local body content both changed since the last clean pull. Resolve the chosen content back into the .nmd file, then rerun status/sync.<<}{id="body-conflict" by="notion-md" at="${now}"}
 
 Page: ${opts.pageId}
 
@@ -595,7 +595,7 @@ const readNmd = (path: string): Effect.Effect<LocalState, NmdError, NmdStateStor
          */
         return yield* new NmdFrontmatterError({
           path,
-          message: `Missing sidecar sync state for page ${pageId}. Run \`notion-md pull ${pageId} --out ${path}\` to rebuild it.`,
+          message: `Missing sidecar sync state for page ${pageId}. Run \`notion-md sync ${pageId} ${path}\` to rebuild it.`,
         })
       }
       syncState = loaded

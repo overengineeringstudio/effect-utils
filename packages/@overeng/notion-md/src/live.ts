@@ -1,5 +1,5 @@
 import { HttpClient } from '@effect/platform'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Stream } from 'effect'
 
 import {
   NotionBlocks,
@@ -18,6 +18,7 @@ import {
   type CreatePageInput,
   type MarkdownUpdateCommand,
   NotionMdGateway,
+  type RemoteChildPage,
   type RemotePageSnapshot,
 } from './model.ts'
 
@@ -70,6 +71,20 @@ const toRemotePage = (page: Page): RemotePageSnapshot => {
     last_edited_time: page.last_edited_time,
     properties: page.properties,
   }
+}
+
+const toRemoteChildPage = (block: Block): RemoteChildPage | undefined => {
+  if (block.type !== 'child_page') return undefined
+  const childPage = block.child_page
+  if (
+    typeof childPage !== 'object' ||
+    childPage === null ||
+    'title' in childPage === false ||
+    typeof childPage.title !== 'string'
+  ) {
+    return undefined
+  }
+  return { pageId: block.id, title: childPage.title }
 }
 
 const blockPayload = (block: Block): unknown => {
@@ -356,6 +371,22 @@ export const NotionMdGatewayLive = Layer.effect(
               'notion_md.create.parent_id': input.parent.id,
               'notion_md.create.has_body': input.body !== undefined,
             },
+          }),
+        ),
+      listChildPages: ({ pageId }) =>
+        NotionBlocks.retrieveChildrenStream({ blockId: pageId }).pipe(
+          Stream.provideService(NotionConfig, config),
+          Stream.provideService(HttpClient.HttpClient, client),
+          Stream.runCollect,
+          Effect.map((blocks) =>
+            Array.from(blocks).flatMap((block) => {
+              const childPage = toRemoteChildPage(block)
+              return childPage === undefined ? [] : [childPage]
+            }),
+          ),
+          Effect.mapError(mapGatewayError({ operation: 'list_child_pages', pageId })),
+          Effect.withSpan('notion-md.gateway.list-child-pages', {
+            attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
           }),
         ),
     }

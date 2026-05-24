@@ -25,7 +25,7 @@ describe('notion-md CLI boundary', () => {
     async () => {
       const { stdout } = await runCli(['sync', '--help'])
 
-      expect(stdout).toContain('Reconcile a local .nmd file with its Notion page')
+      expect(stdout).toContain('Sync a local target')
       expect(stdout).toContain('--watch')
       expect(stdout).toContain('--poll-interval-ms')
       expect(stdout).toContain('--recursive')
@@ -37,7 +37,7 @@ describe('notion-md CLI boundary', () => {
   it(
     'validates missing sync targets before resolving Notion credentials',
     async () => {
-      await expect(runCli(['sync'])).rejects.toThrow('Missing argument <target>')
+      await expect(runCli(['sync'])).rejects.toThrow('Missing argument <source>')
     },
     cliTestTimeoutMs,
   )

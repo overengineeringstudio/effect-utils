@@ -100,8 +100,8 @@ export const createCleanStatusFixture = (): CommandFixture => ({
 
 export const createBodyConflictFixture = (): CommandFixture => ({
   id: 'body-conflict',
-  command: 'notion-md push notes/planning.nmd',
-  context: 'notion-md push · notes/planning.nmd',
+  command: 'notion-md sync notes/planning.nmd',
+  context: 'notion-md sync · notes/planning.nmd',
   problems: [
     {
       severity: 'critical',
@@ -112,9 +112,9 @@ export const createBodyConflictFixture = (): CommandFixture => ({
       fixes: [
         'notion-md status notes/planning.nmd',
         'edit notes/planning.nmd.roughdraft.md, then apply the chosen body to notes/planning.nmd',
-        'notion-md push notes/planning.nmd',
+        'notion-md sync notes/planning.nmd',
       ],
-      skips: ['notion-md push notes/planning.nmd --force'],
+      skips: ['notion-md sync notes/planning.nmd --force'],
     },
   ],
   items: [
@@ -140,8 +140,8 @@ export const createBodyConflictFixture = (): CommandFixture => ({
 
 export const createUnknownBlocksFixture = (): CommandFixture => ({
   id: 'unknown-blocks',
-  command: 'notion-md push docs/research.nmd',
-  context: 'notion-md push · docs/research.nmd',
+  command: 'notion-md sync docs/research.nmd',
+  context: 'notion-md sync · docs/research.nmd',
   problems: [
     {
       severity: 'warning',
@@ -150,7 +150,7 @@ export const createUnknownBlocksFixture = (): CommandFixture => ({
       details: 'page contains unsupported Notion blocks that replace_content could delete',
       context: 'unsupported blocks are preserved in .notion-md object refs',
       fixes: ['pull latest page state', 'remove local body edits or model the unsupported blocks'],
-      skips: ['notion-md push docs/research.nmd --allow-delete-unknown-blocks'],
+      skips: ['notion-md sync docs/research.nmd --allow-delete-unknown-blocks'],
     },
   ],
   items: [
@@ -167,7 +167,7 @@ export const createUnknownBlocksFixture = (): CommandFixture => ({
         },
         {
           title: 'policy',
-          items: ['non-destructive push refused until intent is explicit'],
+          items: ['non-destructive write refused until intent is explicit'],
         },
       ],
     },
