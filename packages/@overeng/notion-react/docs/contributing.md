@@ -28,7 +28,7 @@ All common tasks run under `packages/@overeng/notion-react/`:
 | Lint                          | `oxlint`                                                   |
 | Format check / fix            | `oxfmt --check` / `oxfmt`                                  |
 
-Live E2E requires `NOTION_TOKEN` and `NOTION_TEST_PARENT_PAGE_ID` —
+Live E2E requires `NOTION_API_TOKEN` and `NOTION_TEST_PARENT_PAGE_ID` —
 see [Testing](./testing.md#pointing-at-a-different-notion-workspace).
 
 ## Edit / test loop

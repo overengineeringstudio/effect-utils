@@ -165,8 +165,8 @@ dt test:run
 dt test:utils
 dt test:genie
 
-# Integration tests (requires NOTION_TOKEN for Notion packages)
-NOTION_TOKEN=secret_xxx dt test:integration
+# Integration tests (requires NOTION_API_TOKEN for Notion packages)
+NOTION_API_TOKEN=secret_xxx dt test:integration
 
 # Watch mode
 dt test:watch

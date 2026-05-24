@@ -7,7 +7,7 @@ https://www.notion.so/overeng-notion-md-demo-automated-369f141b18dc80e4850cff344
 Use it as a real 1:1 sync fixture:
 
 ```sh
-export NOTION_TOKEN="secret_..."
+export NOTION_API_TOKEN="secret_..."
 notion-md status packages/@overeng/notion-md/demo/showcase.nmd
 notion-md sync packages/@overeng/notion-md/demo/showcase.nmd
 ```

@@ -1,7 +1,7 @@
 # Notion integration tests
 #
 # Runs vitest with --include for *.integration.test.ts files in Notion packages.
-# Requires NOTION_TOKEN environment variable; skips gracefully if not set.
+# Requires NOTION_API_TOKEN environment variable; skips gracefully if not set.
 #
 # Provides:
 #   - test:notion-integration - Run all Notion integration tests
@@ -27,8 +27,8 @@ let
   ];
   vitestExec = ''
     set -euo pipefail
-    if [ -z "''${NOTION_TOKEN:-}" ]; then
-      echo "NOTION_TOKEN not set, skipping integration tests"
+    if [ -z "''${NOTION_API_TOKEN:-}" ]; then
+      echo "NOTION_API_TOKEN not set, skipping integration tests"
       exit 0
     fi
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
@@ -49,7 +49,7 @@ in
     ++ [
       {
         "test:notion-integration" = {
-          description = "Run all Notion integration tests (requires NOTION_TOKEN)";
+          description = "Run all Notion integration tests (requires NOTION_API_TOKEN)";
           after = map (pkg: "test:notion-integration:${pkg.name}") packages;
         };
       }

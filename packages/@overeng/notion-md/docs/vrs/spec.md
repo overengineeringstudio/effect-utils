@@ -412,9 +412,9 @@ notion-md sync page.nmd [--watch] [--poll-interval-ms 30000]
 
 Environment:
 
-| Variable       | Meaning          |
-| -------------- | ---------------- |
-| `NOTION_TOKEN` | Notion API token |
+| Variable           | Meaning          |
+| ------------------ | ---------------- |
+| `NOTION_API_TOKEN` | Notion API token |
 
 Output:
 

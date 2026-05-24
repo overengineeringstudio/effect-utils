@@ -3,11 +3,12 @@ import { basename } from 'node:path'
 import { Effect } from 'effect'
 
 import type {
-  NmdFrontmatterV1,
+  NmdFrontmatterV2,
   NmdObjectRef,
   NmdParentRef,
-  NmdPropertyValue,
   NmdStorage,
+  NmdSyncStateV1,
+  NmdWritablePropertyValue,
 } from '@overeng/notion-effect-client'
 
 import {
@@ -16,8 +17,8 @@ import {
   type NmdError,
   type NmdFileSystemError,
 } from './errors.ts'
-import { parseNmdFile, renderNmdFile, type ParsedNmdFile } from './frontmatter.ts'
-import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
+import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
+import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 import {
   NotionMdGateway,
@@ -25,6 +26,7 @@ import {
   type PullPageResult,
   type RemoteMarkdownSnapshot,
   type RemotePageSnapshot,
+  toCreatePageParent,
   type WritablePageCover,
   type WritablePageIcon,
 } from './model.ts'
@@ -34,8 +36,30 @@ import {
   validateReferencedObjects,
   writeBaseSnapshot,
   writeStorageObject,
+  writeSyncState,
 } from './state-store.ts'
 import { decideStorage } from './storage-policy.ts'
+
+/**
+ * Combined local view of a `.nmd` file plus its sidecar sync state.
+ *
+ * After the V1→V2 schema split, derived sync bookkeeping (body hash, base
+ * snapshot ref, last-pulled timestamps, unknown-block ids, storage
+ * inventory, read-only property echoes, data-source binding) lives in
+ * `.notion-md/sync/{page_id}.json`, not in the `.nmd` frontmatter. The
+ * sync engine threads both through `LocalState` so engine logic doesn't
+ * need to know about the on-disk split.
+ *
+ * `syncState` is `undefined` for an unmaterialized `.nmd` file
+ * (frontmatter has `page_id: null`), which is the entry point for the
+ * convention-driven `create` flow.
+ */
+export interface LocalState {
+  readonly path: string
+  readonly frontmatter: NmdFrontmatterV2
+  readonly body: string
+  readonly syncState: NmdSyncStateV1 | undefined
+}
 
 /** Inputs for pulling a Notion page into a local `.nmd` file. */
 export interface PullOptions {
@@ -131,13 +155,13 @@ const toParentRef = (page: RemotePageSnapshot): NmdParentRef => {
   }
 }
 
-const readOnlyProperties = (
+const readOnlyPropertyEchoes = (
   properties: Record<string, unknown>,
-): Record<string, NmdPropertyValue> =>
+): Record<string, { readonly property_type: string; readonly value: unknown }> =>
   Object.fromEntries(
     Object.entries(properties).map(([name, value]) => [
       name,
-      { _tag: 'read_only', property_type: inferPropertyType(value), value },
+      { property_type: inferPropertyType(value), value },
     ]),
   )
 
@@ -150,35 +174,40 @@ const inferPropertyType = (value: unknown): string => {
   return 'unknown'
 }
 
-const hasWritablePropertyValues = (properties: Record<string, NmdPropertyValue>): boolean =>
-  Object.values(properties).some((property) => property._tag !== 'read_only')
+const hasWritablePropertyValues = (properties: Record<string, NmdWritablePropertyValue>): boolean =>
+  Object.keys(properties).length > 0
 
 const stableJson = (value: unknown): string => JSON.stringify(value) ?? 'undefined'
 
 const isWritablePageFile = (
-  value: NmdFrontmatterV1['notion_md']['page']['cover'],
+  value: NmdFrontmatterV2['notion_md']['page']['cover'],
 ): value is WritablePageCover => {
   if (value === null) return true
   return value.type === 'external'
 }
 
 const isWritablePageIcon = (
-  value: NmdFrontmatterV1['notion_md']['page']['icon'],
+  value: NmdFrontmatterV2['notion_md']['page']['icon'],
 ): value is WritablePageIcon => {
   if (value === null) return true
   return value.type === 'emoji' || value.type === 'icon' || value.type === 'external'
 }
 
 const pageMetadataUpdate = (opts: {
-  readonly local: NmdFrontmatterV1['notion_md']['page']
+  readonly local: NmdFrontmatterV2['notion_md']['page']
   readonly remote: RemotePageSnapshot
 }): PageMetadataUpdate => {
   const update: {
+    title?: { readonly key: string; readonly value: string }
     icon?: WritablePageIcon
     cover?: WritablePageCover
     in_trash?: boolean
     is_locked?: boolean
   } = {}
+
+  if (opts.local.title !== opts.remote.title) {
+    update.title = { key: opts.remote.title_property_key, value: opts.local.title }
+  }
 
   if (stableJson(opts.local.icon) !== stableJson(opts.remote.icon)) {
     if (isWritablePageIcon(opts.local.icon) === true) update.icon = opts.local.icon
@@ -207,13 +236,11 @@ const richText = (value: string): readonly unknown[] => [{ type: 'text', text: {
 const encodePropertyValue = (opts: {
   readonly path: string
   readonly name: string
-  readonly property: NmdPropertyValue
+  readonly property: NmdWritablePropertyValue
 }): Effect.Effect<unknown | undefined, NmdFrontmatterError> =>
   Effect.gen(function* () {
     const property = opts.property
     switch (property._tag) {
-      case 'read_only':
-        return undefined
       case 'title':
         return { title: richText(property.value) }
       case 'rich_text':
@@ -278,7 +305,7 @@ const encodePropertyValue = (opts: {
 
 const encodeWritableProperties = (opts: {
   readonly path: string
-  readonly properties: Record<string, NmdPropertyValue>
+  readonly properties: Record<string, NmdWritablePropertyValue>
 }): Effect.Effect<Record<string, unknown>, NmdFrontmatterError> =>
   Effect.gen(function* () {
     const entries: Array<readonly [string, unknown]> = []
@@ -308,12 +335,12 @@ const emptyStorage = (): NmdStorage => ({
 const unique = (values: readonly string[]): readonly string[] => [...new Set(values)]
 
 const unresolvedUnknownBlockIds = (opts: {
-  readonly frontmatter: NmdFrontmatterV1
+  readonly syncState: NmdSyncStateV1 | undefined
   readonly remoteMarkdown?: RemoteMarkdownSnapshot
 }): readonly string[] =>
   unique([
-    ...opts.frontmatter.notion_md.body.unknown_block_ids,
-    ...storageUnknownBlockIds(opts.frontmatter.notion_md.storage),
+    ...(opts.syncState?.body.unknown_block_ids ?? []),
+    ...(opts.syncState === undefined ? [] : storageUnknownBlockIds(opts.syncState.storage)),
     ...(opts.remoteMarkdown?.unknown_block_ids ?? []),
   ])
 
@@ -390,42 +417,53 @@ ${fence}
   })
 }
 
-const buildFrontmatter = (opts: {
+const buildFrontmatterV2 = (opts: { readonly page: RemotePageSnapshot }): NmdFrontmatterV2 => ({
+  notion_md: {
+    version: 2,
+    api_version: '2026-03-11',
+    object: 'page',
+    page_id: opts.page.id,
+    url: opts.page.url,
+    parent: toParentRef(opts.page),
+    page: {
+      title: opts.page.title,
+      icon: opts.page.icon,
+      cover: opts.page.cover,
+      in_trash: opts.page.in_trash,
+      is_locked: opts.page.is_locked,
+    },
+    /*
+     * V2 frontmatter only carries the user-editable writable properties.
+     * Notion echoes back every page property on retrieve, but most are
+     * derived from the data-source schema and the user can't edit them
+     * locally — those land in the sidecar `read_only_properties` instead.
+     */
+    properties: {},
+  },
+})
+
+const buildSyncState = (opts: {
   readonly page: RemotePageSnapshot
   readonly markdown: RemoteMarkdownSnapshot
   readonly storage: NmdStorage
   readonly base: NmdObjectRef
-}): NmdFrontmatterV1 => {
-  const body = canonicalizeMarkdown(opts.markdown.markdown)
-
+}): NmdSyncStateV1 => {
+  const body = normalizeMarkdownLineEndings(opts.markdown.markdown)
   return {
-    notion_md: {
-      version: 1,
-      api_version: '2026-03-11',
-      object: 'page',
-      page_id: opts.page.id,
-      url: opts.page.url,
-      parent: toParentRef(opts.page),
-      body: {
-        format: 'notion-enhanced-markdown',
-        hash: sha256Digest(body),
-        base: opts.base,
-        last_pulled_at: new Date().toISOString(),
-        remote_last_edited_time: opts.page.last_edited_time,
-        truncated: opts.markdown.truncated,
-        unknown_block_ids: [...opts.markdown.unknown_block_ids],
-      },
-      page: {
-        title: opts.page.title,
-        icon: opts.page.icon,
-        cover: opts.page.cover,
-        in_trash: opts.page.in_trash,
-        is_locked: opts.page.is_locked,
-      },
-      data_source: null,
-      properties: readOnlyProperties(opts.page.properties),
-      storage: opts.storage,
+    version: 1,
+    page_id: opts.page.id,
+    body: {
+      format: 'notion-enhanced-markdown',
+      hash: sha256Digest(body),
+      base: opts.base,
+      last_pulled_at: new Date().toISOString(),
+      remote_last_edited_time: opts.page.last_edited_time,
+      truncated: opts.markdown.truncated,
+      unknown_block_ids: [...opts.markdown.unknown_block_ids],
     },
+    storage: opts.storage,
+    read_only_properties: readOnlyPropertyEchoes(opts.page.properties),
+    data_source: null,
   }
 }
 
@@ -442,17 +480,18 @@ const writeNmdWithStoragePolicy = (opts: {
       pageId: opts.page.id,
       body: opts.body,
     })
-    let frontmatter = buildFrontmatter({
+    const frontmatter = buildFrontmatterV2({ page: opts.page })
+    let syncState = buildSyncState({
       page: opts.page,
       markdown: opts.markdown,
       storage: opts.storage,
       base,
     })
-    const decision = decideStorage(frontmatter)
+    const decision = decideStorage(syncState)
     let storageObjectPath: string | undefined
 
     if (decision._tag === 'requires_object_store') {
-      const storage = frontmatter.notion_md.storage
+      const storage = syncState.storage
       const object = yield* writeStorageObject({
         path: opts.path,
         pageId: opts.page.id,
@@ -461,22 +500,18 @@ const writeNmdWithStoragePolicy = (opts: {
       })
       storageObjectPath = object.path
 
-      frontmatter = {
-        notion_md: {
-          ...frontmatter.notion_md,
-          storage: {
-            _tag: 'object_store',
-            object,
-            unsupported_block_ids:
-              storage._tag === 'self_contained'
-                ? storage.unsupported_blocks.map((block) => block.block_id)
-                : [],
-            file_ids: storage._tag === 'self_contained' ? storage.files.map((file) => file.id) : [],
-            comment_ids:
-              storage._tag === 'self_contained'
-                ? storage.comments.map((comment) => comment.id)
-                : [],
-          },
+      syncState = {
+        ...syncState,
+        storage: {
+          _tag: 'object_store',
+          object,
+          unsupported_block_ids:
+            storage._tag === 'self_contained'
+              ? storage.unsupported_blocks.map((block) => block.block_id)
+              : [],
+          file_ids: storage._tag === 'self_contained' ? storage.files.map((file) => file.id) : [],
+          comment_ids:
+            storage._tag === 'self_contained' ? storage.comments.map((comment) => comment.id) : [],
         },
       }
     }
@@ -486,8 +521,9 @@ const writeNmdWithStoragePolicy = (opts: {
       path: opts.path,
       content: renderNmdFile({ frontmatter, body: opts.body }),
     })
+    yield* writeSyncState({ path: opts.path, syncState })
     const storage: PullResult['storage'] =
-      frontmatter.notion_md.storage._tag === 'object_store' ? 'object_store' : 'self_contained'
+      syncState.storage._tag === 'object_store' ? 'object_store' : 'self_contained'
 
     return storageObjectPath === undefined
       ? {
@@ -529,12 +565,49 @@ export const pullPage = (
     }),
   )
 
-const readNmd = (path: string) =>
-  NmdStateStore.pipe(
-    Effect.flatMap((store) => store.readNmdFile({ path })),
-    Effect.flatMap((content) => parseNmdFile({ path, content })),
-    Effect.tap((local) => validateReferencedObjects({ path, frontmatter: local.frontmatter })),
-  )
+const readNmd = (path: string): Effect.Effect<LocalState, NmdError, NmdStateStore> =>
+  Effect.gen(function* () {
+    const store = yield* NmdStateStore
+    const content = yield* store.readNmdFile({ path })
+    const parsed = yield* parseNmdFile({ path, content })
+    const pageId = parsed.frontmatter.notion_md.page_id
+    /*
+     * Page id is null for an unmaterialized `.nmd` (the convention-driven
+     * create entry point); there's no sidecar to load yet. For real pages
+     * we expect the sidecar to exist — its absence is fine (caller may be
+     * a freshly cloned repo with `.notion-md/` in `.gitignore`), in which
+     * case sync logic treats body/storage/props as if just-pulled.
+     */
+    let syncState: NmdSyncStateV1 | undefined
+    if (pageId === null) {
+      /* Unmaterialized `.nmd` — no sidecar yet, push will create one. */
+      syncState = undefined
+    } else {
+      const loaded = yield* store.readSyncStateOptional({ path, pageId })
+      if (loaded === undefined) {
+        /*
+         * A materialized `.nmd` (page_id set) without a sidecar is the
+         * fresh-clone case: `.notion-md/sync/` is gitignored, the user
+         * checked out the working tree without it. Treating the local
+         * body as the baseline silently no-ops `push` when the user has
+         * also edited (the "remote changed, local clean" branch fires).
+         * Fail fast with a clear instruction to re-pull instead.
+         */
+        return yield* new NmdFrontmatterError({
+          path,
+          message: `Missing sidecar sync state for page ${pageId}. Run \`notion-md pull ${pageId} --out ${path}\` to rebuild it.`,
+        })
+      }
+      syncState = loaded
+      yield* validateReferencedObjects({ path, syncState })
+    }
+    return {
+      path,
+      frontmatter: parsed.frontmatter,
+      body: parsed.body,
+      syncState,
+    }
+  })
 
 const assertLocalBodyUnchanged = (opts: {
   readonly path: string
@@ -557,15 +630,39 @@ const assertLocalBodyUnchanged = (opts: {
     ),
   )
 
+/*
+ * Push paths that touch the body merge logic require the sidecar to be
+ * present (no base snapshot ⇒ no three-way merge possible). The
+ * page_id-null preflight in `pushPage` short-circuits into create, and
+ * `readNmd` fails fast on materialized-but-sidecar-missing, so a defined
+ * sync state at this point is an enforced invariant. If it ever isn't,
+ * we want an explicit defect rather than an ergonomic null deref.
+ */
+const requireSyncState = (opts: {
+  readonly path: string
+  readonly local: LocalState
+}): Effect.Effect<NmdSyncStateV1, never, never> =>
+  opts.local.syncState === undefined
+    ? Effect.dieMessage(
+        `Internal invariant violation: sync state required for guarded push of ${opts.path}`,
+      )
+    : Effect.succeed(opts.local.syncState)
+
 const statusFromSnapshots = (opts: {
   readonly path: string
-  readonly local: ParsedNmdFile
+  readonly local: LocalState
   readonly remote: PullPageResult
 }): StatusResult => {
   const localBodyHash = sha256Digest(opts.local.body)
-  const remoteBody = canonicalizeMarkdown(opts.remote.markdown.markdown)
+  const remoteBody = normalizeMarkdownLineEndings(opts.remote.markdown.markdown)
   const remoteBodyHash = sha256Digest(remoteBody)
-  const bodyHash = opts.local.frontmatter.notion_md.body.hash
+  /*
+   * Without a sidecar (fresh checkout, or pre-create), there is no
+   * "previously pulled" baseline. Treat the local body bytes as the
+   * baseline so we don't fabricate a phantom local edit on first
+   * status.
+   */
+  const bodyHash = opts.local.syncState?.body.hash ?? localBodyHash
   const localChanged = localBodyHash !== bodyHash
   const localPageMetadataChanged = hasPageMetadataUpdate(
     pageMetadataUpdate({
@@ -578,17 +675,17 @@ const statusFromSnapshots = (opts: {
   )
   const remoteBodyChanged = remoteBodyHash !== bodyHash
   const remotePageMetadataChanged =
-    opts.remote.page.last_edited_time !==
-    opts.local.frontmatter.notion_md.body.remote_last_edited_time
+    opts.local.syncState !== undefined &&
+    opts.remote.page.last_edited_time !== opts.local.syncState.body.remote_last_edited_time
   const remoteChanged = remoteBodyChanged || remotePageMetadataChanged
   const unknownBlockIds = unresolvedUnknownBlockIds({
-    frontmatter: opts.local.frontmatter,
+    syncState: opts.local.syncState,
     remoteMarkdown: opts.remote.markdown,
   })
 
   return {
     path: opts.path,
-    pageId: opts.local.frontmatter.notion_md.page_id,
+    pageId: opts.remote.page.id,
     localChanged,
     localPageMetadataChanged,
     localPropertiesChanged,
@@ -608,6 +705,28 @@ export const statusPage = (
 ): Effect.Effect<StatusResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const local = yield* readNmd(opts.path)
+    /*
+     * An unmaterialized `.nmd` (page_id: null) has nothing to compare
+     * against on Notion yet. Surface a "fully local" status so `sync` /
+     * tooling knows the next action is `push` (which will create).
+     */
+    if (local.frontmatter.notion_md.page_id === null) {
+      const localBodyHash = sha256Digest(local.body)
+      return {
+        path: opts.path,
+        pageId: 'unmaterialized',
+        localChanged: true,
+        localPageMetadataChanged: false,
+        localPropertiesChanged: hasWritablePropertyValues(local.frontmatter.notion_md.properties),
+        remoteChanged: false,
+        remoteBodyChanged: false,
+        remotePageMetadataChanged: false,
+        bodyHash: localBodyHash,
+        localBodyHash,
+        remoteBodyHash: localBodyHash,
+        unresolvedUnknownBlocks: [],
+      }
+    }
     const gateway = yield* NotionMdGateway
     const remote = yield* gateway.pullPage({ pageId: local.frontmatter.notion_md.page_id })
     return statusFromSnapshots({ path: opts.path, local, remote })
@@ -632,12 +751,77 @@ export const statusPage = (
     }),
   )
 
+/*
+ * Convention-driven create: a `.nmd` file with `page_id: null` and a
+ * `parent` set describes an unmaterialized page. The first `push` calls
+ * Notion's create endpoint, then pulls to populate the sidecar — the
+ * same `.nmd` file then drives every subsequent push through the normal
+ * guarded path with no `--create` flag and no second tool.
+ */
+const createFromUnmaterialized = (opts: {
+  readonly path: string
+  readonly local: LocalState
+}): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
+  Effect.gen(function* () {
+    const parent = toCreatePageParent(opts.local.frontmatter.notion_md.parent)
+    if (parent === undefined) {
+      return yield* new NmdFrontmatterError({
+        path: opts.path,
+        message: `Cannot create a Notion page under parent kind '${opts.local.frontmatter.notion_md.parent._tag}'`,
+      })
+    }
+    const gateway = yield* NotionMdGateway
+    const created = yield* gateway.createPage({
+      parent,
+      title: opts.local.frontmatter.notion_md.page.title,
+      body: opts.local.body,
+    })
+    const pulled = yield* gateway.pullPage({ pageId: created.id })
+    /*
+     * Use Notion's returned body for both the on-disk body and the base
+     * snapshot. Using `local.body` here would leave the base snapshot's
+     * stored hash out of sync with the sync-state body hash (which is
+     * computed from `pulled.markdown.markdown`), breaking the next
+     * `status` invariant. After create, the canonical form is whatever
+     * Notion stored — subsequent edits start from that baseline.
+     */
+    const pullResult = yield* writeNmdWithStoragePolicy({
+      path: opts.path,
+      page: pulled.page,
+      markdown: pulled.markdown,
+      storage: pulled.storage ?? emptyStorage(),
+      body: pulled.markdown.markdown,
+    })
+    return {
+      path: opts.path,
+      pageId: pullResult.pageId,
+      pushed: true,
+      status: {
+        path: opts.path,
+        pageId: pullResult.pageId,
+        localChanged: true,
+        localPageMetadataChanged: false,
+        localPropertiesChanged: false,
+        remoteChanged: false,
+        remoteBodyChanged: false,
+        remotePageMetadataChanged: false,
+        bodyHash: sha256Digest(opts.local.body),
+        localBodyHash: sha256Digest(opts.local.body),
+        remoteBodyHash: sha256Digest(opts.local.body),
+        unresolvedUnknownBlocks: [],
+      },
+    }
+  })
+
 /** Push local `.nmd` edits to Notion after conflict, unknown-block, and review-markup checks. */
 export const pushPage = (
   opts: PushOptions,
 ): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const local = yield* readNmd(opts.path)
+    if (local.frontmatter.notion_md.page_id === null) {
+      return yield* createFromUnmaterialized({ path: opts.path, local })
+    }
     const gateway = yield* NotionMdGateway
     const remoteForStatus = yield* gateway.pullPage({
       pageId: local.frontmatter.notion_md.page_id,
@@ -685,7 +869,7 @@ export const pushPage = (
     if (status.remoteBodyChanged === true && opts.force !== true) {
       const baseSnapshot = yield* readBaseSnapshot({
         path: opts.path,
-        frontmatter: local.frontmatter,
+        syncState: yield* requireSyncState({ path: opts.path, local }),
       })
       const mergedBody =
         status.localChanged === true
@@ -820,7 +1004,7 @@ export const pushPage = (
       yield* Effect.gen(function* () {
         const baseSnapshot = yield* readBaseSnapshot({
           path: opts.path,
-          frontmatter: local.frontmatter,
+          syncState: yield* requireSyncState({ path: opts.path, local }),
         })
         const remote = yield* gateway.pullPage({ pageId: status.pageId })
         if (

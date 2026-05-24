@@ -1,4 +1,4 @@
-import { canonicalizeMarkdown } from './hash.ts'
+import { normalizeMarkdownLineEndings } from './hash.ts'
 import type { MarkdownUpdateCommand } from './model.ts'
 
 /** Contiguous line replacement needed to transform one Markdown body into another. */
@@ -66,9 +66,9 @@ export const tryMergeMarkdownBodies = (opts: {
   readonly localBody: string
   readonly remoteBody: string
 }): string | undefined => {
-  const base = canonicalizeMarkdown(opts.baseBody)
-  const local = canonicalizeMarkdown(opts.localBody)
-  const remote = canonicalizeMarkdown(opts.remoteBody)
+  const base = normalizeMarkdownLineEndings(opts.baseBody)
+  const local = normalizeMarkdownLineEndings(opts.localBody)
+  const remote = normalizeMarkdownLineEndings(opts.remoteBody)
 
   if (local === remote) return local
   if (local === base) return remote
@@ -117,9 +117,9 @@ export const planMarkdownUpdate = (opts: {
   readonly remoteBody: string
   readonly desiredBody: string
 }): MarkdownUpdateCommand => {
-  const base = canonicalizeMarkdown(opts.baseBody)
-  const remote = canonicalizeMarkdown(opts.remoteBody)
-  const desired = canonicalizeMarkdown(opts.desiredBody)
+  const base = normalizeMarkdownLineEndings(opts.baseBody)
+  const remote = normalizeMarkdownLineEndings(opts.remoteBody)
+  const desired = normalizeMarkdownLineEndings(opts.desiredBody)
 
   let prefix = 0
   while (

@@ -313,6 +313,9 @@ const preflightPageIds = (opts: {
       }
 
       const pageId = item.result.right.frontmatter.notion_md.page_id
+      // Skip duplicate detection for unmaterialized .nmd files (no page_id yet).
+      // They are uniquely identified by path, not page id, until `push` creates them.
+      if (pageId === null) continue
       pageIds.set(pageId, [...(pageIds.get(pageId) ?? []), item.path])
     }
 

@@ -13,7 +13,7 @@ import { readPageTree, SKIP_E2E, withScratchPage } from './helpers.ts'
  * (issue #618). Exercises creation, metadata updates, archival, reparenting,
  * deep trees, pagination tails, inline depth splits, concurrent siblings, and
  * rapid-resync idempotence against real Notion. All scenarios are guarded by
- * `SKIP_E2E` — they run only with `NOTION_TOKEN` +
+ * `SKIP_E2E` — they run only with `NOTION_API_TOKEN` +
  * `NOTION_TEST_PARENT_PAGE_ID` set.
  */
 

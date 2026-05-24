@@ -11,43 +11,66 @@ import {
 import type { Page } from '@overeng/notion-effect-schema'
 import type { Block } from '@overeng/notion-effect-schema'
 
+import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markdown.ts'
 import { NmdGatewayError } from './errors.ts'
-import { canonicalizeMarkdown } from './hash.ts'
-import { type MarkdownUpdateCommand, NotionMdGateway, type RemotePageSnapshot } from './model.ts'
+import { normalizeMarkdownLineEndings } from './hash.ts'
+import {
+  type CreatePageInput,
+  type MarkdownUpdateCommand,
+  NotionMdGateway,
+  type RemotePageSnapshot,
+} from './model.ts'
 
-const titleFromProperties = (properties: Record<string, unknown>): string => {
-  for (const property of Object.values(properties)) {
+/*
+ * Notion's title property is named "title" on standalone pages but is named
+ * after the database column on database/data-source pages (commonly "Name").
+ * The only stable signal is `type === 'title'` on the property value. We
+ * return both the plain text and the property *key* so writers (which need
+ * the key to call `properties.update`) don't have to re-scan.
+ */
+const findTitleProperty = (
+  properties: Record<string, unknown>,
+): { readonly key: string; readonly title: string } => {
+  for (const [key, property] of Object.entries(properties)) {
     if (typeof property !== 'object' || property === null || 'type' in property === false) {
       continue
     }
-
     const typed = property as {
       readonly type?: unknown
       readonly title?: readonly { readonly plain_text?: unknown }[]
     }
-
     if (typed.type === 'title' && Array.isArray(typed.title) === true) {
-      return typed.title
+      const title = typed.title
         .map((part) => (typeof part.plain_text === 'string' ? part.plain_text : ''))
         .join('')
+      return { key, title }
     }
   }
-
-  return 'Untitled'
+  /*
+   * Default key matches Notion's standalone-page convention. If we reach
+   * here the property scan didn't find a title property at all (unusual
+   * but possible for archived/locked pages); the title is empty and any
+   * later write keyed on `"title"` will fail loudly at the API.
+   */
+  return { key: 'title', title: 'Untitled' }
 }
 
-const toRemotePage = (page: Page): RemotePageSnapshot => ({
-  id: page.id,
-  title: titleFromProperties(page.properties),
-  url: page.url,
-  parent: page.parent,
-  icon: page.icon,
-  cover: page.cover,
-  in_trash: page.in_trash,
-  is_locked: page.is_locked ?? false,
-  last_edited_time: page.last_edited_time,
-  properties: page.properties,
-})
+const toRemotePage = (page: Page): RemotePageSnapshot => {
+  const titleProperty = findTitleProperty(page.properties)
+  return {
+    id: page.id,
+    title: titleProperty.title,
+    title_property_key: titleProperty.key,
+    url: page.url,
+    parent: page.parent,
+    icon: page.icon,
+    cover: page.cover,
+    in_trash: page.in_trash,
+    is_locked: page.is_locked ?? false,
+    last_edited_time: page.last_edited_time,
+    properties: page.properties,
+  }
+}
 
 const blockPayload = (block: Block): unknown => {
   const value = block[block.type]
@@ -125,7 +148,13 @@ const toNotionUpdateMarkdownOptions = (opts: {
       return {
         pageId: opts.pageId,
         type: 'replace_content',
-        new_str: canonicalizeMarkdown(opts.command.markdown),
+        /*
+         * Pre-canonicalize the body at the wire boundary so Notion stores one
+         * Notion block per logical paragraph instead of one block per soft-wrap
+         * line. Without this, hard-wrapped source paragraphs render as a chain
+         * of broken lines on Notion.
+         */
+        new_str: canonicalizeBlockMarkdown(opts.command.markdown),
         allow_deleting_content: opts.allowDeletingContent,
       }
   }
@@ -154,7 +183,18 @@ export const NotionMdGatewayLive = Layer.effect(
             provideHttp(NotionBlocks.retrieve({ blockId })),
           )
           const remoteMarkdown = {
-            markdown: canonicalizeMarkdown(markdown.markdown),
+            /*
+             * Canonicalize on pull so the on-disk body, the base snapshot,
+             * and every diff `planMarkdownUpdate` sees are all in the
+             * canonical form. This makes the wire boundary canonical
+             * *by construction* for both `replace_content` and
+             * `update_content` — without it, `update_content`'s
+             * `old_str`/`new_str` would still reference user-wrap-form
+             * text and Notion would render new paragraphs with soft
+             * breaks intact (the gap called out in the proposal's
+             * "Apply on pull too" guidance).
+             */
+            markdown: canonicalizeBlockMarkdown(markdown.markdown),
             truncated: markdown.truncated,
             unknown_block_ids: markdown.unknown_block_ids,
           }
@@ -190,13 +230,24 @@ export const NotionMdGatewayLive = Layer.effect(
         ).pipe(
           Effect.flatMap((markdownResult) => {
             const remoteMarkdown = {
-              markdown: canonicalizeMarkdown(markdownResult.markdown),
+              markdown: normalizeMarkdownLineEndings(markdownResult.markdown),
               truncated: markdownResult.truncated,
               unknown_block_ids: markdownResult.unknown_block_ids,
             }
+            /*
+             * Compare semantically rather than byte-equal. Notion reserializes
+             * received Markdown into its own block model (collapses blank
+             * lines, switches list-indent style); a strict byte-equal check
+             * fails on every push of non-trivial content even though the
+             * page was updated correctly. semanticEquivalent reduces both
+             * sides to whitespace-collapsed canonical tokens, so genuine
+             * content drift still trips the guard while Notion's reflow no
+             * longer does.
+             */
             if (
               command._tag === 'update_content' &&
-              remoteMarkdown.markdown !== canonicalizeMarkdown(command.expectedMarkdown)
+              semanticEquivalent({ a: remoteMarkdown.markdown, b: command.expectedMarkdown }) ===
+                false
             ) {
               return Effect.fail(
                 new NmdGatewayError({
@@ -237,6 +288,22 @@ export const NotionMdGatewayLive = Layer.effect(
         provideHttp(
           NotionPages.update({
             pageId,
+            /*
+             * Title is a Notion *property* rather than a top-level page field.
+             * Database/data-source pages name that property after the database
+             * column (often `"Name"`), so we route the update through the key
+             * `RemotePageSnapshot.title_property_key` captured at pull time —
+             * never assume `properties.title`.
+             */
+            ...(metadata.title !== undefined
+              ? {
+                  properties: {
+                    [metadata.title.key]: {
+                      title: [{ type: 'text', text: { content: metadata.title.value } }],
+                    },
+                  },
+                }
+              : {}),
             ...(metadata.icon !== undefined ? { icon: metadata.icon } : {}),
             ...(metadata.cover !== undefined ? { cover: metadata.cover } : {}),
             ...(metadata.in_trash !== undefined ? { in_trash: metadata.in_trash } : {}),
@@ -249,10 +316,45 @@ export const NotionMdGatewayLive = Layer.effect(
             attributes: {
               'span.label': pageId.slice(0, 8),
               'notion_md.page_id': pageId,
+              'notion_md.page_metadata.title': metadata.title !== undefined,
               'notion_md.page_metadata.icon': metadata.icon !== undefined,
               'notion_md.page_metadata.cover': metadata.cover !== undefined,
               'notion_md.page_metadata.in_trash': metadata.in_trash !== undefined,
               'notion_md.page_metadata.is_locked': metadata.is_locked !== undefined,
+            },
+          }),
+        ),
+      createPage: (input: CreatePageInput) =>
+        provideHttp(
+          NotionPages.create({
+            parent:
+              input.parent._tag === 'page'
+                ? { type: 'page_id', page_id: input.parent.id }
+                : input.parent._tag === 'data_source'
+                  ? { type: 'data_source_id', data_source_id: input.parent.id }
+                  : { type: 'database_id', database_id: input.parent.id },
+            properties: {
+              title: {
+                title: [{ type: 'text', text: { content: input.title } }],
+              },
+            },
+            /*
+             * Send the initial body through the same canonicalization the
+             * push path uses so the very first server-side render already
+             * has unwrapped paragraphs — no first-pull surprises.
+             */
+            ...(input.body !== undefined
+              ? { markdown: canonicalizeBlockMarkdown(input.body) }
+              : {}),
+          }),
+        ).pipe(
+          Effect.map(toRemotePage),
+          Effect.mapError(mapGatewayError({ operation: 'create_page' })),
+          Effect.withSpan('notion-md.gateway.create-page', {
+            attributes: {
+              'notion_md.create.parent_kind': input.parent._tag,
+              'notion_md.create.parent_id': input.parent.id,
+              'notion_md.create.has_body': input.body !== undefined,
             },
           }),
         ),

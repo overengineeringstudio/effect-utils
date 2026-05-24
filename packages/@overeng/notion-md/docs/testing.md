@@ -10,7 +10,7 @@
 
 Live Notion tests require:
 
-- `NOTION_TOKEN`
+- `NOTION_API_TOKEN`
 - `NOTION_MD_TEST_PARENT_PAGE_ID`
 
 The CI parent page is:

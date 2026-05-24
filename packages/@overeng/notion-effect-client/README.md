@@ -34,7 +34,7 @@ const program = Effect.gen(function* () {
 })
 
 const MainLayer = Layer.mergeAll(
-  NotionConfigLive({ authToken: process.env.NOTION_TOKEN! }),
+  NotionConfigLive({ authToken: process.env.NOTION_API_TOKEN! }),
   NodeHttpClient.layer,
 )
 

@@ -10,7 +10,7 @@ export {
 export type { NmdError } from './errors.ts'
 export { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 export type { ParsedNmdFile } from './frontmatter.ts'
-export { canonicalizeMarkdown, sha256Digest } from './hash.ts'
+export { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 export { NotionMdGatewayLive } from './live.ts'
 export { NotionMdGateway } from './model.ts'
 export type {

@@ -178,11 +178,11 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
   )
 
   // ---------------------------------------------------------------------
-  // 6. Missing NOTION_TOKEN — assertEnv throws a clear error.
+  // 6. Missing NOTION_API_TOKEN — assertEnv throws a clear error.
   // ---------------------------------------------------------------------
-  it('assertEnv throws a clear error when NOTION_TOKEN is missing', () => {
+  it('assertEnv throws a clear error when NOTION_API_TOKEN is missing', () => {
     expect(() => assertEnv({ NOTION_TEST_PARENT_PAGE_ID: 'x' } as NodeJS.ProcessEnv)).toThrow(
-      /NOTION_TOKEN is not set/,
+      /NOTION_API_TOKEN is not set/,
     )
   })
 
@@ -190,7 +190,7 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
   // 7. Missing NOTION_TEST_PARENT_PAGE_ID — assertEnv throws a clear error.
   // ---------------------------------------------------------------------
   it('assertEnv throws a clear error when NOTION_TEST_PARENT_PAGE_ID is missing', () => {
-    expect(() => assertEnv({ NOTION_TOKEN: 'x' } as NodeJS.ProcessEnv)).toThrow(
+    expect(() => assertEnv({ NOTION_API_TOKEN: 'x' } as NodeJS.ProcessEnv)).toThrow(
       /NOTION_TEST_PARENT_PAGE_ID is not set/,
     )
   })

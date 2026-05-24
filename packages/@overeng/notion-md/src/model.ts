@@ -1,8 +1,35 @@
 import { Context, type Effect } from 'effect'
 
-import type { NmdPageState, NmdStorage } from '@overeng/notion-effect-client'
+import type { NmdPageState, NmdParentRef, NmdStorage } from '@overeng/notion-effect-client'
 
 import type { NmdGatewayError } from './errors.ts'
+
+/** Parent target for a newly created Notion page. */
+export type CreatePageParent =
+  | { readonly _tag: 'page'; readonly id: string }
+  | { readonly _tag: 'data_source'; readonly id: string }
+  | { readonly _tag: 'database'; readonly id: string }
+
+/** Inputs for the create-page boundary. */
+export interface CreatePageInput {
+  readonly parent: CreatePageParent
+  readonly title: string
+  readonly body?: string
+}
+
+/** Map a strict `NmdParentRef` (from V2 frontmatter) to the createPage subset. */
+export const toCreatePageParent = (parent: NmdParentRef): CreatePageParent | undefined => {
+  switch (parent._tag) {
+    case 'page':
+      return { _tag: 'page', id: parent.id }
+    case 'data_source':
+      return { _tag: 'data_source', id: parent.id }
+    case 'database':
+      return { _tag: 'database', id: parent.id }
+    default:
+      return undefined
+  }
+}
 
 /** Remote Notion parent shapes normalized for `.nmd` frontmatter. */
 export type RemoteParent =
@@ -17,6 +44,13 @@ export type RemoteParent =
 export interface RemotePageSnapshot {
   readonly id: string
   readonly title: string
+  /*
+   * Property key under which Notion stores the title rich-text. On standalone
+   * pages this is `"title"`; on database/data-source pages it matches the
+   * database column name (commonly `"Name"`). Carried alongside so writes
+   * can target the correct key without re-scanning the property bag.
+   */
+  readonly title_property_key: string
   readonly url: string | undefined
   readonly parent: RemoteParent
   readonly icon: NmdPageState['icon']
@@ -60,6 +94,13 @@ export type WritablePageCover = null | Extract<
 
 /** Field-level page metadata patch derived from strict frontmatter. */
 export interface PageMetadataUpdate {
+  /*
+   * Title update carries the property *key* under which Notion stores the
+   * title rich-text — required because database/data-source pages name
+   * that property after the database column, not always `"title"`. The
+   * sync engine sources `title_property_key` from `RemotePageSnapshot`.
+   */
+  readonly title?: { readonly key: string; readonly value: string }
   readonly icon?: WritablePageIcon
   readonly cover?: WritablePageCover
   readonly in_trash?: boolean
@@ -103,6 +144,16 @@ export interface NotionMdGatewayShape {
     readonly pageId: string
     readonly metadata: PageMetadataUpdate
   }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
+  /*
+   * Create a new Notion page under `parent` with the given title and
+   * (optional) initial body. Returns the new page snapshot; callers
+   * follow up with `pullPage` to populate the sidecar sync state.
+   * Supports the convention-driven create flow: a `.nmd` file with
+   * `page_id: null` + `parent` set materializes itself on first `push`.
+   */
+  readonly createPage: (
+    input: CreatePageInput,
+  ) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
 }
 
 /** Effect service tag for Notion Markdown sync operations. */

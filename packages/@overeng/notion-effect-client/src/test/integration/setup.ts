@@ -4,7 +4,7 @@ import { Layer, Redacted } from 'effect'
 import { NotionConfig } from '../../config.ts'
 
 /** Skip integration tests if no token is available */
-export const SKIP_INTEGRATION = !process.env.NOTION_TOKEN
+export const SKIP_INTEGRATION = !process.env.NOTION_API_TOKEN
 
 /** Skip mutation tests in CI to avoid corrupting test fixtures */
 export const SKIP_MUTATIONS = process.env.CI === 'true'
@@ -46,7 +46,7 @@ export const TEST_IDS = {
 
 /** Live NotionConfig layer using environment token */
 export const NotionConfigLive = Layer.succeed(NotionConfig, {
-  authToken: Redacted.make(process.env.NOTION_TOKEN ?? ''),
+  authToken: Redacted.make(process.env.NOTION_API_TOKEN ?? ''),
   retryEnabled: true,
   maxRetries: 3,
   retryBaseDelay: 1000,

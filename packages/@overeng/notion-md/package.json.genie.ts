@@ -28,6 +28,13 @@ const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-md' }),
   dependencies: {
     workspace: [notionEffectClientPkg, notionEffectSchemaPkg, utilsPkg],
+    external: catalog.pick(
+      'remark-gfm',
+      'remark-parse',
+      'remark-stringify',
+      'unified',
+      'unist-util-visit',
+    ),
   },
   devDependencies: {
     workspace: [tuiReactPkg, utilsDevPkg],

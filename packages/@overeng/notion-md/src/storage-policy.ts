@@ -1,5 +1,4 @@
-import type { NmdFrontmatterV1 } from '@overeng/notion-effect-client'
-import { classifyNmdFrontmatterPayload } from '@overeng/notion-effect-client'
+import type { NmdSyncStateV1 } from '@overeng/notion-effect-client'
 
 /** Decision for whether `.nmd` auxiliary storage stays inline or moves to object storage. */
 export type StorageDecision =
@@ -36,21 +35,24 @@ const containsVolatileUrl = (value: unknown): boolean => {
   return false
 }
 
-/** Decide whether frontmatter storage is still an appropriate self-contained payload. */
-export const decideStorage = (frontmatter: NmdFrontmatterV1): StorageDecision => {
-  const payload = classifyNmdFrontmatterPayload(frontmatter)
+const smallBytes = 8_192
+const largeBytes = 65_536
 
-  if (containsVolatileUrl(frontmatter.notion_md.storage) === true) {
-    return { _tag: 'requires_object_store', bytes: payload.bytes, reason: 'volatile_url' }
+/** Decide whether sidecar storage is still an appropriate self-contained payload. */
+export const decideStorage = (syncState: NmdSyncStateV1): StorageDecision => {
+  const bytes = new TextEncoder().encode(JSON.stringify(syncState.storage)).byteLength
+
+  if (containsVolatileUrl(syncState.storage) === true) {
+    return { _tag: 'requires_object_store', bytes, reason: 'volatile_url' }
   }
 
-  if (payload.classification === 'too_large') {
-    return { _tag: 'requires_object_store', bytes: payload.bytes, reason: 'too_large' }
+  if (bytes > largeBytes) {
+    return { _tag: 'requires_object_store', bytes, reason: 'too_large' }
   }
 
   return {
     _tag: 'keep_self_contained',
-    bytes: payload.bytes,
-    classification: payload.classification,
+    bytes,
+    classification: bytes <= smallBytes ? 'small' : 'large',
   }
 }

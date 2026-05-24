@@ -21,7 +21,7 @@ import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, objectPath, type NmdStateStore } from './state-store.ts'
 import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
 
-const token = process.env.NOTION_TOKEN
+const token = process.env.NOTION_API_TOKEN
 const testParentPageId = process.env.NOTION_MD_TEST_PARENT_PAGE_ID
 const defaultAllowedTestParentPageIds = ['368f141b18dc8069976ac54ae50ea3eb']
 const allowedTestParentPageIds = new Set(
@@ -51,7 +51,7 @@ describe('notion-md live integration configuration', () => {
           testParentPageId !== undefined &&
           allowedTestParentPageIds.has(testParentPageId.replaceAll('-', '')),
       },
-      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_TOKEN, NOTION_MD_TEST_PARENT_PAGE_ID, and an allowed test parent',
+      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_API_TOKEN, NOTION_MD_TEST_PARENT_PAGE_ID, and an allowed test parent',
     ).toEqual({
       hasToken: true,
       hasParentPage: true,
@@ -333,8 +333,12 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
         expect(pulled.storage).toBe('self_contained')
         expect(parsed.frontmatter.notion_md.page_id).toBe(pageId)
         expect(parsed.body).toContain('Initial body')
+        const sidecarPath = join(dir, '.notion-md', 'sync', `${pageId}.json`)
+        const syncState = JSON.parse(await readFile(sidecarPath, 'utf8')) as {
+          body: { base: { hash: string } }
+        }
         await expect(
-          readFile(objectPath({ path, hash: parsed.frontmatter.notion_md.body.base.hash }), 'utf8'),
+          readFile(objectPath({ path, hash: syncState.body.base.hash }), 'utf8'),
         ).resolves.toContain('Initial body')
         expect(cleanStatus.localChanged).toBe(false)
         expect(cleanStatus.remoteChanged).toBe(false)

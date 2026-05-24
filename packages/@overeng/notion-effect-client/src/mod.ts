@@ -104,6 +104,7 @@ export type {
   NmdFileUnit,
   NmdFrontmatterPayloadClass,
   NmdFrontmatterV1,
+  NmdFrontmatterV2,
   NmdObjectRef,
   NmdObjectRole,
   NmdPageState,
@@ -111,7 +112,9 @@ export type {
   NmdPropertyFileRef,
   NmdPropertyValue,
   NmdStorage,
+  NmdSyncStateV1,
   NmdUnsupportedBlockUnit,
+  NmdWritablePropertyValue,
   RelativePath,
   Sha256Digest,
 } from './nmd.ts'
@@ -119,12 +122,16 @@ export {
   classifyNmdFrontmatterPayload,
   decodeNmdFrontmatterV1,
   decodeNmdFrontmatterV1Sync,
+  decodeNmdFrontmatterV2,
+  decodeNmdFrontmatterV2Sync,
+  decodeNmdSyncStateV1,
   NmdBodyState as NmdBodyStateSchema,
   NmdCommentUnit as NmdCommentUnitSchema,
   NmdDataSourceBinding as NmdDataSourceBindingSchema,
   NmdDateValue as NmdDateValueSchema,
   NmdFileUnit as NmdFileUnitSchema,
   NmdFrontmatterV1 as NmdFrontmatterV1Schema,
+  NmdFrontmatterV2 as NmdFrontmatterV2Schema,
   NmdObjectRef as NmdObjectRefSchema,
   NmdObjectRole as NmdObjectRoleSchema,
   NmdPageState as NmdPageStateSchema,
@@ -133,7 +140,9 @@ export {
   NmdPropertyValue as NmdPropertyValueSchema,
   NmdStorage as NmdStorageSchema,
   nmdStrictParseOptions,
+  NmdSyncStateV1 as NmdSyncStateV1Schema,
   NmdUnsupportedBlockUnit as NmdUnsupportedBlockUnitSchema,
+  NmdWritablePropertyValue as NmdWritablePropertyValueSchema,
   RelativePath as RelativePathSchema,
   Sha256Digest as Sha256DigestSchema,
 } from './nmd.ts'
@@ -195,7 +204,7 @@ export { NotionViews } from './views.ts'
  * })
  *
  * const MainLayer = Layer.mergeAll(
- *   NotionConfigLive({ authToken: Redacted.make(process.env.NOTION_TOKEN ?? '') }),
+ *   NotionConfigLive({ authToken: Redacted.make(process.env.NOTION_API_TOKEN ?? '') }),
  *   HttpClient.layer,
  * )
  *
