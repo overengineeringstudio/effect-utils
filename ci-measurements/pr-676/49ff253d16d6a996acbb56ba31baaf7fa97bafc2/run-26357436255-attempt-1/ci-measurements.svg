@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="514" viewBox="0 0 1040 514">
+<style>
+  .chart-bg { fill: #ffffff; }
+  .chart-border { fill: none; stroke: #d0d7de; }
+  .chart-title { fill: #24292f; }
+  .chart-muted { fill: #57606a; }
+  .chart-axis { stroke: #8c959f; }
+  .chart-label { fill: #24292f; }
+  .chart-value { fill: #57606a; }
+  .chart-track { fill: #f6f8fa; }
+  @media (prefers-color-scheme: dark) {
+    .chart-bg { fill: #0d1117; }
+    .chart-border { stroke: #30363d; }
+    .chart-title { fill: #f0f6fc; }
+    .chart-muted { fill: #8b949e; }
+    .chart-axis { stroke: #8b949e; }
+    .chart-label { fill: #c9d1d9; }
+    .chart-value { fill: #8b949e; }
+    .chart-track { fill: #21262d; }
+  }
+</style>
+<rect class="chart-bg" width="1040" height="514" rx="8"/>
+<rect class="chart-border" x="0.5" y="0.5" width="1039" height="513" rx="7.5"/>
+<text class="chart-title" x="520" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700">Actionable measurement impact</text>
+<text class="chart-muted" x="520" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11">0 means no actionable PR impact; 1x reaches the warning budget.</text>
+<text x="252" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">improved</text>
+<text x="572" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">regressed</text>
+<text class="chart-muted" x="596" y="72" font-family="DejaVu Sans" font-size="11">impact</text>
+<text class="chart-muted" x="672" y="72" font-family="DejaVu Sans" font-size="11">baseline -> current</text>
+<text class="chart-muted" x="804" y="72" font-family="DejaVu Sans" font-size="11">meaning</text>
+<line class="chart-axis" x1="412.0" y1="82" x2="412.0" y2="480" stroke-width="1.1" opacity="0.9"/>
+<text class="chart-label" x="230" y="105" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>Genie check direct</title>Genie check direct</text>
+<rect class="chart-track" x="252" y="92" width="320" height="18" rx="5"/>
+<rect x="412.0" y="92" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="105" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0.00x</text>
+<text class="chart-value" x="672" y="105" font-family="DejaVu Sans" font-size="11"><title>8.864s -&gt; 8.826s</title>8.864s -&gt; 8.826s</text>
+<text x="804" y="105" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text class="chart-label" x="230" y="151" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>Forced check:quick</title>Forced check:quick</text>
+<rect class="chart-track" x="252" y="138" width="320" height="18" rx="5"/>
+<rect x="412.0" y="138" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="151" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0.00x</text>
+<text class="chart-value" x="672" y="151" font-family="DejaVu Sans" font-size="11"><title>8.563s -&gt; 8.592s</title>8.563s -&gt; 8.592s</text>
+<text x="804" y="151" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text class="chart-label" x="230" y="197" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>pnpm install task</title>pnpm install task</text>
+<rect class="chart-track" x="252" y="184" width="320" height="18" rx="5"/>
+<rect x="412.0" y="184" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="197" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0.00x</text>
+<text class="chart-value" x="672" y="197" font-family="DejaVu Sans" font-size="11"><title>0.592s -&gt; 0.573s</title>0.592s -&gt; 0.573s</text>
+<text x="804" y="197" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text class="chart-label" x="230" y="243" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>Warm shell eval</title>Warm shell eval</text>
+<rect class="chart-track" x="252" y="230" width="320" height="18" rx="5"/>
+<rect x="412.0" y="230" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="243" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0.00x</text>
+<text class="chart-value" x="672" y="243" font-family="DejaVu Sans" font-size="11"><title>5.682s -&gt; 5.69s</title>5.682s -&gt; 5.69s</text>
+<text x="804" y="243" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text class="chart-label" x="230" y="289" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>Genie run task</title>Genie run task</text>
+<rect class="chart-track" x="252" y="276" width="320" height="18" rx="5"/>
+<rect x="412.0" y="276" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="289" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0.00x</text>
+<text class="chart-value" x="672" y="289" font-family="DejaVu Sans" font-size="11"><title>1.269s -&gt; 1.264s</title>1.269s -&gt; 1.264s</text>
+<text x="804" y="289" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text class="chart-label" x="230" y="335" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>devenv processes --help</title>devenv processes --help</text>
+<rect class="chart-track" x="252" y="322" width="320" height="18" rx="5"/>
+<rect x="412.0" y="322" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="335" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0.00x</text>
+<text class="chart-value" x="672" y="335" font-family="DejaVu Sans" font-size="11"><title>0.016s -&gt; 0.017s</title>0.016s -&gt; 0.017s</text>
+<text x="804" y="335" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text class="chart-label" x="230" y="381" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>devenv tasks list</title>devenv tasks list</text>
+<rect class="chart-track" x="252" y="368" width="320" height="18" rx="5"/>
+<rect x="412.0" y="368" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="381" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0.00x</text>
+<text class="chart-value" x="672" y="381" font-family="DejaVu Sans" font-size="11"><title>0.043s -&gt; 0.042s</title>0.043s -&gt; 0.042s</text>
+<text x="804" y="381" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text class="chart-label" x="230" y="427" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>Warm cached check:quick</title>Warm cached check:quick</text>
+<rect class="chart-track" x="252" y="414" width="320" height="18" rx="5"/>
+<rect x="412.0" y="414" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="427" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0.00x</text>
+<text class="chart-value" x="672" y="427" font-family="DejaVu Sans" font-size="11"><title>3.085s -&gt; 3.084s</title>3.085s -&gt; 3.084s</text>
+<text x="804" y="427" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text class="chart-muted" x="412.0" y="498" text-anchor="middle" font-family="DejaVu Sans" font-size="10">0</text>
+</svg>
