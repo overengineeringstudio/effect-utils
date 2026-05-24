@@ -7,8 +7,12 @@ settings:
 packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
 
 patchedDependencies:
-  '@effect/platform@0.96.1': 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
-  effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
+  '@effect/platform@0.96.1':
+    hash: 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
+    path: packages/@overeng/utils/patches/@effect__platform@0.96.0.patch
+  effect-distributed-lock@0.0.11:
+    hash: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
+    path: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
 
 importers:
 
