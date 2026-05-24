@@ -634,7 +634,8 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     env: {
       ...standardCIEnv,
-      NOTION_TOKEN: '${{ secrets.NOTION_TOKEN }}',
+      // Tests read NOTION_API_TOKEN; the repo secret is still named NOTION_TOKEN.
+      NOTION_API_TOKEN: '${{ secrets.NOTION_TOKEN }}',
       NOTION_MD_TEST_PARENT_PAGE_ID: '368f141b18dc8069976ac54ae50ea3eb',
     },
     steps: [

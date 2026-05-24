@@ -6693,7 +6693,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
-      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_API_TOKEN: ${{ secrets.NOTION_TOKEN }}
       NOTION_MD_TEST_PARENT_PAGE_ID: 368f141b18dc8069976ac54ae50ea3eb
     steps:
       - uses: actions/checkout@v6

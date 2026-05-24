@@ -171,6 +171,13 @@ export const catalog = defineCatalog({
   katex: '0.16.45',
   shiki: '4.0.2',
 
+  // Markdown (notion-md canonical markdown pipeline)
+  'remark-gfm': '4.0.1',
+  'remark-parse': '11.0.0',
+  'remark-stringify': '11.0.0',
+  unified: '11.0.5',
+  'unist-util-visit': '5.1.0',
+
   // PTY
   '@myobie/pty': '0.9.0',
 
