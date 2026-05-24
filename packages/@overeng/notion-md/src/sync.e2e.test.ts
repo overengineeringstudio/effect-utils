@@ -27,7 +27,12 @@ import {
   type NmdStateStore,
 } from './state-store.ts'
 import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
-import { statusWorkspace, syncRemoteToTarget, syncWorkspace } from './workspace.ts'
+import {
+  isManagedWorkspace,
+  statusWorkspace,
+  syncRemoteToTarget,
+  syncWorkspace,
+} from './workspace.ts'
 
 const pageId = '00000000-0000-4000-8000-000000000001'
 const secondPageId = '00000000-0000-4000-8000-000000000011'
@@ -651,6 +656,19 @@ describe('notion-md e2e prototype', () => {
       expect('pageId' in result ? result.pageId : undefined).toBe(pageId)
       expect(parsed.frontmatter.notion_md.page_id).toBe(pageId)
       expect(parsed.body).toContain('Body')
+    })
+  })
+
+  it('does not treat existing .nmd file targets as managed workspaces', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, 'probe.nmd')
+      await writeFile(path, 'local notes\n')
+
+      const managed = await Effect.runPromise(
+        isManagedWorkspace(path).pipe(Effect.provide(NodeContext.layer)),
+      )
+
+      expect(managed).toBe(false)
     })
   })
 

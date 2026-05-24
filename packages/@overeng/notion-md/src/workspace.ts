@@ -136,20 +136,21 @@ const isNmdFileTarget = (path: string): boolean => extname(path) === '.nmd'
 export const isManagedWorkspace = (
   path: string,
 ): Effect.Effect<boolean, NmdFileSystemError, FileSystem.FileSystem> =>
-  FileSystem.FileSystem.pipe(
-    Effect.flatMap((fs) =>
-      fs.exists(workspaceManifestPath(path)).pipe(
-        Effect.mapError((cause) =>
-          makeFsError({
-            operation: 'exists',
-            path: workspaceManifestPath(path),
-            cause,
-            message: `Failed to inspect notion-md workspace at ${path}`,
-          }),
-        ),
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const targetInfo = yield* fs.stat(path).pipe(Effect.either)
+    if (targetInfo._tag === 'Right' && targetInfo.right.type !== 'Directory') return false
+    return yield* fs.exists(workspaceManifestPath(path)).pipe(
+      Effect.mapError((cause) =>
+        makeFsError({
+          operation: 'exists',
+          path: workspaceManifestPath(path),
+          cause,
+          message: `Failed to inspect notion-md workspace at ${path}`,
+        }),
       ),
-    ),
-  )
+    )
+  })
 
 const readManifest = (
   root: string,
