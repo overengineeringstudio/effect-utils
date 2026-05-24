@@ -77,7 +77,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           const stream = NotionSearch.searchStream({
             query: 'Test',
             pageSize: 1, // Force multiple pages
-          })
+          }).pipe(Stream.take(3))
 
           const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunk) => [...chunk]))
 
@@ -89,12 +89,14 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
     Vitest.it.effect('streams with filter', () =>
       Effect.gen(function* () {
         const stream = NotionSearch.searchStream({
+          query: 'Test Database',
           filter: { property: 'object', value: 'data_source' },
           pageSize: 1,
-        })
+        }).pipe(Stream.take(3))
 
         const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunk) => [...chunk]))
 
+        expect(items.length).toBeGreaterThanOrEqual(1)
         for (const item of items) {
           expect(item.object).toBe('data_source')
         }
