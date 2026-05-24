@@ -85,13 +85,13 @@ local formatting.
 The `notion_md.page` object models page state that Notion does not expose in the
 Markdown body.
 
-| Field       | Local form                                | Push behavior                          |
-| ----------- | ----------------------------------------- | -------------------------------------- |
+| Field       | Local form                                | Push behavior                           |
+| ----------- | ----------------------------------------- | --------------------------------------- |
 | `title`     | string                                    | pushed via the page properties endpoint |
-| `icon`      | `null`, emoji, native icon, external file | pushed with `PATCH /pages/{id}`        |
-| `cover`     | `null`, external or Notion-hosted file    | external/null pushed; hosted read-only |
-| `in_trash`  | boolean                                   | pushed with `PATCH /pages/{id}`        |
-| `is_locked` | boolean                                   | pushed with `PATCH /pages/{id}`        |
+| `icon`      | `null`, emoji, native icon, external file | pushed with `PATCH /pages/{id}`         |
+| `cover`     | `null`, external or Notion-hosted file    | external/null pushed; hosted read-only  |
+| `in_trash`  | boolean                                   | pushed with `PATCH /pages/{id}`         |
+| `is_locked` | boolean                                   | pushed with `PATCH /pages/{id}`         |
 
 Notion-hosted files and custom emojis are strict schema-valid because they can
 appear on pull, but they are not blindly written back as local edits until the

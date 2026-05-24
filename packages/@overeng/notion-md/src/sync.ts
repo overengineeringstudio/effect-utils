@@ -175,9 +175,8 @@ const inferPropertyType = (value: unknown): string => {
   return 'unknown'
 }
 
-const hasWritablePropertyValues = (
-  properties: Record<string, NmdWritablePropertyValue>,
-): boolean => Object.keys(properties).length > 0
+const hasWritablePropertyValues = (properties: Record<string, NmdWritablePropertyValue>): boolean =>
+  Object.keys(properties).length > 0
 
 const stableJson = (value: unknown): string => JSON.stringify(value) ?? 'undefined'
 
@@ -419,9 +418,7 @@ ${fence}
   })
 }
 
-const buildFrontmatterV2 = (opts: {
-  readonly page: RemotePageSnapshot
-}): NmdFrontmatterV2 => ({
+const buildFrontmatterV2 = (opts: { readonly page: RemotePageSnapshot }): NmdFrontmatterV2 => ({
   notion_md: {
     version: 2,
     api_version: '2026-03-11',
@@ -515,9 +512,7 @@ const writeNmdWithStoragePolicy = (opts: {
               : [],
           file_ids: storage._tag === 'self_contained' ? storage.files.map((file) => file.id) : [],
           comment_ids:
-            storage._tag === 'self_contained'
-              ? storage.comments.map((comment) => comment.id)
-              : [],
+            storage._tag === 'self_contained' ? storage.comments.map((comment) => comment.id) : [],
         },
       }
     }
@@ -571,9 +566,7 @@ export const pullPage = (
     }),
   )
 
-const readNmd = (
-  path: string,
-): Effect.Effect<LocalState, NmdError, NmdStateStore> =>
+const readNmd = (path: string): Effect.Effect<LocalState, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
     const store = yield* NmdStateStore
     const content = yield* store.readNmdFile({ path })

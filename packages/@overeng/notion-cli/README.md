@@ -52,16 +52,16 @@ Generate a schema from a single database:
 notion-effect-cli generate <database-id> -o <output-file> [options]
 ```
 
-| Option                | Description                                           |
-| --------------------- | ----------------------------------------------------- |
-| `-o, --output`        | Output file path (required)                           |
-| `-n, --name`          | Custom schema name (defaults to database title)       |
+| Option                | Description                                               |
+| --------------------- | --------------------------------------------------------- |
+| `-o, --output`        | Output file path (required)                               |
+| `-n, --name`          | Custom schema name (defaults to database title)           |
 | `-t, --token`         | Notion API token (defaults to `NOTION_API_TOKEN` env var) |
-| `-w, --include-write` | Generate write schemas for creating/updating pages    |
-| `-a, --include-api`   | Generate a typed API wrapper                          |
-| `--typed-options`     | Generate literal unions for select/status options     |
-| `--transform`         | Property transform config (e.g., `Status=asName`)     |
-| `-d, --dry-run`       | Preview generated code without writing                |
+| `-w, --include-write` | Generate write schemas for creating/updating pages        |
+| `-a, --include-api`   | Generate a typed API wrapper                              |
+| `--typed-options`     | Generate literal unions for select/status options         |
+| `--transform`         | Property transform config (e.g., `Status=asName`)         |
+| `-d, --dry-run`       | Preview generated code without writing                    |
 
 ### `introspect`
 

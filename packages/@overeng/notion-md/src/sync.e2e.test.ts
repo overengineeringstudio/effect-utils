@@ -151,7 +151,8 @@ class FakeNotion {
               }, page.markdown)
         if (
           command._tag === 'update_content' &&
-          normalizeMarkdownLineEndings(markdown) !== normalizeMarkdownLineEndings(command.expectedMarkdown)
+          normalizeMarkdownLineEndings(markdown) !==
+            normalizeMarkdownLineEndings(command.expectedMarkdown)
         ) {
           throw new NmdGatewayError({
             operation: 'update_markdown',

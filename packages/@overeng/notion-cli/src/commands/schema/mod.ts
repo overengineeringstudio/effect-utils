@@ -79,7 +79,9 @@ const getGeneratorVersion = Effect.gen(function* () {
 
 /** Resolve the Notion API token from CLI option or `NOTION_API_TOKEN`. */
 export const resolveNotionToken = (token: Option.Option<string>) =>
-  Effect.sync(() => (Option.isSome(token) === true ? token.value : process.env.NOTION_API_TOKEN)).pipe(
+  Effect.sync(() =>
+    Option.isSome(token) === true ? token.value : process.env.NOTION_API_TOKEN,
+  ).pipe(
     Effect.flatMap((t) =>
       t !== undefined
         ? Effect.succeed(t)

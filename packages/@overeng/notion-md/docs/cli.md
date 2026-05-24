@@ -13,7 +13,7 @@ notion-md sync <target...> [--recursive] [--concurrency <n>] [--watch] [--poll-i
 
 | Variable                                  | Required | Meaning                                           |
 | ----------------------------------------- | -------- | ------------------------------------------------- |
-| `NOTION_API_TOKEN`                            | yes      | Notion API token                                  |
+| `NOTION_API_TOKEN`                        | yes      | Notion API token                                  |
 | `NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST` | live e2e | Comma-separated parent page ids cleanup may touch |
 
 ## `pull`

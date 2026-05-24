@@ -333,8 +333,12 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
         expect(pulled.storage).toBe('self_contained')
         expect(parsed.frontmatter.notion_md.page_id).toBe(pageId)
         expect(parsed.body).toContain('Initial body')
+        const sidecarPath = join(dir, '.notion-md', 'sync', `${pageId}.json`)
+        const syncState = JSON.parse(await readFile(sidecarPath, 'utf8')) as {
+          body: { base: { hash: string } }
+        }
         await expect(
-          readFile(objectPath({ path, hash: parsed.frontmatter.notion_md.body.base.hash }), 'utf8'),
+          readFile(objectPath({ path, hash: syncState.body.base.hash }), 'utf8'),
         ).resolves.toContain('Initial body')
         expect(cleanStatus.localChanged).toBe(false)
         expect(cleanStatus.remoteChanged).toBe(false)

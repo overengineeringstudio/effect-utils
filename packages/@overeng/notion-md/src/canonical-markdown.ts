@@ -22,7 +22,7 @@ import { visit } from 'unist-util-visit'
  * paragraph survives as one Notion block. Authors who want a hard break must
  * use the explicit `break` node (two trailing spaces or a backslash).
  */
-const unwrapSoftBreaks = () => (tree: { children?: unknown[] }) => {
+const unwrapSoftBreaks: () => (tree: unknown) => void = () => (tree) => {
   visit(tree as never, 'text', (node: { value: string }) => {
     if (node.value.includes('\n')) {
       node.value = node.value.replace(/[ \t]*\n[ \t]*/g, ' ')
@@ -96,9 +96,7 @@ export const semanticEquivalent = (a: string, b: string): boolean => {
   const compact = (s: string): string =>
     splitFences(canonicalizeBlockMarkdown(s))
       .map((segment) =>
-        segment.kind === 'code'
-          ? segment.content
-          : segment.content.replace(/\s+/gu, ' ').trim(),
+        segment.kind === 'code' ? segment.content : segment.content.replace(/\s+/gu, ' ').trim(),
       )
       .join('\n')
       .trim()
