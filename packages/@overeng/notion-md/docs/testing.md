@@ -10,7 +10,7 @@
 
 Live Notion tests require:
 
-- `NOTION_API_TOKEN`
+- `NOTION_TOKEN`
 - `NOTION_TEST_PARENT_PAGE_ID`
 
 The configured parent must be a dedicated scratch page shared with the

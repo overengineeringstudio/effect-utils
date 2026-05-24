@@ -233,39 +233,6 @@ class FakeNotion {
         this.pages.set(id, next)
         return this.toPullResult(next).page
       }),
-    createPage: (input) =>
-      Effect.sync(() => {
-        /*
-         * Seed the fake-id counter above the maximum hand-rolled fixture
-         * id so a `new FakeNotion([])` + create never collides with the
-         * top-of-file `pageId` constant (`…000001`). Any future test that
-         * relies on the constant after a create gets stable distinct ids.
-         */
-        const newId = `00000000-0000-4000-8000-${(this.pages.size + 1001)
-          .toString()
-          .padStart(12, '0')}`
-        const page: Required<FakePage> = {
-          pageId: newId,
-          title: input.title,
-          markdown: normalizeMarkdownLineEndings(input.body ?? `# ${input.title}\n`),
-          properties: {},
-          storage: {
-            _tag: 'self_contained',
-            unsupported_blocks: [],
-            files: [],
-            comments: [],
-          },
-          unknownBlockIds: [],
-          icon: null,
-          cover: null,
-          inTrash: false,
-          isLocked: false,
-          lastEditedTime: '2026-05-22T12:00:00.000Z',
-          childPageIds: [],
-        }
-        this.pages.set(newId, page)
-        return this.toPullResult(page).page
-      }),
     listChildPages: ({ pageId: id }) =>
       Effect.sync(() => {
         const page = this.requirePage(id)
@@ -415,9 +382,6 @@ const parseFile = async (path: string) => {
 const readSyncStateFile = async (path: string): Promise<NmdSyncStateV1> => {
   const parsed = await parseFile(path)
   const pageId = parsed.frontmatter.notion_md.page_id
-  if (pageId === null) {
-    throw new Error(`Cannot read sync state for unmaterialized .nmd at ${path}`)
-  }
   const baseName = path.split(/[\\/]/u).at(-1) ?? path
   const root = path.slice(0, Math.max(0, path.length - baseName.length))
   const sidecarPath = `${root}.notion-md/sync/${pageId}.json`
@@ -1960,61 +1924,6 @@ describe('notion-md e2e prototype', () => {
         property_type: 'select',
         value: { type: 'select', select: { name: 'Ready' } },
       })
-    })
-  })
-
-  it('materializes an unmaterialized .nmd on first push (page_id null → create)', async () => {
-    await withTempDir(async (dir) => {
-      const parentPageId = '00000000-0000-4000-8000-00000000aaaa'
-      const fake = new FakeNotion([])
-      const path = join(dir, 'unmaterialized.nmd')
-
-      /*
-       * Convention-driven create: write a `.nmd` with `page_id: null`
-       * and a parent set. `push` materializes the Notion page, fills
-       * `page_id`, writes the sidecar, and subsequent pushes go through
-       * the normal guarded path — no `--create` flag, no second tool.
-       */
-      await writeFile(
-        path,
-        renderNmdFile({
-          frontmatter: {
-            notion_md: {
-              version: 2,
-              api_version: '2026-03-11',
-              object: 'page',
-              page_id: null,
-              parent: { _tag: 'page', id: parentPageId },
-              page: {
-                title: 'Brand New Doc',
-                icon: null,
-                cover: null,
-                in_trash: false,
-                is_locked: false,
-              },
-              properties: {},
-            },
-          },
-          body: '# Brand New Doc\n\nFirst body.\n',
-        }),
-      )
-
-      const status = await runWithFake(statusPage({ path }), fake)
-      expect(status.pageId).toBe('unmaterialized')
-      expect(status.localChanged).toBe(true)
-
-      const pushed = await runWithFake(pushPage({ path }), fake)
-
-      expect(pushed.pushed).toBe(true)
-      expect(pushed.pageId).not.toBe('unmaterialized')
-      expect(fake.remoteMarkdown(pushed.pageId)).toContain('First body.')
-
-      const refreshed = await parseFile(path)
-      expect(refreshed.frontmatter.notion_md.page_id).toBe(pushed.pageId)
-
-      /* Sidecar exists and is keyed by the new page id. */
-      const syncState = await readSyncStateFile(path)
-      expect(syncState.page_id).toBe(pushed.pageId)
     })
   })
 

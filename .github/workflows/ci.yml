@@ -6694,6 +6694,7 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
       NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
       NOTION_TEST_PARENT_PAGE_ID: ${{ secrets.NOTION_TEST_PARENT_PAGE_ID }}
     steps:
       - uses: actions/checkout@v6

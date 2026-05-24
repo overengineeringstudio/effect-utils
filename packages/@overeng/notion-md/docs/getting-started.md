@@ -9,7 +9,7 @@ for large or immutable evidence, `.notion-md/objects`.
 Set the Notion token before running commands:
 
 ```sh
-export NOTION_API_TOKEN="secret_..."
+export NOTION_TOKEN="secret_..."
 ```
 
 The integration must have access to the page you sync. If a command can
@@ -50,33 +50,16 @@ This creates `docs/.notion-md/workspace.json`, writes the root page to
 Later, `notion-md sync docs` keeps the workspace current and pulls newly added
 remote child pages into local files.
 
-## Creating A New Page From Markdown
+## Creating A New Local File
 
-Author a `.nmd` file with `page_id: null` and a `parent` set; the first
-`sync` materializes the Notion page and fills in `page_id` plus the
-sidecar:
+Create the page in Notion first, then materialize it locally:
 
-```
----
-{
-  "notion_md": {
-    "version": 2,
-    "api_version": "2026-03-11",
-    "object": "page",
-    "page_id": null,
-    "parent": { "_tag": "page", "id": "<parent-page-id>" },
-    "page": { "title": "Patterns", "icon": null, "cover": null, "in_trash": false, "is_locked": false },
-    "properties": {}
-  }
-}
----
-
-Body goes here.
+```sh
+notion-md sync <page-id-or-url> notes.nmd
 ```
 
-Notion's create endpoint deduplicates the first H1 of the initial body
-against the page title. If `page.title` is `"Patterns"` and the body starts
-with `# Patterns`, Notion drops the H1 — pick one home.
+The generated `.nmd` includes the page id, frontmatter, local sync state, and
+base snapshot required for guarded two-way sync.
 
 ## Edit And Inspect
 

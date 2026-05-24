@@ -113,18 +113,18 @@ const cliVersion = resolveCliVersion({
   buildStamp,
 })
 
-const resolveToken = Config.redacted('NOTION_API_TOKEN').pipe(
+const resolveToken = Config.redacted('NOTION_TOKEN').pipe(
   Effect.filterOrFail(
     (token) => Redacted.value(token).length > 0,
     () =>
       new NmdTokenMissingError({
-        message: 'NOTION_API_TOKEN is required',
+        message: 'NOTION_TOKEN is required',
       }),
   ),
   Effect.mapError(
     () =>
       new NmdTokenMissingError({
-        message: 'NOTION_API_TOKEN is required',
+        message: 'NOTION_TOKEN is required',
       }),
   ),
 )

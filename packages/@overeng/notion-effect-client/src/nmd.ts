@@ -383,17 +383,16 @@ export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
  * inventory, read-only property echoes, data-source binding) moves to
  * the sidecar `NmdSyncStateV1` at `.notion-md/sync/{page_id}.json`.
  *
- * `page_id` is nullable so a `.nmd` file can describe an unmaterialized
- * page (with `parent` set); `push` then creates the Notion page and
- * fills `page_id` on first sync. This is the "convention-driven create"
- * design — same artifact through the whole lifecycle, same `push` verb.
+ * `page_id` is required. Local files are materialized from an existing
+ * Notion page through `notion-md sync <page-id-or-url> <target>` before
+ * they can participate in guarded two-way sync.
  */
 export const NmdFrontmatterV2 = Schema.Struct({
   notion_md: Schema.Struct({
     version: Schema.Literal(2),
     api_version: Schema.Literal('2026-03-11'),
     object: Schema.Literal('page'),
-    page_id: Schema.NullOr(NotionUUID),
+    page_id: NotionUUID,
     url: Schema.optional(Schema.String),
     parent: NmdParentRef,
     page: NmdPageState,

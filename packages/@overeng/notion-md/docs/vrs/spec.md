@@ -413,9 +413,9 @@ notion-md sync docs
 
 Environment:
 
-| Variable           | Meaning          |
-| ------------------ | ---------------- |
-| `NOTION_API_TOKEN` | Notion API token |
+| Variable       | Meaning          |
+| -------------- | ---------------- |
+| `NOTION_TOKEN` | Notion API token |
 
 Output:
 
@@ -442,7 +442,7 @@ notion-md sync <target> [--recursive] [--concurrency 4] [--watch]
 
 Rules:
 
-- A single file target keeps the original single-result JSON shape.
+- A single file target emits a single-page JSON result.
 - Multiple status targets or recursive unmanaged directory targets emit a batch envelope.
 - Managed workspace directories read `.notion-md/workspace.json`; `sync`
   materializes missing remote child pages, while `status` reports them without

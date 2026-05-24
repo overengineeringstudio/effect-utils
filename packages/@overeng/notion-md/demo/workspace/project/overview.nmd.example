@@ -4,18 +4,18 @@
     "version": 1,
     "api_version": "2026-03-11",
     "object": "page",
-    "page_id": "<replace-by-running-notion-md-pull>",
-    "url": "https://www.notion.so/<replace-by-running-notion-md-pull>",
+    "page_id": "<replace-by-running-notion-md-sync>",
+    "url": "https://www.notion.so/<replace-by-running-notion-md-sync>",
     "parent": {
       "_tag": "workspace"
     },
     "body": {
       "format": "notion-enhanced-markdown",
-      "hash": "sha256:<replace-by-running-notion-md-pull>",
+      "hash": "sha256:<replace-by-running-notion-md-sync>",
       "base": {
         "_tag": "object_ref",
         "role": "base_snapshot",
-        "hash": "sha256:<replace-by-running-notion-md-pull>",
+        "hash": "sha256:<replace-by-running-notion-md-sync>",
         "path": ".notion-md/objects/sha256/...",
         "media_type": "application/json",
         "byte_length": 0

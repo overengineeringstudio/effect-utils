@@ -15,7 +15,6 @@ import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markd
 import { NmdGatewayError } from './errors.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
 import {
-  type CreatePageInput,
   type MarkdownUpdateCommand,
   NotionMdGateway,
   type RemoteChildPage,
@@ -336,40 +335,6 @@ export const NotionMdGatewayLive = Layer.effect(
               'notion_md.page_metadata.cover': metadata.cover !== undefined,
               'notion_md.page_metadata.in_trash': metadata.in_trash !== undefined,
               'notion_md.page_metadata.is_locked': metadata.is_locked !== undefined,
-            },
-          }),
-        ),
-      createPage: (input: CreatePageInput) =>
-        provideHttp(
-          NotionPages.create({
-            parent:
-              input.parent._tag === 'page'
-                ? { type: 'page_id', page_id: input.parent.id }
-                : input.parent._tag === 'data_source'
-                  ? { type: 'data_source_id', data_source_id: input.parent.id }
-                  : { type: 'database_id', database_id: input.parent.id },
-            properties: {
-              title: {
-                title: [{ type: 'text', text: { content: input.title } }],
-              },
-            },
-            /*
-             * Send the initial body through the same canonicalization the
-             * push path uses so the very first server-side render already
-             * has unwrapped paragraphs — no first-pull surprises.
-             */
-            ...(input.body !== undefined
-              ? { markdown: canonicalizeBlockMarkdown(input.body) }
-              : {}),
-          }),
-        ).pipe(
-          Effect.map(toRemotePage),
-          Effect.mapError(mapGatewayError({ operation: 'create_page' })),
-          Effect.withSpan('notion-md.gateway.create-page', {
-            attributes: {
-              'notion_md.create.parent_kind': input.parent._tag,
-              'notion_md.create.parent_id': input.parent.id,
-              'notion_md.create.has_body': input.body !== undefined,
             },
           }),
         ),

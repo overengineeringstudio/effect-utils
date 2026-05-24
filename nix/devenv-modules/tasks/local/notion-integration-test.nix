@@ -1,7 +1,7 @@
 # Notion integration tests
 #
 # Runs vitest with --include for *.integration.test.ts files in Notion packages.
-# Requires NOTION_API_TOKEN environment variable; skips gracefully if not set.
+# Requires each package's Notion token environment variable; skips gracefully if not set.
 #
 # Provides:
 #   - test:notion-integration - Run all Notion integration tests
@@ -15,20 +15,24 @@ let
     {
       path = "packages/@overeng/notion-effect-client";
       name = "notion-effect-client";
+      tokenEnv = "NOTION_API_TOKEN";
     }
     {
       path = "packages/@overeng/notion-cli";
       name = "notion-cli";
+      tokenEnv = "NOTION_API_TOKEN";
     }
     {
       path = "packages/@overeng/notion-md";
       name = "notion-md";
+      tokenEnv = "NOTION_TOKEN";
     }
   ];
-  vitestExec = ''
+  vitestExec = tokenEnv: ''
     set -euo pipefail
-    if [ -z "''${NOTION_API_TOKEN:-}" ]; then
-      echo "NOTION_API_TOKEN not set, skipping integration tests"
+    token_name=${lib.escapeShellArg tokenEnv}
+    if [ -z "''${!token_name:-}" ]; then
+      echo "$token_name not set, skipping integration tests"
       exit 0
     fi
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
@@ -37,7 +41,7 @@ let
   mkTestTask = pkg: {
     "test:notion-integration:${pkg.name}" = {
       description = "Run Notion integration tests for ${pkg.name}";
-      exec = trace.exec "test:notion-integration:${pkg.name}" vitestExec;
+      exec = trace.exec "test:notion-integration:${pkg.name}" (vitestExec pkg.tokenEnv);
       cwd = pkg.path;
       after = [ "pnpm:install" ];
     };
@@ -49,7 +53,7 @@ in
     ++ [
       {
         "test:notion-integration" = {
-          description = "Run all Notion integration tests (requires NOTION_API_TOKEN)";
+          description = "Run all Notion integration tests";
           after = map (pkg: "test:notion-integration:${pkg.name}") packages;
         };
       }

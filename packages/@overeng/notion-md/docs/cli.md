@@ -13,7 +13,7 @@ notion-md status <target...> [--recursive] [--concurrency <n>]
 
 | Variable                                  | Required | Meaning                                           |
 | ----------------------------------------- | -------- | ------------------------------------------------- |
-| `NOTION_API_TOKEN`                        | yes      | Notion API token                                  |
+| `NOTION_TOKEN`                            | yes      | Notion API token                                  |
 | `NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST` | live e2e | Comma-separated parent page ids cleanup may touch |
 
 ## `sync <page> <target>`
@@ -35,9 +35,9 @@ workspace and materializes newly discovered remote child pages.
 
 ## Targets
 
-`status` accepts one or more file targets. Passing a single
-file preserves the original single-result JSON output. Passing multiple files,
-or a directory with `--recursive`, emits a batch result envelope.
+`status` accepts one or more file targets. Passing a single file emits a
+single-page JSON result. Passing multiple files, or a directory with
+`--recursive`, emits a batch result envelope.
 
 `sync` accepts one local target. If that target is a managed workspace directory,
 workspace metadata supplies the Notion root and `--recursive` is not required.
@@ -98,9 +98,9 @@ notion-md sync <target> --watch --poll-interval-ms 30000
 ```
 
 Runs continuous sync. Local file events and remote poll events are coalesced.
-One file target uses the original one-file watch envelope. Multiple files or
-recursive directory targets use a batch watch envelope and reconcile affected
-files with bounded concurrency.
+One file target emits one-file watch events. Multiple files or recursive
+directory targets use a batch watch envelope and reconcile affected files with
+bounded concurrency.
 
 Managed workspace watch is not implemented yet. Run one-shot
 `notion-md sync <workspace>` periodically, or watch specific `.nmd` files /

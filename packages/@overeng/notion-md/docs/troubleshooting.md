@@ -5,13 +5,13 @@
 Symptom:
 
 ```text
-NOTION_API_TOKEN is required
+NOTION_TOKEN is required
 ```
 
 Fix:
 
 ```sh
-export NOTION_API_TOKEN="secret_..."
+export NOTION_TOKEN="secret_..."
 ```
 
 Use a token whose integration has access to the target page.
@@ -60,15 +60,6 @@ ref, last-pulled timestamps, storage inventory). It is keyed by the immutable
 page id and is typically gitignored. A fresh clone of a repo that gitignores
 `.notion-md/` will not have it. Run the suggested sync to rebuild it; sync
 will then resume from the freshly captured remote baseline.
-
-## H1 Heading Disappears After Create
-
-Notion's create-page endpoint deduplicates the first H1 of the initial body
-against the page title property. If `notion_md.page.title` is `"Patterns"` and
-the body begins with `# Patterns`, Notion drops the H1 and only the title
-property survives. This is a server-side behavior, not a notion-md transform.
-Pick one home for the heading: the `title` field for the page chrome, or a
-slightly different H1 inside the body if you want both to render.
 
 ## Body Conflict
 

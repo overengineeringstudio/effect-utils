@@ -212,10 +212,10 @@ export const createMissingTokenFixture = (): CommandFixture => ({
   problems: [
     {
       severity: 'critical',
-      name: 'NOTION_API_TOKEN',
+      name: 'NOTION_TOKEN',
       status: 'missing',
       details: 'command needs a Notion integration token',
-      context: 'legacy NOTION_API_TOKEN is intentionally not accepted',
+      context: 'NOTION_TOKEN is required',
       fixes: ['secrets-run -- notion-md status page.nmd'],
       skips: ['notion-md sync --help'],
     },
