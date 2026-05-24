@@ -247,6 +247,12 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(defaultRefPolicyCheckStepSource).toContain('NORMALIZE_GIT_BRANCH_REFS')
     expect(defaultRefPolicyCheckStepSource).toContain("ref.startsWith('refs/heads/')")
   })
+
+  it('retries temporary git repository cleanup after reachability checks', () => {
+    expect(defaultRefPolicyCheckStepSource).toContain(
+      'fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })',
+    )
+  })
 })
 
 describe('ci workflow merge queue helpers', () => {

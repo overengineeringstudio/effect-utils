@@ -412,7 +412,7 @@ if (verifyReachable) {
     } catch {
       ok = false
     } finally {
-      fs.rmSync(tmp, { recursive: true, force: true })
+      fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     }
     if (!ok) {
       violations.push({ type: 'reachability', file: 'megarepo.lock', repo: repoKey(repo), rev: member.commit, expectedRef, memberName })
