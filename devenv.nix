@@ -387,7 +387,7 @@ in
     (taskModules.secretspec { })
     # Local task: Validate allPackages matches filesystem packages (effect-utils specific)
     ./nix/devenv-modules/tasks/local/workspace-check.nix
-    # Notion integration tests (requires NOTION_TOKEN)
+    # Notion integration tests (requires NOTION_API_TOKEN)
     ./nix/devenv-modules/tasks/local/notion-integration-test.nix
   ];
 
