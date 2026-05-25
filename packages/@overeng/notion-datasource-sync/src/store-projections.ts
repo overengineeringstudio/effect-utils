@@ -28,6 +28,9 @@ export type ProjectionDigestInput = {
 export const hashStoreBytes = (value: string): Hash =>
   Schema.decodeSync(Hash)(`sha256:${createHash('sha256').update(value).digest('hex')}`)
 
+export const pageLifecycleHash = (pageId: PageId, inTrash: boolean): Hash =>
+  hashStoreBytes(`page-lifecycle\t${pageId}\t${inTrash ? 'in-trash' : 'active'}`)
+
 export const computeProjectionDigest = (events: ReadonlyArray<ProjectionDigestInput>): Hash => {
   const lines = events.map(
     (event) =>

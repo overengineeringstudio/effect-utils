@@ -7,6 +7,7 @@ import { IdempotencyKey } from './events.ts'
 import { notionRequestId } from './gateway.ts'
 import type { GuardName } from './guards.ts'
 import { NotionDataSourceGateway, PageBodySyncPort } from './ports.ts'
+import { pageLifecycleHash } from './store-projections.ts'
 import {
   type ClaimedOutboxCommand,
   type NotionSyncStore,
@@ -32,7 +33,8 @@ export type OutboxExecutionResult =
     }
 
 type CurrentSurface = {
-  readonly hash: Hash
+  readonly baseHash: Hash
+  readonly verificationHash: Hash
   readonly requestId: NotionRequestId
 }
 
@@ -85,18 +87,34 @@ const observeCurrentSurface = (
       case 'RestorePageCommand': {
         const gateway = yield* NotionDataSourceGateway
         const page = yield* gateway.retrievePage(command.pageId)
-        return { hash: page.propertiesHash, requestId: page.requestId }
+        if (command._tag === 'PatchPagePropertiesCommand') {
+          return {
+            baseHash: page.propertiesHash,
+            verificationHash: page.propertiesHash,
+            requestId: page.requestId,
+          }
+        }
+        return {
+          baseHash: page.propertiesHash,
+          verificationHash: pageLifecycleHash(command.pageId, page.inTrash),
+          requestId: page.requestId,
+        }
       }
       case 'PatchDataSourceSchemaCommand': {
         const gateway = yield* NotionDataSourceGateway
         const dataSource = yield* gateway.retrieveDataSource(command.dataSourceId)
-        return { hash: dataSource.schemaHash, requestId: dataSource.requestId }
+        return {
+          baseHash: dataSource.schemaHash,
+          verificationHash: dataSource.schemaHash,
+          requestId: dataSource.requestId,
+        }
       }
       case 'BodyPushCommand': {
         const body = yield* PageBodySyncPort
         const pointer = yield* body.observe({ _tag: 'ObserveBodyInput', pageId: command.pageId })
         return {
-          hash: pointer.bodyHash,
+          baseHash: pointer.bodyHash,
+          verificationHash: pointer.bodyHash,
           requestId: notionRequestId(`body-observe:${command.commandId}`),
         }
       }
@@ -160,6 +178,7 @@ const recordAttemptState = ({
       surface: claimed.surface,
       attempt: claimed.attempt,
       attemptState,
+      leaseToken: claimed.leaseToken,
       guard,
       idempotencyKey: idempotencyKey(
         `${claimed.commandKey}:attempt-state:${claimed.attempt}:${attemptState}:${guard}`,
@@ -253,13 +272,13 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
 
       if ('_tag' in before) return before
 
-      if (before.hash === claimed.desiredHash) {
+      if (before.verificationHash === claimed.desiredHash) {
         return yield* settle({
           options,
           claimed,
           command,
           requestId: before.requestId,
-          observedHash: before.hash,
+          observedHash: before.verificationHash,
           settlementKind: 'verified-no-op',
         })
       }
@@ -273,7 +292,7 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
         })
       }
 
-      if (before.hash !== commandBaseHash(command)) {
+      if (before.baseHash !== commandBaseHash(command)) {
         return yield* recordAttemptState({
           options,
           claimed,
@@ -328,13 +347,13 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
 
       if ('_tag' in after) return after
 
-      return after.hash === claimed.desiredHash
+      return after.verificationHash === claimed.desiredHash
         ? yield* settle({
             options,
             claimed,
             command,
             requestId,
-            observedHash: after.hash,
+            observedHash: after.verificationHash,
             settlementKind: 'verified-success',
           })
         : yield* recordAttemptState({

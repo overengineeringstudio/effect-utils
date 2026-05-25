@@ -399,6 +399,55 @@ describe('notion datasource sync fake-service E2E harness', () => {
     expect(gatewayHarness.ledger.successfulTrashPages).toEqual([command])
   })
 
+  it('executes trusted local delete as one settled remote trash write', async () => {
+    const decision = planIntent(
+      buildPlannerSnapshot(),
+      localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }),
+    )
+    expect(decision._tag).toBe('EnqueueCommands')
+    if (decision._tag !== 'EnqueueCommands') return
+
+    const command = decision.commands[0]!
+    const gatewayHarness = makeFakeGatewayHarness()
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+
+    try {
+      appendPlannedCommand(storeFixture.store, command)
+
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toMatchObject({
+        _tag: 'settled',
+        settlementKind: 'verified-success',
+      })
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toEqual({ _tag: 'idle' })
+
+      expect(gatewayHarness.ledger.attemptedTrashPages).toEqual([command.command])
+      expect(gatewayHarness.ledger.successfulTrashPages).toEqual([command.command])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        {
+          commandId: testIds.commandId,
+          attemptCount: 1,
+          state: 'settled',
+          settlementEventId: expect.any(String),
+        },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('rejects invalid outbox settlement evidence in the SQLite fixture', () => {
     const decision = planIntent(buildPlannerSnapshot(), propertyEditIntent())
     expect(decision._tag).toBe('EnqueueCommands')

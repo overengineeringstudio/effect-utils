@@ -112,6 +112,7 @@ const remoteWriteAttempted = (overrides: {
   readonly eventId: string
   readonly idempotencyKey: string
   readonly commandId: string
+  readonly attempt?: number
   readonly attemptState: 'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   readonly leaseToken?: string
   readonly rootId?: SyncRootId
@@ -128,7 +129,7 @@ const remoteWriteAttempted = (overrides: {
       ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
     }),
     commandId: overrides.commandId,
-    attempt: 1,
+    attempt: overrides.attempt ?? 1,
     attemptState: overrides.attemptState,
     ...(overrides.leaseToken === undefined ? {} : { leaseToken: overrides.leaseToken }),
   })
@@ -623,6 +624,95 @@ describe('Notion sync SQLite store', () => {
           state: 'ambiguous',
           attemptCount: 2,
           leaseToken: 'lease-2',
+        },
+      ])
+    })
+  })
+
+  it('ignores stale failed attempt events after an expired command is reclaimed', () => {
+    withStore((store) => {
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-stale-attempt-planned',
+          idempotencyKey: 'command:cmd-1',
+          commandId: 'cmd-1',
+        }),
+      )
+
+      expect(
+        store.claimNextOutboxCommand({
+          rootId,
+          leaseToken: 'lease-1',
+          leaseDurationMs: 60_000,
+        }),
+      ).toMatchObject({ attempt: 1, leaseToken: 'lease-1' })
+      expect(
+        store.claimNextOutboxCommand({
+          rootId,
+          leaseToken: 'lease-2',
+          leaseDurationMs: 0,
+        }),
+      ).toMatchObject({ attempt: 2, leaseToken: 'lease-2', attemptState: 'ambiguous' })
+
+      store.appendEvent(
+        remoteWriteAttempted({
+          eventId: 'event-stale-attempt-fenced',
+          idempotencyKey: 'attempt:cmd-1:1:fenced',
+          commandId: 'cmd-1',
+          attempt: 1,
+          attemptState: 'fenced',
+          leaseToken: 'lease-1',
+        }),
+      )
+
+      expect(store.readOutbox(rootId)).toMatchObject([
+        {
+          commandId,
+          state: 'ambiguous',
+          attemptCount: 2,
+          leaseToken: 'lease-2',
+          settlementEventId: undefined,
+        },
+      ])
+    })
+  })
+
+  it('ignores same-attempt state events with a mismatched lease token', () => {
+    withStore((store) => {
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-lease-mismatch-planned',
+          idempotencyKey: 'command:cmd-1',
+          commandId: 'cmd-1',
+        }),
+      )
+
+      expect(
+        store.claimNextOutboxCommand({
+          rootId,
+          leaseToken: 'lease-2',
+          leaseDurationMs: 60_000,
+        }),
+      ).toMatchObject({ attempt: 1, leaseToken: 'lease-2' })
+
+      store.appendEvent(
+        remoteWriteAttempted({
+          eventId: 'event-lease-mismatch-fenced',
+          idempotencyKey: 'attempt:cmd-1:1:fenced',
+          commandId: 'cmd-1',
+          attempt: 1,
+          attemptState: 'fenced',
+          leaseToken: 'lease-1',
+        }),
+      )
+
+      expect(store.readOutbox(rootId)).toMatchObject([
+        {
+          commandId,
+          state: 'running',
+          attemptCount: 1,
+          leaseToken: 'lease-2',
+          settlementEventId: undefined,
         },
       ])
     })
