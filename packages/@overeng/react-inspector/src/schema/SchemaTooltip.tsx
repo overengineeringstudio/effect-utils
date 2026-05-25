@@ -32,6 +32,12 @@ export interface SchemaTooltipProps {
  *   trigger's `getBoundingClientRect()` is captured at open time; we close
  *   on scroll/resize rather than tracking, since by then the user's intent
  *   has changed.
+ * - Tooltip is positioned to the right of the trigger by default (falling
+ *   back to left, then below if it would overflow the viewport). This keeps
+ *   the tooltip out of the tree's left column, so it doesn't overlap
+ *   adjacent row triggers — which lets the tooltip body stay pointer-
+ *   interactive (move into it to read long content / select text) without
+ *   blocking hover on neighboring rows.
  */
 export const SchemaTooltip: FC<SchemaTooltipProps> = ({
   info,
@@ -57,14 +63,45 @@ export const SchemaTooltip: FC<SchemaTooltipProps> = ({
     }
   }, [])
 
+  /*
+   * Position the tooltip to the *right* of the trigger by default, vertically
+   * aligned with the trigger's top edge. This keeps the tooltip out of the
+   * tree's left column, so it doesn't visually overlap sibling row triggers
+   * below the active row — which means we can leave `pointer-events: auto`
+   * on the tooltip body (users can move into it to read long content or
+   * select text) without blocking hover on neighboring rows.
+   *
+   * Fallback order: right → left (if right would overflow viewport) → below
+   * (clamped to viewport). The 360px constant matches the tooltip's
+   * `maxWidth`. We don't measure the actual rendered tooltip width because
+   * we'd need a two-pass render; using max-width as the safety bound is
+   * good enough and avoids a flash.
+   */
   const computeCoords = useCallback(() => {
     const trig = triggerRef.current
     if (trig === null) return
     const rect = trig.getBoundingClientRect()
-    setCoords({
-      top: rect.bottom + 6,
-      left: rect.left,
-    })
+    const gap = 8
+    const maxTooltipWidth = 360
+    const viewportPadding = 8
+
+    let left = rect.right + gap
+    let top = rect.top
+    if (left + maxTooltipWidth > window.innerWidth - viewportPadding) {
+      const leftCandidate = rect.left - maxTooltipWidth - gap
+      if (leftCandidate >= viewportPadding) {
+        left = leftCandidate
+      } else {
+        // Last resort: below, clamped horizontally.
+        left = Math.max(
+          viewportPadding,
+          Math.min(rect.left, window.innerWidth - maxTooltipWidth - viewportPadding),
+        )
+        top = rect.bottom + gap
+      }
+    }
+
+    setCoords({ top, left })
   }, [])
 
   const handleOpen = useCallback(() => {
@@ -138,6 +175,20 @@ export const SchemaTooltip: FC<SchemaTooltipProps> = ({
           id={id}
           role="tooltip"
           data-testid="schema-tooltip-content"
+          /*
+           * Keep the tooltip interactive: moving the cursor from the trigger
+           * onto the tooltip body cancels the close timer, so users can read
+           * long content / select text without it vanishing. Adjacent-row
+           * triggers are not blocked because we position the tooltip to the
+           * right of the trigger (see `computeCoords`).
+           */
+          onMouseEnter={() => {
+            if (closeTimerRef.current !== null) {
+              clearTimeout(closeTimerRef.current)
+              closeTimerRef.current = null
+            }
+          }}
+          onMouseLeave={handleClose}
           style={{
             position: 'fixed',
             top: coords.top,
@@ -154,12 +205,7 @@ export const SchemaTooltip: FC<SchemaTooltipProps> = ({
             lineHeight: 1.4,
             boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
             zIndex: 10000,
-            /*
-             * Crucial: must not intercept pointer events. Tree rows are dense
-             * (~14px tall) so the tooltip below a row would otherwise sit on
-             * top of the next row's trigger and prevent hovering it.
-             */
-            pointerEvents: 'none',
+            pointerEvents: 'auto',
           }}
         >
           <SchemaTooltipContent info={info} />
