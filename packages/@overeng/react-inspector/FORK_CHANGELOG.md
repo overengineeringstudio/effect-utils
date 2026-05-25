@@ -42,6 +42,51 @@ Each entry should include:
 
 ### Added
 
+#### Rich Schema Annotation Tooltips (2026-05-25)
+
+Replaces the previous native `title=` attribute (browser default tooltip) with
+a proper React tooltip that surfaces every useful Effect Schema annotation at
+once. Hover or keyboard-focus a field name, the root label, or a struct's
+type badge.
+
+**New file**: `src/schema/SchemaTooltip.tsx`
+
+**New exports**:
+
+- `SchemaTooltip`, `SchemaTooltipProps` — the standalone tooltip component
+- `SchemaInfo`, `SchemaConstraint` — display-ready info bundle types
+- `getSchemaInfo(schema)` — build the bundle for a given schema
+- `getConstraintsFromJSONSchema(ast)` — walk refinement chain and surface
+  human-readable constraints from `JSONSchemaAnnotationId` (min/max length,
+  min/max value, pattern, format, multipleOf, uniqueItems)
+- `getPossibleValuesFromAST(ast)` — detect `Literal`, `Enums`,
+  `Union`-of-literal, `TemplateLiteral` and surface allowed values (capped at
+  12 with `… +N more`)
+
+**Annotations surfaced** (in addition to the previously-supported
+identifier/title/description/pretty):
+
+- `examples` (`ExamplesAnnotationId`), formatted via `pretty` if present
+- `default` (`DefaultAnnotationId`)
+- `documentation` (`DocumentationAnnotationId`)
+
+**Behavior changes**:
+
+- `getFieldSchema` no longer eagerly unwraps refinement/transformation
+  wrappers. Previously, user-supplied `description`/`examples`/`default`
+  annotations on a `.pipe(Schema.int(), Schema.between(...)).annotations(...)`
+  were silently lost because the wrapper was unwrapped before annotation
+  extraction. Downstream traversal still works because `getFieldSchema` and
+  `getArrayElementSchema` re-apply `unwrapAstForDisplay` at the top of each
+  call.
+- `SchemaAwareObjectPreview` now wraps the type-badge span in a
+  `SchemaTooltip` so the badge itself is the hover target for the value
+  type's annotations (separate from the field-name tooltip which targets the
+  field's declared schema).
+- Built-in Effect descriptions like `"a string"`, `"a number"` are filtered
+  out of `hasContent`, so primitive fields without user annotations do not
+  get a tooltip affordance.
+
 #### Effect Schema Support (2024-12-17)
 
 Optional support for Effect Schema annotations to enrich the inspector display.

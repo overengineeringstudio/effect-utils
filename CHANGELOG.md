@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/react-inspector**: Rich schema annotation tooltips. Hovering or keyboard-focusing a field name (or struct type badge) now shows a tooltip surfacing `description`, `examples`, `default`, refinement-derived constraints (min/max/length/pattern/format/...), and possible values for `Literal` / `Enums` / `Union`-of-literal / `TemplateLiteral` ASTs. Replaces the previous native `title=` attribute. New exports: `SchemaTooltip`, `SchemaInfo`, `getSchemaInfo`, `getConstraintsFromJSONSchema`, `getPossibleValuesFromAST`. `getFieldSchema` no longer eagerly unwraps refinement/transformation wrappers so user-supplied annotations on those wrappers reach the tooltip.
 - **@overeng/genie**: `githubLabels()` runtime primitive for declarative GitHub Issue/PR label management (color, description, deprecation, legacy migrations). Consumed by `mq-cli repo labels` in `schickling/dotfiles`.
 - **genie/external.ts**: Shared label catalog exports (`commonLabels`, `mqLabels`, `andonLabels`, `deprecatedDefaults`, `legacyMigrations`) for cross-repo label IaC. Effect-utils self-applies via `.github/labels.json.genie.ts`.
 - **@overeng/notion-effect-client**: Add database create/update/archive helpers and switch live Notion integration tests to provision isolated per-run fixtures under `NOTION_TEST_PARENT_PAGE_ID` instead of relying on stale hard-coded workspace page/database IDs.

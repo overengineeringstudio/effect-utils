@@ -1,9 +1,14 @@
 export {
   type SchemaAnnotations,
+  type SchemaConstraint,
+  type SchemaInfo,
   type SchemaRegistry,
   getAnnotations,
   getAnnotationsFromAST,
+  getConstraintsFromJSONSchema,
   getDisplayName,
+  getPossibleValuesFromAST,
+  getSchemaInfo,
   formatWithPretty,
   isEffectSchema,
   getFieldSchema,
@@ -29,3 +34,4 @@ export {
 export { createSchemaAwareNodeRenderer } from './SchemaAwareNodeRenderer.tsx'
 export { SchemaAwareObjectValue } from './SchemaAwareObjectValue.tsx'
 export { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx'
+export { SchemaTooltip, type SchemaTooltipProps } from './SchemaTooltip.tsx'

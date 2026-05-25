@@ -3,6 +3,7 @@ import type { FC, ReactNode } from 'react'
 
 import { SchemaAwareObjectValue } from './SchemaAwareObjectValue.tsx'
 import { useSchemaContext, SchemaProvider } from './SchemaContext.tsx'
+import { SchemaTooltip } from './SchemaTooltip.tsx'
 
 export interface SchemaAwareObjectPreviewProps {
   data: unknown
@@ -126,11 +127,18 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
       ...(schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined),
     }
 
+    const info = schemaCtx.getSchemaInfo()
+    const showName = objectConstructorName !== 'Object'
+
     return (
       <React.Fragment>
-        <span style={descriptionStyle}>
-          {objectConstructorName === 'Object' ? '' : `${objectConstructorName} `}
-        </span>
+        {showName ? (
+          <SchemaTooltip info={info}>
+            <span style={descriptionStyle}>{`${objectConstructorName} `}</span>
+          </SchemaTooltip>
+        ) : (
+          <span style={descriptionStyle} />
+        )}
         <span style={styles.preview as React.CSSProperties}>
           {'{'}
           {intersperse(propertyNodes, ', ')}

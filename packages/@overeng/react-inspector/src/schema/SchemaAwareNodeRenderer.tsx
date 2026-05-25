@@ -6,6 +6,7 @@ import { hasOwnProperty } from '../utils/objectPrototype.tsx'
 import { getPropertyValue } from '../utils/propertyUtils.tsx'
 import { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx'
 import { SchemaProvider, useSchemaContext } from './SchemaContext.tsx'
+import { SchemaTooltip } from './SchemaTooltip.tsx'
 
 export interface SchemaAwareNodeRendererProps {
   /** Original ObjectRootLabel component */
@@ -91,7 +92,7 @@ export const createSchemaAwareNodeRenderer = ({
   }> = ({ name, data, path, isNonenumerable = false, expanded }) => {
     const rootCtx = useSchemaContext()
     const schemaCtx = rootCtx.getContextForPath(path)
-    const description = schemaCtx.getDescription()
+    const info = schemaCtx.getSchemaInfo()
     const schemaDisplayName = schemaCtx.getDisplayName()
 
     const isComplexObject =
@@ -102,10 +103,19 @@ export const createSchemaAwareNodeRenderer = ({
       !Array.isArray(data) &&
       data.constructor?.name === 'Object'
 
+    /**
+     * Tooltip attaches to the field-name span. For complex objects we still
+     * delegate to `SchemaAwareObjectPreviewWithName` for the value/preview side
+     * — that component owns its own tooltip on the type-badge inside the
+     * preview, which can have different content (the value's type schema may
+     * differ from the field's declared schema).
+     */
     return (
-      <span title={description}>
+      <span>
         {typeof name === 'string' ? (
-          <ObjectName name={name} dimmed={isNonenumerable} />
+          <SchemaTooltip info={info}>
+            <ObjectName name={name} dimmed={isNonenumerable} />
+          </SchemaTooltip>
         ) : (
           <SchemaAwareObjectPreviewForPath data={name} path={path} />
         )}
@@ -116,7 +126,6 @@ export const createSchemaAwareNodeRenderer = ({
             schemaDisplayName={schemaDisplayName}
             expanded={expanded}
             path={path}
-            title={description}
           />
         ) : (
           <SchemaAwareObjectValue object={data} path={path} />
@@ -134,35 +143,42 @@ export const createSchemaAwareNodeRenderer = ({
   }> = ({ name, data, path, expanded }) => {
     const rootCtx = useSchemaContext()
     const schemaCtx = rootCtx.getContextForPath(path)
-    const description = schemaCtx.getDescription()
+    const info = schemaCtx.getSchemaInfo()
 
     const prettyFormatted = schemaCtx.formatValue(data)
     if (prettyFormatted !== undefined) {
       if (typeof name === 'string') {
         return (
-          <span title={description}>
-            <ObjectName name={name} />
+          <span>
+            <SchemaTooltip info={info}>
+              <ObjectName name={name} />
+            </SchemaTooltip>
             <span>: </span>
             <span>{prettyFormatted}</span>
           </span>
         )
       }
-      return <span title={description}>{prettyFormatted}</span>
+      return (
+        <SchemaTooltip info={info}>
+          <span>{prettyFormatted}</span>
+        </SchemaTooltip>
+      )
     }
 
     const schemaDisplayName = schemaCtx.getDisplayName()
 
     if (typeof name === 'string') {
       return (
-        <span title={description}>
-          <ObjectName name={name} />
+        <span>
+          <SchemaTooltip info={info}>
+            <ObjectName name={name} />
+          </SchemaTooltip>
           <span>: </span>
           <SchemaAwareObjectPreviewWithName
             data={data}
             schemaDisplayName={schemaDisplayName}
             expanded={expanded}
             path={path}
-            title={description}
           />
         </span>
       )
@@ -174,7 +190,6 @@ export const createSchemaAwareNodeRenderer = ({
         schemaDisplayName={schemaDisplayName}
         expanded={expanded}
         path={path}
-        title={description}
       />
     )
   }
@@ -184,9 +199,12 @@ export const createSchemaAwareNodeRenderer = ({
     data: unknown
     schemaDisplayName: string | undefined
     expanded: boolean | undefined
-    title: string | undefined
     path: string
-  }> = ({ data, schemaDisplayName, expanded, title, path }) => {
+  }> = ({ data, schemaDisplayName, expanded, path }) => {
+    const rootCtx = useSchemaContext()
+    const schemaCtx = rootCtx.getContextForPath(path)
+    const info = schemaCtx.getSchemaInfo()
+
     const isComplexObject =
       typeof data === 'object' &&
       data !== null &&
@@ -194,32 +212,28 @@ export const createSchemaAwareNodeRenderer = ({
       !(data instanceof RegExp) &&
       data.constructor?.name === 'Object'
 
-    /** When expanded, show only the type identifier (no inline preview needed since children are visible) */
+    /**
+     * When expanded, show only the type identifier (no inline preview needed
+     * since children are visible). The identifier itself is the tooltip
+     * trigger — hovering it shows the type's annotations.
+     */
     if (expanded === true && isComplexObject === true) {
       const label = schemaDisplayName ?? data.constructor?.name ?? 'Object'
       return (
-        <span
-          title={title}
-          style={schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined}
-        >
-          {label}
-        </span>
+        <SchemaTooltip info={info}>
+          <span style={schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined}>
+            {label}
+          </span>
+        </SchemaTooltip>
       )
     }
 
     /**
-     * When collapsed, delegate to the preview. `SchemaAwareObjectPreview` is the
-     * single owner of the schema display name (rendered in the object description
-     * slot, italicized when sourced from a schema annotation). The wrapper must
-     * render a box (no `display: contents`) so the `title` attribute remains a
-     * reliable hover target — this is the only tooltip host on the root-label
-     * collapsed path where `name` is undefined.
+     * When collapsed, delegate to the preview. `SchemaAwareObjectPreview` owns
+     * the type-badge tooltip inside the preview itself, so this wrapper does
+     * not add another one — that would double-trigger.
      */
-    return (
-      <span title={title}>
-        <SchemaAwareObjectPreviewForPath data={data} path={path} />
-      </span>
-    )
+    return <SchemaAwareObjectPreviewForPath data={data} path={path} />
   }
 
   /**

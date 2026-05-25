@@ -5,6 +5,7 @@ import type { FC, ReactNode } from 'react'
 
 import {
   type SchemaAnnotations,
+  type SchemaInfo,
   type SchemaRegistry,
   getAnnotations,
   getFieldSchema,
@@ -14,6 +15,7 @@ import {
   lookupSchema,
   formatWithPretty,
   getDisplayName,
+  getSchemaInfo,
 } from './effectSchema.tsx'
 
 export interface SchemaContextValue {
@@ -29,6 +31,8 @@ export interface SchemaContextValue {
   getDisplayName: () => string | undefined
   /** Get description for the current value (from schema annotations) */
   getDescription: () => string | undefined
+  /** Get the full display-ready schema info bundle for the current schema */
+  getSchemaInfo: () => SchemaInfo | undefined
   /** Format a value using schema's pretty annotation */
   formatValue: (value: unknown) => string | undefined
   /** Get schema context for a child field */
@@ -50,6 +54,7 @@ const defaultContextValue: SchemaContextValue = {
   getAnnotations: () => ({}),
   getDisplayName: () => undefined,
   getDescription: () => undefined,
+  getSchemaInfo: () => undefined,
   formatValue: () => undefined,
   getFieldContext: () => defaultContextValue,
   getElementContext: () => defaultContextValue,
@@ -119,6 +124,7 @@ const createContextValue = (
     getDisplayName: () =>
       schema !== undefined ? pipe(schema, getAnnotations, getDisplayName) : undefined,
     getDescription: () => (schema !== undefined ? getAnnotations(schema).description : undefined),
+    getSchemaInfo: () => (schema !== undefined ? getSchemaInfo(schema) : undefined),
     formatValue: (value: unknown) =>
       schema !== undefined ? formatWithPretty(value, getAnnotations(schema)) : undefined,
     getFieldContext: (fieldName: string) => {

@@ -400,7 +400,8 @@ export const SchemaWithDescriptionTooltips = {
   render: () => (
     <div>
       <p style={{ marginBottom: '16px', color: '#666' }}>
-        Hover over any field to see its description from the schema annotation.
+        Hover over (or keyboard-focus, via Tab) any field name or type badge to see its description
+        and other schema annotations.
       </p>
       <SchemaObjectInspector
         data={sampleDocumentedUser}
@@ -525,6 +526,222 @@ export const ExpandedVsCollapsedPreview = {
         </p>
         <SchemaObjectInspector data={sampleOrder} schema={OrderSchema} expandLevel={1} />
       </div>
+    </div>
+  ),
+}
+
+/* ============================================================================
+ * Rich tooltip showcase — exercises every annotation kind the tooltip surfaces
+ * ============================================================================ */
+
+const Hint: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <p style={{ marginBottom: '16px', color: '#666', fontSize: 13 }}>{children}</p>
+)
+
+/** Refinement-driven constraints (NonEmpty + max length, Int + Between). */
+const UserHandleSchema = Schema.String.pipe(
+  Schema.nonEmptyString({ message: () => 'handle must not be empty' }),
+  Schema.maxLength(20),
+  Schema.pattern(/^[a-z0-9_]+$/i),
+).annotations({
+  identifier: 'UserHandle',
+  title: 'Handle',
+  description: 'Unique short alias used in URLs and @mentions',
+  examples: ['alice', 'bob_42'],
+})
+
+const AgeSchema = Schema.Number.pipe(Schema.int(), Schema.between(0, 150)).annotations({
+  identifier: 'Age',
+  title: 'Age',
+  description: 'Age in whole years',
+  examples: [18, 42, 80],
+  default: 0,
+})
+
+const RoleSchema = Schema.Union(
+  Schema.Literal('owner'),
+  Schema.Literal('admin'),
+  Schema.Literal('member'),
+  Schema.Literal('guest'),
+).annotations({
+  identifier: 'Role',
+  title: 'Role',
+  description: 'Access tier within the workspace',
+  default: 'member',
+})
+
+const PrioritySchema = Schema.Enums({
+  Low: 0,
+  Medium: 1,
+  High: 2,
+  Critical: 3,
+} as const).annotations({
+  identifier: 'Priority',
+  title: 'Priority',
+  description: 'Numeric priority bucket',
+})
+
+const EmailSchema = Schema.String.pipe(Schema.pattern(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)).annotations({
+  identifier: 'Email',
+  title: 'Email',
+  description: 'Primary contact email; verified at signup',
+  examples: ['alice@example.com'],
+})
+
+const MoneyV2Schema = Schema.Number.annotations({
+  identifier: 'Money',
+  title: 'Money (USD)',
+  description: 'Currency amount in US dollars',
+  pretty: (v) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v as number),
+  examples: [9.99, 1234.5],
+  default: 0,
+})
+
+const ShowcaseUserSchema = Schema.Struct({
+  handle: UserHandleSchema,
+  email: EmailSchema,
+  age: AgeSchema,
+  role: RoleSchema,
+  priority: PrioritySchema,
+  balance: MoneyV2Schema,
+  bio: Schema.String.pipe(Schema.maxLength(280)).annotations({
+    description: 'Free-form profile bio. Limited to a single tweet.',
+  }),
+}).annotations({
+  identifier: 'ShowcaseUser',
+  title: 'Showcase User',
+  description: 'A user record that exercises every schema annotation kind the tooltip understands.',
+  documentation: 'See the spec at internal://users/schema for the full data contract.',
+})
+
+type ShowcaseUser = typeof ShowcaseUserSchema.Type
+
+const sampleShowcaseUser: ShowcaseUser = {
+  handle: 'alice',
+  email: 'alice@example.com',
+  age: 33,
+  role: 'admin',
+  priority: 2,
+  balance: 1234.5,
+  bio: 'Building things in Effect.',
+}
+
+/**
+ * The gold-path tooltip story.
+ *
+ * Each field exercises a different facet:
+ * - `handle`: description + examples + constraints (minLength, maxLength, pattern)
+ * - `email`: description + examples + constraint (pattern)
+ * - `age`: description + examples + default + constraints (minimum, maximum) + integer
+ * - `role`: description + default + possible values (literal union)
+ * - `priority`: description + possible values (enum)
+ * - `balance`: description + examples + default + pretty formatting
+ * - `bio`: description + constraint (maxLength)
+ * - root: description + documentation
+ */
+export const SchemaTooltipFull = {
+  render: () => (
+    <div>
+      <Hint>
+        Hover over any field name (or the root <code>Showcase User</code> badge) to see the rich
+        tooltip. Each field demonstrates a different annotation: descriptions, examples, defaults,
+        constraints from refinements (min/max/pattern), and possible values for literal unions and
+        enums.
+      </Hint>
+      <SchemaObjectInspector
+        data={sampleShowcaseUser}
+        schema={ShowcaseUserSchema}
+        expandLevel={2}
+      />
+    </div>
+  ),
+}
+
+/**
+ * Keyboard accessibility check.
+ *
+ * Triggers are focusable (tabIndex={0}) with an aria-describedby wire-up
+ * provided by React Aria's TooltipTrigger. Tab through the inspector and each
+ * field name's tooltip should appear on focus.
+ */
+export const SchemaTooltipKeyboardA11y = {
+  render: () => (
+    <div>
+      <Hint>
+        Press <kbd>Tab</kbd> repeatedly — tooltips should appear on focus, not only on hover. Each
+        focused field announces its description via <code>aria-describedby</code>.
+      </Hint>
+      <SchemaObjectInspector
+        data={sampleShowcaseUser}
+        schema={ShowcaseUserSchema}
+        expandLevel={2}
+      />
+    </div>
+  ),
+}
+
+/**
+ * Possible-values truncation.
+ *
+ * Demonstrates the `+N more` ellipsis when a literal union exceeds the
+ * MAX_POSSIBLE_VALUES cap (12). Useful for very large enums where we don't
+ * want a wall of values in the tooltip.
+ */
+const ManyStatusesSchema = Schema.Union(
+  ...Array.from({ length: 20 }, (_, i) => Schema.Literal(`status_${i}` as const)),
+).annotations({
+  identifier: 'ManyStatuses',
+  title: 'Status',
+  description: 'One of many possible statuses (truncated in tooltip).',
+})
+
+const TruncationDemoSchema = Schema.Struct({
+  status: ManyStatusesSchema,
+}).annotations({
+  identifier: 'TruncationDemo',
+  title: 'Truncation Demo',
+})
+
+export const SchemaTooltipTruncatedPossibleValues = {
+  render: () => (
+    <div>
+      <Hint>
+        The <code>status</code> field's tooltip shows only the first 12 allowed values with a{' '}
+        <code>… +8 more</code> suffix.
+      </Hint>
+      <SchemaObjectInspector
+        data={{ status: 'status_3' as const }}
+        schema={TruncationDemoSchema as unknown as typeof ShowcaseUserSchema}
+        expandLevel={1}
+      />
+    </div>
+  ),
+}
+
+/**
+ * No-annotations fields stay plain.
+ *
+ * Fields without any annotations should render without a tooltip (no
+ * underline, no `cursor: help`) — verifies `hasContent === false` short-circuits.
+ */
+const PlainSchema = Schema.Struct({
+  plainField: Schema.String,
+  withDescription: Schema.String.annotations({ description: 'Only this one has a tooltip.' }),
+})
+
+export const SchemaTooltipMixedAnnotated = {
+  render: () => (
+    <div>
+      <Hint>
+        Only fields with annotations get a tooltip-bearing affordance. The <code>plainField</code>{' '}
+        field below has no underline and no tooltip.
+      </Hint>
+      <SchemaObjectInspector
+        data={{ plainField: 'no annotations here', withDescription: 'hover me' }}
+        schema={PlainSchema}
+        expandLevel={1}
+      />
     </div>
   ),
 }
