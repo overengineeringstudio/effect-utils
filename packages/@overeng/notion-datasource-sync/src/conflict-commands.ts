@@ -293,10 +293,7 @@ const conflictResolutionPlan = ({
       candidate.dataSourceId === row.dataSourceId &&
       candidate.propertyId === conflict.propertyId,
   )
-  const property = snapshot.properties.find(
-    (candidate) =>
-      candidate.pageId === conflict.pageId && candidate.propertyId === conflict.propertyId,
-  )
+  const conflictRemoteHash = conflict.remoteHash ?? hashStoreBytes('missing-conflict-remote')
   const commandStamp = now().toISOString()
   const commandId = commandIdFor(`resolve:${conflictId}:${choice._tag}:${commandStamp}`)
   const command = decode(PatchPagePropertiesCommand, {
@@ -319,7 +316,7 @@ const conflictResolutionPlan = ({
     pageId: conflict.pageId,
     propertyId: conflict.propertyId,
     command,
-    baseHash: property?.remoteHash ?? conflict.remoteHash ?? hashStoreBytes('missing-property'),
+    baseHash: conflictRemoteHash,
     desiredHash: hashStoreBytes(
       `page-properties\t${conflict.pageId}\t${commandId}\t${conflict.propertyId}`,
     ),
@@ -341,7 +338,7 @@ const conflictResolutionPlan = ({
     }
     case 'BlockedByGuard':
       return {
-        events: [makeConflictResolvedEvent({ rootId, conflict, choice, now })],
+        events: [],
         commands: [],
         guards: [
           {

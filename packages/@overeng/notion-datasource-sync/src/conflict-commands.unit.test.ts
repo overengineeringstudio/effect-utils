@@ -181,4 +181,64 @@ describe('conflict and user command surface', () => {
       storeFixture.cleanup()
     }
   })
+
+  it.each([
+    ['keep-local', { _tag: 'keep-local' as const, value: propertyPatchValue('Local') }],
+    ['manual', { _tag: 'manual' as const, value: propertyPatchValue('Manual') }],
+  ])(
+    'keeps a %s resolution conflict open when planning is blocked by a guard',
+    (_label, choice) => {
+      const clock = makeFakeClock()
+      const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+
+      try {
+        const conflict = storeFixture.store.appendEvent(conflictEvent())
+        const conflictId = decode(SyncEventId, conflict.eventId)
+
+        const result = resolveConflictCommand({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          conflictId,
+          choice,
+          now: clock.now,
+        })
+
+        expect(result).toMatchObject({
+          status: { state: 'conflict' },
+          planned: {
+            events: [],
+            commands: [],
+            guards: [{ guard: 'CurrentSurfaceMissing' }],
+          },
+          applied: {
+            events: [],
+            commands: [],
+            guards: [{ guard: 'CurrentSurfaceMissing' }],
+          },
+          surface: {
+            conflicts: [{ conflictId: conflict.eventId, state: 'open' }],
+            outbox: [],
+          },
+        })
+        expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
+          { conflictId: conflict.eventId, state: 'open' },
+        ])
+        expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([])
+
+        storeFixture.store.clearProjectionTables()
+        storeFixture.store.rebuildProjections(testIds.rootId)
+        expect(
+          listUserCommandSurface({ store: storeFixture.store, rootId: testIds.rootId }),
+        ).toMatchObject({
+          status: { state: 'conflict' },
+          surface: {
+            conflicts: [{ conflictId: conflict.eventId, state: 'open' }],
+            outbox: [],
+          },
+        })
+      } finally {
+        storeFixture.cleanup()
+      }
+    },
+  )
 })

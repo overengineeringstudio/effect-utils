@@ -243,6 +243,80 @@ describe('conflict resolution user command E2E', () => {
     }
   })
 
+  it.each([
+    ['keep-local', { _tag: 'keep-local', value: propertyPatchValue('Local wins') }],
+    ['manual', { _tag: 'manual', value: propertyPatchValue('Manual value') }],
+  ] satisfies ReadonlyArray<readonly [string, ConflictResolutionChoice]>)(
+    'blocks stale %s resolution when the remote property moved after the conflict snapshot',
+    async (_label, choice) => {
+      const { clock, storeFixture } = await seedSamePropertyConflict()
+      const conflictId = conflictIdFromList(storeFixture.store)
+      const newerRemoteGateway = makeFakeGatewayHarness({
+        pages: [pageSnapshot({ propertiesHash: hash('properties-newer-remote') })],
+        propertyPages: [propertyPage(hash('property-a-newer-remote'))],
+      })
+
+      try {
+        clock.advanceMillis(1)
+        await runWithPorts(
+          pullOneShotSync({
+            store: storeFixture.store,
+            rootId: testIds.rootId,
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot,
+            queryContract: defaultQueryContract(),
+            schemaProperties,
+            now: clock.now,
+          }),
+          { gateway: newerRemoteGateway.gateway },
+        )
+
+        clock.advanceMillis(1)
+        const result = resolveConflictCommand({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          conflictId,
+          choice,
+          now: clock.now,
+        })
+
+        expect(result).toMatchObject({
+          status: { state: 'conflict' },
+          planned: {
+            events: [],
+            commands: [],
+            guards: [{ guard: 'StaleSurfaceBase' }],
+          },
+          applied: {
+            events: [],
+            commands: [],
+            guards: [{ guard: 'StaleSurfaceBase' }],
+          },
+          surface: {
+            conflicts: [{ conflictId, state: 'open' }],
+            outbox: [],
+          },
+        })
+        expect(newerRemoteGateway.ledger.successfulPatchPageProperties).toHaveLength(0)
+        expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([])
+
+        storeFixture.store.clearProjectionTables()
+        storeFixture.store.rebuildProjections(testIds.rootId)
+        expect(
+          listUserCommandSurface({ store: storeFixture.store, rootId: testIds.rootId }),
+        ).toMatchObject({
+          status: { state: 'conflict' },
+          surface: {
+            conflicts: [{ conflictId, state: 'open' }],
+            outbox: [],
+          },
+        })
+      } finally {
+        storeFixture.cleanup()
+      }
+    },
+  )
+
   it('forget removes local tracking without calling remote mutations', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
