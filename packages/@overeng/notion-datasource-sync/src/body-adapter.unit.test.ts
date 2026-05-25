@@ -306,6 +306,39 @@ describe('body adapter contract', () => {
       operation: 'push',
       message: expect.stringContaining('No NotionMD page body adapter'),
     })
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          port.planLocalChange({
+            _tag: 'BodyLocalChangeInput',
+            pageId,
+            baseBodyPointer: pointer,
+            localBodyHash: hash('b'),
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: 'BodySyncError',
+      operation: 'planLocalChange',
+      message: expect.stringContaining('No NotionMD page body adapter'),
+    })
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          port.repair({
+            _tag: 'BodyRepairInput',
+            pageId,
+            currentBodyPointer: pointer,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: 'BodySyncError',
+      operation: 'repair',
+      message: expect.stringContaining('No NotionMD page body adapter'),
+    })
   })
 
   it('keeps replayed row body pointer safety usable for guards', () => {

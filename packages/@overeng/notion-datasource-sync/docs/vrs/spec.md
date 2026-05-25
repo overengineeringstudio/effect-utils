@@ -624,6 +624,8 @@ Datasource sync treats public markdown operations as body-adapter internals, but
 
 The body adapter must not set `allow_deleting_content` as part of ordinary sync, conflict resolution, or repair. Destructive body operations are separate explicit commands with dry-run output.
 
+Staging note: the current package intentionally keeps NotionMD as a fail-closed boundary. `PageBodySyncPort` can model body hashes and safety metadata, but it cannot yet carry the local `.nmd` body content or path evidence that NotionMD needs to perform real extraction/rendering. Until that public adapter API exists, datasource-sync must treat an absent body adapter as unsupported: no body materialization, no body push execution, no outbox settlement for body commands, and no non-body mutation may be inferred from body sync.
+
 ## Delete, Move, And Restore Semantics
 
 Requirement trace: R36-R41, R71-R73.

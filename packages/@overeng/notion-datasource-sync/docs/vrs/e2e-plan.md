@@ -193,6 +193,12 @@ Work:
 - Block body writes on truncation or unknown block IDs.
 - Enforce that `PageBodySyncPort` cannot mutate row properties, page metadata, schema, trash/restore state, or datasource membership.
 
+Current executable contract:
+
+- Datasource-sync does not yet ship a real NotionMD adapter. The current public boundary carries body hashes and safety metadata, while NotionMD's implemented sync APIs are file/body-content oriented. That is not enough information to implement guarded `.nmd` extraction/rendering without inventing a private adapter contract.
+- Until a public NotionMD adapter API exists, `src/e2e/body-adapter.e2e.test.ts` is the release gate for this boundary: missing adapters fail before body materialization, unsafe safety snapshots create body conflicts without enqueueing body pushes, and already queued body pushes remain unsettled when the adapter is absent.
+- Real adapter acceptance requires a public API that can observe page body state, plan a local `.nmd` body change from actual local body content, push only the body surface, report mutation surfaces, report all `BodySafetySnapshot` fields, and prove that ordinary sync never sets `allow_deleting_content`.
+
 E2E proof:
 
 - L2 fake adapter surface-leak tests attempt property, page metadata, schema, trash, restore, and membership writes through the body adapter; datasource-sync rejects them and records no command settlement.
