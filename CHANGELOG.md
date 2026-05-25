@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **@overeng/notion-datasource-sync docs**: Add the initial VRS source of truth and derived E2E plan for a standalone bidirectional Notion data-source sync package, including SQLite authority, guard matrix, schema/delete/watch semantics, and live verification strategy.
+- **@overeng/notion-datasource-sync**: Fix Milestone 2C planner/store blockers by failing closed on missing current projections, preserving classified query absence, validating outbox settlements against attempted command evidence, keeping projection rebuilds root-scoped, and correcting the generated publish export path.
 - **@overeng/notion-datasource-sync**: Add the pure planner/guard/conflict foundation for Milestone 2B, including projection snapshot inputs, outbox-ready command envelopes, guard predicates, conflict classification, tombstone/query safety, and table-driven planner tests.
 - **@overeng/notion-datasource-sync**: Scaffold the initial package with Effect/Schema contract types, service port tags, guard helpers, and focused unit tests for Milestone 0/1.
 - **@overeng/notion-datasource-sync**: Add the Milestone 2A SQLite sync-core foundation with hardened store initialization, append-only event persistence, outbox/checkpoint/conflict/tombstone/path projections, deterministic replay digests, and compaction safety checks.

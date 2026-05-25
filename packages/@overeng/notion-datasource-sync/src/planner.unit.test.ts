@@ -2,6 +2,7 @@ import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  BodyPushCommand,
   CommandId,
   DataSourceId,
   Hash,
@@ -73,6 +74,19 @@ const propertyCommand = decode(PatchPagePropertiesCommand, {
   propertyPatch: {
     'prop-a': { _tag: 'title', plainText: 'Updated' },
   },
+})
+
+const bodyCommand = decode(BodyPushCommand, {
+  _tag: 'BodyPushCommand',
+  commandId,
+  pageId,
+  baseBodyPointer: {
+    _tag: 'BodyPointer',
+    pageId,
+    bodyHash: hash('f'),
+    observedAt: '2026-05-25T00:00:00.000Z',
+  },
+  nextBodyHash: hash('e'),
 })
 
 const snapshot = (
@@ -500,6 +514,54 @@ describe('notion datasource planner', () => {
     })
   })
 
+  it('blocks property edits when the current property projection is missing', () => {
+    const decision = planIntent(
+      snapshot({
+        properties: [],
+      }),
+      {
+        _tag: 'property-edit',
+        intentEventId,
+        commandKey,
+        surface: propertySurfaceKey(pageId, propertyA),
+        pageId,
+        propertyId: propertyA,
+        command: propertyCommand,
+        baseHash: hash('a'),
+        desiredHash: hash('f'),
+        expectedPropertyConfigHash: hash('c'),
+      },
+    )
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'CurrentSurfaceMissing',
+    })
+  })
+
+  it('blocks body edits when the current body projection is missing', () => {
+    const decision = planIntent(
+      snapshot({
+        bodies: [],
+      }),
+      {
+        _tag: 'body-edit',
+        intentEventId,
+        commandKey,
+        surface: bodySurfaceKey(pageId),
+        pageId,
+        command: bodyCommand,
+        baseHash: hash('f'),
+        desiredHash: hash('e'),
+      },
+    )
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'CurrentSurfaceMissing',
+    })
+  })
+
   it('opens same-property conflict instead of silently overwriting a remote observation', () => {
     const decision = planIntent(
       snapshot({
@@ -625,6 +687,37 @@ describe('notion datasource planner', () => {
     })
   })
 
+  it('blocks trusted local deletes when the current row projection is missing', () => {
+    const decision = planIntent(
+      snapshot({
+        rows: [],
+      }),
+      {
+        _tag: 'local-delete',
+        intentEventId,
+        commandKey,
+        surface: pageSurfaceKey(pageId),
+        pageId,
+        command: {
+          _tag: 'TrashPageCommand',
+          commandId,
+          pageId,
+          basePropertiesHash: hash('a'),
+        },
+        baseHash: hash('a'),
+        desiredHash: hash('e'),
+        explicitDestructiveIntent: true,
+        policy: 'trustedRemoteTrash',
+        directRetrieve: 'accessible',
+      },
+    )
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'CurrentSurfaceMissing',
+    })
+  })
+
   it('blocks filtered absence and capped queries from tombstone decisions', () => {
     const filteredDecision = planIntent(
       snapshot({
@@ -682,6 +775,70 @@ describe('notion datasource planner', () => {
     expect(cappedDecision).toMatchObject({
       _tag: 'BlockedByGuard',
       guard: 'QueryResultCapExceeded',
+    })
+  })
+
+  it('ignores query absence when direct retrieve proves the page is still accessible', () => {
+    const decision = planIntent(
+      snapshot({
+        queries: [
+          {
+            dataSourceId,
+            queryContractHash: hash('b'),
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              filtered: false,
+              membershipScope: 'all-data-source-rows',
+              directRetrieve: 'accessible',
+            },
+          },
+        ],
+      }),
+      {
+        _tag: 'query-absence',
+        surface: querySurfaceKey(dataSourceId, hash('b')),
+        pageId,
+        queryContractHash: hash('b'),
+      },
+    )
+
+    expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
+  })
+
+  it.each([
+    ['in-trash', 'remote-trash'],
+    ['moved-out', 'moved-out'],
+    ['inaccessible', 'inaccessible'],
+    ['unknown', 'unknown'],
+  ] as const)('preserves classified query absence for %s', (directRetrieve, reason) => {
+    const decision = planIntent(
+      snapshot({
+        queries: [
+          {
+            dataSourceId,
+            queryContractHash: hash('b'),
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              filtered: false,
+              membershipScope: 'all-data-source-rows',
+              directRetrieve,
+            },
+          },
+        ],
+      }),
+      {
+        _tag: 'query-absence',
+        surface: querySurfaceKey(dataSourceId, hash('b')),
+        pageId,
+        queryContractHash: hash('b'),
+      },
+    )
+
+    expect(decision).toMatchObject({
+      _tag: 'AppendEvents',
+      events: [{ _tag: 'TombstoneClassified', reason }],
     })
   })
 

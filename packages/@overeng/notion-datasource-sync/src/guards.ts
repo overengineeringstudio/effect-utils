@@ -13,6 +13,7 @@ export const GuardName = Schema.Literal(
   'PropertyValueIncomplete',
   'RelatedDataSourceUnshared',
   'StaleSurfaceBase',
+  'CurrentSurfaceMissing',
   'PageTimestampWakeupOnly',
   'SchemaDriftAffectsIntent',
   'DestructiveSchemaMigrationRequired',
@@ -132,6 +133,8 @@ export type QueryAbsenceSnapshot = {
     | 'in-trash'
     | 'moved-out'
     | 'permission-ambiguous'
+    | 'inaccessible'
+    | 'unknown'
 }
 
 export type TombstoneSafetySnapshot = {
@@ -322,17 +325,29 @@ export const guardQueryCompleteness = (snapshot: QueryCompletenessSnapshot): Gua
 }
 
 export const guardQueryAbsence = (snapshot: QueryAbsenceSnapshot): GuardDecision => {
-  if (snapshot.directRetrieve === 'permission-ambiguous') {
-    return blocked('PermissionAmbiguous', 'Direct page retrieval is permission ambiguous')
-  }
-
   if (snapshot.filtered === true) {
     return blocked('FilteredAbsenceNotProof', 'Filtered query absence is not tombstone proof')
   }
 
-  return snapshot.classified === true
-    ? allowed()
-    : blocked('QueryAbsenceUnclassified', 'Query absence must be directly classified first')
+  if (snapshot.directRetrieve === 'permission-ambiguous') {
+    return blocked('PermissionAmbiguous', 'Direct page retrieval is permission ambiguous')
+  }
+
+  if (snapshot.directRetrieve === 'accessible') {
+    return allowed()
+  }
+
+  if (
+    snapshot.classified === true &&
+    (snapshot.directRetrieve === 'in-trash' ||
+      snapshot.directRetrieve === 'moved-out' ||
+      snapshot.directRetrieve === 'inaccessible' ||
+      snapshot.directRetrieve === 'unknown')
+  ) {
+    return allowed()
+  }
+
+  return blocked('QueryAbsenceUnclassified', 'Query absence must be directly classified first')
 }
 
 export const guardTombstoneSafety = (snapshot: TombstoneSafetySnapshot): GuardDecision => {

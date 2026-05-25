@@ -30,7 +30,7 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       exports: {
-        '.': './dist/mod.js',
+        '.': './dist/src/mod.js',
       },
     },
   } satisfies PackageJsonData,
