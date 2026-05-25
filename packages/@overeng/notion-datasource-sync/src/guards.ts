@@ -1,10 +1,18 @@
 import { Schema } from 'effect'
 
 import type { QueryRowsPage } from './commands.ts'
-import type { CapabilityName, Hash, SupportedNotionApiVersion } from './domain.ts'
+import type {
+  BodyAdapterMutationSurface,
+  BodySafetySnapshot,
+  CapabilityName,
+  Hash,
+  SupportedNotionApiVersion,
+} from './domain.ts'
+export type { BodyAdapterMutationSurface, BodySafetySnapshot } from './domain.ts'
 
 export const GuardName = Schema.Literal(
   'ApiVersionUnsupported',
+  'ApiVersionUnverified',
   'ApiVersionCompatibilityMissing',
   'DecodeDriftUnsupported',
   'CapabilityPreflightFailed',
@@ -96,27 +104,6 @@ export type SchemaIntentSafety = {
   readonly optionDeletionLosesValues: boolean
 }
 
-export type BodyAdapterMutationSurface =
-  | 'body'
-  | 'row-property'
-  | 'schema'
-  | 'title'
-  | 'trash'
-  | 'icon'
-  | 'cover'
-  | 'page-metadata'
-  | 'membership'
-
-export type BodySafetySnapshot = {
-  readonly truncated: boolean
-  readonly unknownBlockCause: 'truncation' | 'permission' | 'unsupported' | 'unknown' | undefined
-  readonly selection: 'safe' | 'ambiguous'
-  readonly wouldDeleteChildren: boolean
-  readonly syncedPageUnsupported: boolean
-  readonly adapterConflict: boolean
-  readonly adapterMutationSurfaces: ReadonlyArray<BodyAdapterMutationSurface>
-}
-
 export type QueryCompletenessSnapshot = {
   readonly terminal: boolean
   readonly cappedAtLimit: boolean
@@ -160,10 +147,15 @@ export const blocked = (guard: GuardName, message: string): GuardDecision => ({
 export const isSupportedApiVersion = (version: string): version is SupportedNotionApiVersion =>
   version === '2026-03-11'
 
+const isFutureApiVersion = (version: string): boolean =>
+  /^\d{4}-\d{2}-\d{2}$/.test(version) && version > '2026-03-11'
+
 export const guardApiVersion = (version: string): GuardDecision =>
   isSupportedApiVersion(version)
     ? allowed()
-    : blocked('ApiVersionUnsupported', `Unsupported Notion API version: ${version}`)
+    : isFutureApiVersion(version)
+      ? blocked('ApiVersionUnverified', `Unverified future Notion API version: ${version}`)
+      : blocked('ApiVersionUnsupported', `Unsupported Notion API version: ${version}`)
 
 export const guardApiCompatibility = (snapshot: ApiCompatibilitySnapshot): GuardDecision => {
   const versionGuard = guardApiVersion(snapshot.configuredApiVersion)
@@ -269,11 +261,11 @@ export const guardBodySafety = (snapshot: BodySafetySnapshot): GuardDecision => 
     return blocked('BodyAdapterNonBodyMutation', 'Body adapter attempted a non-body mutation')
   }
 
-  if (snapshot.truncated === true) {
+  if (snapshot.truncated === true || snapshot.unknownBlockCause === 'truncation') {
     return blocked('BodyLossyRemote', 'Remote markdown body is truncated')
   }
 
-  if (snapshot.unknownBlockCause === 'unknown') {
+  if (snapshot.unknownBlockCause !== undefined) {
     return blocked(
       'MarkdownUnknownBlocksAmbiguous',
       'Unknown markdown blocks have ambiguous preservation semantics',
