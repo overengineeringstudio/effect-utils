@@ -29,6 +29,15 @@ export const scenario = <TScenario extends ScenarioMetadata>(metadata: TScenario
 
 export const e2eHarnessScenarios = [
   scenario({
+    scenarioId: 'NDS-L3-one-shot-sync-orchestration',
+    title: 'one-shot init pull push sync composes observation planning execution and status',
+    requirementIds: ['R06', 'R09', 'R21', 'R67', 'R71'],
+    guards: ['QueryResultCapExceeded', 'BodyAdapterNonBodyMutation'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/one-shot-sync.e2e.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-L2-clean-pull-status',
     title: 'fake gateway/body/workspace produce a clean pull status shape',
     requirementIds: ['R02', 'R06', 'R21', 'R67'],

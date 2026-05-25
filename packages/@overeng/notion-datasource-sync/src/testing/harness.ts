@@ -163,6 +163,8 @@ export type FakeGatewayInput = {
   readonly dataSource?: DataSourceSnapshot
   readonly pages?: ReadonlyArray<PageSnapshot>
   readonly propertyPages?: ReadonlyArray<PagePropertyItemPage>
+  readonly queryResultCap?: number
+  readonly pagePropertyPageSize?: number
   readonly readAfterWriteMismatchPageIds?: ReadonlyArray<PageId>
 }
 
@@ -225,6 +227,10 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
     ...(input.readAfterWriteMismatchPageIds === undefined
       ? {}
       : { readAfterWriteMismatchPageIds: input.readAfterWriteMismatchPageIds }),
+    ...(input.queryResultCap === undefined ? {} : { queryResultCap: input.queryResultCap }),
+    ...(input.pagePropertyPageSize === undefined
+      ? {}
+      : { pagePropertyPageSize: input.pagePropertyPageSize }),
     dataSources: [dataSource],
     pages,
   })

@@ -138,6 +138,36 @@ export type CompactionDecision =
   | { readonly _tag: 'allowed' }
   | { readonly _tag: 'blocked'; readonly blockers: readonly CompactionBlocker[] }
 
+export type StoreStatusProjection = {
+  readonly outbox: {
+    readonly queued: number
+    readonly running: number
+    readonly retryable: number
+    readonly blocked: number
+    readonly settled: number
+    readonly fenced: number
+    readonly ambiguous: number
+  }
+  readonly conflicts: {
+    readonly open: number
+  }
+  readonly tombstones: {
+    readonly unclassified: number
+  }
+  readonly checkpoints: {
+    readonly incompleteQueries: number
+    readonly cappedQueries: number
+    readonly changedQueryContracts: number
+    readonly incompleteProperties: number
+  }
+  readonly projections: {
+    readonly dataSources: number
+    readonly rows: number
+    readonly properties: number
+    readonly bodies: number
+  }
+}
+
 const decodeEventFromJson = Schema.decodeSync(Schema.parseJson(SyncEvent))
 const encodeEvent = Schema.encodeSync(SyncEvent)
 const decodeBodySafetyFromJson = Schema.decodeSync(Schema.parseJson(BodySafetySnapshot))
@@ -244,6 +274,9 @@ const readBoolean = (row: SqlRow, key: string): boolean => {
 
 const readOutboxState = (row: SqlRow, key: string): typeof OutboxState.Type =>
   Schema.decodeUnknownSync(OutboxState)(readString(row, key))
+
+const readCount = (row: SqlRow | undefined, key: string): number =>
+  row === undefined ? 0 : Number(readInteger(row, key))
 
 const stringifyJson = (value: unknown): string => JSON.stringify(value)
 
@@ -828,6 +861,142 @@ export class NotionSyncStore {
     return blockers.length === 0 ? { _tag: 'allowed' } : { _tag: 'blocked', blockers }
   }
 
+  readStatusProjection(rootId: SyncRootId): StoreStatusProjection {
+    const outboxRows = this.#db
+      .prepare(
+        `SELECT state, COUNT(*) AS count
+         FROM outbox
+         WHERE root_id = ?
+         GROUP BY state`,
+      )
+      .all(rootId)
+    const outbox = {
+      queued: 0,
+      running: 0,
+      retryable: 0,
+      blocked: 0,
+      settled: 0,
+      fenced: 0,
+      ambiguous: 0,
+    } satisfies StoreStatusProjection['outbox']
+
+    for (const row of outboxRows) {
+      outbox[readOutboxState(row, 'state')] = Number(readInteger(row, 'count'))
+    }
+
+    return {
+      outbox,
+      conflicts: {
+        open: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM conflict_projection
+               WHERE root_id = ? AND state = 'open'`,
+            )
+            .get(rootId),
+          'count',
+        ),
+      },
+      tombstones: {
+        unclassified: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM tombstone_projection
+               WHERE root_id = ? AND classification = 'unclassified'`,
+            )
+            .get(rootId),
+          'count',
+        ),
+      },
+      checkpoints: {
+        incompleteQueries: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM query_scan_checkpoint
+               WHERE root_id = ? AND complete = 0`,
+            )
+            .get(rootId),
+          'count',
+        ),
+        cappedQueries: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM query_scan_checkpoint
+               WHERE root_id = ? AND capped_at_limit = 1`,
+            )
+            .get(rootId),
+          'count',
+        ),
+        changedQueryContracts: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM query_scan_checkpoint
+               WHERE root_id = ? AND contract_changed = 1`,
+            )
+            .get(rootId),
+          'count',
+        ),
+        incompleteProperties: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM page_property_checkpoint
+               WHERE root_id = ? AND complete = 0`,
+            )
+            .get(rootId),
+          'count',
+        ),
+      },
+      projections: {
+        dataSources: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM data_source_projection
+               WHERE root_id = ?`,
+            )
+            .get(rootId),
+          'count',
+        ),
+        rows: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM row_projection
+               WHERE root_id = ?`,
+            )
+            .get(rootId),
+          'count',
+        ),
+        properties: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM property_shadow_projection
+               WHERE root_id = ?`,
+            )
+            .get(rootId),
+          'count',
+        ),
+        bodies: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM body_pointer_projection
+               WHERE root_id = ?`,
+            )
+            .get(rootId),
+          'count',
+        ),
+      },
+    }
+  }
+
   replaceProjectionDigestForRepairTest(rootId: SyncRootId, digest: Hash): void {
     this.#db
       .prepare(
@@ -1289,6 +1458,8 @@ export class NotionSyncStore {
 
   #applyEvent(event: SyncEvent): void {
     switch (event._tag) {
+      case 'SyncBindingRecorded':
+        break
       case 'ApiContractObserved':
         this.#db
           .prepare(
