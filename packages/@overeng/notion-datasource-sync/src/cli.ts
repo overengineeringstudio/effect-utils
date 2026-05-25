@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 import { fileURLToPath } from 'node:url'
 
@@ -111,6 +111,16 @@ export type CliResultEnvelope<TResult = unknown> = {
   readonly status: OneShotSyncStatus
   readonly surface: UserActionSurface
   readonly result: TResult
+}
+
+export type CliErrorEnvelope = {
+  readonly _tag: 'CliErrorEnvelope'
+  readonly version: 'v1'
+  readonly ok: false
+  readonly error: {
+    readonly _tag: string
+    readonly message: string
+  }
 }
 
 export class CliArgumentError extends Schema.TaggedError<CliArgumentError>()('CliArgumentError', {
@@ -306,6 +316,33 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
 export const renderCliResultJson = (result: CliResultEnvelope): string =>
   `${JSON.stringify(result, null, 2)}\n`
 
+export const renderCliErrorJson = (error: unknown): string => {
+  const errorEnvelope: CliErrorEnvelope = {
+    _tag: 'CliErrorEnvelope',
+    version: 'v1',
+    ok: false,
+    error: {
+      _tag:
+        typeof error === 'object' &&
+        error !== null &&
+        '_tag' in error &&
+        typeof error._tag === 'string'
+          ? error._tag
+          : error instanceof Error
+            ? error.name
+            : 'CliError',
+      message:
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error &&
+        typeof error.message === 'string'
+          ? error.message
+          : String(error),
+    },
+  }
+  return `${JSON.stringify(errorEnvelope, null, 2)}\n`
+}
+
 const parseFlags = (argv: ReadonlyArray<string>): Map<string, string | true> => {
   const flags = new Map<string, string | true>()
   for (let index = 0; index < argv.length; index += 1) {
@@ -332,6 +369,21 @@ const requiredFlag = (flags: Map<string, string | true>, name: string): string =
 const optionalFlag = (flags: Map<string, string | true>, name: string): string | undefined => {
   const value = flags.get(name)
   return typeof value === 'string' ? value : undefined
+}
+
+const positiveIntegerFlag = (
+  flags: Map<string, string | true>,
+  name: string,
+): number | undefined => {
+  const value = optionalFlag(flags, name)
+  if (value === undefined) return undefined
+
+  const parsed = Number(value)
+  if (Number.isInteger(parsed) && Number.isFinite(parsed) && parsed > 0) return parsed
+
+  throw new CliArgumentError({
+    message: `--${name} must be a positive integer`,
+  })
 }
 
 const parseChoice = (flags: Map<string, string | true>): ConflictResolutionChoice => {
@@ -375,11 +427,11 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
     case 'status':
       return { _tag: 'status' }
     case 'watch': {
-      const maxCycles = optionalFlag(flags, 'max-cycles')
+      const maxCycles = positiveIntegerFlag(flags, 'max-cycles')
       return {
         _tag: 'watch',
         statePath: requiredFlag(flags, 'state'),
-        ...(maxCycles === undefined ? {} : { maxCycles: Number.parseInt(maxCycles, 10) }),
+        ...(maxCycles === undefined ? {} : { maxCycles }),
       }
     }
     case 'conflicts':
@@ -417,7 +469,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
 export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
   const flags = parseFlags(argv)
   const store = openNotionSyncStore({ path: requiredFlag(flags, 'store') })
-  const maxExecutorSteps = optionalFlag(flags, 'max-executor-steps')
+  const maxExecutorSteps = positiveIntegerFlag(flags, 'max-executor-steps')
   return {
     store,
     rootId: decode(SyncRootId, requiredFlag(flags, 'root-id')),
@@ -442,9 +494,7 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
             Schema.Array(SchemaPropertyObservationJson),
             requiredFlag(flags, 'schema-properties-json'),
           ) as ReadonlyArray<SchemaPropertyObservation>),
-    ...(maxExecutorSteps === undefined
-      ? {}
-      : { maxExecutorSteps: Number.parseInt(maxExecutorSteps, 10) }),
+    ...(maxExecutorSteps === undefined ? {} : { maxExecutorSteps }),
   }
 }
 
@@ -471,8 +521,14 @@ const unsupportedCliGateway: NotionDataSourceGatewayShape = {
 
 const runMain = (argv: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const command = parseCliCommand(argv)
-    const context = parseCliContext(argv)
+    const command = yield* Effect.try({
+      try: () => parseCliCommand(argv),
+      catch: (cause) => cause,
+    })
+    const context = yield* Effect.try({
+      try: () => parseCliContext(argv),
+      catch: (cause) => cause,
+    })
     const result = yield* runCliCommand(command, context).pipe(
       Effect.provideService(NotionDataSourceGateway, unsupportedCliGateway),
       Effect.provideService(PageBodySyncPort, makeUnsupportedPageBodySyncPort()),
@@ -484,7 +540,7 @@ const runMain = (argv: ReadonlyArray<string>) =>
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runMain(process.argv.slice(2)).pipe(
-    Effect.tapError((error) => Effect.sync(() => process.stderr.write(`${String(error)}\n`))),
+    Effect.tapError((error) => Effect.sync(() => process.stderr.write(renderCliErrorJson(error)))),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )
 }

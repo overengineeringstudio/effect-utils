@@ -1,8 +1,15 @@
+import { execFile } from 'node:child_process'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
+
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { propertySurfaceKey } from '../canonical.ts'
-import { runCliCommand, type CliContext } from '../cli.ts'
+import { parseCliCommand, runCliCommand, type CliContext } from '../cli.ts'
 import { PagePropertyItemPage } from '../commands.ts'
 import { AbsolutePath, BodyPointer, WorkspaceRelativePath } from '../domain.ts'
 import { SyncEventId, type SyncEvent as SyncEventType } from '../events.ts'
@@ -23,6 +30,10 @@ import {
   testIds,
 } from '../testing/harness.ts'
 
+const execFileAsync = promisify(execFile)
+const packageDir = fileURLToPath(new URL('../..', import.meta.url))
+const cliPath = join(packageDir, 'src/cli.ts')
+const cliTestTimeoutMs = 10_000
 const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-cli')
 
 const schemaProperties = [
@@ -114,6 +125,87 @@ const runWithPorts = <TValue, TError>(
   )
 
 describe('CLI command surface', () => {
+  it('runs the source CLI through its shebang runtime with node:sqlite available', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
+    try {
+      const { stdout } = await execFileAsync(
+        cliPath,
+        [
+          'status',
+          '--store',
+          join(dir, 'store.sqlite'),
+          '--root-id',
+          testIds.rootId,
+          '--data-source-id',
+          testIds.dataSourceId,
+          '--workspace-root',
+          workspaceRoot,
+        ],
+        { cwd: packageDir, timeout: cliTestTimeoutMs },
+      )
+
+      expect(JSON.parse(stdout)).toMatchObject({
+        _tag: 'CliResultEnvelope',
+        command: 'status',
+        ok: true,
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps watch unbounded by default until --max-cycles is provided', () => {
+    expect(parseCliCommand(['watch', '--state', '/tmp/watch.json'])).toEqual({
+      _tag: 'watch',
+      statePath: '/tmp/watch.json',
+    })
+    expect(parseCliCommand(['watch', '--state', '/tmp/watch.json', '--max-cycles', '2'])).toEqual({
+      _tag: 'watch',
+      statePath: '/tmp/watch.json',
+      maxCycles: 2,
+    })
+  })
+
+  it('emits a structured diagnostic and exits nonzero for invalid numeric flags', async () => {
+    await expect(
+      execFileAsync(cliPath, ['watch', '--state', '/tmp/watch.json', '--max-cycles', 'NaN'], {
+        cwd: packageDir,
+        timeout: cliTestTimeoutMs,
+      }),
+    ).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining('CliErrorEnvelope'),
+    })
+
+    await expect(
+      execFileAsync(
+        cliPath,
+        [
+          'watch',
+          '--state',
+          '/tmp/watch.json',
+          '--max-cycles',
+          '0',
+          '--store',
+          '/tmp/store.sqlite',
+          '--root-id',
+          testIds.rootId,
+          '--data-source-id',
+          testIds.dataSourceId,
+          '--workspace-root',
+          workspaceRoot,
+        ],
+        {
+          cwd: packageDir,
+          timeout: cliTestTimeoutMs,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining('--max-cycles must be a positive integer'),
+    })
+  })
+
   it('returns clean, pending, and conflict status envelopes for one-shot sync', async () => {
     const cleanClock = makeFakeClock()
     const cleanStore = makeStoreFixture({ mode: 'memory', now: cleanClock.now })

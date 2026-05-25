@@ -44,6 +44,9 @@
     "@playwright/test": "^1.59.1",
     "effect": "^3.21.2"
   },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
