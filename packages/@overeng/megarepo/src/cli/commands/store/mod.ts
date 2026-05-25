@@ -19,9 +19,11 @@ import {
   readMegarepoConfig,
 } from '../../../lib/config.ts'
 import * as Git from '../../../lib/git.ts'
-import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
+import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { classifyRef } from '../../../lib/ref.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
+import { collectStoreLiveSet, isPathProtected } from '../../../lib/store-liveness.ts'
+import { StoreLock } from '../../../lib/store-lock.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
@@ -390,46 +392,27 @@ const storeGcCommand = Cli.Command.make(
       Cli.Options.withDescription('Remove all worktrees (not just unused ones)'),
       Cli.Options.withDefault(false),
     ),
+    includeUnleased: Cli.Options.boolean('include-unleased').pipe(
+      Cli.Options.withDescription(
+        'Remove clean worktrees that are not protected by the workspace registry',
+      ),
+      Cli.Options.withDefault(false),
+    ),
   },
-  ({ output, dryRun, force, all }) =>
+  ({ output, dryRun, force, all, includeUnleased }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const store = yield* Store
+      const storeLock = yield* StoreLock
       const fs = yield* FileSystem.FileSystem
 
-      // Get lock file from current megarepo (if any)
       const root = yield* findMegarepoRoot(cwd)
-      let lockFile: LockFile | undefined
-      let inUsePaths = new Set<string>()
-
-      if (Option.isSome(root) === true && all === false) {
-        const lockPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-        )
-        const lockFileOpt = yield* readLockFile(lockPath)
-        lockFile = Option.getOrUndefined(lockFileOpt)
-
-        // Build set of worktree paths that are "in use"
-        if (lockFile !== undefined) {
-          const { config } = yield* readMegarepoConfig(root.value)
-
-          for (const [name, sourceString] of Object.entries(config.members)) {
-            const source = parseSourceString(sourceString)
-            if (source === undefined || isRemoteSource(source) === false) continue
-
-            const lockedMember = lockFile.members[name]
-            if (lockedMember === undefined) continue
-
-            // Mark the worktree path as in use
-            const worktreePath = store.getWorktreePath({
-              source,
-              ref: lockedMember.ref,
-            })
-            inUsePaths.add(worktreePath)
-          }
-        }
-      }
+      const liveSet = yield* collectStoreLiveSet({
+        store,
+        ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+        pruneStaleRegistry: dryRun === false,
+        refreshCurrentWorkspace: dryRun === false,
+      })
 
       // Determine warning type for output
       const gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined =
@@ -483,12 +466,16 @@ const storeGcCommand = Cli.Command.make(
               return result
             })
 
-            // First: check status of all worktrees in parallel (the expensive part)
+            // First: classify worktrees and only run dirty checks for removal candidates.
             const worktreeStatuses = yield* Effect.all(
               worktrees.map((worktree) =>
                 Effect.gen(function* () {
-                  if (inUsePaths.has(worktree.path) === true) {
+                  if (isPathProtected({ liveSet, path: worktree.path }) === true) {
                     return { worktree, action: 'skipped_in_use' as const, status: undefined }
+                  }
+
+                  if (all === false && includeUnleased === false) {
+                    return { worktree, action: 'skipped_unleased' as const, status: undefined }
                   }
 
                   /** Broken worktrees have no .git — skip git status, proceed directly to removal */
@@ -520,7 +507,7 @@ const storeGcCommand = Cli.Command.make(
               repo: string
               ref: string
               path: string
-              status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'error'
+              status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'skipped_unleased' | 'error'
               message?: string
             }> = []
 
@@ -531,6 +518,17 @@ const storeGcCommand = Cli.Command.make(
                   ref: worktree.ref,
                   path: worktree.path,
                   status: 'skipped_in_use',
+                })
+                continue
+              }
+
+              if (action === 'skipped_unleased') {
+                repoResults.push({
+                  repo: repo.relativePath,
+                  ref: worktree.ref,
+                  path: worktree.path,
+                  status: 'skipped_unleased',
+                  message: 'not protected by registry; pass --include-unleased to remove',
                 })
                 continue
               }
@@ -554,28 +552,63 @@ const storeGcCommand = Cli.Command.make(
               }
 
               if (dryRun === false) {
-                yield* Effect.gen(function* () {
-                  if (worktree.broken === true) {
-                    /** Broken worktrees can't be removed via git — just delete the directory */
-                    yield* fs.remove(worktree.path, { recursive: true })
-                  } else {
-                    const bareRepoPath = EffectPath.ops.join(
-                      repo.fullPath,
-                      EffectPath.unsafe.relativeDir('.bare/'),
-                    )
-                    yield* Git.removeWorktree({
-                      repoPath: bareRepoPath,
-                      worktreePath: worktree.path,
-                      force: force,
-                    }).pipe(Effect.catchAll(() => fs.remove(worktree.path, { recursive: true })))
-                  }
-                }).pipe(
-                  Effect.catchAll((error) =>
-                    Effect.succeed({
-                      error: error instanceof Error === true ? error.message : String(error),
+                const removeResult = yield* storeLock
+                  .withWorktreeLock(worktree.path)(
+                    Effect.gen(function* () {
+                      if (isPathProtected({ liveSet, path: worktree.path }) === true) {
+                        return { _tag: 'skipped_live' as const }
+                      }
+
+                      if (worktree.broken === true) {
+                        /** Broken worktrees can't be removed via git — just delete the directory */
+                        yield* fs.remove(worktree.path, { recursive: true })
+                      } else {
+                        const bareRepoPath = EffectPath.ops.join(
+                          repo.fullPath,
+                          EffectPath.unsafe.relativeDir('.bare/'),
+                        )
+                        yield* Git.removeWorktree({
+                          repoPath: bareRepoPath,
+                          worktreePath: worktree.path,
+                          force: force,
+                        }).pipe(
+                          Effect.catchAll(() => fs.remove(worktree.path, { recursive: true })),
+                        )
+                      }
+
+                      return { _tag: 'removed' as const }
                     }),
-                  ),
-                )
+                  )
+                  .pipe(
+                    Effect.catchAll((error) =>
+                      Effect.succeed({
+                        _tag: 'error' as const,
+                        message: error instanceof Error === true ? error.message : String(error),
+                      }),
+                    ),
+                  )
+
+                if (removeResult._tag === 'skipped_live') {
+                  repoResults.push({
+                    repo: repo.relativePath,
+                    ref: worktree.ref,
+                    path: worktree.path,
+                    status: 'skipped_in_use',
+                    message: 'became protected before removal',
+                  })
+                  continue
+                }
+
+                if (removeResult._tag === 'error') {
+                  repoResults.push({
+                    repo: repo.relativePath,
+                    ref: worktree.ref,
+                    path: worktree.path,
+                    status: 'error',
+                    message: removeResult.message,
+                  })
+                  continue
+                }
               }
 
               repoResults.push({
@@ -612,7 +645,16 @@ const storeGcCommand = Cli.Command.make(
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(
       Effect.provide(StoreLayer),
-      Effect.withSpan('megarepo/store/gc', { attributes: { 'span.label': 'gc' } }),
+      Effect.withSpan('megarepo/store/gc', {
+        root: true,
+        attributes: {
+          'span.label': 'gc',
+          'gc.dry_run': dryRun,
+          'gc.force': force,
+          'gc.all': all,
+          'gc.include_unleased': includeUnleased,
+        },
+      }),
     ),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
 

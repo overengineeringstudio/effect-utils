@@ -4,22 +4,94 @@
  * Tests the store GC, ls, and fetch commands with realistic store fixtures.
  */
 
-import { FileSystem } from '@effect/platform'
+import * as Cli from '@effect/cli'
+import { Command, FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Option } from 'effect'
+import { Effect, Exit, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
-import { EffectPath } from '@overeng/effect-path'
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { parseSourceString, isRemoteSource } from '../lib/config.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../lib/lock.ts'
+import { refreshWorkspaceRegistry } from '../lib/store-liveness.ts'
 import { makeStoreLayer, Store } from '../lib/store.ts'
+import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
   createStoreFixture,
   createWorkspaceWithLock,
   getWorktreeCommit,
 } from '../test-utils/store-setup.ts'
+import { Cwd } from './context.ts'
+import { mrCommand } from './mod.ts'
+
+const StoreGcJsonOutput = Schema.Struct({
+  results: Schema.Array(
+    Schema.Struct({
+      repo: Schema.String,
+      ref: Schema.String,
+      path: Schema.String,
+      status: Schema.String,
+      message: Schema.optional(Schema.String),
+    }),
+  ),
+})
+
+const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+
+const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
+    const result = yield* Command.string(command)
+    return result.trim()
+  })
+
+const runMrCommand = ({
+  cwd,
+  command,
+  env,
+}: {
+  cwd: AbsoluteDirPath
+  command: ReadonlyArray<string>
+  env: Record<string, string>
+}) =>
+  Effect.gen(function* () {
+    const { consoleLayer, getStdoutLines } = yield* makeConsoleCapture
+    const previousEnv = yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const previous = new Map<string, string | undefined>()
+        for (const [key, value] of Object.entries(env)) {
+          previous.set(key, process.env[key])
+          process.env[key] = value
+        }
+        return previous
+      }),
+      (previous) =>
+        Effect.sync(() => {
+          for (const [key, value] of previous) {
+            if (value === undefined) {
+              delete process.env[key]
+            } else {
+              process.env[key] = value
+            }
+          }
+        }),
+    )
+
+    const argv = ['node', 'mr', ...command]
+    const exit = yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+      Effect.provideService(Cwd, cwd),
+      Effect.provide(consoleLayer),
+      Effect.exit,
+    )
+    void previousEnv
+
+    return {
+      exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
+      stdout: (yield* getStdoutLines).join('\n'),
+    }
+  }).pipe(Effect.scoped)
 
 describe('mr store gc', () => {
   describe('with unused worktrees', () => {
@@ -145,6 +217,225 @@ describe('mr store gc', () => {
           const lockFile = Option.getOrThrow(lockFileOpt)
           expect(lockFile.members['my-lib']).toBeDefined()
           expect(lockFile.members['my-lib']!.ref).toBe('main')
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should protect active worktrees registered by another workspace',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'repo-a',
+              branches: ['main'],
+            },
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'repo-b',
+              branches: ['main'],
+            },
+          ])
+
+          const repoAPath = worktreePaths['github.com/test-owner/repo-a#main']!
+          const repoBPath = worktreePaths['github.com/test-owner/repo-b#main']!
+          const repoACommit = yield* getWorktreeCommit(repoAPath)
+          const repoBCommit = yield* getWorktreeCommit(repoBPath)
+
+          const { workspacePath: workspaceA } = yield* createWorkspaceWithLock({
+            members: { 'repo-a': 'test-owner/repo-a#main' },
+            lockEntries: {
+              'repo-a': {
+                url: 'git@github.com:test-owner/repo-a.git',
+                ref: 'main',
+                commit: repoACommit,
+              },
+            },
+          })
+          const { workspacePath: workspaceB } = yield* createWorkspaceWithLock({
+            members: { 'repo-b': 'test-owner/repo-b#main' },
+            lockEntries: {
+              'repo-b': {
+                url: 'git@github.com:test-owner/repo-b.git',
+                ref: 'main',
+                commit: repoBCommit,
+              },
+            },
+          })
+
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(workspaceA, EffectPath.unsafe.relativeDir('repos/')),
+            { recursive: true },
+          )
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(workspaceB, EffectPath.unsafe.relativeDir('repos/')),
+            { recursive: true },
+          )
+          yield* fs.symlink(
+            repoAPath.replace(/\/$/, ''),
+            EffectPath.ops.join(workspaceA, EffectPath.unsafe.relativeFile('repos/repo-a')),
+          )
+          yield* fs.symlink(
+            repoBPath.replace(/\/$/, ''),
+            EffectPath.ops.join(workspaceB, EffectPath.unsafe.relativeFile('repos/repo-b')),
+          )
+
+          const env = { MEGAREPO_STORE: storePath }
+          const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+          yield* refreshWorkspaceRegistry({ workspaceRoot: workspaceB, store })
+          const statusB = yield* runMrCommand({
+            cwd: workspaceB,
+            command: ['status', '--output', 'json'],
+            env,
+          })
+          expect(statusB.exitCode).toBe(0)
+
+          const gcA = yield* runMrCommand({
+            cwd: workspaceA,
+            command: ['store', 'gc', '--dry-run', '--output', 'json'],
+            env,
+          })
+          expect(gcA.exitCode).toBe(0)
+          const json = decodeStoreGcJsonOutput(gcA.stdout)
+          const repoBResult = json.results.find((r) => r.repo === 'github.com/test-owner/repo-b/')
+          expect(repoBResult?.status).toBe('skipped_in_use')
+          expect(yield* fs.exists(repoBPath)).toBe(true)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should protect the current workspace commit-mode symlink target',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'commit-mode-repo',
+              branches: ['main'],
+            },
+          ])
+
+          const mainWorktreePath = worktreePaths['github.com/test-owner/commit-mode-repo#main']!
+          const commit = yield* getWorktreeCommit(mainWorktreePath)
+          const bareRepoPath = bareRepoPaths['github.com/test-owner/commit-mode-repo']!
+          const commitWorktreePath = EffectPath.ops.join(
+            storePath,
+            EffectPath.unsafe.relativeDir(
+              `github.com/test-owner/commit-mode-repo/refs/commits/${commit}/`,
+            ),
+          )
+          yield* fs.makeDirectory(EffectPath.ops.parent(commitWorktreePath)!, {
+            recursive: true,
+          })
+          yield* runGitCommand(
+            bareRepoPath,
+            'worktree',
+            'add',
+            '--detach',
+            commitWorktreePath,
+            commit,
+          )
+
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: { repo: 'test-owner/commit-mode-repo#main' },
+            lockEntries: {
+              repo: {
+                url: 'git@github.com:test-owner/commit-mode-repo.git',
+                ref: 'main',
+                commit,
+              },
+            },
+          })
+
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/')),
+            { recursive: true },
+          )
+          yield* fs.symlink(
+            commitWorktreePath.replace(/\/$/, ''),
+            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/repo')),
+          )
+          const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+          yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store })
+
+          const gc = yield* runMrCommand({
+            cwd: workspacePath,
+            command: ['store', 'gc', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(gc.exitCode).toBe(0)
+          const json = decodeStoreGcJsonOutput(gc.stdout)
+          const commitResult = json.results.find((r) => r.path === commitWorktreePath)
+          expect(commitResult?.status).toBe('skipped_in_use')
+          expect(yield* fs.exists(commitWorktreePath)).toBe(true)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should not delete unleased clean worktrees by default',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'unleased-repo',
+              branches: ['main', 'feature-a'],
+            },
+          ])
+
+          const mainWorktreePath = worktreePaths['github.com/test-owner/unleased-repo#main']!
+          const featureWorktreePath =
+            worktreePaths['github.com/test-owner/unleased-repo#feature-a']!
+          const mainCommit = yield* getWorktreeCommit(mainWorktreePath)
+
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: { repo: 'test-owner/unleased-repo#main' },
+            lockEntries: {
+              repo: {
+                url: 'git@github.com:test-owner/unleased-repo.git',
+                ref: 'main',
+                commit: mainCommit,
+              },
+            },
+          })
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/')),
+            { recursive: true },
+          )
+          yield* fs.symlink(
+            mainWorktreePath.replace(/\/$/, ''),
+            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/repo')),
+          )
+
+          const gc = yield* runMrCommand({
+            cwd: workspacePath,
+            command: ['store', 'gc', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(gc.exitCode).toBe(0)
+          const json = decodeStoreGcJsonOutput(gc.stdout)
+          const featureResult = json.results.find((r) => r.path === featureWorktreePath)
+          expect(featureResult?.status).toBe('skipped_unleased')
+          expect(yield* fs.exists(featureWorktreePath)).toBe(true)
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,

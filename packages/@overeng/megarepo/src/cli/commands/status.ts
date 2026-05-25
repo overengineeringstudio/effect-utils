@@ -25,7 +25,8 @@ import * as Git from '../../lib/git.ts'
 import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
-import { type Store, StoreLayer } from '../../lib/store.ts'
+import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
+import { Store, StoreLayer } from '../../lib/store.ts'
 import {
   Cwd,
   detectCurrentMemberPath,
@@ -302,6 +303,7 @@ export const statusCommand = Cli.Command.make(
       }
 
       const workspaceName = yield* Git.deriveMegarepoName(root.value)
+      const store = yield* Store
 
       // Load config
       const { config } = yield* readMegarepoConfig(root.value)
@@ -318,6 +320,7 @@ export const statusCommand = Cli.Command.make(
         EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
       )
       const lockFileOpt = yield* readLockFile(lockPath)
+      yield* refreshWorkspaceRegistry({ workspaceRoot: root.value, store })
       let lastSyncTime: Date | undefined = undefined
       let lockStaleness:
         | {

@@ -599,6 +599,9 @@ export interface WorktreeStatus {
   readonly changesCount: number
 }
 
+const worktreeSpanLabel = (worktreePath: string): string =>
+  worktreePath.split('/').findLast((part) => part.length > 0) ?? 'worktree'
+
 /**
  * Get the status of a worktree (dirty state, unpushed commits)
  */
@@ -629,7 +632,7 @@ export const getWorktreeStatus = (worktreePath: string) =>
     } satisfies WorktreeStatus
   }).pipe(
     Effect.withSpan('git/worktree-status', {
-      attributes: { 'span.label': worktreePath, worktreePath },
+      attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
     }),
   )
 

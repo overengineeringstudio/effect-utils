@@ -492,6 +492,7 @@ const StoreGcView = ({
   const removed = results.filter((r) => r.status === 'removed')
   const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
   const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
+  const skippedUnleased = results.filter((r) => r.status === 'skipped_unleased')
   const errors = results.filter((r) => r.status === 'error')
 
   // Determine which results to show
@@ -535,6 +536,13 @@ const StoreGcView = ({
                 dryRun={dryRun}
               />
             ))}
+          {skippedUnleased.map((result) => (
+            <StoreGcResultRow
+              key={`${result.repo}-${result.ref}-unleased`}
+              result={result}
+              dryRun={dryRun}
+            />
+          ))}
           {errors.map((result) => (
             <StoreGcResultRow
               key={`${result.repo}-${result.ref}-error`}
@@ -549,6 +557,7 @@ const StoreGcView = ({
         removed={removed.length}
         skippedDirty={skippedDirty.length}
         skippedInUse={skippedInUse.length}
+        skippedUnleased={skippedUnleased.length}
         errors={errors.length}
         dryRun={dryRun}
       />
@@ -608,6 +617,8 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
         return <Text color="yellow">{SYMBOLS.circle}</Text>
       case 'skipped_in_use':
         return <Text dim>{SYMBOLS.check}</Text>
+      case 'skipped_unleased':
+        return <Text color="yellow">{SYMBOLS.circle}</Text>
     }
   }
 
@@ -619,6 +630,8 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
         return <Text dim> ({result.message ?? 'dirty'})</Text>
       case 'skipped_in_use':
         return <Text dim> (in use)</Text>
+      case 'skipped_unleased':
+        return <Text dim> ({result.message ?? 'unleased'})</Text>
       case 'error':
         return <Text color="red"> (error: {result.message})</Text>
     }
@@ -650,12 +663,14 @@ const StoreGcSummary = ({
   removed,
   skippedDirty,
   skippedInUse,
+  skippedUnleased,
   errors,
   dryRun,
 }: {
   removed: number
   skippedDirty: number
   skippedInUse: number
+  skippedUnleased: number
   errors: number
   dryRun: boolean
 }) => {
@@ -681,6 +696,12 @@ const StoreGcSummary = ({
     parts.push({
       key: 'in-use',
       element: <Text>{skippedInUse} in use</Text>,
+    })
+  }
+  if (skippedUnleased > 0) {
+    parts.push({
+      key: 'unleased',
+      element: <Text>{skippedUnleased} skipped (unleased)</Text>,
     })
   }
   if (errors > 0) {
