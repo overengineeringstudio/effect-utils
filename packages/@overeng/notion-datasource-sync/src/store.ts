@@ -17,6 +17,7 @@ import {
   clearProjectionTablesSql,
   createStoreSchemaSql,
   PROJECTOR_VERSION,
+  rootScopedProjectionTables,
   STORE_SCHEMA_VERSION,
 } from './store-schema.ts'
 
@@ -431,7 +432,7 @@ export class NotionSyncStore {
   }
 
   #rebuildProjectionsInTransaction(rootId: SyncRootId): ProjectionMetadata {
-    this.#db.exec(clearProjectionTablesSql)
+    this.#clearProjectionTablesForRoot(rootId)
 
     for (const event of this.replay(rootId)) {
       this.#applyEvent(event)
@@ -468,6 +469,12 @@ export class NotionSyncStore {
       )
 
     return { rootId, projectorVersion: PROJECTOR_VERSION, highWaterSequence, digest }
+  }
+
+  #clearProjectionTablesForRoot(rootId: SyncRootId): void {
+    for (const table of rootScopedProjectionTables) {
+      this.#db.prepare(`DELETE FROM ${table} WHERE root_id = ?`).run(rootId)
+    }
   }
 
   #applyEvent(event: SyncEvent): void {
@@ -601,21 +608,41 @@ export class NotionSyncStore {
         }
         break
       }
-      case 'RemoteWriteSettled':
-        this.#db
+      case 'RemoteWriteSettled': {
+        const existing = this.#db
           .prepare(
-            `UPDATE outbox
-             SET state = 'settled',
-                 lease_token = NULL,
-                 settlement_event_id = ?,
-                 last_event_id = ?,
-                 updated_at = ?
-             WHERE root_id = ?
-               AND command_id = ?
-               AND settlement_event_id IS NULL`,
+            `SELECT command_tag, state, desired_hash, attempt_count, settlement_event_id
+             FROM outbox
+             WHERE root_id = ? AND command_id = ?`,
           )
-          .run(event.eventId, event.eventId, currentIso(this.#now), event.rootId, event.commandId)
+          .get(event.rootId, event.commandId)
+
+        if (
+          existing !== undefined &&
+          readOptionalString(existing, 'settlement_event_id') === undefined &&
+          readString(existing, 'command_tag') === event.commandTag &&
+          readString(existing, 'desired_hash') === event.desiredHash &&
+          event.observedHash === event.desiredHash &&
+          readInteger(existing, 'attempt_count') > 0n &&
+          (readOutboxState(existing, 'state') === 'running' ||
+            readOutboxState(existing, 'state') === 'ambiguous')
+        ) {
+          this.#db
+            .prepare(
+              `UPDATE outbox
+               SET state = 'settled',
+                   lease_token = NULL,
+                   settlement_event_id = ?,
+                   last_event_id = ?,
+                   updated_at = ?
+               WHERE root_id = ?
+                 AND command_id = ?
+                 AND settlement_event_id IS NULL`,
+            )
+            .run(event.eventId, event.eventId, currentIso(this.#now), event.rootId, event.commandId)
+        }
         break
+      }
       case 'ConflictRaised':
         this.#db
           .prepare(

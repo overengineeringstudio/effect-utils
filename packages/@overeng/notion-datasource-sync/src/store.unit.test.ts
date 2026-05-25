@@ -20,6 +20,7 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
 
 const hash = (value: string) => decode(Hash, `sha256:${value.repeat(64).slice(0, 64)}`)
 const rootId = decode(SyncRootId, 'root-1')
+const otherRootId = decode(SyncRootId, 'root-2')
 const observedAt = '2026-05-25T00:00:00.000Z'
 const tmpDirs: string[] = []
 
@@ -48,12 +49,13 @@ const eventBase = (overrides: {
   readonly idempotencyKey: string
   readonly canonicalJson?: string
   readonly surface?: string
+  readonly rootId?: SyncRootId
 }) => {
   const canonicalJson = overrides.canonicalJson ?? '{}'
 
   return {
     eventId: overrides.eventId,
-    rootId,
+    rootId: overrides.rootId ?? rootId,
     sequence: '0',
     codecVersion: 'v1',
     family: overrides.family,
@@ -73,6 +75,7 @@ const remoteWritePlanned = (overrides: {
   readonly commandId: string
   readonly intentEventId?: string
   readonly desiredHash?: string
+  readonly rootId?: SyncRootId
 }) =>
   decode(SyncEvent, {
     _tag: 'RemoteWritePlanned',
@@ -83,6 +86,7 @@ const remoteWritePlanned = (overrides: {
       idempotencyKey: overrides.idempotencyKey,
       canonicalJson: `{"commandId":"${overrides.commandId}"}`,
       surface: 'page:page-1',
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
     }),
     commandId: overrides.commandId,
     commandKey: overrides.idempotencyKey,
@@ -99,6 +103,7 @@ const remoteWriteAttempted = (overrides: {
   readonly commandId: string
   readonly attemptState: 'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   readonly leaseToken?: string
+  readonly rootId?: SyncRootId
 }) =>
   decode(SyncEvent, {
     _tag: 'RemoteWriteAttempted',
@@ -109,6 +114,7 @@ const remoteWriteAttempted = (overrides: {
       idempotencyKey: overrides.idempotencyKey,
       canonicalJson: `{"attempt":"${overrides.eventId}"}`,
       surface: 'page:page-1',
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
     }),
     commandId: overrides.commandId,
     attempt: 1,
@@ -121,6 +127,9 @@ const remoteWriteSettled = (overrides: {
   readonly idempotencyKey: string
   readonly commandId: string
   readonly desiredHash?: string
+  readonly observedHash?: string
+  readonly commandTag?: string
+  readonly rootId?: SyncRootId
 }) =>
   decode(SyncEvent, {
     _tag: 'RemoteWriteSettled',
@@ -131,10 +140,14 @@ const remoteWriteSettled = (overrides: {
       idempotencyKey: overrides.idempotencyKey,
       canonicalJson: `{"settled":"${overrides.eventId}"}`,
       surface: 'page:page-1',
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
     }),
     commandId: overrides.commandId,
+    commandTag: overrides.commandTag ?? 'PatchPageProperties',
     requestId: 'request-1',
     desiredHash: overrides.desiredHash ?? hash('b'),
+    observedHash: overrides.observedHash ?? overrides.desiredHash ?? hash('b'),
+    settlementKind: 'verified-success',
   })
 
 const withStore = <TValue>(f: (store: NotionSyncStore) => TValue): TValue => {
@@ -265,6 +278,120 @@ describe('Notion sync SQLite store', () => {
     })
   })
 
+  it('ignores settlement events without sufficient command proof', () => {
+    withStore((store) => {
+      store.appendEvent(
+        remoteWriteSettled({
+          eventId: 'event-ignored-missing-command',
+          idempotencyKey: 'settled:missing',
+          commandId: 'missing-command',
+        }),
+      )
+      expect(store.readOutbox(rootId)).toEqual([])
+
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-1',
+          idempotencyKey: 'command:cmd-1',
+          commandId: 'cmd-1',
+          desiredHash: hash('c'),
+        }),
+      )
+      store.appendEvent(
+        remoteWriteSettled({
+          eventId: 'event-ignored-no-attempt',
+          idempotencyKey: 'settled:cmd-1:no-attempt',
+          commandId: 'cmd-1',
+          desiredHash: hash('c'),
+        }),
+      )
+
+      expect(store.readOutbox(rootId)).toMatchObject([
+        {
+          commandId: 'cmd-1',
+          state: 'queued',
+          settlementEventId: undefined,
+        },
+      ])
+
+      store.appendEvent(
+        remoteWriteAttempted({
+          eventId: 'event-2',
+          idempotencyKey: 'attempt:cmd-1:1',
+          commandId: 'cmd-1',
+          attemptState: 'running',
+          leaseToken: 'lease-1',
+        }),
+      )
+      store.appendEvent(
+        remoteWriteSettled({
+          eventId: 'event-ignored-hash-mismatch',
+          idempotencyKey: 'settled:cmd-1:hash-mismatch',
+          commandId: 'cmd-1',
+          desiredHash: hash('c'),
+          observedHash: hash('d'),
+        }),
+      )
+      store.appendEvent(
+        remoteWriteSettled({
+          eventId: 'event-ignored-command-tag',
+          idempotencyKey: 'settled:cmd-1:tag-mismatch',
+          commandId: 'cmd-1',
+          commandTag: 'TrashPage',
+          desiredHash: hash('c'),
+          observedHash: hash('c'),
+        }),
+      )
+
+      expect(store.readOutbox(rootId)).toMatchObject([
+        {
+          commandId: 'cmd-1',
+          state: 'running',
+          settlementEventId: undefined,
+        },
+      ])
+    })
+  })
+
+  it('settles a command only with matching attempted command evidence', () => {
+    withStore((store) => {
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-1',
+          idempotencyKey: 'command:cmd-1',
+          commandId: 'cmd-1',
+          desiredHash: hash('c'),
+        }),
+      )
+      store.appendEvent(
+        remoteWriteAttempted({
+          eventId: 'event-2',
+          idempotencyKey: 'attempt:cmd-1:1',
+          commandId: 'cmd-1',
+          attemptState: 'running',
+          leaseToken: 'lease-1',
+        }),
+      )
+      store.appendEvent(
+        remoteWriteSettled({
+          eventId: 'event-3',
+          idempotencyKey: 'settled:cmd-1',
+          commandId: 'cmd-1',
+          desiredHash: hash('c'),
+          observedHash: hash('c'),
+        }),
+      )
+
+      expect(store.readOutbox(rootId)).toMatchObject([
+        {
+          commandId: 'cmd-1',
+          state: 'settled',
+          settlementEventId: 'event-3',
+        },
+      ])
+    })
+  })
+
   it('blocks compaction for unsafe outbox, open conflicts, unclassified tombstones, and digest drift', () => {
     withStore((store) => {
       store.appendEvent(
@@ -331,8 +458,17 @@ describe('Notion sync SQLite store', () => {
         }),
       )
       store.appendEvent(
-        remoteWriteSettled({
+        remoteWriteAttempted({
           eventId: 'event-2',
+          idempotencyKey: 'attempt:cmd-1:1',
+          commandId: 'cmd-1',
+          attemptState: 'running',
+          leaseToken: 'lease-1',
+        }),
+      )
+      store.appendEvent(
+        remoteWriteSettled({
+          eventId: 'event-3',
           idempotencyKey: 'settled:cmd-1',
           commandId: 'cmd-1',
         }),
@@ -344,6 +480,32 @@ describe('Notion sync SQLite store', () => {
       expect(after).toEqual(before)
       expect(store.getCompactionDecision(rootId)).toEqual({ _tag: 'allowed' })
       expect(store.readOutbox(rootId).map((row) => row.state)).toEqual(['settled'])
+    })
+  })
+
+  it('rebuilds projections for one root without deleting another root', () => {
+    withStore((store) => {
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'root-1-event-1',
+          idempotencyKey: 'root-1:command:cmd-1',
+          commandId: 'cmd-1',
+          rootId,
+        }),
+      )
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'root-2-event-1',
+          idempotencyKey: 'root-2:command:cmd-2',
+          commandId: 'cmd-2',
+          rootId: otherRootId,
+        }),
+      )
+
+      store.rebuildProjections(rootId)
+
+      expect(store.readOutbox(rootId).map((row) => row.commandId)).toEqual(['cmd-1'])
+      expect(store.readOutbox(otherRootId).map((row) => row.commandId)).toEqual(['cmd-2'])
     })
   })
 

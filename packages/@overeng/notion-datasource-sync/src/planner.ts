@@ -144,6 +144,12 @@ export type PlannerEvent =
       readonly reason: 'query-absence-unclassified' | 'filtered-absence-not-proof'
     }
   | {
+      readonly _tag: 'TombstoneClassified'
+      readonly pageId: PageId
+      readonly surface: SurfaceKey
+      readonly reason: 'remote-trash' | 'moved-out' | 'inaccessible' | 'unknown'
+    }
+  | {
       readonly _tag: 'RemoteObservationAccepted'
       readonly surface: SurfaceKey
       readonly observedHash: Hash
@@ -379,6 +385,14 @@ const planPropertyEdit = (
     )
   }
 
+  if (propertySurface === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current property projection is missing; observe the property before planning a write',
+    )
+  }
+
   if (propertySurface !== undefined) {
     baseGuards.push(guardPropertyAvailability({ availability: propertySurface.availability }))
     if (propertySurface.remoteHash !== intent.baseHash) {
@@ -453,6 +467,14 @@ const planBodyEdit = (
   intent: BodyEditIntent,
 ): PlanDecision => {
   const bodySurface = findBodySurface(snapshot, intent.pageId)
+  if (bodySurface === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current body projection is missing; observe the body before planning a write',
+    )
+  }
+
   const bodyGuard = bodySurface === undefined ? undefined : guardBodySafety(bodySurface.safety)
   const blockedDecision = firstBlocked(intent.surface, [
     guardApiCompatibility(snapshot.api),
@@ -612,12 +634,20 @@ const planLocalDelete = (
     }
   }
 
+  if (row === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current row projection is missing; observe the row before planning remote trash',
+    )
+  }
+
   const blockedDecision = firstBlocked(intent.surface, [
     guardApiCompatibility(snapshot.api),
     guardCapabilityPreflight(snapshot.capabilities),
     guardStaleSurfaceBase({
       baseHash: intent.baseHash,
-      currentHash: row?.propertiesHash ?? intent.baseHash,
+      currentHash: row.propertiesHash,
     }),
   ])
   if (blockedDecision !== undefined) {
@@ -703,16 +733,64 @@ const planQueryAbsence = (
     return blockedDecision
   }
 
-  return {
-    _tag: 'AppendEvents',
-    events: [
-      {
-        _tag: 'TombstoneCandidateObserved',
-        pageId: intent.pageId,
-        surface: intent.surface,
-        reason: 'query-absence-unclassified',
-      },
-    ],
+  switch (query.absence.directRetrieve) {
+    case 'accessible':
+      return { _tag: 'AppendEvents', events: [] }
+    case 'in-trash':
+      return {
+        _tag: 'AppendEvents',
+        events: [
+          {
+            _tag: 'TombstoneClassified',
+            pageId: intent.pageId,
+            surface: intent.surface,
+            reason: 'remote-trash',
+          },
+        ],
+      }
+    case 'moved-out':
+      return {
+        _tag: 'AppendEvents',
+        events: [
+          {
+            _tag: 'TombstoneClassified',
+            pageId: intent.pageId,
+            surface: intent.surface,
+            reason: 'moved-out',
+          },
+        ],
+      }
+    case 'inaccessible':
+      return {
+        _tag: 'AppendEvents',
+        events: [
+          {
+            _tag: 'TombstoneClassified',
+            pageId: intent.pageId,
+            surface: intent.surface,
+            reason: 'inaccessible',
+          },
+        ],
+      }
+    case 'unknown':
+      return {
+        _tag: 'AppendEvents',
+        events: [
+          {
+            _tag: 'TombstoneClassified',
+            pageId: intent.pageId,
+            surface: intent.surface,
+            reason: 'unknown',
+          },
+        ],
+      }
+    case 'not-run':
+    case 'permission-ambiguous':
+      return blockDecision(
+        'QueryAbsenceUnclassified',
+        intent.surface,
+        'Query absence must be directly classified before recording a tombstone candidate',
+      )
   }
 }
 

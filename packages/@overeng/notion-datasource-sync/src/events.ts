@@ -143,8 +143,11 @@ export type RemoteWriteAttempted = typeof RemoteWriteAttempted.Type
 export const RemoteWriteSettled = Schema.TaggedStruct('RemoteWriteSettled', {
   ...eventEnvelopeFields('CommandSettled', 'RemoteWriteSettled'),
   commandId: CommandId,
+  commandTag: Schema.String,
   requestId: NotionRequestId,
   desiredHash: Hash,
+  observedHash: Hash,
+  settlementKind: Schema.Literal('verified-success', 'verified-no-op'),
 }).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteSettled' })
 export type RemoteWriteSettled = typeof RemoteWriteSettled.Type
 

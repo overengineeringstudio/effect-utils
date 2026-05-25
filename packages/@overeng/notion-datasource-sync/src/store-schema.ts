@@ -184,3 +184,16 @@ DELETE FROM capability_projection;
 DELETE FROM query_scan_checkpoint;
 DELETE FROM page_property_checkpoint;
 `
+
+export const rootScopedProjectionTables = [
+  'projection_metadata',
+  'outbox',
+  'conflict_projection',
+  'tombstone_projection',
+  'path_claim',
+  'lease',
+  'api_contract_projection',
+  'capability_projection',
+  'query_scan_checkpoint',
+  'page_property_checkpoint',
+] as const
