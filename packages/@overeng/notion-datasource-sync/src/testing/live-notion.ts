@@ -75,6 +75,7 @@ export const defaultLivePreflightCapabilities = [
   'data_source_retrieve',
   'data_source_query',
   'page_retrieve',
+  'page_property_paginate',
 ] as const satisfies ReadonlyArray<CapabilityName>
 
 const capabilityNames = new Set<CapabilityName>([

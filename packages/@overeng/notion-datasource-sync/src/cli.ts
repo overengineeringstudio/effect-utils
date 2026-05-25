@@ -2,13 +2,23 @@
 
 import { fileURLToPath } from 'node:url'
 
+import { FetchHttpClient } from '@effect/platform'
 import { NodeRuntime } from '@effect/platform-node'
-import { Effect, Schema, Stream } from 'effect'
+import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
+
+import { NotionConfigLive } from '@overeng/notion-effect-client'
 
 import { makeUnsupportedPageBodySyncPort } from './body-adapter.ts'
 import { CanonicalPropertyValue, QueryContract } from './commands.ts'
 import { runWatchDaemon, type WatchDaemonRunResult } from './daemon.ts'
-import { AbsolutePath, DataSourceId, Hash, PageId, PropertyId } from './domain.ts'
+import {
+  AbsolutePath,
+  DataSourceId,
+  Hash,
+  PageId,
+  PropertyId,
+  type CapabilityName,
+} from './domain.ts'
 import type {
   BodySyncError,
   LocalStorageError,
@@ -16,14 +26,26 @@ import type {
   NotionGatewayError,
 } from './errors.ts'
 import { SyncEventId, SyncRootId, type SyncRootId as SyncRootIdType } from './events.ts'
-import { makeGatewayError, makeNotionApiContract } from './gateway.ts'
-import { makeFakeLocalWorkspacePort } from './local-workspace.ts'
+import {
+  makeNotionDataSourceGatewayFromClient,
+  NotionDataSourceGatewayLive,
+  type NotionGatewayClient,
+} from './gateway-notion.ts'
+import {
+  allGatewayCapabilities,
+  makeGatewayError,
+  makeNotionApiContract,
+  type GatewayOperation,
+} from './gateway.ts'
+import { filesystemLocalWorkspacePortLayer } from './local-workspace.ts'
 import { type SchemaPropertyObservation } from './observation.ts'
 import {
   LocalWorkspacePort,
   NotionDataSourceGateway,
   PageBodySyncPort,
+  type LocalWorkspacePortShape,
   type NotionDataSourceGatewayShape,
+  type PageBodySyncPortShape,
 } from './ports.ts'
 import { readUserActionSurface, type UserActionSurface } from './result-envelope.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from './status.ts'
@@ -45,6 +67,15 @@ import {
   type ConflictResolutionChoice,
   type UserCommandResultEnvelope,
 } from './user-commands.ts'
+
+const remoteObservationContext = (context: CliContext) => ({
+  ...(context.requiredCapabilities === undefined
+    ? {}
+    : { requiredCapabilities: context.requiredCapabilities }),
+  ...(context.materializeBodies === undefined
+    ? {}
+    : { materializeBodies: context.materializeBodies }),
+})
 
 export type CliCommand =
   | {
@@ -88,10 +119,25 @@ export type CliContext = {
   readonly workspaceRoot: typeof AbsolutePath.Type
   readonly queryContract: QueryContract
   readonly schemaProperties: ReadonlyArray<SchemaPropertyObservation>
+  readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
+  readonly materializeBodies?: boolean
   readonly maxExecutorSteps?: number
   readonly leaseToken?: string
   readonly leaseDurationMs?: number
   readonly now?: () => Date
+}
+
+export type CliRuntimeEnv = {
+  readonly NOTION_API_TOKEN?: string
+  readonly NOTION_TOKEN?: string
+}
+
+export type CliRuntimeOptions = {
+  readonly env?: CliRuntimeEnv
+  readonly gateway?: NotionDataSourceGatewayShape
+  readonly gatewayClient?: NotionGatewayClient
+  readonly body?: PageBodySyncPortShape
+  readonly workspace?: LocalWorkspacePortShape
 }
 
 export type DoctorResult = {
@@ -132,6 +178,8 @@ const SchemaPropertyObservationJson = Schema.Struct({
   configHash: Hash,
   writeClass: Schema.Literal('writable', 'computed', 'unsupported'),
 }).annotations({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
+
+const capabilityNames = new Set<CapabilityName>(allGatewayCapabilities)
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(
   schema: TSchema,
@@ -214,7 +262,7 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
         }),
       )
     case 'pull':
-      return pullOneShotSync(context).pipe(
+      return pullOneShotSync({ ...context, ...remoteObservationContext(context) }).pipe(
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
     case 'push':
@@ -225,6 +273,7 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
     case 'sync':
       return syncOneShot({
         ...context,
+        ...remoteObservationContext(context),
         ...withOptionalRuntimeOptions(context),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'status':
@@ -238,6 +287,7 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
     case 'watch':
       return runWatchDaemon({
         ...context,
+        ...remoteObservationContext(context),
         statePath: command.statePath,
         ...(command.maxCycles === undefined ? {} : { maxCycles: command.maxCycles }),
         ...withOptionalRuntimeOptions(context),
@@ -398,6 +448,33 @@ const positiveIntegerFlag = (
   })
 }
 
+const capabilityListFlag = (
+  flags: Map<string, string | true>,
+  name: string,
+): ReadonlyArray<CapabilityName> | undefined => {
+  const value = flags.get(name)
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new CliArgumentError({ message: `Missing value for --${name}` })
+  }
+
+  const capabilities = value
+    .split(',')
+    .map((capability) => capability.trim())
+    .filter((capability) => capability.length > 0)
+
+  const invalid = capabilities.find(
+    (capability) => capabilityNames.has(capability as CapabilityName) === false,
+  )
+  if (invalid !== undefined) {
+    throw new CliArgumentError({
+      message: `Unsupported capability in --${name}: ${invalid}`,
+    })
+  }
+
+  return [...new Set(capabilities)] as ReadonlyArray<CapabilityName>
+}
+
 const parseChoice = (flags: Map<string, string | true>): ConflictResolutionChoice => {
   const strategy = optionalFlag(flags, 'strategy') ?? 'keep-remote'
   switch (strategy) {
@@ -482,6 +559,7 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
   const flags = parseFlags(argv)
   const store = openNotionSyncStore({ path: requiredFlag(flags, 'store') })
   const maxExecutorSteps = positiveIntegerFlag(flags, 'max-executor-steps')
+  const requiredCapabilities = capabilityListFlag(flags, 'required-capabilities')
   return {
     store,
     rootId: decode(SyncRootId, requiredFlag(flags, 'root-id')),
@@ -506,30 +584,93 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
             Schema.Array(SchemaPropertyObservationJson),
             requiredFlag(flags, 'schema-properties-json'),
           ) as ReadonlyArray<SchemaPropertyObservation>),
+    ...(requiredCapabilities === undefined ? {} : { requiredCapabilities }),
+    ...(flags.has('no-materialize-bodies') === false ? {} : { materializeBodies: false }),
     ...(maxExecutorSteps === undefined ? {} : { maxExecutorSteps }),
   }
 }
 
-const cliGatewayUnavailable = (operation: string) =>
+const cliGatewayConfigurationError = (operation: GatewayOperation) =>
   makeGatewayError({
-    operation: operation as Parameters<typeof makeGatewayError>[0]['operation'],
+    operation,
     guard: 'CapabilityPreflightFailed',
     message:
-      'No live Notion gateway is configured for this CLI entrypoint; use the library runner with provided services or add adapter configuration.',
+      'Missing Notion API token for the live CLI gateway; set NOTION_API_TOKEN or NOTION_TOKEN, or use the library runner with an injected gateway client.',
   })
 
-const unsupportedCliGateway: NotionDataSourceGatewayShape = {
-  apiContract: makeNotionApiContract({ supportedCapabilities: [] }),
-  preflightCapabilities: () => Effect.fail(cliGatewayUnavailable('preflightCapabilities')),
-  retrieveDataSource: () => Effect.fail(cliGatewayUnavailable('retrieveDataSource')),
-  queryRows: () => Stream.fail(cliGatewayUnavailable('queryRows')),
-  retrievePage: () => Effect.fail(cliGatewayUnavailable('retrievePage')),
-  retrievePageProperty: () => Stream.fail(cliGatewayUnavailable('retrievePageProperty')),
-  patchPageProperties: () => Effect.fail(cliGatewayUnavailable('patchPageProperties')),
-  patchDataSourceSchema: () => Effect.fail(cliGatewayUnavailable('patchDataSourceSchema')),
-  trashPage: () => Effect.fail(cliGatewayUnavailable('trashPage')),
-  restorePage: () => Effect.fail(cliGatewayUnavailable('restorePage')),
+const tokenFromEnv = (env: CliRuntimeEnv): string | undefined => {
+  if (env.NOTION_API_TOKEN !== undefined && env.NOTION_API_TOKEN.length > 0) {
+    return env.NOTION_API_TOKEN
+  }
+  if (env.NOTION_TOKEN !== undefined && env.NOTION_TOKEN.length > 0) {
+    return env.NOTION_TOKEN
+  }
+  return undefined
 }
+
+const missingTokenCliGateway: NotionDataSourceGatewayShape = {
+  apiContract: makeNotionApiContract({ supportedCapabilities: [] }),
+  preflightCapabilities: () => Effect.fail(cliGatewayConfigurationError('preflightCapabilities')),
+  retrieveDataSource: () => Effect.fail(cliGatewayConfigurationError('retrieveDataSource')),
+  queryRows: () => Stream.fail(cliGatewayConfigurationError('queryRows')),
+  retrievePage: () => Effect.fail(cliGatewayConfigurationError('retrievePage')),
+  retrievePageProperty: () => Stream.fail(cliGatewayConfigurationError('retrievePageProperty')),
+  patchPageProperties: () => Effect.fail(cliGatewayConfigurationError('patchPageProperties')),
+  patchDataSourceSchema: () => Effect.fail(cliGatewayConfigurationError('patchDataSourceSchema')),
+  trashPage: () => Effect.fail(cliGatewayConfigurationError('trashPage')),
+  restorePage: () => Effect.fail(cliGatewayConfigurationError('restorePage')),
+}
+
+export const makeCliRuntimeLayer = (
+  context: CliContext,
+  options: CliRuntimeOptions = {},
+): Layer.Layer<NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort> => {
+  const envToken = tokenFromEnv(options.env ?? process.env)
+  const gatewayLayer =
+    options.gateway !== undefined
+      ? Layer.succeed(NotionDataSourceGateway, options.gateway)
+      : options.gatewayClient !== undefined
+        ? Layer.succeed(
+            NotionDataSourceGateway,
+            makeNotionDataSourceGatewayFromClient(options.gatewayClient),
+          )
+        : envToken === undefined
+          ? Layer.succeed(NotionDataSourceGateway, missingTokenCliGateway)
+          : NotionDataSourceGatewayLive.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  NotionConfigLive({
+                    authToken: Redacted.make(envToken),
+                    retryEnabled: true,
+                    maxRetries: 2,
+                    retryBaseDelay: 500,
+                  }),
+                  FetchHttpClient.layer,
+                ),
+              ),
+            )
+
+  return Layer.mergeAll(
+    gatewayLayer,
+    Layer.succeed(
+      PageBodySyncPort,
+      options.body ??
+        makeUnsupportedPageBodySyncPort({
+          message:
+            'No NotionMD PageBodySyncPort is configured for the CLI; body sync is fail-closed until the NotionMD adapter is injected.',
+        }),
+    ),
+    options.workspace === undefined
+      ? filesystemLocalWorkspacePortLayer({ root: context.workspaceRoot })
+      : Layer.succeed(LocalWorkspacePort, options.workspace),
+  )
+}
+
+export const runCliCommandWithRuntime = (
+  command: CliCommand,
+  context: CliContext,
+  options: CliRuntimeOptions = {},
+) => runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer(context, options)))
 
 const runMain = (argv: ReadonlyArray<string>) =>
   Effect.gen(function* () {
@@ -541,11 +682,7 @@ const runMain = (argv: ReadonlyArray<string>) =>
       try: () => parseCliContext(argv),
       catch: (cause) => cause,
     })
-    const result = yield* runCliCommand(command, context).pipe(
-      Effect.provideService(NotionDataSourceGateway, unsupportedCliGateway),
-      Effect.provideService(PageBodySyncPort, makeUnsupportedPageBodySyncPort()),
-      Effect.provideService(LocalWorkspacePort, makeFakeLocalWorkspacePort()),
-    )
+    const result = yield* runCliCommandWithRuntime(command, context)
     yield* Effect.sync(() => process.stdout.write(renderCliResultJson(result)))
     yield* Effect.sync(() => context.store.close())
   })
