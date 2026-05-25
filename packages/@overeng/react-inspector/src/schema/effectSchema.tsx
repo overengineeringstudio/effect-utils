@@ -43,6 +43,14 @@ export interface SchemaInfo {
   constraints?: ReadonlyArray<SchemaConstraint>
   possibleValues?: ReadonlyArray<string>
   possibleValuesTruncated?: number
+  /**
+   * Schema-derived container label for arrays / records / tuples, e.g.
+   * `Array<Order Item>`, `Record<string, Money>`, `[A, B, C]`. Prefer this
+   * over the runtime constructor name (`Array`, `Object`) when rendering the
+   * type badge for a container. Falls back to `undefined` when the schema
+   * doesn't carry enough info.
+   */
+  containerLabel?: string
   hasContent: boolean
 }
 
@@ -169,13 +177,23 @@ export const getFieldSchema = (
 ): S.Schema.AnyNoContext | undefined => {
   const ast = unwrapAstForDisplay(schema.ast)
 
-  if (ast._tag === 'TypeLiteral' && 'propertySignatures' in ast) {
+  if (ast._tag === 'TypeLiteral') {
     const typeLiteralAst = ast as SchemaAST.TypeLiteral
     const propSig = typeLiteralAst.propertySignatures.find((sig) => sig.name === fieldName)
     if (propSig !== undefined) {
       return {
         ast: mergeAnnotations(propSig.type, propSig.annotations),
       } as S.Schema.AnyNoContext
+    }
+    /*
+     * Record / `Schema.Record({ key, value })` case — no explicit
+     * propertySignature, but the index signature gives us the value type.
+     * Without this fallback, fields inside records would render without
+     * schema context (tooltip, pretty formatting, etc.).
+     */
+    const indexSig = typeLiteralAst.indexSignatures[0]
+    if (indexSig !== undefined) {
+      return { ast: indexSig.type } as S.Schema.AnyNoContext
     }
   }
 
@@ -443,6 +461,90 @@ const isTrivialDescription = (description: string | undefined): boolean =>
   description !== undefined && TRIVIAL_DESCRIPTIONS.has(description)
 
 /**
+ * Build a schema-derived label for container kinds. Returns `undefined` when
+ * the schema doesn't describe a container, or doesn't carry enough info to
+ * produce a useful label (no named element / value).
+ *
+ * Examples:
+ * - `Schema.Array(OrderItem)` → `Array<Order Item>`
+ * - `Schema.Record({ key: String, value: Money })` → `Record<string, Money>`
+ * - `Schema.Tuple(String, Number, Boolean)` → `[string, number, boolean]`
+ */
+const getContainerLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
+  const ast = unwrapAstForDisplay(rawAst)
+
+  if (ast._tag === 'TupleType') {
+    const tupleAst = ast as SchemaAST.TupleType
+    /* Array (TupleType with rest-only and no positional elements). */
+    if (tupleAst.elements.length === 0 && tupleAst.rest.length > 0) {
+      const restType = tupleAst.rest[0]?.type
+      if (restType === undefined) return undefined
+      const elementName = getElementLabelForAST(restType)
+      return elementName !== undefined ? `Array<${elementName}>` : undefined
+    }
+    /* Fixed tuple — render positional element labels. */
+    if (tupleAst.elements.length > 0) {
+      const parts: string[] = []
+      for (const el of tupleAst.elements) {
+        const label = getElementLabelForAST(el.type)
+        if (label === undefined) return undefined
+        parts.push(label)
+      }
+      return `[${parts.join(', ')}]`
+    }
+    return undefined
+  }
+
+  if (ast._tag === 'TypeLiteral') {
+    const typeLit = ast as SchemaAST.TypeLiteral
+    /* Record (only index signatures, no explicit properties). */
+    if (typeLit.propertySignatures.length === 0 && typeLit.indexSignatures.length > 0) {
+      const indexSig = typeLit.indexSignatures[0]!
+      const keyLabel = getElementLabelForAST(indexSig.parameter) ?? 'string'
+      const valueLabel = getElementLabelForAST(indexSig.type)
+      if (valueLabel === undefined) return undefined
+      return `Record<${keyLabel}, ${valueLabel}>`
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * Best-effort short label for an element/value/key AST inside a container
+ * label. Prefers the user-set `title`/`identifier`, falls back to the type
+ * kind (`string`, `number`, ...). Returns `undefined` for things we can't
+ * name simply (anonymous structs, anonymous unions).
+ */
+const getElementLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
+  const ast = unwrapAstForDisplay(rawAst)
+  const annotations = getAnnotationsFromAST(rawAst)
+  const display = getDisplayName(annotations)
+  if (display !== undefined) return display
+
+  switch (ast._tag) {
+    case 'StringKeyword':
+      return 'string'
+    case 'NumberKeyword':
+      return 'number'
+    case 'BooleanKeyword':
+      return 'boolean'
+    case 'BigIntKeyword':
+      return 'bigint'
+    case 'SymbolKeyword':
+      return 'symbol'
+    case 'UnknownKeyword':
+      return 'unknown'
+    case 'AnyKeyword':
+      return 'any'
+    case 'Literal':
+      return stringifyShort((ast as SchemaAST.Literal).literal)
+    default:
+      return undefined
+  }
+}
+
+/**
  * Build the display-ready info bundle for a schema.
  *
  * Returns even when the schema has no annotations — callers should check
@@ -473,6 +575,7 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
 
   const constraints = getConstraintsFromJSONSchema(rawAst)
   const possible = getPossibleValuesFromAST(rawAst)
+  const containerLabel = getContainerLabelForAST(rawAst)
 
   const meaningfulDescription = isTrivialDescription(annotations.description)
     ? undefined
@@ -496,6 +599,7 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
     constraints: constraints.length > 0 ? constraints : undefined,
     possibleValues: possible?.values,
     possibleValuesTruncated: possible?.truncated,
+    containerLabel,
     hasContent,
   }
 }

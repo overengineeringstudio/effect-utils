@@ -745,3 +745,70 @@ export const SchemaTooltipMixedAnnotated = {
     </div>
   ),
 }
+
+/* ============================================================================
+ * Container labels for arrays, records, tuples (#686)
+ * ============================================================================ */
+
+const ItemSchema = Schema.Struct({
+  sku: Schema.String,
+  qty: Schema.Number,
+}).annotations({
+  identifier: 'Item',
+  title: 'Item',
+})
+
+const InventorySchema = Schema.Struct({
+  /* Anonymous `Schema.Array(Item)` — label becomes `Array<Item>`. */
+  defaultItems: Schema.Array(ItemSchema),
+  /* Named array — its own identifier wins over the constructed label. */
+  pinnedItems: Schema.Array(ItemSchema).annotations({
+    identifier: 'PinnedItems',
+    title: 'Pinned Items',
+    description: 'Items pinned to the top of the inventory view.',
+  }),
+  /* Record with a named value schema → `Record<string, Money>`. */
+  priceOverrides: Schema.Record({ key: Schema.String, value: MoneyV2Schema }),
+  /* Fixed tuple of primitives → `[number, number, number]`. */
+  rgb: Schema.Tuple(Schema.Number, Schema.Number, Schema.Number),
+}).annotations({
+  identifier: 'Inventory',
+  title: 'Inventory',
+})
+
+const sampleInventory = {
+  defaultItems: [
+    { sku: 'A-001', qty: 12 },
+    { sku: 'A-002', qty: 4 },
+  ],
+  pinnedItems: [{ sku: 'P-100', qty: 1 }],
+  priceOverrides: {
+    'A-001': 19.99,
+    'A-002': 49.5,
+  },
+  rgb: [255, 128, 0] as const,
+}
+
+/**
+ * Container labels — addresses #686.
+ *
+ * Arrays show `Array<Item>(N)` instead of `Array(N)`. Records show
+ * `Record<string, Money>` instead of `Object`. Tuples show
+ * `[number, number, number]`. A named array schema's `identifier` wins over
+ * the constructed `Array<…>` label.
+ */
+export const ContainerLabels = {
+  render: () => (
+    <div>
+      <Hint>
+        Arrays, records, and tuples now surface their schema-derived type in the type-badge slot.
+        Compare with <code>ArrayOfSchemaItems</code> for the array-only path.
+      </Hint>
+      <SchemaObjectInspector
+        data={sampleInventory}
+        schema={InventorySchema as unknown as typeof ShowcaseUserSchema}
+        expandLevel={2}
+      />
+    </div>
+  ),
+}

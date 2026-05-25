@@ -41,12 +41,33 @@ export const createSchemaAwareNodeRenderer = ({
       return <span>{prettyFormatted}</span>
     }
 
+    if (Array.isArray(object) === true) {
+      /*
+       * For arrays whose schema describes the element type, render
+       * `Array<Element>(N)` instead of the default `Array(N)`. The array
+       * schema's own `title`/`identifier` (e.g. `Schema.Array(Item)
+       * .annotations({ identifier: 'OrderItems' })`) wins over the
+       * constructed `Array<Element>` label.
+       */
+      const schemaDisplayName = schemaCtx.getDisplayName()
+      const containerLabel = schemaCtx.getSchemaInfo()?.containerLabel
+      const label = schemaDisplayName ?? containerLabel
+      if (label !== undefined) {
+        return (
+          <span>
+            <span style={{ fontStyle: 'italic' }}>{label}</span>
+            <span>{`(${object.length})`}</span>
+          </span>
+        )
+      }
+      return <ObjectValue object={object} />
+    }
+
     if (
       typeof object === 'object' &&
       object !== null &&
       !(object instanceof Date) &&
-      !(object instanceof RegExp) &&
-      Array.isArray(object) === false
+      !(object instanceof RegExp)
     ) {
       const schemaDisplayName = schemaCtx.getDisplayName()
       if (schemaDisplayName !== undefined && object.constructor?.name === 'Object') {
@@ -218,10 +239,12 @@ export const createSchemaAwareNodeRenderer = ({
      * trigger — hovering it shows the type's annotations.
      */
     if (expanded === true && isComplexObject === true) {
-      const label = schemaDisplayName ?? data.constructor?.name ?? 'Object'
+      const containerLabel = info?.containerLabel
+      const schemaSourcedLabel = schemaDisplayName ?? containerLabel
+      const label = schemaSourcedLabel ?? data.constructor?.name ?? 'Object'
       return (
         <SchemaTooltip info={info}>
-          <span style={schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined}>
+          <span style={schemaSourcedLabel !== undefined ? { fontStyle: 'italic' } : undefined}>
             {label}
           </span>
         </SchemaTooltip>

@@ -42,6 +42,29 @@ Each entry should include:
 
 ### Added
 
+#### Schema-Derived Container Labels (2026-05-25, addresses #686)
+
+Arrays, records, and tuples now surface their schema-derived element/value
+type in the type-badge slot instead of the runtime constructor name.
+
+- `Schema.Array(Item)` → `Array<Item>(N)` (was `Array(N)`)
+- `Schema.Array(Item).annotations({ identifier: 'Pinned' })` → `Pinned(N)`
+- `Schema.Record({ key: String, value: Money })` → `Record<string, Money>`
+  (was `Object`)
+- `Schema.Tuple(String, Number, Boolean)` → `[string, number, boolean](N)`
+
+Element/value names follow the same precedence as everywhere else:
+`title` ?? `identifier` ?? type-kind (`string`, `number`, ...). Anonymous
+structs and unions return `undefined` and fall through to the previous
+behavior.
+
+`getFieldSchema` now falls back to the first `indexSignature.type` when no
+`propertySignature` matches, so per-field schema resolution works inside
+records (tooltip, pretty formatting, nested field navigation).
+
+Out of scope (tracked as #686 follow-ups): `Map`/`Set` containers,
+runtime tagged-union narrowing.
+
 #### Rich Schema Annotation Tooltips (2026-05-25)
 
 Replaces the previous native `title=` attribute (browser default tooltip) with

@@ -78,8 +78,28 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
       previewArray.push(<span key="ellipsis">…</span>)
     }
     const arrayLength = object.length
+
+    /*
+     * Prefer the array schema's own name (e.g. `OrderItems`) over the
+     * constructed `Array<Element>` label. The label sits in the type-badge
+     * slot before the `(N)` length suffix.
+     */
+    const arrayDisplayName = schemaCtx.getDisplayName()
+    const info = schemaCtx.getSchemaInfo()
+    const containerLabel = info?.containerLabel
+    const label = arrayDisplayName ?? containerLabel
+    const descriptionStyle: React.CSSProperties = {
+      ...(styles.objectDescription as React.CSSProperties),
+      fontStyle: 'italic',
+    }
+
     return (
       <React.Fragment>
+        {label !== undefined ? (
+          <SchemaTooltip info={info}>
+            <span style={descriptionStyle}>{`${label} `}</span>
+          </SchemaTooltip>
+        ) : null}
         <span style={styles.objectDescription as React.CSSProperties}>
           {arrayLength === 0 ? `` : `(${arrayLength})\xa0`}
         </span>
@@ -119,15 +139,22 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
     }
 
     const schemaDisplayName = schemaCtx.getDisplayName()
+    const info = schemaCtx.getSchemaInfo()
+    /*
+     * Container label precedence: user-set title/identifier > derived
+     * `Record<K, V>` > runtime constructor name. We want a schema-sourced
+     * label whenever possible so records show as `Record<string, Money>`
+     * rather than `Object`, and named structs show as their identifier.
+     */
+    const schemaSourcedName = schemaDisplayName ?? info?.containerLabel
     const objectConstructorName =
-      schemaDisplayName ?? (object.constructor !== undefined ? object.constructor.name : 'Object')
+      schemaSourcedName ?? (object.constructor !== undefined ? object.constructor.name : 'Object')
 
     const descriptionStyle: React.CSSProperties = {
       ...(styles.objectDescription as React.CSSProperties),
-      ...(schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined),
+      ...(schemaSourcedName !== undefined ? { fontStyle: 'italic' } : undefined),
     }
 
-    const info = schemaCtx.getSchemaInfo()
     /*
      * Normally we suppress the "Object " prefix to match the browser-devtools
      * convention for unnamed objects. But if the schema carries tooltip
