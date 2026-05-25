@@ -28,6 +28,7 @@ export class NotionGatewayError extends Schema.TaggedError<NotionGatewayError>()
     dataSourceId: Schema.optional(DataSourceId),
     pageId: Schema.optional(PageId),
     requestId: Schema.optional(Schema.String),
+    guard: Schema.optional(GuardName),
     message: Schema.String,
     cause: Schema.optional(Schema.Defect),
   },
@@ -38,6 +39,8 @@ export class LocalStoreError extends Schema.TaggedError<LocalStoreError>()('Loca
   message: Schema.String,
   cause: Schema.optional(Schema.Defect),
 }) {}
+
+export type LocalStorageError = LocalStoreError
 
 export class BodySyncError extends Schema.TaggedError<BodySyncError>()('BodySyncError', {
   operation: Schema.String,

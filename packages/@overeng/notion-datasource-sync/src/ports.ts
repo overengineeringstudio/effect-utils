@@ -18,6 +18,7 @@ import type {
   TrashPageCommand,
 } from './commands.ts'
 import type {
+  AbsolutePath,
   CapabilityPreflightInput,
   CapabilityPreflightResult,
   DataSourceId,
@@ -33,7 +34,12 @@ import type {
   PathClaimResult,
   BodyPointer,
 } from './domain.ts'
-import type { BodySyncError, LocalStoreError, NotionGatewayError } from './errors.ts'
+import type {
+  BodySyncError,
+  LocalStorageError,
+  LocalStoreError,
+  NotionGatewayError,
+} from './errors.ts'
 import type { SyncEvent } from './events.ts'
 
 export type NotionDataSourceGatewayShape = {
@@ -83,9 +89,11 @@ export class PageBodySyncPort extends Context.Tag(
 )<PageBodySyncPort, PageBodySyncPortShape>() {}
 
 export type LocalWorkspacePortShape = {
-  readonly scan: (root: string) => Stream.Stream<LocalArtifactObservation, LocalStoreError>
-  readonly claimPath: (claim: PathClaimPlan) => Effect.Effect<PathClaimResult, LocalStoreError>
-  readonly materialize: (plan: MaterializePlan) => Effect.Effect<MaterializeResult, LocalStoreError>
+  readonly scan: (root: AbsolutePath) => Stream.Stream<LocalArtifactObservation, LocalStorageError>
+  readonly claimPath: (claim: PathClaimPlan) => Effect.Effect<PathClaimResult, LocalStorageError>
+  readonly materialize: (
+    plan: MaterializePlan,
+  ) => Effect.Effect<MaterializeResult, LocalStorageError>
 }
 
 export class LocalWorkspacePort extends Context.Tag(

@@ -249,11 +249,25 @@ export const BodyIntent = Schema.TaggedStruct('BodyIntent', {
 }).annotations({ identifier: 'NotionDatasourceSync.BodyIntent' })
 export type BodyIntent = typeof BodyIntent.Type
 
+export const BodyConflictReason = Schema.Literal(
+  'StaleSurfaceBase',
+  'BodyLossyRemote',
+  'MarkdownUnknownBlocksAmbiguous',
+  'MarkdownSelectionAmbiguous',
+  'MarkdownWouldDeleteChildren',
+  'MarkdownSyncedPageUnsupported',
+  'BodyAdapterConflict',
+  'BodyAdapterNonBodyMutation',
+).annotations({ identifier: 'NotionDatasourceSync.BodyConflictReason' })
+export type BodyConflictReason = typeof BodyConflictReason.Type
+
 export const BodyConflict = Schema.TaggedStruct('BodyConflict', {
   pageId: PageId,
   baseBodyPointer: BodyPointer,
   localBodyHash: Hash,
   remoteBodyHash: Hash,
+  reason: Schema.optional(BodyConflictReason),
+  message: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.BodyConflict' })
 export type BodyConflict = typeof BodyConflict.Type
 

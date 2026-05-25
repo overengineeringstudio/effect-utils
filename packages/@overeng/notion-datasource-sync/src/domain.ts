@@ -60,6 +60,24 @@ export const Hash = Schema.String.pipe(
 )
 export type Hash = typeof Hash.Type
 
+export const AbsolutePath = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('NotionDatasourceSync.AbsolutePath'),
+  Schema.annotations({ identifier: 'NotionDatasourceSync.AbsolutePath' }),
+)
+export type AbsolutePath = typeof AbsolutePath.Type
+
+export const WorkspaceRelativePath = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('NotionDatasourceSync.WorkspaceRelativePath'),
+  Schema.annotations({ identifier: 'NotionDatasourceSync.WorkspaceRelativePath' }),
+)
+export type WorkspaceRelativePath = typeof WorkspaceRelativePath.Type
+
+export const OwnWriteSuppressionToken = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('NotionDatasourceSync.OwnWriteSuppressionToken'),
+  Schema.annotations({ identifier: 'NotionDatasourceSync.OwnWriteSuppressionToken' }),
+)
+export type OwnWriteSuppressionToken = typeof OwnWriteSuppressionToken.Type
+
 export const PositiveInt = Schema.Number.pipe(
   Schema.int(),
   Schema.positive(),
@@ -150,26 +168,28 @@ export type PagePropertyItem = typeof PagePropertyItem.Type
 
 export const LocalArtifactObservation = Schema.TaggedStruct('LocalArtifactObservation', {
   pageId: PageId,
-  path: Schema.NonEmptyTrimmedString,
+  path: WorkspaceRelativePath,
   contentHash: Hash,
   observedAt: Schema.DateTimeUtc,
+  state: Schema.Literal('present', 'delete-candidate'),
+  ownWriteSuppressionToken: Schema.optional(OwnWriteSuppressionToken),
 }).annotations({ identifier: 'NotionDatasourceSync.LocalArtifactObservation' })
 export type LocalArtifactObservation = typeof LocalArtifactObservation.Type
 
 export const PathClaimPlan = Schema.TaggedStruct('PathClaimPlan', {
   pageId: PageId,
-  path: Schema.NonEmptyTrimmedString,
+  path: WorkspaceRelativePath,
 }).annotations({ identifier: 'NotionDatasourceSync.PathClaimPlan' })
 export type PathClaimPlan = typeof PathClaimPlan.Type
 
 export const PathClaimResult = Schema.Union(
   Schema.TaggedStruct('claimed', {
     pageId: PageId,
-    path: Schema.NonEmptyTrimmedString,
+    path: WorkspaceRelativePath,
   }),
   Schema.TaggedStruct('conflict', {
     pageId: PageId,
-    requestedPath: Schema.NonEmptyTrimmedString,
+    requestedPath: WorkspaceRelativePath,
     existingPageId: PageId,
   }),
 ).annotations({ identifier: 'NotionDatasourceSync.PathClaimResult' })
@@ -177,14 +197,15 @@ export type PathClaimResult = typeof PathClaimResult.Type
 
 export const MaterializePlan = Schema.TaggedStruct('MaterializePlan', {
   pageId: PageId,
-  path: Schema.NonEmptyTrimmedString,
+  path: WorkspaceRelativePath,
   bodyPointer: BodyPointer,
 }).annotations({ identifier: 'NotionDatasourceSync.MaterializePlan' })
 export type MaterializePlan = typeof MaterializePlan.Type
 
 export const MaterializeResult = Schema.TaggedStruct('MaterializeResult', {
   pageId: PageId,
-  path: Schema.NonEmptyTrimmedString,
+  path: WorkspaceRelativePath,
   bodyHash: Hash,
+  ownWriteSuppressionToken: OwnWriteSuppressionToken,
 }).annotations({ identifier: 'NotionDatasourceSync.MaterializeResult' })
 export type MaterializeResult = typeof MaterializeResult.Type
