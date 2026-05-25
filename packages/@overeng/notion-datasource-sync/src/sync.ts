@@ -1,6 +1,10 @@
 import { Effect, Schema } from 'effect'
 
-import { bodySurfaceKey, pageSurfaceKey } from './canonical.ts'
+import {
+  bodySurfaceKey,
+  pageSurfaceKey,
+  queryContractHash as computeQueryContractHash,
+} from './canonical.ts'
 import { BodyPointer, Hash, PageId, PropertyId, type AbsolutePath } from './domain.ts'
 import type {
   BodySyncError,
@@ -265,6 +269,25 @@ const canClassifyDisappearedRows = (options: OneShotPullOptions): boolean =>
   options.queryContract.filter === null &&
   options.queryContract.highWatermark === null
 
+const resumeCursorForPull = (options: OneShotPullOptions) => {
+  const expectedQueryContractHash = computeQueryContractHash(
+    {
+      _tag: 'QueryRowsInput',
+      dataSourceId: options.dataSourceId,
+      queryContract: options.queryContract,
+      startCursor: null,
+    },
+    options.queryContract.apiVersion,
+  )
+  const checkpoint = options.store.readQueryCheckpoint({
+    rootId: options.rootId,
+    dataSourceId: options.dataSourceId,
+    queryContractHash: expectedQueryContractHash,
+  })
+
+  return checkpoint?.complete === false ? checkpoint.nextCursor : null
+}
+
 const disappearanceCandidateEvents = ({
   options,
   observation,
@@ -273,6 +296,7 @@ const disappearanceCandidateEvents = ({
   readonly observation: RemoteObservationResult
 }) => {
   if (
+    observation.query.startCursor !== null ||
     observation.query.complete === false ||
     observation.query.cappedAtLimit === true ||
     observation.query.queryContractHash === undefined ||
@@ -328,7 +352,10 @@ export const pullOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pullOneShotS
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   > =>
     Effect.gen(function* () {
-      const observation = yield* observeRemoteDataSource(options)
+      const observation = yield* observeRemoteDataSource({
+        ...options,
+        startCursor: options.startCursor ?? resumeCursorForPull(options),
+      })
       let appendedEvents = 0
       for (const event of observation.events) {
         if (options.dryRun === true) continue

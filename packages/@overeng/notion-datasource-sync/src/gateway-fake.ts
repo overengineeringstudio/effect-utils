@@ -1,11 +1,11 @@
-import { Effect, Layer, Stream } from 'effect'
+import { Effect, Layer, Schema, Stream } from 'effect'
 
+import { queryContractHash as computeQueryContractHash } from './canonical.ts'
 import type {
   PagePropertyItemPage,
   RetrievePagePropertyInput,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
-  QueryRowsInput,
   QueryRowsPage,
   RestorePageCommand,
   TrashPageCommand,
@@ -17,7 +17,6 @@ import {
   type CapabilityName,
   type DataSourceId,
   type DataSourceSnapshot,
-  type Hash,
   type NotionApiContract,
   type PageId,
   type PagePropertyItem,
@@ -56,6 +55,7 @@ export type FakeNotionDataSourceGatewayConfig = {
   readonly dataSources: ReadonlyArray<DataSourceSnapshot>
   readonly pages: ReadonlyArray<FakeNotionPageRecord>
   readonly queryResultCap?: number
+  readonly queryPageLimit?: number
   readonly pagePropertyPageSize?: number
   readonly permissionAmbiguousDataSourceIds?: ReadonlyArray<DataSourceId>
   readonly permissionAmbiguousPageIds?: ReadonlyArray<PageId>
@@ -101,6 +101,7 @@ const hasPageId = (pageIds: ReadonlySet<string>, pageId: PageId): boolean =>
   pageIds.has(pageKey(pageId))
 const hasDataSourceId = (dataSourceIds: ReadonlySet<string>, dataSourceId: DataSourceId): boolean =>
   dataSourceIds.has(dataSourceKey(dataSourceId))
+const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
 
 const findDataSource = (
   dataSources: Map<string, DataSourceSnapshot>,
@@ -145,34 +146,6 @@ const findPage = (
     : Effect.succeed(page)
 }
 
-const stableStringify = (value: unknown): string => {
-  if (value === undefined) {
-    return '"[undefined]"'
-  }
-
-  if (
-    value !== null &&
-    typeof value === 'object' &&
-    'toJSON' in value &&
-    typeof value.toJSON === 'function'
-  ) {
-    return stableStringify(value.toJSON())
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`
-  }
-
-  if (value !== null && typeof value === 'object') {
-    return `{${Object.entries(value)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-      .join(',')}}`
-  }
-
-  return JSON.stringify(value)
-}
-
 const validatePageSize = ({
   operation,
   pageSize,
@@ -196,21 +169,7 @@ const validatePageSize = ({
         }),
       )
 
-export const queryContractHash = (input: QueryRowsInput, apiVersion: string): Hash =>
-  hashStoreBytes(
-    stableStringify({
-      apiVersion,
-      dataSourceId: input.dataSourceId,
-      queryContract: {
-        apiVersion: input.queryContract.apiVersion,
-        filter: input.queryContract.filter,
-        highWatermark: input.queryContract.highWatermark,
-        membershipScope: input.queryContract.membershipScope,
-        pageSize: input.queryContract.pageSize,
-        sorts: input.queryContract.sorts,
-      },
-    }),
-  )
+export { queryContractHash } from './canonical.ts'
 
 export const makeFakeNotionDataSourceGateway = (
   config: FakeNotionDataSourceGatewayConfig,
@@ -247,6 +206,7 @@ export const makeFakeNotionDataSourceGateway = (
     (config.readAfterWriteMismatchPageIds ?? []).map((pageId) => pageKey(pageId)),
   )
   const queryResultCap = config.queryResultCap ?? Number.POSITIVE_INFINITY
+  const queryPageLimit = config.queryPageLimit ?? Number.POSITIVE_INFINITY
   const pagePropertyPageSize = config.pagePropertyPageSize ?? 100
   let requestSequence = 0
 
@@ -299,6 +259,10 @@ export const makeFakeNotionDataSourceGateway = (
             startOffset,
           })),
           Effect.map(({ pageSize, startOffset }): ReadonlyArray<QueryRowsPage> => {
+            const highWatermark =
+              input.queryContract.highWatermark === null
+                ? undefined
+                : encodeDateTimeUtc(input.queryContract.highWatermark)
             const allRows = [...pages.values()]
               .filter((page) => page.snapshot.dataSourceId === input.dataSourceId)
               .filter(
@@ -306,6 +270,19 @@ export const makeFakeNotionDataSourceGateway = (
                   input.queryContract.membershipScope === 'all-data-source-rows' ||
                   page.visibleInFilteredQueries === true,
               )
+              .filter(
+                (page) =>
+                  highWatermark === undefined ||
+                  encodeDateTimeUtc(page.row.lastEditedTime) >= highWatermark,
+              )
+              .toSorted((left, right) => {
+                const edited = encodeDateTimeUtc(left.row.lastEditedTime).localeCompare(
+                  encodeDateTimeUtc(right.row.lastEditedTime),
+                )
+                return edited === 0
+                  ? pageKey(left.row.pageId).localeCompare(pageKey(right.row.pageId))
+                  : edited
+              })
               .map((page) => ({
                 _tag: 'QueriedRow' as const,
                 pageId: page.row.pageId,
@@ -330,7 +307,7 @@ export const makeFakeNotionDataSourceGateway = (
                 _tag: 'QueryRowsPage',
                 apiVersion: apiContract.apiVersion,
                 requestId: nextRequestId(),
-                queryContractHash: queryContractHash(input, apiContract.apiVersion),
+                queryContractHash: computeQueryContractHash(input, apiContract.apiVersion),
                 rows,
                 nextCursor: hasMore ? cursorForOffset(nextOffset) : null,
                 hasMore,
@@ -342,7 +319,7 @@ export const makeFakeNotionDataSourceGateway = (
               }
             }
 
-            return result
+            return result.slice(0, queryPageLimit)
           }),
         ),
       ).pipe(Stream.flatMap((queryPages) => Stream.fromIterable(queryPages))),

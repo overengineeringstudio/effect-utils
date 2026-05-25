@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 
-import { Effect, Schema } from 'effect'
+import { Effect, Fiber, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { makeFakePageBodySyncPort } from '../body-adapter.ts'
@@ -221,6 +221,29 @@ const runWithPorts = <TValue, TError>(
       Effect.provideService(LocalWorkspacePort, input.workspace),
     ),
   )
+
+const makeDeferred = <TValue = void>() => {
+  let resolve!: (value: TValue) => void
+  const promise = new Promise<TValue>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
+const withFailsafe = async <TValue>(promise: Promise<TValue>, label: string): Promise<TValue> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(label)), 2_000)
+  })
+
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout)
+    }
+  }
+}
 
 describe('watch daemon surface', () => {
   it('runs unbounded by default until cancellation instead of stopping after one cycle', async () => {
@@ -640,6 +663,140 @@ describe('watch daemon surface', () => {
     }
   })
 
+  it('resumes an interrupted high-watermark query from the persisted cursor', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const queryContract = {
+      ...defaultQueryContract(),
+      pageSize: 1,
+      highWatermark: decode(Schema.DateTimeUtc, '2026-05-24T23:59:00.000Z'),
+    }
+    const thirdPageId = decode(PageId, 'page-3')
+    const pages = [
+      pageSnapshot({ pageId: testIds.pageId }),
+      pageSnapshot({
+        pageId: testIds.otherPageId,
+        propertiesHash: hash('properties-b'),
+      }),
+      pageSnapshot({
+        pageId: thirdPageId,
+        propertiesHash: hash('properties-c'),
+      }),
+    ]
+    const propertyPages = [
+      propertyPage(),
+      propertyPage({ pageId: testIds.otherPageId, itemHash: hash('property-b-base') }),
+      propertyPage({ pageId: thirdPageId, itemHash: hash('property-c-base') }),
+    ]
+    const ports = makeHarnessPorts({
+      bodyPages: [
+        bodyPage(),
+        bodyPage({ pageId: testIds.otherPageId, bodyHash: hash('body-b') }),
+        bodyPage({ pageId: thirdPageId, bodyHash: hash('body-c') }),
+      ],
+    })
+    const statePath = `${storeFixture.path}.watch.json`
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      const first = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            queryContract,
+          }),
+        ),
+        {
+          gateway: makeFakeGatewayHarness({
+            pages,
+            propertyPages,
+            queryPageLimit: 1,
+          }).gateway,
+          body: ports.body,
+          workspace: ports.workspace,
+        },
+      )
+
+      expect(first.sync.pull.observation.query).toMatchObject({
+        startCursor: null,
+        pages: 1,
+        rows: 1,
+        complete: false,
+      })
+      expect(readQueryCheckpointRows(storeFixture.path)).toEqual([
+        {
+          data_source_id: testIds.dataSourceId,
+          query_contract_hash: first.sync.pull.observation.query.queryContractHash,
+          next_cursor: 'offset:1',
+          complete: 0,
+          capped_at_limit: 0,
+          contract_changed: 0,
+          high_watermark: '2026-05-24T23:59:00.000Z',
+        },
+      ])
+
+      const resumedStartCursors: Array<string | null> = []
+      const resumedGatewayHarness = makeFakeGatewayHarness({ pages, propertyPages })
+      const resumedGateway = {
+        ...resumedGatewayHarness.gateway,
+        queryRows: (input: Parameters<typeof resumedGatewayHarness.gateway.queryRows>[0]) => {
+          resumedStartCursors.push(input.startCursor)
+          return resumedGatewayHarness.gateway.queryRows(input)
+        },
+      }
+      const second = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            queryContract,
+          }),
+        ),
+        {
+          gateway: resumedGateway,
+          body: ports.body,
+          workspace: ports.workspace,
+        },
+      )
+
+      expect(resumedStartCursors).toEqual(['offset:1'])
+      expect(second.sync.pull.observation.query).toMatchObject({
+        startCursor: 'offset:1',
+        pages: 2,
+        rows: 2,
+        complete: true,
+      })
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toMatchObject([
+        { pageId: testIds.pageId },
+        { pageId: testIds.otherPageId },
+        { pageId: thirdPageId },
+      ])
+      expect(readQueryCheckpointRows(storeFixture.path)).toEqual([
+        {
+          data_source_id: testIds.dataSourceId,
+          query_contract_hash: first.sync.pull.observation.query.queryContractHash,
+          next_cursor: null,
+          complete: 1,
+          capped_at_limit: 0,
+          contract_changed: 0,
+          high_watermark: fixedObservedAt,
+        },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('bounds outbox execution per cycle and leaves queued work for backpressure recovery', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ now: clock.now })
@@ -879,6 +1036,90 @@ describe('watch daemon surface', () => {
       expect(bodyPushes).toBe(1)
       expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([
         expect.objectContaining({ state: 'settled' }),
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('interrupts an in-flight body push when the daemon is cancelled mid-cycle', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const baseBody = makeFakePageBodySyncPort({ pages: [bodyPage()] })
+    const statePath = `${storeFixture.path}.watch.json`
+    const controller = new AbortController()
+    const inFlight = makeDeferred()
+    const interrupted = makeDeferred()
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          ...context({ store: storeFixture.store, clock }),
+          store: storeFixture.store,
+        }),
+        { gateway: gateway.gateway, body: baseBody, workspace: makeHarnessPorts().workspace },
+      )
+      const body = {
+        ...baseBody,
+        push: (_command: Parameters<typeof baseBody.push>[0]) =>
+          Effect.sync(() => inFlight.resolve()).pipe(
+            Effect.zipRight(Effect.never),
+            Effect.ensuring(Effect.sync(() => interrupted.resolve())),
+          ),
+      }
+      const program = runWatchDaemon(
+        daemonOptions({
+          store: storeFixture.store,
+          statePath,
+          clock,
+          signal: controller.signal,
+        }),
+      ).pipe(
+        Effect.provideService(NotionDataSourceGateway, gateway.gateway),
+        Effect.provideService(PageBodySyncPort, body),
+        Effect.provideService(
+          LocalWorkspacePort,
+          makeHarnessPorts({ localObservations: [localBodyChange()] }).workspace,
+        ),
+      )
+
+      const fiber = Effect.runFork(program)
+      await withFailsafe(inFlight.promise, 'body push did not start')
+      controller.abort()
+      await withFailsafe(interrupted.promise, 'body push was not interrupted')
+      const result = await withFailsafe(Effect.runPromise(Fiber.join(fiber)), 'daemon did not stop')
+      const persisted = await Effect.runPromise(
+        readWatchDaemonState({ rootId: testIds.rootId, statePath }),
+      )
+
+      expect(result).toMatchObject({
+        cycles: 1,
+        completed: 0,
+        cancelled: true,
+      })
+      expect(persisted).toMatchObject({
+        cycle: 1,
+        lastCompleteCycle: 0,
+        repair: {
+          _tag: 'retry',
+          reason: 'WatchDaemonCancelled',
+          failedCycle: 1,
+        },
+      })
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([
+        expect.objectContaining({
+          state: 'running',
+          attemptCount: 1,
+          settlementEventId: undefined,
+        }),
       ])
     } finally {
       storeFixture.cleanup()
