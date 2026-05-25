@@ -198,7 +198,7 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
 
     return (
       <React.Fragment>
-        {showName ? (
+        {showName === true ? (
           <SchemaTooltip info={info}>
             <span style={descriptionStyle}>{`${objectConstructorName} `}</span>
           </SchemaTooltip>

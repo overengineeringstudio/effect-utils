@@ -308,7 +308,7 @@ export const createSchemaAwareNodeRenderer = ({
             : ((data as { constructor?: { name?: string } }).constructor?.name ?? 'Object')
       const label = schemaSourcedLabel ?? fallbackName
       const suffix =
-        isMapOrSet && schemaSourcedLabel !== undefined
+        isMapOrSet === true && schemaSourcedLabel !== undefined
           ? `(${(data as Map<unknown, unknown> | Set<unknown>).size})`
           : ''
       return (

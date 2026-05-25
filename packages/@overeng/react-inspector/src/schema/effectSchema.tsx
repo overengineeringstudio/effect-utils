@@ -388,7 +388,7 @@ export const getConstraintsFromJSONSchema = (
    * would let `between(0, 100)` clobber the tighter `between(10, 50)`.
    */
   const collect = (ast: SchemaAST.AST): void => {
-    if (seen.has(ast)) return
+    if (seen.has(ast) === true) return
     seen.add(ast)
 
     if (ast._tag === 'Refinement') {
@@ -442,7 +442,7 @@ export const getPossibleValuesFromAST = (
     }
   } else if (ast._tag === 'Union') {
     valid = ast.types.every((m) => m._tag === 'Literal')
-    if (valid) {
+    if (valid === true) {
       for (const member of ast.types) {
         if (member._tag === 'Literal') {
           collected.push(stringifyShort(member.literal))
@@ -454,7 +454,7 @@ export const getPossibleValuesFromAST = (
     collected.push(`\`${ast.toString()}\``)
   }
 
-  if (!valid || collected.length === 0) return undefined
+  if (valid === false || collected.length === 0) return undefined
 
   if (collected.length > MAX_POSSIBLE_VALUES) {
     return {
@@ -790,9 +790,8 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
           }
         })()
 
-  const meaningfulDescription = isTrivialDescription(annotations.description)
-    ? undefined
-    : annotations.description
+  const meaningfulDescription =
+    isTrivialDescription(annotations.description) === true ? undefined : annotations.description
 
   const hasContent =
     meaningfulDescription !== undefined ||

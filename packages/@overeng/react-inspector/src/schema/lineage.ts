@@ -165,14 +165,14 @@ const readAnnotation = <A>(
   const raw = schema.ast.annotations[id]
   if (raw !== undefined) {
     const decoded = decode(raw)
-    if (Option.isSome(decoded)) return decoded.value
+    if (Option.isSome(decoded) === true) return decoded.value
   }
   const unwrapped = unwrapAst(schema.ast)
   if (unwrapped !== schema.ast) {
     const innerRaw = unwrapped.annotations[id]
     if (innerRaw !== undefined) {
       const decoded = decode(innerRaw)
-      if (Option.isSome(decoded)) return decoded.value
+      if (Option.isSome(decoded) === true) return decoded.value
     }
   }
   return undefined
@@ -200,7 +200,7 @@ export const getReference = (schema: Schema.Schema.AnyNoContext): Reference | un
 const fieldRef = (path: string): LineageRef => ({
   _tag: 'Field',
   /* Normalize: bare names become root-relative paths, matching SchemaContext. */
-  path: path.startsWith('$') ? path : `$.${path}`,
+  path: path.startsWith('$') === true ? path : `$.${path}`,
 })
 
 const coerceRef = (ref: string | LineageRef): LineageRef =>

@@ -72,7 +72,7 @@ export const SchemaTooltip: FC<SchemaTooltipProps> = ({
       clearTimeout(closeTimerRef.current)
       closeTimerRef.current = null
     }
-    if (open) return
+    if (open === true) return
     openTimerRef.current = setTimeout(() => {
       computeCoords()
       setOpen(true)
@@ -92,7 +92,7 @@ export const SchemaTooltip: FC<SchemaTooltipProps> = ({
    * coords would otherwise drift away from the trigger.
    */
   useEffect(() => {
-    if (!open) return
+    if (open === false) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
@@ -110,7 +110,7 @@ export const SchemaTooltip: FC<SchemaTooltipProps> = ({
 
   useEffect(() => () => clearTimers(), [clearTimers])
 
-  if (info === undefined || !info.hasContent) {
+  if (info === undefined || info.hasContent === false) {
     return <>{children}</>
   }
 
@@ -119,7 +119,7 @@ export const SchemaTooltip: FC<SchemaTooltipProps> = ({
       <span
         ref={triggerRef}
         tabIndex={0}
-        aria-describedby={open ? id : undefined}
+        aria-describedby={open === true ? id : undefined}
         onMouseEnter={handleOpen}
         onMouseLeave={handleClose}
         onFocus={handleOpen}

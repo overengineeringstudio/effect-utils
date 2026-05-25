@@ -131,7 +131,7 @@ const resolveSchemaForSegments = (
   for (const segment of segments) {
     if (current === undefined) return undefined
 
-    if (hasData) {
+    if (hasData === true) {
       const narrowedAst = narrowUnionByTag(current.ast, value)
       if (narrowedAst !== current.ast) {
         current = { ast: narrowedAst } as S.Schema.AnyNoContext
@@ -141,16 +141,16 @@ const resolveSchemaForSegments = (
     // Check if segment is a numeric index (array access)
     if (/^\d+$/.test(segment) === true) {
       current = getArrayElementSchema(current)
-      if (hasData && Array.isArray(value)) {
+      if (hasData === true && Array.isArray(value) === true) {
         value = (value as ReadonlyArray<unknown>)[Number(segment)]
-      } else if (hasData) {
+      } else if (hasData === true) {
         value = undefined
       }
     } else {
       current = getFieldSchema(current, segment)
-      if (hasData && value !== null && typeof value === 'object' && segment in value) {
+      if (hasData === true && value !== null && typeof value === 'object' && segment in value) {
         value = (value as Record<string, unknown>)[segment]
-      } else if (hasData) {
+      } else if (hasData === true) {
         value = undefined
       }
     }
