@@ -99,7 +99,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L2-same-property-conflict',
     title: 'same-property local and remote edits open a conflict',
-    requirementIds: ['R21', 'R24', 'R30'],
+    requirementIds: ['R21', 'R24'],
     guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L2',
@@ -108,7 +108,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L2-disjoint-property-merge',
     title: 'disjoint property edit remains enqueueable',
-    requirementIds: ['R21', 'R24', 'R30'],
+    requirementIds: ['R21', 'R24'],
     guards: [],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L2',
@@ -189,7 +189,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L2-schema-destructive-fail-closed',
     title: 'destructive schema migration requests fail closed before remote schema writes',
-    requirementIds: ['R30', 'R33', 'R35'],
+    requirementIds: ['R33', 'R35'],
     guards: ['DestructiveSchemaMigrationRequired', 'OptionDeletionLosesValues'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L3',
@@ -198,7 +198,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L2-page-property-pagination-fail-closed',
     title: 'incomplete page-property pagination blocks local property writes',
-    requirementIds: ['R18', 'R29', 'R71'],
+    requirementIds: ['R71'],
     guards: ['PropertyValueIncomplete'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L2',
@@ -600,6 +600,12 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'unmapped-requirement',
+    requirementId: 'R18',
+    reason:
+      'Read-only/computed property write blocking remains unit-level until fake row-property fixtures land.',
+  },
+  {
+    _tag: 'unmapped-requirement',
     requirementId: 'R19',
     reason: 'Relation availability awaits relation fixtures.',
   },
@@ -627,6 +633,12 @@ export const traceabilityResiduals = [
     _tag: 'unmapped-requirement',
     requirementId: 'R27',
     reason: 'Full durable conflict matrix is split across follow-up E2E patches.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R30',
+    reason:
+      'Schema-drift observation and pending-intent reclassification need dedicated fake-service coverage.',
   },
   {
     _tag: 'unmapped-requirement',
