@@ -24,6 +24,7 @@ import {
   type CanonicalPropertyValue,
   type PagePropertyItemPage,
   type PatchDataSourceSchemaCommand,
+  type RemoteWriteCommand,
   type QueryContract,
   type RestorePageCommand,
 } from '../commands.ts'
@@ -161,6 +162,7 @@ export type FakeGatewayInput = {
   readonly dataSource?: DataSourceSnapshot
   readonly pages?: ReadonlyArray<PageSnapshot>
   readonly propertyPages?: ReadonlyArray<PagePropertyItemPage>
+  readonly readAfterWriteMismatchPageIds?: ReadonlyArray<PageId>
 }
 
 export type FakeGatewayHarness = {
@@ -219,6 +221,9 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
 
   const baseGateway = makeFakeNotionDataSourceGateway({
     ...(input.capabilities === undefined ? {} : { supportedCapabilities: input.capabilities }),
+    ...(input.readAfterWriteMismatchPageIds === undefined
+      ? {}
+      : { readAfterWriteMismatchPageIds: input.readAfterWriteMismatchPageIds }),
     dataSources: [dataSource],
     pages,
   })
@@ -599,6 +604,7 @@ export const remoteWritePlannedEvent = (input: {
   readonly commandKey: IdempotencyKey
   readonly intentEventId: SyncEventId
   readonly surface: SurfaceKey
+  readonly command: RemoteWriteCommand
   readonly commandTag: string
   readonly baseHash?: HashType
   readonly desiredHash: HashType
@@ -612,7 +618,7 @@ export const remoteWritePlannedEvent = (input: {
       eventType: 'RemoteWritePlanned',
       idempotencyKey: input.commandKey,
       surface: input.surface,
-      canonicalJson: `{"commandId":"${input.commandId}"}`,
+      canonicalJson: JSON.stringify({ command: input.command }),
     }),
     commandId: input.commandId,
     commandKey: input.commandKey,
@@ -682,6 +688,7 @@ export const appendPlannedCommand = (
       commandKey: command.commandKey,
       intentEventId: command.intentEventId,
       surface: command.surface,
+      command: command.command,
       commandTag: commandTag(command.command),
       baseHash: command.baseHash,
       desiredHash: command.desiredHash,

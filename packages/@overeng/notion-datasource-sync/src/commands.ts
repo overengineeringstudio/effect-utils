@@ -300,3 +300,8 @@ export const RemoteWriteCommand = Schema.Union(
   BodyPushCommand,
 ).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteCommand' })
 export type RemoteWriteCommand = typeof RemoteWriteCommand.Type
+
+export const RemoteWritePlanPayload = Schema.Struct({
+  command: RemoteWriteCommand,
+}).annotations({ identifier: 'NotionDatasourceSync.RemoteWritePlanPayload' })
+export type RemoteWritePlanPayload = typeof RemoteWritePlanPayload.Type

@@ -3,17 +3,20 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
 
+import { RemoteWritePlanPayload, type RemoteWriteCommand } from './commands.ts'
 import {
   BodySafetySnapshot,
   CapabilityName,
+  CommandId,
   DataSourceId,
   Hash,
+  type NotionRequestId,
   PageId,
   PropertyId,
 } from './domain.ts'
 import { LocalStoreError } from './errors.ts'
-import { SyncEvent, SyncEventId, type SyncRootId } from './events.ts'
-import type { GuardName } from './guards.ts'
+import { IdempotencyKey, SurfaceKey, SyncEvent, SyncEventId, type SyncRootId } from './events.ts'
+import { GuardName } from './guards.ts'
 import type { PlannerProjectionSnapshot } from './planner.ts'
 import {
   computePayloadHash,
@@ -71,6 +74,61 @@ export type OutboxProjectionRow = {
   readonly settlementEventId: string | undefined
 }
 
+export type OutboxClaimOptions = {
+  readonly rootId: SyncRootId
+  readonly leaseToken: string
+  readonly leaseDurationMs: number
+}
+
+export type ClaimedOutboxCommand = {
+  readonly rootId: SyncRootId
+  readonly commandId: CommandId
+  readonly commandKey: IdempotencyKey
+  readonly intentEventId: SyncEventId
+  readonly surface: SurfaceKey
+  readonly commandTag: string
+  readonly command: typeof RemoteWriteCommand.Type | undefined
+  readonly baseHash: typeof Hash.Type | undefined
+  readonly desiredHash: typeof Hash.Type
+  readonly preflight: ReadonlyArray<typeof GuardName.Type>
+  readonly attempt: number
+  readonly leaseToken: string
+  readonly previousState: typeof OutboxState.Type
+  readonly attemptState: Extract<
+    typeof OutboxState.Type,
+    'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
+  >
+  readonly attemptEvent: Extract<SyncEvent, { readonly _tag: 'RemoteWriteAttempted' }>
+}
+
+export type OutboxAttemptStateInput = {
+  readonly rootId: SyncRootId
+  readonly commandId: CommandId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly attempt: number
+  readonly attemptState: Extract<
+    typeof OutboxState.Type,
+    'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
+  >
+  readonly leaseToken?: string
+  readonly guard?: typeof GuardName.Type
+  readonly idempotencyKey?: IdempotencyKey
+}
+
+export type OutboxSettlementInput = {
+  readonly rootId: SyncRootId
+  readonly commandId: CommandId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly commandTag: string
+  readonly requestId: NotionRequestId
+  readonly desiredHash: typeof Hash.Type
+  readonly observedHash: typeof Hash.Type
+  readonly settlementKind: 'verified-success' | 'verified-no-op'
+  readonly idempotencyKey?: IdempotencyKey
+}
+
 export type CompactionBlocker = {
   readonly guard: typeof GuardName.Type
   readonly message: string
@@ -87,8 +145,13 @@ const encodeBodySafety = Schema.encodeSync(BodySafetySnapshot)
 const decodeCapabilityName = Schema.decodeUnknownSync(CapabilityName)
 const decodeDataSourceId = Schema.decodeSync(DataSourceId)
 const decodeHash = Schema.decodeSync(Hash)
+const decodeIdempotencyKey = Schema.decodeUnknownSync(IdempotencyKey)
 const decodePageId = Schema.decodeSync(PageId)
 const decodePropertyId = Schema.decodeSync(PropertyId)
+const decodeRemoteWritePlanPayload = Schema.decodeUnknownSync(
+  Schema.parseJson(RemoteWritePlanPayload),
+)
+const decodeSurfaceKey = Schema.decodeUnknownSync(SurfaceKey)
 const decodeSyncEventId = Schema.decodeSync(SyncEventId)
 const decodeDataSourceProjectionPayload = Schema.decodeUnknownSync(
   Schema.parseJson(DataSourceProjectionPayload),
@@ -186,6 +249,18 @@ const stringifyJson = (value: unknown): string => JSON.stringify(value)
 
 const currentIso = (now: () => Date): string => now().toISOString()
 
+const eventPayload = (canonicalJson: string): SyncEvent['payload'] => ({
+  _tag: 'VersionedJson',
+  codecVersion: 'v1',
+  canonicalJson,
+})
+
+const makeEventId = (parts: ReadonlyArray<string | number>): SyncEventId =>
+  decodeSyncEventId(parts.map((part) => String(part).replaceAll(':', '-')).join(':'))
+
+const decodePlanCommand = (event: SyncEvent): typeof RemoteWriteCommand.Type | undefined =>
+  decodePayload(event, decodeRemoteWritePlanPayload)?.command
+
 const assertSupportedSchemaVersion = (db: DatabaseSync): void => {
   const migrationHistoryTable = db
     .prepare(
@@ -277,68 +352,176 @@ export class NotionSyncStore {
   appendEvent(event: SyncEvent): SyncEvent {
     this.#db.exec('BEGIN IMMEDIATE')
     try {
-      this.#ensureRoot(event.rootId)
-
-      const existing = this.#db
-        .prepare(
-          `SELECT event_json
-           FROM sync_event
-           WHERE root_id = ? AND idempotency_key = ?`,
-        )
-        .get(event.rootId, event.idempotencyKey)
-
-      if (existing !== undefined) {
-        this.#db.exec('COMMIT')
-        return decodeEventFromJson(readString(existing, 'event_json'))
-      }
-
-      const sequence = this.#nextSequence(event.rootId)
-      const encodedOriginalEvent = encodeEvent(event)
-      const eventWithAssignedFields = Schema.decodeUnknownSync(SyncEvent)({
-        ...encodedOriginalEvent,
-        sequence: sequence.toString(),
-        payloadHash: computePayloadHash(event),
-      })
-      const encodedEvent = encodeEvent(eventWithAssignedFields)
-
-      this.#db
-        .prepare(
-          `INSERT INTO sync_event (
-             root_id,
-             sequence,
-             event_id,
-             codec_version,
-             family,
-             event_type,
-             idempotency_key,
-             surface,
-             caused_by_event_ids_json,
-             payload_hash,
-             payload_json,
-             event_json,
-             observed_at
-           )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          encodedEvent.rootId,
-          sequence,
-          encodedEvent.eventId,
-          encodedEvent.codecVersion,
-          encodedEvent.family,
-          encodedEvent.eventType,
-          encodedEvent.idempotencyKey,
-          encodedEvent.surface,
-          stringifyJson(encodedEvent.causedByEventIds),
-          encodedEvent.payloadHash,
-          stringifyJson(encodedEvent.payload),
-          stringifyJson(encodedEvent),
-          encodedEvent.observedAt,
-        )
-
-      this.#rebuildProjectionsInTransaction(event.rootId)
+      const eventWithAssignedFields = this.#appendEventInTransaction(event)
       this.#db.exec('COMMIT')
       return eventWithAssignedFields
+    } catch (cause) {
+      this.#db.exec('ROLLBACK')
+      throw cause
+    }
+  }
+
+  claimNextOutboxCommand(options: OutboxClaimOptions): ClaimedOutboxCommand | undefined {
+    this.#db.exec('BEGIN IMMEDIATE')
+    try {
+      this.#ensureRoot(options.rootId)
+      const leaseCutoff = new Date(this.#now().getTime() - options.leaseDurationMs).toISOString()
+      const row = this.#db
+        .prepare(
+          `SELECT
+             outbox.command_id,
+             outbox.command_key,
+             outbox.intent_event_id,
+             outbox.surface,
+             outbox.command_tag,
+             outbox.state,
+             outbox.base_hash,
+             outbox.desired_hash,
+             outbox.preflight_json,
+             outbox.attempt_count,
+             outbox.updated_at,
+             event.event_json
+           FROM outbox
+           JOIN sync_event event
+             ON event.root_id = outbox.root_id
+            AND event.idempotency_key = outbox.command_key
+            AND event.event_type = 'RemoteWritePlanned'
+           WHERE outbox.root_id = ?
+             AND outbox.settlement_event_id IS NULL
+             AND (
+               outbox.state IN ('queued', 'retryable', 'ambiguous')
+               OR (outbox.state = 'running' AND outbox.updated_at <= ?)
+             )
+           ORDER BY outbox.updated_at, outbox.command_id
+           LIMIT 1`,
+        )
+        .get(options.rootId, leaseCutoff)
+
+      if (row === undefined) {
+        this.#db.exec('COMMIT')
+        return undefined
+      }
+
+      const previousState = readOutboxState(row, 'state')
+      const attempt = Number(readInteger(row, 'attempt_count')) + 1
+      const attemptState = previousState === 'running' ? 'ambiguous' : 'running'
+      const commandId = readString(row, 'command_id')
+      const commandKey = decodeIdempotencyKey(readString(row, 'command_key'))
+      const surface = decodeSurfaceKey(readString(row, 'surface'))
+      const plannedEvent = decodeEventFromJson(readString(row, 'event_json'))
+      const attemptEvent = this.#appendOutboxAttemptStateInTransaction({
+        rootId: options.rootId,
+        commandId: Schema.decodeUnknownSync(CommandId)(commandId),
+        commandKey,
+        surface,
+        attempt,
+        attemptState,
+        leaseToken: options.leaseToken,
+        idempotencyKey: decodeIdempotencyKey(`attempt:${commandId}:${attempt}`),
+      })
+
+      this.#db.exec('COMMIT')
+
+      return {
+        rootId: options.rootId,
+        commandId: Schema.decodeUnknownSync(CommandId)(commandId),
+        commandKey,
+        intentEventId: decodeSyncEventId(readString(row, 'intent_event_id')),
+        surface,
+        commandTag: readString(row, 'command_tag'),
+        command: decodePlanCommand(plannedEvent),
+        baseHash:
+          readOptionalString(row, 'base_hash') === undefined
+            ? undefined
+            : decodeHash(readString(row, 'base_hash')),
+        desiredHash: decodeHash(readString(row, 'desired_hash')),
+        preflight: Schema.decodeSync(Schema.parseJson(Schema.Array(GuardName)))(
+          readString(row, 'preflight_json'),
+        ),
+        attempt,
+        leaseToken: options.leaseToken,
+        previousState,
+        attemptState,
+        attemptEvent,
+      }
+    } catch (cause) {
+      this.#db.exec('ROLLBACK')
+      throw cause
+    }
+  }
+
+  isOutboxLeaseActive({
+    rootId,
+    commandId,
+    leaseToken,
+  }: {
+    readonly rootId: SyncRootId
+    readonly commandId: CommandId
+    readonly leaseToken: string
+  }): boolean {
+    const row = this.#db
+      .prepare(
+        `SELECT state, lease_token, settlement_event_id
+         FROM outbox
+         WHERE root_id = ? AND command_id = ?`,
+      )
+      .get(rootId, commandId)
+
+    return (
+      row !== undefined &&
+      readOutboxState(row, 'state') === 'running' &&
+      readOptionalString(row, 'lease_token') === leaseToken &&
+      readOptionalString(row, 'settlement_event_id') === undefined
+    )
+  }
+
+  appendOutboxAttemptState(input: OutboxAttemptStateInput): SyncEvent {
+    this.#db.exec('BEGIN IMMEDIATE')
+    try {
+      const event = this.#appendOutboxAttemptStateInTransaction(input)
+      this.#db.exec('COMMIT')
+      return event
+    } catch (cause) {
+      this.#db.exec('ROLLBACK')
+      throw cause
+    }
+  }
+
+  appendOutboxSettlement(input: OutboxSettlementInput): SyncEvent {
+    this.#db.exec('BEGIN IMMEDIATE')
+    try {
+      const event = this.#appendEventInTransaction(
+        Schema.decodeUnknownSync(SyncEvent)({
+          _tag: 'RemoteWriteSettled',
+          eventId: makeEventId(['settled', input.commandId, input.settlementKind]),
+          rootId: input.rootId,
+          sequence: '0',
+          codecVersion: 'v1',
+          family: 'CommandSettled',
+          eventType: 'RemoteWriteSettled',
+          idempotencyKey: input.idempotencyKey ?? `settled:${input.commandId}`,
+          surface: input.surface,
+          causedByEventIds: [],
+          payloadHash: decodeHash('sha256:'.padEnd(71, '0')),
+          payload: eventPayload(
+            stringifyJson({
+              commandId: input.commandId,
+              settlementKind: input.settlementKind,
+              desiredHash: input.desiredHash,
+              observedHash: input.observedHash,
+            }),
+          ),
+          observedAt: currentIso(this.#now),
+          commandId: input.commandId,
+          commandTag: input.commandTag,
+          requestId: input.requestId,
+          desiredHash: input.desiredHash,
+          observedHash: input.observedHash,
+          settlementKind: input.settlementKind,
+        }),
+      )
+      this.#db.exec('COMMIT')
+      return event
     } catch (cause) {
       this.#db.exec('ROLLBACK')
       throw cause
@@ -653,6 +836,114 @@ export class NotionSyncStore {
          WHERE root_id = ? AND projection_name = ?`,
       )
       .run(digest, rootId, projectionName)
+  }
+
+  #appendEventInTransaction(event: SyncEvent): SyncEvent {
+    this.#ensureRoot(event.rootId)
+
+    const existing = this.#db
+      .prepare(
+        `SELECT event_json
+         FROM sync_event
+         WHERE root_id = ? AND idempotency_key = ?`,
+      )
+      .get(event.rootId, event.idempotencyKey)
+
+    if (existing !== undefined) {
+      return decodeEventFromJson(readString(existing, 'event_json'))
+    }
+
+    const sequence = this.#nextSequence(event.rootId)
+    const encodedOriginalEvent = encodeEvent(event)
+    const eventWithAssignedFields = Schema.decodeUnknownSync(SyncEvent)({
+      ...encodedOriginalEvent,
+      sequence: sequence.toString(),
+      payloadHash: computePayloadHash(event),
+    })
+    const encodedEvent = encodeEvent(eventWithAssignedFields)
+
+    this.#db
+      .prepare(
+        `INSERT INTO sync_event (
+           root_id,
+           sequence,
+           event_id,
+           codec_version,
+           family,
+           event_type,
+           idempotency_key,
+           surface,
+           caused_by_event_ids_json,
+           payload_hash,
+           payload_json,
+           event_json,
+           observed_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        encodedEvent.rootId,
+        sequence,
+        encodedEvent.eventId,
+        encodedEvent.codecVersion,
+        encodedEvent.family,
+        encodedEvent.eventType,
+        encodedEvent.idempotencyKey,
+        encodedEvent.surface,
+        stringifyJson(encodedEvent.causedByEventIds),
+        encodedEvent.payloadHash,
+        stringifyJson(encodedEvent.payload),
+        stringifyJson(encodedEvent),
+        encodedEvent.observedAt,
+      )
+
+    this.#rebuildProjectionsInTransaction(event.rootId)
+    return eventWithAssignedFields
+  }
+
+  #appendOutboxAttemptStateInTransaction(
+    input: OutboxAttemptStateInput,
+  ): Extract<SyncEvent, { readonly _tag: 'RemoteWriteAttempted' }> {
+    const event = this.#appendEventInTransaction(
+      Schema.decodeUnknownSync(SyncEvent)({
+        _tag: 'RemoteWriteAttempted',
+        eventId: makeEventId(['attempt', input.commandId, input.attempt, input.attemptState]),
+        rootId: input.rootId,
+        sequence: '0',
+        codecVersion: 'v1',
+        family: 'CommandAttempted',
+        eventType: 'RemoteWriteAttempted',
+        idempotencyKey:
+          input.idempotencyKey ??
+          `attempt:${input.commandId}:${input.attempt}:${input.attemptState}`,
+        surface: input.surface,
+        causedByEventIds: [],
+        payloadHash: decodeHash('sha256:'.padEnd(71, '0')),
+        payload: eventPayload(
+          stringifyJson({
+            commandId: input.commandId,
+            attempt: input.attempt,
+            attemptState: input.attemptState,
+            guard: input.guard,
+          }),
+        ),
+        observedAt: currentIso(this.#now),
+        commandId: input.commandId,
+        attempt: input.attempt,
+        attemptState: input.attemptState,
+        ...(input.leaseToken === undefined ? {} : { leaseToken: input.leaseToken }),
+        ...(input.guard === undefined ? {} : { guard: input.guard }),
+      }),
+    )
+
+    if (event._tag !== 'RemoteWriteAttempted') {
+      throw new LocalStoreError({
+        operation: 'append-outbox-attempt',
+        message: `Outbox attempt idempotency key resolved to unexpected event ${event._tag}`,
+      })
+    }
+
+    return event
   }
 
   #runMigrations(): void {
