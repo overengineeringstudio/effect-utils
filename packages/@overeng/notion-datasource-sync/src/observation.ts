@@ -87,6 +87,8 @@ const eventPayload = (value: unknown): SyncEventType['payload'] => ({
 
 const observedAt = (now: () => Date) => now().toISOString()
 
+const observationEventPart = (now: () => Date): string => eventIdPart(observedAt(now))
+
 const eventBase = ({
   rootId,
   eventId,
@@ -418,6 +420,7 @@ export const observeRemoteDataSource = Effect.fn(
   > =>
     Effect.gen(function* () {
       const now = options.now ?? (() => new Date())
+      const observationPart = observationEventPart(now)
       const gateway = yield* NotionDataSourceGateway
       const body = yield* PageBodySyncPort
       const workspace = yield* LocalWorkspacePort
@@ -450,10 +453,10 @@ export const observeRemoteDataSource = Effect.fn(
             _tag: 'CapabilityPreflightChecked',
             ...eventBase({
               rootId: options.rootId,
-              eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}`,
+              eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}:${observationPart}`,
               family: 'CompatibilityChecked',
               eventType: 'CapabilityPreflightChecked',
-              idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}`,
+              idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}:${observationPart}`,
               surface: querySurfaceKey(options.dataSourceId, hashStoreBytes('capabilities')),
               payload: { capability },
               now,
@@ -593,10 +596,10 @@ export const observeRemoteDataSource = Effect.fn(
                   _tag: 'PagePropertyCheckpointRecorded',
                   ...eventBase({
                     rootId: options.rootId,
-                    eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed`,
+                    eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed:${observationPart}`,
                     family: 'QueryScanRecorded',
                     eventType: 'PagePropertyCheckpointRecorded',
-                    idempotencyKey: `property:${row.pageId}:${property.propertyId}:failed`,
+                    idempotencyKey: `property:${row.pageId}:${property.propertyId}:failed:${observationPart}`,
                     surface: propertySurfaceKey(row.pageId, property.propertyId),
                     payload: { availability },
                     now,
@@ -624,10 +627,10 @@ export const observeRemoteDataSource = Effect.fn(
                 _tag: 'PagePropertyCheckpointRecorded',
                 ...eventBase({
                   rootId: options.rootId,
-                  eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:${valueHash ?? 'incomplete'}`,
+                  eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:${valueHash ?? 'incomplete'}:${observationPart}`,
                   family: 'QueryScanRecorded',
                   eventType: 'PagePropertyCheckpointRecorded',
-                  idempotencyKey: `property:${row.pageId}:${property.propertyId}:${valueHash ?? 'incomplete'}`,
+                  idempotencyKey: `property:${row.pageId}:${property.propertyId}:${valueHash ?? 'incomplete'}:${observationPart}`,
                   surface: propertySurfaceKey(row.pageId, property.propertyId),
                   payload: { availability, baseHash: valueHash },
                   now,
