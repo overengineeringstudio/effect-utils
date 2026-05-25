@@ -349,6 +349,9 @@ const parseFlags = (argv: ReadonlyArray<string>): Map<string, string | true> => 
     const item = argv[index]
     if (item?.startsWith('--') !== true) continue
     const key = item.slice(2)
+    if (flags.has(key)) {
+      throw new CliArgumentError({ message: `Repeated --${key} is not supported` })
+    }
     const next = argv[index + 1]
     if (next !== undefined && next.startsWith('--') === false) {
       flags.set(key, next)
@@ -375,11 +378,20 @@ const positiveIntegerFlag = (
   flags: Map<string, string | true>,
   name: string,
 ): number | undefined => {
-  const value = optionalFlag(flags, name)
+  const value = flags.get(name)
   if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new CliArgumentError({ message: `Missing value for --${name}` })
+  }
+
+  if (/^[1-9][0-9]*$/.test(value) === false) {
+    throw new CliArgumentError({
+      message: `--${name} must be a positive integer`,
+    })
+  }
 
   const parsed = Number(value)
-  if (Number.isInteger(parsed) && Number.isFinite(parsed) && parsed > 0) return parsed
+  if (Number.isSafeInteger(parsed) && parsed > 0) return parsed
 
   throw new CliArgumentError({
     message: `--${name} must be a positive integer`,

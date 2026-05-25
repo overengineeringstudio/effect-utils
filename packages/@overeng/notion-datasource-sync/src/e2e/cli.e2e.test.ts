@@ -9,7 +9,7 @@ import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { propertySurfaceKey } from '../canonical.ts'
-import { parseCliCommand, runCliCommand, type CliContext } from '../cli.ts'
+import { CliArgumentError, parseCliCommand, runCliCommand, type CliContext } from '../cli.ts'
 import { PagePropertyItemPage } from '../commands.ts'
 import { AbsolutePath, BodyPointer, WorkspaceRelativePath } from '../domain.ts'
 import { SyncEventId, type SyncEvent as SyncEventType } from '../events.ts'
@@ -167,43 +167,149 @@ describe('CLI command surface', () => {
   })
 
   it('emits a structured diagnostic and exits nonzero for invalid numeric flags', async () => {
-    await expect(
-      execFileAsync(cliPath, ['watch', '--state', '/tmp/watch.json', '--max-cycles', 'NaN'], {
-        cwd: packageDir,
-        timeout: cliTestTimeoutMs,
-      }),
-    ).rejects.toMatchObject({
-      code: 1,
-      stderr: expect.stringContaining('CliErrorEnvelope'),
-    })
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
+    try {
+      await expect(
+        execFileAsync(
+          cliPath,
+          [
+            'watch',
+            '--state',
+            '/tmp/watch.json',
+            '--max-cycles',
+            '--store',
+            join(dir, 'store.sqlite'),
+            '--root-id',
+            testIds.rootId,
+            '--data-source-id',
+            testIds.dataSourceId,
+            '--workspace-root',
+            workspaceRoot,
+          ],
+          { cwd: packageDir, timeout: cliTestTimeoutMs },
+        ),
+      ).rejects.toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining('Missing value for --max-cycles'),
+      })
 
-    await expect(
-      execFileAsync(
+      await expect(
+        execFileAsync(
+          cliPath,
+          [
+            'status',
+            '--store',
+            join(dir, 'store.sqlite'),
+            '--root-id',
+            testIds.rootId,
+            '--data-source-id',
+            testIds.dataSourceId,
+            '--workspace-root',
+            workspaceRoot,
+            '--max-executor-steps',
+          ],
+          { cwd: packageDir, timeout: cliTestTimeoutMs },
+        ),
+      ).rejects.toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining('Missing value for --max-executor-steps'),
+      })
+
+      await expect(
+        execFileAsync(cliPath, ['watch', '--state', '/tmp/watch.json', '--max-cycles', 'NaN'], {
+          cwd: packageDir,
+          timeout: cliTestTimeoutMs,
+        }),
+      ).rejects.toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining('CliErrorEnvelope'),
+      })
+
+      await expect(
+        execFileAsync(
+          cliPath,
+          [
+            'watch',
+            '--state',
+            '/tmp/watch.json',
+            '--max-cycles',
+            '0',
+            '--store',
+            join(dir, 'store.sqlite'),
+            '--root-id',
+            testIds.rootId,
+            '--data-source-id',
+            testIds.dataSourceId,
+            '--workspace-root',
+            workspaceRoot,
+          ],
+          {
+            cwd: packageDir,
+            timeout: cliTestTimeoutMs,
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining('--max-cycles must be a positive integer'),
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects unsupported numeric flag shapes before command execution', () => {
+    expect(() =>
+      parseCliCommand([
+        'watch',
+        '--state',
+        '/tmp/watch.json',
+        '--max-cycles',
+        '1',
+        '--max-cycles',
+        '2',
+      ]),
+    ).toThrow(CliArgumentError)
+
+    expect(() =>
+      parseCliCommand(['watch', '--state', '/tmp/watch.json', '--max-cycles', '1e2']),
+    ).toThrow('--max-cycles must be a positive integer')
+    expect(() =>
+      parseCliCommand(['watch', '--state', '/tmp/watch.json', '--max-cycles', 'Infinity']),
+    ).toThrow('--max-cycles must be a positive integer')
+    expect(() =>
+      parseCliCommand(['watch', '--state', '/tmp/watch.json', '--max-cycles', '-1']),
+    ).toThrow('--max-cycles must be a positive integer')
+  })
+
+  it('accepts valid numeric CLI flags', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
+    try {
+      const { stdout } = await execFileAsync(
         cliPath,
         [
-          'watch',
-          '--state',
-          '/tmp/watch.json',
-          '--max-cycles',
-          '0',
+          'status',
           '--store',
-          '/tmp/store.sqlite',
+          join(dir, 'store.sqlite'),
           '--root-id',
           testIds.rootId,
           '--data-source-id',
           testIds.dataSourceId,
           '--workspace-root',
           workspaceRoot,
+          '--max-executor-steps',
+          '1',
         ],
-        {
-          cwd: packageDir,
-          timeout: cliTestTimeoutMs,
-        },
-      ),
-    ).rejects.toMatchObject({
-      code: 1,
-      stderr: expect.stringContaining('--max-cycles must be a positive integer'),
-    })
+        { cwd: packageDir, timeout: cliTestTimeoutMs },
+      )
+
+      expect(JSON.parse(stdout)).toMatchObject({
+        _tag: 'CliResultEnvelope',
+        command: 'status',
+        ok: true,
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   it('returns clean, pending, and conflict status envelopes for one-shot sync', async () => {
