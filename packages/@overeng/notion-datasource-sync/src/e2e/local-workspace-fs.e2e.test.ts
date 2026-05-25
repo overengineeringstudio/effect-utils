@@ -489,11 +489,13 @@ describe('filesystem local workspace E2E', () => {
     }
   })
 
-  it('rebuilds a missing workspace body from intact sidecar identity', async () => {
+  it('rebuilds a missing workspace body only after sidecar identity proves a prior materialization', async () => {
     const fixture = await makeTempWorkspace()
     try {
       const pageId = testPageId('page-1')
       const path = testWorkspacePath('weekly-notes--page-1.nmd')
+      const unclaimedPageId = testPageId('page-2')
+      const unclaimedPath = testWorkspacePath('orphaned--page-2.nmd')
       const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
 
       await Effect.runPromise(
@@ -506,6 +508,14 @@ describe('filesystem local workspace E2E', () => {
       )
       await unlink(join(fixture.root, path))
 
+      await expect(collectWorkspaceScan(workspace, fixture.root)).resolves.toEqual([
+        expect.objectContaining({
+          pageId,
+          path,
+          contentHash: testHash('body-a'),
+          state: 'delete-candidate',
+        }),
+      ])
       await expect(
         Effect.runPromise(
           workspace.materialize({
@@ -529,6 +539,27 @@ describe('filesystem local workspace E2E', () => {
           state: 'present',
         }),
       ])
+
+      await writeFile(join(fixture.root, unclaimedPath), 'orphaned body\n', 'utf8')
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            workspace.materialize({
+              _tag: 'MaterializePlan',
+              pageId: unclaimedPageId,
+              path: unclaimedPath,
+              bodyPointer: testBodyPointer({
+                pageId: unclaimedPageId,
+                bodyHash: testHash('body-c'),
+              }),
+            }),
+          ),
+        ),
+      ).resolves.toMatchObject({
+        _tag: 'LocalStoreError',
+        operation: 'materialize',
+        message: expect.stringContaining('no sidecar or claim identity'),
+      })
     } finally {
       await fixture.cleanup()
     }
