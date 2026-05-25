@@ -213,7 +213,12 @@ export class NotionSyncStore {
       busyTimeoutMs,
     }
 
-    this.#runMigrations()
+    try {
+      this.#runMigrations()
+    } catch (cause) {
+      this.#db.close()
+      throw cause
+    }
   }
 
   close(): void {
@@ -602,6 +607,33 @@ export class NotionSyncStore {
   }
 
   #runMigrations(): void {
+    const migrationHistoryTable = this.#db
+      .prepare(
+        `SELECT name
+         FROM sqlite_master
+         WHERE type = 'table' AND name = 'migration_history'`,
+      )
+      .get()
+
+    if (migrationHistoryTable !== undefined) {
+      const latestKnownMigration = this.#db
+        .prepare(
+          `SELECT MAX(schema_version) AS schema_version
+           FROM migration_history`,
+        )
+        .get()
+      const schemaVersion = latestKnownMigration?.schema_version
+      if (
+        (typeof schemaVersion === 'bigint' || typeof schemaVersion === 'number') &&
+        schemaVersion > STORE_SCHEMA_VERSION
+      ) {
+        throw new LocalStoreError({
+          operation: 'run-migrations',
+          message: `Store schema version ${schemaVersion.toString()} is newer than supported version ${STORE_SCHEMA_VERSION}`,
+        })
+      }
+    }
+
     this.#db.exec(createStoreSchemaSql)
     for (const statement of [
       `ALTER TABLE query_scan_checkpoint
@@ -702,43 +734,21 @@ export class NotionSyncStore {
   }
 
   #readTombstones(rootId: SyncRootId): PlannerProjectionSnapshot['tombstones'] {
-    const directRetrieveByPage = new Map<
-      string,
-      PlannerProjectionSnapshot['tombstones'][number]['directRetrieve']
-    >()
-    for (const row of this.#db
-      .prepare(
-        `SELECT page_id, direct_retrieve
-         FROM query_absence_projection
-         WHERE root_id = ?
-         ORDER BY updated_at DESC, evidence_event_id DESC`,
-      )
-      .all(rootId)) {
-      const pageId = readString(row, 'page_id')
-      if (directRetrieveByPage.has(pageId) === false) {
-        directRetrieveByPage.set(
-          pageId,
-          Schema.decodeUnknownSync(
-            Schema.Literal(
-              'not-run',
-              'accessible',
-              'in-trash',
-              'moved-out',
-              'permission-ambiguous',
-              'inaccessible',
-              'unknown',
-            ),
-          )(readString(row, 'direct_retrieve')),
-        )
-      }
-    }
-
     return this.#db
       .prepare(
-        `SELECT page_id, classification
-         FROM tombstone_projection
-         WHERE root_id = ?
-         ORDER BY page_id`,
+        `SELECT
+           tombstone.page_id,
+           tombstone.classification,
+           absence.data_source_id,
+           absence.query_contract_hash,
+           absence.direct_retrieve
+         FROM tombstone_projection tombstone
+         LEFT JOIN query_absence_projection absence
+           ON absence.root_id = tombstone.root_id
+          AND absence.page_id = tombstone.page_id
+          AND absence.evidence_event_id = tombstone.event_id
+         WHERE tombstone.root_id = ?
+         ORDER BY tombstone.page_id, absence.data_source_id, absence.query_contract_hash`,
       )
       .all(rootId)
       .map((row) => {
@@ -755,17 +765,36 @@ export class NotionSyncStore {
                   ? classification
                   : 'none'
         const directRetrieve =
-          directRetrieveByPage.get(pageId) ??
-          (classification === 'remote_trash'
-            ? 'in-trash'
-            : classification === 'moved_out' || classification === 'moved_between_tracked_sources'
-              ? 'moved-out'
-              : classification === 'inaccessible' || classification === 'unknown'
-                ? classification
-                : 'not-run')
+          row.direct_retrieve === null || row.direct_retrieve === undefined
+            ? classification === 'remote_trash'
+              ? 'in-trash'
+              : classification === 'moved_out' || classification === 'moved_between_tracked_sources'
+                ? 'moved-out'
+                : classification === 'inaccessible' || classification === 'unknown'
+                  ? classification
+                  : 'not-run'
+            : Schema.decodeUnknownSync(
+                Schema.Literal(
+                  'not-run',
+                  'accessible',
+                  'in-trash',
+                  'moved-out',
+                  'permission-ambiguous',
+                  'inaccessible',
+                  'unknown',
+                ),
+              )(readString(row, 'direct_retrieve'))
 
         return {
           pageId: decodePageId(pageId),
+          dataSourceId:
+            row.data_source_id === null || row.data_source_id === undefined
+              ? undefined
+              : decodeDataSourceId(readString(row, 'data_source_id')),
+          queryContractHash:
+            row.query_contract_hash === null || row.query_contract_hash === undefined
+              ? undefined
+              : decodeHash(readString(row, 'query_contract_hash')),
           state,
           directRetrieve,
         }
@@ -1032,6 +1061,15 @@ export class NotionSyncStore {
             Schema.encodeSync(Schema.DateTimeUtc)(event.observedAt),
             currentIso(this.#now),
           )
+
+        if (payload?.schemaProperties !== undefined) {
+          this.#db
+            .prepare(
+              `DELETE FROM schema_property_projection
+               WHERE root_id = ? AND data_source_id = ?`,
+            )
+            .run(event.rootId, event.dataSourceId)
+        }
 
         for (const property of payload?.schemaProperties ?? []) {
           this.#db

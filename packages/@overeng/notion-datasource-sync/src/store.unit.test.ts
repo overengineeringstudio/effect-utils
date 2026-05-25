@@ -426,6 +426,49 @@ describe('Notion sync SQLite store', () => {
     }
   })
 
+  it('fails closed when migration history is newer than the supported schema', () => {
+    const path = tempDatabasePath()
+    const db = new DatabaseSync(path, { readBigInts: true })
+    try {
+      db.exec(`
+        CREATE TABLE migration_history (
+          schema_version INTEGER PRIMARY KEY,
+          migration_name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `)
+      db.prepare(
+        `INSERT INTO migration_history (schema_version, migration_name, applied_at)
+         VALUES (?, ?, ?)`,
+      ).run(999, 'future-schema', observedAt)
+    } finally {
+      db.close()
+    }
+
+    expect(() =>
+      openNotionSyncStore({
+        path,
+        busyTimeoutMs: 2_500,
+        now: () => new Date(observedAt),
+      }),
+    ).toThrow(/newer than supported version/)
+
+    const after = new DatabaseSync(path, { readBigInts: true })
+    try {
+      expect(
+        after
+          .prepare(
+            `SELECT name
+             FROM sqlite_master
+             WHERE type = 'table' AND name = 'sync_root'`,
+          )
+          .get(),
+      ).toBeUndefined()
+    } finally {
+      after.close()
+    }
+  })
+
   it('assigns sequence, computes payload hash, dedupes idempotency, and replays in order', () => {
     withStore((store) => {
       const first = store.appendEvent(
@@ -597,6 +640,55 @@ describe('Notion sync SQLite store', () => {
     })
   })
 
+  it('removes schema properties missing from the latest full data source observation', () => {
+    withStore((store) => {
+      store.appendEvent(
+        dataSourceObserved({
+          eventId: 'event-data-source-base',
+          idempotencyKey: 'remote:data-source-1:base',
+          schemaProperties: [
+            { propertyId: 'property-1', configHash: hash('a'), writeClass: 'writable' },
+            { propertyId: 'property-2', configHash: hash('b'), writeClass: 'computed' },
+          ],
+        }),
+      )
+      store.appendEvent(
+        dataSourceObserved({
+          eventId: 'event-data-source-renamed',
+          idempotencyKey: 'remote:data-source-1:renamed',
+          schemaHash: hash('6'),
+          schemaProperties: [
+            { propertyId: 'property-2', configHash: hash('b'), writeClass: 'computed' },
+            { propertyId: 'property-3', configHash: hash('c'), writeClass: 'writable' },
+          ],
+        }),
+      )
+
+      const beforeRebuild = store.readPlannerProjectionSnapshot(rootId).schema
+      expect(beforeRebuild).toEqual([
+        {
+          dataSourceId: 'data-source-1',
+          propertyId: 'property-2',
+          schemaHash: hash('6'),
+          configHash: hash('b'),
+          writeClass: 'computed',
+        },
+        {
+          dataSourceId: 'data-source-1',
+          propertyId: 'property-3',
+          schemaHash: hash('6'),
+          configHash: hash('c'),
+          writeClass: 'writable',
+        },
+      ])
+
+      store.clearProjectionTables()
+      store.rebuildProjections(rootId)
+
+      expect(store.readPlannerProjectionSnapshot(rootId).schema).toEqual(beforeRebuild)
+    })
+  })
+
   it('keeps pending property intent visible after later remote property observation', () => {
     withStore((store) => {
       store.appendEvent(
@@ -725,6 +817,69 @@ describe('Notion sync SQLite store', () => {
           dataSourceId: 'data-source-1',
           pageId: 'page-1',
           absence: { directRetrieve: 'unknown' },
+        },
+      ])
+      expect(store.readPlannerProjectionSnapshot(rootId).tombstones).toEqual([
+        {
+          pageId: 'page-1',
+          dataSourceId: 'data-source-2',
+          queryContractHash: hash('7'),
+          state: 'candidate',
+          directRetrieve: 'accessible',
+        },
+      ])
+    })
+  })
+
+  it('exposes tombstone direct-retrieve evidence only for the matching source/query identity', () => {
+    withStore((store) => {
+      store.appendEvent(
+        tombstoneCandidate({
+          eventId: 'event-unrelated-absence',
+          idempotencyKey: 'absence:page-1:other-source',
+          pageId: 'page-1',
+          dataSourceId: 'data-source-2',
+          queryContractHash: hash('8'),
+          directRetrieve: 'accessible',
+        }),
+      )
+      store.appendEvent(
+        decode(SyncEvent, {
+          _tag: 'TombstoneCandidateObserved',
+          ...eventBase({
+            eventId: 'event-candidate-without-query-evidence',
+            family: 'RemoteObserved',
+            eventType: 'TombstoneCandidateObserved',
+            idempotencyKey: 'absence:page-1:no-query-evidence',
+            canonicalJson: '{}',
+            surface: 'page:page-1',
+          }),
+          pageId: 'page-1',
+          reason: 'query_absence_unclassified',
+        }),
+      )
+
+      expect(store.readPlannerProjectionSnapshot(rootId).tombstones).toEqual([
+        {
+          pageId: 'page-1',
+          dataSourceId: undefined,
+          queryContractHash: undefined,
+          state: 'candidate',
+          directRetrieve: 'not-run',
+        },
+      ])
+      expect(store.readPlannerProjectionSnapshot(rootId).queries).toEqual([
+        {
+          dataSourceId: 'data-source-2',
+          pageId: 'page-1',
+          queryContractHash: hash('8'),
+          completeness: { terminal: false, cappedAtLimit: false, contractChanged: false },
+          absence: {
+            classified: true,
+            membershipScope: 'all-data-source-rows',
+            filtered: false,
+            directRetrieve: 'accessible',
+          },
         },
       ])
     })

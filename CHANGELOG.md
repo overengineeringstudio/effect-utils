@@ -61,6 +61,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync**: Harden Milestone 4A planner/store projections by scoping schema lookups to row data sources, pruning stale full-schema properties, preserving exact tombstone query evidence identity, and failing closed on future store migrations.
 - **@overeng/notion-datasource-sync**: Harden the Milestone 3C E2E harness so package-local Vitest runs from the package cwd, live Notion tests fail closed on opt-in misconfiguration or unimplemented live calls, fake gateway mutation ledgers record remote write attempts, and scenario traceability checks validate concrete tests plus requirement IDs.
 - **@overeng/notion-datasource-sync**: Harden the fake gateway query and page-property boundaries so query checkpoint hashes include the full contract identity, unavailable data sources and properties fail closed, stale trash/restore commands conflict, and invalid page sizes cannot loop.
 - **@overeng/notion-datasource-sync**: Harden Milestone 3B body/workspace contracts so unsafe body safety metadata fails closed, queued body pushes are fenced by the current body pointer, replayed body observations carry safety metadata, unsafe workspace path segments are rejected, and future Notion API versions are blocked as unverified instead of old-unsupported.
