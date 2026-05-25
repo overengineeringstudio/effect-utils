@@ -57,6 +57,7 @@ export type FakeNotionDataSourceGatewayConfig = {
   readonly pages: ReadonlyArray<FakeNotionPageRecord>
   readonly queryResultCap?: number
   readonly pagePropertyPageSize?: number
+  readonly permissionAmbiguousDataSourceIds?: ReadonlyArray<DataSourceId>
   readonly permissionAmbiguousPageIds?: ReadonlyArray<PageId>
   readonly readAfterWriteMismatchPageIds?: ReadonlyArray<PageId>
 }
@@ -98,17 +99,20 @@ const readRequestId = (sequence: number) => notionRequestId(`fake-req-${sequence
 
 const hasPageId = (pageIds: ReadonlySet<string>, pageId: PageId): boolean =>
   pageIds.has(pageKey(pageId))
+const hasDataSourceId = (dataSourceIds: ReadonlySet<string>, dataSourceId: DataSourceId): boolean =>
+  dataSourceIds.has(dataSourceKey(dataSourceId))
 
 const findDataSource = (
   dataSources: Map<string, DataSourceSnapshot>,
   dataSourceId: DataSourceId,
+  operation: 'retrieveDataSource' | 'queryRows' | 'patchDataSourceSchema',
 ): Effect.Effect<DataSourceSnapshot, NotionGatewayError> => {
   const snapshot = dataSources.get(dataSourceKey(dataSourceId))
 
   return snapshot === undefined
     ? Effect.fail(
         makeGatewayError({
-          operation: 'retrieveDataSource',
+          operation,
           dataSourceId,
           guard: 'PermissionAmbiguous',
           message: `Data source is unavailable or not shared: ${dataSourceId}`,
@@ -141,17 +145,71 @@ const findPage = (
     : Effect.succeed(page)
 }
 
-const queryContractHash = (input: QueryRowsInput): Hash =>
+const stableStringify = (value: unknown): string => {
+  if (value === undefined) {
+    return '"[undefined]"'
+  }
+
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    'toJSON' in value &&
+    typeof value.toJSON === 'function'
+  ) {
+    return stableStringify(value.toJSON())
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`
+  }
+
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+      .join(',')}}`
+  }
+
+  return JSON.stringify(value)
+}
+
+const validatePageSize = ({
+  operation,
+  pageSize,
+  dataSourceId,
+  pageId,
+}: {
+  readonly operation: 'queryRows' | 'retrievePageProperty'
+  readonly pageSize: number
+  readonly dataSourceId?: DataSourceId
+  readonly pageId?: PageId
+}): Effect.Effect<number, NotionGatewayError> =>
+  Number.isInteger(pageSize) && pageSize >= 1 && pageSize <= 100
+    ? Effect.succeed(pageSize)
+    : Effect.fail(
+        makeGatewayError({
+          operation,
+          ...(dataSourceId === undefined ? {} : { dataSourceId }),
+          ...(pageId === undefined ? {} : { pageId }),
+          guard: 'UnsupportedRemoteShape',
+          message: `Invalid Notion pagination page size: ${pageSize}`,
+        }),
+      )
+
+export const queryContractHash = (input: QueryRowsInput, apiVersion: string): Hash =>
   hashStoreBytes(
-    [
-      'query',
-      input.dataSourceId,
-      input.queryContract.apiVersion,
-      input.queryContract.membershipScope,
-      input.queryContract.pageSize.toString(),
-      input.queryContract.filter?._tag ?? 'no-filter',
-      input.queryContract.sorts.map((sort) => `${sort.propertyId}:${sort.direction}`).join(','),
-    ].join('\t'),
+    stableStringify({
+      apiVersion,
+      dataSourceId: input.dataSourceId,
+      queryContract: {
+        apiVersion: input.queryContract.apiVersion,
+        filter: input.queryContract.filter,
+        highWatermark: input.queryContract.highWatermark,
+        membershipScope: input.queryContract.membershipScope,
+        pageSize: input.queryContract.pageSize,
+        sorts: input.queryContract.sorts,
+      },
+    }),
   )
 
 export const makeFakeNotionDataSourceGateway = (
@@ -182,6 +240,9 @@ export const makeFakeNotionDataSourceGateway = (
   const permissionAmbiguousPageIds = new Set(
     (config.permissionAmbiguousPageIds ?? []).map((pageId) => pageKey(pageId)),
   )
+  const permissionAmbiguousDataSourceIds = new Set(
+    (config.permissionAmbiguousDataSourceIds ?? []).map((sourceId) => dataSourceKey(sourceId)),
+  )
   const readAfterWriteMismatchPageIds = new Set(
     (config.readAfterWriteMismatchPageIds ?? []).map((pageId) => pageKey(pageId)),
   )
@@ -201,14 +262,43 @@ export const makeFakeNotionDataSourceGateway = (
         Effect.withSpan('NotionDatasourceSync.FakeGateway.preflightCapabilities'),
       ),
     retrieveDataSource: (id) =>
-      findDataSource(dataSources, id).pipe(
-        Effect.withSpan('NotionDatasourceSync.FakeGateway.retrieveDataSource'),
-      ),
+      hasDataSourceId(permissionAmbiguousDataSourceIds, id)
+        ? Effect.fail(
+            makeGatewayError({
+              operation: 'retrieveDataSource',
+              dataSourceId: id,
+              guard: 'PermissionAmbiguous',
+              message: `Data source retrieval is permission ambiguous: ${id}`,
+            }),
+          )
+        : findDataSource(dataSources, id, 'retrieveDataSource').pipe(
+            Effect.withSpan('NotionDatasourceSync.FakeGateway.retrieveDataSource'),
+          ),
     queryRows: (input) =>
       Stream.fromEffect(
-        parseCursor(input.startCursor, 'queryRows').pipe(
-          Effect.map((startOffset): ReadonlyArray<QueryRowsPage> => {
-            const pageSize = input.queryContract.pageSize
+        (hasDataSourceId(permissionAmbiguousDataSourceIds, input.dataSourceId)
+          ? Effect.fail(
+              makeGatewayError({
+                operation: 'queryRows',
+                dataSourceId: input.dataSourceId,
+                guard: 'PermissionAmbiguous',
+                message: `Data source query is permission ambiguous: ${input.dataSourceId}`,
+              }),
+            )
+          : findDataSource(dataSources, input.dataSourceId, 'queryRows')
+        ).pipe(
+          Effect.zipRight(
+            validatePageSize({
+              operation: 'queryRows',
+              pageSize: input.queryContract.pageSize,
+              dataSourceId: input.dataSourceId,
+            }),
+          ),
+          Effect.zipWith(parseCursor(input.startCursor, 'queryRows'), (pageSize, startOffset) => ({
+            pageSize,
+            startOffset,
+          })),
+          Effect.map(({ pageSize, startOffset }): ReadonlyArray<QueryRowsPage> => {
             const allRows = [...pages.values()]
               .filter((page) => page.snapshot.dataSourceId === input.dataSourceId)
               .filter(
@@ -240,7 +330,7 @@ export const makeFakeNotionDataSourceGateway = (
                 _tag: 'QueryRowsPage',
                 apiVersion: apiContract.apiVersion,
                 requestId: nextRequestId(),
-                queryContractHash: queryContractHash(input),
+                queryContractHash: queryContractHash(input, apiContract.apiVersion),
                 rows,
                 nextCursor: hasMore ? cursorForOffset(nextOffset) : null,
                 hasMore,
@@ -272,43 +362,77 @@ export const makeFakeNotionDataSourceGateway = (
           ),
     retrievePageProperty: (input: RetrievePagePropertyInput) =>
       Stream.fromEffect(
-        findPage(pages, input.pageId, 'retrievePageProperty').pipe(
+        (hasPageId(permissionAmbiguousPageIds, input.pageId)
+          ? Effect.fail(
+              makeGatewayError({
+                operation: 'retrievePageProperty',
+                pageId: input.pageId,
+                guard: 'PermissionAmbiguous',
+                message: `Page property retrieval is permission ambiguous: ${input.pageId}`,
+              }),
+            )
+          : findPage(pages, input.pageId, 'retrievePageProperty')
+        ).pipe(
+          Effect.zipWith(
+            validatePageSize({
+              operation: 'retrievePageProperty',
+              pageSize: pagePropertyPageSize,
+              pageId: input.pageId,
+            }),
+            (page, pageSize) => ({ page, pageSize }),
+          ),
           Effect.flatMap((page) =>
             parseCursor(input.startCursor, 'retrievePageProperty').pipe(
-              Effect.map((startOffset): ReadonlyArray<PagePropertyItemPage> => {
-                const items =
-                  page.propertyItems.find(
+              Effect.flatMap(
+                (
+                  startOffset,
+                ): Effect.Effect<ReadonlyArray<PagePropertyItemPage>, NotionGatewayError> => {
+                  const propertyItems = page.page.propertyItems.find(
                     (property) =>
                       propertyKey(property.propertyId) === propertyKey(input.propertyId),
-                  )?.items ?? []
-                const result: PagePropertyItemPage[] = []
+                  )
 
-                for (
-                  let offset = startOffset;
-                  offset < items.length || result.length === 0;
-                  offset += pagePropertyPageSize
-                ) {
-                  const pageItems = items.slice(offset, offset + pagePropertyPageSize)
-                  const nextOffset = offset + pageItems.length
-                  const hasMore = nextOffset < items.length
-                  result.push({
-                    _tag: 'PagePropertyItemPage',
-                    apiVersion: apiContract.apiVersion,
-                    requestId: nextRequestId(),
-                    pageId: input.pageId,
-                    propertyId: input.propertyId,
-                    items: pageItems,
-                    nextCursor: hasMore ? cursorForOffset(nextOffset) : null,
-                    hasMore,
-                  })
-
-                  if (hasMore === false) {
-                    break
+                  if (propertyItems === undefined) {
+                    return Effect.fail(
+                      makeGatewayError({
+                        operation: 'retrievePageProperty',
+                        pageId: page.page.snapshot.pageId,
+                        guard: 'CurrentSurfaceMissing',
+                        message: `Page property is unavailable or not shared: ${input.propertyId}`,
+                      }),
+                    )
                   }
-                }
 
-                return result
-              }),
+                  const items = propertyItems.items
+                  const result: PagePropertyItemPage[] = []
+
+                  for (
+                    let offset = startOffset;
+                    offset < items.length || result.length === 0;
+                    offset += page.pageSize
+                  ) {
+                    const pageItems = items.slice(offset, offset + page.pageSize)
+                    const nextOffset = offset + pageItems.length
+                    const hasMore = nextOffset < items.length
+                    result.push({
+                      _tag: 'PagePropertyItemPage',
+                      apiVersion: apiContract.apiVersion,
+                      requestId: nextRequestId(),
+                      pageId: input.pageId,
+                      propertyId: input.propertyId,
+                      items: pageItems,
+                      nextCursor: hasMore ? cursorForOffset(nextOffset) : null,
+                      hasMore,
+                    })
+
+                    if (hasMore === false) {
+                      break
+                    }
+                  }
+
+                  return Effect.succeed(result)
+                },
+              ),
             ),
           ),
         ),
@@ -345,7 +469,7 @@ export const makeFakeNotionDataSourceGateway = (
         }),
       ),
     patchDataSourceSchema: (command: PatchDataSourceSchemaCommand) =>
-      findDataSource(dataSources, command.dataSourceId).pipe(
+      findDataSource(dataSources, command.dataSourceId, 'patchDataSourceSchema').pipe(
         Effect.flatMap((snapshot) => {
           if (snapshot.schemaHash !== command.baseSchemaHash) {
             return Effect.fail(
@@ -376,20 +500,42 @@ export const makeFakeNotionDataSourceGateway = (
       ),
     trashPage: (command: TrashPageCommand) =>
       findPage(pages, command.pageId, 'trashPage').pipe(
-        Effect.map((page) => {
+        Effect.flatMap((page) => {
+          if (page.snapshot.propertiesHash !== command.basePropertiesHash) {
+            return Effect.fail(
+              makeGatewayError({
+                operation: 'trashPage',
+                pageId: command.pageId,
+                guard: 'StaleSurfaceBase',
+                message: `Trash base does not match current page properties: ${command.pageId}`,
+              }),
+            )
+          }
+
           const requestId = nextRequestId()
           page.snapshot = PageSnapshot.make({ ...page.snapshot, requestId, inTrash: true })
           page.row = RowPageSnapshot.make({ ...page.row, inTrash: true })
-          return requestId
+          return Effect.succeed(requestId)
         }),
       ),
     restorePage: (command: RestorePageCommand) =>
       findPage(pages, command.pageId, 'restorePage').pipe(
-        Effect.map((page) => {
+        Effect.flatMap((page) => {
+          if (page.snapshot.propertiesHash !== command.basePropertiesHash) {
+            return Effect.fail(
+              makeGatewayError({
+                operation: 'restorePage',
+                pageId: command.pageId,
+                guard: 'StaleSurfaceBase',
+                message: `Restore base does not match current page properties: ${command.pageId}`,
+              }),
+            )
+          }
+
           const requestId = nextRequestId()
           page.snapshot = PageSnapshot.make({ ...page.snapshot, requestId, inTrash: false })
           page.row = RowPageSnapshot.make({ ...page.row, inTrash: false })
-          return requestId
+          return Effect.succeed(requestId)
         }),
       ),
   })
