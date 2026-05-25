@@ -42,6 +42,93 @@ Each entry should include:
 
 ### Added
 
+#### Lineage Annotations (2026-05-25, addresses #687)
+
+New `Lineage` annotation namespace describing the epistemic status of a
+field (source of truth, derived, projection, cache, mirror, external,
+computed) plus composable companions (`Authority`, `Freshness`,
+`ForeignKey`). The schema-aware renderer surfaces a small superscript
+glyph next to annotated field names and a dedicated `LINEAGE` block in
+the schema tooltip. Source field paths embedded in derivation summaries
+carry `data-lineage-target="$.path"` for future jump-to-source wiring.
+
+- `SchemaInfo` gains an optional `lineage: LineageBundle` field, exported
+  alongside the existing display-ready types.
+- `SchemaTooltip` renders LINEAGE, AUTHORITY, FRESHNESS, and REF rows when
+  the corresponding annotations are present.
+- Inline badge skipped for the default `SourceOfTruth` kind to avoid
+  cluttering every authoritative field.
+
+New story: `LineageAnnotations` (`stories/effect-schema.stories.tsx`).
+
+#### Schema-Derived Container Labels (2026-05-25, addresses #686)
+
+Arrays, records, and tuples now surface their schema-derived element/value
+type in the type-badge slot instead of the runtime constructor name.
+
+- `Schema.Array(Item)` → `Array<Item>(N)` (was `Array(N)`)
+- `Schema.Array(Item).annotations({ identifier: 'Pinned' })` → `Pinned(N)`
+- `Schema.Record({ key: String, value: Money })` → `Record<string, Money>`
+  (was `Object`)
+- `Schema.Tuple(String, Number, Boolean)` → `[string, number, boolean](N)`
+
+Element/value names follow the same precedence as everywhere else:
+`title` ?? `identifier` ?? type-kind (`string`, `number`, ...). Anonymous
+structs and unions return `undefined` and fall through to the previous
+behavior.
+
+`getFieldSchema` now falls back to the first `indexSignature.type` when no
+`propertySignature` matches, so per-field schema resolution works inside
+records (tooltip, pretty formatting, nested field navigation).
+
+Out of scope (tracked as #686 follow-ups): `Map`/`Set` containers,
+runtime tagged-union narrowing.
+
+#### Rich Schema Annotation Tooltips (2026-05-25)
+
+Replaces the previous native `title=` attribute (browser default tooltip) with
+a proper React tooltip that surfaces every useful Effect Schema annotation at
+once. Hover or keyboard-focus a field name, the root label, or a struct's
+type badge.
+
+**New file**: `src/schema/SchemaTooltip.tsx`
+
+**New exports**:
+
+- `SchemaTooltip`, `SchemaTooltipProps` — the standalone tooltip component
+- `SchemaInfo`, `SchemaConstraint` — display-ready info bundle types
+- `getSchemaInfo(schema)` — build the bundle for a given schema
+- `getConstraintsFromJSONSchema(ast)` — walk refinement chain and surface
+  human-readable constraints from `JSONSchemaAnnotationId` (min/max length,
+  min/max value, pattern, format, multipleOf, uniqueItems)
+- `getPossibleValuesFromAST(ast)` — detect `Literal`, `Enums`,
+  `Union`-of-literal, `TemplateLiteral` and surface allowed values (capped at
+  12 with `… +N more`)
+
+**Annotations surfaced** (in addition to the previously-supported
+identifier/title/description/pretty):
+
+- `examples` (`ExamplesAnnotationId`), formatted via `pretty` if present
+- `default` (`DefaultAnnotationId`)
+- `documentation` (`DocumentationAnnotationId`)
+
+**Behavior changes**:
+
+- `getFieldSchema` no longer eagerly unwraps refinement/transformation
+  wrappers. Previously, user-supplied `description`/`examples`/`default`
+  annotations on a `.pipe(Schema.int(), Schema.between(...)).annotations(...)`
+  were silently lost because the wrapper was unwrapped before annotation
+  extraction. Downstream traversal still works because `getFieldSchema` and
+  `getArrayElementSchema` re-apply `unwrapAstForDisplay` at the top of each
+  call.
+- `SchemaAwareObjectPreview` now wraps the type-badge span in a
+  `SchemaTooltip` so the badge itself is the hover target for the value
+  type's annotations (separate from the field-name tooltip which targets the
+  field's declared schema).
+- Built-in Effect descriptions like `"a string"`, `"a number"` are filtered
+  out of `hasContent`, so primitive fields without user annotations do not
+  get a tooltip affordance.
+
 #### Effect Schema Support (2024-12-17)
 
 Optional support for Effect Schema annotations to enrich the inspector display.
