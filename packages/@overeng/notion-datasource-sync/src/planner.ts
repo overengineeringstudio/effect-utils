@@ -77,6 +77,8 @@ export type BodyPointerSurfaceSnapshot = {
 
 export type TombstoneSurfaceSnapshot = {
   readonly pageId: PageId
+  readonly dataSourceId: DataSourceId | undefined
+  readonly queryContractHash: Hash | undefined
   readonly state: 'none' | 'candidate' | 'remote-trash' | 'moved-out' | 'inaccessible' | 'unknown'
   readonly directRetrieve: QueryAbsenceSnapshot['directRetrieve']
 }
@@ -278,9 +280,12 @@ const fromGuard = (decision: GuardDecision, surface: SurfaceKey): PlanDecision |
 
 const findSchemaProperty = (
   snapshot: PlannerProjectionSnapshot,
+  dataSourceId: DataSourceId,
   propertyId: PropertyId,
 ): SchemaPropertySurface | undefined =>
-  snapshot.schema.find((property) => property.propertyId === propertyId)
+  snapshot.schema.find(
+    (property) => property.dataSourceId === dataSourceId && property.propertyId === propertyId,
+  )
 
 const findPropertySurface = (
   snapshot: PlannerProjectionSnapshot,
@@ -375,7 +380,16 @@ const planPropertyEdit = (
   snapshot: PlannerProjectionSnapshot,
   intent: PropertyEditIntent,
 ): PlanDecision => {
-  const schemaProperty = findSchemaProperty(snapshot, intent.propertyId)
+  const row = findRowSurface(snapshot, intent.pageId)
+  if (row === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current row projection is missing; observe the row before planning a property write',
+    )
+  }
+
+  const schemaProperty = findSchemaProperty(snapshot, row.dataSourceId, intent.propertyId)
   const propertySurface = findPropertySurface(snapshot, intent.pageId, intent.propertyId)
 
   const baseGuards: GuardDecision[] = [

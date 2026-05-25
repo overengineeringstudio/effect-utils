@@ -540,6 +540,56 @@ describe('notion datasource planner', () => {
     })
   })
 
+  it('scopes property edit schema lookup to the row data source', () => {
+    const decision = planIntent(
+      snapshot({
+        schema: [
+          {
+            dataSourceId,
+            propertyId: propertyA,
+            schemaHash: hash('b'),
+            configHash: hash('c'),
+            writeClass: 'writable',
+          },
+          {
+            dataSourceId: otherDataSourceId,
+            propertyId: propertyA,
+            schemaHash: hash('d'),
+            configHash: hash('e'),
+            writeClass: 'computed',
+          },
+        ],
+        rows: [
+          {
+            pageId,
+            dataSourceId: otherDataSourceId,
+            propertiesHash: hash('a'),
+            inTrash: false,
+            movedOut: false,
+            localDeleteCandidate: false,
+          },
+        ],
+      }),
+      {
+        _tag: 'property-edit',
+        intentEventId,
+        commandKey,
+        surface: propertySurfaceKey(pageId, propertyA),
+        pageId,
+        propertyId: propertyA,
+        command: propertyCommand,
+        baseHash: hash('a'),
+        desiredHash: hash('f'),
+        expectedPropertyConfigHash: hash('e'),
+      },
+    )
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'ComputedPropertyWrite',
+    })
+  })
+
   it('blocks body edits when the current body projection is missing', () => {
     const decision = planIntent(
       snapshot({
