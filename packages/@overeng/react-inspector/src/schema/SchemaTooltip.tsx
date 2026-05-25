@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { FC, ReactNode } from 'react'
 
-import type { SchemaInfo } from './effectSchema.tsx'
+import type { LineageBundle, SchemaInfo } from './effectSchema.tsx'
 
 export interface SchemaTooltipProps {
   /** Display-ready schema info; pass undefined to render children without a tooltip. */
@@ -250,6 +250,8 @@ const SchemaTooltipContent: FC<{ info: SchemaInfo }> = ({ info }) => {
         </div>
       )}
 
+      {info.lineage !== undefined && <LineageSection bundle={info.lineage} />}
+
       {info.examples !== undefined && (
         <div style={sectionStyle}>
           <span style={labelStyle}>Examples</span>
@@ -270,4 +272,118 @@ const SchemaTooltipContent: FC<{ info: SchemaInfo }> = ({ info }) => {
       )}
     </div>
   )
+}
+
+const lineagePathStyle: React.CSSProperties = {
+  ...monoStyle,
+  color: 'rgb(160, 200, 255)',
+}
+
+/**
+ * Render the LINEAGE section plus any companion annotation rows
+ * (AUTHORITY / FRESHNESS / REF) inside the tooltip body.
+ *
+ * Field paths inside derived/projection/cache lineage are emitted with a
+ * `data-lineage-target` attribute so future “jump to source” wiring can find
+ * them without re-parsing the rendered tooltip.
+ *
+ * @see https://github.com/overengineeringstudio/effect-utils/issues/687
+ */
+const LineageSection: FC<{ bundle: LineageBundle }> = ({ bundle }) => {
+  const { display, authority, freshness, reference } = bundle
+  const hasPrimary = display.kindLabel !== ''
+  return (
+    <>
+      {hasPrimary && (
+        <div style={sectionStyle}>
+          <div style={{ marginBottom: 2 }}>
+            <span style={labelStyle}>Lineage</span>
+          </div>
+          <div>
+            <span style={{ fontWeight: 600, marginRight: 6 }}>
+              <span aria-hidden="true" style={{ marginRight: 4 }}>
+                {display.badge}
+              </span>
+              {display.kindLabel}
+            </span>
+            <span style={{ color: 'rgb(220, 220, 230)' }}>
+              {renderSummaryWithPaths(display.summary)}
+            </span>
+          </div>
+          {display.details !== undefined && display.details.length > 0 && (
+            <div style={{ marginTop: 2 }}>
+              {display.details.map((d) => (
+                <div key={d.label}>
+                  <span style={labelStyle}>{d.label}</span>
+                  <span style={monoStyle}>{d.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {authority !== undefined && (
+        <div style={sectionStyle}>
+          <span style={labelStyle}>Authority</span>
+          <span style={monoStyle}>
+            writers: {authority.writers.join(', ')}
+            {authority.readers !== undefined && authority.readers.length > 0
+              ? `; readers: ${authority.readers.join(', ')}`
+              : ''}
+          </span>
+        </div>
+      )}
+
+      {freshness !== undefined && (
+        <div style={sectionStyle}>
+          <span style={labelStyle}>Freshness</span>
+          <span style={monoStyle}>{formatFreshness(freshness)}</span>
+        </div>
+      )}
+
+      {reference !== undefined && (
+        <div style={sectionStyle}>
+          <span style={labelStyle}>Ref</span>
+          <span style={lineagePathStyle} data-lineage-target={reference.targetField ?? ''}>
+            → {reference.targetSchema}
+            {reference.targetField !== undefined ? `.${reference.targetField}` : ''}
+          </span>
+        </div>
+      )}
+    </>
+  )
+}
+
+/*
+ * Highlight `$.foo` / `$.foo.bar` tokens inside the lineage summary so source
+ * field paths stand out from prose. Token shape mirrors LineageRef Field
+ * paths produced by `lineage.ts`.
+ */
+const PATH_TOKEN_RE = /\$\.[A-Za-z_$][\w$.[\]]*/g
+
+const renderSummaryWithPaths = (summary: string): ReactNode => {
+  const parts: ReactNode[] = []
+  let lastIndex = 0
+  let key = 0
+  for (const match of summary.matchAll(PATH_TOKEN_RE)) {
+    const start = match.index
+    if (start === undefined) continue
+    if (start > lastIndex) parts.push(summary.slice(lastIndex, start))
+    parts.push(
+      <span key={key++} style={lineagePathStyle} data-lineage-target={match[0]}>
+        {match[0]}
+      </span>,
+    )
+    lastIndex = start + match[0].length
+  }
+  if (lastIndex < summary.length) parts.push(summary.slice(lastIndex))
+  return parts.length > 0 ? parts : summary
+}
+
+const formatFreshness = (freshness: { capturedAt?: string; maxAgeMs?: number }): string => {
+  const parts: string[] = []
+  if (freshness.capturedAt !== undefined) parts.push(freshness.capturedAt)
+  if (freshness.maxAgeMs !== undefined) parts.push(`≤ ${freshness.maxAgeMs}ms`)
+  return parts.length > 0 ? parts.join(' ') : 'unspecified'
 }

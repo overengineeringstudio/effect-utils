@@ -381,10 +381,10 @@ const parseFile = async (path: string) => {
  */
 const readSyncStateFile = async (path: string): Promise<NmdSyncStateV1> => {
   const parsed = await parseFile(path)
-  const pageId = parsed.frontmatter.notion_md.page_id
+  const filePageId = parsed.frontmatter.notion_md.page_id
   const baseName = path.split(/[\\/]/u).at(-1) ?? path
   const root = path.slice(0, Math.max(0, path.length - baseName.length))
-  const sidecarPath = `${root}.notion-md/sync/${pageId}.json`
+  const sidecarPath = `${root}.notion-md/sync/${filePageId}.json`
   return JSON.parse(await readFile(sidecarPath, 'utf8')) as NmdSyncStateV1
 }
 

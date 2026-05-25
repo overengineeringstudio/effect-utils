@@ -86,4 +86,38 @@ import { SchemaTooltip, getSchemaInfo } from '@overeng/react-inspector'
 </SchemaTooltip>
 ```
 
+### Lineage annotations
+
+A standardized vocabulary for the _epistemic_ status of a field — is it the
+source of truth, a derivation, a projection, a cache, etc. — surfaced by the
+inspector as inline badges and a dedicated tooltip section
+([#687](https://github.com/overengineeringstudio/effect-utils/issues/687)).
+
+| Glyph | Kind            | Meaning                                                  |
+| ----- | --------------- | -------------------------------------------------------- |
+| `⇆`   | Source of truth | Authoritative value (default; no badge rendered inline). |
+| `ƒ`   | Derived         | Computed deterministically from listed source fields.    |
+| `≈`   | Projection      | Read-model view of another field; may be stale.          |
+| `☷`  | Cache           | Cached copy with an optional TTL.                        |
+| `↻`   | Mirror          | Synced replica of a field, often from another system.    |
+| `↗`   | External        | Reference into an external system.                       |
+| `⊙`   | Computed        | Pure read-time computation; not persisted.               |
+
+Companion annotations (`Authority`, `Freshness`, `ForeignKey`) compose
+with any `Lineage` and surface as extra tooltip rows.
+
+```tsx
+import { Lineage } from '@overeng/react-inspector'
+import { Schema } from 'effect'
+
+const OrderTotals = Schema.Struct({
+  subtotal: Schema.Number.pipe(Lineage.sourceOfTruth({ owner: 'orders' })),
+  total: Schema.Number.pipe(Lineage.derivedFrom(['subtotal', 'tax'])),
+  customerId: Schema.String.pipe(
+    Lineage.foreignKey('Customer', 'id'),
+    Lineage.authority({ writers: ['orders-svc'] }),
+  ),
+})
+```
+
 See [FORK_CHANGELOG.md](./FORK_CHANGELOG.md) for details on fork-specific features.

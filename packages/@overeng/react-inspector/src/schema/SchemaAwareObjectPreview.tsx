@@ -64,6 +64,36 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
     return <ObjectValue object={object} />
   }
 
+  /*
+   * Map/Set: render `<Container>(N)` for the type-badge slot when the schema
+   * carries a container label (e.g. `Map<string, Money>(2)`). We don't try
+   * to inline-preview the entries the way arrays/objects do — the inspector's
+   * default expansion will surface them on click, and our goal here is the
+   * collapsed badge.
+   *
+   * @see https://github.com/overengineeringstudio/effect-utils/issues/686
+   */
+  if (object instanceof Map || object instanceof Set) {
+    const schemaDisplayName = schemaCtx.getDisplayName()
+    const info = schemaCtx.getSchemaInfo()
+    const label = schemaDisplayName ?? info?.containerLabel
+    if (label === undefined) {
+      return <ObjectPreview data={data} />
+    }
+    const descriptionStyle: React.CSSProperties = {
+      ...(styles.objectDescription as React.CSSProperties),
+      fontStyle: 'italic',
+    }
+    return (
+      <React.Fragment>
+        <SchemaTooltip info={info}>
+          <span style={descriptionStyle}>{`${label} `}</span>
+        </SchemaTooltip>
+        <span style={styles.objectDescription as React.CSSProperties}>{`(${object.size})`}</span>
+      </React.Fragment>
+    )
+  }
+
   if (Array.isArray(object) === true) {
     const maxProperties = (styles.arrayMaxProperties as number) || 10
     const elementCtx = schemaCtx.getElementContext()

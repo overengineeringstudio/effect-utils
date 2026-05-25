@@ -12,6 +12,7 @@ import {
   ObjectPreview,
   withSchemaSupport,
   SchemaProvider,
+  Lineage,
 } from '../src'
 
 export default {
@@ -807,6 +808,212 @@ export const ContainerLabels = {
       <SchemaObjectInspector
         data={sampleInventory}
         schema={InventorySchema as unknown as typeof ShowcaseUserSchema}
+        expandLevel={2}
+      />
+    </div>
+  ),
+}
+
+/* ============================================================================
+ * Map / Set container labels (#686)
+ * ============================================================================ */
+
+const StockMapSchema = Schema.Struct({
+  /* `Map<string, Money>` — runtime is a real Map instance. */
+  pricesByLocation: Schema.MapFromSelf({ key: Schema.String, value: MoneyV2Schema }),
+  /* `Set<Item>` — runtime is a real Set instance. */
+  uniqueItems: Schema.SetFromSelf(ItemSchema),
+  /* `ReadonlyMap<string, number>` — distinct prefix. */
+  readonlyCounts: Schema.ReadonlyMapFromSelf({ key: Schema.String, value: Schema.Number }),
+}).annotations({
+  identifier: 'StockMap',
+  title: 'Stock Map',
+})
+
+const sampleStockMap = {
+  pricesByLocation: new Map<string, number>([
+    ['us-east', 19.99],
+    ['eu-west', 22.5],
+  ]),
+  uniqueItems: new Set([
+    { sku: 'A-001', qty: 12 },
+    { sku: 'A-002', qty: 4 },
+  ]),
+  readonlyCounts: new Map<string, number>([['total', 16]]),
+}
+
+/**
+ * Map/Set container labels — addresses #686.
+ *
+ * `Schema.MapFromSelf({ key, value })` renders as `Map<string, Money>(N)` and
+ * `Schema.SetFromSelf(Item)` as `Set<Item>(N)`. `Schema.ReadonlyMapFromSelf`
+ * keeps the `ReadonlyMap<...>` prefix.
+ */
+export const MapAndSetContainerLabels = {
+  render: () => (
+    <div>
+      <Hint>
+        Map and Set fields take their schema-derived label (e.g.{' '}
+        <code>Map&lt;string, Money&gt;(2)</code>) in the type-badge slot.
+      </Hint>
+      <SchemaObjectInspector
+        data={sampleStockMap}
+        schema={StockMapSchema as unknown as typeof ShowcaseUserSchema}
+        expandLevel={2}
+      />
+    </div>
+  ),
+}
+
+/* ============================================================================
+ * Runtime tagged-union narrowing (#686)
+ * ============================================================================ */
+
+const EventCreatedSchema = Schema.Struct({
+  _tag: Schema.Literal('Created'),
+  id: Schema.String,
+  createdAt: Schema.String,
+}).annotations({
+  identifier: 'EventCreated',
+  title: 'Created Event',
+  description: 'A resource was created.',
+})
+
+const EventUpdatedSchema = Schema.Struct({
+  _tag: Schema.Literal('Updated'),
+  id: Schema.String,
+  changedFields: Schema.Array(Schema.String),
+}).annotations({
+  identifier: 'EventUpdated',
+  title: 'Updated Event',
+  description: 'An existing resource was modified.',
+})
+
+const EventDeletedSchema = Schema.Struct({
+  _tag: Schema.Literal('Deleted'),
+  id: Schema.String,
+}).annotations({
+  identifier: 'EventDeleted',
+  title: 'Deleted Event',
+  description: 'A resource was removed.',
+})
+
+const EventSchema = Schema.Union(EventCreatedSchema, EventUpdatedSchema, EventDeletedSchema)
+
+const AuditEntrySchema = Schema.Struct({
+  actor: Schema.String,
+  event: EventSchema,
+}).annotations({
+  identifier: 'AuditEntry',
+  title: 'Audit Entry',
+})
+
+const sampleCreated = {
+  actor: 'alice',
+  event: {
+    _tag: 'Created' as const,
+    id: 'rsc_001',
+    createdAt: '2026-05-25T10:00:00Z',
+  },
+}
+
+const sampleUpdated = {
+  actor: 'bob',
+  event: {
+    _tag: 'Updated' as const,
+    id: 'rsc_001',
+    changedFields: ['title', 'status'],
+  },
+}
+
+/**
+ * Runtime tagged-union narrowing — addresses #686.
+ *
+ * The `event` field is a `Schema.Union(Created, Updated, Deleted)`. When the
+ * runtime value carries `_tag: 'Created'`, tooltips, badge, and field
+ * annotations narrow to `EventCreated`; same for `'Updated'`.
+ */
+export const RuntimeTaggedUnionNarrowing = {
+  render: () => (
+    <div>
+      <Hint>
+        Each entry's <code>event</code> is a union of three tagged structs. The badge and tooltip
+        narrow to the matching variant (<code>Created Event</code>, <code>Updated Event</code>)
+        based on the runtime <code>_tag</code>.
+      </Hint>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <SchemaObjectInspector
+          data={sampleCreated}
+          schema={AuditEntrySchema as unknown as typeof ShowcaseUserSchema}
+          expandLevel={2}
+        />
+        <SchemaObjectInspector
+          data={sampleUpdated}
+          schema={AuditEntrySchema as unknown as typeof ShowcaseUserSchema}
+          expandLevel={2}
+        />
+      </div>
+    </div>
+  ),
+}
+
+/* ============================================================================
+ * Lineage annotations (#687)
+ * ============================================================================ */
+
+const OrderTotalsSchema = Schema.Struct({
+  subtotal: Schema.Number.pipe(Lineage.sourceOfTruth({ owner: 'orders' })),
+  tax: Schema.Number.pipe(Lineage.sourceOfTruth()),
+  total: Schema.Number.pipe(Lineage.derivedFrom(['subtotal', 'tax'], 'Pure', { pure: true })),
+  displayTotal: Schema.String.pipe(Lineage.computed({ fn: 'formatMoney(total)' })),
+  cachedFxRate: Schema.Number.pipe(Lineage.cache('fxRate', { ttlMs: 60_000 })),
+  mirroredStripeId: Schema.String.pipe(Lineage.mirror('id', { system: 'stripe' })),
+  legacyOrderRef: Schema.String.pipe(Lineage.external('legacy-erp', 'order-id')),
+  lastSyncedSnapshot: Schema.Number.pipe(Lineage.projection('total', { stalenessMs: 30_000 })),
+  customerId: Schema.String.pipe(
+    Lineage.authority({ writers: ['orders-svc'], readers: ['*'] }),
+    Lineage.freshness({ capturedAt: 'event-time', maxAgeMs: 5_000 }),
+    Lineage.foreignKey('Customer', 'id'),
+  ),
+}).annotations({
+  identifier: 'OrderTotals',
+  title: 'Order Totals',
+  description: 'Money breakdown for an order; exercises every lineage kind.',
+})
+
+const sampleOrderTotals = {
+  subtotal: 99.0,
+  tax: 8.91,
+  total: 107.91,
+  displayTotal: '$107.91',
+  cachedFxRate: 1.085,
+  mirroredStripeId: 'pi_3OABCD',
+  legacyOrderRef: 'ORD-998877',
+  lastSyncedSnapshot: 107.91,
+  customerId: 'cust_42',
+}
+
+/**
+ * Lineage annotations — addresses #687.
+ *
+ * Each field carries a different Lineage variant. Hovering the field name
+ * shows the LINEAGE block (kind label, summary, source paths). Companion
+ * annotations (Authority, Freshness, Reference) compose: `customerId` carries
+ * all three at once.
+ */
+export const LineageAnnotations = {
+  render: () => (
+    <div>
+      <Hint>
+        Hover any field name to reveal the lineage details. The small superscript next to a name
+        (e.g. <code>ƒ</code>, <code>≈</code>, <code>☷</code>) is an at-a-glance marker for the
+        lineage kind. <code>SourceOfTruth</code> is the default and intentionally gets no badge. The
+        last field exercises the companion <code>Authority</code> / <code>Freshness</code> /{' '}
+        <code>ForeignKey</code> annotations together.
+      </Hint>
+      <SchemaObjectInspector
+        data={sampleOrderTotals}
+        schema={OrderTotalsSchema as unknown as typeof ShowcaseUserSchema}
         expandLevel={2}
       />
     </div>

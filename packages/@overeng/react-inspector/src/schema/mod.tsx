@@ -1,4 +1,5 @@
 export {
+  type LineageBundle,
   type SchemaAnnotations,
   type SchemaConstraint,
   type SchemaInfo,
@@ -35,3 +36,7 @@ export { createSchemaAwareNodeRenderer } from './SchemaAwareNodeRenderer.tsx'
 export { SchemaAwareObjectValue } from './SchemaAwareObjectValue.tsx'
 export { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx'
 export { SchemaTooltip, type SchemaTooltipProps } from './SchemaTooltip.tsx'
+
+import * as Lineage from './lineage.ts'
+
+export { Lineage }

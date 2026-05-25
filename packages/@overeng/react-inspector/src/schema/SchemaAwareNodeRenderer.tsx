@@ -4,9 +4,39 @@ import type { FC } from 'react'
 import { useStyles } from '../styles/index.tsx'
 import { hasOwnProperty } from '../utils/objectPrototype.tsx'
 import { getPropertyValue } from '../utils/propertyUtils.tsx'
+import type { LineageBundle } from './effectSchema.tsx'
 import { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx'
 import { SchemaProvider, useSchemaContext } from './SchemaContext.tsx'
 import { SchemaTooltip } from './SchemaTooltip.tsx'
+
+/**
+ * Tiny inline glyph rendered next to a field name when its schema carries a
+ * Lineage annotation. Skipped for the default `SourceOfTruth` state because
+ * marking every authoritative field would be visual noise — only the
+ * non-default kinds get a badge.
+ *
+ * @see https://github.com/overengineeringstudio/effect-utils/issues/687
+ */
+const LineageBadge: FC<{ lineage: LineageBundle | undefined }> = ({ lineage }) => {
+  if (lineage === undefined) return null
+  const { display } = lineage
+  if (display.badge === '') return null
+  /* SourceOfTruth is the implicit default; rendering it would clutter. */
+  if (display.kindLabel === 'Source of truth') return null
+  return (
+    <sup
+      title={display.badgeTitle}
+      style={{
+        marginLeft: 2,
+        fontSize: 10,
+        color: 'rgba(0, 0, 0, 0.5)',
+        cursor: 'help',
+      }}
+    >
+      {display.badge}
+    </sup>
+  )
+}
 
 export interface SchemaAwareNodeRendererProps {
   /** Original ObjectRootLabel component */
@@ -34,7 +64,7 @@ export const createSchemaAwareNodeRenderer = ({
   /** Schema-aware ObjectValue that uses pretty print and display name */
   const SchemaAwareObjectValue: FC<{ object: unknown; path: string }> = ({ object, path }) => {
     const rootCtx = useSchemaContext()
-    const schemaCtx = rootCtx.getContextForPath(path)
+    const schemaCtx = rootCtx.getContextForPathWithValue(path, object)
 
     const prettyFormatted = schemaCtx.formatValue(object)
     if (prettyFormatted !== undefined) {
@@ -57,6 +87,27 @@ export const createSchemaAwareNodeRenderer = ({
           <span>
             <span style={{ fontStyle: 'italic' }}>{label}</span>
             <span>{`(${object.length})`}</span>
+          </span>
+        )
+      }
+      return <ObjectValue object={object} />
+    }
+
+    /*
+     * Map/Set runtime values: when the schema describes the container (e.g.
+     * `Schema.Map({ key, value })` -> `Map<string, Money>`), surface the
+     * schema label in the type-badge slot followed by the runtime size.
+     * Mirrors the array branch but reads `.size` instead of `.length`.
+     */
+    if (object instanceof Map || object instanceof Set) {
+      const schemaDisplayName = schemaCtx.getDisplayName()
+      const containerLabel = schemaCtx.getSchemaInfo()?.containerLabel
+      const label = schemaDisplayName ?? containerLabel
+      if (label !== undefined) {
+        return (
+          <span>
+            <span style={{ fontStyle: 'italic' }}>{label}</span>
+            <span>{`(${object.size})`}</span>
           </span>
         )
       }
@@ -86,7 +137,7 @@ export const createSchemaAwareNodeRenderer = ({
     path: string
   }> = ({ data, path }) => {
     const rootCtx = useSchemaContext()
-    const schemaCtx = rootCtx.getContextForPath(path)
+    const schemaCtx = rootCtx.getContextForPathWithValue(path, data)
 
     return (
       <SchemaProvider schema={schemaCtx.schema}>
@@ -112,7 +163,7 @@ export const createSchemaAwareNodeRenderer = ({
     expanded: boolean | undefined
   }> = ({ name, data, path, isNonenumerable = false, expanded }) => {
     const rootCtx = useSchemaContext()
-    const schemaCtx = rootCtx.getContextForPath(path)
+    const schemaCtx = rootCtx.getContextForPathWithValue(path, data)
     const info = schemaCtx.getSchemaInfo()
     const schemaDisplayName = schemaCtx.getDisplayName()
 
@@ -134,9 +185,12 @@ export const createSchemaAwareNodeRenderer = ({
     return (
       <span>
         {typeof name === 'string' ? (
-          <SchemaTooltip info={info}>
-            <ObjectName name={name} dimmed={isNonenumerable} />
-          </SchemaTooltip>
+          <>
+            <SchemaTooltip info={info}>
+              <ObjectName name={name} dimmed={isNonenumerable} />
+            </SchemaTooltip>
+            <LineageBadge lineage={info?.lineage} />
+          </>
         ) : (
           <SchemaAwareObjectPreviewForPath data={name} path={path} />
         )}
@@ -163,7 +217,7 @@ export const createSchemaAwareNodeRenderer = ({
     expanded: boolean | undefined
   }> = ({ name, data, path, expanded }) => {
     const rootCtx = useSchemaContext()
-    const schemaCtx = rootCtx.getContextForPath(path)
+    const schemaCtx = rootCtx.getContextForPathWithValue(path, data)
     const info = schemaCtx.getSchemaInfo()
 
     const prettyFormatted = schemaCtx.formatValue(data)
@@ -174,6 +228,7 @@ export const createSchemaAwareNodeRenderer = ({
             <SchemaTooltip info={info}>
               <ObjectName name={name} />
             </SchemaTooltip>
+            <LineageBadge lineage={info?.lineage} />
             <span>: </span>
             <span>{prettyFormatted}</span>
           </span>
@@ -194,6 +249,7 @@ export const createSchemaAwareNodeRenderer = ({
           <SchemaTooltip info={info}>
             <ObjectName name={name} />
           </SchemaTooltip>
+          <LineageBadge lineage={info?.lineage} />
           <span>: </span>
           <SchemaAwareObjectPreviewWithName
             data={data}
@@ -223,7 +279,7 @@ export const createSchemaAwareNodeRenderer = ({
     path: string
   }> = ({ data, schemaDisplayName, expanded, path }) => {
     const rootCtx = useSchemaContext()
-    const schemaCtx = rootCtx.getContextForPath(path)
+    const schemaCtx = rootCtx.getContextForPathWithValue(path, data)
     const info = schemaCtx.getSchemaInfo()
 
     const isComplexObject =
@@ -233,19 +289,35 @@ export const createSchemaAwareNodeRenderer = ({
       !(data instanceof RegExp) &&
       data.constructor?.name === 'Object'
 
+    const isMapOrSet = data instanceof Map || data instanceof Set
+
     /**
      * When expanded, show only the type identifier (no inline preview needed
      * since children are visible). The identifier itself is the tooltip
-     * trigger — hovering it shows the type's annotations.
+     * trigger — hovering it shows the type's annotations. Map/Set follow the
+     * same path so an expanded `Map<K, V>` keeps its schema-derived badge.
      */
-    if (expanded === true && isComplexObject === true) {
+    if (expanded === true && (isComplexObject === true || isMapOrSet === true)) {
       const containerLabel = info?.containerLabel
       const schemaSourcedLabel = schemaDisplayName ?? containerLabel
-      const label = schemaSourcedLabel ?? data.constructor?.name ?? 'Object'
+      const fallbackName =
+        data instanceof Map
+          ? `Map(${data.size})`
+          : data instanceof Set
+            ? `Set(${data.size})`
+            : ((data as { constructor?: { name?: string } }).constructor?.name ?? 'Object')
+      const label = schemaSourcedLabel ?? fallbackName
+      const suffix =
+        isMapOrSet && schemaSourcedLabel !== undefined
+          ? `(${(data as Map<unknown, unknown> | Set<unknown>).size})`
+          : ''
       return (
         <SchemaTooltip info={info}>
-          <span style={schemaSourcedLabel !== undefined ? { fontStyle: 'italic' } : undefined}>
-            {label}
+          <span>
+            <span style={schemaSourcedLabel !== undefined ? { fontStyle: 'italic' } : undefined}>
+              {label}
+            </span>
+            {suffix.length > 0 ? <span>{suffix}</span> : null}
           </span>
         </SchemaTooltip>
       )

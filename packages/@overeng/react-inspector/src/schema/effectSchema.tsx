@@ -1,5 +1,17 @@
 import type { Schema as S, SchemaAST } from 'effect'
 
+import {
+  type Authority,
+  type Freshness,
+  type LineageDisplay,
+  type Reference,
+  getAuthority,
+  getFreshness,
+  getLineage,
+  getLineageDisplay,
+  getReference,
+} from './lineage.ts'
+
 /** Symbols used by Effect Schema for annotations */
 const IdentifierAnnotationId = Symbol.for('effect/annotation/Identifier')
 const TitleAnnotationId = Symbol.for('effect/annotation/Title')
@@ -9,6 +21,14 @@ const ExamplesAnnotationId = Symbol.for('effect/annotation/Examples')
 const DefaultAnnotationId = Symbol.for('effect/annotation/Default')
 const JSONSchemaAnnotationId = Symbol.for('effect/annotation/JSONSchema')
 const DocumentationAnnotationId = Symbol.for('effect/annotation/Documentation')
+/**
+ * Effect tags `Schema.MapFromSelf` / `Schema.SetFromSelf` (and the transform
+ * variants `Schema.Map` / `Schema.Set` / `Schema.ReadonlyMap` /
+ * `Schema.ReadonlySet`) with this annotation so consumers can distinguish
+ * Map/Set declarations from arbitrary `Declaration` ASTs without string-
+ * matching on descriptions.
+ */
+const TypeConstructorAnnotationId = Symbol.for('effect/annotation/TypeConstructor')
 
 export interface SchemaAnnotations {
   identifier?: string | undefined
@@ -51,7 +71,26 @@ export interface SchemaInfo {
    * doesn't carry enough info.
    */
   containerLabel?: string
+  /**
+   * Lineage annotation bundle, when present on the schema.
+   *
+   * @see https://github.com/overengineeringstudio/effect-utils/issues/687
+   */
+  lineage?: LineageBundle
   hasContent: boolean
+}
+
+/**
+ * Pre-resolved Lineage annotations for a single schema, paired with the
+ * companion annotations (Authority, Freshness, Reference) when set.
+ *
+ * @see https://github.com/overengineeringstudio/effect-utils/issues/687
+ */
+export interface LineageBundle {
+  display: LineageDisplay
+  authority?: Authority
+  freshness?: Freshness
+  reference?: Reference
 }
 
 const isNullishAst = (ast: SchemaAST.AST): boolean => {
@@ -507,7 +546,144 @@ const getContainerLabelForAST = (rawAst: SchemaAST.AST): string | undefined => {
     }
   }
 
+  /*
+   * Map / Set declarations: identified by the `typeConstructor` annotation
+   * Effect attaches to `Schema.MapFromSelf` / `Schema.SetFromSelf` (and the
+   * transform variants `Schema.Map` / `Schema.Set` / `Schema.ReadonlyMap` /
+   * `Schema.ReadonlySet`, which `unwrapAstForDisplay` collapses to their
+   * `to` declaration). The annotation only carries `_tag: 'ReadonlyMap' |
+   * 'ReadonlySet'` — the mutable vs readonly distinction has to be inferred
+   * from the description string Effect produces (`Map<...>` /
+   * `ReadonlyMap<...>` / `Set<...>` / `ReadonlySet<...>`).
+   *
+   * @see https://github.com/overengineeringstudio/effect-utils/issues/686
+   */
+  if (ast._tag === 'Declaration') {
+    const declAst = ast as SchemaAST.Declaration
+    const typeCtor = declAst.annotations[TypeConstructorAnnotationId] as
+      | { _tag?: unknown }
+      | undefined
+    const ctorTag = typeCtor?._tag
+    if (ctorTag === 'ReadonlyMap' || ctorTag === 'ReadonlySet') {
+      const description = declAst.annotations[DescriptionAnnotationId] as string | undefined
+      if (ctorTag === 'ReadonlyMap' && declAst.typeParameters.length === 2) {
+        const [keyAst, valueAst] = declAst.typeParameters
+        if (keyAst !== undefined && valueAst !== undefined) {
+          const keyLabel = getElementLabelForAST(keyAst)
+          const valueLabel = getElementLabelForAST(valueAst)
+          if (keyLabel !== undefined && valueLabel !== undefined) {
+            const prefix = description?.startsWith('ReadonlyMap<') === true ? 'ReadonlyMap' : 'Map'
+            return `${prefix}<${keyLabel}, ${valueLabel}>`
+          }
+        }
+      }
+      if (ctorTag === 'ReadonlySet' && declAst.typeParameters.length === 1) {
+        const [valueAst] = declAst.typeParameters
+        if (valueAst !== undefined) {
+          const valueLabel = getElementLabelForAST(valueAst)
+          if (valueLabel !== undefined) {
+            const prefix = description?.startsWith('ReadonlySet<') === true ? 'ReadonlySet' : 'Set'
+            return `${prefix}<${valueLabel}>`
+          }
+        }
+      }
+    }
+  }
+
   return undefined
+}
+
+/**
+ * Narrow a `Schema.Union(...)` of tagged structs to the member matching the
+ * runtime value's `_tag`. Returns the original AST when the union isn't
+ * discriminated by `_tag` or no member matches.
+ *
+ * Each member of the union is itself unwrapped (Refinement/Transformation/
+ * Suspend) before we look for a `_tag` PropertySignature whose type is a
+ * `Literal`. The returned AST is the matching member's *raw* AST so callers
+ * keep its annotations (description, identifier, ...).
+ *
+ * @see https://github.com/overengineeringstudio/effect-utils/issues/686
+ */
+export const narrowUnionByTag = (rawAst: SchemaAST.AST, value: unknown): SchemaAST.AST => {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    !('_tag' in value) ||
+    typeof (value as { _tag: unknown })._tag !== 'string'
+  ) {
+    return rawAst
+  }
+
+  const ast = unwrapAstForDisplay(rawAst)
+  if (ast._tag !== 'Union') return rawAst
+
+  const tagValue = (value as { _tag: string })._tag
+  const unionAst = ast as SchemaAST.Union
+
+  for (const member of unionAst.types) {
+    const memberDisplay = unwrapAstForDisplay(member)
+    if (memberDisplay._tag !== 'TypeLiteral') continue
+    const tagProp = (memberDisplay as SchemaAST.TypeLiteral).propertySignatures.find(
+      (sig) => sig.name === '_tag',
+    )
+    if (tagProp === undefined) continue
+    const tagPropType = unwrapAstForDisplay(tagProp.type)
+    if (tagPropType._tag !== 'Literal') continue
+    if ((tagPropType as SchemaAST.Literal).literal === tagValue) {
+      return member
+    }
+  }
+
+  return rawAst
+}
+
+/**
+ * Get the value schema for a `Schema.Map` / `Schema.ReadonlyMap` (key/value)
+ * declaration. Returns `undefined` when the schema isn't a Map declaration or
+ * when the type parameters can't be extracted.
+ *
+ * @see https://github.com/overengineeringstudio/effect-utils/issues/686
+ */
+export const getMapKeyValueSchema = (
+  schema: S.Schema.AnyNoContext,
+): { key: S.Schema.AnyNoContext; value: S.Schema.AnyNoContext } | undefined => {
+  const ast = unwrapAstForDisplay(schema.ast)
+  if (ast._tag !== 'Declaration') return undefined
+  const declAst = ast as SchemaAST.Declaration
+  const typeCtor = declAst.annotations[TypeConstructorAnnotationId] as
+    | { _tag?: unknown }
+    | undefined
+  if (typeCtor?._tag !== 'ReadonlyMap') return undefined
+  if (declAst.typeParameters.length < 2) return undefined
+  const [keyAst, valueAst] = declAst.typeParameters
+  if (keyAst === undefined || valueAst === undefined) return undefined
+  return {
+    key: { ast: keyAst } as S.Schema.AnyNoContext,
+    value: { ast: valueAst } as S.Schema.AnyNoContext,
+  }
+}
+
+/**
+ * Get the element schema for a `Schema.Set` / `Schema.ReadonlySet`
+ * declaration. Returns `undefined` when the schema isn't a Set declaration.
+ *
+ * @see https://github.com/overengineeringstudio/effect-utils/issues/686
+ */
+export const getSetElementSchema = (
+  schema: S.Schema.AnyNoContext,
+): S.Schema.AnyNoContext | undefined => {
+  const ast = unwrapAstForDisplay(schema.ast)
+  if (ast._tag !== 'Declaration') return undefined
+  const declAst = ast as SchemaAST.Declaration
+  const typeCtor = declAst.annotations[TypeConstructorAnnotationId] as
+    | { _tag?: unknown }
+    | undefined
+  if (typeCtor?._tag !== 'ReadonlySet') return undefined
+  if (declAst.typeParameters.length < 1) return undefined
+  const [valueAst] = declAst.typeParameters
+  if (valueAst === undefined) return undefined
+  return { ast: valueAst } as S.Schema.AnyNoContext
 }
 
 /**
@@ -577,6 +753,43 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
   const possible = getPossibleValuesFromAST(rawAst)
   const containerLabel = getContainerLabelForAST(rawAst)
 
+  /*
+   * Lineage and its companion annotations are read off the raw schema (not the
+   * unwrapped AST) — same reason as other annotation reads: a user may attach
+   * lineage to the refinement wrapper, and unwrapping would lose it. The
+   * helpers themselves try raw-then-unwrapped so either layer wins.
+   */
+  const lineageValue = getLineage(schema)
+  const lineage: LineageBundle | undefined =
+    lineageValue !== undefined
+      ? {
+          display: getLineageDisplay(lineageValue),
+          authority: getAuthority(schema),
+          freshness: getFreshness(schema),
+          reference: getReference(schema),
+        }
+      : (() => {
+          /* No primary Lineage but companion annotations may still exist. */
+          const authority = getAuthority(schema)
+          const freshness = getFreshness(schema)
+          const reference = getReference(schema)
+          if (authority === undefined && freshness === undefined && reference === undefined) {
+            return undefined
+          }
+          return {
+            /* Synthesize a minimal display for companion-only annotations. */
+            display: {
+              badge: '',
+              badgeTitle: '',
+              kindLabel: '',
+              summary: '',
+            },
+            authority,
+            freshness,
+            reference,
+          }
+        })()
+
   const meaningfulDescription = isTrivialDescription(annotations.description)
     ? undefined
     : annotations.description
@@ -587,7 +800,8 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
     examples !== undefined ||
     defaultValue !== undefined ||
     constraints.length > 0 ||
-    possible !== undefined
+    possible !== undefined ||
+    lineage !== undefined
 
   return {
     displayName,
@@ -600,6 +814,7 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
     possibleValues: possible?.values,
     possibleValuesTruncated: possible?.truncated,
     containerLabel,
+    lineage,
     hasContent,
   }
 }

@@ -16,6 +16,7 @@ import {
   formatWithPretty,
   getDisplayName,
   getSchemaInfo,
+  narrowUnionByTag,
 } from './effectSchema.tsx'
 
 export interface SchemaContextValue {
@@ -45,6 +46,16 @@ export interface SchemaContextValue {
   getSchemaForPath: (path: string) => S.Schema.AnyNoContext | undefined
   /** Get schema context for a path */
   getContextForPath: (path: string) => SchemaContextValue
+  /**
+   * Like {@link getContextForPath}, but also narrows tagged unions on the
+   * leaf using the runtime value's `_tag`. Callers that have the rendered
+   * value in scope should prefer this so tooltips, display names, and
+   * container labels reflect the matched union member rather than the
+   * union as a whole.
+   *
+   * @see https://github.com/overengineeringstudio/effect-utils/issues/686
+   */
+  getContextForPathWithValue: (path: string, value: unknown) => SchemaContextValue
 }
 
 const defaultContextValue: SchemaContextValue = {
@@ -61,6 +72,8 @@ const defaultContextValue: SchemaContextValue = {
   lookupByName: () => undefined,
   getSchemaForPath: () => undefined,
   getContextForPath: () => defaultContextValue,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature stays in sync with the runtime variant
+  getContextForPathWithValue: (_path: string, _value: unknown) => defaultContextValue,
 }
 
 const SchemaContext = createContext<SchemaContextValue>(defaultContextValue)
@@ -71,6 +84,16 @@ export interface SchemaProviderProps {
   schema?: S.Schema.AnyNoContext | undefined
   /** Additional schemas to register for lookup by name */
   schemas?: S.Schema.AnyNoContext[] | undefined
+  /**
+   * Root runtime value being inspected. When provided, path-based context
+   * lookups walk the value in lockstep with the schema and narrow any
+   * intermediate tagged-union (`Schema.Union(A, B, C)` with `_tag`
+   * literals) to the matching variant. Without this, only the leaf union
+   * gets narrowed.
+   *
+   * @see https://github.com/overengineeringstudio/effect-utils/issues/686
+   */
+  rootData?: unknown
 }
 
 /**
@@ -86,22 +109,50 @@ const parsePathSegments = (path: string): string[] => {
 
 /**
  * Resolve a schema by traversing path segments from root schema.
+ *
+ * When `rootData` is provided, the resolver walks the runtime value in
+ * lockstep with the schema and narrows any intermediate `Schema.Union(...)`
+ * by the runtime `_tag`. Without this, nested fields under a tagged union
+ * (e.g. `$.event.changedFields`) would resolve against the union as a whole
+ * and miss the variant-specific child schemas.
+ *
+ * @see https://github.com/overengineeringstudio/effect-utils/issues/686
  */
 const resolveSchemaForSegments = (
   rootSchema: S.Schema.AnyNoContext | undefined,
   segments: string[],
+  rootData: unknown,
+  hasData: boolean,
 ): S.Schema.AnyNoContext | undefined => {
   if (rootSchema === undefined) return undefined
   let current: S.Schema.AnyNoContext | undefined = rootSchema
+  let value: unknown = rootData
 
   for (const segment of segments) {
     if (current === undefined) return undefined
 
+    if (hasData) {
+      const narrowedAst = narrowUnionByTag(current.ast, value)
+      if (narrowedAst !== current.ast) {
+        current = { ast: narrowedAst } as S.Schema.AnyNoContext
+      }
+    }
+
     // Check if segment is a numeric index (array access)
     if (/^\d+$/.test(segment) === true) {
       current = getArrayElementSchema(current)
+      if (hasData && Array.isArray(value)) {
+        value = (value as ReadonlyArray<unknown>)[Number(segment)]
+      } else if (hasData) {
+        value = undefined
+      }
     } else {
       current = getFieldSchema(current, segment)
+      if (hasData && value !== null && typeof value === 'object' && segment in value) {
+        value = (value as Record<string, unknown>)[segment]
+      } else if (hasData) {
+        value = undefined
+      }
     }
   }
 
@@ -112,7 +163,8 @@ const resolveSchemaForSegments = (
 const createContextValue = (
   schema: S.Schema.AnyNoContext | undefined,
   registry: SchemaRegistry,
-  rootSchema?: S.Schema.AnyNoContext,
+  rootSchema: S.Schema.AnyNoContext | undefined,
+  rootDataHolder: { hasData: boolean; data: unknown },
 ): SchemaContextValue => {
   const effectiveRootSchema = rootSchema ?? schema
 
@@ -128,31 +180,67 @@ const createContextValue = (
     formatValue: (value: unknown) =>
       schema !== undefined ? formatWithPretty(value, getAnnotations(schema)) : undefined,
     getFieldContext: (fieldName: string) => {
-      if (schema === undefined) return createContextValue(undefined, registry, effectiveRootSchema)
+      if (schema === undefined)
+        return createContextValue(undefined, registry, effectiveRootSchema, rootDataHolder)
       const fieldSchema = getFieldSchema(schema, fieldName)
-      return createContextValue(fieldSchema, registry, effectiveRootSchema)
+      return createContextValue(fieldSchema, registry, effectiveRootSchema, rootDataHolder)
     },
     getElementContext: () => {
-      if (schema === undefined) return createContextValue(undefined, registry, effectiveRootSchema)
+      if (schema === undefined)
+        return createContextValue(undefined, registry, effectiveRootSchema, rootDataHolder)
       const elementSchema = getArrayElementSchema(schema)
-      return createContextValue(elementSchema, registry, effectiveRootSchema)
+      return createContextValue(elementSchema, registry, effectiveRootSchema, rootDataHolder)
     },
     lookupByName: (name: string) => lookupSchema(registry, name),
     getSchemaForPath: (path: string) => {
       const segments = parsePathSegments(path)
-      return resolveSchemaForSegments(effectiveRootSchema, segments)
+      return resolveSchemaForSegments(
+        effectiveRootSchema,
+        segments,
+        rootDataHolder.data,
+        rootDataHolder.hasData,
+      )
     },
     getContextForPath: (path: string) => {
       const segments = parsePathSegments(path)
-      const pathSchema = resolveSchemaForSegments(effectiveRootSchema, segments)
-      return createContextValue(pathSchema, registry, effectiveRootSchema)
+      const pathSchema = resolveSchemaForSegments(
+        effectiveRootSchema,
+        segments,
+        rootDataHolder.data,
+        rootDataHolder.hasData,
+      )
+      return createContextValue(pathSchema, registry, effectiveRootSchema, rootDataHolder)
+    },
+    getContextForPathWithValue: (path: string, value: unknown) => {
+      const segments = parsePathSegments(path)
+      const pathSchema = resolveSchemaForSegments(
+        effectiveRootSchema,
+        segments,
+        rootDataHolder.data,
+        rootDataHolder.hasData,
+      )
+      if (pathSchema === undefined) {
+        return createContextValue(undefined, registry, effectiveRootSchema, rootDataHolder)
+      }
+      const narrowedAst = narrowUnionByTag(pathSchema.ast, value)
+      const narrowedSchema =
+        narrowedAst === pathSchema.ast
+          ? pathSchema
+          : ({ ast: narrowedAst } as S.Schema.AnyNoContext)
+      return createContextValue(narrowedSchema, registry, effectiveRootSchema, rootDataHolder)
     },
   }
 
   return ctx
 }
 
-export const SchemaProvider: FC<SchemaProviderProps> = ({ children, schema, schemas = [] }) => {
+export const SchemaProvider: FC<SchemaProviderProps> = ({
+  children,
+  schema,
+  schemas = [],
+  rootData,
+}) => {
+  const hasData = rootData !== undefined
   const value = useMemo(() => {
     const registry = createSchemaRegistry()
 
@@ -164,8 +252,8 @@ export const SchemaProvider: FC<SchemaProviderProps> = ({ children, schema, sche
       registerSchema(registry, s)
     }
 
-    return createContextValue(schema, registry)
-  }, [schema, schemas])
+    return createContextValue(schema, registry, undefined, { hasData, data: rootData })
+  }, [schema, schemas, hasData, rootData])
 
   return <SchemaContext.Provider value={value}>{children}</SchemaContext.Provider>
 }

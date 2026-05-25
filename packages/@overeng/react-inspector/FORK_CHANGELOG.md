@@ -42,6 +42,25 @@ Each entry should include:
 
 ### Added
 
+#### Lineage Annotations (2026-05-25, addresses #687)
+
+New `Lineage` annotation namespace describing the epistemic status of a
+field (source of truth, derived, projection, cache, mirror, external,
+computed) plus composable companions (`Authority`, `Freshness`,
+`ForeignKey`). The schema-aware renderer surfaces a small superscript
+glyph next to annotated field names and a dedicated `LINEAGE` block in
+the schema tooltip. Source field paths embedded in derivation summaries
+carry `data-lineage-target="$.path"` for future jump-to-source wiring.
+
+- `SchemaInfo` gains an optional `lineage: LineageBundle` field, exported
+  alongside the existing display-ready types.
+- `SchemaTooltip` renders LINEAGE, AUTHORITY, FRESHNESS, and REF rows when
+  the corresponding annotations are present.
+- Inline badge skipped for the default `SourceOfTruth` kind to avoid
+  cluttering every authoritative field.
+
+New story: `LineageAnnotations` (`stories/effect-schema.stories.tsx`).
+
 #### Schema-Derived Container Labels (2026-05-25, addresses #686)
 
 Arrays, records, and tuples now surface their schema-derived element/value
