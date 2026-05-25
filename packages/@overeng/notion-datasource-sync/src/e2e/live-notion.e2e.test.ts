@@ -6,12 +6,15 @@ import {
   makeNotionDataSourceGatewayLayer,
   type NotionDataSourceGatewayShape,
 } from '../mod.ts'
+import { makeFakeGatewayHarness, testIds } from '../testing/harness.ts'
 import {
   emptyLiveFixtureLedger,
+  defaultLivePreflightCapabilities,
   ledgerEntry,
   liveNotionConfigFromEnv,
   liveNotionEnvFromProcessEnv,
   runLiveNotionPreflight,
+  strictLivePreflightCapabilities,
   type LiveFixtureLedger,
 } from '../testing/live-notion.ts'
 import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
@@ -104,6 +107,81 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     expect(config.message).toContain('invalid configuration')
   })
 
+  it('defaults live preflight to read-only capabilities', () => {
+    const config = liveNotionConfigFromEnv(
+      liveNotionEnvFromProcessEnv({
+        NOTION_DATASOURCE_SYNC_LIVE: '1',
+        NOTION_API_TOKEN: 'ntn_realistic_token_shape',
+        NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID: '00000000000000000000000000000001',
+        NOTION_DATASOURCE_SYNC_DATA_SOURCE_ID: '00000000000000000000000000000002',
+      }),
+    )
+
+    expect(config).toMatchObject({
+      _tag: 'configured',
+      requiredCapabilities: [...defaultLivePreflightCapabilities],
+    })
+  })
+
+  it('runs default live preflight read probes without requiring page-property pagination', async () => {
+    const configured = {
+      _tag: 'configured' as const,
+      runId: 'notion-ds-sync-default-read-preflight-test',
+      parentPageId: testIds.pageId,
+      dataSourceId: testIds.dataSourceId,
+      notionVersion: '2026-03-11' as const,
+      requiredCapabilities: defaultLivePreflightCapabilities,
+      ledgerPath: 'tmp/notion-datasource-sync-live/default-read-preflight-test.json',
+    }
+    const calls = {
+      queryRows: 0,
+      retrievePage: 0,
+      retrievePageProperty: 0,
+    }
+    const ledgers: Array<LiveFixtureLedger> = []
+    const harness = makeFakeGatewayHarness({ capabilities: defaultLivePreflightCapabilities })
+    const gateway: NotionDataSourceGatewayShape = {
+      ...harness.gateway,
+      queryRows: (input) => {
+        calls.queryRows += 1
+        return harness.gateway.queryRows(input)
+      },
+      retrievePage: (input) => {
+        calls.retrievePage += 1
+        return harness.gateway.retrievePage(input)
+      },
+      retrievePageProperty: (input) => {
+        calls.retrievePageProperty += 1
+        return harness.gateway.retrievePageProperty(input)
+      },
+    }
+
+    const result = await runLiveNotionPreflight(
+      {
+        enabled: true,
+        token: 'ntn_realistic_token_shape',
+        tokenSource: 'NOTION_API_TOKEN',
+        parentPageId: configured.parentPageId,
+        dataSourceId: configured.dataSourceId,
+        requiredCapabilities: undefined,
+        ledgerPath: configured.ledgerPath,
+      },
+      configured,
+      {
+        gatewayLayer: makeNotionDataSourceGatewayLayer(gateway),
+        writeLedger: async ({ ledger }) => {
+          ledgers.push(ledger)
+        },
+      },
+    )
+
+    expect(result.missingCapabilities).toEqual([])
+    expect(calls).toEqual({ queryRows: 1, retrievePage: 1, retrievePageProperty: 0 })
+    expect(ledgers.flatMap((ledger) => ledger.entries)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ cleanupState: 'verified-cleaned' })]),
+    )
+  })
+
   it('does not run live read probes or write verified-cleaned ledger entries when requested capabilities are missing', async () => {
     const configured = {
       _tag: 'configured' as const,
@@ -186,7 +264,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       parentPageId: '00000000000000000000000000000001',
       dataSourceId: '00000000000000000000000000000002',
       notionVersion: '2026-03-11' as const,
-      requiredCapabilities: ['page_property_paginate'] as const,
+      requiredCapabilities: strictLivePreflightCapabilities,
       ledgerPath: 'tmp/notion-datasource-sync-live/page-property-capability-test.json',
     }
     const calls = {
@@ -204,8 +282,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           _tag: 'CapabilityPreflightResult',
           dataSourceId: input.dataSourceId,
           apiContract,
-          supportedCapabilities: [],
-          missingCapabilities: input.requiredCapabilities,
+          supportedCapabilities: input.requiredCapabilities.filter((capability) =>
+            apiContract.supportedCapabilities.includes(capability),
+          ),
+          missingCapabilities: input.requiredCapabilities.filter(
+            (capability) => apiContract.supportedCapabilities.includes(capability) === false,
+          ),
         }),
       retrieveDataSource: () => Effect.die('retrieveDataSource should not be called'),
       queryRows: () => {

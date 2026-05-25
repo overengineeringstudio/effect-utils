@@ -67,6 +67,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync**: Close the CLI SQLite store through parse/runtime failures after opening, avoid opening the store for malformed JSON context flags, and default live CLI/preflight capability checks to read-only Notion sync probes while keeping strict page-property/schema capability requests fail-closed.
 - **@overeng/notion-datasource-sync**: Reject bare or malformed Milestone 6C numeric CLI flags such as `--max-cycles` and `--max-executor-steps` instead of treating them as omitted.
 - **@overeng/notion-datasource-sync**: Harden the Milestone 6C CLI/watch surface so the published entrypoint targets Node for `node:sqlite`, watch runs as a daemon loop by default, watcher leases are process-unique, retry backoff is honored after cycle failures, and CLI argument errors emit structured diagnostics.
 - **@overeng/notion-datasource-sync**: Keep Milestone 6B manual/keep-local conflict resolutions open when guard-blocked or stale against the recorded conflict snapshot, avoiding silent conflict closure without an enqueued durable write.
