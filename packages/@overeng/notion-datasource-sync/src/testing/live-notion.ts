@@ -46,10 +46,18 @@ export type LiveNotionConfig =
     }
 
 export type LiveFixtureLedgerEntry = {
+  readonly phase: 'preflight' | 'create' | 'mutate' | 'verify' | 'trash' | 'restore'
   readonly objectId: string
   readonly objectType: 'page' | 'data_source' | 'database' | 'block' | 'file'
   readonly purpose: string
-  readonly cleanupState: 'created' | 'trashed' | 'verified-cleaned' | 'cleanup-failed'
+  readonly cleanupState:
+    | 'created'
+    | 'mutated'
+    | 'verified'
+    | 'trashed'
+    | 'restored'
+    | 'verified-cleaned'
+    | 'cleanup-failed'
 }
 
 export type LiveFixtureLedger = {
@@ -69,6 +77,28 @@ export type LiveNotionPreflightResult = {
 
 export type LiveNotionPreflightOptions = {
   readonly gatewayLayer?: Layer.Layer<NotionDataSourceGateway>
+  readonly writeLedger?: typeof writeLiveFixtureLedger
+}
+
+export type LiveFixtureObject = {
+  readonly objectId: string
+  readonly objectType: LiveFixtureLedgerEntry['objectType']
+  readonly purpose: string
+}
+
+export type LiveFixtureLifecycleClient = {
+  readonly create: (input: {
+    readonly runId: string
+    readonly parentPageId: string
+    readonly dataSourceId: string
+  }) => Promise<LiveFixtureObject>
+  readonly mutate: (fixture: LiveFixtureObject) => Promise<LiveFixtureObject>
+  readonly verify: (fixture: LiveFixtureObject) => Promise<void>
+  readonly trash: (fixture: LiveFixtureObject) => Promise<void>
+  readonly restore: (fixture: LiveFixtureObject) => Promise<void>
+}
+
+export type LiveFixtureLifecycleOptions = {
   readonly writeLedger?: typeof writeLiveFixtureLedger
 }
 
@@ -224,7 +254,9 @@ export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig =>
   }
 }
 
-export const emptyLiveFixtureLedger = (config: Extract<LiveNotionConfig, { _tag: 'configured' }>) =>
+export const emptyLiveFixtureLedger = (
+  config: Extract<LiveNotionConfig, { _tag: 'configured' }>,
+): LiveFixtureLedger =>
   ({
     runId: config.runId,
     notionVersion: config.notionVersion,
@@ -240,12 +272,116 @@ export const ledgerEntry = (
   ...input,
 })
 
+const appendLedgerEntry = (
+  ledger: LiveFixtureLedger,
+  entry: LiveFixtureLedgerEntry,
+): LiveFixtureLedger => ({
+  ...ledger,
+  entries: [...ledger.entries, entry],
+})
+
 export const writeLiveFixtureLedger = async (input: {
   readonly path: string
   readonly ledger: LiveFixtureLedger
 }): Promise<void> => {
   await mkdir(dirname(input.path), { recursive: true })
   await writeFile(input.path, `${JSON.stringify(input.ledger, null, 2)}\n`, 'utf8')
+}
+
+export const runLiveFixtureLifecycle = async (
+  config: Extract<LiveNotionConfig, { _tag: 'configured' }>,
+  client: LiveFixtureLifecycleClient,
+  options: LiveFixtureLifecycleOptions = {},
+): Promise<LiveFixtureLedger> => {
+  const writeLedger = options.writeLedger ?? writeLiveFixtureLedger
+  let ledger = emptyLiveFixtureLedger(config)
+  let fixture: LiveFixtureObject | undefined
+
+  const persist = async () => {
+    await writeLedger({ path: config.ledgerPath, ledger })
+  }
+
+  const record = async (entry: LiveFixtureLedgerEntry) => {
+    ledger = appendLedgerEntry(ledger, entry)
+    await persist()
+  }
+
+  try {
+    fixture = await client.create({
+      runId: config.runId,
+      parentPageId: config.parentPageId,
+      dataSourceId: config.dataSourceId,
+    })
+    await record(
+      ledgerEntry({
+        phase: 'create',
+        objectId: fixture.objectId,
+        objectType: fixture.objectType,
+        purpose: fixture.purpose,
+        cleanupState: 'created',
+      }),
+    )
+
+    fixture = await client.mutate(fixture)
+    await record(
+      ledgerEntry({
+        phase: 'mutate',
+        objectId: fixture.objectId,
+        objectType: fixture.objectType,
+        purpose: fixture.purpose,
+        cleanupState: 'mutated',
+      }),
+    )
+
+    await client.verify(fixture)
+    await record(
+      ledgerEntry({
+        phase: 'verify',
+        objectId: fixture.objectId,
+        objectType: fixture.objectType,
+        purpose: fixture.purpose,
+        cleanupState: 'verified',
+      }),
+    )
+  } finally {
+    if (fixture !== undefined) {
+      try {
+        await client.trash(fixture)
+        await record(
+          ledgerEntry({
+            phase: 'trash',
+            objectId: fixture.objectId,
+            objectType: fixture.objectType,
+            purpose: fixture.purpose,
+            cleanupState: 'trashed',
+          }),
+        )
+
+        await client.restore(fixture)
+        await record(
+          ledgerEntry({
+            phase: 'restore',
+            objectId: fixture.objectId,
+            objectType: fixture.objectType,
+            purpose: fixture.purpose,
+            cleanupState: 'restored',
+          }),
+        )
+      } catch {
+        await record(
+          ledgerEntry({
+            phase: 'trash',
+            objectId: fixture.objectId,
+            objectType: fixture.objectType,
+            purpose: fixture.purpose,
+            cleanupState: 'cleanup-failed',
+          }),
+        )
+      }
+    }
+  }
+
+  return ledger
 }
 
 export const runLiveNotionPreflight = async (
@@ -320,12 +456,14 @@ export const runLiveNotionPreflight = async (
     ...emptyLiveFixtureLedger(config),
     entries: [
       ledgerEntry({
+        phase: 'preflight',
         objectId: config.dataSourceId,
         objectType: 'data_source',
         purpose: 'capability-preflight-data-source-access',
         cleanupState: 'verified-cleaned',
       }),
       ledgerEntry({
+        phase: 'preflight',
         objectId: config.parentPageId,
         objectType: 'page',
         purpose: 'capability-preflight-parent-page-access',

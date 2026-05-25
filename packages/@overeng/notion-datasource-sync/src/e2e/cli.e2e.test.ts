@@ -206,34 +206,38 @@ const runWithPorts = <TValue, TError>(
   )
 
 describe('CLI command surface', () => {
-  it('runs the source CLI through its shebang runtime with node:sqlite available', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
-    try {
-      const { stdout } = await execFileAsync(
-        cliPath,
-        [
-          'status',
-          '--store',
-          join(dir, 'store.sqlite'),
-          '--root-id',
-          testIds.rootId,
-          '--data-source-id',
-          testIds.dataSourceId,
-          '--workspace-root',
-          workspaceRoot,
-        ],
-        { cwd: packageDir, timeout: cliTestTimeoutMs },
-      )
+  it(
+    'runs the source CLI through its shebang runtime with node:sqlite available',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
+      try {
+        const { stdout } = await execFileAsync(
+          cliPath,
+          [
+            'status',
+            '--store',
+            join(dir, 'store.sqlite'),
+            '--root-id',
+            testIds.rootId,
+            '--data-source-id',
+            testIds.dataSourceId,
+            '--workspace-root',
+            workspaceRoot,
+          ],
+          { cwd: packageDir, timeout: cliTestTimeoutMs },
+        )
 
-      expect(JSON.parse(stdout)).toMatchObject({
-        _tag: 'CliResultEnvelope',
-        command: 'status',
-        ok: true,
-      })
-    } finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
+        expect(JSON.parse(stdout)).toMatchObject({
+          _tag: 'CliResultEnvelope',
+          command: 'status',
+          ok: true,
+        })
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    cliTestTimeoutMs,
+  )
 
   it('keeps watch unbounded by default until --max-cycles is provided', () => {
     expect(parseCliCommand(['watch', '--state', '/tmp/watch.json'])).toEqual({
@@ -366,36 +370,100 @@ describe('CLI command surface', () => {
     ).toThrow('--max-cycles must be a positive integer')
   })
 
-  it('accepts valid numeric CLI flags', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
-    try {
-      const { stdout } = await execFileAsync(
-        cliPath,
-        [
-          'status',
-          '--store',
-          join(dir, 'store.sqlite'),
-          '--root-id',
-          testIds.rootId,
-          '--data-source-id',
-          testIds.dataSourceId,
-          '--workspace-root',
-          workspaceRoot,
-          '--max-executor-steps',
-          '1',
-        ],
-        { cwd: packageDir, timeout: cliTestTimeoutMs },
-      )
+  it('parses mutating dry-run flags and explicit unsupported command gaps', () => {
+    expect(parseCliCommand(['push', '--dry-run'])).toEqual({
+      _tag: 'push',
+      dryRun: true,
+    })
+    expect(parseCliCommand(['sync', '--dry-run'])).toEqual({
+      _tag: 'sync',
+      dryRun: true,
+    })
+    expect(
+      parseCliCommand(['conflicts', 'resolve', '--conflict-id', 'conflict-1', '--dry-run']),
+    ).toMatchObject({
+      _tag: 'conflicts-resolve',
+      conflictId: 'conflict-1',
+      dryRun: true,
+    })
+    expect(parseCliCommand(['forget', '--page-id', testIds.pageId, '--dry-run'])).toEqual({
+      _tag: 'forget',
+      pageId: testIds.pageId,
+      dryRun: true,
+    })
+    expect(parseCliCommand(['restore', '--page-id', testIds.pageId, '--dry-run'])).toEqual({
+      _tag: 'restore',
+      pageId: testIds.pageId,
+      dryRun: true,
+    })
+    expect(parseCliCommand(['migrate', 'store', '--dry-run'])).toEqual({
+      _tag: 'migrate-store',
+      dryRun: true,
+    })
+    expect(parseCliCommand(['migrate', 'schema', '--dry-run'])).toEqual({
+      _tag: 'migrate-schema',
+      dryRun: true,
+    })
+    expect(parseCliCommand(['repair', '--dry-run'])).toEqual({
+      _tag: 'repair',
+      dryRun: true,
+    })
+  })
 
-      expect(JSON.parse(stdout)).toMatchObject({
-        _tag: 'CliResultEnvelope',
-        command: 'status',
-        ok: true,
-      })
+  it.each([
+    { command: { _tag: 'migrate-store' as const, dryRun: true }, expected: 'migrate-store' },
+    { command: { _tag: 'migrate-schema' as const, dryRun: true }, expected: 'migrate-schema' },
+    { command: { _tag: 'repair' as const, dryRun: true }, expected: 'repair' },
+  ])('fails closed for unsupported $expected command execution', async ({ command, expected }) => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const ctx = context({ store: storeFixture.store, clock })
+
+    try {
+      await expect(
+        runWithPorts(runCliCommand(command, ctx), {
+          gateway: makeFakeGatewayHarness().gateway,
+        }),
+      ).rejects.toThrow(`${expected} is not implemented yet`)
     } finally {
-      await rm(dir, { recursive: true, force: true })
+      storeFixture.cleanup()
     }
   })
+
+  it(
+    'accepts valid numeric CLI flags',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
+      try {
+        const { stdout } = await execFileAsync(
+          cliPath,
+          [
+            'status',
+            '--store',
+            join(dir, 'store.sqlite'),
+            '--root-id',
+            testIds.rootId,
+            '--data-source-id',
+            testIds.dataSourceId,
+            '--workspace-root',
+            workspaceRoot,
+            '--max-executor-steps',
+            '1',
+          ],
+          { cwd: packageDir, timeout: cliTestTimeoutMs },
+        )
+
+        expect(JSON.parse(stdout)).toMatchObject({
+          _tag: 'CliResultEnvelope',
+          command: 'status',
+          ok: true,
+        })
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    cliTestTimeoutMs,
+  )
 
   it('does not open the store when context JSON is malformed', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-context-'))
@@ -689,6 +757,73 @@ describe('CLI command surface', () => {
     }
   })
 
+  it('dry-runs push and sync without appending events, mutating outbox, or issuing remote writes', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ctx = context({ store: storeFixture.store, clock })
+    const ports = makeHarnessPorts({
+      bodyPages: [bodyPage()],
+      localObservations: [
+        presentArtifactObservation({
+          pageId: testIds.pageId,
+          path: decode(WorkspaceRelativePath, 'row--page-1.nmd'),
+          contentHash: hash('body-local'),
+          observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+        }),
+      ],
+    })
+
+    try {
+      await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'init',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot,
+          },
+          ctx,
+        ),
+        { gateway: gateway.gateway },
+      )
+      await runWithPorts(pullOneShotSync({ ...ctx, store: storeFixture.store }), {
+        gateway: gateway.gateway,
+      })
+
+      const beforeEvents = storeFixture.store.replay(testIds.rootId).length
+      const beforeOutbox = storeFixture.store.readOutbox(testIds.rootId).length
+
+      const push = await runWithPorts(runCliCommand({ _tag: 'push', dryRun: true }, ctx), {
+        gateway: gateway.gateway,
+        body: ports.body,
+        workspace: ports.workspace,
+      })
+      expect(push.result).toMatchObject({
+        plan: { decisions: [{ _tag: 'EnqueueCommands' }] },
+        executor: { steps: 0, results: [] },
+      })
+
+      const sync = await runWithPorts(runCliCommand({ _tag: 'sync', dryRun: true }, ctx), {
+        gateway: gateway.gateway,
+        body: ports.body,
+        workspace: ports.workspace,
+      })
+      expect(sync.result).toMatchObject({
+        pull: { appendedEvents: 0 },
+        push: { plan: { decisions: [{ _tag: 'EnqueueCommands' }] } },
+      })
+
+      expect(storeFixture.store.replay(testIds.rootId)).toHaveLength(beforeEvents)
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toHaveLength(beforeOutbox)
+      expect(gateway.ledger.attemptedPatchPageProperties).toHaveLength(0)
+      expect(gateway.ledger.attemptedPatchDataSourceSchemas).toHaveLength(0)
+      expect(gateway.ledger.attemptedTrashPages).toHaveLength(0)
+      expect(gateway.ledger.attemptedRestorePages).toHaveLength(0)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('lists and resolves conflicts through the existing user-command API', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
@@ -744,6 +879,65 @@ describe('CLI command surface', () => {
         action: 'restore-page',
         dryRun: true,
       })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('dry-runs conflict resolution, forget, and restore without appending events or outbox rows', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+
+    try {
+      const conflict = storeFixture.store.appendEvent(conflictEvent())
+      const ctx = context({ store: storeFixture.store, clock })
+      const beforeEvents = storeFixture.store.replay(testIds.rootId).length
+      const beforeOutbox = storeFixture.store.readOutbox(testIds.rootId).length
+
+      const resolved = await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'conflicts-resolve',
+            conflictId: decode(SyncEventId, conflict.eventId),
+            choice: { _tag: 'keep-remote' },
+            dryRun: true,
+          },
+          ctx,
+        ),
+        { gateway: gateway.gateway },
+      )
+      expect(resolved.result).toMatchObject({
+        _tag: 'UserCommandResultEnvelope',
+        action: 'resolve-conflict:keep-remote',
+        dryRun: true,
+        applied: { events: [], commands: [] },
+      })
+
+      const forget = await runWithPorts(
+        runCliCommand({ _tag: 'forget', pageId: testIds.pageId, dryRun: true }, ctx),
+        { gateway: gateway.gateway },
+      )
+      expect(forget.result).toMatchObject({
+        _tag: 'UserCommandResultEnvelope',
+        action: 'forget-page',
+        dryRun: true,
+        applied: { events: [] },
+      })
+
+      const restore = await runWithPorts(
+        runCliCommand({ _tag: 'restore', pageId: testIds.pageId, dryRun: true }, ctx),
+        { gateway: gateway.gateway },
+      )
+      expect(restore.result).toMatchObject({
+        _tag: 'UserCommandResultEnvelope',
+        action: 'restore-page',
+        dryRun: true,
+        applied: { events: [], commands: [] },
+      })
+
+      expect(storeFixture.store.replay(testIds.rootId)).toHaveLength(beforeEvents)
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toHaveLength(beforeOutbox)
     } finally {
       storeFixture.cleanup()
     }

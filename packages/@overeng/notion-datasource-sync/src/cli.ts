@@ -85,8 +85,8 @@ export type CliCommand =
       readonly dryRun?: boolean
     }
   | { readonly _tag: 'pull' }
-  | { readonly _tag: 'push' }
-  | { readonly _tag: 'sync' }
+  | { readonly _tag: 'push'; readonly dryRun?: boolean }
+  | { readonly _tag: 'sync'; readonly dryRun?: boolean }
   | { readonly _tag: 'status' }
   | {
       readonly _tag: 'watch'
@@ -110,6 +110,9 @@ export type CliCommand =
       readonly pageId: typeof PageId.Type
       readonly dryRun?: boolean
     }
+  | { readonly _tag: 'migrate-store'; readonly dryRun?: boolean }
+  | { readonly _tag: 'migrate-schema'; readonly dryRun?: boolean }
+  | { readonly _tag: 'repair'; readonly dryRun?: boolean }
   | { readonly _tag: 'doctor' }
 
 export type CliContext = {
@@ -172,6 +175,14 @@ export type CliErrorEnvelope = {
 export class CliArgumentError extends Schema.TaggedError<CliArgumentError>()('CliArgumentError', {
   message: Schema.String,
 }) {}
+
+export class CliUnsupportedCommandError extends Schema.TaggedError<CliUnsupportedCommandError>()(
+  'CliUnsupportedCommandError',
+  {
+    command: Schema.String,
+    message: Schema.String,
+  },
+) {}
 
 const SchemaPropertyObservationJson = Schema.Struct({
   propertyId: PropertyId,
@@ -243,7 +254,11 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
     | UserCommandResultEnvelope
     | DoctorResult
   >,
-  LocalStoreError | NotionGatewayError | BodySyncError | LocalStorageError,
+  | LocalStoreError
+  | NotionGatewayError
+  | BodySyncError
+  | LocalStorageError
+  | CliUnsupportedCommandError,
   NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
 > => {
   switch (command._tag) {
@@ -269,12 +284,14 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
       return pushOneShotSync({
         ...context,
         ...withOptionalRuntimeOptions(context),
+        ...withOptionalCommandOptions(command, context),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'sync':
       return syncOneShot({
         ...context,
         ...remoteObservationContext(context),
         ...withOptionalRuntimeOptions(context),
+        ...withOptionalCommandOptions(command, context),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'status':
       return Effect.sync(() =>
@@ -338,6 +355,15 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
             pageId: command.pageId,
             ...withOptionalCommandOptions(command, context),
           }),
+        }),
+      )
+    case 'migrate-store':
+    case 'migrate-schema':
+    case 'repair':
+      return Effect.fail(
+        new CliUnsupportedCommandError({
+          command: command._tag,
+          message: `${command._tag} is not implemented yet; refusing to run without an explicit implementation.`,
         }),
       )
     case 'doctor':
@@ -510,9 +536,9 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
     case 'pull':
       return { _tag: 'pull' }
     case 'push':
-      return { _tag: 'push' }
+      return { _tag: 'push', dryRun: flags.has('dry-run') }
     case 'sync':
-      return { _tag: 'sync' }
+      return { _tag: 'sync', dryRun: flags.has('dry-run') }
     case 'status':
       return { _tag: 'status' }
     case 'watch': {
@@ -546,12 +572,18 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
         pageId: decode(PageId, requiredFlag(flags, 'page-id')),
         dryRun: flags.has('dry-run'),
       }
+    case 'migrate':
+      if (subcommand === 'store') return { _tag: 'migrate-store', dryRun: flags.has('dry-run') }
+      if (subcommand === 'schema') return { _tag: 'migrate-schema', dryRun: flags.has('dry-run') }
+      break
+    case 'repair':
+      return { _tag: 'repair', dryRun: flags.has('dry-run') }
     case 'doctor':
       return { _tag: 'doctor' }
   }
   throw new CliArgumentError({
     message:
-      'Expected one of: init, pull, push, sync, status, watch, conflicts list, conflicts resolve, forget, restore, doctor',
+      'Expected one of: init, pull, push, sync, status, watch, conflicts list, conflicts resolve, forget, restore, migrate store, migrate schema, repair, doctor',
   })
 }
 
