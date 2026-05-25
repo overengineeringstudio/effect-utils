@@ -210,10 +210,13 @@ export const createSchemaAwareNodeRenderer = ({
     /**
      * When collapsed, delegate to the preview. `SchemaAwareObjectPreview` is the
      * single owner of the schema display name (rendered in the object description
-     * slot, italicized when sourced from a schema annotation).
+     * slot, italicized when sourced from a schema annotation). The wrapper must
+     * render a box (no `display: contents`) so the `title` attribute remains a
+     * reliable hover target — this is the only tooltip host on the root-label
+     * collapsed path where `name` is undefined.
      */
     return (
-      <span title={title} style={{ display: 'contents' }}>
+      <span title={title}>
         <SchemaAwareObjectPreviewForPath data={data} path={path} />
       </span>
     )
