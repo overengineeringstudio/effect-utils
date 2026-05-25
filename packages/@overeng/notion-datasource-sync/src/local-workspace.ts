@@ -76,6 +76,8 @@ const pathEscapesRoot = (message: string): WorkspacePathDecision => ({
   message,
 })
 
+const generatedTitleSlugMaxLength = 120
+
 const normalizeForPolicy = (value: string, policy: PathPolicy): string => {
   const unicodeNormalized = policy.unicodeNormalization === 'NFC' ? value.normalize('NFC') : value
   return policy.caseFold ? unicodeNormalized.toLocaleLowerCase('en-US') : unicodeNormalized
@@ -177,6 +179,8 @@ export const titleSlug = (title: string): string => {
     .toLocaleLowerCase('en-US')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+    .slice(0, generatedTitleSlugMaxLength)
+    .replace(/-+$/g, '')
 
   return slug.length > 0 ? slug : 'untitled'
 }
