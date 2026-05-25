@@ -11,6 +11,7 @@ import {
   emptyLiveFixtureLedger,
   defaultLivePreflightCapabilities,
   ledgerEntry,
+  LiveFixtureCleanupError,
   liveNotionConfigFromEnv,
   liveNotionEnvFromProcessEnv,
   runLiveFixtureLifecycle,
@@ -460,6 +461,90 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       ]),
     )
   })
+
+  it.each([
+    { cleanupPhase: 'trash' as const, expectedCalls: ['create', 'mutate', 'verify', 'trash'] },
+    {
+      cleanupPhase: 'restore' as const,
+      expectedCalls: ['create', 'mutate', 'verify', 'trash', 'restore'],
+    },
+  ])(
+    'fails closed and preserves ledger evidence when fixture $cleanupPhase cleanup fails',
+    async ({ cleanupPhase, expectedCalls }) => {
+      const configured = {
+        _tag: 'configured' as const,
+        runId: `notion-ds-sync-fixture-${cleanupPhase}-cleanup-failure-test`,
+        parentPageId: '00000000000000000000000000000001',
+        dataSourceId: '00000000000000000000000000000002',
+        notionVersion: '2026-03-11' as const,
+        requiredCapabilities: defaultLivePreflightCapabilities,
+        ledgerPath: `tmp/notion-datasource-sync-live/fixture-${cleanupPhase}-cleanup-failure-test.json`,
+      }
+      const calls: string[] = []
+      const ledgers: LiveFixtureLedger[] = []
+      const client: LiveFixtureLifecycleClient = {
+        create: async () => {
+          calls.push('create')
+          return {
+            objectId: 'fixture-page-1',
+            objectType: 'page',
+            purpose: `fixture-${cleanupPhase}-cleanup-failure`,
+          }
+        },
+        mutate: async (fixture) => {
+          calls.push('mutate')
+          return fixture
+        },
+        verify: async () => {
+          calls.push('verify')
+        },
+        trash: async () => {
+          calls.push('trash')
+          if (cleanupPhase === 'trash') {
+            throw new Error('forced fixture trash cleanup failure')
+          }
+        },
+        restore: async () => {
+          calls.push('restore')
+          if (cleanupPhase === 'restore') {
+            throw new Error('forced fixture restore cleanup failure')
+          }
+        },
+      }
+
+      let failure: unknown
+      try {
+        await runLiveFixtureLifecycle(configured, client, {
+          writeLedger: async ({ ledger: writtenLedger }) => {
+            ledgers.push(writtenLedger)
+          },
+        })
+      } catch (cause) {
+        failure = cause
+      }
+
+      expect(failure).toBeInstanceOf(LiveFixtureCleanupError)
+      expect(failure).toMatchObject({
+        phase: cleanupPhase,
+        ledger: ledgers.at(-1),
+        message: `live fixture cleanup failed during ${cleanupPhase}`,
+      })
+      expect(calls).toEqual(expectedCalls)
+      expect(ledgers.at(-1)?.entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ phase: 'verify', cleanupState: 'verified' }),
+          expect.objectContaining({ phase: cleanupPhase, cleanupState: 'cleanup-failed' }),
+        ]),
+      )
+      if (cleanupPhase === 'restore') {
+        expect(ledgers.at(-1)?.entries).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ phase: 'trash', cleanupState: 'trashed' }),
+          ]),
+        )
+      }
+    },
+  )
 
   it('defines a sanitized cleanup ledger shape without exposing secrets', () => {
     const configured =
