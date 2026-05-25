@@ -397,16 +397,26 @@ const planPropertyEdit = (
     guardCapabilityPreflight(snapshot.capabilities),
   ]
 
-  if (schemaProperty !== undefined) {
-    baseGuards.push(guardPropertyWriteClass({ writeClass: schemaProperty.writeClass }))
-    baseGuards.push(
-      guardSchemaIntentSafety({
-        affectsLocalIntent: schemaProperty.configHash !== intent.expectedPropertyConfigHash,
-        destructiveMigrationRequired: false,
-        optionDeletionLosesValues: false,
-      }),
+  if (schemaProperty === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current schema property projection is missing; observe the data source schema before planning a property write',
+      {
+        dataSourceId: row.dataSourceId,
+        propertyId: intent.propertyId,
+      },
     )
   }
+
+  baseGuards.push(guardPropertyWriteClass({ writeClass: schemaProperty.writeClass }))
+  baseGuards.push(
+    guardSchemaIntentSafety({
+      affectsLocalIntent: schemaProperty.configHash !== intent.expectedPropertyConfigHash,
+      destructiveMigrationRequired: false,
+      optionDeletionLosesValues: false,
+    }),
+  )
 
   if (propertySurface === undefined) {
     return blockDecision(

@@ -6,8 +6,17 @@ import { DatabaseSync } from 'node:sqlite'
 import { Schema } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { Hash } from './domain.ts'
-import { SyncEvent, SyncRootId, type SyncEvent as SyncEventType } from './events.ts'
+import { propertySurfaceKey } from './canonical.ts'
+import { PatchPagePropertiesCommand } from './commands.ts'
+import { CommandId, Hash, PageId, PropertyId } from './domain.ts'
+import {
+  IdempotencyKey,
+  SyncEvent,
+  SyncEventId,
+  SyncRootId,
+  type SyncEvent as SyncEventType,
+} from './events.ts'
+import { planIntent } from './planner.ts'
 import { hashStoreBytes } from './store-projections.ts'
 import { openNotionSyncStore, type NotionSyncStore } from './store.ts'
 
@@ -17,6 +26,11 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
 const hash = (value: string) => decode(Hash, `sha256:${value.repeat(64).slice(0, 64)}`)
 const rootId = decode(SyncRootId, 'root-1')
 const otherRootId = decode(SyncRootId, 'root-2')
+const pageId = decode(PageId, 'page-1')
+const propertyId = decode(PropertyId, 'property-1')
+const commandId = decode(CommandId, 'cmd-1')
+const intentEventId = decode(SyncEventId, 'intent-1')
+const commandKey = decode(IdempotencyKey, 'intent:cmd-1')
 const observedAt = '2026-05-25T00:00:00.000Z'
 const tmpDirs: string[] = []
 
@@ -464,6 +478,51 @@ describe('Notion sync SQLite store', () => {
           )
           .get(),
       ).toBeUndefined()
+      expect(String(after.prepare('PRAGMA journal_mode').get()?.journal_mode)).toBe('delete')
+    } finally {
+      after.close()
+    }
+  })
+
+  it('fails closed before WAL when migration history has an unknown schema version type', () => {
+    const path = tempDatabasePath()
+    const db = new DatabaseSync(path, { readBigInts: true })
+    try {
+      db.exec(`
+        CREATE TABLE migration_history (
+          schema_version TEXT PRIMARY KEY,
+          migration_name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `)
+      db.prepare(
+        `INSERT INTO migration_history (schema_version, migration_name, applied_at)
+         VALUES (?, ?, ?)`,
+      ).run('future', 'unknown-schema', observedAt)
+    } finally {
+      db.close()
+    }
+
+    expect(() =>
+      openNotionSyncStore({
+        path,
+        busyTimeoutMs: 2_500,
+        now: () => new Date(observedAt),
+      }),
+    ).toThrow(/schema version is unknown/)
+
+    const after = new DatabaseSync(path, { readBigInts: true })
+    try {
+      expect(
+        after
+          .prepare(
+            `SELECT name
+             FROM sqlite_master
+             WHERE type = 'table' AND name = 'sync_root'`,
+          )
+          .get(),
+      ).toBeUndefined()
+      expect(String(after.prepare('PRAGMA journal_mode').get()?.journal_mode)).toBe('delete')
     } finally {
       after.close()
     }
@@ -686,6 +745,87 @@ describe('Notion sync SQLite store', () => {
       store.rebuildProjections(rootId)
 
       expect(store.readPlannerProjectionSnapshot(rootId).schema).toEqual(beforeRebuild)
+    })
+  })
+
+  it('blocks property planning after full schema pruning leaves only a stale property shadow', () => {
+    withStore((store) => {
+      store.appendEvent(apiContractObserved())
+      store.appendEvent(
+        capabilityChecked('event-capability-property-update', 'page_property_update'),
+      )
+      store.appendEvent(
+        dataSourceObserved({
+          eventId: 'event-data-source-with-property',
+          idempotencyKey: 'remote:data-source-1:with-property',
+          schemaProperties: [
+            { propertyId: 'property-1', configHash: hash('c'), writeClass: 'writable' },
+          ],
+        }),
+      )
+      store.appendEvent(
+        rowObserved({
+          eventId: 'event-row-with-property-shadow',
+          idempotencyKey: 'remote:row:page-1:with-property-shadow',
+        }),
+      )
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-shadow',
+          idempotencyKey: 'property:page-1:property-1:shadow',
+          valueHash: hash('8'),
+        }),
+      )
+      store.appendEvent(
+        dataSourceObserved({
+          eventId: 'event-data-source-pruned',
+          idempotencyKey: 'remote:data-source-1:pruned',
+          schemaHash: hash('6'),
+          schemaProperties: [],
+        }),
+      )
+
+      const snapshot = store.readPlannerProjectionSnapshot(rootId)
+      expect(snapshot.schema).toEqual([])
+      expect(snapshot.properties).toMatchObject([
+        {
+          pageId: 'page-1',
+          propertyId: 'property-1',
+          remoteHash: hash('8'),
+        },
+      ])
+
+      const command = decode(PatchPagePropertiesCommand, {
+        _tag: 'PatchPagePropertiesCommand',
+        commandId,
+        pageId,
+        basePropertiesHash: hash('9'),
+        propertyPatch: {
+          'property-1': { _tag: 'title', plainText: 'Updated' },
+        },
+      })
+
+      expect(
+        planIntent(snapshot, {
+          _tag: 'property-edit',
+          intentEventId,
+          commandKey,
+          surface: propertySurfaceKey(pageId, propertyId),
+          pageId,
+          propertyId,
+          command,
+          baseHash: hash('8'),
+          desiredHash: hash('a'),
+          expectedPropertyConfigHash: hash('c'),
+        }),
+      ).toMatchObject({
+        _tag: 'BlockedByGuard',
+        guard: 'CurrentSurfaceMissing',
+        detail: {
+          summary:
+            'Current schema property projection is missing; observe the data source schema before planning a property write',
+        },
+      })
     })
   })
 

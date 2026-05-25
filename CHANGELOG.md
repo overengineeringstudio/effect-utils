@@ -61,6 +61,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync**: Fail property planning closed when full schema observations prune the target property despite a stale property shadow, and block unknown SQLite migration-history versions before enabling WAL.
 - **@overeng/notion-datasource-sync**: Fail live Notion preflight closed before optional read probes when requested capabilities are missing, avoiding unnecessary live calls and verified-cleaned ledger entries.
 - **@overeng/notion-datasource-sync**: Harden Milestone 4A planner/store projections by scoping schema lookups to row data sources, pruning stale full-schema properties, preserving exact tombstone query evidence identity, and failing closed on future store migrations.
 - **@overeng/notion-datasource-sync**: Harden the Milestone 3C E2E harness so package-local Vitest runs from the package cwd, live Notion tests fail closed on opt-in misconfiguration or unimplemented live calls, fake gateway mutation ledgers record remote write attempts, and scenario traceability checks validate concrete tests plus requirement IDs.

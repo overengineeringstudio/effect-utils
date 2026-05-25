@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
@@ -185,6 +186,53 @@ const stringifyJson = (value: unknown): string => JSON.stringify(value)
 
 const currentIso = (now: () => Date): string => now().toISOString()
 
+const assertSupportedSchemaVersion = (db: DatabaseSync): void => {
+  const migrationHistoryTable = db
+    .prepare(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'table' AND name = 'migration_history'`,
+    )
+    .get()
+
+  if (migrationHistoryTable === undefined) return
+
+  const latestKnownMigration = db
+    .prepare(
+      `SELECT MAX(schema_version) AS schema_version
+       FROM migration_history`,
+    )
+    .get()
+  const schemaVersion = latestKnownMigration?.schema_version
+
+  if (schemaVersion === null || schemaVersion === undefined) return
+
+  if (typeof schemaVersion !== 'bigint' && typeof schemaVersion !== 'number') {
+    throw new LocalStoreError({
+      operation: 'run-migrations',
+      message: `Store schema version is unknown; refusing to migrate to supported version ${STORE_SCHEMA_VERSION}`,
+    })
+  }
+
+  if (schemaVersion > STORE_SCHEMA_VERSION) {
+    throw new LocalStoreError({
+      operation: 'run-migrations',
+      message: `Store schema version ${schemaVersion.toString()} is newer than supported version ${STORE_SCHEMA_VERSION}`,
+    })
+  }
+}
+
+const preflightMigrationSafety = (path: string): void => {
+  if (path === ':memory:' || existsSync(path) === false) return
+
+  const db = new DatabaseSync(path, { readOnly: true, readBigInts: true })
+  try {
+    assertSupportedSchemaVersion(db)
+  } finally {
+    db.close()
+  }
+}
+
 export class NotionSyncStore {
   readonly #db: DatabaseSync
   readonly #now: () => Date
@@ -192,6 +240,7 @@ export class NotionSyncStore {
 
   constructor(options: OpenNotionSyncStoreOptions) {
     const busyTimeoutMs = options.busyTimeoutMs ?? 5_000
+    preflightMigrationSafety(options.path)
     this.#now = options.now ?? (() => new Date())
     this.#db = new DatabaseSync(options.path, {
       enableForeignKeyConstraints: true,
@@ -202,6 +251,13 @@ export class NotionSyncStore {
     this.#db.exec('PRAGMA foreign_keys = ON')
     this.#db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`)
 
+    try {
+      this.#runMigrations()
+    } catch (cause) {
+      this.#db.close()
+      throw cause
+    }
+
     const journalModeRow = this.#db.prepare('PRAGMA journal_mode = WAL').get() ?? {}
     const foreignKeysRow = this.#db.prepare('PRAGMA foreign_keys').get() ?? {}
 
@@ -211,13 +267,6 @@ export class NotionSyncStore {
       ),
       foreignKeys: readBoolean({ enabled: foreignKeysRow.foreign_keys ?? 0 }, 'enabled'),
       busyTimeoutMs,
-    }
-
-    try {
-      this.#runMigrations()
-    } catch (cause) {
-      this.#db.close()
-      throw cause
     }
   }
 
@@ -607,32 +656,7 @@ export class NotionSyncStore {
   }
 
   #runMigrations(): void {
-    const migrationHistoryTable = this.#db
-      .prepare(
-        `SELECT name
-         FROM sqlite_master
-         WHERE type = 'table' AND name = 'migration_history'`,
-      )
-      .get()
-
-    if (migrationHistoryTable !== undefined) {
-      const latestKnownMigration = this.#db
-        .prepare(
-          `SELECT MAX(schema_version) AS schema_version
-           FROM migration_history`,
-        )
-        .get()
-      const schemaVersion = latestKnownMigration?.schema_version
-      if (
-        (typeof schemaVersion === 'bigint' || typeof schemaVersion === 'number') &&
-        schemaVersion > STORE_SCHEMA_VERSION
-      ) {
-        throw new LocalStoreError({
-          operation: 'run-migrations',
-          message: `Store schema version ${schemaVersion.toString()} is newer than supported version ${STORE_SCHEMA_VERSION}`,
-        })
-      }
-    }
+    assertSupportedSchemaVersion(this.#db)
 
     this.#db.exec(createStoreSchemaSql)
     for (const statement of [
