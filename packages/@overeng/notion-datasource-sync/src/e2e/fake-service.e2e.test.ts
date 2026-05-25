@@ -27,8 +27,14 @@ import {
 } from '../testing/harness.ts'
 import {
   assertAllCoreGuardsHaveScenarioEntries,
+  concreteScenarioReferenceGaps,
   e2eHarnessScenarios,
   guardScenarioCoverageGaps,
+  invalidScenarioRequirementIdGaps,
+  scenarioImplementationGaps,
+  type GuardScenarioEntry,
+  type ScenarioId,
+  type ScenarioMetadata,
 } from '../testing/scenarios.ts'
 
 const collectStream = <TValue, TError>(
@@ -36,14 +42,84 @@ const collectStream = <TValue, TError>(
 ): Promise<ReadonlyArray<TValue>> =>
   Effect.runPromise(stream.pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)))
 
+const implementedFakeScenarioIds = new Set<ScenarioId>([
+  'NDS-L2-clean-pull-status',
+  'NDS-L2-local-property-edit-enqueue',
+  'NDS-L2-same-property-conflict',
+  'NDS-L2-disjoint-property-merge',
+  'NDS-L2-query-cap-blocks-absence',
+  'NDS-L2-filtered-absence-not-proof',
+  'NDS-L2-body-adapter-surface-leak',
+  'NDS-L2-local-delete-candidate-only',
+  'NDS-L3-outbox-invalid-settlement-rejected',
+])
+
 describe('notion datasource sync fake-service E2E harness', () => {
-  it('keeps typed scenario metadata in lockstep with the guard catalog', () => {
-    assertAllCoreGuardsHaveScenarioEntries()
+  it('keeps typed scenario metadata in lockstep with guard and requirement coverage', () => {
+    assertAllCoreGuardsHaveScenarioEntries({
+      file: 'src/e2e/fake-service.e2e.test.ts',
+      implementedScenarioIds: implementedFakeScenarioIds,
+    })
 
     expect(guardScenarioCoverageGaps()).toEqual([])
+    expect(concreteScenarioReferenceGaps()).toEqual([])
+    expect(invalidScenarioRequirementIdGaps()).toEqual([])
+    expect(
+      scenarioImplementationGaps({
+        file: 'src/e2e/fake-service.e2e.test.ts',
+        implementedScenarioIds: implementedFakeScenarioIds,
+      }),
+    ).toEqual([])
     expect(e2eHarnessScenarios.map((entry) => entry.scenarioId)).toContain(
       'NDS-L2-local-property-edit-enqueue',
     )
+    expect(
+      e2eHarnessScenarios.find((entry) => entry.scenarioId === 'NDS-L2-query-cap-blocks-absence')
+        ?.requirementIds,
+    ).toEqual(['R71'])
+    expect(
+      e2eHarnessScenarios.find((entry) => entry.scenarioId === 'NDS-L2-filtered-absence-not-proof')
+        ?.requirementIds,
+    ).toEqual(['R73'])
+  })
+
+  it('fails traceability when concrete guard mappings or requirement IDs are invalid', () => {
+    expect(
+      concreteScenarioReferenceGaps([
+        {
+          guard: 'StaleSurfaceBase',
+          scenarioId: 'NDS-L2-missing-scenario',
+          requirementIds: ['R21'],
+          lowestPlannerLevel: 'L1',
+          highestIntegrationLevel: 'L2',
+        },
+      ] satisfies ReadonlyArray<GuardScenarioEntry>),
+    ).toEqual([
+      {
+        _tag: 'missing-declared-guard-scenario-reference',
+        guard: 'StaleSurfaceBase',
+        scenarioId: 'NDS-L2-missing-scenario',
+      },
+    ])
+    expect(
+      invalidScenarioRequirementIdGaps([
+        {
+          scenarioId: 'NDS-L2-clean-pull-status',
+          title: 'bad requirement fixture',
+          requirementIds: ['R74'],
+          guards: [],
+          lowestPlannerLevel: 'L2',
+          highestIntegrationLevel: 'L3',
+          file: 'src/e2e/fake-service.e2e.test.ts',
+        },
+      ] as ReadonlyArray<ScenarioMetadata>),
+    ).toEqual([
+      {
+        _tag: 'invalid-scenario-requirement-id',
+        scenarioId: 'NDS-L2-clean-pull-status',
+        requirementId: 'R74',
+      },
+    ])
   })
 
   it('composes fake gateway, body adapter, workspace, clock, and SQLite store for clean status', async () => {
@@ -253,7 +329,22 @@ describe('notion datasource sync fake-service E2E harness', () => {
         },
       ],
     })
-    expect(gatewayHarness.trashedPages).toEqual([])
+    expect(gatewayHarness.ledger.attemptedTrashPages).toEqual([])
+    expect(gatewayHarness.ledger.successfulTrashPages).toEqual([])
+  })
+
+  it('records fake gateway remote trash attempts and successes when trash is called', async () => {
+    const gatewayHarness = makeFakeGatewayHarness()
+    const command = localDeleteIntent({
+      explicitDestructiveIntent: true,
+      policy: 'trustedRemoteTrash',
+    }).command
+
+    const requestId = await Effect.runPromise(gatewayHarness.gateway.trashPage(command))
+
+    expect(requestId).toMatch(/^fake-req-/)
+    expect(gatewayHarness.ledger.attemptedTrashPages).toEqual([command])
+    expect(gatewayHarness.ledger.successfulTrashPages).toEqual([command])
   })
 
   it('rejects invalid outbox settlement evidence in the SQLite fixture', () => {

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import {
   bodySafetySnapshot,
@@ -165,10 +165,22 @@ export type FakeGatewayInput = {
 
 export type FakeGatewayHarness = {
   readonly gateway: NotionDataSourceGatewayShape
+  readonly ledger: FakeGatewayMutationLedger
   readonly patchedPageProperties: ReadonlyArray<PatchPagePropertiesCommand>
   readonly patchedDataSourceSchemas: ReadonlyArray<PatchDataSourceSchemaCommand>
   readonly trashedPages: ReadonlyArray<TrashPageCommand>
   readonly restoredPages: ReadonlyArray<RestorePageCommand>
+}
+
+export type FakeGatewayMutationLedger = {
+  readonly attemptedPatchPageProperties: ReadonlyArray<PatchPagePropertiesCommand>
+  readonly successfulPatchPageProperties: ReadonlyArray<PatchPagePropertiesCommand>
+  readonly attemptedPatchDataSourceSchemas: ReadonlyArray<PatchDataSourceSchemaCommand>
+  readonly successfulPatchDataSourceSchemas: ReadonlyArray<PatchDataSourceSchemaCommand>
+  readonly attemptedTrashPages: ReadonlyArray<TrashPageCommand>
+  readonly successfulTrashPages: ReadonlyArray<TrashPageCommand>
+  readonly attemptedRestorePages: ReadonlyArray<RestorePageCommand>
+  readonly successfulRestorePages: ReadonlyArray<RestorePageCommand>
 }
 
 export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewayHarness => {
@@ -176,6 +188,10 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
   const patchedDataSourceSchemas: PatchDataSourceSchemaCommand[] = []
   const trashedPages: TrashPageCommand[] = []
   const restoredPages: RestorePageCommand[] = []
+  const attemptedPatchPageProperties: PatchPagePropertiesCommand[] = []
+  const attemptedPatchDataSourceSchemas: PatchDataSourceSchemaCommand[] = []
+  const attemptedTrashPages: TrashPageCommand[] = []
+  const attemptedRestorePages: RestorePageCommand[] = []
   const dataSource =
     input.dataSource ??
     ({
@@ -201,16 +217,51 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
       })),
   }))
 
+  const baseGateway = makeFakeNotionDataSourceGateway({
+    ...(input.capabilities === undefined ? {} : { supportedCapabilities: input.capabilities }),
+    dataSources: [dataSource],
+    pages,
+  })
+  const ledger = {
+    attemptedPatchPageProperties,
+    successfulPatchPageProperties: patchedPageProperties,
+    attemptedPatchDataSourceSchemas,
+    successfulPatchDataSourceSchemas: patchedDataSourceSchemas,
+    attemptedTrashPages,
+    successfulTrashPages: trashedPages,
+    attemptedRestorePages,
+    successfulRestorePages: restoredPages,
+  } satisfies FakeGatewayMutationLedger
+
   return {
+    ledger,
     patchedPageProperties,
     patchedDataSourceSchemas,
     trashedPages,
     restoredPages,
-    gateway: makeFakeNotionDataSourceGateway({
-      ...(input.capabilities === undefined ? {} : { supportedCapabilities: input.capabilities }),
-      dataSources: [dataSource],
-      pages,
-    }),
+    gateway: {
+      ...baseGateway,
+      patchPageProperties: (command) =>
+        Effect.sync(() => attemptedPatchPageProperties.push(command)).pipe(
+          Effect.zipRight(baseGateway.patchPageProperties(command)),
+          Effect.tap(() => Effect.sync(() => patchedPageProperties.push(command))),
+        ),
+      patchDataSourceSchema: (command) =>
+        Effect.sync(() => attemptedPatchDataSourceSchemas.push(command)).pipe(
+          Effect.zipRight(baseGateway.patchDataSourceSchema(command)),
+          Effect.tap(() => Effect.sync(() => patchedDataSourceSchemas.push(command))),
+        ),
+      trashPage: (command) =>
+        Effect.sync(() => attemptedTrashPages.push(command)).pipe(
+          Effect.zipRight(baseGateway.trashPage(command)),
+          Effect.tap(() => Effect.sync(() => trashedPages.push(command))),
+        ),
+      restorePage: (command) =>
+        Effect.sync(() => attemptedRestorePages.push(command)).pipe(
+          Effect.zipRight(baseGateway.restorePage(command)),
+          Effect.tap(() => Effect.sync(() => restoredPages.push(command))),
+        ),
+    },
   }
 }
 

@@ -67,7 +67,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L2-query-cap-blocks-absence',
     title: 'query result cap blocks absence classification',
-    requirementIds: ['R16', 'R19', 'R67'],
+    requirementIds: ['R71'],
     guards: ['QueryResultCapExceeded'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L2',
@@ -76,7 +76,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L2-filtered-absence-not-proof',
     title: 'filtered absence is not tombstone proof',
-    requirementIds: ['R16', 'R19', 'R37'],
+    requirementIds: ['R73'],
     guards: ['FilteredAbsenceNotProof'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L2',
@@ -186,6 +186,21 @@ export const coreGuardScenarioEntries = (Object.keys(guardScenarioIds) as GuardN
 export type ScenarioCoverageGap =
   | { readonly _tag: 'missing-guard-scenario'; readonly guard: GuardNameType }
   | { readonly _tag: 'unknown-guard-scenario'; readonly guard: string }
+  | {
+      readonly _tag: 'missing-declared-guard-scenario-reference'
+      readonly guard: GuardNameType
+      readonly scenarioId: ScenarioId
+    }
+  | {
+      readonly _tag: 'missing-scenario-implementation'
+      readonly scenarioId: ScenarioId
+      readonly file: string
+    }
+  | {
+      readonly _tag: 'invalid-scenario-requirement-id'
+      readonly scenarioId: ScenarioId
+      readonly requirementId: string
+    }
 
 export const guardScenarioCoverageGaps = (
   entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
@@ -202,12 +217,102 @@ export const guardScenarioCoverageGaps = (
   return [...missing, ...unknown]
 }
 
-export const assertAllCoreGuardsHaveScenarioEntries = (
+export const concreteScenarioReferenceGaps = (
   entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
-): void => {
-  const gaps = guardScenarioCoverageGaps(entries)
+  scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
+): ReadonlyArray<ScenarioCoverageGap> => {
+  const scenarioIds = new Set(scenarios.map((entry) => entry.scenarioId))
+
+  return entries
+    .filter((entry) => entry.scenarioId.startsWith('NDS-GUARD-') === false)
+    .filter((entry) => scenarioIds.has(entry.scenarioId) === false)
+    .map((entry) => ({
+      _tag: 'missing-declared-guard-scenario-reference',
+      guard: entry.guard,
+      scenarioId: entry.scenarioId,
+    }))
+}
+
+export const scenarioImplementationGaps = ({
+  file,
+  implementedScenarioIds,
+  scenarios = e2eHarnessScenarios,
+}: {
+  readonly file: string
+  readonly implementedScenarioIds: ReadonlySet<ScenarioId>
+  readonly scenarios?: ReadonlyArray<ScenarioMetadata>
+}): ReadonlyArray<ScenarioCoverageGap> =>
+  scenarios
+    .filter((entry) => entry.file === file)
+    .filter((entry) => implementedScenarioIds.has(entry.scenarioId) === false)
+    .map((entry) => ({
+      _tag: 'missing-scenario-implementation',
+      scenarioId: entry.scenarioId,
+      file: entry.file,
+    }))
+
+export const invalidScenarioRequirementIdGaps = (
+  scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
+): ReadonlyArray<ScenarioCoverageGap> =>
+  scenarios.flatMap((entry) =>
+    entry.requirementIds
+      .filter((requirementId) => {
+        const match = /^R([0-9]{2})$/.exec(requirementId)
+        if (match?.[1] === undefined) return true
+
+        const requirementNumber = Number.parseInt(match[1], 10)
+        return requirementNumber < 1 || requirementNumber > 73
+      })
+      .map((requirementId) => ({
+        _tag: 'invalid-scenario-requirement-id',
+        scenarioId: entry.scenarioId,
+        requirementId,
+      })),
+  )
+
+export const allScenarioTraceabilityGaps = (input: {
+  readonly file: string
+  readonly implementedScenarioIds: ReadonlySet<ScenarioId>
+}): ReadonlyArray<ScenarioCoverageGap> => [
+  ...guardScenarioCoverageGaps(),
+  ...concreteScenarioReferenceGaps(),
+  ...invalidScenarioRequirementIdGaps(),
+  ...scenarioImplementationGaps(input),
+]
+
+export const assertAllCoreGuardsHaveScenarioEntries = (input?: {
+  readonly file?: string
+  readonly implementedScenarioIds?: ReadonlySet<ScenarioId>
+  readonly entries?: ReadonlyArray<GuardScenarioEntry>
+}): void => {
+  const guardEntries = input?.entries ?? coreGuardScenarioEntries
+  const gaps = [
+    ...guardScenarioCoverageGaps(guardEntries),
+    ...concreteScenarioReferenceGaps(guardEntries),
+    ...invalidScenarioRequirementIdGaps(),
+    ...(input?.file === undefined || input.implementedScenarioIds === undefined
+      ? []
+      : scenarioImplementationGaps({
+          file: input.file,
+          implementedScenarioIds: input.implementedScenarioIds,
+        })),
+  ]
   if (gaps.length > 0) {
-    const summary = gaps.map((gap) => `${gap._tag}:${gap.guard}`).join(', ')
-    throw new Error(`Guard scenario coverage is incomplete: ${summary}`)
+    const summary = gaps
+      .map((gap) => {
+        switch (gap._tag) {
+          case 'missing-guard-scenario':
+          case 'unknown-guard-scenario':
+            return `${gap._tag}:${gap.guard}`
+          case 'missing-declared-guard-scenario-reference':
+            return `${gap._tag}:${gap.guard}:${gap.scenarioId}`
+          case 'missing-scenario-implementation':
+            return `${gap._tag}:${gap.scenarioId}:${gap.file}`
+          case 'invalid-scenario-requirement-id':
+            return `${gap._tag}:${gap.scenarioId}:${gap.requirementId}`
+        }
+      })
+      .join(', ')
+    throw new Error(`Scenario traceability is incomplete: ${summary}`)
   }
 }
