@@ -37,6 +37,7 @@ import {
 import { readOnlyGatewayCapabilities } from './gateway.ts'
 import type { GuardName, PropertyAvailability, PropertyWriteClass } from './guards.ts'
 import { bodyPathForRow } from './local-workspace.ts'
+import { spanAttr, spanAttributes, spanNames } from './observability.ts'
 import type { OutboxCommandEnvelope, PlannerEvent } from './planner.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from './ports.ts'
 import { hashStoreBytes } from './store-projections.ts'
@@ -429,9 +430,13 @@ export const intentEventIdFor = (value: string): typeof SyncEventId.Type =>
 export const commandKeyFor = (value: string): typeof IdempotencyKey.Type =>
   decode(IdempotencyKey, `intent:${eventIdPart(value)}`)
 
-export const observeRemoteDataSource = Effect.fn(
-  'NotionDatasourceSync.Observation.observeRemoteDataSource',
-)(
+export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
+  attributes: spanAttributes({
+    [spanAttr.spanLabel]: 'remote',
+    [spanAttr.processRole]: 'library',
+    [spanAttr.operation]: 'observe-remote',
+  }),
+})(
   (
     options: RemoteObservationOptions,
   ): Effect.Effect<
@@ -751,9 +756,13 @@ export type LocalWorkspaceObservationResult = {
   readonly observations: ReadonlyArray<LocalArtifactObservation>
 }
 
-export const observeLocalWorkspace = Effect.fn(
-  'NotionDatasourceSync.Observation.observeLocalWorkspace',
-)(
+export const observeLocalWorkspace = Effect.fn(spanNames.observationLocal, {
+  attributes: spanAttributes({
+    [spanAttr.spanLabel]: 'local',
+    [spanAttr.processRole]: 'library',
+    [spanAttr.operation]: 'observe-local',
+  }),
+})(
   (
     root: AbsolutePath,
   ): Effect.Effect<LocalWorkspaceObservationResult, LocalStorageError, LocalWorkspacePort> =>

@@ -760,6 +760,9 @@ importers:
       '@overeng/notion-effect-client':
         specifier: workspace:^
         version: link:../notion-effect-client
+      '@overeng/utils':
+        specifier: workspace:^
+        version: link:../utils
     devDependencies:
       '@effect/cluster':
         specifier: 0.58.2

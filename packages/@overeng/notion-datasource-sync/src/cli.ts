@@ -7,6 +7,7 @@ import { NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
 import { NotionConfigLive } from '@overeng/notion-effect-client'
+import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { makeUnsupportedPageBodySyncPort } from './body-adapter.ts'
 import { CanonicalPropertyValue, QueryContract } from './commands.ts'
@@ -38,6 +39,17 @@ import {
   type GatewayOperation,
 } from './gateway.ts'
 import { filesystemLocalWorkspacePortLayer } from './local-workspace.ts'
+import {
+  otelServiceNameForCliArgv,
+  otelServiceNames,
+  processRoleForCliCommand,
+  shortSpanId,
+  spanAttr,
+  spanAttributes,
+  spanLabel,
+  spanNames,
+  statusSpanAttributes,
+} from './observability.ts'
 import { type SchemaPropertyObservation } from './observation.ts'
 import {
   LocalWorkspacePort,
@@ -193,6 +205,9 @@ const makeUnsupportedCommandError = (command: CliCommand['_tag']): CliUnsupporte
 const isUnsupportedCommand = (command: CliCommand): boolean =>
   command._tag === 'migrate-store' || command._tag === 'migrate-schema' || command._tag === 'repair'
 
+export const serviceNameForCliCommand = (command: CliCommand): string =>
+  command._tag === 'watch' ? otelServiceNames.daemon : otelServiceNames.cli
+
 const SchemaPropertyObservationJson = Schema.Struct({
   propertyId: PropertyId,
   configHash: Hash,
@@ -250,24 +265,29 @@ const envelope = <TResult>({
   }
 }
 
-export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')((
-  command: CliCommand,
-  context: CliContext,
-): Effect.Effect<
-  CliResultEnvelope<
-    | OneShotSyncStatus
-    | OneShotPullResult
-    | OneShotPushResult
-    | OneShotSyncResult
-    | WatchDaemonRunResult
-    | UserCommandResultEnvelope
-    | DoctorResult
-  >,
+type CliCommandRuntimeResult = CliResultEnvelope<
+  | OneShotSyncStatus
+  | OneShotPullResult
+  | OneShotPushResult
+  | OneShotSyncResult
+  | WatchDaemonRunResult
+  | UserCommandResultEnvelope
+  | DoctorResult
+>
+
+type CliCommandRuntimeError =
   | LocalStoreError
   | NotionGatewayError
   | BodySyncError
   | LocalStorageError
-  | CliUnsupportedCommandError,
+  | CliUnsupportedCommandError
+
+const runCliCommandEffect = (
+  command: CliCommand,
+  context: CliContext,
+): Effect.Effect<
+  CliCommandRuntimeResult,
+  CliCommandRuntimeError,
   NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
 > => {
   switch (command._tag) {
@@ -282,6 +302,17 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
             dataSourceId: command.dataSourceId,
             workspaceRoot: command.workspaceRoot,
             ...withOptionalCommandOptions(command, context),
+          }),
+        }),
+      ).pipe(
+        Effect.withSpan(spanNames.syncInit, {
+          attributes: spanAttributes({
+            [spanAttr.spanLabel]: spanLabel('init', shortSpanId(context.rootId)),
+            [spanAttr.processRole]: processRoleForCliCommand(command._tag),
+            [spanAttr.operation]: 'init',
+            [spanAttr.rootId]: context.rootId,
+            [spanAttr.dataSourceId]: command.dataSourceId,
+            [spanAttr.dryRun]: command.dryRun === true,
           }),
         }),
       )
@@ -391,7 +422,42 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
         return envelope({ command: command._tag, context, result })
       })
   }
-})
+}
+
+export const runCliCommand = Effect.fn(spanNames.cliCommand, {
+  attributes: spanAttributes({
+    [spanAttr.spanLabel]: 'command',
+    [spanAttr.processRole]: 'cli',
+  }),
+})(
+  (
+    command: CliCommand,
+    context: CliContext,
+  ): Effect.Effect<
+    CliCommandRuntimeResult,
+    CliCommandRuntimeError,
+    NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
+  > =>
+    Effect.gen(function* () {
+      yield* Effect.annotateCurrentSpan(
+        spanAttributes({
+          [spanAttr.spanLabel]: spanLabel(command._tag),
+          [spanAttr.command]: command._tag,
+          [spanAttr.processRole]: processRoleForCliCommand(command._tag),
+          [spanAttr.rootId]: context.rootId,
+          [spanAttr.dataSourceId]: context.dataSourceId,
+          [spanAttr.dryRun]: 'dryRun' in command ? command.dryRun === true : undefined,
+          [spanAttr.maxCycles]: command._tag === 'watch' ? command.maxCycles : undefined,
+        }),
+      )
+      const result = yield* runCliCommandEffect(command, context)
+      yield* Effect.annotateCurrentSpan({
+        ...statusSpanAttributes(result.status),
+        [spanAttr.result]: result.ok ? 'ok' : result.status.state,
+      })
+      return result
+    }),
+)
 
 export const renderCliResultJson = (result: CliResultEnvelope): string =>
   `${JSON.stringify(result, null, 2)}\n`
@@ -591,6 +657,14 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   })
 }
 
+const serviceNameForArgv = (argv: ReadonlyArray<string>): string => {
+  try {
+    return serviceNameForCliCommand(parseCliCommand(argv))
+  } catch {
+    return otelServiceNameForCliArgv(argv)
+  }
+}
+
 export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
   const flags = parseFlags(argv)
   const storePath = requiredFlag(flags, 'store')
@@ -736,8 +810,11 @@ export const runCliMain = (argv: ReadonlyArray<string>, options: CliRuntimeOptio
   })
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  runCliMain(process.argv.slice(2)).pipe(
+  const argv = process.argv.slice(2)
+  runCliMain(argv).pipe(
     Effect.tapError((error) => Effect.sync(() => process.stderr.write(renderCliErrorJson(error)))),
+    Effect.scoped,
+    Effect.provide(makeOtelCliLayer({ serviceName: serviceNameForArgv(argv) })),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )
 }

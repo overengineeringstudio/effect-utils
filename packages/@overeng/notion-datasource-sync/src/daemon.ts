@@ -13,6 +13,14 @@ import {
   type NotionGatewayError,
 } from './errors.ts'
 import type { SyncRootId } from './events.ts'
+import {
+  shortSpanId,
+  spanAttr,
+  spanAttributes,
+  spanLabel,
+  spanNames,
+  statusSpanAttributes,
+} from './observability.ts'
 import type { SchemaPropertyObservation } from './observation.ts'
 import {
   type LocalWorkspacePort,
@@ -260,9 +268,13 @@ const interruptOnAbort = <TValue, TError, TContext>(
     ? effect
     : effect.pipe(Effect.raceFirst(abortSignalEffect({ ...input, signal: input.signal })))
 
-export const runWatchDaemonCycle = Effect.fn(
-  'NotionDatasourceSync.WatchDaemon.runWatchDaemonCycle',
-)(
+export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
+  attributes: spanAttributes({
+    [spanAttr.spanLabel]: 'cycle',
+    [spanAttr.processRole]: 'daemon',
+    [spanAttr.operation]: 'cycle',
+  }),
+})(
   (
     options: WatchDaemonOptions,
   ): Effect.Effect<
@@ -280,6 +292,17 @@ export const runWatchDaemonCycle = Effect.fn(
       })
       const cycle = previous.cycle + 1
       const startedAt = now().toISOString()
+      yield* Effect.annotateCurrentSpan(
+        spanAttributes({
+          [spanAttr.spanLabel]: spanLabel('cycle', cycle),
+          [spanAttr.cycle]: cycle,
+          [spanAttr.mode]: mode,
+          [spanAttr.rootId]: options.rootId,
+          [spanAttr.dataSourceId]: options.dataSourceId,
+          [spanAttr.maxExecutorSteps]: options.maxExecutorSteps ?? 8,
+          [spanAttr.leaseDurationMs]: options.leaseDurationMs ?? 60_000,
+        }),
+      )
       yield* ensureNotCancelled({ signal: options.signal, rootId: options.rootId, cycle })
 
       yield* writeWatchDaemonState({
@@ -357,6 +380,11 @@ export const runWatchDaemonCycle = Effect.fn(
       }
       yield* writeWatchDaemonState({ statePath: options.statePath, state })
 
+      yield* Effect.annotateCurrentSpan({
+        ...statusSpanAttributes(sync.status),
+        [spanAttr.result]: sync.status.state,
+      })
+
       return {
         _tag: 'WatchDaemonCycleResult',
         rootId: options.rootId,
@@ -368,7 +396,13 @@ export const runWatchDaemonCycle = Effect.fn(
     }),
 )
 
-export const runWatchDaemon = Effect.fn('NotionDatasourceSync.WatchDaemon.runWatchDaemon')(
+export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
+  attributes: spanAttributes({
+    [spanAttr.spanLabel]: 'watch',
+    [spanAttr.processRole]: 'daemon',
+    [spanAttr.operation]: 'watch',
+  }),
+})(
   (
     options: WatchDaemonOptions,
   ): Effect.Effect<
@@ -387,6 +421,15 @@ export const runWatchDaemon = Effect.fn('NotionDatasourceSync.WatchDaemon.runWat
         rootId: options.rootId,
         statePath: options.statePath,
       })
+      yield* Effect.annotateCurrentSpan(
+        spanAttributes({
+          [spanAttr.spanLabel]: spanLabel('watch', shortSpanId(options.rootId)),
+          [spanAttr.mode]: mode,
+          [spanAttr.rootId]: options.rootId,
+          [spanAttr.dataSourceId]: options.dataSourceId,
+          [spanAttr.maxCycles]: maxCycles,
+        }),
+      )
 
       for (;;) {
         if (maxCycles !== undefined && attempted >= maxCycles) break
@@ -401,8 +444,8 @@ export const runWatchDaemon = Effect.fn('NotionDatasourceSync.WatchDaemon.runWat
         )
 
         if (cycle._tag === 'cancelled') {
-          return {
-            _tag: 'WatchDaemonRunResult',
+          const result = {
+            _tag: 'WatchDaemonRunResult' as const,
             rootId: options.rootId,
             cycles: attempted,
             completed,
@@ -410,6 +453,16 @@ export const runWatchDaemon = Effect.fn('NotionDatasourceSync.WatchDaemon.runWat
             lastStatus: state.lastStatus,
             state,
           }
+          yield* Effect.annotateCurrentSpan(
+            spanAttributes({
+              [spanAttr.result]: 'cancelled',
+              [spanAttr.cancelled]: true,
+              [spanAttr.cycles]: result.cycles,
+              [spanAttr.completedCycles]: result.completed,
+              ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
+            }),
+          )
+          return result
         }
 
         if (cycle._tag === 'completed') {
@@ -426,8 +479,8 @@ export const runWatchDaemon = Effect.fn('NotionDatasourceSync.WatchDaemon.runWat
           const delay =
             state.repair._tag === 'retry' ? state.repair.retryAfterMillis : modeBackoffMillis(mode)
           if (options.signal?.aborted === true) {
-            return {
-              _tag: 'WatchDaemonRunResult',
+            const result = {
+              _tag: 'WatchDaemonRunResult' as const,
               rootId: options.rootId,
               cycles: attempted,
               completed,
@@ -435,13 +488,23 @@ export const runWatchDaemon = Effect.fn('NotionDatasourceSync.WatchDaemon.runWat
               lastStatus: state.lastStatus,
               state,
             }
+            yield* Effect.annotateCurrentSpan(
+              spanAttributes({
+                [spanAttr.result]: 'cancelled',
+                [spanAttr.cancelled]: true,
+                [spanAttr.cycles]: result.cycles,
+                [spanAttr.completedCycles]: result.completed,
+                ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
+              }),
+            )
+            return result
           }
           yield* sleep(delay)
         }
       }
 
-      return {
-        _tag: 'WatchDaemonRunResult',
+      const result = {
+        _tag: 'WatchDaemonRunResult' as const,
         rootId: options.rootId,
         cycles: attempted,
         completed,
@@ -449,5 +512,15 @@ export const runWatchDaemon = Effect.fn('NotionDatasourceSync.WatchDaemon.runWat
         lastStatus: state.lastStatus,
         state,
       }
+      yield* Effect.annotateCurrentSpan(
+        spanAttributes({
+          [spanAttr.result]: 'completed',
+          [spanAttr.cancelled]: false,
+          [spanAttr.cycles]: result.cycles,
+          [spanAttr.completedCycles]: result.completed,
+          ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
+        }),
+      )
+      return result
     }),
 )
