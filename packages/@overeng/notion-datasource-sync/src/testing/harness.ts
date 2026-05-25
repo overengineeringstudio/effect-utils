@@ -70,6 +70,7 @@ import type {
   QueryAbsenceIntent,
 } from '../planner.ts'
 import type { NotionDataSourceGatewayShape } from '../ports.ts'
+import { pageLifecycleHash } from '../store-projections.ts'
 import {
   openNotionSyncStore,
   type NotionSyncStore,
@@ -526,7 +527,7 @@ export const localDeleteIntent = (
     pageId: testIds.pageId,
     command,
     baseHash: hash('properties-a'),
-    desiredHash: hash('trash-desired'),
+    desiredHash: pageLifecycleHash(testIds.pageId, true),
     explicitDestructiveIntent: false,
     policy: 'candidateOnly',
     directRetrieve: 'accessible',
@@ -633,7 +634,9 @@ export const remoteWriteAttemptedEvent = (input: {
   readonly eventId: string
   readonly idempotencyKey: string
   readonly commandId: CommandId
+  readonly attempt?: number
   readonly attemptState?: 'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
+  readonly leaseToken?: string
 }): SyncEventType =>
   decode(SyncEvent, {
     _tag: 'RemoteWriteAttempted',
@@ -646,9 +649,9 @@ export const remoteWriteAttemptedEvent = (input: {
       canonicalJson: `{"attempt":"${input.eventId}"}`,
     }),
     commandId: input.commandId,
-    attempt: 1,
+    attempt: input.attempt ?? 1,
     attemptState: input.attemptState ?? 'running',
-    leaseToken: 'lease-1',
+    leaseToken: input.leaseToken ?? 'lease-1',
   })
 
 export const remoteWriteSettledEvent = (input: {

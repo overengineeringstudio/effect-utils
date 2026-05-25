@@ -1544,7 +1544,7 @@ export class NotionSyncStore {
       case 'RemoteWriteAttempted': {
         const existing = this.#db
           .prepare(
-            `SELECT settlement_event_id
+            `SELECT attempt_count, lease_token, settlement_event_id
              FROM outbox
              WHERE root_id = ? AND command_id = ?`,
           )
@@ -1554,6 +1554,21 @@ export class NotionSyncStore {
           existing !== undefined &&
           readOptionalString(existing, 'settlement_event_id') === undefined
         ) {
+          const currentAttempt = Number(readInteger(existing, 'attempt_count'))
+          const currentLeaseToken = readOptionalString(existing, 'lease_token')
+          const eventMatchesCurrentLease =
+            currentLeaseToken === undefined ||
+            event.leaseToken === currentLeaseToken ||
+            (event.leaseToken === undefined && event.attemptState === 'running')
+
+          if (event.attempt < currentAttempt) {
+            break
+          }
+
+          if (event.attempt === currentAttempt && eventMatchesCurrentLease === false) {
+            break
+          }
+
           this.#db
             .prepare(
               `UPDATE outbox

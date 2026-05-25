@@ -1,19 +1,23 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { pageSurfaceKey } from './canonical.ts'
+import { RestorePageCommand } from './commands.ts'
 import { executeOutboxOnce } from './executor.ts'
-import { planIntent } from './planner.ts'
+import { planIntent, type OutboxCommandEnvelope } from './planner.ts'
 import {
   NotionDataSourceGateway,
   PageBodySyncPort,
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
 } from './ports.ts'
-import { hashStoreBytes } from './store-projections.ts'
+import { hashStoreBytes, pageLifecycleHash } from './store-projections.ts'
 import {
   appendPlannedCommand,
   buildPlannerSnapshot,
+  decode,
   hash,
+  localDeleteIntent,
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
@@ -32,6 +36,39 @@ const plannedPropertyCommand = (desiredHash: ReturnType<typeof expectedPatchHash
   }
 
   return decision.commands[0]!
+}
+
+const plannedTrustedTrashCommand = () => {
+  const decision = planIntent(
+    buildPlannerSnapshot(),
+    localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }),
+  )
+  if (decision._tag !== 'EnqueueCommands') {
+    throw new Error(`Expected trusted local delete to enqueue a command, got ${decision._tag}`)
+  }
+
+  return decision.commands[0]!
+}
+
+const plannedRestoreCommand = (): OutboxCommandEnvelope => {
+  const command = decode(RestorePageCommand, {
+    _tag: 'RestorePageCommand',
+    commandId: testIds.commandId,
+    pageId: testIds.pageId,
+    basePropertiesHash: hash('properties-a'),
+  })
+
+  return {
+    commandId: testIds.commandId,
+    commandKey: testIds.commandKey,
+    rootId: testIds.rootId,
+    intentEventId: testIds.intentEventId,
+    surface: pageSurfaceKey(testIds.pageId),
+    command,
+    baseHash: hash('properties-a'),
+    desiredHash: pageLifecycleHash(testIds.pageId, false),
+    preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'DeleteVsEdit'],
+  }
 }
 
 const runExecutor = ({
@@ -145,6 +182,75 @@ describe('outbox executor', () => {
       expect(gatewayHarness.ledger.attemptedPatchPageProperties).toHaveLength(1)
       expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
         { commandId: testIds.commandId, state: 'retryable', settlementEventId: undefined },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('settles trusted remote trash by lifecycle state without retrying duplicate writes', async () => {
+    const command = plannedTrustedTrashCommand()
+    const gatewayHarness = makeFakeGatewayHarness()
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+
+    try {
+      appendPlannedCommand(storeFixture.store, command)
+
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toMatchObject({
+        _tag: 'settled',
+        settlementKind: 'verified-success',
+      })
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toEqual({ _tag: 'idle' })
+
+      expect(gatewayHarness.ledger.attemptedTrashPages).toEqual([command.command])
+      expect(gatewayHarness.ledger.successfulTrashPages).toEqual([command.command])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        { commandId: testIds.commandId, state: 'settled', settlementEventId: expect.any(String) },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('settles restore commands by lifecycle state', async () => {
+    const command = plannedRestoreCommand()
+    const gatewayHarness = makeFakeGatewayHarness({
+      pages: [pageSnapshot({ inTrash: true })],
+    })
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+
+    try {
+      appendPlannedCommand(storeFixture.store, command)
+
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toMatchObject({
+        _tag: 'settled',
+        settlementKind: 'verified-success',
+      })
+
+      expect(gatewayHarness.ledger.attemptedRestorePages).toEqual([command.command])
+      expect(gatewayHarness.ledger.successfulRestorePages).toEqual([command.command])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        { commandId: testIds.commandId, state: 'settled', settlementEventId: expect.any(String) },
       ])
     } finally {
       storeFixture.cleanup()

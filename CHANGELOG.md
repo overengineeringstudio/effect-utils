@@ -63,6 +63,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync**: Harden the Milestone 5A executor so trash/restore settlement verifies page lifecycle state, stale attempt events cannot clear newer leases, and trusted remote trash settles without duplicate writes.
 - **@overeng/notion-datasource-sync**: Harden Milestone 5B local workspace materialization so existing `.nmd` body files are only overwritten with same-page sidecar/claim evidence and own-write content safety, duplicate path sidecars fail closed, and filesystem body writes use temp-file rename.
 - **@overeng/notion-datasource-sync**: Fail property planning closed when full schema observations prune the target property despite a stale property shadow, and block unknown SQLite migration-history versions before enabling WAL.
 - **@overeng/notion-datasource-sync**: Fail live Notion preflight closed before optional read probes when requested capabilities are missing, avoiding unnecessary live calls and verified-cleaned ledger entries.
