@@ -540,6 +540,43 @@ describe('notion datasource planner', () => {
     })
   })
 
+  it('blocks property edits when the row data source no longer has the schema property', () => {
+    const decision = planIntent(
+      snapshot({
+        schema: [
+          {
+            dataSourceId,
+            propertyId: propertyB,
+            schemaHash: hash('b'),
+            configHash: hash('d'),
+            writeClass: 'writable',
+          },
+        ],
+      }),
+      {
+        _tag: 'property-edit',
+        intentEventId,
+        commandKey,
+        surface: propertySurfaceKey(pageId, propertyA),
+        pageId,
+        propertyId: propertyA,
+        command: propertyCommand,
+        baseHash: hash('a'),
+        desiredHash: hash('f'),
+        expectedPropertyConfigHash: hash('c'),
+      },
+    )
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'CurrentSurfaceMissing',
+      detail: {
+        summary:
+          'Current schema property projection is missing; observe the data source schema before planning a property write',
+      },
+    })
+  })
+
   it('scopes property edit schema lookup to the row data source', () => {
     const decision = planIntent(
       snapshot({
