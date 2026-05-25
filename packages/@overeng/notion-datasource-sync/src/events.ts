@@ -30,13 +30,18 @@ export const EventCodecVersion = Schema.Literal('v1').annotations({
 export type EventCodecVersion = typeof EventCodecVersion.Type
 
 export const EventFamily = Schema.Literal(
-  'compatibility',
-  'remote-observation',
-  'local-intent',
-  'command',
-  'conflict',
-  'tombstone',
-  'repair',
+  'RemoteObserved',
+  'CompatibilityChecked',
+  'QueryScanRecorded',
+  'LocalIntentAccepted',
+  'CommandEnqueued',
+  'CommandAttempted',
+  'CommandSettled',
+  'ConflictDetected',
+  'ConflictResolved',
+  'TombstoneClassified',
+  'RepairObserved',
+  'StorageMigrated',
 ).annotations({ identifier: 'NotionDatasourceSync.EventFamily' })
 export type EventFamily = typeof EventFamily.Type
 

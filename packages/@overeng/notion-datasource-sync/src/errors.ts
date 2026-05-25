@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import { CommandId, DataSourceId, PageId, SupportedNotionApiVersion } from './domain.ts'
+import { GuardName } from './guards.ts'
 
 export class ApiVersionCompatibilityMissing extends Schema.TaggedError<ApiVersionCompatibilityMissing>()(
   'ApiVersionCompatibilityMissing',
@@ -46,7 +47,7 @@ export class BodySyncError extends Schema.TaggedError<BodySyncError>()('BodySync
 }) {}
 
 export class SyncGuardError extends Schema.TaggedError<SyncGuardError>()('SyncGuardError', {
-  guard: Schema.String,
+  guard: GuardName,
   commandId: Schema.optional(CommandId),
   message: Schema.String,
 }) {}
