@@ -803,6 +803,8 @@ The authoritative verification plan is [e2e-plan.md](./e2e-plan.md). The short f
 - daemon tests for local and remote event coalescing,
 - live Notion tests for API semantics, capability preflight, current API-version behavior, and completeness boundaries that cannot be proven locally.
 
+`src/e2e/realistic-workflows.e2e.test.ts` is the credential-free realistic workflow slice. It composes the fake gateway, SQLite store, one-shot sync, body port, and workspace ports to prove initial materialization/idempotency, remote drift plus local write, pending-intent conflict durability, fail-closed capability/schema drift, and local filesystem delete/repair behavior. This slice does not replace L6 live Notion proof for API semantics or the broader daemon and platform filesystem suites.
+
 ## Design Questions
 
 - **DQ1 Connection webhooks:** Hosted Notion connection webhooks may feed dirty entity hints into daemon intake. Because delivery is at-most-once, aggregated, unordered, and possibly stale, every hint must be followed by fresh API reads before planning.

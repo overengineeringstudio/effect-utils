@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-datasource-sync**: Add a credential-free realistic E2E workflow matrix covering initial materialization/idempotency, remote drift plus local write settlement, pending-intent conflicts, fail-closed capability/schema drift, and filesystem delete/repair behavior.
 - **@overeng/notion-datasource-sync**: Harden Patch A fake-service E2E traceability with explicit guard/requirement residuals, placeholder guard failure checks, and coverage for permission ambiguity, tombstone classification, moved-out/restored membership, incomplete scans, destructive schema guards, page-property pagination, and trusted trash/restore settlement.
 - **@overeng/notion-datasource-sync**: Harden Patch B CLI/live E2E coverage with explicit unsupported `migrate`/`repair` command failures, mutating-command dry-run no-mutation checks, and injected live fixture lifecycle cleanup ledger tests.
 - **@overeng/notion-datasource-sync**: Harden Patch C filesystem/daemon E2E coverage for Unicode/path collision handling, reserved and long title paths, sidecar rebuild/rename/partial-write repair behavior, watch cursor/checkpoint persistence, queue backpressure, cancellation, lease recovery, and real-filesystem own-write suppression.
