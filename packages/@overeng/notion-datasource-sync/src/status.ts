@@ -22,6 +22,8 @@ export type OneShotSyncStatus = {
     readonly outbox: StoreStatusProjection['outbox']
     readonly projections: StoreStatusProjection['projections']
     readonly tombstones: StoreStatusProjection['tombstones']
+    readonly guards: StoreStatusProjection['guards']
+    readonly capabilities: StoreStatusProjection['capabilities']
     readonly checkpoints: StoreStatusProjection['checkpoints']
   }
 }
@@ -61,6 +63,8 @@ export const readOneShotSyncStatus = ({
     projection.outbox.fenced +
     projection.outbox.ambiguous +
     projection.tombstones.unclassified +
+    projection.guards.blocked +
+    projection.capabilities.unsupported +
     projection.checkpoints.incompleteQueries +
     projection.checkpoints.cappedQueries +
     projection.checkpoints.changedQueryContracts +
@@ -80,6 +84,8 @@ export const readOneShotSyncStatus = ({
       outbox: projection.outbox,
       projections: projection.projections,
       tombstones: projection.tombstones,
+      guards: projection.guards,
+      capabilities: projection.capabilities,
       checkpoints: projection.checkpoints,
     },
   }

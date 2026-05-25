@@ -15,7 +15,9 @@ import {
   commandKeyFor,
   intentEventIdFor,
   makeConflictRaisedEvent,
+  makeGuardBlockedEvent,
   makePlannerEvent,
+  makeQueryAbsenceCandidateEvent,
   makeRemoteWritePlannedEvent,
   makeSyncBindingRecordedEvent,
   observeLocalWorkspace,
@@ -125,8 +127,9 @@ const appendDecision = ({
       for (const plannerEvent of decision.events) {
         const event = makePlannerEvent({ rootId, event: plannerEvent, now })
         if (event === undefined) continue
-        store.appendEvent(event)
-        appendedEvents += 1
+        if (store.appendEventWithResult(event).inserted) {
+          appendedEvents += 1
+        }
       }
       return {
         decisions: [decision],
@@ -136,20 +139,24 @@ const appendDecision = ({
         conflicts: 0,
       }
     }
-    case 'EnqueueCommands':
+    case 'EnqueueCommands': {
+      let enqueuedCommands = 0
       for (const command of decision.commands) {
-        store.appendEvent(makeRemoteWritePlannedEvent(command, now))
+        if (store.appendEventWithResult(makeRemoteWritePlannedEvent(command, now)).inserted) {
+          enqueuedCommands += 1
+        }
       }
       return {
         decisions: [decision],
         appendedEvents: 0,
-        enqueuedCommands: decision.commands.length,
+        enqueuedCommands,
         blocked: 0,
         conflicts: 0,
       }
+    }
     case 'OpenConflict': {
       const surface = decision.conflict.localSurface
-      store.appendEvent(
+      const inserted = store.appendEventWithResult(
         makeConflictRaisedEvent({
           rootId,
           pageId: pageId ?? pageIdFromSurface(surface),
@@ -160,23 +167,34 @@ const appendDecision = ({
           message: decision.conflict.message,
           now,
         }),
-      )
+      ).inserted
       return {
         decisions: [decision],
-        appendedEvents: 1,
+        appendedEvents: inserted ? 1 : 0,
         enqueuedCommands: 0,
         blocked: 0,
-        conflicts: 1,
+        conflicts: inserted ? 1 : 0,
       }
     }
-    case 'BlockedByGuard':
+    case 'BlockedByGuard': {
+      const inserted = store.appendEventWithResult(
+        makeGuardBlockedEvent({
+          rootId,
+          guard: decision.guard,
+          surface: decision.surface,
+          message: decision.detail.summary,
+          evidence: decision.detail.evidence,
+          now,
+        }),
+      ).inserted
       return {
         decisions: [decision],
-        appendedEvents: 0,
+        appendedEvents: inserted ? 1 : 0,
         enqueuedCommands: 0,
-        blocked: 1,
+        blocked: inserted ? 1 : 0,
         conflicts: 0,
       }
+    }
   }
 }
 
@@ -210,6 +228,49 @@ const localDeleteIntentFromObservation = (observation: {
   directRetrieve: 'accessible',
 })
 
+const canClassifyDisappearedRows = (options: OneShotPullOptions): boolean =>
+  options.queryContract.membershipScope === 'all-data-source-rows' &&
+  options.queryContract.filter === null &&
+  options.queryContract.highWatermark === null
+
+const disappearanceCandidateEvents = ({
+  options,
+  observation,
+}: {
+  readonly options: OneShotPullOptions
+  readonly observation: RemoteObservationResult
+}) => {
+  if (
+    observation.query.complete === false ||
+    observation.query.cappedAtLimit === true ||
+    observation.query.queryContractHash === undefined ||
+    canClassifyDisappearedRows(options) === false
+  ) {
+    return []
+  }
+
+  const observedPageIds = new Set(
+    observation.events.filter((event) => event._tag === 'RowObserved').map((event) => event.pageId),
+  )
+  const queryContractHash = observation.query.queryContractHash
+  if (queryContractHash === undefined) return []
+
+  return options.store
+    .readPlannerProjectionSnapshot(options.rootId)
+    .rows.filter((row) => row.dataSourceId === options.dataSourceId)
+    .filter((row) => observedPageIds.has(row.pageId) === false)
+    .map((row) =>
+      makeQueryAbsenceCandidateEvent({
+        rootId: options.rootId,
+        dataSourceId: options.dataSourceId,
+        pageId: row.pageId,
+        queryContractHash,
+        queryContract: options.queryContract,
+        ...(options.now === undefined ? {} : { now: options.now }),
+      }),
+    )
+}
+
 export const initOneShotSync = (options: OneShotInitOptions): OneShotSyncStatus => {
   if (options.dryRun !== true) {
     options.store.appendEvent(
@@ -236,13 +297,21 @@ export const pullOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pullOneShotS
   > =>
     Effect.gen(function* () {
       const observation = yield* observeRemoteDataSource(options)
+      let appendedEvents = 0
       for (const event of observation.events) {
-        options.store.appendEvent(event)
+        if (options.store.appendEventWithResult(event).inserted) {
+          appendedEvents += 1
+        }
+      }
+      for (const event of disappearanceCandidateEvents({ options, observation })) {
+        if (options.store.appendEventWithResult(event).inserted) {
+          appendedEvents += 1
+        }
       }
 
       return {
         observation,
-        appendedEvents: observation.events.length,
+        appendedEvents,
         status: readOneShotSyncStatus({ store: options.store, rootId: options.rootId }),
       }
     }),

@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 
 import { makeFakePageBodySyncPort } from '../body-adapter.ts'
 import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../commands.ts'
-import { AbsolutePath, type MaterializePlan } from '../domain.ts'
+import { AbsolutePath, BodyPointer, type MaterializePlan } from '../domain.ts'
+import { allGatewayCapabilities } from '../gateway.ts'
 import { makeFakeLocalWorkspacePort } from '../local-workspace.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
+import { readOneShotSyncStatus } from '../status.ts'
 import { hashStoreBytes } from '../store-projections.ts'
 import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync.ts'
 import {
@@ -52,6 +54,17 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
     ],
     nextCursor: null,
     hasMore: false,
+  })
+
+const bodyPageFor = (pageId: typeof testIds.pageId, bodyHash = hash(`body-${pageId}`)) =>
+  fakeBodyPage({
+    pageId,
+    pointer: decode(BodyPointer, {
+      _tag: 'BodyPointer',
+      pageId,
+      bodyHash,
+      observedAt: fixedObservedAt,
+    }),
   })
 
 const runWithPorts = <TValue, TError>(
@@ -314,6 +327,250 @@ describe('one-shot sync orchestration', () => {
     }
   })
 
+  it('persists missing page-property pagination capability before returning blocked', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    let retrievePagePropertyCalls = 0
+    const gatewayHarness = makeFakeGatewayHarness({
+      capabilities: allGatewayCapabilities.filter(
+        (capability) => capability !== 'page_property_paginate',
+      ),
+      propertyPages: [propertyPage()],
+    })
+    const gateway = {
+      ...gatewayHarness.gateway,
+      retrievePageProperty: (
+        input: Parameters<typeof gatewayHarness.gateway.retrievePageProperty>[0],
+      ) => {
+        retrievePagePropertyCalls += 1
+        return gatewayHarness.gateway.retrievePageProperty(input)
+      },
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      const pull = await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway },
+      )
+
+      expect(retrievePagePropertyCalls).toBe(0)
+      expect(pull.status).toMatchObject({
+        state: 'blocked',
+        counts: {
+          capabilities: { unsupported: 1 },
+        },
+      })
+      expect(
+        readOneShotSyncStatus({ store: storeFixture.store, rootId: testIds.rootId }).state,
+      ).toBe('blocked')
+
+      const recovered = await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway },
+      )
+
+      expect(recovered.status).toMatchObject({
+        state: 'clean',
+        counts: { capabilities: { unsupported: 0 } },
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('records disappeared rows from a complete uncapped query as absence candidates', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const initialPages = [
+      pageSnapshot(),
+      pageSnapshot({ pageId: testIds.otherPageId, propertiesHash: hash('properties-other') }),
+    ]
+    const body = makeHarnessPorts({
+      bodyPages: [bodyPageFor(testIds.pageId), bodyPageFor(testIds.otherPageId)],
+    }).body
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: makeFakeGatewayHarness({ pages: initialPages }).gateway, body },
+      )
+      const pull = await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: makeFakeGatewayHarness({ pages: [pageSnapshot()] }).gateway, body },
+      )
+
+      expect(pull.status).toMatchObject({
+        state: 'blocked',
+        counts: { tombstones: { unclassified: 1 } },
+      })
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).tombstones).toEqual([
+        {
+          pageId: testIds.otherPageId,
+          dataSourceId: testIds.dataSourceId,
+          queryContractHash: pull.observation.query.queryContractHash,
+          state: 'candidate',
+          directRetrieve: 'not-run',
+        },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('does not record disappearance candidates from capped query results', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const pages = [
+      pageSnapshot(),
+      pageSnapshot({ pageId: testIds.otherPageId, propertiesHash: hash('properties-other') }),
+    ]
+    const body = makeHarnessPorts({
+      bodyPages: [bodyPageFor(testIds.pageId), bodyPageFor(testIds.otherPageId)],
+    }).body
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: makeFakeGatewayHarness({ pages }).gateway, body },
+      )
+      const pull = await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: makeFakeGatewayHarness({ pages, queryResultCap: 1 }).gateway, body },
+      )
+
+      expect(pull.status).toMatchObject({
+        state: 'blocked',
+        counts: {
+          tombstones: { unclassified: 0 },
+          checkpoints: { incompleteQueries: 1, cappedQueries: 1 },
+        },
+      })
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).tombstones).toEqual(
+        [],
+      )
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('persists blocked planner decisions into fresh status reads', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gatewayHarness.gateway },
+      )
+      const push = await runWithPorts(
+        pushOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot,
+          localIntents: [propertyEditIntent({ expectedPropertyConfigHash: hash('stale-config') })],
+          now: clock.now,
+        }),
+        { gateway: gatewayHarness.gateway },
+      )
+
+      expect(push.plan).toMatchObject({ blocked: 1, enqueuedCommands: 0, conflicts: 0 })
+      expect(push.status.state).toBe('blocked')
+      expect(
+        readOneShotSyncStatus({ store: storeFixture.store, rootId: testIds.rootId }),
+      ).toMatchObject({
+        state: 'blocked',
+        counts: { guards: { blocked: 1 } },
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('materializes bodies through PageBodySyncPort without datasource mutation', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
@@ -399,6 +656,7 @@ describe('one-shot sync orchestration', () => {
 
       expect(first.status.state).toBe('clean')
       expect(second.status.state).toBe('clean')
+      expect(second.pull.appendedEvents).toBe(0)
       expect(second.push.plan).toMatchObject({
         appendedEvents: 0,
         enqueuedCommands: 0,

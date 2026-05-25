@@ -99,6 +99,17 @@ CREATE TABLE IF NOT EXISTS tombstone_projection (
   PRIMARY KEY (root_id, page_id)
 );
 
+CREATE TABLE IF NOT EXISTS guard_block_projection (
+  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+  block_id TEXT NOT NULL,
+  surface TEXT,
+  guard TEXT NOT NULL,
+  message TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (root_id, block_id)
+);
+
 CREATE TABLE IF NOT EXISTS path_claim (
   root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
   relative_path TEXT NOT NULL,
@@ -274,6 +285,7 @@ DELETE FROM projection_metadata;
 DELETE FROM outbox;
 DELETE FROM conflict_projection;
 DELETE FROM tombstone_projection;
+DELETE FROM guard_block_projection;
 DELETE FROM path_claim;
 DELETE FROM lease;
 DELETE FROM api_contract_projection;
@@ -293,6 +305,7 @@ export const rootScopedProjectionTables = [
   'outbox',
   'conflict_projection',
   'tombstone_projection',
+  'guard_block_projection',
   'path_claim',
   'lease',
   'api_contract_projection',

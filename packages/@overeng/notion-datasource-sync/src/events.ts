@@ -45,6 +45,7 @@ export const EventFamily = Schema.Literal(
   'ConflictDetected',
   'ConflictResolved',
   'TombstoneClassified',
+  'GuardBlocked',
   'RepairObserved',
   'StorageMigrated',
 ).annotations({ identifier: 'NotionDatasourceSync.EventFamily' })
@@ -258,6 +259,13 @@ export const DecodeDriftBlocked = Schema.TaggedStruct('DecodeDriftBlocked', {
 }).annotations({ identifier: 'NotionDatasourceSync.DecodeDriftBlocked' })
 export type DecodeDriftBlocked = typeof DecodeDriftBlocked.Type
 
+export const GuardBlocked = Schema.TaggedStruct('GuardBlocked', {
+  ...eventEnvelopeFields('GuardBlocked', 'GuardBlocked'),
+  guard: GuardName,
+  message: Schema.NonEmptyTrimmedString,
+}).annotations({ identifier: 'NotionDatasourceSync.GuardBlocked' })
+export type GuardBlocked = typeof GuardBlocked.Type
+
 export const SyncEvent = Schema.Union(
   SyncBindingRecorded,
   ApiContractObserved,
@@ -275,5 +283,6 @@ export const SyncEvent = Schema.Union(
   PagePropertyCheckpointRecorded,
   PathClaimed,
   DecodeDriftBlocked,
+  GuardBlocked,
 ).annotations({ identifier: 'NotionDatasourceSync.SyncEvent' })
 export type SyncEvent = typeof SyncEvent.Type

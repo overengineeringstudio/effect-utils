@@ -24,7 +24,7 @@ import {
   type PropertyId,
   type PropertyId as PropertyIdType,
 } from './domain.ts'
-import type { BodySyncError, LocalStorageError, NotionGatewayError } from './errors.ts'
+import { NotionGatewayError, type BodySyncError, type LocalStorageError } from './errors.ts'
 import {
   IdempotencyKey,
   SyncEvent,
@@ -34,7 +34,7 @@ import {
   type SyncRootId,
 } from './events.ts'
 import { allGatewayCapabilities } from './gateway.ts'
-import type { PropertyAvailability, PropertyWriteClass } from './guards.ts'
+import type { GuardName, PropertyAvailability, PropertyWriteClass } from './guards.ts'
 import { bodyPathForRow } from './local-workspace.ts'
 import type { OutboxCommandEnvelope, PlannerEvent } from './planner.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from './ports.ts'
@@ -149,6 +149,24 @@ const propertyValueHash = (pages: ReadonlyArray<PagePropertyItemPage>): HashType
 
 const propertyAvailability = (pages: ReadonlyArray<PagePropertyItemPage>): PropertyAvailability =>
   pages.at(-1)?.hasMore === false ? 'complete' : 'paginated-incomplete'
+
+const uniqueCapabilities = (
+  capabilities: ReadonlyArray<CapabilityName>,
+): ReadonlyArray<CapabilityName> => [...new Set(capabilities)]
+
+const requiredObservationCapabilities = (
+  options: RemoteObservationOptions,
+): ReadonlyArray<CapabilityName> =>
+  uniqueCapabilities([
+    ...(options.requiredCapabilities ?? allGatewayCapabilities),
+    'data_source_retrieve',
+    'data_source_query',
+    'page_retrieve',
+    ...(options.schemaProperties.length === 0 ? [] : (['page_property_paginate'] as const)),
+  ])
+
+const pagePropertyFailureAvailability = (error: NotionGatewayError): PropertyAvailability =>
+  error.guard === 'UnsupportedRemoteShape' ? 'unsupported' : 'paginated-incomplete'
 
 export const makeSyncBindingRecordedEvent = (input: {
   readonly rootId: SyncRootId
@@ -278,6 +296,70 @@ export const makePlannerEvent = ({
   }
 }
 
+export const makeGuardBlockedEvent = (input: {
+  readonly rootId: SyncRootId
+  readonly guard: GuardName
+  readonly surface: SurfaceKey
+  readonly message: string
+  readonly evidence?: unknown
+  readonly now?: () => Date
+}): Extract<SyncEventType, { readonly _tag: 'GuardBlocked' }> => {
+  const now = input.now ?? (() => new Date())
+  return decode(SyncEvent, {
+    _tag: 'GuardBlocked',
+    ...eventBase({
+      rootId: input.rootId,
+      eventId: `guard-block:${eventIdPart(input.surface)}:${input.guard}`,
+      family: 'GuardBlocked',
+      eventType: 'GuardBlocked',
+      idempotencyKey: `guard-block:${input.surface}:${input.guard}`,
+      surface: input.surface,
+      payload: { evidence: input.evidence ?? {} },
+      now,
+    }),
+    guard: input.guard,
+    message: input.message,
+  })
+}
+
+export const makeQueryAbsenceCandidateEvent = (input: {
+  readonly rootId: SyncRootId
+  readonly dataSourceId: DataSourceIdType
+  readonly pageId: PageIdType
+  readonly queryContractHash: HashType
+  readonly queryContract: QueryContract
+  readonly now?: () => Date
+}): Extract<SyncEventType, { readonly _tag: 'TombstoneCandidateObserved' }> => {
+  const now = input.now ?? (() => new Date())
+  const filtered =
+    input.queryContract.filter !== null ||
+    input.queryContract.membershipScope !== 'all-data-source-rows'
+
+  return decode(SyncEvent, {
+    _tag: 'TombstoneCandidateObserved',
+    ...eventBase({
+      rootId: input.rootId,
+      eventId: `absence:${eventIdPart(input.dataSourceId)}:${eventIdPart(input.pageId)}:${input.queryContractHash}`,
+      family: 'RemoteObserved',
+      eventType: 'TombstoneCandidateObserved',
+      idempotencyKey: `absence:${input.dataSourceId}:${input.pageId}:${input.queryContractHash}`,
+      surface: querySurfaceKey(input.dataSourceId, input.queryContractHash),
+      payload: {
+        dataSourceId: input.dataSourceId,
+        pageId: input.pageId,
+        queryContractHash: input.queryContractHash,
+        classified: false,
+        membershipScope: input.queryContract.membershipScope,
+        filtered,
+        directRetrieve: 'not-run',
+      },
+      now,
+    }),
+    pageId: input.pageId,
+    reason: filtered ? 'filtered_absence_not_proof' : 'query_absence_unclassified',
+  })
+}
+
 export const makeConflictRaisedEvent = (input: {
   readonly rootId: SyncRootId
   readonly pageId: PageIdType
@@ -339,25 +421,12 @@ export const observeRemoteDataSource = Effect.fn(
       const gateway = yield* NotionDataSourceGateway
       const body = yield* PageBodySyncPort
       const workspace = yield* LocalWorkspacePort
-      const requiredCapabilities = options.requiredCapabilities ?? allGatewayCapabilities
+      const requiredCapabilities = requiredObservationCapabilities(options)
       const preflight = yield* gateway.preflightCapabilities({
         _tag: 'CapabilityPreflightInput',
         dataSourceId: options.dataSourceId,
         requiredCapabilities: [...requiredCapabilities],
       })
-      const dataSource = yield* gateway.retrieveDataSource(options.dataSourceId)
-      const queryPages = yield* collectStream(
-        gateway.queryRows({
-          _tag: 'QueryRowsInput',
-          dataSourceId: options.dataSourceId,
-          queryContract: options.queryContract,
-          startCursor: null,
-        }),
-      )
-      const queryContractHash =
-        queryPages.at(-1)?.queryContractHash ?? queryPages[0]?.queryContractHash
-      const complete = queryPages.at(-1)?.hasMore === false
-      const cappedAtLimit = queryPages.some((page) => page.cappedAtLimit)
       const events: SyncEventType[] = [
         decode(SyncEvent, {
           _tag: 'ApiContractObserved',
@@ -372,25 +441,63 @@ export const observeRemoteDataSource = Effect.fn(
           }),
           apiContract: gateway.apiContract,
         }),
-        ...requiredCapabilities.map((capability) =>
-          decode(SyncEvent, {
+        ...requiredCapabilities.map((capability) => {
+          const capabilityState = preflight.supportedCapabilities.includes(capability)
+            ? 'supported'
+            : 'unsupported'
+
+          return decode(SyncEvent, {
             _tag: 'CapabilityPreflightChecked',
             ...eventBase({
               rootId: options.rootId,
-              eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}`,
+              eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}`,
               family: 'CompatibilityChecked',
               eventType: 'CapabilityPreflightChecked',
-              idempotencyKey: `capability:${options.dataSourceId}:${capability}`,
+              idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}`,
               surface: querySurfaceKey(options.dataSourceId, hashStoreBytes('capabilities')),
               payload: { capability },
               now,
             }),
             dataSourceId: options.dataSourceId,
             capability,
-            supported: preflight.supportedCapabilities.includes(capability),
+            supported: capabilityState === 'supported',
             requestId: preflight.dataSourceId === options.dataSourceId ? undefined : undefined,
-          }),
-        ),
+          })
+        }),
+      ]
+
+      if (preflight.missingCapabilities.length > 0) {
+        return {
+          events,
+          materialized: [],
+          query: {
+            pages: 0,
+            rows: 0,
+            complete: false,
+            cappedAtLimit: false,
+            queryContractHash: undefined,
+          },
+          properties: {
+            observed: 0,
+            incomplete: 0,
+          },
+        }
+      }
+
+      const dataSource = yield* gateway.retrieveDataSource(options.dataSourceId)
+      const queryPages = yield* collectStream(
+        gateway.queryRows({
+          _tag: 'QueryRowsInput',
+          dataSourceId: options.dataSourceId,
+          queryContract: options.queryContract,
+          startCursor: null,
+        }),
+      )
+      const queryContractHash =
+        queryPages.at(-1)?.queryContractHash ?? queryPages[0]?.queryContractHash
+      const complete = queryPages.at(-1)?.hasMore === false
+      const cappedAtLimit = queryPages.some((page) => page.cappedAtLimit)
+      events.push(
         decode(SyncEvent, {
           _tag: 'DataSourceObserved',
           ...eventBase({
@@ -407,7 +514,7 @@ export const observeRemoteDataSource = Effect.fn(
           requestId: dataSource.requestId,
           schemaHash: dataSource.schemaHash,
         }),
-      ]
+      )
       const materialized: MaterializeResult[] = []
       let observedProperties = 0
       let incompleteProperties = 0
@@ -461,14 +568,49 @@ export const observeRemoteDataSource = Effect.fn(
           )
 
           for (const property of options.schemaProperties) {
-            const propertyPages = yield* collectStream(
+            const propertyPagesResult = yield* collectStream(
               gateway.retrievePageProperty({
                 _tag: 'RetrievePagePropertyInput',
                 pageId: row.pageId,
                 propertyId: property.propertyId,
                 startCursor: null,
               }),
+            ).pipe(
+              Effect.match({
+                onFailure: (error) => ({ _tag: 'failed' as const, error }),
+                onSuccess: (pages) => ({ _tag: 'succeeded' as const, pages }),
+              }),
             )
+
+            if (propertyPagesResult._tag === 'failed') {
+              const availability =
+                propertyPagesResult.error instanceof NotionGatewayError
+                  ? pagePropertyFailureAvailability(propertyPagesResult.error)
+                  : 'paginated-incomplete'
+              incompleteProperties += 1
+              events.push(
+                decode(SyncEvent, {
+                  _tag: 'PagePropertyCheckpointRecorded',
+                  ...eventBase({
+                    rootId: options.rootId,
+                    eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed`,
+                    family: 'QueryScanRecorded',
+                    eventType: 'PagePropertyCheckpointRecorded',
+                    idempotencyKey: `property:${row.pageId}:${property.propertyId}:failed`,
+                    surface: propertySurfaceKey(row.pageId, property.propertyId),
+                    payload: { availability },
+                    now,
+                  }),
+                  pageId: row.pageId,
+                  propertyId: property.propertyId,
+                  nextCursor: null,
+                  complete: false,
+                }),
+              )
+              continue
+            }
+
+            const propertyPages = propertyPagesResult.pages
             const valueHash = propertyValueHash(propertyPages)
             const availability = propertyAvailability(propertyPages)
             if (availability === 'complete') {
@@ -502,15 +644,16 @@ export const observeRemoteDataSource = Effect.fn(
       }
 
       if (queryContractHash !== undefined) {
+        const queryCheckpointState = complete && cappedAtLimit === false ? 'complete' : 'incomplete'
         events.push(
           decode(SyncEvent, {
             _tag: 'QueryScanCheckpointRecorded',
             ...eventBase({
               rootId: options.rootId,
-              eventId: `query:${eventIdPart(options.dataSourceId)}:${queryContractHash}:${complete ? 'complete' : 'incomplete'}`,
+              eventId: `query:${eventIdPart(options.dataSourceId)}:${queryContractHash}:${queryCheckpointState}`,
               family: 'QueryScanRecorded',
               eventType: 'QueryScanCheckpointRecorded',
-              idempotencyKey: `query:${options.dataSourceId}:${queryContractHash}:${complete ? 'complete' : 'incomplete'}`,
+              idempotencyKey: `query:${options.dataSourceId}:${queryContractHash}:${queryCheckpointState}`,
               surface: querySurfaceKey(options.dataSourceId, queryContractHash),
               payload: {
                 cappedAtLimit,
