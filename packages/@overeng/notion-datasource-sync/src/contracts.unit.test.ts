@@ -5,6 +5,7 @@ import {
   CapabilityPreflightInput,
   DataSourceSnapshot,
   DataSourceId,
+  EventFamily,
   Hash,
   NotionApiContract,
   NotionDataSourceGateway,
@@ -15,6 +16,7 @@ import {
   QueryContract,
   QueryRowsPage,
   RemoteWriteCommand,
+  SyncGuardError,
   SyncEvent,
   guardApiVersion,
   guardCapabilities,
@@ -97,13 +99,55 @@ describe('@overeng/notion-datasource-sync contracts', () => {
     expect(shouldAdvanceQueryCheckpoint(terminalPage)).toEqual({ _tag: 'allowed' })
   })
 
+  it('rejects guard errors outside the named guard contract', () => {
+    expect(() =>
+      decode(SyncGuardError, {
+        _tag: 'SyncGuardError',
+        guard: 'NotARealGuard',
+        message: 'unknown guard',
+      }),
+    ).toThrow()
+  })
+
+  it('keeps event family literals aligned with the VRS contract', () => {
+    expect(
+      [
+        'RemoteObserved',
+        'CompatibilityChecked',
+        'QueryScanRecorded',
+        'LocalIntentAccepted',
+        'CommandEnqueued',
+        'CommandAttempted',
+        'CommandSettled',
+        'ConflictDetected',
+        'ConflictResolved',
+        'TombstoneClassified',
+        'RepairObserved',
+        'StorageMigrated',
+      ].map((family) => decode(EventFamily, family)),
+    ).toEqual([
+      'RemoteObserved',
+      'CompatibilityChecked',
+      'QueryScanRecorded',
+      'LocalIntentAccepted',
+      'CommandEnqueued',
+      'CommandAttempted',
+      'CommandSettled',
+      'ConflictDetected',
+      'ConflictResolved',
+      'TombstoneClassified',
+      'RepairObserved',
+      'StorageMigrated',
+    ])
+  })
+
   it('exports durable event envelopes and keeps absence separate from tombstones', () => {
     const envelope = {
       eventId: 'event-1',
       rootId: 'root-1',
       sequence: '1',
       codecVersion: 'v1',
-      family: 'tombstone',
+      family: 'RemoteObserved',
       eventType: 'TombstoneCandidateObserved',
       idempotencyKey: 'candidate:page-1',
       surface: 'page:page-1',
@@ -128,6 +172,7 @@ describe('@overeng/notion-datasource-sync contracts', () => {
       _tag: 'TombstoneRecorded',
       ...envelope,
       eventId: 'event-2',
+      family: 'TombstoneClassified',
       eventType: 'TombstoneRecorded',
       idempotencyKey: 'tombstone:page-1',
       pageId,
