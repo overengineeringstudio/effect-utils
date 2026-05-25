@@ -121,9 +121,14 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
     const objectConstructorName =
       schemaDisplayName ?? (object.constructor !== undefined ? object.constructor.name : 'Object')
 
+    const descriptionStyle: React.CSSProperties = {
+      ...(styles.objectDescription as React.CSSProperties),
+      ...(schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined),
+    }
+
     return (
       <React.Fragment>
-        <span style={styles.objectDescription as React.CSSProperties}>
+        <span style={descriptionStyle}>
           {objectConstructorName === 'Object' ? '' : `${objectConstructorName} `}
         </span>
         <span style={styles.preview as React.CSSProperties}>
