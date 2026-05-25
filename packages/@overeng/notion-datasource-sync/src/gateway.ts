@@ -19,10 +19,19 @@ import {
   type DataSourceId,
   type NotionApiContract as NotionApiContractType,
   type PageId,
+  type PropertyId,
   type SupportedNotionApiVersion as SupportedNotionApiVersionType,
 } from './domain.ts'
 import { NotionGatewayError } from './errors.ts'
 import { guardApiVersion, type GuardName } from './guards.ts'
+import {
+  commandKind,
+  shortSpanId,
+  spanAttr,
+  spanAttributes,
+  spanLabel,
+  spanNames,
+} from './observability.ts'
 import { NotionDataSourceGateway, type NotionDataSourceGatewayShape } from './ports.ts'
 
 export const supportedNotionApiVersion: SupportedNotionApiVersionType =
@@ -147,6 +156,35 @@ export type NotionDataSourceGatewayAdapter = Omit<
   readonly preflightCapabilities?: NotionDataSourceGatewayShape['preflightCapabilities']
 }
 
+const gatewayRequestSpan = (input: {
+  readonly operation: GatewayOperation
+  readonly configuredApiVersion: string
+  readonly dataSourceId?: DataSourceId
+  readonly pageId?: PageId
+  readonly propertyId?: PropertyId
+  readonly commandId?: string
+  readonly commandKind?: string
+}) => {
+  const entityId = input.pageId ?? input.dataSourceId ?? input.commandId
+
+  return {
+    attributes: spanAttributes({
+      [spanAttr.spanLabel]: spanLabel(
+        input.operation,
+        entityId === undefined ? undefined : shortSpanId(entityId),
+      ),
+      [spanAttr.processRole]: 'library',
+      [spanAttr.operation]: input.operation,
+      [spanAttr.apiVersion]: input.configuredApiVersion,
+      [spanAttr.dataSourceId]: input.dataSourceId,
+      [spanAttr.pageId]: input.pageId,
+      [spanAttr.propertyId]: input.propertyId,
+      [spanAttr.commandId]: input.commandId,
+      [spanAttr.commandKind]: input.commandKind,
+    }),
+  }
+}
+
 export const makeNotionDataSourceGateway = (
   adapter: NotionDataSourceGatewayAdapter,
 ): NotionDataSourceGatewayShape => {
@@ -167,7 +205,14 @@ export const makeNotionDataSourceGateway = (
               )
             : adapter.preflightCapabilities(input),
         ),
-        Effect.withSpan('NotionDatasourceSync.Gateway.preflightCapabilities'),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'preflightCapabilities',
+            configuredApiVersion,
+            dataSourceId: input.dataSourceId,
+          }),
+        ),
       ),
     retrieveDataSource: (id) =>
       ensureSupportedGatewayApiVersion({
@@ -176,7 +221,14 @@ export const makeNotionDataSourceGateway = (
         dataSourceId: id,
       }).pipe(
         Effect.flatMap(() => adapter.retrieveDataSource(id)),
-        Effect.withSpan('NotionDatasourceSync.Gateway.retrieveDataSource'),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'retrieveDataSource',
+            configuredApiVersion,
+            dataSourceId: id,
+          }),
+        ),
       ),
     queryRows: (input: QueryRowsInput) =>
       Stream.fromEffect(
@@ -187,7 +239,14 @@ export const makeNotionDataSourceGateway = (
         }),
       ).pipe(
         Stream.flatMap(() => adapter.queryRows(input)),
-        Stream.withSpan('NotionDatasourceSync.Gateway.queryRows'),
+        Stream.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'queryRows',
+            configuredApiVersion,
+            dataSourceId: input.dataSourceId,
+          }),
+        ),
       ),
     retrievePage: (id) =>
       ensureSupportedGatewayApiVersion({
@@ -196,7 +255,10 @@ export const makeNotionDataSourceGateway = (
         pageId: id,
       }).pipe(
         Effect.flatMap(() => adapter.retrievePage(id)),
-        Effect.withSpan('NotionDatasourceSync.Gateway.retrievePage'),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({ operation: 'retrievePage', configuredApiVersion, pageId: id }),
+        ),
       ),
     retrievePageProperty: (input: RetrievePagePropertyInput) =>
       Stream.fromEffect(
@@ -207,7 +269,15 @@ export const makeNotionDataSourceGateway = (
         }),
       ).pipe(
         Stream.flatMap(() => adapter.retrievePageProperty(input)),
-        Stream.withSpan('NotionDatasourceSync.Gateway.retrievePageProperty'),
+        Stream.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'retrievePageProperty',
+            configuredApiVersion,
+            pageId: input.pageId,
+            propertyId: input.propertyId,
+          }),
+        ),
       ),
     patchPageProperties: (command: PatchPagePropertiesCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -216,7 +286,16 @@ export const makeNotionDataSourceGateway = (
         pageId: command.pageId,
       }).pipe(
         Effect.flatMap(() => adapter.patchPageProperties(command)),
-        Effect.withSpan('NotionDatasourceSync.Gateway.patchPageProperties'),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'patchPageProperties',
+            configuredApiVersion,
+            pageId: command.pageId,
+            commandId: command.commandId,
+            commandKind: commandKind(command._tag),
+          }),
+        ),
       ),
     patchDataSourceSchema: (command: PatchDataSourceSchemaCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -225,7 +304,16 @@ export const makeNotionDataSourceGateway = (
         dataSourceId: command.dataSourceId,
       }).pipe(
         Effect.flatMap(() => adapter.patchDataSourceSchema(command)),
-        Effect.withSpan('NotionDatasourceSync.Gateway.patchDataSourceSchema'),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'patchDataSourceSchema',
+            configuredApiVersion,
+            dataSourceId: command.dataSourceId,
+            commandId: command.commandId,
+            commandKind: commandKind(command._tag),
+          }),
+        ),
       ),
     trashPage: (command: TrashPageCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -234,7 +322,16 @@ export const makeNotionDataSourceGateway = (
         pageId: command.pageId,
       }).pipe(
         Effect.flatMap(() => adapter.trashPage(command)),
-        Effect.withSpan('NotionDatasourceSync.Gateway.trashPage'),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'trashPage',
+            configuredApiVersion,
+            pageId: command.pageId,
+            commandId: command.commandId,
+            commandKind: commandKind(command._tag),
+          }),
+        ),
       ),
     restorePage: (command: RestorePageCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -243,7 +340,16 @@ export const makeNotionDataSourceGateway = (
         pageId: command.pageId,
       }).pipe(
         Effect.flatMap(() => adapter.restorePage(command)),
-        Effect.withSpan('NotionDatasourceSync.Gateway.restorePage'),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'restorePage',
+            configuredApiVersion,
+            pageId: command.pageId,
+            commandId: command.commandId,
+            commandKind: commandKind(command._tag),
+          }),
+        ),
       ),
   }
 }

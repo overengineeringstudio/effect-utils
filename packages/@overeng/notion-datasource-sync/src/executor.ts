@@ -6,6 +6,14 @@ import { LocalStoreError, NotionGatewayError, type BodySyncError } from './error
 import { IdempotencyKey } from './events.ts'
 import { notionRequestId } from './gateway.ts'
 import type { GuardName } from './guards.ts'
+import {
+  commandKind as otelCommandKind,
+  shortSpanId,
+  spanAttr,
+  spanAttributes,
+  spanLabel,
+  spanNames,
+} from './observability.ts'
 import { NotionDataSourceGateway, PageBodySyncPort } from './ports.ts'
 import { pageLifecycleHash } from './store-projections.ts'
 import {
@@ -59,6 +67,30 @@ const storeEffect = <TValue>(
   })
 
 const commandTag = (command: RemoteWriteCommand): string => command._tag.replace(/Command$/, '')
+
+const commandPageId = (command: RemoteWriteCommand): string | undefined =>
+  'pageId' in command ? command.pageId : undefined
+
+const commandDataSourceId = (command: RemoteWriteCommand): string | undefined =>
+  'dataSourceId' in command ? command.dataSourceId : undefined
+
+const commandSpanAttributes = (input: {
+  readonly operation: string
+  readonly command: RemoteWriteCommand
+}) =>
+  spanAttributes({
+    [spanAttr.spanLabel]: spanLabel(
+      input.operation,
+      otelCommandKind(input.command._tag),
+      shortSpanId(input.command.commandId),
+    ),
+    [spanAttr.processRole]: 'library',
+    [spanAttr.operation]: input.operation,
+    [spanAttr.commandId]: input.command.commandId,
+    [spanAttr.commandKind]: otelCommandKind(input.command._tag),
+    [spanAttr.dataSourceId]: commandDataSourceId(input.command),
+    [spanAttr.pageId]: commandPageId(input.command),
+  })
 
 const commandBaseHash = (command: RemoteWriteCommand): Hash => {
   switch (command._tag) {
@@ -119,7 +151,14 @@ const observeCurrentSurface = (
         }
       }
     }
-  }).pipe(Effect.withSpan('NotionDatasourceSync.Executor.observeCurrentSurface'))
+  }).pipe(
+    Effect.withSpan(spanNames.outboxObserveSurface, {
+      attributes: commandSpanAttributes({
+        operation: 'observeCurrentSurface',
+        command,
+      }),
+    }),
+  )
 
 const executeRemoteWrite = (
   command: RemoteWriteCommand,
@@ -152,7 +191,14 @@ const executeRemoteWrite = (
         return result.requestId
       }
     }
-  }).pipe(Effect.withSpan('NotionDatasourceSync.Executor.executeRemoteWrite'))
+  }).pipe(
+    Effect.withSpan(spanNames.outboxWriteRemote, {
+      attributes: commandSpanAttributes({
+        operation: 'executeRemoteWrite',
+        command,
+      }),
+    }),
+  )
 
 const guardFromWriteError = (error: NotionGatewayError | BodySyncError): GuardName =>
   error instanceof NotionGatewayError && error.guard !== undefined
@@ -229,7 +275,16 @@ const settle = ({
     }),
   )
 
-export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.executeOutboxOnce')(
+const annotateOutboxResult = (result: OutboxExecutionResult) =>
+  Effect.annotateCurrentSpan(
+    spanAttributes({
+      [spanAttr.result]: result._tag,
+      [spanAttr.guard]: result._tag === 'failed' ? result.guard : undefined,
+      [spanAttr.settlementKind]: result._tag === 'settled' ? result.settlementKind : undefined,
+    }),
+  )
+
+export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
   (
     options: OutboxExecutorOptions,
   ): Effect.Effect<
@@ -238,24 +293,59 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
     NotionDataSourceGateway | PageBodySyncPort
   > =>
     Effect.gen(function* () {
+      yield* Effect.annotateCurrentSpan(
+        spanAttributes({
+          [spanAttr.spanLabel]: spanLabel('outbox', shortSpanId(options.rootId)),
+          [spanAttr.processRole]: 'library',
+          [spanAttr.operation]: 'executeOutboxOnce',
+          [spanAttr.rootId]: options.rootId,
+          [spanAttr.leaseDurationMs]: options.leaseDurationMs,
+        }),
+      )
       const claimed = yield* storeEffect('claim-next-outbox-command', () =>
         options.store.claimNextOutboxCommand(options),
       )
 
       if (claimed === undefined) {
-        return { _tag: 'idle' as const }
+        const result = { _tag: 'idle' as const }
+        yield* Effect.annotateCurrentSpan({
+          [spanAttr.spanLabel]: spanLabel('outbox', 'idle'),
+        })
+        yield* annotateOutboxResult(result)
+        return result
       }
 
+      yield* Effect.annotateCurrentSpan(
+        spanAttributes({
+          [spanAttr.spanLabel]: spanLabel('outbox', shortSpanId(claimed.commandId)),
+          [spanAttr.commandId]: claimed.commandId,
+          [spanAttr.attempt]: claimed.attempt,
+        }),
+      )
+
       if (claimed.command === undefined) {
-        return yield* recordAttemptState({
+        const result = yield* recordAttemptState({
           options,
           claimed,
           attemptState: 'blocked',
           guard: 'CurrentSurfaceMissing',
         })
+        yield* annotateOutboxResult(result)
+        return result
       }
 
       const command = claimed.command
+      yield* Effect.annotateCurrentSpan(
+        spanAttributes({
+          [spanAttr.spanLabel]: spanLabel(
+            otelCommandKind(command._tag),
+            shortSpanId(command.commandId),
+          ),
+          [spanAttr.commandKind]: otelCommandKind(command._tag),
+          [spanAttr.dataSourceId]: commandDataSourceId(command),
+          [spanAttr.pageId]: commandPageId(command),
+        }),
+      )
       const before = yield* observeCurrentSurface(command).pipe(
         Effect.catchAll((error) =>
           recordAttemptState({
@@ -270,10 +360,13 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
         ),
       )
 
-      if ('_tag' in before) return before
+      if ('_tag' in before) {
+        yield* annotateOutboxResult(before)
+        return before
+      }
 
       if (before.verificationHash === claimed.desiredHash) {
-        return yield* settle({
+        const result = yield* settle({
           options,
           claimed,
           command,
@@ -281,24 +374,30 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
           observedHash: before.verificationHash,
           settlementKind: 'verified-no-op',
         })
+        yield* annotateOutboxResult(result)
+        return result
       }
 
       if (claimed.attemptState === 'ambiguous') {
-        return yield* recordAttemptState({
+        const result = yield* recordAttemptState({
           options,
           claimed,
           attemptState: 'ambiguous',
           guard: 'AmbiguousCommandOutcome',
         })
+        yield* annotateOutboxResult(result)
+        return result
       }
 
       if (before.baseHash !== commandBaseHash(command)) {
-        return yield* recordAttemptState({
+        const result = yield* recordAttemptState({
           options,
           claimed,
           attemptState: 'blocked',
           guard: 'StaleSurfaceBase',
         })
+        yield* annotateOutboxResult(result)
+        return result
       }
 
       const leaseActive = yield* storeEffect('check-outbox-lease', () =>
@@ -310,12 +409,14 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
       )
 
       if (leaseActive === false) {
-        return yield* recordAttemptState({
+        const result = yield* recordAttemptState({
           options,
           claimed,
           attemptState: 'fenced',
           guard: 'LeaseFenceMismatch',
         })
+        yield* annotateOutboxResult(result)
+        return result
       }
 
       const requestId = yield* executeRemoteWrite(command).pipe(
@@ -332,7 +433,10 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
         ),
       )
 
-      if (typeof requestId !== 'string') return requestId
+      if (typeof requestId !== 'string') {
+        yield* annotateOutboxResult(requestId)
+        return requestId
+      }
 
       const after = yield* observeCurrentSurface(command).pipe(
         Effect.catchAll((error) =>
@@ -345,22 +449,28 @@ export const executeOutboxOnce = Effect.fn('NotionDatasourceSync.Executor.execut
         ),
       )
 
-      if ('_tag' in after) return after
+      if ('_tag' in after) {
+        yield* annotateOutboxResult(after)
+        return after
+      }
 
-      return after.verificationHash === claimed.desiredHash
-        ? yield* settle({
-            options,
-            claimed,
-            command,
-            requestId,
-            observedHash: after.verificationHash,
-            settlementKind: 'verified-success',
-          })
-        : yield* recordAttemptState({
-            options,
-            claimed,
-            attemptState: 'retryable',
-            guard: 'ReadAfterWriteMismatch',
-          })
+      const result =
+        after.verificationHash === claimed.desiredHash
+          ? yield* settle({
+              options,
+              claimed,
+              command,
+              requestId,
+              observedHash: after.verificationHash,
+              settlementKind: 'verified-success',
+            })
+          : yield* recordAttemptState({
+              options,
+              claimed,
+              attemptState: 'retryable',
+              guard: 'ReadAfterWriteMismatch',
+            })
+      yield* annotateOutboxResult(result)
+      return result
     }),
 )

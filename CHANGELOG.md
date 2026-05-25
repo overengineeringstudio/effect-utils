@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-datasource-sync**: Add Effect-native OpenTelemetry instrumentation for the CLI, watch daemon, one-shot sync operations, gateway requests, fake gateway requests, remote/local observation, and outbox executor attempts, with role-specific service names and a static span-catalog regression test.
 - **@overeng/notion-datasource-sync**: Add a credential-free realistic E2E workflow matrix covering initial materialization/idempotency, remote drift plus local write settlement, pending-intent conflicts, fail-closed capability/schema drift, and filesystem delete/repair behavior.
 - **@overeng/notion-datasource-sync**: Add credentialed live Notion parent-page fixture provisioning plus deterministic high-watermark resume and mid-I/O cancellation E2E coverage.
 - **@overeng/notion-datasource-sync**: Harden Patch A fake-service E2E traceability with explicit guard/requirement residuals, placeholder guard failure checks, and coverage for permission ambiguity, tombstone classification, moved-out/restored membership, incomplete scans, destructive schema guards, page-property pagination, and trusted trash/restore settlement.

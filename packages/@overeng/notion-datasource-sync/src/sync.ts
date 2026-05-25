@@ -14,6 +14,14 @@ import type {
 } from './errors.ts'
 import { executeOutboxOnce, type OutboxExecutionResult } from './executor.ts'
 import {
+  shortSpanId,
+  spanAttr,
+  spanAttributes,
+  spanLabel,
+  spanNames,
+  statusSpanAttributes,
+} from './observability.ts'
+import {
   bodyPushCommandFromLocalChange,
   commandIdFor,
   commandKeyFor,
@@ -269,6 +277,27 @@ const canClassifyDisappearedRows = (options: OneShotPullOptions): boolean =>
   options.queryContract.filter === null &&
   options.queryContract.highWatermark === null
 
+const annotateOneShotStart = (input: {
+  readonly operation: 'pull' | 'push' | 'sync'
+  readonly rootId: RemoteObservationOptions['rootId']
+  readonly dataSourceId?: RemoteObservationOptions['dataSourceId']
+  readonly dryRun?: boolean
+  readonly maxExecutorSteps?: number
+  readonly leaseDurationMs?: number
+}) =>
+  Effect.annotateCurrentSpan(
+    spanAttributes({
+      [spanAttr.spanLabel]: spanLabel(input.operation, shortSpanId(input.rootId)),
+      [spanAttr.processRole]: 'library',
+      [spanAttr.operation]: input.operation,
+      [spanAttr.rootId]: input.rootId,
+      [spanAttr.dataSourceId]: input.dataSourceId,
+      [spanAttr.dryRun]: input.dryRun === true,
+      [spanAttr.maxExecutorSteps]: input.maxExecutorSteps,
+      [spanAttr.leaseDurationMs]: input.leaseDurationMs,
+    }),
+  )
+
 const resumeCursorForPull = (options: OneShotPullOptions) => {
   const expectedQueryContractHash = computeQueryContractHash(
     {
@@ -343,7 +372,7 @@ export const initOneShotSync = (options: OneShotInitOptions): OneShotSyncStatus 
   return readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
 }
 
-export const pullOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pullOneShotSync')(
+export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
   (
     options: OneShotPullOptions,
   ): Effect.Effect<
@@ -352,6 +381,12 @@ export const pullOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pullOneShotS
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   > =>
     Effect.gen(function* () {
+      yield* annotateOneShotStart({
+        operation: 'pull',
+        rootId: options.rootId,
+        dataSourceId: options.dataSourceId,
+        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+      })
       const observation = yield* observeRemoteDataSource({
         ...options,
         startCursor: options.startCursor ?? resumeCursorForPull(options),
@@ -370,15 +405,26 @@ export const pullOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pullOneShotS
         }
       }
 
-      return {
+      const result = {
         observation,
         appendedEvents,
         status: readOneShotSyncStatus({ store: options.store, rootId: options.rootId }),
       }
+      yield* Effect.annotateCurrentSpan({
+        ...statusSpanAttributes(result.status),
+        [spanAttr.appendedEvents]: appendedEvents,
+        [spanAttr.cappedAtLimit]: observation.query.cappedAtLimit,
+        [spanAttr.eventCount]: observation.events.length,
+        [spanAttr.incompletePropertyCount]: observation.properties.incomplete,
+        [spanAttr.queryComplete]: observation.query.complete,
+        [spanAttr.queryPageCount]: observation.query.pages,
+        [spanAttr.rowCount]: observation.query.rows,
+      })
+      return result
     }),
 )
 
-export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotSync')(
+export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
   (
     options: OneShotPushOptions,
   ): Effect.Effect<
@@ -387,6 +433,17 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   > =>
     Effect.gen(function* () {
+      yield* annotateOneShotStart({
+        operation: 'push',
+        rootId: options.rootId,
+        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+        ...(options.maxExecutorSteps === undefined
+          ? {}
+          : { maxExecutorSteps: options.maxExecutorSteps }),
+        ...(options.leaseDurationMs === undefined
+          ? {}
+          : { leaseDurationMs: options.leaseDurationMs }),
+      })
       const now = options.now ?? (() => new Date())
       const body = yield* PageBodySyncPort
       const local = yield* observeLocalWorkspace(options.workspaceRoot)
@@ -520,7 +577,7 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
         }
       }
 
-      return {
+      const result = {
         localObservations: local.observations.length,
         plan: mergePlanSummaries(summaries),
         executor: {
@@ -530,10 +587,21 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
         },
         status: readOneShotSyncStatus({ store: options.store, rootId: options.rootId }),
       }
+      yield* Effect.annotateCurrentSpan({
+        ...statusSpanAttributes(result.status),
+        [spanAttr.appendedEvents]: result.plan.appendedEvents,
+        [spanAttr.blockedCount]: result.plan.blocked,
+        [spanAttr.conflictCount]: result.plan.conflicts,
+        [spanAttr.enqueuedCommands]: result.plan.enqueuedCommands,
+        [spanAttr.executorSteps]: result.executor.steps,
+        [spanAttr.localObservationCount]: result.localObservations,
+        [spanAttr.maxStepsReached]: result.executor.maxStepsReached,
+      })
+      return result
     }),
 )
 
-export const syncOneShot = Effect.fn('NotionDatasourceSync.Sync.syncOneShot')(
+export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
   (
     options: OneShotSyncOptions,
   ): Effect.Effect<
@@ -542,10 +610,31 @@ export const syncOneShot = Effect.fn('NotionDatasourceSync.Sync.syncOneShot')(
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   > =>
     Effect.gen(function* () {
+      yield* annotateOneShotStart({
+        operation: 'sync',
+        rootId: options.rootId,
+        dataSourceId: options.dataSourceId,
+        ...(options.maxExecutorSteps === undefined
+          ? {}
+          : { maxExecutorSteps: options.maxExecutorSteps }),
+        ...(options.leaseDurationMs === undefined
+          ? {}
+          : { leaseDurationMs: options.leaseDurationMs }),
+      })
       const pull = yield* pullOneShotSync(options)
       const push = yield* pushOneShotSync(options)
       const status = readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
 
+      yield* Effect.annotateCurrentSpan({
+        ...statusSpanAttributes(status),
+        [spanAttr.appendedEvents]: pull.appendedEvents + push.plan.appendedEvents,
+        [spanAttr.blockedCount]: push.plan.blocked,
+        [spanAttr.conflictCount]: push.plan.conflicts,
+        [spanAttr.enqueuedCommands]: push.plan.enqueuedCommands,
+        [spanAttr.executorSteps]: push.executor.steps,
+        [spanAttr.queryComplete]: pull.observation.query.complete,
+        [spanAttr.rowCount]: pull.observation.query.rows,
+      })
       return { pull, push, status }
     }),
 )

@@ -32,6 +32,7 @@ import {
   makeNotionDataSourceGateway,
   notionRequestId,
 } from './gateway.ts'
+import { shortSpanId, spanAttr, spanAttributes, spanLabel, spanNames } from './observability.ts'
 import { NotionDataSourceGateway, type NotionDataSourceGatewayShape } from './ports.ts'
 import { hashStoreBytes } from './store-projections.ts'
 
@@ -96,6 +97,29 @@ const parseCursor = (
 }
 
 const readRequestId = (sequence: number) => notionRequestId(`fake-req-${sequence}`)
+
+const fakeGatewaySpan = (input: {
+  readonly operation: string
+  readonly apiVersion: string
+  readonly dataSourceId?: DataSourceId
+  readonly pageId?: PageId
+}) => {
+  const entityId = input.pageId ?? input.dataSourceId
+
+  return {
+    attributes: spanAttributes({
+      [spanAttr.spanLabel]: spanLabel(
+        input.operation,
+        entityId === undefined ? undefined : shortSpanId(entityId),
+      ),
+      [spanAttr.processRole]: 'fake-gateway',
+      [spanAttr.operation]: input.operation,
+      [spanAttr.apiVersion]: input.apiVersion,
+      [spanAttr.dataSourceId]: input.dataSourceId,
+      [spanAttr.pageId]: input.pageId,
+    }),
+  }
+}
 
 const hasPageId = (pageIds: ReadonlySet<string>, pageId: PageId): boolean =>
   pageIds.has(pageKey(pageId))
@@ -219,7 +243,14 @@ export const makeFakeNotionDataSourceGateway = (
     apiContract,
     preflightCapabilities: (input) =>
       Effect.succeed(makeCapabilityPreflightResult({ input, apiContract })).pipe(
-        Effect.withSpan('NotionDatasourceSync.FakeGateway.preflightCapabilities'),
+        Effect.withSpan(
+          spanNames.fakeGatewayRequest,
+          fakeGatewaySpan({
+            operation: 'preflightCapabilities',
+            apiVersion: apiContract.apiVersion,
+            dataSourceId: input.dataSourceId,
+          }),
+        ),
       ),
     retrieveDataSource: (id) =>
       hasDataSourceId(permissionAmbiguousDataSourceIds, id)
@@ -232,7 +263,14 @@ export const makeFakeNotionDataSourceGateway = (
             }),
           )
         : findDataSource(dataSources, id, 'retrieveDataSource').pipe(
-            Effect.withSpan('NotionDatasourceSync.FakeGateway.retrieveDataSource'),
+            Effect.withSpan(
+              spanNames.fakeGatewayRequest,
+              fakeGatewaySpan({
+                operation: 'retrieveDataSource',
+                apiVersion: apiContract.apiVersion,
+                dataSourceId: id,
+              }),
+            ),
           ),
     queryRows: (input) =>
       Stream.fromEffect(
@@ -335,7 +373,14 @@ export const makeFakeNotionDataSourceGateway = (
           )
         : findPage(pages, id, 'retrievePage').pipe(
             Effect.map((page) => page.snapshot),
-            Effect.withSpan('NotionDatasourceSync.FakeGateway.retrievePage'),
+            Effect.withSpan(
+              spanNames.fakeGatewayRequest,
+              fakeGatewaySpan({
+                operation: 'retrievePage',
+                apiVersion: apiContract.apiVersion,
+                pageId: id,
+              }),
+            ),
           ),
     retrievePageProperty: (input: RetrievePagePropertyInput) =>
       Stream.fromEffect(
