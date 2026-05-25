@@ -58,6 +58,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync**: Harden the fake gateway query and page-property boundaries so query checkpoint hashes include the full contract identity, unavailable data sources and properties fail closed, stale trash/restore commands conflict, and invalid page sizes cannot loop.
 - **@overeng/notion-datasource-sync**: Harden Milestone 3B body/workspace contracts so unsafe body safety metadata fails closed, queued body pushes are fenced by the current body pointer, replayed body observations carry safety metadata, unsafe workspace path segments are rejected, and future Notion API versions are blocked as unverified instead of old-unsupported.
 - **@overeng/notion-datasource-sync**: Scope query absence direct-retrieve evidence to the exact page and data source so classifications cannot be reused across rows or sources with the same query contract.
 - **@overeng/notion-datasource-sync**: Bind each durable sync event tag to its VRS event family at the schema boundary so mismatched persisted event payloads fail decoding.

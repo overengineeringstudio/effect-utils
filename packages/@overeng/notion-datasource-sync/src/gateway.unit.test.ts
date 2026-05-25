@@ -15,6 +15,7 @@ import {
   hashStoreBytes,
   makeFakeNotionDataSourceGatewayLayer,
   makeNotionApiContract,
+  queryContractHash,
   type FakeNotionDataSourceGatewayConfig,
   type QueryContract as QueryContractType,
 } from './mod.ts'
@@ -29,7 +30,7 @@ const pageId = (value: string) => decode(PageId, value)
 const propertyId = (value: string) => decode(PropertyId, value)
 const observedAt = '2026-05-25T00:00:00.000Z'
 
-const queryContract = (overrides: Partial<QueryContractType> = {}) =>
+const queryContract = (overrides: Record<string, unknown> = {}) =>
   decode(QueryContract, {
     _tag: 'QueryContract',
     apiVersion: '2026-03-11',
@@ -102,6 +103,22 @@ const runWithGateway = <TValue>(
     effect.pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(gatewayConfig))),
   )
 
+const expectGatewayFailure = (
+  result: Awaited<ReturnType<typeof Effect.runPromiseExit>>,
+  expected: {
+    readonly operation?: string
+    readonly guard?: string
+  },
+) => {
+  expect(result._tag).toBe('Failure')
+  if (result._tag === 'Failure') {
+    expect(Chunk.toReadonlyArray(Cause.failures(result.cause)).at(0)).toMatchObject({
+      _tag: 'NotionGatewayError',
+      ...expected,
+    })
+  }
+}
+
 describe('Notion data source gateway fake', () => {
   it('exposes the supported API contract and blocks configured version drift', async () => {
     const gatewayConfig = config({ configuredApiVersion: '2022-06-28' })
@@ -169,6 +186,164 @@ describe('Notion data source gateway fake', () => {
     expect(pages.at(-1)).toMatchObject({ hasMore: false, nextCursor: null, cappedAtLimit: false })
   })
 
+  it('binds query checkpoint hashes to the full query contract identity', async () => {
+    const apiContract = makeNotionApiContract()
+    const baseInput = {
+      _tag: 'QueryRowsInput',
+      dataSourceId,
+      queryContract: queryContract(),
+      startCursor: null,
+    } as const
+    const baseHash = queryContractHash(baseInput, apiContract.apiVersion)
+    const selectFilter = {
+      _tag: 'property_value',
+      propertyId: propertyId('status'),
+      operator: 'equals',
+      value: {
+        _tag: 'select',
+        option: { _tag: 'CanonicalOptionValue', name: 'Todo' },
+      },
+    } as const
+    const doneFilter = {
+      ...selectFilter,
+      value: {
+        _tag: 'select',
+        option: { _tag: 'CanonicalOptionValue', name: 'Done' },
+      },
+    } as const
+    const compoundFilterA = {
+      _tag: 'compound_hash',
+      kind: 'and',
+      expressionHash: hash('filter-a'),
+    } as const
+    const compoundFilterB = {
+      _tag: 'compound_hash',
+      kind: 'and',
+      expressionHash: hash('filter-b'),
+    } as const
+    const sortRankAscending = {
+      _tag: 'CanonicalNotionSort',
+      propertyId: propertyId('rank'),
+      direction: 'ascending',
+    } as const
+    const sortStatusDescending = {
+      _tag: 'CanonicalNotionSort',
+      propertyId: propertyId('status'),
+      direction: 'descending',
+    } as const
+    const sortRankDescending = {
+      ...sortRankAscending,
+      direction: 'descending',
+    } as const
+    const hashFor = (contract: QueryContractType, apiVersion: string = apiContract.apiVersion) =>
+      queryContractHash({ ...baseInput, queryContract: contract }, apiVersion)
+    const variants = [
+      {
+        label: 'filter value',
+        queryContract: queryContract({ filter: selectFilter }),
+      },
+      {
+        label: 'filter expression',
+        queryContract: queryContract({
+          filter: compoundFilterA,
+        }),
+      },
+      {
+        label: 'sort order',
+        queryContract: queryContract({
+          sorts: [sortRankAscending, sortStatusDescending],
+        }),
+      },
+      {
+        label: 'sort body',
+        queryContract: queryContract({
+          sorts: [sortRankDescending],
+        }),
+      },
+      {
+        label: 'page size',
+        queryContract: queryContract({ pageSize: 1 }),
+      },
+      {
+        label: 'query contract api version',
+        queryContract: {
+          ...queryContract(),
+          apiVersion: '2027-01-01' as QueryContractType['apiVersion'],
+        },
+      },
+      {
+        label: 'membership',
+        queryContract: queryContract({ membershipScope: 'explicit-filter' }),
+      },
+      {
+        label: 'high watermark',
+        queryContract: queryContract({ highWatermark: '2026-05-25T01:00:00.000Z' }),
+      },
+      {
+        label: 'gateway api version',
+        apiVersion: '2027-01-01',
+        queryContract: queryContract(),
+      },
+      {
+        label: 'filter value body',
+        queryContract: queryContract({ filter: doneFilter }),
+      },
+    ]
+
+    expect(
+      variants.map(({ apiVersion, label, queryContract: variantContract }) => [
+        label,
+        hashFor(variantContract, apiVersion ?? apiContract.apiVersion) === baseHash,
+      ]),
+    ).toEqual(variants.map(({ label }) => [label, false]))
+    expect(hashFor(queryContract({ filter: selectFilter }))).not.toBe(
+      hashFor(queryContract({ filter: doneFilter })),
+    )
+    expect(hashFor(queryContract({ filter: compoundFilterA }))).not.toBe(
+      hashFor(queryContract({ filter: compoundFilterB })),
+    )
+    expect(hashFor(queryContract({ sorts: [sortRankAscending, sortStatusDescending] }))).not.toBe(
+      hashFor(queryContract({ sorts: [sortStatusDescending, sortRankAscending] })),
+    )
+    expect(hashFor(queryContract({ sorts: [sortRankAscending] }))).not.toBe(
+      hashFor(queryContract({ sorts: [sortRankDescending] })),
+    )
+  })
+
+  it('emits query pages with contract hashes that change with the gateway API version', async () => {
+    const gatewayApiVersion = '2027-01-01' as ReturnType<typeof makeNotionApiContract>['apiVersion']
+    const futureApiContract = {
+      ...makeNotionApiContract(),
+      apiVersion: gatewayApiVersion,
+    }
+    const [currentPage, futurePage] = await Promise.all(
+      [
+        config(),
+        config({ apiContract: futureApiContract, configuredApiVersion: '2026-03-11' }),
+      ].map((gatewayConfig) =>
+        runWithGateway(
+          gatewayConfig,
+          Effect.gen(function* () {
+            const gateway = yield* NotionDataSourceGateway
+            return yield* gateway
+              .queryRows({
+                _tag: 'QueryRowsInput',
+                dataSourceId,
+                queryContract: queryContract(),
+                startCursor: null,
+              })
+              .pipe(
+                Stream.runCollect,
+                Effect.map((chunk) => Chunk.toReadonlyArray(chunk)[0]),
+              )
+          }),
+        ),
+      ),
+    )
+
+    expect(currentPage?.queryContractHash).not.toBe(futurePage?.queryContractHash)
+  })
+
   it('streams page-property item pagination completely', async () => {
     const relation = propertyId('relation')
     const gatewayConfig = config({
@@ -234,6 +409,74 @@ describe('Notion data source gateway fake', () => {
     expect(pages[0]).toMatchObject({ hasMore: false, nextCursor: null, cappedAtLimit: true })
   })
 
+  it('fails closed when querying a missing data source instead of emitting an empty scan', async () => {
+    const missingDataSourceId = decode(DataSourceId, 'missing-data-source')
+    const result = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway
+          .queryRows({
+            _tag: 'QueryRowsInput',
+            dataSourceId: missingDataSourceId,
+            queryContract: queryContract(),
+            startCursor: null,
+          })
+          .pipe(Stream.runCollect)
+      }).pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(config()))),
+    )
+
+    expectGatewayFailure(result, { operation: 'queryRows', guard: 'PermissionAmbiguous' })
+  })
+
+  it('fails closed when query data source access is permission ambiguous', async () => {
+    const result = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway
+          .queryRows({
+            _tag: 'QueryRowsInput',
+            dataSourceId,
+            queryContract: queryContract(),
+            startCursor: null,
+          })
+          .pipe(Stream.runCollect)
+      }).pipe(
+        Effect.provide(
+          makeFakeNotionDataSourceGatewayLayer(
+            config({ permissionAmbiguousDataSourceIds: [dataSourceId] }),
+          ),
+        ),
+      ),
+    )
+
+    expectGatewayFailure(result, { operation: 'queryRows', guard: 'PermissionAmbiguous' })
+  })
+
+  it('rejects invalid query page sizes before pagination starts', async () => {
+    await Promise.all(
+      [0, -1].map(async (pageSize) => {
+        const result = await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const gateway = yield* NotionDataSourceGateway
+            return yield* gateway
+              .queryRows({
+                _tag: 'QueryRowsInput',
+                dataSourceId,
+                queryContract: {
+                  ...queryContract(),
+                  pageSize: pageSize as QueryContractType['pageSize'],
+                },
+                startCursor: null,
+              })
+              .pipe(Stream.runCollect)
+          }).pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(config()))),
+        )
+
+        expectGatewayFailure(result, { operation: 'queryRows', guard: 'UnsupportedRemoteShape' })
+      }),
+    )
+  })
+
   it('keeps filtered query absence separate from direct page availability', async () => {
     const filteredPageId = pageId('page-3')
     const result = await runWithGateway(
@@ -278,13 +521,123 @@ describe('Notion data source gateway fake', () => {
       ),
     )
 
-    expect(result._tag).toBe('Failure')
-    if (result._tag === 'Failure') {
-      expect(Chunk.toReadonlyArray(Cause.failures(result.cause)).at(0)).toMatchObject({
-        _tag: 'NotionGatewayError',
-        guard: 'PermissionAmbiguous',
-      })
-    }
+    expectGatewayFailure(result, { operation: 'retrievePage', guard: 'PermissionAmbiguous' })
+  })
+
+  it('fails closed for missing page-property surfaces', async () => {
+    const result = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway
+          .retrievePageProperty({
+            _tag: 'RetrievePagePropertyInput',
+            pageId: pageId('page-1'),
+            propertyId: propertyId('missing-property'),
+            startCursor: null,
+          })
+          .pipe(Stream.runCollect)
+      }).pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(config()))),
+    )
+
+    expectGatewayFailure(result, {
+      operation: 'retrievePageProperty',
+      guard: 'CurrentSurfaceMissing',
+    })
+  })
+
+  it('fails closed for permission-ambiguous page-property pages', async () => {
+    const ambiguousPageId = pageId('page-1')
+    const result = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway
+          .retrievePageProperty({
+            _tag: 'RetrievePagePropertyInput',
+            pageId: ambiguousPageId,
+            propertyId: propertyId('relation'),
+            startCursor: null,
+          })
+          .pipe(Stream.runCollect)
+      }).pipe(
+        Effect.provide(
+          makeFakeNotionDataSourceGatewayLayer(
+            config({ permissionAmbiguousPageIds: [ambiguousPageId] }),
+          ),
+        ),
+      ),
+    )
+
+    expectGatewayFailure(result, {
+      operation: 'retrievePageProperty',
+      guard: 'PermissionAmbiguous',
+    })
+  })
+
+  it('fails closed for missing page-property pages', async () => {
+    const result = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway
+          .retrievePageProperty({
+            _tag: 'RetrievePagePropertyInput',
+            pageId: pageId('missing-page'),
+            propertyId: propertyId('relation'),
+            startCursor: null,
+          })
+          .pipe(Stream.runCollect)
+      }).pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(config()))),
+    )
+
+    expectGatewayFailure(result, {
+      operation: 'retrievePageProperty',
+      guard: 'PermissionAmbiguous',
+    })
+  })
+
+  it('rejects invalid page-property page sizes before pagination starts', async () => {
+    await Promise.all(
+      [0, -1].map(async (pagePropertyPageSize) => {
+        const relation = propertyId('relation')
+        const result = await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            const gateway = yield* NotionDataSourceGateway
+            return yield* gateway
+              .retrievePageProperty({
+                _tag: 'RetrievePagePropertyInput',
+                pageId: pageId('page-1'),
+                propertyId: relation,
+                startCursor: null,
+              })
+              .pipe(Stream.runCollect)
+          }).pipe(
+            Effect.provide(
+              makeFakeNotionDataSourceGatewayLayer(
+                config({
+                  pagePropertyPageSize,
+                  pages: [
+                    {
+                      snapshot: page(pageId('page-1'), '1'),
+                      row: row(pageId('page-1'), '1'),
+                      propertyItems: [
+                        {
+                          propertyId: relation,
+                          items: [pagePropertyItem(pageId('page-1'), relation, 'a')],
+                        },
+                      ],
+                    },
+                  ],
+                }),
+              ),
+            ),
+          ),
+        )
+
+        expectGatewayFailure(result, {
+          operation: 'retrievePageProperty',
+          guard: 'UnsupportedRemoteShape',
+        })
+      }),
+    )
   })
 
   it('can leave a successful property patch unverifiable for read-after-write mismatch tests', async () => {
@@ -316,5 +669,39 @@ describe('Notion data source gateway fake', () => {
 
     expect(result.requestId).toMatch(/^fake-req-/)
     expect(result.after.propertiesHash).toBe(before.propertiesHash)
+  })
+
+  it('rejects stale trash commands', async () => {
+    const targetPageId = pageId('page-1')
+    const result = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway.trashPage({
+          _tag: 'TrashPageCommand',
+          commandId: commandId('command-trash'),
+          pageId: targetPageId,
+          basePropertiesHash: hash('stale'),
+        })
+      }).pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(config()))),
+    )
+
+    expectGatewayFailure(result, { operation: 'trashPage', guard: 'StaleSurfaceBase' })
+  })
+
+  it('rejects stale restore commands', async () => {
+    const targetPageId = pageId('page-1')
+    const result = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway.restorePage({
+          _tag: 'RestorePageCommand',
+          commandId: commandId('command-restore'),
+          pageId: targetPageId,
+          basePropertiesHash: hash('stale'),
+        })
+      }).pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(config()))),
+    )
+
+    expectGatewayFailure(result, { operation: 'restorePage', guard: 'StaleSurfaceBase' })
   })
 })
