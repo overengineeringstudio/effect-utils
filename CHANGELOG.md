@@ -65,6 +65,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **@overeng/notion-datasource-sync**: Harden Milestone 6A one-shot orchestration so capability and planner guard blocks persist durably, idempotent summaries count inserted records, and complete uncapped pulls emit absence candidates for disappeared rows.
+- **@overeng/notion-datasource-sync**: Preserve recurrent Milestone 6A capability and page-property failure transitions after recovery, and count deduped body-conflict summaries from inserted events.
 - **@overeng/notion-datasource-sync**: Harden the Milestone 5A executor so trash/restore settlement verifies page lifecycle state, stale attempt events cannot clear newer leases, and trusted remote trash settles without duplicate writes.
 - **@overeng/notion-datasource-sync**: Fence legacy same-attempt outbox `running` events that lack lease tokens so they cannot clear an active executor lease.
 - **@overeng/notion-datasource-sync**: Harden Milestone 5B local workspace materialization so existing `.nmd` body files are only overwritten with same-page sidecar/claim evidence and own-write content safety, duplicate path sidecars fail closed, and filesystem body writes use temp-file rename.

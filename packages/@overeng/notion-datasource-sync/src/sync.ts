@@ -381,7 +381,7 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
         })
 
         if (bodyPlan._tag === 'BodyConflict') {
-          options.store.appendEvent(
+          const inserted = options.store.appendEventWithResult(
             makeConflictRaisedEvent({
               rootId: options.rootId,
               pageId: observation.pageId,
@@ -393,13 +393,13 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
               message: bodyPlan.message ?? 'Body adapter reported a local body conflict',
               now,
             }),
-          )
+          ).inserted
           summaries.push({
             decisions: [],
-            appendedEvents: 1,
+            appendedEvents: inserted ? 1 : 0,
             enqueuedCommands: 0,
             blocked: 0,
-            conflicts: 1,
+            conflicts: inserted ? 1 : 0,
           })
           continue
         }

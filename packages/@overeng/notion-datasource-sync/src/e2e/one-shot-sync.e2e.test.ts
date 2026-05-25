@@ -1,11 +1,16 @@
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { makeFakePageBodySyncPort } from '../body-adapter.ts'
 import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../commands.ts'
-import { AbsolutePath, BodyPointer, type MaterializePlan } from '../domain.ts'
+import {
+  AbsolutePath,
+  BodyPointer,
+  WorkspaceRelativePath,
+  type MaterializePlan,
+} from '../domain.ts'
 import { allGatewayCapabilities } from '../gateway.ts'
-import { makeFakeLocalWorkspacePort } from '../local-workspace.ts'
+import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local-workspace.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
 import { readOneShotSyncStatus } from '../status.ts'
 import { hashStoreBytes } from '../store-projections.ts'
@@ -401,6 +406,79 @@ describe('one-shot sync orchestration', () => {
     }
   })
 
+  it('persists recurrent capability and page-property checkpoint failures after recovery', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const options = {
+      store: storeFixture.store,
+      rootId: testIds.rootId,
+      dataSourceId: testIds.dataSourceId,
+      workspaceRoot,
+      queryContract: defaultQueryContract(),
+      schemaProperties,
+      now: clock.now,
+    }
+    const gatewayWithoutPagePropertyCapability = makeFakeGatewayHarness({
+      capabilities: allGatewayCapabilities.filter(
+        (capability) => capability !== 'page_property_paginate',
+      ),
+      propertyPages: [propertyPage()],
+    }).gateway
+    const gatewayWithMissingProperty = makeFakeGatewayHarness().gateway
+    const gatewayWithProperty = makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      await runWithPorts(pullOneShotSync(options), {
+        gateway: gatewayWithoutPagePropertyCapability,
+      })
+      clock.advanceMillis(1)
+      await runWithPorts(pullOneShotSync(options), { gateway: gatewayWithMissingProperty })
+      clock.advanceMillis(1)
+      const recovered = await runWithPorts(pullOneShotSync(options), {
+        gateway: gatewayWithProperty,
+      })
+      clock.advanceMillis(1)
+      const propertyFailedAgain = await runWithPorts(pullOneShotSync(options), {
+        gateway: gatewayWithMissingProperty,
+      })
+      clock.advanceMillis(1)
+      await runWithPorts(pullOneShotSync(options), {
+        gateway: gatewayWithoutPagePropertyCapability,
+      })
+
+      expect(recovered.status).toMatchObject({
+        state: 'clean',
+        counts: {
+          capabilities: { unsupported: 0 },
+          checkpoints: { incompleteProperties: 0 },
+        },
+      })
+      expect(propertyFailedAgain.status).toMatchObject({
+        state: 'blocked',
+        counts: { checkpoints: { incompleteProperties: 1 } },
+      })
+      expect(
+        readOneShotSyncStatus({ store: storeFixture.store, rootId: testIds.rootId }),
+      ).toMatchObject({
+        state: 'blocked',
+        counts: {
+          capabilities: { unsupported: 1 },
+          checkpoints: { incompleteProperties: 1 },
+        },
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('records disappeared rows from a complete uncapped query as absence candidates', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
@@ -623,6 +701,66 @@ describe('one-shot sync orchestration', () => {
       expect(gatewayHarness.ledger.successfulPatchPageProperties).toEqual([])
       expect(gatewayHarness.ledger.successfulPatchDataSourceSchemas).toEqual([])
       expect(gatewayHarness.ledger.successfulTrashPages).toEqual([])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('counts only inserted body-conflict events in push summaries', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const localObservation = presentArtifactObservation({
+      pageId: testIds.pageId,
+      path: decode(WorkspaceRelativePath, 'page-1.nmd'),
+      contentHash: hash('body-local'),
+      observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+    })
+    const ports = makeHarnessPorts({
+      bodyPages: [fakeBodyPage({ remoteBodyHash: hash('body-remote') })],
+      localObservations: [localObservation],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gatewayHarness.gateway, body: ports.body, workspace: ports.workspace },
+      )
+      const pushOptions = {
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        workspaceRoot,
+        now: clock.now,
+      }
+      const first = await runWithPorts(pushOneShotSync(pushOptions), {
+        gateway: gatewayHarness.gateway,
+        body: ports.body,
+        workspace: ports.workspace,
+      })
+      const second = await runWithPorts(pushOneShotSync(pushOptions), {
+        gateway: gatewayHarness.gateway,
+        body: ports.body,
+        workspace: ports.workspace,
+      })
+
+      expect(first.plan).toMatchObject({ appendedEvents: 1, conflicts: 1 })
+      expect(second.plan).toMatchObject({ appendedEvents: 0, conflicts: 0 })
+      expect(second.status.state).toBe('conflict')
     } finally {
       storeFixture.cleanup()
     }
