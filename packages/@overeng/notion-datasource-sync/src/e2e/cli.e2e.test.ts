@@ -59,6 +59,14 @@ const schemaProperties = [
   },
 ]
 
+const expectSqliteStoreFilesAbsent = async (storePath: string) => {
+  await Promise.all(
+    [storePath, `${storePath}-wal`, `${storePath}-shm`].map((path) =>
+      expect(access(path)).rejects.toThrow(),
+    ),
+  )
+}
+
 const propertyPage = (valueHash = hash('property-a-base')) =>
   decode(PagePropertyItemPage, {
     _tag: 'PagePropertyItemPage',
@@ -430,6 +438,45 @@ describe('CLI command surface', () => {
     }
   })
 
+  it.each([
+    { argv: ['migrate', 'store'] as const, expected: 'migrate-store' },
+    { argv: ['migrate', 'schema'] as const, expected: 'migrate-schema' },
+    { argv: ['repair'] as const, expected: 'repair' },
+  ])(
+    'fails closed for unsupported $expected before creating the SQLite store',
+    async ({ argv, expected }) => {
+      const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-unsupported-'))
+      const storePath = join(dir, `${expected}.sqlite`)
+      try {
+        await expect(
+          execFileAsync(
+            cliPath,
+            [
+              ...argv,
+              '--store',
+              storePath,
+              '--root-id',
+              testIds.rootId,
+              '--data-source-id',
+              testIds.dataSourceId,
+              '--workspace-root',
+              workspaceRoot,
+            ],
+            { cwd: packageDir, timeout: cliTestTimeoutMs },
+          ),
+        ).rejects.toMatchObject({
+          code: 1,
+          stderr: expect.stringContaining(`${expected} is not implemented yet`),
+        })
+
+        await expectSqliteStoreFilesAbsent(storePath)
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    cliTestTimeoutMs,
+  )
+
   it(
     'accepts valid numeric CLI flags',
     async () => {
@@ -487,7 +534,7 @@ describe('CLI command surface', () => {
         ),
       ).rejects.toThrow()
 
-      await expect(access(storePath)).rejects.toThrow()
+      await expectSqliteStoreFilesAbsent(storePath)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

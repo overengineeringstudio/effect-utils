@@ -184,6 +184,15 @@ export class CliUnsupportedCommandError extends Schema.TaggedError<CliUnsupporte
   },
 ) {}
 
+const makeUnsupportedCommandError = (command: CliCommand['_tag']): CliUnsupportedCommandError =>
+  new CliUnsupportedCommandError({
+    command,
+    message: `${command} is not implemented yet; refusing to run without an explicit implementation.`,
+  })
+
+const isUnsupportedCommand = (command: CliCommand): boolean =>
+  command._tag === 'migrate-store' || command._tag === 'migrate-schema' || command._tag === 'repair'
+
 const SchemaPropertyObservationJson = Schema.Struct({
   propertyId: PropertyId,
   configHash: Hash,
@@ -360,12 +369,7 @@ export const runCliCommand = Effect.fn('NotionDatasourceSync.Cli.runCliCommand')
     case 'migrate-store':
     case 'migrate-schema':
     case 'repair':
-      return Effect.fail(
-        new CliUnsupportedCommandError({
-          command: command._tag,
-          message: `${command._tag} is not implemented yet; refusing to run without an explicit implementation.`,
-        }),
-      )
+      return Effect.fail(makeUnsupportedCommandError(command._tag))
     case 'doctor':
       return Effect.sync(() => {
         const status = readOneShotSyncStatus({ store: context.store, rootId: context.rootId })
@@ -717,6 +721,10 @@ export const runCliMain = (argv: ReadonlyArray<string>, options: CliRuntimeOptio
       try: () => parseCliCommand(argv),
       catch: (cause) => cause,
     })
+    if (isUnsupportedCommand(command)) {
+      return yield* Effect.fail(makeUnsupportedCommandError(command._tag))
+    }
+
     const context = yield* Effect.try({
       try: () => parseCliContext(argv),
       catch: (cause) => cause,

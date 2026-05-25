@@ -102,6 +102,22 @@ export type LiveFixtureLifecycleOptions = {
   readonly writeLedger?: typeof writeLiveFixtureLedger
 }
 
+export class LiveFixtureCleanupError extends Error {
+  readonly phase: 'trash' | 'restore'
+  readonly ledger: LiveFixtureLedger
+
+  constructor(input: {
+    readonly phase: 'trash' | 'restore'
+    readonly cause: unknown
+    readonly ledger: LiveFixtureLedger
+  }) {
+    super(`live fixture cleanup failed during ${input.phase}`, { cause: input.cause })
+    this.name = 'LiveFixtureCleanupError'
+    this.phase = input.phase
+    this.ledger = input.ledger
+  }
+}
+
 export const defaultLivePreflightCapabilities =
   readOnlyGatewayCapabilities satisfies ReadonlyArray<CapabilityName>
 
@@ -306,6 +322,8 @@ export const runLiveFixtureLifecycle = async (
     await persist()
   }
 
+  let operationFailure: { readonly cause: unknown } | undefined
+
   try {
     fixture = await client.create({
       runId: config.runId,
@@ -343,42 +361,62 @@ export const runLiveFixtureLifecycle = async (
         cleanupState: 'verified',
       }),
     )
-  } finally {
-    if (fixture !== undefined) {
-      try {
-        await client.trash(fixture)
-        await record(
-          ledgerEntry({
-            phase: 'trash',
-            objectId: fixture.objectId,
-            objectType: fixture.objectType,
-            purpose: fixture.purpose,
-            cleanupState: 'trashed',
-          }),
-        )
+  } catch (cause) {
+    operationFailure = { cause }
+  }
 
-        await client.restore(fixture)
-        await record(
-          ledgerEntry({
-            phase: 'restore',
-            objectId: fixture.objectId,
-            objectType: fixture.objectType,
-            purpose: fixture.purpose,
-            cleanupState: 'restored',
-          }),
-        )
-      } catch {
-        await record(
-          ledgerEntry({
-            phase: 'trash',
-            objectId: fixture.objectId,
-            objectType: fixture.objectType,
-            purpose: fixture.purpose,
-            cleanupState: 'cleanup-failed',
-          }),
-        )
-      }
+  if (fixture !== undefined) {
+    try {
+      await client.trash(fixture)
+      await record(
+        ledgerEntry({
+          phase: 'trash',
+          objectId: fixture.objectId,
+          objectType: fixture.objectType,
+          purpose: fixture.purpose,
+          cleanupState: 'trashed',
+        }),
+      )
+    } catch (cause) {
+      await record(
+        ledgerEntry({
+          phase: 'trash',
+          objectId: fixture.objectId,
+          objectType: fixture.objectType,
+          purpose: fixture.purpose,
+          cleanupState: 'cleanup-failed',
+        }),
+      )
+      throw new LiveFixtureCleanupError({ phase: 'trash', cause, ledger })
     }
+
+    try {
+      await client.restore(fixture)
+      await record(
+        ledgerEntry({
+          phase: 'restore',
+          objectId: fixture.objectId,
+          objectType: fixture.objectType,
+          purpose: fixture.purpose,
+          cleanupState: 'restored',
+        }),
+      )
+    } catch (cause) {
+      await record(
+        ledgerEntry({
+          phase: 'restore',
+          objectId: fixture.objectId,
+          objectType: fixture.objectType,
+          purpose: fixture.purpose,
+          cleanupState: 'cleanup-failed',
+        }),
+      )
+      throw new LiveFixtureCleanupError({ phase: 'restore', cause, ledger })
+    }
+  }
+
+  if (operationFailure !== undefined) {
+    throw operationFailure.cause
   }
 
   return ledger
