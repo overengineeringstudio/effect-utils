@@ -27,9 +27,11 @@ export interface SchemaTooltipProps {
  *   wiring) is small enough that the dep isn't worth the weight here, and
  *   RAC's `TooltipTrigger` requires its child to be a Pressable/Focusable
  *   with an interactive ARIA role — which a tree-item field-name span isn't.
- * - Renders into a fixed-position portal-like overlay via `position: fixed`
- *   on a transform-anchored wrapper, so the tooltip isn't clipped by
- *   `overflow: hidden` on inspector containers.
+ * - The tooltip element is a sibling of the trigger with `position: fixed`,
+ *   so it isn't clipped by `overflow: hidden` on inspector containers. The
+ *   trigger's `getBoundingClientRect()` is captured at open time; we close
+ *   on scroll/resize rather than tracking, since by then the user's intent
+ *   has changed.
  */
 export const SchemaTooltip: FC<SchemaTooltipProps> = ({
   info,
@@ -85,14 +87,25 @@ export const SchemaTooltip: FC<SchemaTooltipProps> = ({
     closeTimerRef.current = setTimeout(() => setOpen(false), closeDelay)
   }, [closeDelay])
 
-  /* Close on Escape per WCAG; common-sense for any popup-like element. */
+  /*
+   * Close on Escape per WCAG, and on scroll/resize because our captured
+   * coords would otherwise drift away from the trigger.
+   */
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
+    const onScrollOrResize = () => setOpen(false)
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    /* Capture phase + true useCapture catches scrolls in nested containers. */
+    window.addEventListener('scroll', onScrollOrResize, true)
+    window.addEventListener('resize', onScrollOrResize)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onScrollOrResize)
+    }
   }, [open])
 
   useEffect(() => () => clearTimers(), [clearTimers])

@@ -314,8 +314,18 @@ export const getConstraintsFromJSONSchema = (
   rawAst: SchemaAST.AST,
 ): ReadonlyArray<SchemaConstraint> => {
   const fragments: Record<string, unknown> = {}
+  /*
+   * Guard against self-referential Suspend chains (e.g. recursive schemas
+   * defined via `Schema.suspend(() => SomeSchema)`). Without this guard,
+   * `collect` would recurse infinitely on identity-cycle schemas — try/catch
+   * around `ast.f()` wouldn't catch it because it's not a thrown error.
+   */
+  const seen = new WeakSet<SchemaAST.AST>()
 
   const collect = (ast: SchemaAST.AST): void => {
+    if (seen.has(ast)) return
+    seen.add(ast)
+
     const fragment = ast.annotations[JSONSchemaAnnotationId] as Record<string, unknown> | undefined
     if (fragment !== undefined) {
       Object.assign(fragments, fragment)
