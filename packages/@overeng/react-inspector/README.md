@@ -81,8 +81,7 @@ For full control, the `SchemaTooltip` component is exported directly:
 
 ```tsx
 import { SchemaTooltip, getSchemaInfo } from '@overeng/react-inspector'
-
-<SchemaTooltip info={getSchemaInfo(AgeSchema)}>
+;<SchemaTooltip info={getSchemaInfo(AgeSchema)}>
   <span>age</span>
 </SchemaTooltip>
 ```
