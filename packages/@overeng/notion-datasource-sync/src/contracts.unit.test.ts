@@ -77,6 +77,10 @@ describe('@overeng/notion-datasource-sync contracts', () => {
       _tag: 'blocked',
       guard: 'ApiVersionUnsupported',
     })
+    expect(guardApiVersion('2026-09-03')).toMatchObject({
+      _tag: 'blocked',
+      guard: 'ApiVersionUnverified',
+    })
 
     expect(
       guardCapabilities({

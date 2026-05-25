@@ -55,10 +55,12 @@ describe('local workspace contract', () => {
   })
 
   it('rejects traversal and symlink escapes from the workspace root', async () => {
-    expect(canonicalizeWorkspaceRelativePath({ path: '../escape.nmd' })).toMatchObject({
-      _tag: 'blocked',
-      guard: 'PathEscapesRoot',
-    })
+    for (const path of ['../escape.nmd', '/rooted.nmd', 'foo/../../escape.nmd']) {
+      expect(canonicalizeWorkspaceRelativePath({ path })).toMatchObject({
+        _tag: 'blocked',
+        guard: 'PathEscapesRoot',
+      })
+    }
 
     const workspace = makeFakeLocalWorkspacePort({ symlinkEscapes: ['linked'] })
     const failure = await Effect.runPromise(
@@ -85,6 +87,16 @@ describe('local workspace contract', () => {
       ),
     ).resolves.toMatchObject({ _tag: 'claimed' })
   })
+
+  it.each(['foo//bar.nmd', 'foo/./bar.nmd', 'foo/\u0000/bar.nmd', 'aux/page.nmd'])(
+    'rejects unsafe workspace path segments: %s',
+    (path) => {
+      expect(canonicalizeWorkspaceRelativePath({ path })).toMatchObject({
+        _tag: 'blocked',
+        guard: 'PathEscapesRoot',
+      })
+    },
+  )
 
   it('keeps local deletes as candidates instead of remote trash by default', () => {
     const path = decode(WorkspaceRelativePath, 'weekly-notes--page-1.nmd')

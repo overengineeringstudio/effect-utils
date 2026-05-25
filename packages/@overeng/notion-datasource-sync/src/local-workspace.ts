@@ -72,6 +72,40 @@ const normalizeForPolicy = (value: string, policy: PathPolicy): string => {
 }
 
 const isDriveAbsolute = (path: string): boolean => /^[A-Za-z]:[\\/]/.test(path)
+const containsControlCharacter = (value: string): boolean =>
+  Array.from(value).some((char) => {
+    const codePoint = char.codePointAt(0)
+    return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)
+  })
+const reservedPathSegments = new Set([
+  'con',
+  'prn',
+  'aux',
+  'nul',
+  'com1',
+  'com2',
+  'com3',
+  'com4',
+  'com5',
+  'com6',
+  'com7',
+  'com8',
+  'com9',
+  'lpt1',
+  'lpt2',
+  'lpt3',
+  'lpt4',
+  'lpt5',
+  'lpt6',
+  'lpt7',
+  'lpt8',
+  'lpt9',
+])
+
+const isReservedPathSegment = (segment: string): boolean => {
+  const reservedName = segment.split('.')[0]
+  return reservedName !== undefined && reservedPathSegments.has(reservedName)
+}
 
 export const canonicalizeWorkspaceRelativePath = ({
   path,
@@ -91,9 +125,21 @@ export const canonicalizeWorkspaceRelativePath = ({
     return pathEscapesRoot('Workspace path must be root-relative')
   }
 
-  const parts = normalizedInput.split('/').filter((part) => part.length > 0 && part !== '.')
-  if (parts.length === 0 || parts.some((part) => part === '..')) {
+  if (containsControlCharacter(normalizedInput)) {
+    return pathEscapesRoot('Workspace path contains a control character')
+  }
+
+  const parts = normalizedInput.split('/')
+  if (parts.length === 0 || parts.some((part) => part.length === 0)) {
+    return pathEscapesRoot('Workspace path must not contain empty segments')
+  }
+
+  if (parts.some((part) => part === '.' || part === '..')) {
     return pathEscapesRoot('Workspace path must not traverse outside the root')
+  }
+
+  if (parts.some(isReservedPathSegment)) {
+    return pathEscapesRoot('Workspace path contains a reserved segment')
   }
 
   const relativePath = parts.join('/')

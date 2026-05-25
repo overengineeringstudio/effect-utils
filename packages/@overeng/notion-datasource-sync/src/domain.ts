@@ -143,10 +143,43 @@ export const PageSnapshot = Schema.TaggedStruct('PageSnapshot', {
 }).annotations({ identifier: 'NotionDatasourceSync.PageSnapshot' })
 export type PageSnapshot = typeof PageSnapshot.Type
 
+export const BodyUnknownBlockCause = Schema.Literal(
+  'truncation',
+  'permission',
+  'unsupported',
+  'unknown',
+).annotations({ identifier: 'NotionDatasourceSync.BodyUnknownBlockCause' })
+export type BodyUnknownBlockCause = typeof BodyUnknownBlockCause.Type
+
+export const BodyAdapterMutationSurface = Schema.Literal(
+  'body',
+  'row-property',
+  'schema',
+  'title',
+  'trash',
+  'icon',
+  'cover',
+  'page-metadata',
+  'membership',
+).annotations({ identifier: 'NotionDatasourceSync.BodyAdapterMutationSurface' })
+export type BodyAdapterMutationSurface = typeof BodyAdapterMutationSurface.Type
+
+export const BodySafetySnapshot = Schema.Struct({
+  truncated: Schema.Boolean,
+  unknownBlockCause: Schema.optional(BodyUnknownBlockCause),
+  selection: Schema.Literal('safe', 'ambiguous'),
+  wouldDeleteChildren: Schema.Boolean,
+  syncedPageUnsupported: Schema.Boolean,
+  adapterConflict: Schema.Boolean,
+  adapterMutationSurfaces: Schema.Array(BodyAdapterMutationSurface),
+}).annotations({ identifier: 'NotionDatasourceSync.BodySafetySnapshot' })
+export type BodySafetySnapshot = typeof BodySafetySnapshot.Type
+
 export const BodyPointer = Schema.TaggedStruct('BodyPointer', {
   pageId: PageId,
   bodyHash: Hash,
   observedAt: Schema.DateTimeUtc,
+  safety: Schema.optional(BodySafetySnapshot),
 }).annotations({ identifier: 'NotionDatasourceSync.BodyPointer' })
 export type BodyPointer = typeof BodyPointer.Type
 
