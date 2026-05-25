@@ -9,6 +9,7 @@ import { NotionConfigLive } from '@overeng/notion-effect-client'
 
 import { DataSourceId, PageId, type CapabilityName } from '../domain.ts'
 import { NotionDataSourceGatewayLive } from '../gateway-notion.ts'
+import { readOnlyGatewayCapabilities } from '../gateway.ts'
 import { guardCapabilities } from '../guards.ts'
 import { NotionDataSourceGateway } from '../ports.ts'
 
@@ -71,7 +72,10 @@ export type LiveNotionPreflightOptions = {
   readonly writeLedger?: typeof writeLiveFixtureLedger
 }
 
-export const defaultLivePreflightCapabilities = [
+export const defaultLivePreflightCapabilities =
+  readOnlyGatewayCapabilities satisfies ReadonlyArray<CapabilityName>
+
+export const strictLivePreflightCapabilities = [
   'data_source_retrieve',
   'data_source_query',
   'page_retrieve',

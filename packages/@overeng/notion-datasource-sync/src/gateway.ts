@@ -39,6 +39,12 @@ export const allGatewayCapabilities = [
   'page_restore',
 ] as const satisfies ReadonlyArray<CapabilityName>
 
+export const readOnlyGatewayCapabilities = [
+  'data_source_retrieve',
+  'data_source_query',
+  'page_retrieve',
+] as const satisfies ReadonlyArray<CapabilityName>
+
 export type GatewayOperation =
   | 'preflightCapabilities'
   | 'retrieveDataSource'

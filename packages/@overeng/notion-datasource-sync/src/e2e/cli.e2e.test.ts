@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { propertySurfaceKey } from '../canonical.ts'
@@ -14,15 +14,23 @@ import {
   parseCliCommand,
   runCliCommand,
   runCliCommandWithRuntime,
+  runCliMain,
   type CliContext,
 } from '../cli.ts'
 import { PagePropertyItemPage } from '../commands.ts'
 import { AbsolutePath, BodyPointer, WorkspaceRelativePath } from '../domain.ts'
 import { SyncEventId, type SyncEvent as SyncEventType } from '../events.ts'
 import type { NotionGatewayClient } from '../gateway-notion.ts'
+import { makeGatewayError, makeNotionApiContract } from '../gateway.ts'
 import { presentArtifactObservation } from '../local-workspace.ts'
 import { makeConflictRaisedEvent } from '../observation.ts'
-import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
+import {
+  LocalWorkspacePort,
+  NotionDataSourceGateway,
+  PageBodySyncPort,
+  type NotionDataSourceGatewayShape,
+} from '../ports.ts'
+import { NotionSyncStore } from '../store.ts'
 import { initOneShotSync, pullOneShotSync } from '../sync.ts'
 import {
   defaultQueryContract,
@@ -389,6 +397,93 @@ describe('CLI command surface', () => {
     }
   })
 
+  it('does not open the store when context JSON is malformed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-context-'))
+    const storePath = join(dir, 'store.sqlite')
+    try {
+      await expect(
+        Effect.runPromise(
+          runCliMain([
+            'status',
+            '--store',
+            storePath,
+            '--root-id',
+            testIds.rootId,
+            '--data-source-id',
+            testIds.dataSourceId,
+            '--workspace-root',
+            workspaceRoot,
+            '--query-contract-json',
+            '{',
+          ]),
+        ),
+      ).rejects.toThrow()
+
+      await expect(access(storePath)).rejects.toThrow()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('closes the store when command execution fails after context open', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-finalizer-'))
+    const originalClose = NotionSyncStore.prototype.close
+    const storePrototype = NotionSyncStore.prototype as {
+      close: (this: NotionSyncStore) => void
+    }
+    let closeCalls = 0
+    storePrototype.close = function close(this: NotionSyncStore) {
+      closeCalls += 1
+      return originalClose.call(this)
+    }
+
+    const failingGateway: NotionDataSourceGatewayShape = {
+      apiContract: makeNotionApiContract({ supportedCapabilities: [] }),
+      preflightCapabilities: () =>
+        Effect.fail(
+          makeGatewayError({
+            operation: 'preflightCapabilities',
+            dataSourceId: testIds.dataSourceId,
+            guard: 'CapabilityPreflightFailed',
+            message: 'forced preflight failure',
+          }),
+        ),
+      retrieveDataSource: () => Effect.die('retrieveDataSource should not be called'),
+      queryRows: () => Stream.die('queryRows should not be called'),
+      retrievePage: () => Effect.die('retrievePage should not be called'),
+      retrievePageProperty: () => Stream.die('retrievePageProperty should not be called'),
+      patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
+      patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
+      trashPage: () => Effect.die('trashPage should not be called'),
+      restorePage: () => Effect.die('restorePage should not be called'),
+    }
+
+    try {
+      await expect(
+        Effect.runPromise(
+          runCliMain(
+            [
+              'pull',
+              '--store',
+              join(dir, 'store.sqlite'),
+              '--root-id',
+              testIds.rootId,
+              '--data-source-id',
+              testIds.dataSourceId,
+              '--workspace-root',
+              workspaceRoot,
+            ],
+            { gateway: failingGateway },
+          ),
+        ),
+      ).rejects.toThrow('forced preflight failure')
+      expect(closeCalls).toBe(1)
+    } finally {
+      storePrototype.close = originalClose
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('wires pull/sync through an injected Notion client, real adapter, and real filesystem workspace', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-runtime-'))
     const clock = makeFakeClock()
@@ -399,7 +494,6 @@ describe('CLI command surface', () => {
       clock,
       workspaceRoot: decode(AbsolutePath, dir),
       schemaProperties: [],
-      requiredCapabilities: ['data_source_retrieve', 'data_source_query', 'page_retrieve'],
     })
     const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
 
@@ -444,7 +538,6 @@ describe('CLI command surface', () => {
       clock,
       workspaceRoot: decode(AbsolutePath, dir),
       schemaProperties: [],
-      requiredCapabilities: ['data_source_retrieve', 'data_source_query', 'page_retrieve'],
     })
     const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
 

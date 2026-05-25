@@ -557,33 +557,40 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
 
 export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
   const flags = parseFlags(argv)
-  const store = openNotionSyncStore({ path: requiredFlag(flags, 'store') })
+  const storePath = requiredFlag(flags, 'store')
+  const rootId = decode(SyncRootId, requiredFlag(flags, 'root-id'))
+  const dataSourceId = decode(DataSourceId, requiredFlag(flags, 'data-source-id'))
+  const workspaceRoot = decode(AbsolutePath, requiredFlag(flags, 'workspace-root'))
   const maxExecutorSteps = positiveIntegerFlag(flags, 'max-executor-steps')
   const requiredCapabilities = capabilityListFlag(flags, 'required-capabilities')
+  const queryContract =
+    optionalFlag(flags, 'query-contract-json') === undefined
+      ? decode(QueryContract, {
+          _tag: 'QueryContract',
+          apiVersion: '2026-03-11',
+          filter: null,
+          sorts: [],
+          pageSize: 100,
+          highWatermark: null,
+          membershipScope: 'all-data-source-rows',
+        })
+      : decodeJson(QueryContract, requiredFlag(flags, 'query-contract-json'))
+  const schemaProperties =
+    optionalFlag(flags, 'schema-properties-json') === undefined
+      ? []
+      : (decodeJson(
+          Schema.Array(SchemaPropertyObservationJson),
+          requiredFlag(flags, 'schema-properties-json'),
+        ) as ReadonlyArray<SchemaPropertyObservation>)
+  const store = openNotionSyncStore({ path: storePath })
+
   return {
     store,
-    rootId: decode(SyncRootId, requiredFlag(flags, 'root-id')),
-    dataSourceId: decode(DataSourceId, requiredFlag(flags, 'data-source-id')),
-    workspaceRoot: decode(AbsolutePath, requiredFlag(flags, 'workspace-root')),
-    queryContract:
-      optionalFlag(flags, 'query-contract-json') === undefined
-        ? decode(QueryContract, {
-            _tag: 'QueryContract',
-            apiVersion: '2026-03-11',
-            filter: null,
-            sorts: [],
-            pageSize: 100,
-            highWatermark: null,
-            membershipScope: 'all-data-source-rows',
-          })
-        : decodeJson(QueryContract, requiredFlag(flags, 'query-contract-json')),
-    schemaProperties:
-      optionalFlag(flags, 'schema-properties-json') === undefined
-        ? []
-        : (decodeJson(
-            Schema.Array(SchemaPropertyObservationJson),
-            requiredFlag(flags, 'schema-properties-json'),
-          ) as ReadonlyArray<SchemaPropertyObservation>),
+    rootId,
+    dataSourceId,
+    workspaceRoot,
+    queryContract,
+    schemaProperties,
     ...(requiredCapabilities === undefined ? {} : { requiredCapabilities }),
     ...(flags.has('no-materialize-bodies') === false ? {} : { materializeBodies: false }),
     ...(maxExecutorSteps === undefined ? {} : { maxExecutorSteps }),
@@ -672,7 +679,7 @@ export const runCliCommandWithRuntime = (
   options: CliRuntimeOptions = {},
 ) => runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer(context, options)))
 
-const runMain = (argv: ReadonlyArray<string>) =>
+export const runCliMain = (argv: ReadonlyArray<string>, options: CliRuntimeOptions = {}) =>
   Effect.gen(function* () {
     const command = yield* Effect.try({
       try: () => parseCliCommand(argv),
@@ -682,13 +689,14 @@ const runMain = (argv: ReadonlyArray<string>) =>
       try: () => parseCliContext(argv),
       catch: (cause) => cause,
     })
-    const result = yield* runCliCommandWithRuntime(command, context)
-    yield* Effect.sync(() => process.stdout.write(renderCliResultJson(result)))
-    yield* Effect.sync(() => context.store.close())
+    yield* runCliCommandWithRuntime(command, context, options).pipe(
+      Effect.tap((result) => Effect.sync(() => process.stdout.write(renderCliResultJson(result)))),
+      Effect.ensuring(Effect.sync(() => context.store.close())),
+    )
   })
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  runMain(process.argv.slice(2)).pipe(
+  runCliMain(process.argv.slice(2)).pipe(
     Effect.tapError((error) => Effect.sync(() => process.stderr.write(renderCliErrorJson(error)))),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )

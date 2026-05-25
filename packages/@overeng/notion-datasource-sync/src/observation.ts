@@ -33,7 +33,7 @@ import {
   type SyncEvent as SyncEventType,
   type SyncRootId,
 } from './events.ts'
-import { allGatewayCapabilities } from './gateway.ts'
+import { readOnlyGatewayCapabilities } from './gateway.ts'
 import type { GuardName, PropertyAvailability, PropertyWriteClass } from './guards.ts'
 import { bodyPathForRow } from './local-workspace.ts'
 import type { OutboxCommandEnvelope, PlannerEvent } from './planner.ts'
@@ -160,7 +160,7 @@ const requiredObservationCapabilities = (
   options: RemoteObservationOptions,
 ): ReadonlyArray<CapabilityName> =>
   uniqueCapabilities([
-    ...(options.requiredCapabilities ?? allGatewayCapabilities),
+    ...(options.requiredCapabilities ?? readOnlyGatewayCapabilities),
     'data_source_retrieve',
     'data_source_query',
     'page_retrieve',
