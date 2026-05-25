@@ -10,13 +10,24 @@ import {
   runWatchDaemonCycle,
   type WatchDaemonOptions,
 } from '../daemon.ts'
-import { AbsolutePath, BodyPointer, WorkspaceRelativePath } from '../domain.ts'
+import {
+  AbsolutePath,
+  BodyPointer,
+  WorkspaceRelativePath,
+  type Hash as HashType,
+  type PageId as PageIdType,
+} from '../domain.ts'
 import { BodySyncError } from '../errors.ts'
 import { SyncEventId } from '../events.ts'
 import { makeGatewayError } from '../gateway.ts'
-import { presentArtifactObservation } from '../local-workspace.ts'
+import {
+  isOwnWriteObservation,
+  makeFilesystemLocalWorkspacePort,
+  presentArtifactObservation,
+} from '../local-workspace.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
 import { initOneShotSync, pullOneShotSync } from '../sync.ts'
+import { collectWorkspaceScan, makeTempWorkspace } from '../testing/filesystem.ts'
 import {
   defaultQueryContract,
   decode,
@@ -27,6 +38,7 @@ import {
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
+  pageSnapshot,
   testIds,
 } from '../testing/harness.ts'
 
@@ -40,53 +52,76 @@ const schemaProperties = [
   },
 ]
 
-const propertyPage = () =>
+const propertyPage = ({
+  pageId = testIds.pageId,
+  itemHash = hash('property-a-base'),
+}: {
+  readonly pageId?: PageIdType
+  readonly itemHash?: HashType
+} = {}) =>
   decode(PagePropertyItemPage, {
     _tag: 'PagePropertyItemPage',
     apiVersion: '2026-03-11',
     requestId: testIds.requestId,
-    pageId: testIds.pageId,
+    pageId,
     propertyId: testIds.propertyA,
     items: [
       {
         _tag: 'PagePropertyItem',
-        pageId: testIds.pageId,
+        pageId,
         propertyId: testIds.propertyA,
-        itemHash: hash('property-a-base'),
-        valueHash: hash('property-a-base'),
+        itemHash,
+        valueHash: itemHash,
       },
     ],
     nextCursor: null,
     hasMore: false,
   })
 
-const bodyPage = () =>
+const bodyPage = ({
+  pageId = testIds.pageId,
+  bodyHash = hash('body-a'),
+}: {
+  readonly pageId?: PageIdType
+  readonly bodyHash?: HashType
+} = {}) =>
   fakeBodyPage({
+    pageId,
     pointer: decode(BodyPointer, {
       _tag: 'BodyPointer',
-      pageId: testIds.pageId,
-      bodyHash: hash('body-a'),
+      pageId,
+      bodyHash,
       observedAt: fixedObservedAt,
     }),
   })
 
-const localBodyChange = () =>
+const localBodyChange = ({
+  pageId = testIds.pageId,
+  path = decode(WorkspaceRelativePath, 'row--page-1.nmd'),
+  contentHash = hash('body-local'),
+}: {
+  readonly pageId?: PageIdType
+  readonly path?: typeof WorkspaceRelativePath.Type
+  readonly contentHash?: HashType
+} = {}) =>
   presentArtifactObservation({
-    pageId: testIds.pageId,
-    path: decode(WorkspaceRelativePath, 'row--page-1.nmd'),
-    contentHash: hash('body-local'),
+    pageId,
+    path,
+    contentHash,
     observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
   })
 
 const context = (input: {
   readonly store: CliContext['store']
   readonly clock: ReturnType<typeof makeFakeClock>
+  readonly queryContract?: CliContext['queryContract']
+  readonly workspaceRoot?: CliContext['workspaceRoot']
 }): CliContext => ({
   store: input.store,
   rootId: testIds.rootId,
   dataSourceId: testIds.dataSourceId,
-  workspaceRoot,
-  queryContract: defaultQueryContract(),
+  workspaceRoot: input.workspaceRoot ?? workspaceRoot,
+  queryContract: input.queryContract ?? defaultQueryContract(),
   schemaProperties,
   now: input.clock.now,
 })
@@ -102,12 +137,14 @@ const daemonOptions = (input: {
   readonly useDefaultLease?: boolean
   readonly leaseDurationMs?: number
   readonly sleep?: WatchDaemonOptions['sleep']
+  readonly queryContract?: WatchDaemonOptions['queryContract']
+  readonly workspaceRoot?: WatchDaemonOptions['workspaceRoot']
 }): WatchDaemonOptions => ({
   store: input.store,
   rootId: testIds.rootId,
   dataSourceId: testIds.dataSourceId,
-  workspaceRoot,
-  queryContract: defaultQueryContract(),
+  workspaceRoot: input.workspaceRoot ?? workspaceRoot,
+  queryContract: input.queryContract ?? defaultQueryContract(),
   schemaProperties,
   statePath: input.statePath,
   ...(input.useDefaultLease === true
@@ -420,6 +457,432 @@ describe('watch daemon surface', () => {
       expect(state.repair).toEqual({ _tag: 'none' })
     } finally {
       storeFixture.cleanup()
+    }
+  })
+
+  it('drains same-bucket query pages without skipping rows that share ordering timestamps', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const queryContract = { ...defaultQueryContract(), pageSize: 1 }
+    const gateway = makeFakeGatewayHarness({
+      pages: [
+        pageSnapshot({ pageId: testIds.pageId }),
+        pageSnapshot({
+          pageId: testIds.otherPageId,
+          propertiesHash: hash('properties-b'),
+        }),
+      ],
+      propertyPages: [
+        propertyPage(),
+        propertyPage({ pageId: testIds.otherPageId, itemHash: hash('property-b-base') }),
+      ],
+    })
+    const ports = makeHarnessPorts({
+      bodyPages: [bodyPage(), bodyPage({ pageId: testIds.otherPageId, bodyHash: hash('body-b') })],
+    })
+    const statePath = `${storeFixture.path}.watch.json`
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      const result = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            queryContract,
+          }),
+        ),
+        { gateway: gateway.gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      expect(result.sync.pull.observation.query).toMatchObject({
+        pages: 2,
+        rows: 2,
+        complete: true,
+      })
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toEqual([
+        expect.objectContaining({ pageId: testIds.pageId }),
+        expect.objectContaining({ pageId: testIds.otherPageId }),
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('persists incomplete query cursor evidence for partial daemon cycles', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      queryResultCap: 1,
+      pages: [
+        pageSnapshot({ pageId: testIds.pageId }),
+        pageSnapshot({
+          pageId: testIds.otherPageId,
+          propertiesHash: hash('properties-b'),
+        }),
+      ],
+      propertyPages: [propertyPage()],
+    })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      const result = await runWithPorts(
+        runWatchDaemonCycle(daemonOptions({ store: storeFixture.store, statePath, clock })),
+        { gateway: gateway.gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      expect(result.sync.pull.observation.query).toMatchObject({
+        pages: 1,
+        rows: 1,
+        complete: false,
+        cappedAtLimit: true,
+      })
+      expect(result.status).toMatchObject({
+        state: 'blocked',
+        counts: {
+          checkpoints: {
+            incompleteQueries: 1,
+            cappedQueries: 1,
+          },
+        },
+      })
+      expect(result.state).toMatchObject({
+        lastCompleteCycle: 1,
+        repair: { _tag: 'none' },
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('bounds outbox execution per cycle and leaves queued work for backpressure recovery', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      pages: [
+        pageSnapshot({ pageId: testIds.pageId }),
+        pageSnapshot({
+          pageId: testIds.otherPageId,
+          propertiesHash: hash('properties-b'),
+        }),
+      ],
+      propertyPages: [
+        propertyPage(),
+        propertyPage({ pageId: testIds.otherPageId, itemHash: hash('property-b-base') }),
+      ],
+    })
+    const baseBody = makeFakePageBodySyncPort({
+      pages: [bodyPage(), bodyPage({ pageId: testIds.otherPageId, bodyHash: hash('body-b') })],
+    })
+    let bodyPushes = 0
+    const body = {
+      ...baseBody,
+      push: (command: Parameters<typeof baseBody.push>[0]) =>
+        Effect.sync(() => {
+          bodyPushes += 1
+        }).pipe(Effect.zipRight(baseBody.push(command))),
+    }
+    const statePath = `${storeFixture.path}.watch.json`
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          ...context({ store: storeFixture.store, clock }),
+          store: storeFixture.store,
+        }),
+        { gateway: gateway.gateway, body, workspace: makeHarnessPorts().workspace },
+      )
+
+      const workspace = makeHarnessPorts({
+        localObservations: [
+          localBodyChange(),
+          localBodyChange({
+            pageId: testIds.otherPageId,
+            path: decode(WorkspaceRelativePath, 'row--page-2.nmd'),
+            contentHash: hash('body-local-2'),
+          }),
+        ],
+      }).workspace
+      const result = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            maxExecutorSteps: 1,
+          }),
+        ),
+        { gateway: gateway.gateway, body, workspace },
+      )
+
+      expect(bodyPushes).toBe(1)
+      expect(result.sync.push.executor).toMatchObject({
+        steps: 1,
+        maxStepsReached: true,
+      })
+      expect(result.status).toMatchObject({
+        state: 'pending',
+        counts: { outbox: { queued: 1, settled: 1 } },
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('lets a second daemon settle an expired running command as a verified no-op', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const baseBody = makeFakePageBodySyncPort({ pages: [bodyPage()] })
+    const statePath = `${storeFixture.path}.watch.json`
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          ...context({ store: storeFixture.store, clock }),
+          store: storeFixture.store,
+        }),
+        { gateway: gateway.gateway, body: baseBody, workspace: makeHarnessPorts().workspace },
+      )
+      await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            maxExecutorSteps: 0,
+          }),
+        ),
+        {
+          gateway: gateway.gateway,
+          body: baseBody,
+          workspace: makeHarnessPorts({ localObservations: [localBodyChange()] }).workspace,
+        },
+      )
+
+      const oldClaim = storeFixture.store.claimNextOutboxCommand({
+        rootId: testIds.rootId,
+        leaseToken: 'daemon-a',
+        leaseDurationMs: 60_000,
+      })
+      expect(oldClaim).toMatchObject({ leaseToken: 'daemon-a', attemptState: 'running' })
+      clock.advanceMillis(60_001)
+
+      const alreadyWrittenBody = makeFakePageBodySyncPort({
+        pages: [bodyPage({ bodyHash: hash('body-local') })],
+      })
+      const result = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            leaseToken: 'daemon-b',
+            leaseDurationMs: -1,
+            maxExecutorSteps: 1,
+          }),
+        ),
+        {
+          gateway: gateway.gateway,
+          body: alreadyWrittenBody,
+          workspace: makeHarnessPorts({ localObservations: [localBodyChange()] }).workspace,
+        },
+      )
+
+      expect(result.sync.push.executor.results).toEqual([
+        expect.objectContaining({
+          _tag: 'settled',
+          settlementKind: 'verified-no-op',
+        }),
+      ])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([
+        expect.objectContaining({
+          state: 'settled',
+          leaseToken: undefined,
+          settlementEventId: expect.any(String),
+        }),
+      ])
+      expect(
+        storeFixture.store.isOutboxLeaseActive({
+          rootId: testIds.rootId,
+          commandId: oldClaim!.commandId,
+          leaseToken: oldClaim!.leaseToken,
+        }),
+      ).toBe(false)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('persists partial-cycle state when cancellation happens during an outbox attempt', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const baseBody = makeFakePageBodySyncPort({ pages: [bodyPage()] })
+    const statePath = `${storeFixture.path}.watch.json`
+    const controller = new AbortController()
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          ...context({ store: storeFixture.store, clock }),
+          store: storeFixture.store,
+        }),
+        { gateway: gateway.gateway, body: baseBody, workspace: makeHarnessPorts().workspace },
+      )
+      const body = {
+        ...baseBody,
+        push: (command: Parameters<typeof baseBody.push>[0]) =>
+          Effect.sync(() => {
+            controller.abort()
+          }).pipe(Effect.zipRight(baseBody.push(command))),
+      }
+
+      const result = await runWithPorts(
+        runWatchDaemon(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            signal: controller.signal,
+          }),
+        ),
+        {
+          gateway: gateway.gateway,
+          body,
+          workspace: makeHarnessPorts({ localObservations: [localBodyChange()] }).workspace,
+        },
+      )
+      const persisted = await Effect.runPromise(
+        readWatchDaemonState({ rootId: testIds.rootId, statePath }),
+      )
+
+      expect(result).toMatchObject({
+        cycles: 1,
+        completed: 0,
+        cancelled: true,
+      })
+      expect(persisted).toMatchObject({
+        cycle: 1,
+        lastCompleteCycle: 0,
+        lastStartedAt: fixedObservedAt,
+      })
+      expect(persisted.lastCompletedAt).toBeUndefined()
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([
+        expect.objectContaining({ state: 'settled' }),
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('suppresses own materialization writes through the daemon on a real temp filesystem', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const fixture = await makeTempWorkspace()
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const baseBody = makeFakePageBodySyncPort({ pages: [bodyPage()] })
+    const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
+    const statePath = `${storeFixture.path}.watch.json`
+    let bodyPushes = 0
+    const countingBody = {
+      ...baseBody,
+      push: (command: Parameters<typeof baseBody.push>[0]) =>
+        Effect.sync(() => {
+          bodyPushes += 1
+        }).pipe(Effect.zipRight(baseBody.push(command))),
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot: fixture.root,
+        now: clock.now,
+      })
+      const first = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            workspaceRoot: fixture.root,
+          }),
+        ),
+        { gateway: gateway.gateway, body: baseBody, workspace },
+      )
+      const [ownWriteObservation] = await collectWorkspaceScan(workspace, fixture.root)
+      const materializeResult = first.sync.pull.observation.materialized[0]
+      expect(materializeResult).toBeDefined()
+      expect(ownWriteObservation).toMatchObject({
+        pageId: testIds.pageId,
+        contentHash: hash('body-a'),
+        state: 'present',
+        ownWriteSuppressionToken: materializeResult!.ownWriteSuppressionToken,
+      })
+      expect(
+        isOwnWriteObservation({
+          observation: ownWriteObservation!,
+          token: materializeResult!.ownWriteSuppressionToken,
+        }),
+      ).toBe(true)
+
+      const second = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            workspaceRoot: fixture.root,
+          }),
+        ),
+        { gateway: gateway.gateway, body: countingBody, workspace },
+      )
+
+      expect(second.status.state).toBe('clean')
+      expect(bodyPushes).toBe(0)
+    } finally {
+      storeFixture.cleanup()
+      await fixture.cleanup()
     }
   })
 
