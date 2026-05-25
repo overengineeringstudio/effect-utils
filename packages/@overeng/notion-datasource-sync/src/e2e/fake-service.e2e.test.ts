@@ -1,15 +1,16 @@
-import { Chunk, Effect, Stream } from 'effect'
+import { Cause, Chunk, Effect, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { pageSurfaceKey, propertySurfaceKey } from '../canonical.ts'
-import { RestorePageCommand } from '../commands.ts'
-import { AbsolutePath } from '../domain.ts'
+import { pageSurfaceKey, propertySurfaceKey, schemaSurfaceKey } from '../canonical.ts'
+import { PatchDataSourceSchemaCommand, RestorePageCommand } from '../commands.ts'
+import { AbsolutePath, PropertyName } from '../domain.ts'
 import { SyncEvent } from '../events.ts'
 import { executeOutboxOnce } from '../executor.ts'
 import {
   planIntent,
   type OutboxCommandEnvelope,
   type PlannerProjectionSnapshot,
+  type SchemaMigrationIntent,
 } from '../planner.ts'
 import {
   NotionDataSourceGateway,
@@ -42,11 +43,15 @@ import {
 } from '../testing/harness.ts'
 import {
   assertAllCoreGuardsHaveScenarioEntries,
+  concreteScenarioMatrixGaps,
   concreteScenarioReferenceGaps,
   e2eHarnessScenarios,
   guardScenarioCoverageGaps,
   invalidScenarioRequirementIdGaps,
+  placeholderGuardScenarioReferenceGaps,
+  requirementTraceabilityGaps,
   scenarioImplementationGaps,
+  traceabilityResiduals,
   type GuardScenarioEntry,
   type ScenarioId,
   type ScenarioMetadata,
@@ -57,6 +62,22 @@ const collectStream = <TValue, TError>(
 ): Promise<ReadonlyArray<TValue>> =>
   Effect.runPromise(stream.pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)))
 
+const expectGatewayFailure = (
+  result: Awaited<ReturnType<typeof Effect.runPromiseExit>>,
+  expected: {
+    readonly operation?: string
+    readonly guard?: string
+  },
+) => {
+  expect(result._tag).toBe('Failure')
+  if (result._tag === 'Failure') {
+    expect(Chunk.toReadonlyArray(Cause.failures(result.cause)).at(0)).toMatchObject({
+      _tag: 'NotionGatewayError',
+      ...expected,
+    })
+  }
+}
+
 const implementedFakeScenarioIds = new Set<ScenarioId>([
   'NDS-L2-clean-pull-status',
   'NDS-L2-local-property-edit-enqueue',
@@ -64,8 +85,15 @@ const implementedFakeScenarioIds = new Set<ScenarioId>([
   'NDS-L2-disjoint-property-merge',
   'NDS-L2-query-cap-blocks-absence',
   'NDS-L2-filtered-absence-not-proof',
+  'NDS-L2-incomplete-scan-not-proof',
+  'NDS-L2-permission-ambiguity-fail-closed',
+  'NDS-L2-direct-tombstone-classification',
+  'NDS-L2-membership-lost-restored',
   'NDS-L2-body-adapter-surface-leak',
   'NDS-L2-local-delete-candidate-only',
+  'NDS-L2-schema-destructive-fail-closed',
+  'NDS-L2-page-property-pagination-fail-closed',
+  'NDS-L3-outbox-trash-restore-settles',
   'NDS-L3-outbox-invalid-settlement-rejected',
   'NDS-L3-outbox-property-patch-settles',
   'NDS-L3-outbox-stale-base-blocks',
@@ -106,6 +134,44 @@ const plannedRestoreCommand = (): OutboxCommandEnvelope => {
     baseHash: hash('properties-a'),
     desiredHash: pageLifecycleHash(testIds.pageId, false),
     preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'DeleteVsEdit'],
+  }
+}
+
+const schemaMigrationIntent = (
+  overrides: Partial<SchemaMigrationIntent> = {},
+): SchemaMigrationIntent => {
+  const command = decode(PatchDataSourceSchemaCommand, {
+    _tag: 'PatchDataSourceSchemaCommand',
+    commandId: testIds.commandId,
+    dataSourceId: testIds.dataSourceId,
+    baseSchemaHash: hash('schema'),
+    schemaPatch: {
+      [testIds.propertyA]: {
+        _tag: 'CanonicalDataSourceProperty',
+        propertyId: testIds.propertyA,
+        name: decode(PropertyName, 'Name'),
+        type: 'title',
+        configHash: hash('config-a-next'),
+      },
+    },
+  })
+
+  return {
+    _tag: 'schema-migration',
+    intentEventId: testIds.intentEventId,
+    commandKey: testIds.commandKey,
+    surface: schemaSurfaceKey(testIds.dataSourceId, testIds.propertyA),
+    dataSourceId: testIds.dataSourceId,
+    affectedPropertyIds: [testIds.propertyA],
+    command,
+    baseHash: hash('schema'),
+    desiredHash: hash('schema-next'),
+    safety: {
+      affectsLocalIntent: false,
+      destructiveMigrationRequired: false,
+      optionDeletionLosesValues: false,
+    },
+    ...overrides,
   }
 }
 
@@ -167,7 +233,10 @@ describe('notion datasource sync fake-service E2E harness', () => {
 
     expect(guardScenarioCoverageGaps()).toEqual([])
     expect(concreteScenarioReferenceGaps()).toEqual([])
+    expect(placeholderGuardScenarioReferenceGaps()).toEqual([])
+    expect(concreteScenarioMatrixGaps()).toEqual([])
     expect(invalidScenarioRequirementIdGaps()).toEqual([])
+    expect(requirementTraceabilityGaps()).toEqual([])
     expect(
       scenarioImplementationGaps({
         file: 'src/e2e/fake-service.e2e.test.ts',
@@ -185,9 +254,12 @@ describe('notion datasource sync fake-service E2E harness', () => {
       e2eHarnessScenarios.find((entry) => entry.scenarioId === 'NDS-L2-filtered-absence-not-proof')
         ?.requirementIds,
     ).toEqual(['R73'])
+    expect(
+      traceabilityResiduals.filter((entry) => entry._tag === 'unmapped-requirement').length,
+    ).toBeGreaterThan(0)
   })
 
-  it('fails traceability when concrete guard mappings or requirement IDs are invalid', () => {
+  it('fails traceability when placeholders, concrete mappings, or requirement IDs are invalid', () => {
     expect(
       concreteScenarioReferenceGaps([
         {
@@ -203,6 +275,52 @@ describe('notion datasource sync fake-service E2E harness', () => {
         _tag: 'missing-declared-guard-scenario-reference',
         guard: 'StaleSurfaceBase',
         scenarioId: 'NDS-L2-missing-scenario',
+      },
+    ])
+    expect(
+      placeholderGuardScenarioReferenceGaps(
+        [
+          {
+            guard: 'PermissionAmbiguous',
+            scenarioId: 'NDS-GUARD-permission-ambiguous',
+            requirementIds: ['R41'],
+            lowestPlannerLevel: 'L1',
+            highestIntegrationLevel: 'L2',
+          },
+        ],
+        [],
+      ),
+    ).toEqual([
+      {
+        _tag: 'placeholder-guard-scenario-reference',
+        guard: 'PermissionAmbiguous',
+        scenarioId: 'NDS-GUARD-permission-ambiguous',
+      },
+    ])
+    expect(
+      concreteScenarioMatrixGaps(
+        [
+          {
+            guard: 'StaleSurfaceBase',
+            scenarioId: 'NDS-L2-clean-pull-status',
+            requirementIds: ['R24'],
+            lowestPlannerLevel: 'L1',
+            highestIntegrationLevel: 'L2',
+          },
+        ],
+        e2eHarnessScenarios,
+      ),
+    ).toEqual([
+      {
+        _tag: 'unmapped-concrete-guard',
+        guard: 'StaleSurfaceBase',
+        scenarioId: 'NDS-L2-clean-pull-status',
+      },
+      {
+        _tag: 'unmapped-concrete-requirement',
+        guard: 'StaleSurfaceBase',
+        scenarioId: 'NDS-L2-clean-pull-status',
+        requirementId: 'R24',
       },
     ])
     expect(
@@ -224,6 +342,10 @@ describe('notion datasource sync fake-service E2E harness', () => {
         requirementId: 'R74',
       },
     ])
+    expect(requirementTraceabilityGaps([], [])).toContainEqual({
+      _tag: 'unmapped-requirement',
+      requirementId: 'R01',
+    })
   })
 
   it('composes fake gateway, body adapter, workspace, clock, and SQLite store for clean status', async () => {
@@ -385,6 +507,164 @@ describe('notion datasource sync fake-service E2E harness', () => {
     })
   })
 
+  it('keeps incomplete query scans from producing tombstones', () => {
+    const decision = planIntent(
+      buildPlannerSnapshot({
+        queries: [
+          querySurface({
+            completeness: { terminal: false, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              membershipScope: 'all-data-source-rows',
+              filtered: false,
+              directRetrieve: 'in-trash',
+            },
+          }),
+        ],
+      }),
+      queryAbsenceIntent(),
+    )
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'PaginationIncomplete',
+    })
+  })
+
+  it('fails closed on permission ambiguous query and direct page retrieval', async () => {
+    const gatewayHarness = makeFakeGatewayHarness({
+      permissionAmbiguousDataSourceIds: [testIds.dataSourceId],
+      permissionAmbiguousPageIds: [testIds.pageId],
+    })
+    const queryResult = await Effect.runPromiseExit(
+      gatewayHarness.gateway
+        .queryRows({
+          _tag: 'QueryRowsInput',
+          dataSourceId: testIds.dataSourceId,
+          queryContract: defaultQueryContract(),
+          startCursor: null,
+        })
+        .pipe(Stream.runCollect),
+    )
+    const directResult = await Effect.runPromiseExit(
+      gatewayHarness.gateway.retrievePage(testIds.pageId),
+    )
+    const decision = planIntent(
+      buildPlannerSnapshot({
+        queries: [
+          querySurface({
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              membershipScope: 'all-data-source-rows',
+              filtered: false,
+              directRetrieve: 'permission-ambiguous',
+            },
+          }),
+        ],
+      }),
+      queryAbsenceIntent(),
+    )
+
+    expectGatewayFailure(queryResult, { operation: 'queryRows', guard: 'PermissionAmbiguous' })
+    expectGatewayFailure(directResult, { operation: 'retrievePage', guard: 'PermissionAmbiguous' })
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'PermissionAmbiguous',
+    })
+    expect(gatewayHarness.ledger.successfulTrashPages).toEqual([])
+  })
+
+  it('records directly classified remote trash as a tombstone event', () => {
+    const decision = planIntent(
+      buildPlannerSnapshot({
+        queries: [
+          querySurface({
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              membershipScope: 'all-data-source-rows',
+              filtered: false,
+              directRetrieve: 'in-trash',
+            },
+          }),
+        ],
+      }),
+      queryAbsenceIntent(),
+    )
+
+    expect(decision).toEqual({
+      _tag: 'AppendEvents',
+      events: [
+        {
+          _tag: 'TombstoneClassified',
+          pageId: testIds.pageId,
+          surface: queryAbsenceIntent().surface,
+          reason: 'remote-trash',
+        },
+      ],
+    })
+  })
+
+  it('keeps moved-out and restored membership distinct from remote trash', () => {
+    const movedOut = planIntent(
+      buildPlannerSnapshot({
+        queries: [
+          querySurface({
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              membershipScope: 'all-data-source-rows',
+              filtered: false,
+              directRetrieve: 'moved-out',
+            },
+          }),
+        ],
+      }),
+      queryAbsenceIntent(),
+    )
+    const restored = planIntent(
+      buildPlannerSnapshot({
+        queries: [
+          querySurface({
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              membershipScope: 'all-data-source-rows',
+              filtered: false,
+              directRetrieve: 'accessible',
+            },
+          }),
+        ],
+      }),
+      queryAbsenceIntent(),
+    )
+    const deleteSnapshot = buildPlannerSnapshot()
+    const deleteDecision = planIntent(
+      buildPlannerSnapshot({
+        rows: deleteSnapshot.rows.map((row) => ({
+          pageId: row.pageId,
+          dataSourceId: row.dataSourceId,
+          propertiesHash: row.propertiesHash,
+          inTrash: row.inTrash,
+          movedOut: true,
+          localDeleteCandidate: row.localDeleteCandidate,
+        })),
+      }),
+      localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }),
+    )
+
+    expect(movedOut).toMatchObject({
+      _tag: 'AppendEvents',
+      events: [{ _tag: 'TombstoneClassified', reason: 'moved-out' }],
+    })
+    expect(restored).toEqual({ _tag: 'AppendEvents', events: [] })
+    expect(deleteDecision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'MoveOutNotDelete',
+    })
+  })
+
   it('rejects body adapter surface leaks and records no outbox settlement', async () => {
     const ports = makeHarnessPorts({
       bodyPages: [
@@ -435,6 +715,76 @@ describe('notion datasource sync fake-service E2E harness', () => {
     })
     expect(gatewayHarness.ledger.attemptedTrashPages).toEqual([])
     expect(gatewayHarness.ledger.successfulTrashPages).toEqual([])
+  })
+
+  it('blocks destructive schema changes before remote schema writes are enqueued', () => {
+    const gatewayHarness = makeFakeGatewayHarness()
+    const destructive = planIntent(
+      buildPlannerSnapshot(),
+      schemaMigrationIntent({
+        safety: {
+          affectsLocalIntent: false,
+          destructiveMigrationRequired: true,
+          optionDeletionLosesValues: false,
+        },
+      }),
+    )
+    const optionDeletion = planIntent(
+      buildPlannerSnapshot(),
+      schemaMigrationIntent({
+        safety: {
+          affectsLocalIntent: false,
+          destructiveMigrationRequired: false,
+          optionDeletionLosesValues: true,
+        },
+      }),
+    )
+
+    expect(destructive).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'DestructiveSchemaMigrationRequired',
+    })
+    expect(optionDeletion).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'OptionDeletionLosesValues',
+    })
+    expect(gatewayHarness.ledger.attemptedPatchDataSourceSchemas).toEqual([])
+    expect(gatewayHarness.ledger.successfulPatchDataSourceSchemas).toEqual([])
+  })
+
+  it('fails closed when page-property pagination is unavailable or incomplete', async () => {
+    const gatewayHarness = makeFakeGatewayHarness({
+      capabilities: ['data_source_retrieve', 'data_source_query', 'page_retrieve'],
+    })
+    const preflight = await Effect.runPromise(
+      gatewayHarness.gateway.preflightCapabilities({
+        _tag: 'CapabilityPreflightInput',
+        dataSourceId: testIds.dataSourceId,
+        requiredCapabilities: ['page_property_paginate'],
+      }),
+    )
+    const decision = planIntent(
+      buildPlannerSnapshot({
+        properties: [
+          {
+            pageId: testIds.pageId,
+            propertyId: testIds.propertyA,
+            baseHash: hash('property-a-base'),
+            remoteHash: hash('property-a-base'),
+            availability: 'paginated-incomplete',
+            pendingLocal: undefined,
+          },
+        ],
+      }),
+      propertyEditIntent(),
+    )
+
+    expect(preflight.missingCapabilities).toEqual(['page_property_paginate'])
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'PropertyValueIncomplete',
+    })
+    expect(gatewayHarness.ledger.attemptedPatchPageProperties).toEqual([])
   })
 
   it('records fake gateway remote trash attempts and successes when trash is called', async () => {
