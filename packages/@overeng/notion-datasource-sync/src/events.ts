@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import {
+  AbsolutePath,
   BodyPointer,
   CapabilityName,
   CommandId,
@@ -34,6 +35,7 @@ export type EventCodecVersion = typeof EventCodecVersion.Type
 
 export const EventFamily = Schema.Literal(
   'RemoteObserved',
+  'SyncRootBound',
   'CompatibilityChecked',
   'QueryScanRecorded',
   'LocalIntentAccepted',
@@ -84,6 +86,14 @@ export const eventEnvelopeFields = <TFamily extends EventFamily, TEventType exte
     payload: VersionedJson,
     observedAt: Schema.DateTimeUtc,
   }) as const
+
+export const SyncBindingRecorded = Schema.TaggedStruct('SyncBindingRecorded', {
+  ...eventEnvelopeFields('SyncRootBound', 'SyncBindingRecorded'),
+  dataSourceId: DataSourceId,
+  workspaceRoot: AbsolutePath,
+  storeIdentity: Schema.NonEmptyTrimmedString,
+}).annotations({ identifier: 'NotionDatasourceSync.SyncBindingRecorded' })
+export type SyncBindingRecorded = typeof SyncBindingRecorded.Type
 
 export const ApiContractObserved = Schema.TaggedStruct('ApiContractObserved', {
   ...eventEnvelopeFields('CompatibilityChecked', 'ApiContractObserved'),
@@ -249,6 +259,7 @@ export const DecodeDriftBlocked = Schema.TaggedStruct('DecodeDriftBlocked', {
 export type DecodeDriftBlocked = typeof DecodeDriftBlocked.Type
 
 export const SyncEvent = Schema.Union(
+  SyncBindingRecorded,
   ApiContractObserved,
   DataSourceObserved,
   RowObserved,
