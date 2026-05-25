@@ -1,11 +1,18 @@
+import { Effect, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import {
+  makeNotionApiContract,
+  makeNotionDataSourceGatewayLayer,
+  type NotionDataSourceGatewayShape,
+} from '../mod.ts'
 import {
   emptyLiveFixtureLedger,
   ledgerEntry,
   liveNotionConfigFromEnv,
   liveNotionEnvFromProcessEnv,
   runLiveNotionPreflight,
+  type LiveFixtureLedger,
 } from '../testing/live-notion.ts'
 import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
 
@@ -95,6 +102,81 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     })
     if (config._tag !== 'invalid-config') return
     expect(config.message).toContain('invalid configuration')
+  })
+
+  it('does not run live read probes or write verified-cleaned ledger entries when requested capabilities are missing', async () => {
+    const configured = {
+      _tag: 'configured' as const,
+      runId: 'notion-ds-sync-missing-capability-test',
+      parentPageId: '00000000000000000000000000000001',
+      dataSourceId: '00000000000000000000000000000002',
+      notionVersion: '2026-03-11' as const,
+      requiredCapabilities: ['data_source_query', 'page_retrieve'] as const,
+      ledgerPath: 'tmp/notion-datasource-sync-live/missing-capability-test.json',
+    }
+    const calls = {
+      queryRows: 0,
+      retrievePage: 0,
+    }
+    const ledgers: Array<LiveFixtureLedger> = []
+    const apiContract = makeNotionApiContract({
+      supportedCapabilities: ['data_source_query'],
+    })
+    const gateway: NotionDataSourceGatewayShape = {
+      apiContract,
+      preflightCapabilities: (input) =>
+        Effect.succeed({
+          _tag: 'CapabilityPreflightResult',
+          dataSourceId: input.dataSourceId,
+          apiContract,
+          supportedCapabilities: input.requiredCapabilities.filter((capability) =>
+            apiContract.supportedCapabilities.includes(capability),
+          ),
+          missingCapabilities: input.requiredCapabilities.filter(
+            (capability) => apiContract.supportedCapabilities.includes(capability) === false,
+          ),
+        }),
+      retrieveDataSource: () => Effect.die('retrieveDataSource should not be called'),
+      queryRows: () => {
+        calls.queryRows += 1
+        return Stream.die('queryRows should not be called')
+      },
+      retrievePage: () => {
+        calls.retrievePage += 1
+        return Effect.die('retrievePage should not be called')
+      },
+      retrievePageProperty: () => Stream.die('retrievePageProperty should not be called'),
+      patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
+      patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
+      trashPage: () => Effect.die('trashPage should not be called'),
+      restorePage: () => Effect.die('restorePage should not be called'),
+    }
+
+    await expect(
+      runLiveNotionPreflight(
+        {
+          enabled: true,
+          token: 'ntn_realistic_token_shape',
+          tokenSource: 'NOTION_API_TOKEN',
+          parentPageId: configured.parentPageId,
+          dataSourceId: configured.dataSourceId,
+          requiredCapabilities: configured.requiredCapabilities.join(','),
+          ledgerPath: configured.ledgerPath,
+        },
+        configured,
+        {
+          gatewayLayer: makeNotionDataSourceGatewayLayer(gateway),
+          writeLedger: async ({ ledger }) => {
+            ledgers.push(ledger)
+          },
+        },
+      ),
+    ).rejects.toThrow('Missing Notion capability: page_retrieve')
+
+    expect(calls).toEqual({ queryRows: 0, retrievePage: 0 })
+    expect(ledgers.flatMap((ledger) => ledger.entries)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ cleanupState: 'verified-cleaned' })]),
+    )
   })
 
   it('runs a real preflight when live Notion is explicitly configured', async () => {
