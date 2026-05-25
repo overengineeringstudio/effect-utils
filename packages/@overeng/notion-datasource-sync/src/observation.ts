@@ -23,6 +23,7 @@ import {
   type PageId as PageIdType,
   type PropertyId,
   type PropertyId as PropertyIdType,
+  type QueryCursor,
 } from './domain.ts'
 import { NotionGatewayError, type BodySyncError, type LocalStorageError } from './errors.ts'
 import {
@@ -55,6 +56,7 @@ export type RemoteObservationOptions = {
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
   readonly bodyPathForPage?: (pageId: PageIdType) => WorkspaceRelativePath
+  readonly startCursor?: QueryCursor | null
   readonly now?: () => Date
 }
 
@@ -62,6 +64,7 @@ export type RemoteObservationResult = {
   readonly events: ReadonlyArray<SyncEventType>
   readonly materialized: ReadonlyArray<MaterializeResult>
   readonly query: {
+    readonly startCursor: QueryCursor | null
     readonly pages: number
     readonly rows: number
     readonly complete: boolean
@@ -88,6 +91,7 @@ const eventPayload = (value: unknown): SyncEventType['payload'] => ({
 const observedAt = (now: () => Date) => now().toISOString()
 
 const observationEventPart = (now: () => Date): string => eventIdPart(observedAt(now))
+const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
 
 const eventBase = ({
   rootId,
@@ -140,6 +144,23 @@ const collectStream = <TValue, TError>(
   stream: Stream.Stream<TValue, TError>,
 ): Effect.Effect<ReadonlyArray<TValue>, TError> =>
   stream.pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+
+const maxObservedHighWatermark = ({
+  initial,
+  rows,
+  complete,
+}: {
+  readonly initial: typeof Schema.DateTimeUtc.Type | null
+  readonly rows: ReadonlyArray<QueryRowsPage['rows'][number]>
+  readonly complete: boolean
+}): typeof Schema.DateTimeUtc.Type | null => {
+  if (complete === false) return initial
+
+  return rows.reduce((max, row) => {
+    if (max === null) return row.lastEditedTime
+    return encodeDateTimeUtc(row.lastEditedTime) > encodeDateTimeUtc(max) ? row.lastEditedTime : max
+  }, initial)
+}
 
 const propertyValueHash = (pages: ReadonlyArray<PagePropertyItemPage>): HashType | undefined => {
   const terminalPage = pages.at(-1)
@@ -474,6 +495,7 @@ export const observeRemoteDataSource = Effect.fn(
           events,
           materialized: [],
           query: {
+            startCursor: options.startCursor ?? null,
             pages: 0,
             rows: 0,
             complete: false,
@@ -493,13 +515,19 @@ export const observeRemoteDataSource = Effect.fn(
           _tag: 'QueryRowsInput',
           dataSourceId: options.dataSourceId,
           queryContract: options.queryContract,
-          startCursor: null,
+          startCursor: options.startCursor ?? null,
         }),
       )
       const queryContractHash =
         queryPages.at(-1)?.queryContractHash ?? queryPages[0]?.queryContractHash
       const complete = queryPages.at(-1)?.hasMore === false
       const cappedAtLimit = queryPages.some((page) => page.cappedAtLimit)
+      const queryRows = queryPages.flatMap((page: QueryRowsPage) => page.rows)
+      const highWatermark = maxObservedHighWatermark({
+        initial: options.queryContract.highWatermark,
+        rows: queryRows,
+        complete: complete && cappedAtLimit === false,
+      })
       events.push(
         decode(SyncEvent, {
           _tag: 'DataSourceObserved',
@@ -648,15 +676,17 @@ export const observeRemoteDataSource = Effect.fn(
 
       if (queryContractHash !== undefined) {
         const queryCheckpointState = complete && cappedAtLimit === false ? 'complete' : 'incomplete'
+        const nextCursor = queryPages.at(-1)?.nextCursor ?? null
+        const cursorPart = nextCursor === null ? 'terminal' : eventIdPart(nextCursor)
         events.push(
           decode(SyncEvent, {
             _tag: 'QueryScanCheckpointRecorded',
             ...eventBase({
               rootId: options.rootId,
-              eventId: `query:${eventIdPart(options.dataSourceId)}:${queryContractHash}:${queryCheckpointState}`,
+              eventId: `query:${eventIdPart(options.dataSourceId)}:${queryContractHash}:${queryCheckpointState}:${cursorPart}`,
               family: 'QueryScanRecorded',
               eventType: 'QueryScanCheckpointRecorded',
-              idempotencyKey: `query:${options.dataSourceId}:${queryContractHash}:${queryCheckpointState}`,
+              idempotencyKey: `query:${options.dataSourceId}:${queryContractHash}:${queryCheckpointState}:${cursorPart}`,
               surface: querySurfaceKey(options.dataSourceId, queryContractHash),
               payload: {
                 cappedAtLimit,
@@ -666,9 +696,9 @@ export const observeRemoteDataSource = Effect.fn(
             }),
             dataSourceId: options.dataSourceId,
             queryContractHash,
-            nextCursor: queryPages.at(-1)?.nextCursor ?? null,
+            nextCursor,
             complete: complete && cappedAtLimit === false,
-            highWatermark: null,
+            highWatermark: highWatermark === null ? null : encodeDateTimeUtc(highWatermark),
           }),
         )
       }
@@ -677,8 +707,9 @@ export const observeRemoteDataSource = Effect.fn(
         events,
         materialized,
         query: {
+          startCursor: options.startCursor ?? null,
           pages: queryPages.length,
-          rows: queryPages.flatMap((page: QueryRowsPage) => page.rows).length,
+          rows: queryRows.length,
           complete: complete && cappedAtLimit === false,
           cappedAtLimit,
           queryContractHash,

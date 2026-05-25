@@ -1,9 +1,11 @@
-import { Effect, Stream } from 'effect'
+import { Effect, Option, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
   makeNotionApiContract,
+  makeNotionDataSourceGatewayFromClient,
   makeNotionDataSourceGatewayLayer,
+  type NotionGatewayClient,
   type NotionDataSourceGatewayShape,
 } from '../mod.ts'
 import { makeFakeGatewayHarness, testIds } from '../testing/harness.ts'
@@ -14,6 +16,8 @@ import {
   LiveFixtureCleanupError,
   liveNotionConfigFromEnv,
   liveNotionEnvFromProcessEnv,
+  makeLiveNotionFixtureLifecycleClient,
+  provisionLiveNotionDataSourceFixture,
   runLiveFixtureLifecycle,
   runLiveNotionPreflight,
   strictLivePreflightCapabilities,
@@ -67,6 +71,23 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       _tag: 'invalid-config',
       missing: ['NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID'],
       invalid: [],
+    })
+  })
+
+  it('supports parent-only live Notion configuration for disposable data-source fixtures', () => {
+    const config = liveNotionConfigFromEnv(
+      liveNotionEnvFromProcessEnv({
+        NOTION_DATASOURCE_SYNC_LIVE: '1',
+        NOTION_API_TOKEN: 'ntn_realistic_token_shape',
+        NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID: '00000000000000000000000000000001',
+        NOTION_DATASOURCE_SYNC_DATA_SOURCE_ID: undefined,
+      }),
+    )
+
+    expect(config).toMatchObject({
+      _tag: 'configured',
+      parentPageId: '00000000000000000000000000000001',
+      dataSourceId: undefined,
     })
   })
 
@@ -330,6 +351,103 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     expect(calls).toEqual({ queryRows: 0, retrievePage: 0, retrievePageProperty: 0 })
   })
 
+  it('fails closed in strict real-adapter mode before probes, mutation, or ledger writes', async () => {
+    const configured = {
+      _tag: 'configured' as const,
+      runId: 'notion-ds-sync-real-adapter-strict-page-property-test',
+      parentPageId: '00000000000000000000000000000001',
+      dataSourceId: '00000000000000000000000000000002',
+      notionVersion: '2026-03-11' as const,
+      requiredCapabilities: strictLivePreflightCapabilities,
+      ledgerPath: 'tmp/notion-datasource-sync-live/real-adapter-strict-page-property-test.json',
+    }
+    const calls = {
+      retrieveDataSource: 0,
+      queryDataSource: 0,
+      retrievePage: 0,
+      updatePage: 0,
+      updateDataSource: 0,
+    }
+    const ledgers: Array<LiveFixtureLedger> = []
+    const client: NotionGatewayClient = {
+      retrieveDataSource: ({ dataSourceId }) =>
+        Effect.sync(() => {
+          calls.retrieveDataSource += 1
+          return {
+            id: dataSourceId,
+            properties: {
+              Name: { id: 'title', name: 'Name', type: 'title' },
+            },
+          }
+        }),
+      queryDataSource: () => {
+        calls.queryDataSource += 1
+        return Effect.succeed({ results: [], nextCursor: Option.none(), hasMore: false })
+      },
+      retrievePage: ({ pageId }) => {
+        calls.retrievePage += 1
+        return Effect.succeed({
+          id: pageId,
+          parent: { type: 'data_source_id', data_source_id: configured.dataSourceId },
+          properties: {},
+          last_edited_time: '2026-05-25T00:00:00.000Z',
+          in_trash: false,
+        })
+      },
+      updatePage: ({ pageId }) => {
+        calls.updatePage += 1
+        return Effect.succeed({
+          id: pageId,
+          parent: { type: 'data_source_id', data_source_id: configured.dataSourceId },
+          properties: {},
+          last_edited_time: '2026-05-25T00:00:00.000Z',
+          in_trash: false,
+        })
+      },
+      updateDataSource: ({ dataSourceId }) => {
+        calls.updateDataSource += 1
+        return Effect.succeed({
+          id: dataSourceId,
+          properties: {
+            Name: { id: 'title', name: 'Name', type: 'title' },
+          },
+        })
+      },
+    }
+
+    await expect(
+      runLiveNotionPreflight(
+        {
+          enabled: true,
+          token: 'ntn_realistic_token_shape',
+          tokenSource: 'NOTION_API_TOKEN',
+          parentPageId: configured.parentPageId,
+          dataSourceId: configured.dataSourceId,
+          requiredCapabilities: configured.requiredCapabilities.join(','),
+          ledgerPath: configured.ledgerPath,
+        },
+        configured,
+        {
+          gatewayLayer: makeNotionDataSourceGatewayLayer(
+            makeNotionDataSourceGatewayFromClient(client),
+          ),
+          writeLedger: async ({ ledger }) => {
+            ledgers.push(ledger)
+          },
+        },
+      ),
+    ).rejects.toThrow('Missing Notion capability: page_property_paginate')
+
+    expect(calls).toEqual({
+      retrieveDataSource: 1,
+      queryDataSource: 0,
+      retrievePage: 0,
+      updatePage: 0,
+      updateDataSource: 0,
+    })
+    expect(ledgers).toEqual([])
+  })
+
   it('runs a real preflight when live Notion is explicitly configured', async () => {
     if (processLiveConfig._tag === 'not-configured') {
       expect(processLiveConfig.skipReason).toContain('live Notion E2E disabled')
@@ -340,20 +458,91 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       return
     }
 
-    if (processLiveConfig.requiredCapabilities.includes('page_property_paginate')) {
+    const provisioned = await provisionLiveNotionDataSourceFixture(
+      liveNotionEnvFromProcessEnv(),
+      processLiveConfig,
+    )
+
+    if (provisioned.config.requiredCapabilities.includes('page_property_paginate')) {
       await expect(
-        runLiveNotionPreflight(liveNotionEnvFromProcessEnv(), processLiveConfig),
+        runLiveNotionPreflight(liveNotionEnvFromProcessEnv(), provisioned.config, {
+          initialLedger: provisioned.ledger,
+        }),
       ).rejects.toThrow('Missing Notion capability: page_property_paginate')
+      await provisioned.cleanup(provisioned.ledger)
       return
     }
 
-    const result = await runLiveNotionPreflight(liveNotionEnvFromProcessEnv(), processLiveConfig)
-    expect(result.supportedCapabilities).toEqual(
-      expect.arrayContaining([...processLiveConfig.requiredCapabilities]),
-    )
-    expect(result.missingCapabilities).toEqual([])
-    expect(result.ledgerPath).toBe(processLiveConfig.ledgerPath)
+    let ledger = provisioned.ledger
+    try {
+      const result = await runLiveNotionPreflight(
+        liveNotionEnvFromProcessEnv(),
+        provisioned.config,
+        { initialLedger: ledger },
+      )
+      ledger = result.ledger
+      expect(result.supportedCapabilities).toEqual(
+        expect.arrayContaining([...provisioned.config.requiredCapabilities]),
+      )
+      expect(result.missingCapabilities).toEqual([])
+      expect(result.ledgerPath).toBe(provisioned.config.ledgerPath)
+    } finally {
+      await provisioned.cleanup(ledger)
+    }
+  }, 120_000)
+
+  it('reports why the credentialed live fixture lifecycle is skipped when unavailable', () => {
+    if (processLiveConfig._tag === 'configured') {
+      expect(processLiveConfig.parentPageId).toBeTruthy()
+      return
+    }
+
+    const reason =
+      processLiveConfig._tag === 'not-configured'
+        ? processLiveConfig.skipReason
+        : processLiveConfig.message
+    expect(reason).toMatch(/live Notion E2E|invalid configuration/)
   })
+
+  describe.skipIf(processLiveConfig._tag !== 'configured')(
+    'credentialed live Notion fixture lifecycle',
+    () => {
+      it('creates, verifies, mutates, restores, and cleans up a disposable fixture', async () => {
+        if (processLiveConfig._tag !== 'configured') return
+
+        const env = liveNotionEnvFromProcessEnv()
+        const provisioned = await provisionLiveNotionDataSourceFixture(env, processLiveConfig)
+        let ledger = provisioned.ledger
+
+        try {
+          const preflight = await runLiveNotionPreflight(env, provisioned.config, {
+            initialLedger: ledger,
+          })
+          ledger = preflight.ledger
+          ledger = await runLiveFixtureLifecycle(
+            provisioned.config,
+            makeLiveNotionFixtureLifecycleClient(env, provisioned.config),
+            { initialLedger: ledger },
+          )
+
+          expect(ledger.entries).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ objectType: 'database', cleanupState: 'created' }),
+              expect.objectContaining({ objectType: 'data_source', cleanupState: 'created' }),
+              expect.objectContaining({
+                objectType: 'page',
+                cleanupState: 'verified-cleaned',
+              }),
+            ]),
+          )
+          expect(JSON.stringify(ledger)).not.toContain('NOTION_TOKEN')
+          expect(JSON.stringify(ledger)).not.toContain('NOTION_API_TOKEN')
+        } finally {
+          await provisioned.cleanup(ledger)
+        }
+      }, 120_000)
+    },
+  )
 
   it('records create, mutate, verify, trash, and restore fixture lifecycle phases with an injected client', async () => {
     const configured = {
@@ -397,14 +586,16 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       },
     })
 
-    expect(calls).toEqual(['create', 'mutate', 'verify', 'trash', 'restore'])
+    expect(calls).toEqual(['create', 'mutate', 'verify', 'trash', 'restore', 'trash'])
     expect(ledger.entries.map((entry) => entry.phase)).toEqual([
       'create',
       'mutate',
       'verify',
       'trash',
       'restore',
+      'trash',
     ])
+    expect(ledger.entries.at(-1)).toMatchObject({ cleanupState: 'verified-cleaned' })
     expect(ledgers.at(-1)).toEqual(ledger)
   })
 
@@ -453,11 +644,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       }),
     ).rejects.toThrow('forced fixture verification failure')
 
-    expect(calls).toEqual(['create', 'mutate', 'verify', 'trash', 'restore'])
+    expect(calls).toEqual(['create', 'mutate', 'verify', 'trash'])
     expect(ledgers.at(-1)?.entries).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ phase: 'trash', cleanupState: 'trashed' }),
-        expect.objectContaining({ phase: 'restore', cleanupState: 'restored' }),
+        expect.objectContaining({ phase: 'trash', cleanupState: 'verified-cleaned' }),
       ]),
     )
   })
@@ -467,6 +657,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     {
       cleanupPhase: 'restore' as const,
       expectedCalls: ['create', 'mutate', 'verify', 'trash', 'restore'],
+    },
+    {
+      cleanupPhase: 'final-trash' as const,
+      expectedCalls: ['create', 'mutate', 'verify', 'trash', 'restore', 'trash'],
     },
   ])(
     'fails closed and preserves ledger evidence when fixture $cleanupPhase cleanup fails',
@@ -481,6 +675,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         ledgerPath: `tmp/notion-datasource-sync-live/fixture-${cleanupPhase}-cleanup-failure-test.json`,
       }
       const calls: string[] = []
+      let trashCalls = 0
       const ledgers: LiveFixtureLedger[] = []
       const client: LiveFixtureLifecycleClient = {
         create: async () => {
@@ -500,7 +695,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         },
         trash: async () => {
           calls.push('trash')
-          if (cleanupPhase === 'trash') {
+          trashCalls += 1
+          if (cleanupPhase === 'trash' || (cleanupPhase === 'final-trash' && trashCalls === 2)) {
             throw new Error('forced fixture trash cleanup failure')
           }
         },
@@ -524,19 +720,23 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       }
 
       expect(failure).toBeInstanceOf(LiveFixtureCleanupError)
+      const expectedFailurePhase = cleanupPhase === 'final-trash' ? 'trash' : cleanupPhase
       expect(failure).toMatchObject({
-        phase: cleanupPhase,
+        phase: expectedFailurePhase,
         ledger: ledgers.at(-1),
-        message: `live fixture cleanup failed during ${cleanupPhase}`,
+        message: `live fixture cleanup failed during ${expectedFailurePhase}`,
       })
       expect(calls).toEqual(expectedCalls)
       expect(ledgers.at(-1)?.entries).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ phase: 'verify', cleanupState: 'verified' }),
-          expect.objectContaining({ phase: cleanupPhase, cleanupState: 'cleanup-failed' }),
+          expect.objectContaining({
+            phase: cleanupPhase === 'final-trash' ? 'trash' : cleanupPhase,
+            cleanupState: 'cleanup-failed',
+          }),
         ]),
       )
-      if (cleanupPhase === 'restore') {
+      if (cleanupPhase === 'restore' || cleanupPhase === 'final-trash') {
         expect(ledgers.at(-1)?.entries).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ phase: 'trash', cleanupState: 'trashed' }),

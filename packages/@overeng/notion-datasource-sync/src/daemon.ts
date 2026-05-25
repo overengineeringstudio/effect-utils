@@ -216,6 +216,50 @@ const ensureNotCancelled = ({
       )
     : Effect.void
 
+const abortSignalEffect = ({
+  signal,
+  rootId,
+  cycle,
+}: {
+  readonly signal: AbortSignal
+  readonly rootId: SyncRootId
+  readonly cycle: number
+}): Effect.Effect<never, WatchDaemonCancelled> =>
+  Effect.async<never, WatchDaemonCancelled>((resume, effectSignal) => {
+    const cancel = () =>
+      resume(
+        Effect.fail(
+          new WatchDaemonCancelled({
+            rootId,
+            cycle,
+            message: 'Watch daemon cycle was cancelled before it completed',
+          }),
+        ),
+      )
+
+    if (signal.aborted === true) {
+      cancel()
+      return
+    }
+
+    signal.addEventListener('abort', cancel, { once: true })
+    effectSignal.addEventListener('abort', () => signal.removeEventListener('abort', cancel), {
+      once: true,
+    })
+  })
+
+const interruptOnAbort = <TValue, TError, TContext>(
+  effect: Effect.Effect<TValue, TError, TContext>,
+  input: {
+    readonly signal: AbortSignal | undefined
+    readonly rootId: SyncRootId
+    readonly cycle: number
+  },
+): Effect.Effect<TValue, TError | WatchDaemonCancelled, TContext> =>
+  input.signal === undefined
+    ? effect
+    : effect.pipe(Effect.raceFirst(abortSignalEffect({ ...input, signal: input.signal })))
+
 export const runWatchDaemonCycle = Effect.fn(
   'NotionDatasourceSync.WatchDaemon.runWatchDaemonCycle',
 )(
@@ -256,26 +300,29 @@ export const runWatchDaemonCycle = Effect.fn(
         },
       })
 
-      const sync = yield* syncOneShot({
-        store: options.store,
-        rootId: options.rootId,
-        dataSourceId: options.dataSourceId,
-        workspaceRoot: options.workspaceRoot,
-        queryContract: options.queryContract,
-        schemaProperties: options.schemaProperties,
-        ...(options.requiredCapabilities === undefined
-          ? {}
-          : { requiredCapabilities: options.requiredCapabilities }),
-        ...(options.materializeBodies === undefined
-          ? {}
-          : { materializeBodies: options.materializeBodies }),
-        maxExecutorSteps: options.maxExecutorSteps ?? 8,
-        leaseToken:
-          options.leaseToken ??
-          defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId }),
-        leaseDurationMs: options.leaseDurationMs ?? 60_000,
-        now,
-      }).pipe(
+      const sync = yield* interruptOnAbort(
+        syncOneShot({
+          store: options.store,
+          rootId: options.rootId,
+          dataSourceId: options.dataSourceId,
+          workspaceRoot: options.workspaceRoot,
+          queryContract: options.queryContract,
+          schemaProperties: options.schemaProperties,
+          ...(options.requiredCapabilities === undefined
+            ? {}
+            : { requiredCapabilities: options.requiredCapabilities }),
+          ...(options.materializeBodies === undefined
+            ? {}
+            : { materializeBodies: options.materializeBodies }),
+          maxExecutorSteps: options.maxExecutorSteps ?? 8,
+          leaseToken:
+            options.leaseToken ??
+            defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId }),
+          leaseDurationMs: options.leaseDurationMs ?? 60_000,
+          now,
+        }),
+        { signal: options.signal, rootId: options.rootId, cycle },
+      ).pipe(
         Effect.tapError((cause) =>
           writeWatchDaemonState({
             statePath: options.statePath,

@@ -13,6 +13,7 @@ import {
   type NotionRequestId,
   PageId,
   PropertyId,
+  QueryCursor,
 } from './domain.ts'
 import { LocalStoreError } from './errors.ts'
 import { IdempotencyKey, SurfaceKey, SyncEvent, SyncEventId, type SyncRootId } from './events.ts'
@@ -116,6 +117,17 @@ export type TombstoneProjectionRow = {
     | 'inaccessible'
     | 'unknown'
   readonly reason: string
+  readonly eventId: SyncEventId
+}
+
+export type QueryCheckpointRow = {
+  readonly dataSourceId: DataSourceId
+  readonly queryContractHash: Hash
+  readonly nextCursor: QueryCursor | null
+  readonly complete: boolean
+  readonly cappedAtLimit: boolean
+  readonly contractChanged: boolean
+  readonly highWatermark: typeof Schema.DateTimeUtc.Type | null
   readonly eventId: SyncEventId
 }
 
@@ -229,6 +241,7 @@ const decodeHash = Schema.decodeSync(Hash)
 const decodeIdempotencyKey = Schema.decodeUnknownSync(IdempotencyKey)
 const decodePageId = Schema.decodeSync(PageId)
 const decodePropertyId = Schema.decodeSync(PropertyId)
+const decodeQueryCursor = Schema.decodeSync(QueryCursor)
 const decodeRemoteWritePlanPayload = Schema.decodeUnknownSync(
   Schema.parseJson(RemoteWritePlanPayload),
 )
@@ -678,6 +691,46 @@ export class NotionSyncStore {
       projectorVersion: readString(row, 'projector_version'),
       highWaterSequence: readInteger(row, 'high_water_sequence'),
       digest: decodeHash(readString(row, 'digest')),
+    }
+  }
+
+  readQueryCheckpoint(input: {
+    readonly rootId: SyncRootId
+    readonly dataSourceId: DataSourceId
+    readonly queryContractHash: Hash
+  }): QueryCheckpointRow | undefined {
+    const row = this.#db
+      .prepare(
+        `SELECT data_source_id,
+                query_contract_hash,
+                next_cursor,
+                complete,
+                capped_at_limit,
+                contract_changed,
+                high_watermark,
+                event_id
+         FROM query_scan_checkpoint
+         WHERE root_id = ?
+           AND data_source_id = ?
+           AND query_contract_hash = ?`,
+      )
+      .get(input.rootId, input.dataSourceId, input.queryContractHash)
+
+    if (row === undefined) return undefined
+
+    const nextCursor = readOptionalString(row, 'next_cursor')
+    const highWatermark = readOptionalString(row, 'high_watermark')
+
+    return {
+      dataSourceId: decodeDataSourceId(readString(row, 'data_source_id')),
+      queryContractHash: decodeHash(readString(row, 'query_contract_hash')),
+      nextCursor: nextCursor === undefined ? null : decodeQueryCursor(nextCursor),
+      complete: readBoolean(row, 'complete'),
+      cappedAtLimit: readBoolean(row, 'capped_at_limit'),
+      contractChanged: readBoolean(row, 'contract_changed'),
+      highWatermark:
+        highWatermark === undefined ? null : Schema.decodeSync(Schema.DateTimeUtc)(highWatermark),
+      eventId: decodeSyncEventId(readString(row, 'event_id')),
     }
   }
 
