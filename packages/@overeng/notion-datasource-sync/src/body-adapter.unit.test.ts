@@ -12,6 +12,7 @@ import {
   bodySafetySnapshot,
   evaluateBodyAdapterContract,
   makeFakePageBodySyncPort,
+  makeUnsupportedPageBodySyncPort,
   type BodySafetySnapshot,
 } from './mod.ts'
 
@@ -243,6 +244,67 @@ describe('body adapter contract', () => {
     expect(evaluateBodyAdapterContract(observed.safety ?? bodySafetySnapshot())).toMatchObject({
       _tag: 'blocked',
       guard: 'MarkdownUnknownBlocksAmbiguous',
+    })
+  })
+
+  it('guards unsafe base pointer safety at the composition boundary', async () => {
+    const unsafePointer = {
+      ...pointer,
+      safety: bodySafetySnapshot({ truncated: true }),
+    }
+
+    const result = await Effect.runPromise(
+      fakePort(bodySafetySnapshot()).planLocalChange({
+        _tag: 'BodyLocalChangeInput',
+        pageId,
+        baseBodyPointer: unsafePointer,
+        localBodyHash: hash('b'),
+      }),
+    )
+
+    expect(result).toMatchObject({
+      _tag: 'BodyConflict',
+      reason: 'BodyLossyRemote',
+      baseBodyPointer: {
+        safety: unsafePointer.safety,
+      },
+    })
+  })
+
+  it('fails closed when no concrete NotionMD body adapter is configured', async () => {
+    const port = makeUnsupportedPageBodySyncPort()
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          port.observe({
+            _tag: 'ObserveBodyInput',
+            pageId,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: 'BodySyncError',
+      operation: 'observe',
+      message: expect.stringContaining('No NotionMD page body adapter'),
+    })
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          port.push({
+            _tag: 'BodyPushCommand',
+            commandId: commandId('cmd-unsupported'),
+            pageId,
+            baseBodyPointer: pointer,
+            nextBodyHash: hash('b'),
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: 'BodySyncError',
+      operation: 'push',
+      message: expect.stringContaining('No NotionMD page body adapter'),
     })
   })
 
