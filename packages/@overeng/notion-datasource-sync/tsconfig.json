@@ -43,5 +43,9 @@
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "references": []
+  "references": [
+    {
+      "path": "../notion-effect-client"
+    }
+  ]
 }

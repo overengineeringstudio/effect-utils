@@ -1,9 +1,24 @@
 import { randomUUID } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+
+import { FetchHttpClient } from '@effect/platform'
+import { Effect, Layer, Redacted, Stream } from 'effect'
+
+import { NotionConfigLive } from '@overeng/notion-effect-client'
+
+import { DataSourceId, PageId, type CapabilityName } from '../domain.ts'
+import { NotionDataSourceGatewayLive } from '../gateway-notion.ts'
+import { guardCapabilities } from '../guards.ts'
+import { NotionDataSourceGateway } from '../ports.ts'
 
 export type LiveNotionEnv = {
   readonly enabled: boolean
   readonly token: string | undefined
+  readonly tokenSource: 'NOTION_API_TOKEN' | 'NOTION_TOKEN' | undefined
   readonly parentPageId: string | undefined
+  readonly dataSourceId: string | undefined
+  readonly requiredCapabilities: string | undefined
   readonly ledgerPath: string | undefined
 }
 
@@ -23,7 +38,9 @@ export type LiveNotionConfig =
       readonly _tag: 'configured'
       readonly runId: string
       readonly parentPageId: string
+      readonly dataSourceId: string
       readonly notionVersion: '2026-03-11'
+      readonly requiredCapabilities: ReadonlyArray<CapabilityName>
       readonly ledgerPath: string
     }
 
@@ -40,14 +57,55 @@ export type LiveFixtureLedger = {
   readonly entries: ReadonlyArray<LiveFixtureLedgerEntry>
 }
 
+export type LiveNotionPreflightResult = {
+  readonly runId: string
+  readonly dataSourceId: string
+  readonly parentPageId: string
+  readonly supportedCapabilities: ReadonlyArray<CapabilityName>
+  readonly missingCapabilities: ReadonlyArray<CapabilityName>
+  readonly ledgerPath: string
+}
+
+export const defaultLivePreflightCapabilities = [
+  'data_source_retrieve',
+  'data_source_query',
+  'page_retrieve',
+] as const satisfies ReadonlyArray<CapabilityName>
+
+const capabilityNames = new Set<CapabilityName>([
+  'data_source_retrieve',
+  'data_source_query',
+  'page_retrieve',
+  'page_property_paginate',
+  'page_property_update',
+  'schema_update',
+  'page_trash',
+  'page_restore',
+])
+
 export const liveNotionEnvFromProcessEnv = (
   env: NodeJS.ProcessEnv = process.env,
-): LiveNotionEnv => ({
-  enabled: env.NOTION_DATASOURCE_SYNC_LIVE === '1',
-  token: env.NOTION_TOKEN,
-  parentPageId: env.NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID,
-  ledgerPath: env.NOTION_DATASOURCE_SYNC_LEDGER_PATH,
-})
+): LiveNotionEnv => {
+  const token =
+    env.NOTION_API_TOKEN !== undefined && env.NOTION_API_TOKEN.length > 0
+      ? env.NOTION_API_TOKEN
+      : env.NOTION_TOKEN
+
+  return {
+    enabled: env.NOTION_DATASOURCE_SYNC_LIVE === '1',
+    token,
+    tokenSource:
+      env.NOTION_API_TOKEN !== undefined && env.NOTION_API_TOKEN.length > 0
+        ? 'NOTION_API_TOKEN'
+        : env.NOTION_TOKEN === undefined
+          ? undefined
+          : 'NOTION_TOKEN',
+    parentPageId: env.NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID,
+    dataSourceId: env.NOTION_DATASOURCE_SYNC_DATA_SOURCE_ID,
+    requiredCapabilities: env.NOTION_DATASOURCE_SYNC_REQUIRED_CAPABILITIES,
+    ledgerPath: env.NOTION_DATASOURCE_SYNC_LEDGER_PATH,
+  }
+}
 
 const looksLikeDummySecret = (value: string): boolean => {
   const normalized = value.trim().toLowerCase()
@@ -66,9 +124,39 @@ const looksLikeDummySecret = (value: string): boolean => {
 const looksLikeNotionPageId = (value: string): boolean =>
   /^[0-9a-f]{32}$/i.test(value.replaceAll('-', ''))
 
+const parseRequiredCapabilities = (
+  value: string | undefined,
+): {
+  readonly capabilities: ReadonlyArray<CapabilityName>
+  readonly invalid: ReadonlyArray<string>
+} => {
+  if (value === undefined || value.trim().length === 0) {
+    return { capabilities: defaultLivePreflightCapabilities, invalid: [] }
+  }
+
+  const parsed = value
+    .split(',')
+    .map((capability) => capability.trim())
+    .filter((capability) => capability.length > 0)
+
+  const invalid = parsed.filter(
+    (capability): capability is string =>
+      capabilityNames.has(capability as CapabilityName) === false,
+  )
+
+  return {
+    capabilities: parsed.filter((capability): capability is CapabilityName =>
+      capabilityNames.has(capability as CapabilityName),
+    ),
+    invalid,
+  }
+}
+
 export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig => {
   const parentPageId = env.parentPageId
+  const dataSourceId = env.dataSourceId
   const token = env.token
+  const parsedCapabilities = parseRequiredCapabilities(env.requiredCapabilities)
 
   if (env.enabled === false) {
     return {
@@ -79,21 +167,31 @@ export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig =>
   }
 
   const missing = [
-    ...(token === undefined ? ['NOTION_TOKEN'] : []),
+    ...(token === undefined ? ['NOTION_API_TOKEN or NOTION_TOKEN'] : []),
     ...(parentPageId === undefined ? ['NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID'] : []),
+    ...(dataSourceId === undefined ? ['NOTION_DATASOURCE_SYNC_DATA_SOURCE_ID'] : []),
   ]
   const invalid = [
-    ...(token !== undefined && looksLikeDummySecret(token) ? ['NOTION_TOKEN'] : []),
+    ...(token !== undefined && looksLikeDummySecret(token)
+      ? [env.tokenSource ?? 'NOTION_API_TOKEN or NOTION_TOKEN']
+      : []),
     ...(parentPageId !== undefined && looksLikeNotionPageId(parentPageId) === false
       ? ['NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID']
       : []),
+    ...(dataSourceId !== undefined && looksLikeNotionPageId(dataSourceId) === false
+      ? ['NOTION_DATASOURCE_SYNC_DATA_SOURCE_ID']
+      : []),
+    ...parsedCapabilities.invalid.map(
+      (capability) => `NOTION_DATASOURCE_SYNC_REQUIRED_CAPABILITIES:${capability}`,
+    ),
   ]
 
   if (
     missing.length > 0 ||
     invalid.length > 0 ||
     token === undefined ||
-    parentPageId === undefined
+    parentPageId === undefined ||
+    dataSourceId === undefined
   ) {
     return {
       _tag: 'invalid-config',
@@ -109,7 +207,9 @@ export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig =>
     _tag: 'configured',
     runId: `notion-ds-sync-${randomUUID()}`,
     parentPageId,
+    dataSourceId,
     notionVersion: '2026-03-11',
+    requiredCapabilities: parsedCapabilities.capabilities,
     ledgerPath: env.ledgerPath ?? `tmp/notion-datasource-sync-live/${randomUUID()}.json`,
   }
 }
@@ -129,3 +229,103 @@ export const ledgerEntry = (
   cleanupState: 'created',
   ...input,
 })
+
+export const writeLiveFixtureLedger = async (input: {
+  readonly path: string
+  readonly ledger: LiveFixtureLedger
+}): Promise<void> => {
+  await mkdir(dirname(input.path), { recursive: true })
+  await writeFile(input.path, `${JSON.stringify(input.ledger, null, 2)}\n`, 'utf8')
+}
+
+export const runLiveNotionPreflight = async (
+  env: LiveNotionEnv,
+  config: Extract<LiveNotionConfig, { _tag: 'configured' }>,
+): Promise<LiveNotionPreflightResult> => {
+  if (env.token === undefined) {
+    throw new Error('live Notion preflight requires a token after configuration validation')
+  }
+
+  const layer = Layer.mergeAll(
+    NotionConfigLive({
+      authToken: Redacted.make(env.token),
+      retryEnabled: true,
+      maxRetries: 2,
+      retryBaseDelay: 500,
+    }),
+    FetchHttpClient.layer,
+  )
+  const gatewayLayer = NotionDataSourceGatewayLive.pipe(Layer.provide(layer))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const gateway = yield* NotionDataSourceGateway
+      const preflight = yield* gateway.preflightCapabilities({
+        _tag: 'CapabilityPreflightInput',
+        dataSourceId: DataSourceId.make(config.dataSourceId),
+        requiredCapabilities: config.requiredCapabilities,
+      })
+      const capabilityGuard = guardCapabilities({
+        required: config.requiredCapabilities,
+        supported: preflight.supportedCapabilities,
+      })
+
+      yield* gateway
+        .queryRows({
+          _tag: 'QueryRowsInput',
+          dataSourceId: DataSourceId.make(config.dataSourceId),
+          queryContract: {
+            _tag: 'QueryContract',
+            apiVersion: '2026-03-11',
+            filter: null,
+            sorts: [],
+            pageSize: 1,
+            highWatermark: null,
+            membershipScope: 'all-data-source-rows',
+          },
+          startCursor: null,
+        })
+        .pipe(Stream.runHead)
+
+      yield* gateway.retrievePage(PageId.make(config.parentPageId))
+
+      return {
+        preflight,
+        capabilityGuard,
+      }
+    }).pipe(Effect.provide(gatewayLayer)),
+  )
+
+  const ledger = {
+    ...emptyLiveFixtureLedger(config),
+    entries: [
+      ledgerEntry({
+        objectId: config.dataSourceId,
+        objectType: 'data_source',
+        purpose: 'capability-preflight-data-source-access',
+        cleanupState: 'verified-cleaned',
+      }),
+      ledgerEntry({
+        objectId: config.parentPageId,
+        objectType: 'page',
+        purpose: 'capability-preflight-parent-page-access',
+        cleanupState: 'verified-cleaned',
+      }),
+    ],
+  }
+
+  await writeLiveFixtureLedger({ path: config.ledgerPath, ledger })
+
+  if (result.capabilityGuard._tag === 'blocked') {
+    throw new Error(result.capabilityGuard.message)
+  }
+
+  return {
+    runId: config.runId,
+    dataSourceId: config.dataSourceId,
+    parentPageId: config.parentPageId,
+    supportedCapabilities: result.preflight.supportedCapabilities,
+    missingCapabilities: result.preflight.missingCapabilities,
+    ledgerPath: config.ledgerPath,
+  }
+}

@@ -1,5 +1,7 @@
-import { Cause, Chunk, Effect, Schema, Stream } from 'effect'
+import { Cause, Chunk, Effect, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
+
+import { NotionApiError } from '@overeng/notion-effect-client'
 
 import {
   DataSourceId,
@@ -10,13 +12,17 @@ import {
   PagePropertyItem,
   PageSnapshot,
   PropertyId,
+  PropertyName,
   QueryContract,
   RowPageSnapshot,
   hashStoreBytes,
   makeFakeNotionDataSourceGatewayLayer,
+  makeNotionDataSourceGatewayFromClient,
   makeNotionApiContract,
+  pagePropertyPatchToNotion,
   queryContractHash,
   type FakeNotionDataSourceGatewayConfig,
+  type NotionGatewayClient,
   type QueryContract as QueryContractType,
 } from './mod.ts'
 
@@ -703,5 +709,208 @@ describe('Notion data source gateway fake', () => {
     )
 
     expectGatewayFailure(result, { operation: 'restorePage', guard: 'StaleSurfaceBase' })
+  })
+})
+
+describe('Notion data source gateway real adapter boundary', () => {
+  const remotePage = (id: PageId, properties: Record<string, unknown> = {}) => ({
+    id,
+    parent: { type: 'data_source_id', data_source_id: dataSourceId },
+    properties,
+    last_edited_time: observedAt,
+    in_trash: false,
+  })
+  const remoteDataSource = {
+    id: dataSourceId,
+    properties: {
+      title: { id: 'title', name: 'Name', type: 'title' },
+    },
+  }
+
+  const makeClient = (overrides: Partial<NotionGatewayClient> = {}): NotionGatewayClient => ({
+    retrieveDataSource: () => Effect.succeed(remoteDataSource),
+    queryDataSource: () =>
+      Effect.succeed({
+        results: [remotePage(pageId('page-1'), { title: { type: 'title' } })],
+        nextCursor: Option.none(),
+        hasMore: false,
+      }),
+    retrievePage: () => Effect.succeed(remotePage(pageId('page-1'), { title: { type: 'title' } })),
+    updatePage: () => Effect.succeed(remotePage(pageId('page-1'), { title: { type: 'title' } })),
+    updateDataSource: () => Effect.succeed(remoteDataSource),
+    ...overrides,
+  })
+
+  it('maps data source retrieval, query, and page property updates to the local Notion client shape', async () => {
+    const queryCalls: Array<Parameters<NotionGatewayClient['queryDataSource']>[0]> = []
+    const updatePageCalls: Array<Parameters<NotionGatewayClient['updatePage']>[0]> = []
+    const targetPageId = pageId('page-1')
+    const pageBefore = remotePage(targetPageId, { title: { type: 'title', title: [] } })
+    const client = makeClient({
+      queryDataSource: (input) =>
+        Effect.sync(() => queryCalls.push(input)).pipe(
+          Effect.as({
+            results: [remotePage(targetPageId, { title: { type: 'title', title: [] } })],
+            nextCursor: Option.none(),
+            hasMore: false,
+          }),
+        ),
+      retrievePage: ({ pageId: id }) =>
+        Effect.succeed(remotePage(PageId.make(id), pageBefore.properties)),
+      updatePage: (input) =>
+        Effect.sync(() => updatePageCalls.push(input)).pipe(Effect.as(pageBefore)),
+    })
+    const gateway = makeNotionDataSourceGatewayFromClient(client)
+    const pageSnapshot = await Effect.runPromise(gateway.retrievePage(targetPageId))
+    const queryPages = await Effect.runPromise(
+      gateway
+        .queryRows({
+          _tag: 'QueryRowsInput',
+          dataSourceId,
+          queryContract: queryContract({ pageSize: 1 }),
+          startCursor: null,
+        })
+        .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)),
+    )
+    const requestId = await Effect.runPromise(
+      gateway.patchPageProperties({
+        _tag: 'PatchPagePropertiesCommand',
+        commandId: commandId('command-real-patch'),
+        pageId: targetPageId,
+        basePropertiesHash: pageSnapshot.propertiesHash,
+        propertyPatch: {
+          [propertyId('title')]: { _tag: 'title', plainText: 'Updated title' },
+          [propertyId('done')]: { _tag: 'checkbox', checked: true },
+        },
+      }),
+    )
+
+    expect(queryCalls).toEqual([
+      {
+        dataSourceId,
+        pageSize: 1,
+        startCursor: undefined,
+        filter: undefined,
+        sorts: undefined,
+      },
+    ])
+    expect(queryPages).toHaveLength(1)
+    expect(queryPages[0]?.rows.map((queriedRow) => queriedRow.pageId)).toEqual([targetPageId])
+    expect(updatePageCalls).toEqual([
+      {
+        pageId: targetPageId,
+        properties: {
+          [propertyId('title')]: {
+            title: [{ type: 'text', text: { content: 'Updated title' } }],
+          },
+          [propertyId('done')]: { checkbox: true },
+        },
+      },
+    ])
+    expect(requestId).toBe('notion-client-success-request-id-unavailable')
+  })
+
+  it('keeps missing adapter capabilities explicit instead of pretending unsupported endpoints exist', async () => {
+    const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
+    const gateway = makeNotionDataSourceGatewayFromClient(
+      makeClient({
+        updateDataSource: (input) =>
+          Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
+      }),
+    )
+
+    const preflight = await Effect.runPromise(
+      gateway.preflightCapabilities({
+        _tag: 'CapabilityPreflightInput',
+        dataSourceId,
+        requiredCapabilities: ['data_source_retrieve', 'page_property_paginate', 'schema_update'],
+      }),
+    )
+    const propertyResult = await Effect.runPromiseExit(
+      gateway
+        .retrievePageProperty({
+          _tag: 'RetrievePagePropertyInput',
+          pageId: pageId('page-1'),
+          propertyId: propertyId('relation'),
+          startCursor: null,
+        })
+        .pipe(Stream.runCollect),
+    )
+    const schemaResult = await Effect.runPromiseExit(
+      gateway.patchDataSourceSchema({
+        _tag: 'PatchDataSourceSchemaCommand',
+        commandId: commandId('command-schema'),
+        dataSourceId,
+        baseSchemaHash: dataSource.schemaHash,
+        schemaPatch: {
+          [propertyId('title')]: {
+            _tag: 'CanonicalDataSourceProperty',
+            propertyId: propertyId('title'),
+            name: decode(PropertyName, 'Name'),
+            type: 'title',
+            configHash: hash('config'),
+          },
+        },
+      }),
+    )
+
+    expect(preflight.missingCapabilities).toEqual(['page_property_paginate', 'schema_update'])
+    expectGatewayFailure(propertyResult, {
+      operation: 'retrievePageProperty',
+      guard: 'UnsupportedRemoteShape',
+    })
+    expectGatewayFailure(schemaResult, {
+      operation: 'patchDataSourceSchema',
+      guard: 'UnsupportedRemoteShape',
+    })
+    expect(updateDataSourceCalls).toEqual([])
+  })
+
+  it('preserves fail-closed Notion 403/404 permission ambiguity semantics', async () => {
+    const gateway = makeNotionDataSourceGatewayFromClient(
+      makeClient({
+        retrieveDataSource: () =>
+          Effect.fail(
+            new NotionApiError({
+              status: 404,
+              code: 'object_not_found',
+              message: 'Could not find data source',
+              retryAfterSeconds: Option.none(),
+              requestId: Option.some('notion-request-1'),
+              url: Option.some('https://api.notion.com/v1/data_sources/missing'),
+              method: Option.some('GET'),
+            }),
+          ),
+      }),
+    )
+
+    const result = await Effect.runPromiseExit(gateway.retrieveDataSource(dataSourceId))
+
+    expectGatewayFailure(result, {
+      operation: 'retrieveDataSource',
+      guard: 'PermissionAmbiguous',
+    })
+  })
+
+  it('rejects computed and incomplete property writes before issuing a page update', async () => {
+    const computedResult = await Effect.runPromiseExit(
+      pagePropertyPatchToNotion({
+        [propertyId('formula')]: { _tag: 'computed', valueHash: hash('formula') },
+      }),
+    )
+    const incompleteResult = await Effect.runPromiseExit(
+      pagePropertyPatchToNotion({
+        [propertyId('files')]: { _tag: 'files', files: [] },
+      }),
+    )
+
+    expectGatewayFailure(computedResult, {
+      operation: 'patchPageProperties',
+      guard: 'ComputedPropertyWrite',
+    })
+    expectGatewayFailure(incompleteResult, {
+      operation: 'patchPageProperties',
+      guard: 'UnsupportedRemoteShape',
+    })
   })
 })

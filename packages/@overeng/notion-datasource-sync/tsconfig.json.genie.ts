@@ -11,5 +11,5 @@ export default tsconfigJson({
     lib: ['ES2023'],
   },
   include: ['src/**/*'],
-  references: [],
+  references: [{ path: '../notion-effect-client' }],
 } satisfies TSConfigArgs)
