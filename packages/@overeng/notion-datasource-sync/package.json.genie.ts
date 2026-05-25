@@ -43,6 +43,9 @@ export default packageJson(
     },
     publishConfig: {
       access: 'public',
+      bin: {
+        'notion-datasource-sync': './dist/src/cli.js',
+      },
       exports: {
         '.': './dist/src/mod.js',
       },
