@@ -24,6 +24,20 @@ export type GuardScenarioEntry = {
   readonly highestIntegrationLevel: VerificationLevel
 }
 
+export type TraceabilityResidual =
+  | {
+      readonly _tag: 'placeholder-guard-scenario'
+      readonly guard: GuardNameType
+      readonly scenarioId: ScenarioId
+      readonly requirementIds: ReadonlyArray<RequirementId>
+      readonly reason: string
+    }
+  | {
+      readonly _tag: 'unmapped-requirement'
+      readonly requirementId: RequirementId
+      readonly reason: string
+    }
+
 export const scenario = <TScenario extends ScenarioMetadata>(metadata: TScenario): TScenario =>
   metadata
 
@@ -119,6 +133,42 @@ export const e2eHarnessScenarios = [
     file: 'src/e2e/fake-service.e2e.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-L2-incomplete-scan-not-proof',
+    title: 'incomplete query scans cannot classify tombstones',
+    requirementIds: ['R36', 'R71'],
+    guards: ['PaginationIncomplete'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/fake-service.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L2-permission-ambiguity-fail-closed',
+    title: 'permission ambiguous query and direct retrieval fail closed',
+    requirementIds: ['R37', 'R41', 'R69'],
+    guards: ['PermissionAmbiguous'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/fake-service.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L2-direct-tombstone-classification',
+    title: 'direct lifecycle classification records remote trash tombstones',
+    requirementIds: ['R37', 'R40'],
+    guards: [],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/fake-service.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L2-membership-lost-restored',
+    title: 'moved-out and restored membership are not local delete proof',
+    requirementIds: ['R37', 'R40', 'R73'],
+    guards: ['MoveOutNotDelete'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/fake-service.e2e.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-L2-body-adapter-surface-leak',
     title: 'body adapter non-body mutation is blocked',
     requirementIds: ['R23', 'R29', 'R67'],
@@ -134,6 +184,33 @@ export const e2eHarnessScenarios = [
     guards: ['FilesystemDeleteAutoTrashBlocked'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L4',
+    file: 'src/e2e/fake-service.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L2-schema-destructive-fail-closed',
+    title: 'destructive schema migration requests fail closed before remote schema writes',
+    requirementIds: ['R30', 'R33', 'R35'],
+    guards: ['DestructiveSchemaMigrationRequired', 'OptionDeletionLosesValues'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/fake-service.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L2-page-property-pagination-fail-closed',
+    title: 'incomplete page-property pagination blocks local property writes',
+    requirementIds: ['R18', 'R29', 'R71'],
+    guards: ['PropertyValueIncomplete'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/fake-service.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L3-outbox-trash-restore-settles',
+    title: 'trusted trash and restore commands settle after lifecycle verification',
+    requirementIds: ['R11', 'R24', 'R40'],
+    guards: ['OutboxFirstSettlementWins'],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L3',
     file: 'src/e2e/fake-service.e2e.test.ts',
   }),
   scenario({
@@ -209,14 +286,14 @@ const guardScenarioIds = {
   CapabilityPreflightFailed: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
   UnsupportedRemoteShape: 'NDS-GUARD-unsupported-remote-shape',
   ComputedPropertyWrite: 'NDS-GUARD-computed-property-write',
-  PropertyValueIncomplete: 'NDS-GUARD-property-value-incomplete',
+  PropertyValueIncomplete: 'NDS-L2-page-property-pagination-fail-closed',
   RelatedDataSourceUnshared: 'NDS-GUARD-related-data-source-unshared',
   StaleSurfaceBase: 'NDS-L2-same-property-conflict',
-  CurrentSurfaceMissing: 'NDS-GUARD-current-surface-missing',
+  CurrentSurfaceMissing: 'NDS-L3-doctor-guard-state',
   PageTimestampWakeupOnly: 'NDS-GUARD-page-timestamp-wakeup-only',
   SchemaDriftAffectsIntent: 'NDS-L2-local-property-edit-enqueue',
-  DestructiveSchemaMigrationRequired: 'NDS-GUARD-destructive-schema-migration-required',
-  OptionDeletionLosesValues: 'NDS-GUARD-option-deletion-loses-values',
+  DestructiveSchemaMigrationRequired: 'NDS-L2-schema-destructive-fail-closed',
+  OptionDeletionLosesValues: 'NDS-L2-schema-destructive-fail-closed',
   BodyLossyRemote: 'NDS-GUARD-body-lossy-remote',
   MarkdownUnknownBlocksAmbiguous: 'NDS-GUARD-markdown-unknown-blocks-ambiguous',
   MarkdownSelectionAmbiguous: 'NDS-GUARD-markdown-selection-ambiguous',
@@ -225,14 +302,14 @@ const guardScenarioIds = {
   BodyAdapterConflict: 'NDS-GUARD-body-adapter-conflict',
   PathClaimCollision: 'NDS-GUARD-path-claim-collision',
   QueryAbsenceUnclassified: 'NDS-GUARD-query-absence-unclassified',
-  PaginationIncomplete: 'NDS-GUARD-pagination-incomplete',
+  PaginationIncomplete: 'NDS-L2-incomplete-scan-not-proof',
   QueryContractChanged: 'NDS-GUARD-query-contract-changed',
   QueryResultCapExceeded: 'NDS-L2-query-cap-blocks-absence',
   FilteredAbsenceNotProof: 'NDS-L2-filtered-absence-not-proof',
   LinkedDataSourceUnsupported: 'NDS-GUARD-linked-data-source-unsupported',
-  PermissionAmbiguous: 'NDS-GUARD-permission-ambiguous',
+  PermissionAmbiguous: 'NDS-L2-permission-ambiguity-fail-closed',
   DeleteVsEdit: 'NDS-GUARD-delete-vs-edit',
-  MoveOutNotDelete: 'NDS-GUARD-move-out-not-delete',
+  MoveOutNotDelete: 'NDS-L2-membership-lost-restored',
   UnavailableRelationTarget: 'NDS-GUARD-unavailable-relation-target',
   ExpiringFileUrl: 'NDS-GUARD-expiring-file-url',
   ReadAfterWriteMismatch: 'NDS-L3-outbox-invalid-settlement-rejected',
@@ -252,13 +329,449 @@ const guardScenarioIds = {
   RawPayloadRetentionUnsafe: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
 } as const satisfies Record<GuardNameType, ScenarioId>
 
-const defaultGuardRequirementIds: ReadonlyArray<RequirementId> = ['R21', 'R67']
+const vrsRequirementId = (index: number): RequirementId =>
+  `R${index.toString().padStart(2, '0')}` as RequirementId
+
+export const vrsRequirementIds = Array.from({ length: 73 }, (_, index) =>
+  vrsRequirementId(index + 1),
+)
+
+export const traceabilityResiduals = [
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'ApiVersionUnsupported',
+    scenarioId: 'NDS-GUARD-api-version-unsupported',
+    requirementIds: ['R67', 'R70'],
+    reason:
+      'API-version drift is covered by unit and adapter tests; fake E2E promotion is pending.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'ApiVersionUnverified',
+    scenarioId: 'NDS-GUARD-api-version-unverified',
+    requirementIds: ['R67', 'R70'],
+    reason: 'Future API-version proof is currently unit-level and needs live smoke promotion.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'ApiVersionCompatibilityMissing',
+    scenarioId: 'NDS-GUARD-api-compatibility-missing',
+    requirementIds: ['R67', 'R70'],
+    reason: 'Compatibility proof absence is represented as a guard but not yet an E2E scenario.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'DecodeDriftUnsupported',
+    scenarioId: 'NDS-GUARD-decode-drift-unsupported',
+    requirementIds: ['R68', 'R70'],
+    reason: 'Decode drift needs generated malformed payload fixtures before E2E promotion.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'UnsupportedRemoteShape',
+    scenarioId: 'NDS-GUARD-unsupported-remote-shape',
+    requirementIds: ['R29', 'R68'],
+    reason:
+      'Unsupported remote shapes remain adapter/unit coverage until representative fixtures land.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'ComputedPropertyWrite',
+    scenarioId: 'NDS-GUARD-computed-property-write',
+    requirementIds: ['R18', 'R29'],
+    reason: 'Computed property writes are unit-covered and need fake row-property fixtures.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'RelatedDataSourceUnshared',
+    scenarioId: 'NDS-GUARD-related-data-source-unshared',
+    requirementIds: ['R19', 'R41'],
+    reason: 'Relation target sharing is not yet represented by fake-service relation fixtures.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'PageTimestampWakeupOnly',
+    scenarioId: 'NDS-GUARD-page-timestamp-wakeup-only',
+    requirementIds: ['R22', 'R43'],
+    reason: 'Timestamp wake-up semantics are daemon-scope and await watch scenario ownership.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'BodyLossyRemote',
+    scenarioId: 'NDS-GUARD-body-lossy-remote',
+    requirementIds: ['R23', 'R27', 'R29'],
+    reason: 'Lossy body fixtures belong to the delegated body adapter E2E surface.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'MarkdownUnknownBlocksAmbiguous',
+    scenarioId: 'NDS-GUARD-markdown-unknown-blocks-ambiguous',
+    requirementIds: ['R23', 'R27', 'R29'],
+    reason: 'Unknown markdown block preservation is delegated to the body adapter.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'MarkdownSelectionAmbiguous',
+    scenarioId: 'NDS-GUARD-markdown-selection-ambiguous',
+    requirementIds: ['R23', 'R27', 'R29'],
+    reason: 'Ambiguous markdown selection is delegated to the body adapter.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'MarkdownWouldDeleteChildren',
+    scenarioId: 'NDS-GUARD-markdown-would-delete-children',
+    requirementIds: ['R23', 'R27', 'R29'],
+    reason: 'Child deletion checks are delegated to the body adapter.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'MarkdownSyncedPageUnsupported',
+    scenarioId: 'NDS-GUARD-markdown-synced-page-unsupported',
+    requirementIds: ['R23', 'R29'],
+    reason: 'Synced page body support is currently an unsupported body adapter state.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'BodyAdapterConflict',
+    scenarioId: 'NDS-GUARD-body-adapter-conflict',
+    requirementIds: ['R25', 'R27', 'R28'],
+    reason: 'Delegated body conflicts require a body adapter fixture with conflict evidence.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'PathClaimCollision',
+    scenarioId: 'NDS-GUARD-path-claim-collision',
+    requirementIds: ['R27', 'R63'],
+    reason: 'Path collisions are filesystem-scope and owned by filesystem E2E hardening.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'QueryAbsenceUnclassified',
+    scenarioId: 'NDS-GUARD-query-absence-unclassified',
+    requirementIds: ['R36', 'R37'],
+    reason: 'Unclassified absence remains a planner guard until pull classification wiring lands.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'QueryContractChanged',
+    scenarioId: 'NDS-GUARD-query-contract-changed',
+    requirementIds: ['R72', 'R73'],
+    reason: 'Query contract drift needs multi-scan checkpoint fixtures.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'LinkedDataSourceUnsupported',
+    scenarioId: 'NDS-GUARD-linked-data-source-unsupported',
+    requirementIds: ['R05', 'R29'],
+    reason: 'Linked data-source behavior needs a representative Notion shape fixture.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'DeleteVsEdit',
+    scenarioId: 'NDS-GUARD-delete-vs-edit',
+    requirementIds: ['R25', 'R27', 'R37'],
+    reason: 'Delete-vs-edit conflict coverage is currently planner/unit scoped.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'UnavailableRelationTarget',
+    scenarioId: 'NDS-GUARD-unavailable-relation-target',
+    requirementIds: ['R19', 'R27'],
+    reason: 'Unavailable relation target coverage needs relation pagination fixtures.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'ExpiringFileUrl',
+    scenarioId: 'NDS-GUARD-expiring-file-url',
+    requirementIds: ['R20', 'R52', 'R59'],
+    reason: 'Expiring file URLs are not yet represented in fake property fixtures.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'PendingIntentShadowViolation',
+    scenarioId: 'NDS-GUARD-pending-intent-shadow-violation',
+    requirementIds: ['R09', 'R21'],
+    reason: 'Pending intent shadow checks require multi-cycle projection fixtures.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'CursorSameBucketIncomplete',
+    scenarioId: 'NDS-GUARD-cursor-same-bucket-incomplete',
+    requirementIds: ['R43', 'R71'],
+    reason: 'Cursor bucket overlap is daemon/checkpoint scope.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'OwnMaterializationWriteSuppressed',
+    scenarioId: 'NDS-GUARD-own-materialization-write-suppressed',
+    requirementIds: ['R45', 'R63'],
+    reason:
+      'Own-write suppression is filesystem/daemon scope and owned by filesystem E2E hardening.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'CompactionUnsafe',
+    scenarioId: 'NDS-GUARD-compaction-unsafe',
+    requirementIds: ['R08', 'R12', 'R62'],
+    reason: 'Compaction safety is store/migration scope and not fake-service E2E yet.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'PathEscapesRoot',
+    scenarioId: 'NDS-GUARD-path-escapes-root',
+    requirementIds: ['R52', 'R63'],
+    reason: 'Path escape coverage is filesystem-scope and owned by filesystem E2E hardening.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'CheckpointDigestMismatch',
+    scenarioId: 'NDS-GUARD-checkpoint-digest-mismatch',
+    requirementIds: ['R08', 'R47'],
+    reason: 'Checkpoint digest mismatch coverage requires repair-scan fixtures.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'StoreMigrationBlocked',
+    scenarioId: 'NDS-GUARD-store-migration-blocked',
+    requirementIds: ['R12', 'R62'],
+    reason: 'Store migration blocking is covered by store tests and awaits E2E promotion.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'QueueBackpressureExceeded',
+    scenarioId: 'NDS-GUARD-queue-backpressure-exceeded',
+    requirementIds: ['R45', 'R64'],
+    reason: 'Queue backpressure is daemon-scope and owned by daemon E2E hardening.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R01',
+    reason: 'Package boundary is validated by package/export checks rather than fake-service E2E.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R03',
+    reason: 'Client boundary is adapter architecture scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R04',
+    reason: 'Domain boundary is covered by contract/unit tests.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R05',
+    reason: 'Data-source identity has domain coverage but no dedicated E2E scenario yet.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R08',
+    reason: 'Projection determinism is store/unit scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R12',
+    reason: 'Migration behavior is store/integration scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R13',
+    reason: 'Raw retention is telemetry/config scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R14',
+    reason: 'Property ID semantics are canonicalization scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R15',
+    reason: 'Schema hashing is unit/canonicalization scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R16',
+    reason: 'Row value hashing is unit/canonicalization scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R17',
+    reason: 'Body pointer modeling is covered indirectly by body boundary scenarios.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R19',
+    reason: 'Relation availability awaits relation fixtures.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R20',
+    reason: 'File-reference semantics await file property fixtures.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R22',
+    reason: 'Timestamp wake-up behavior is daemon-scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R25',
+    reason: 'No-silent-LWW is split across conflict/unit scenarios.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R26',
+    reason: 'Disjoint merge is scenario-covered but does not yet claim the full requirement.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R27',
+    reason: 'Full durable conflict matrix is split across follow-up E2E patches.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R31',
+    reason: 'Additive schema writes are not in current product scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R32',
+    reason: 'Rename semantics need schema fixture coverage.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R34',
+    reason: 'Conversion reporting needs schema migration command UX.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R38',
+    reason: 'Two-phase local delete is filesystem-scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R43',
+    reason: 'Poll overlap is daemon-scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R44',
+    reason: 'Known-page scans are daemon/repair scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R07',
+    reason:
+      'Append-only event schema is covered by store/contract tests rather than fake-service E2E.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R61',
+    reason:
+      'Fake-service integration is represented by the matrix itself rather than a product scenario row.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R63',
+    reason: 'Filesystem coverage is owned by filesystem E2E hardening.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R72',
+    reason: 'Query contract identity needs multi-scan checkpoint E2E coverage.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R49',
+    reason: 'Dry-run plans are CLI/user-command scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R51',
+    reason: 'Human diagnostics are CLI scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R52',
+    reason: 'Secret safety is telemetry/CLI/live harness scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R53',
+    reason: 'Shared schema reuse is package architecture scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R54',
+    reason: 'Gateway port architecture is covered by contract tests.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R55',
+    reason: 'Adapter independence is architecture scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R56',
+    reason: 'Worker optionality is future integration scope.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R57',
+    reason: 'Span coverage requires telemetry-specific checks.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R58',
+    reason: 'Trace attributes require telemetry-specific checks.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R59',
+    reason: 'Safe telemetry requires telemetry-specific checks.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R60',
+    reason: 'Unit coverage is tracked outside the fake-service E2E matrix.',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R65',
+    reason: 'Live Notion coverage is secret-gated and not required for fake-service E2E.',
+  },
+] as const satisfies ReadonlyArray<TraceabilityResidual>
+
+const concreteScenarioById: ReadonlyMap<ScenarioId, ScenarioMetadata> = new Map(
+  e2eHarnessScenarios.map((entry) => [entry.scenarioId, entry]),
+)
+
+const placeholderResidualByGuard: ReadonlyMap<
+  GuardNameType,
+  Extract<TraceabilityResidual, { readonly _tag: 'placeholder-guard-scenario' }>
+> = new Map(
+  traceabilityResiduals
+    .filter((residual) => residual._tag === 'placeholder-guard-scenario')
+    .map((residual) => [residual.guard, residual]),
+)
+
+const scenarioRequirementIds = (
+  guard: GuardNameType,
+  scenarioId: ScenarioId,
+): ReadonlyArray<RequirementId> => {
+  const scenarioEntry = concreteScenarioById.get(scenarioId)
+  if (scenarioEntry !== undefined) {
+    return scenarioEntry.requirementIds
+  }
+
+  return placeholderResidualByGuard.get(guard)?.requirementIds ?? []
+}
 
 export const coreGuardScenarioEntries = (Object.keys(guardScenarioIds) as GuardNameType[]).map(
   (guard): GuardScenarioEntry => ({
     guard,
     scenarioId: guardScenarioIds[guard],
-    requirementIds: defaultGuardRequirementIds,
+    requirementIds: scenarioRequirementIds(guard, guardScenarioIds[guard]),
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L2',
   }),
@@ -268,9 +781,25 @@ export type ScenarioCoverageGap =
   | { readonly _tag: 'missing-guard-scenario'; readonly guard: GuardNameType }
   | { readonly _tag: 'unknown-guard-scenario'; readonly guard: string }
   | {
+      readonly _tag: 'placeholder-guard-scenario-reference'
+      readonly guard: GuardNameType
+      readonly scenarioId: ScenarioId
+    }
+  | {
       readonly _tag: 'missing-declared-guard-scenario-reference'
       readonly guard: GuardNameType
       readonly scenarioId: ScenarioId
+    }
+  | {
+      readonly _tag: 'unmapped-concrete-guard'
+      readonly guard: GuardNameType
+      readonly scenarioId: ScenarioId
+    }
+  | {
+      readonly _tag: 'unmapped-concrete-requirement'
+      readonly guard: GuardNameType
+      readonly scenarioId: ScenarioId
+      readonly requirementId: RequirementId
     }
   | {
       readonly _tag: 'missing-scenario-implementation'
@@ -281,6 +810,14 @@ export type ScenarioCoverageGap =
       readonly _tag: 'invalid-scenario-requirement-id'
       readonly scenarioId: ScenarioId
       readonly requirementId: string
+    }
+  | {
+      readonly _tag: 'unmapped-requirement'
+      readonly requirementId: RequirementId
+    }
+  | {
+      readonly _tag: 'stale-requirement-residual'
+      readonly requirementId: RequirementId
     }
 
 export const guardScenarioCoverageGaps = (
@@ -301,17 +838,84 @@ export const guardScenarioCoverageGaps = (
 export const concreteScenarioReferenceGaps = (
   entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
   scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
+  residuals: ReadonlyArray<TraceabilityResidual> = traceabilityResiduals,
 ): ReadonlyArray<ScenarioCoverageGap> => {
   const scenarioIds = new Set(scenarios.map((entry) => entry.scenarioId))
+  const residualScenarioIds = new Set(
+    residuals
+      .filter((residual) => residual._tag === 'placeholder-guard-scenario')
+      .map((residual) => `${residual.guard}:${residual.scenarioId}`),
+  )
 
   return entries
-    .filter((entry) => entry.scenarioId.startsWith('NDS-GUARD-') === false)
-    .filter((entry) => scenarioIds.has(entry.scenarioId) === false)
+    .filter(
+      (entry) =>
+        scenarioIds.has(entry.scenarioId) === false &&
+        residualScenarioIds.has(`${entry.guard}:${entry.scenarioId}`) === false,
+    )
     .map((entry) => ({
       _tag: 'missing-declared-guard-scenario-reference',
       guard: entry.guard,
       scenarioId: entry.scenarioId,
     }))
+}
+
+export const placeholderGuardScenarioReferenceGaps = (
+  entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
+  residuals: ReadonlyArray<TraceabilityResidual> = traceabilityResiduals,
+): ReadonlyArray<ScenarioCoverageGap> => {
+  const residualScenarioIds = new Set(
+    residuals
+      .filter((residual) => residual._tag === 'placeholder-guard-scenario')
+      .map((residual) => `${residual.guard}:${residual.scenarioId}`),
+  )
+
+  return entries
+    .filter((entry) => entry.scenarioId.startsWith('NDS-GUARD-'))
+    .filter((entry) => residualScenarioIds.has(`${entry.guard}:${entry.scenarioId}`) === false)
+    .map((entry) => ({
+      _tag: 'placeholder-guard-scenario-reference',
+      guard: entry.guard,
+      scenarioId: entry.scenarioId,
+    }))
+}
+
+export const concreteScenarioMatrixGaps = (
+  entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
+  scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
+): ReadonlyArray<ScenarioCoverageGap> => {
+  const scenarioEntries = new Map(scenarios.map((entry) => [entry.scenarioId, entry] as const))
+
+  return entries.flatMap((entry) => {
+    if (entry.scenarioId.startsWith('NDS-GUARD-')) {
+      return []
+    }
+
+    const scenarioEntry = scenarioEntries.get(entry.scenarioId)
+    if (scenarioEntry === undefined) {
+      return []
+    }
+
+    const guardGaps = scenarioEntry.guards.includes(entry.guard)
+      ? []
+      : [
+          {
+            _tag: 'unmapped-concrete-guard' as const,
+            guard: entry.guard,
+            scenarioId: entry.scenarioId,
+          },
+        ]
+    const requirementGaps = entry.requirementIds
+      .filter((requirementId) => scenarioEntry.requirementIds.includes(requirementId) === false)
+      .map((requirementId) => ({
+        _tag: 'unmapped-concrete-requirement' as const,
+        guard: entry.guard,
+        scenarioId: entry.scenarioId,
+        requirementId,
+      }))
+
+    return [...guardGaps, ...requirementGaps]
+  })
 }
 
 export const scenarioImplementationGaps = ({
@@ -351,13 +955,43 @@ export const invalidScenarioRequirementIdGaps = (
       })),
   )
 
+export const requirementTraceabilityGaps = (
+  scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
+  residuals: ReadonlyArray<TraceabilityResidual> = traceabilityResiduals,
+): ReadonlyArray<ScenarioCoverageGap> => {
+  const mappedRequirementIds = new Set(scenarios.flatMap((entry) => entry.requirementIds))
+  const residualRequirementIds = new Set(
+    residuals
+      .filter((residual) => residual._tag === 'unmapped-requirement')
+      .map((residual) => residual.requirementId),
+  )
+  const missing = vrsRequirementIds
+    .filter((requirementId) => mappedRequirementIds.has(requirementId) === false)
+    .filter((requirementId) => residualRequirementIds.has(requirementId) === false)
+    .map((requirementId) => ({
+      _tag: 'unmapped-requirement' as const,
+      requirementId,
+    }))
+  const stale = [...residualRequirementIds]
+    .filter((requirementId) => mappedRequirementIds.has(requirementId))
+    .map((requirementId) => ({
+      _tag: 'stale-requirement-residual' as const,
+      requirementId,
+    }))
+
+  return [...missing, ...stale]
+}
+
 export const allScenarioTraceabilityGaps = (input: {
   readonly file: string
   readonly implementedScenarioIds: ReadonlySet<ScenarioId>
 }): ReadonlyArray<ScenarioCoverageGap> => [
   ...guardScenarioCoverageGaps(),
   ...concreteScenarioReferenceGaps(),
+  ...placeholderGuardScenarioReferenceGaps(),
+  ...concreteScenarioMatrixGaps(),
   ...invalidScenarioRequirementIdGaps(),
+  ...requirementTraceabilityGaps(),
   ...scenarioImplementationGaps(input),
 ]
 
@@ -370,7 +1004,10 @@ export const assertAllCoreGuardsHaveScenarioEntries = (input?: {
   const gaps = [
     ...guardScenarioCoverageGaps(guardEntries),
     ...concreteScenarioReferenceGaps(guardEntries),
+    ...placeholderGuardScenarioReferenceGaps(guardEntries),
+    ...concreteScenarioMatrixGaps(guardEntries),
     ...invalidScenarioRequirementIdGaps(),
+    ...requirementTraceabilityGaps(),
     ...(input?.file === undefined || input.implementedScenarioIds === undefined
       ? []
       : scenarioImplementationGaps({
@@ -385,12 +1022,20 @@ export const assertAllCoreGuardsHaveScenarioEntries = (input?: {
           case 'missing-guard-scenario':
           case 'unknown-guard-scenario':
             return `${gap._tag}:${gap.guard}`
+          case 'placeholder-guard-scenario-reference':
           case 'missing-declared-guard-scenario-reference':
             return `${gap._tag}:${gap.guard}:${gap.scenarioId}`
+          case 'unmapped-concrete-guard':
+            return `${gap._tag}:${gap.guard}:${gap.scenarioId}`
+          case 'unmapped-concrete-requirement':
+            return `${gap._tag}:${gap.guard}:${gap.scenarioId}:${gap.requirementId}`
           case 'missing-scenario-implementation':
             return `${gap._tag}:${gap.scenarioId}:${gap.file}`
           case 'invalid-scenario-requirement-id':
             return `${gap._tag}:${gap.scenarioId}:${gap.requirementId}`
+          case 'unmapped-requirement':
+          case 'stale-requirement-residual':
+            return `${gap._tag}:${gap.requirementId}`
         }
       })
       .join(', ')
