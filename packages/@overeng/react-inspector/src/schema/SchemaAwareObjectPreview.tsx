@@ -128,7 +128,16 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
     }
 
     const info = schemaCtx.getSchemaInfo()
-    const showName = objectConstructorName !== 'Object'
+    /*
+     * Normally we suppress the "Object " prefix to match the browser-devtools
+     * convention for unnamed objects. But if the schema carries tooltip
+     * content (e.g. a struct annotated with just `description`, no
+     * `title`/`identifier`), we have to render *something* for the tooltip to
+     * attach to — otherwise the description is unreachable on collapsed
+     * roots. Fall back to "Object" in that case.
+     */
+    const hasTooltipContent = info?.hasContent === true
+    const showName = objectConstructorName !== 'Object' || hasTooltipContent
 
     return (
       <React.Fragment>

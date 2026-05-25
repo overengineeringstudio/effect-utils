@@ -322,14 +322,18 @@ export const getConstraintsFromJSONSchema = (
    */
   const seen = new WeakSet<SchemaAST.AST>()
 
+  /*
+   * Recurse first, then write — so outer refinements win on duplicate keys.
+   * Example: `Schema.Number.pipe(between(0, 100), between(10, 50))`. The
+   * outermost refinement is `between(10, 50)`; the user's most specific
+   * intent. Walking inner→outer and using last-write-wins via Object.assign
+   * preserves that intent. Writing first (outer) then recursing into inner
+   * would let `between(0, 100)` clobber the tighter `between(10, 50)`.
+   */
   const collect = (ast: SchemaAST.AST): void => {
     if (seen.has(ast)) return
     seen.add(ast)
 
-    const fragment = ast.annotations[JSONSchemaAnnotationId] as Record<string, unknown> | undefined
-    if (fragment !== undefined) {
-      Object.assign(fragments, fragment)
-    }
     if (ast._tag === 'Refinement') {
       collect(ast.from)
     } else if (ast._tag === 'Transformation') {
@@ -340,6 +344,11 @@ export const getConstraintsFromJSONSchema = (
       } catch {
         /* ignore — Suspend may not be safe to evaluate eagerly */
       }
+    }
+
+    const fragment = ast.annotations[JSONSchemaAnnotationId] as Record<string, unknown> | undefined
+    if (fragment !== undefined) {
+      Object.assign(fragments, fragment)
     }
   }
 
