@@ -183,6 +183,50 @@ describe('@overeng/notion-datasource-sync contracts', () => {
     expect(tombstone._tag).toBe('TombstoneRecorded')
   })
 
+  it('rejects sync events whose tag does not match the event family', () => {
+    const envelope = {
+      eventId: 'event-1',
+      rootId: 'root-1',
+      sequence: '1',
+      codecVersion: 'v1',
+      family: 'TombstoneClassified',
+      eventType: 'TombstoneRecorded',
+      idempotencyKey: 'tombstone:page-1',
+      surface: 'page:page-1',
+      causedByEventIds: [],
+      payloadHash: hash,
+      payload: {
+        _tag: 'VersionedJson',
+        codecVersion: 'v1',
+        canonicalJson: '{}',
+      },
+      observedAt: '2026-05-25T00:00:00.000Z',
+    }
+
+    expect(() =>
+      decode(SyncEvent, {
+        _tag: 'TombstoneRecorded',
+        ...envelope,
+        family: 'RemoteObserved',
+        pageId,
+        reason: 'moved_out',
+      }),
+    ).toThrow()
+
+    expect(() =>
+      decode(SyncEvent, {
+        _tag: 'RemoteWriteSettled',
+        ...envelope,
+        eventId: 'event-2',
+        family: 'ConflictDetected',
+        eventType: 'RemoteWriteSettled',
+        idempotencyKey: 'settled:cmd-1',
+        commandId: 'cmd-1',
+        requestId,
+      }),
+    ).toThrow()
+  })
+
   it('can provide the gateway port as an Effect service', async () => {
     const apiContract = decode(NotionApiContract, {
       _tag: 'NotionApiContract',

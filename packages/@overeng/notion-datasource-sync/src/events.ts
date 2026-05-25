@@ -63,29 +63,33 @@ export const VersionedJson = Schema.TaggedStruct('VersionedJson', {
 }).annotations({ identifier: 'NotionDatasourceSync.VersionedJson' })
 export type VersionedJson = typeof VersionedJson.Type
 
-export const EventEnvelopeFields = {
-  eventId: SyncEventId,
-  rootId: SyncRootId,
-  sequence: Schema.NonNegativeBigInt,
-  codecVersion: EventCodecVersion,
-  family: EventFamily,
-  eventType: Schema.NonEmptyTrimmedString,
-  idempotencyKey: IdempotencyKey,
-  surface: Schema.NullOr(SurfaceKey),
-  causedByEventIds: Schema.Array(SyncEventId),
-  payloadHash: Hash,
-  payload: VersionedJson,
-  observedAt: Schema.DateTimeUtc,
-} as const
+export const eventEnvelopeFields = <TFamily extends EventFamily, TEventType extends string>(
+  family: TFamily,
+  eventType: TEventType,
+) =>
+  ({
+    eventId: SyncEventId,
+    rootId: SyncRootId,
+    sequence: Schema.NonNegativeBigInt,
+    codecVersion: EventCodecVersion,
+    family: Schema.Literal(family),
+    eventType: Schema.Literal(eventType),
+    idempotencyKey: IdempotencyKey,
+    surface: Schema.NullOr(SurfaceKey),
+    causedByEventIds: Schema.Array(SyncEventId),
+    payloadHash: Hash,
+    payload: VersionedJson,
+    observedAt: Schema.DateTimeUtc,
+  }) as const
 
 export const ApiContractObserved = Schema.TaggedStruct('ApiContractObserved', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('CompatibilityChecked', 'ApiContractObserved'),
   apiContract: NotionApiContract,
 }).annotations({ identifier: 'NotionDatasourceSync.ApiContractObserved' })
 export type ApiContractObserved = typeof ApiContractObserved.Type
 
 export const DataSourceObserved = Schema.TaggedStruct('DataSourceObserved', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('RemoteObserved', 'DataSourceObserved'),
   dataSourceId: DataSourceId,
   requestId: NotionRequestId,
   schemaHash: Hash,
@@ -93,7 +97,7 @@ export const DataSourceObserved = Schema.TaggedStruct('DataSourceObserved', {
 export type DataSourceObserved = typeof DataSourceObserved.Type
 
 export const RowObserved = Schema.TaggedStruct('RowObserved', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('RemoteObserved', 'RowObserved'),
   dataSourceId: DataSourceId,
   pageId: PageId,
   propertiesHash: Hash,
@@ -103,7 +107,7 @@ export const RowObserved = Schema.TaggedStruct('RowObserved', {
 export type RowObserved = typeof RowObserved.Type
 
 export const LocalIntentAccepted = Schema.TaggedStruct('LocalIntentAccepted', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('LocalIntentAccepted', 'LocalIntentAccepted'),
   commandId: CommandId,
   pageId: Schema.optional(PageId),
   dataSourceId: Schema.optional(DataSourceId),
@@ -112,21 +116,21 @@ export const LocalIntentAccepted = Schema.TaggedStruct('LocalIntentAccepted', {
 export type LocalIntentAccepted = typeof LocalIntentAccepted.Type
 
 export const RemoteWritePlanned = Schema.TaggedStruct('RemoteWritePlanned', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('CommandEnqueued', 'RemoteWritePlanned'),
   commandId: CommandId,
   commandTag: Schema.String,
 }).annotations({ identifier: 'NotionDatasourceSync.RemoteWritePlanned' })
 export type RemoteWritePlanned = typeof RemoteWritePlanned.Type
 
 export const RemoteWriteSettled = Schema.TaggedStruct('RemoteWriteSettled', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('CommandSettled', 'RemoteWriteSettled'),
   commandId: CommandId,
   requestId: NotionRequestId,
 }).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteSettled' })
 export type RemoteWriteSettled = typeof RemoteWriteSettled.Type
 
 export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('ConflictDetected', 'ConflictRaised'),
   pageId: PageId,
   propertyId: Schema.optional(PropertyId),
   baseHash: Hash,
@@ -136,7 +140,7 @@ export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
 export type ConflictRaised = typeof ConflictRaised.Type
 
 export const TombstoneRecorded = Schema.TaggedStruct('TombstoneRecorded', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('TombstoneClassified', 'TombstoneRecorded'),
   pageId: PageId,
   reason: Schema.Literal(
     'remote_trash',
@@ -149,7 +153,7 @@ export const TombstoneRecorded = Schema.TaggedStruct('TombstoneRecorded', {
 export type TombstoneRecorded = typeof TombstoneRecorded.Type
 
 export const TombstoneCandidateObserved = Schema.TaggedStruct('TombstoneCandidateObserved', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('RemoteObserved', 'TombstoneCandidateObserved'),
   pageId: PageId,
   reason: Schema.Literal(
     'query_absence_unclassified',
@@ -160,7 +164,7 @@ export const TombstoneCandidateObserved = Schema.TaggedStruct('TombstoneCandidat
 export type TombstoneCandidateObserved = typeof TombstoneCandidateObserved.Type
 
 export const DecodeDriftBlocked = Schema.TaggedStruct('DecodeDriftBlocked', {
-  ...EventEnvelopeFields,
+  ...eventEnvelopeFields('CompatibilityChecked', 'DecodeDriftBlocked'),
   apiVersion: SupportedNotionApiVersion,
   surface: Schema.String,
   message: Schema.String,
