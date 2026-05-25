@@ -1,3 +1,5 @@
+import { DatabaseSync } from 'node:sqlite'
+
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -13,6 +15,7 @@ import {
 import {
   AbsolutePath,
   BodyPointer,
+  PageId,
   WorkspaceRelativePath,
   type Hash as HashType,
   type PageId as PageIdType,
@@ -110,6 +113,47 @@ const localBodyChange = ({
     contentHash,
     observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
   })
+
+type QueryCheckpointRow = {
+  readonly data_source_id: string
+  readonly query_contract_hash: string
+  readonly next_cursor: string | null
+  readonly complete: 0 | 1
+  readonly capped_at_limit: 0 | 1
+  readonly contract_changed: 0 | 1
+  readonly high_watermark: string | null
+}
+
+const readQueryCheckpointRows = (path: string): ReadonlyArray<QueryCheckpointRow> => {
+  const database = new DatabaseSync(path, { readOnly: true })
+  try {
+    return database
+      .prepare(
+        `SELECT data_source_id,
+                query_contract_hash,
+                next_cursor,
+                complete,
+                capped_at_limit,
+                contract_changed,
+                high_watermark
+         FROM query_scan_checkpoint
+         WHERE root_id = ?
+         ORDER BY data_source_id, query_contract_hash`,
+      )
+      .all(testIds.rootId)
+      .map((row) => ({
+        data_source_id: String(row.data_source_id),
+        query_contract_hash: String(row.query_contract_hash),
+        next_cursor: row.next_cursor === null ? null : String(row.next_cursor),
+        complete: row.complete === 1 ? 1 : 0,
+        capped_at_limit: row.capped_at_limit === 1 ? 1 : 0,
+        contract_changed: row.contract_changed === 1 ? 1 : 0,
+        high_watermark: row.high_watermark === null ? null : String(row.high_watermark),
+      }))
+  } finally {
+    database.close()
+  }
+}
 
 const context = (input: {
   readonly store: CliContext['store']
@@ -460,10 +504,11 @@ describe('watch daemon surface', () => {
     }
   })
 
-  it('drains same-bucket query pages without skipping rows that share ordering timestamps', async () => {
+  it('drains fake cursor pages without skipping same-timestamp rows', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ now: clock.now })
     const queryContract = { ...defaultQueryContract(), pageSize: 1 }
+    const thirdPageId = decode(PageId, 'page-3')
     const gateway = makeFakeGatewayHarness({
       pages: [
         pageSnapshot({ pageId: testIds.pageId }),
@@ -471,14 +516,23 @@ describe('watch daemon surface', () => {
           pageId: testIds.otherPageId,
           propertiesHash: hash('properties-b'),
         }),
+        pageSnapshot({
+          pageId: thirdPageId,
+          propertiesHash: hash('properties-c'),
+        }),
       ],
       propertyPages: [
         propertyPage(),
         propertyPage({ pageId: testIds.otherPageId, itemHash: hash('property-b-base') }),
+        propertyPage({ pageId: thirdPageId, itemHash: hash('property-c-base') }),
       ],
     })
     const ports = makeHarnessPorts({
-      bodyPages: [bodyPage(), bodyPage({ pageId: testIds.otherPageId, bodyHash: hash('body-b') })],
+      bodyPages: [
+        bodyPage(),
+        bodyPage({ pageId: testIds.otherPageId, bodyHash: hash('body-b') }),
+        bodyPage({ pageId: thirdPageId, bodyHash: hash('body-c') }),
+      ],
     })
     const statePath = `${storeFixture.path}.watch.json`
 
@@ -504,20 +558,23 @@ describe('watch daemon surface', () => {
       )
 
       expect(result.sync.pull.observation.query).toMatchObject({
-        pages: 2,
-        rows: 2,
+        pages: 3,
+        rows: 3,
         complete: true,
       })
-      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toEqual([
-        expect.objectContaining({ pageId: testIds.pageId }),
-        expect.objectContaining({ pageId: testIds.otherPageId }),
+      const projectedRows = storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows
+      expect(projectedRows.map((row) => row.pageId)).toEqual([
+        testIds.pageId,
+        testIds.otherPageId,
+        thirdPageId,
       ])
+      expect(new Set(projectedRows.map((row) => row.propertiesHash)).size).toBe(3)
     } finally {
       storeFixture.cleanup()
     }
   })
 
-  it('persists incomplete query cursor evidence for partial daemon cycles', async () => {
+  it('persists capped incomplete query checkpoint evidence when the fake cap has no resume cursor', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ now: clock.now })
     const gateway = makeFakeGatewayHarness({
@@ -567,6 +624,17 @@ describe('watch daemon surface', () => {
         lastCompleteCycle: 1,
         repair: { _tag: 'none' },
       })
+      expect(readQueryCheckpointRows(storeFixture.path)).toEqual([
+        {
+          data_source_id: testIds.dataSourceId,
+          query_contract_hash: result.sync.pull.observation.query.queryContractHash,
+          next_cursor: null,
+          complete: 0,
+          capped_at_limit: 1,
+          contract_changed: 0,
+          high_watermark: null,
+        },
+      ])
     } finally {
       storeFixture.cleanup()
     }
@@ -745,13 +813,14 @@ describe('watch daemon surface', () => {
     }
   })
 
-  it('persists partial-cycle state when cancellation happens during an outbox attempt', async () => {
+  it('settles the current outbox attempt before honoring cancellation at the cycle boundary', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ now: clock.now })
     const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
     const baseBody = makeFakePageBodySyncPort({ pages: [bodyPage()] })
     const statePath = `${storeFixture.path}.watch.json`
     const controller = new AbortController()
+    let bodyPushes = 0
 
     try {
       initOneShotSync({
@@ -772,6 +841,7 @@ describe('watch daemon surface', () => {
         ...baseBody,
         push: (command: Parameters<typeof baseBody.push>[0]) =>
           Effect.sync(() => {
+            bodyPushes += 1
             controller.abort()
           }).pipe(Effect.zipRight(baseBody.push(command))),
       }
@@ -806,6 +876,7 @@ describe('watch daemon surface', () => {
         lastStartedAt: fixedObservedAt,
       })
       expect(persisted.lastCompletedAt).toBeUndefined()
+      expect(bodyPushes).toBe(1)
       expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([
         expect.objectContaining({ state: 'settled' }),
       ])
