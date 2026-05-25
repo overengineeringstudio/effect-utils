@@ -66,6 +66,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync**: Harden the Milestone 6C CLI/watch surface so the published entrypoint targets Node for `node:sqlite`, watch runs as a daemon loop by default, watcher leases are process-unique, retry backoff is honored after cycle failures, and CLI argument errors emit structured diagnostics.
 - **@overeng/notion-datasource-sync**: Keep Milestone 6B manual/keep-local conflict resolutions open when guard-blocked or stale against the recorded conflict snapshot, avoiding silent conflict closure without an enqueued durable write.
 - **@overeng/notion-datasource-sync**: Harden Milestone 6A one-shot orchestration so capability and planner guard blocks persist durably, idempotent summaries count inserted records, and complete uncapped pulls emit absence candidates for disappeared rows.
 - **@overeng/notion-datasource-sync**: Preserve recurrent Milestone 6A capability and page-property failure transitions after recovery, and count deduped body-conflict summaries from inserted events.

@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-import { Effect, Schema } from 'effect'
+import { Duration, Effect, Schema } from 'effect'
 
 import type { QueryContract } from './commands.ts'
 import type { AbsolutePath, DataSourceId } from './domain.ts'
@@ -74,6 +75,8 @@ export type WatchDaemonOptions = {
   readonly maxExecutorSteps?: number
   readonly leaseToken?: string
   readonly leaseDurationMs?: number
+  readonly instanceId?: string
+  readonly sleep?: (millis: number) => Effect.Effect<void>
   readonly now?: () => Date
   readonly signal?: AbortSignal
 }
@@ -118,6 +121,16 @@ const modeBackoffMillis = (mode: WatchDaemonMode): number => {
       return 15_000
   }
 }
+
+export const makeWatchDaemonInstanceId = (): string => randomUUID()
+
+export const defaultWatchDaemonLeaseToken = ({
+  rootId,
+  instanceId,
+}: {
+  readonly rootId: SyncRootId
+  readonly instanceId: string
+}): string => `watch:${rootId}:${instanceId}`
 
 const initialState = (rootId: SyncRootId): WatchDaemonState =>
   decodeState({
@@ -214,6 +227,7 @@ export const runWatchDaemonCycle = Effect.fn(
     Effect.gen(function* () {
       const mode = options.mode ?? 'normal'
       const now = options.now ?? (() => new Date())
+      const instanceId = options.instanceId ?? makeWatchDaemonInstanceId()
       const previous = yield* readWatchDaemonState({
         rootId: options.rootId,
         statePath: options.statePath,
@@ -248,7 +262,9 @@ export const runWatchDaemonCycle = Effect.fn(
         queryContract: options.queryContract,
         schemaProperties: options.schemaProperties,
         maxExecutorSteps: options.maxExecutorSteps ?? 8,
-        leaseToken: options.leaseToken ?? `watch:${options.rootId}`,
+        leaseToken:
+          options.leaseToken ??
+          defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId }),
         leaseDurationMs: options.leaseDurationMs ?? 60_000,
         now,
       }).pipe(
@@ -306,36 +322,73 @@ export const runWatchDaemon = Effect.fn('NotionDatasourceSync.WatchDaemon.runWat
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   > =>
     Effect.gen(function* () {
-      const maxCycles = options.maxCycles ?? 1
+      const maxCycles = options.maxCycles
+      const mode = options.mode ?? 'normal'
+      const sleep = options.sleep ?? ((millis: number) => Effect.sleep(Duration.millis(millis)))
+      const instanceId = options.instanceId ?? makeWatchDaemonInstanceId()
       let completed = 0
+      let attempted = 0
       let state = yield* readWatchDaemonState({
         rootId: options.rootId,
         statePath: options.statePath,
       })
 
-      for (let index = 0; index < maxCycles; index += 1) {
-        const cycle = yield* runWatchDaemonCycle(options).pipe(
-          Effect.catchTag('WatchDaemonCancelled', () => Effect.succeed(undefined)),
+      for (;;) {
+        if (maxCycles !== undefined && attempted >= maxCycles) break
+
+        attempted += 1
+        const cycle = yield* runWatchDaemonCycle({ ...options, instanceId }).pipe(
+          Effect.map((result) => ({ _tag: 'completed' as const, result })),
+          Effect.catchTag('WatchDaemonCancelled', () =>
+            Effect.succeed({ _tag: 'cancelled' as const }),
+          ),
+          Effect.catchAll(() => Effect.succeed({ _tag: 'retry' as const })),
         )
-        if (cycle === undefined) {
+
+        if (cycle._tag === 'cancelled') {
           return {
             _tag: 'WatchDaemonRunResult',
             rootId: options.rootId,
-            cycles: maxCycles,
+            cycles: attempted,
             completed,
             cancelled: true,
             lastStatus: state.lastStatus,
             state,
           }
         }
-        completed += 1
-        state = cycle.state
+
+        if (cycle._tag === 'completed') {
+          completed += 1
+          state = cycle.result.state
+        } else {
+          state = yield* readWatchDaemonState({
+            rootId: options.rootId,
+            statePath: options.statePath,
+          })
+        }
+
+        if (maxCycles === undefined || attempted < maxCycles) {
+          const delay =
+            state.repair._tag === 'retry' ? state.repair.retryAfterMillis : modeBackoffMillis(mode)
+          if (options.signal?.aborted === true) {
+            return {
+              _tag: 'WatchDaemonRunResult',
+              rootId: options.rootId,
+              cycles: attempted,
+              completed,
+              cancelled: true,
+              lastStatus: state.lastStatus,
+              state,
+            }
+          }
+          yield* sleep(delay)
+        }
       }
 
       return {
         _tag: 'WatchDaemonRunResult',
         rootId: options.rootId,
-        cycles: maxCycles,
+        cycles: attempted,
         completed,
         cancelled: false,
         lastStatus: state.lastStatus,

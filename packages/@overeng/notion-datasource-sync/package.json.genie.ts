@@ -41,6 +41,9 @@ export default packageJson(
     exports: {
       '.': './src/mod.ts',
     },
+    engines: {
+      node: '>=24.0.0',
+    },
     publishConfig: {
       access: 'public',
       bin: {
