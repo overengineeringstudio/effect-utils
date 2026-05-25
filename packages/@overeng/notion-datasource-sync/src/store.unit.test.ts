@@ -1,19 +1,15 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import {
-  Hash,
-  SyncEvent,
-  SyncRootId,
-  hashStoreBytes,
-  openNotionSyncStore,
-  type NotionSyncStore,
-  type SyncEvent as SyncEventType,
-} from './mod.ts'
+import { Hash } from './domain.ts'
+import { SyncEvent, SyncRootId, type SyncEvent as SyncEventType } from './events.ts'
+import { hashStoreBytes } from './store-projections.ts'
+import { openNotionSyncStore, type NotionSyncStore } from './store.ts'
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)
@@ -75,6 +71,7 @@ const remoteWritePlanned = (overrides: {
   readonly commandId: string
   readonly intentEventId?: string
   readonly desiredHash?: string
+  readonly surface?: string
   readonly rootId?: SyncRootId
 }) =>
   decode(SyncEvent, {
@@ -85,7 +82,7 @@ const remoteWritePlanned = (overrides: {
       eventType: 'RemoteWritePlanned',
       idempotencyKey: overrides.idempotencyKey,
       canonicalJson: `{"commandId":"${overrides.commandId}"}`,
-      surface: 'page:page-1',
+      surface: overrides.surface ?? 'page:page-1',
       ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
     }),
     commandId: overrides.commandId,
@@ -150,6 +147,213 @@ const remoteWriteSettled = (overrides: {
     settlementKind: 'verified-success',
   })
 
+const dataSourceObserved = (overrides: {
+  readonly eventId: string
+  readonly idempotencyKey: string
+  readonly rootId?: SyncRootId
+  readonly dataSourceId?: string
+  readonly schemaHash?: string
+  readonly schemaProperties?: ReadonlyArray<{
+    readonly propertyId: string
+    readonly configHash: string
+    readonly writeClass: 'writable' | 'computed' | 'unsupported'
+  }>
+}) =>
+  decode(SyncEvent, {
+    _tag: 'DataSourceObserved',
+    ...eventBase({
+      eventId: overrides.eventId,
+      family: 'RemoteObserved',
+      eventType: 'DataSourceObserved',
+      idempotencyKey: overrides.idempotencyKey,
+      canonicalJson: JSON.stringify({
+        schemaProperties: overrides.schemaProperties ?? [
+          { propertyId: 'property-1', configHash: hash('c'), writeClass: 'writable' },
+        ],
+      }),
+      surface: `data-source:${overrides.dataSourceId ?? 'data-source-1'}`,
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
+    }),
+    dataSourceId: overrides.dataSourceId ?? 'data-source-1',
+    requestId: 'request-1',
+    schemaHash: overrides.schemaHash ?? hash('5'),
+  })
+
+const rowObserved = (overrides: {
+  readonly eventId: string
+  readonly idempotencyKey: string
+  readonly rootId?: SyncRootId
+  readonly dataSourceId?: string
+  readonly pageId?: string
+  readonly propertiesHash?: string
+  readonly bodyHash?: string
+  readonly inTrash?: boolean
+}) =>
+  decode(SyncEvent, {
+    _tag: 'RowObserved',
+    ...eventBase({
+      eventId: overrides.eventId,
+      family: 'RemoteObserved',
+      eventType: 'RowObserved',
+      idempotencyKey: overrides.idempotencyKey,
+      canonicalJson: JSON.stringify({
+        bodyPath: `${overrides.pageId ?? 'page-1'}.nmd`,
+        sidecarIdentityProven: true,
+        ownWriteMaterializationIds: ['materialized-1'],
+      }),
+      surface: `page:${overrides.pageId ?? 'page-1'}`,
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
+    }),
+    dataSourceId: overrides.dataSourceId ?? 'data-source-1',
+    pageId: overrides.pageId ?? 'page-1',
+    propertiesHash: overrides.propertiesHash ?? hash('9'),
+    bodyPointer: {
+      _tag: 'BodyPointer',
+      pageId: overrides.pageId ?? 'page-1',
+      bodyHash: overrides.bodyHash ?? hash('b'),
+      observedAt,
+      safety: {
+        truncated: false,
+        selection: 'safe',
+        wouldDeleteChildren: false,
+        syncedPageUnsupported: false,
+        adapterConflict: false,
+        adapterMutationSurfaces: ['body'],
+      },
+    },
+    inTrash: overrides.inTrash ?? false,
+  })
+
+const pagePropertyCheckpoint = (overrides: {
+  readonly eventId: string
+  readonly idempotencyKey: string
+  readonly rootId?: SyncRootId
+  readonly pageId?: string
+  readonly propertyId?: string
+  readonly valueHash?: string
+  readonly availability?: 'complete' | 'paginated-incomplete'
+}) =>
+  decode(SyncEvent, {
+    _tag: 'PagePropertyCheckpointRecorded',
+    ...eventBase({
+      eventId: overrides.eventId,
+      family: 'QueryScanRecorded',
+      eventType: 'PagePropertyCheckpointRecorded',
+      idempotencyKey: overrides.idempotencyKey,
+      canonicalJson: JSON.stringify({
+        availability: overrides.availability ?? 'complete',
+      }),
+      surface: `page:${overrides.pageId ?? 'page-1'}:property:${overrides.propertyId ?? 'property-1'}`,
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
+    }),
+    pageId: overrides.pageId ?? 'page-1',
+    propertyId: overrides.propertyId ?? 'property-1',
+    nextCursor: null,
+    complete: overrides.availability !== 'paginated-incomplete',
+    valueHash: overrides.valueHash ?? hash('8'),
+  })
+
+const queryCheckpoint = (overrides: {
+  readonly eventId: string
+  readonly idempotencyKey: string
+  readonly rootId?: SyncRootId
+  readonly dataSourceId?: string
+  readonly queryContractHash?: string
+  readonly complete?: boolean
+  readonly cappedAtLimit?: boolean
+  readonly contractChanged?: boolean
+}) =>
+  decode(SyncEvent, {
+    _tag: 'QueryScanCheckpointRecorded',
+    ...eventBase({
+      eventId: overrides.eventId,
+      family: 'QueryScanRecorded',
+      eventType: 'QueryScanCheckpointRecorded',
+      idempotencyKey: overrides.idempotencyKey,
+      canonicalJson: JSON.stringify({
+        cappedAtLimit: overrides.cappedAtLimit ?? false,
+        contractChanged: overrides.contractChanged ?? false,
+      }),
+      surface: `data-source:${overrides.dataSourceId ?? 'data-source-1'}:query:${
+        overrides.queryContractHash ?? hash('7')
+      }`,
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
+    }),
+    dataSourceId: overrides.dataSourceId ?? 'data-source-1',
+    queryContractHash: overrides.queryContractHash ?? hash('7'),
+    nextCursor: null,
+    complete: overrides.complete ?? true,
+    highWatermark: null,
+  })
+
+const tombstoneCandidate = (overrides: {
+  readonly eventId: string
+  readonly idempotencyKey: string
+  readonly rootId?: SyncRootId
+  readonly pageId?: string
+  readonly dataSourceId?: string
+  readonly queryContractHash?: string
+  readonly filtered?: boolean
+  readonly directRetrieve?: string
+}) =>
+  decode(SyncEvent, {
+    _tag: 'TombstoneCandidateObserved',
+    ...eventBase({
+      eventId: overrides.eventId,
+      family: 'RemoteObserved',
+      eventType: 'TombstoneCandidateObserved',
+      idempotencyKey: overrides.idempotencyKey,
+      canonicalJson: JSON.stringify({
+        pageId: overrides.pageId ?? 'page-1',
+        dataSourceId: overrides.dataSourceId ?? 'data-source-1',
+        queryContractHash: overrides.queryContractHash ?? hash('7'),
+        membershipScope: overrides.filtered === true ? 'explicit-filter' : 'all-data-source-rows',
+        filtered: overrides.filtered ?? false,
+        classified: overrides.directRetrieve !== undefined,
+        directRetrieve: overrides.directRetrieve ?? 'not-run',
+      }),
+      surface: `page:${overrides.pageId ?? 'page-1'}`,
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
+    }),
+    pageId: overrides.pageId ?? 'page-1',
+    reason: 'query_absence_unclassified',
+  })
+
+const apiContractObserved = (eventId = 'api-event') =>
+  decode(SyncEvent, {
+    _tag: 'ApiContractObserved',
+    ...eventBase({
+      eventId,
+      family: 'CompatibilityChecked',
+      eventType: 'ApiContractObserved',
+      idempotencyKey: `api:${eventId}`,
+      canonicalJson: '{"api":true}',
+    }),
+    apiContract: {
+      _tag: 'NotionApiContract',
+      apiVersion: '2026-03-11',
+      clientVersion: 'test-client',
+      supportedCapabilities: ['page_property_update', 'data_source_query'],
+    },
+  })
+
+const capabilityChecked = (eventId: string, capability: string, supported = true) =>
+  decode(SyncEvent, {
+    _tag: 'CapabilityPreflightChecked',
+    ...eventBase({
+      eventId,
+      family: 'CompatibilityChecked',
+      eventType: 'CapabilityPreflightChecked',
+      idempotencyKey: `capability:${capability}:${eventId}`,
+      canonicalJson: `{"capability":"${capability}"}`,
+      surface: 'data-source:data-source-1',
+    }),
+    dataSourceId: 'data-source-1',
+    capability,
+    supported,
+    requestId: `request-${eventId}`,
+  })
+
 const withStore = <TValue>(f: (store: NotionSyncStore) => TValue): TValue => {
   const store = openNotionSyncStore({
     path: tempDatabasePath(),
@@ -173,6 +377,53 @@ describe('Notion sync SQLite store', () => {
         busyTimeoutMs: 2_500,
       })
     })
+  })
+
+  it('creates durable planner projection tables during schema migration', () => {
+    const path = tempDatabasePath()
+    const store = openNotionSyncStore({
+      path,
+      busyTimeoutMs: 2_500,
+      now: () => new Date(observedAt),
+    })
+    store.close()
+
+    const db = new DatabaseSync(path, { readBigInts: true })
+    try {
+      const tables = db
+        .prepare(
+          `SELECT name
+           FROM sqlite_master
+           WHERE type = 'table'
+             AND name IN (
+               'data_source_projection',
+               'schema_property_projection',
+               'row_projection',
+               'property_shadow_projection',
+               'body_pointer_projection',
+               'query_absence_projection'
+             )
+           ORDER BY name`,
+        )
+        .all()
+        .map((row) => String(row.name))
+      const queryColumns = db
+        .prepare(`PRAGMA table_info(query_scan_checkpoint)`)
+        .all()
+        .map((row) => String(row.name))
+
+      expect(tables).toEqual([
+        'body_pointer_projection',
+        'data_source_projection',
+        'property_shadow_projection',
+        'query_absence_projection',
+        'row_projection',
+        'schema_property_projection',
+      ])
+      expect(queryColumns).toEqual(expect.arrayContaining(['capped_at_limit', 'contract_changed']))
+    } finally {
+      db.close()
+    }
   })
 
   it('assigns sequence, computes payload hash, dedupes idempotency, and replays in order', () => {
@@ -220,6 +471,262 @@ describe('Notion sync SQLite store', () => {
             ],
           ]
         `)
+    })
+  })
+
+  it('projects remote schema, row, property, body, and query evidence into planner snapshots', () => {
+    withStore((store) => {
+      store.appendEvent(apiContractObserved())
+      store.appendEvent(capabilityChecked('event-capability-1', 'page_property_update'))
+      store.appendEvent(capabilityChecked('event-capability-2', 'data_source_query'))
+      store.appendEvent(
+        dataSourceObserved({
+          eventId: 'event-data-source-1',
+          idempotencyKey: 'remote:data-source-1',
+          schemaProperties: [
+            { propertyId: 'property-1', configHash: hash('c'), writeClass: 'writable' },
+          ],
+        }),
+      )
+      store.appendEvent(
+        rowObserved({
+          eventId: 'event-row-1',
+          idempotencyKey: 'remote:row:page-1',
+          propertiesHash: hash('9'),
+          bodyHash: hash('b'),
+        }),
+      )
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-1',
+          idempotencyKey: 'property:page-1:property-1',
+          valueHash: hash('8'),
+        }),
+      )
+      store.appendEvent(
+        queryCheckpoint({
+          eventId: 'event-query-1',
+          idempotencyKey: 'query:data-source-1',
+          queryContractHash: hash('7'),
+          complete: true,
+        }),
+      )
+      store.appendEvent(
+        tombstoneCandidate({
+          eventId: 'event-absence-1',
+          idempotencyKey: 'absence:page-1',
+          queryContractHash: hash('7'),
+          directRetrieve: 'in-trash',
+        }),
+      )
+
+      const beforeRebuild = store.readPlannerProjectionSnapshot(rootId)
+
+      expect(beforeRebuild).toMatchObject({
+        api: { compatibilityProof: 'present' },
+        capabilities: {
+          required: ['data_source_query', 'page_property_update'],
+          supported: ['data_source_query', 'page_property_update'],
+          preflight: 'passed',
+        },
+        schema: [
+          {
+            dataSourceId: 'data-source-1',
+            propertyId: 'property-1',
+            schemaHash: hash('5'),
+            configHash: hash('c'),
+            writeClass: 'writable',
+          },
+        ],
+        rows: [
+          {
+            pageId: 'page-1',
+            dataSourceId: 'data-source-1',
+            propertiesHash: hash('9'),
+            inTrash: false,
+          },
+        ],
+        properties: [
+          {
+            pageId: 'page-1',
+            propertyId: 'property-1',
+            baseHash: hash('8'),
+            remoteHash: hash('8'),
+            availability: 'complete',
+            pendingLocal: undefined,
+          },
+        ],
+        bodies: [
+          {
+            pageId: 'page-1',
+            path: 'page-1.nmd',
+            baseHash: hash('b'),
+            currentHash: hash('b'),
+            sidecarIdentityProven: true,
+            ownWriteMaterializationIds: ['materialized-1'],
+            safety: { selection: 'safe', adapterMutationSurfaces: ['body'] },
+          },
+        ],
+        queries: [
+          {
+            dataSourceId: 'data-source-1',
+            pageId: 'page-1',
+            queryContractHash: hash('7'),
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              membershipScope: 'all-data-source-rows',
+              filtered: false,
+              directRetrieve: 'in-trash',
+            },
+          },
+        ],
+        tombstones: [
+          {
+            pageId: 'page-1',
+            state: 'candidate',
+            directRetrieve: 'in-trash',
+          },
+        ],
+      })
+
+      store.clearProjectionTables()
+      store.rebuildProjections(rootId)
+
+      expect(store.readPlannerProjectionSnapshot(rootId)).toEqual(beforeRebuild)
+    })
+  })
+
+  it('keeps pending property intent visible after later remote property observation', () => {
+    withStore((store) => {
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-base',
+          idempotencyKey: 'property:page-1:property-1:base',
+          valueHash: hash('a'),
+        }),
+      )
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-local-intent',
+          idempotencyKey: 'command:cmd-1',
+          commandId: 'cmd-1',
+          intentEventId: 'intent-property-1',
+          desiredHash: hash('b'),
+          surface: 'page:page-1:property:property-1',
+        }),
+      )
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-remote',
+          idempotencyKey: 'property:page-1:property-1:remote',
+          valueHash: hash('c'),
+        }),
+      )
+
+      expect(store.readPlannerProjectionSnapshot(rootId).properties).toEqual([
+        {
+          pageId: 'page-1',
+          propertyId: 'property-1',
+          baseHash: hash('a'),
+          remoteHash: hash('c'),
+          availability: 'complete',
+          pendingLocal: {
+            intentEventId: 'intent-property-1',
+            targetHash: hash('b'),
+          },
+        },
+      ])
+    })
+  })
+
+  it('scopes query absence evidence to exact root, data source, page, and query identity', () => {
+    withStore((store) => {
+      store.appendEvent(
+        queryCheckpoint({
+          eventId: 'event-query-root-1',
+          idempotencyKey: 'query:root-1:data-source-1',
+          dataSourceId: 'data-source-1',
+          queryContractHash: hash('7'),
+          complete: true,
+        }),
+      )
+      store.appendEvent(
+        queryCheckpoint({
+          eventId: 'event-query-other-source',
+          idempotencyKey: 'query:root-1:data-source-2',
+          dataSourceId: 'data-source-2',
+          queryContractHash: hash('7'),
+          complete: false,
+          cappedAtLimit: true,
+        }),
+      )
+      store.appendEvent(
+        tombstoneCandidate({
+          eventId: 'event-absence-root-1',
+          idempotencyKey: 'absence:root-1:page-1',
+          pageId: 'page-1',
+          dataSourceId: 'data-source-1',
+          queryContractHash: hash('7'),
+          directRetrieve: 'in-trash',
+        }),
+      )
+      store.appendEvent(
+        tombstoneCandidate({
+          eventId: 'event-absence-root-1-other-source',
+          idempotencyKey: 'absence:root-1:page-1:source-2',
+          pageId: 'page-1',
+          dataSourceId: 'data-source-2',
+          queryContractHash: hash('7'),
+          filtered: true,
+          directRetrieve: 'accessible',
+        }),
+      )
+      store.appendEvent(
+        tombstoneCandidate({
+          eventId: 'event-absence-root-2',
+          idempotencyKey: 'absence:root-2:page-1',
+          rootId: otherRootId,
+          pageId: 'page-1',
+          dataSourceId: 'data-source-1',
+          queryContractHash: hash('7'),
+          directRetrieve: 'unknown',
+        }),
+      )
+
+      expect(store.readPlannerProjectionSnapshot(rootId).queries).toEqual([
+        {
+          dataSourceId: 'data-source-1',
+          pageId: 'page-1',
+          queryContractHash: hash('7'),
+          completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+          absence: {
+            classified: true,
+            membershipScope: 'all-data-source-rows',
+            filtered: false,
+            directRetrieve: 'in-trash',
+          },
+        },
+        {
+          dataSourceId: 'data-source-2',
+          pageId: 'page-1',
+          queryContractHash: hash('7'),
+          completeness: { terminal: false, cappedAtLimit: true, contractChanged: false },
+          absence: {
+            classified: true,
+            membershipScope: 'explicit-filter',
+            filtered: true,
+            directRetrieve: 'accessible',
+          },
+        },
+      ])
+      expect(store.readPlannerProjectionSnapshot(otherRootId).queries).toMatchObject([
+        {
+          dataSourceId: 'data-source-1',
+          pageId: 'page-1',
+          absence: { directRetrieve: 'unknown' },
+        },
+      ])
     })
   })
 
@@ -501,11 +1008,33 @@ describe('Notion sync SQLite store', () => {
           rootId: otherRootId,
         }),
       )
+      store.appendEvent(
+        rowObserved({
+          eventId: 'root-1-row-1',
+          idempotencyKey: 'root-1:row:page-1',
+          rootId,
+          pageId: 'page-1',
+        }),
+      )
+      store.appendEvent(
+        rowObserved({
+          eventId: 'root-2-row-1',
+          idempotencyKey: 'root-2:row:page-2',
+          rootId: otherRootId,
+          pageId: 'page-2',
+        }),
+      )
 
       store.rebuildProjections(rootId)
 
       expect(store.readOutbox(rootId).map((row) => row.commandId)).toEqual(['cmd-1'])
       expect(store.readOutbox(otherRootId).map((row) => row.commandId)).toEqual(['cmd-2'])
+      expect(store.readPlannerProjectionSnapshot(rootId).rows.map((row) => row.pageId)).toEqual([
+        'page-1',
+      ])
+      expect(
+        store.readPlannerProjectionSnapshot(otherRootId).rows.map((row) => row.pageId),
+      ).toEqual(['page-2'])
     })
   })
 

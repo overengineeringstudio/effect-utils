@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **@overeng/notion-datasource-sync docs**: Add the initial VRS source of truth and derived E2E plan for a standalone bidirectional Notion data-source sync package, including SQLite authority, guard matrix, schema/delete/watch semantics, and live verification strategy.
+- **@overeng/notion-datasource-sync**: Add the Milestone 4A durable planner projection backbone with rebuildable SQLite tables for data sources, schema properties, rows, property shadows, body pointers, query absence evidence, and pending local property intent snapshots.
 - **@overeng/notion-datasource-sync**: Add the Milestone 3C E2E harness foundation with typed scenario/guard traceability metadata, fake gateway/body/workspace/store composition helpers, deterministic fake-service E2E coverage, and a secret-gated live Notion cleanup-ledger skeleton.
 - **@overeng/notion-datasource-sync**: Add the Milestone 3A gateway foundation with a typed service adapter, in-memory fake Notion gateway, capability/API-version normalization, pagination/query-cap simulation, permission ambiguity, and read-after-write mismatch fixtures.
 - **@overeng/notion-datasource-sync**: Add the Milestone 3B body adapter and local workspace contract foundation, including fake ports, body-only guard results, canonical root-relative path claims, candidate-only local deletes, and own-write materialization suppression tokens.
