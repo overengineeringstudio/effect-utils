@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
+  otelCorrelationSpanAttributes,
   otelServiceNameForCliArgv,
   otelServiceNames,
+  spanAttr,
   spanLabel,
   spanNames,
 } from './observability.ts'
@@ -59,6 +61,20 @@ describe('notion datasource sync observability', () => {
       'patchPageProperties:1234567890abcdef',
     )
     expect(spanLabel('retrievePageProperty', 'page-1234567890abcdef', 'prop')).toHaveLength(39)
+  })
+
+  it('keeps otel run correlation queryable on the command span', () => {
+    expect(
+      otelCorrelationSpanAttributes({
+        agentRunId: 'agent-run-direct',
+        resourceAttributes: 'agent.iteration.id=agent-run-resource',
+      }),
+    ).toEqual({ [spanAttr.agentIterationId]: 'agent-run-direct' })
+    expect(
+      otelCorrelationSpanAttributes({
+        resourceAttributes: 'deployment.environment=test,agent.iteration.id=agent-run-resource',
+      }),
+    ).toEqual({ [spanAttr.agentIterationId]: 'agent-run-resource' })
   })
 
   it('uses the shared span catalog for all touched Effect spans', () => {
