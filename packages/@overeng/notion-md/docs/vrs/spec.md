@@ -4,7 +4,7 @@ This document specifies the Notion Markdown sync system. It builds on [requireme
 
 ## Status
 
-Draft -- the implemented `@overeng/notion-md` package covers the core body/property sync path, strict `.nmd` frontmatter, content-addressed local state, guarded push/sync/watch behavior, batch multi-file and recursive folder orchestration, Effect Platform file watching, and live Notion E2E coverage. File bytes, comment projection, full data-source property merging, and webhook delivery are designed surfaces that remain outside the implemented core.
+Draft -- the implemented `@overeng/notion-md` package covers the core body/property sync path, strict `.nmd` frontmatter, content-addressed local state, guarded push/sync/watch behavior, batch multi-file and recursive folder orchestration, Effect Platform file watching, and live Notion E2E coverage. File bytes, comment projection, and webhook delivery are designed surfaces that remain outside the implemented core. Full data-source sync is owned by the standalone [Notion datasource sync spec](../../../notion-datasource-sync/docs/vrs/spec.md).
 
 ## Scope
 
@@ -244,7 +244,7 @@ Requirement trace: R01-R05, R11-R15.
 | Page metadata      | frontmatter page fields       | `GET /pages/{id}`          | `PATCH /pages/{id}`         | field              | lock/trash/icon/cover     |
 | Properties         | frontmatter property map      | `GET /pages/{id}`          | `PATCH /pages/{id}`         | property           | modeled writable forms    |
 | Unsupported blocks | frontmatter/object storage    | Markdown + block API       | preserve or explicit delete | block id           | guard + preserve metadata |
-| Data-source schema | future object payload         | `GET /data_sources/{id}`   | schema APIs when supported  | schema hash        | not implemented           |
+| Data-source schema | external datasource-sync state | datasource-sync package    | datasource-sync package     | schema hash        | owned by datasource sync  |
 | Comments           | future comment payload        | comments API               | comments API                | discussion/comment | designed, not implemented |
 | Files              | future file payload           | block/file APIs            | file upload APIs            | content hash       | modeled, not implemented  |
 | Review             | Roughdraft local markup       | local only or comments API | explicit bridge only        | review id          | guard implemented         |

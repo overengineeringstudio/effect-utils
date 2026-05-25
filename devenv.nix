@@ -110,6 +110,7 @@ let
     "packages/@overeng/kdl-effect"
     "packages/@overeng/megarepo"
     "packages/@overeng/notion-cli"
+    "packages/@overeng/notion-datasource-sync"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
     "packages/@overeng/notion-md"
@@ -158,6 +159,10 @@ let
     {
       path = "packages/@overeng/notion-cli";
       name = "notion-cli";
+    }
+    {
+      path = "packages/@overeng/notion-datasource-sync";
+      name = "notion-datasource-sync";
     }
     {
       path = "packages/@overeng/notion-effect-client";

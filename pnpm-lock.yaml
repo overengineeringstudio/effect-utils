@@ -7,12 +7,8 @@ settings:
 packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
 
 patchedDependencies:
-  '@effect/platform@0.96.1':
-    hash: 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
-    path: packages/@overeng/utils/patches/@effect__platform@0.96.0.patch
-  effect-distributed-lock@0.0.11:
-    hash: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
-    path: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
+  '@effect/platform@0.96.1': 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
+  effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
 
 importers:
 
@@ -757,6 +753,24 @@ importers:
       vite:
         specifier: 7.3.1
         version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+
+  packages/@overeng/notion-datasource-sync:
+    devDependencies:
+      '@effect/vitest':
+        specifier: 0.29.0
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      effect:
+        specifier: 3.21.2
+        version: 3.21.2
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/notion-effect-client:
     dependencies:
