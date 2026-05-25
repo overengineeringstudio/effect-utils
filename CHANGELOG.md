@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/notion-datasource-sync docs**: Add the initial VRS source of truth and derived E2E plan for a standalone bidirectional Notion data-source sync package, including SQLite authority, guard matrix, schema/delete/watch semantics, and live verification strategy.
 - **@overeng/notion-datasource-sync**: Scaffold the initial package with Effect/Schema contract types, service port tags, guard helpers, and focused unit tests for Milestone 0/1.
+- **@overeng/notion-datasource-sync**: Add the Milestone 2A SQLite sync-core foundation with hardened store initialization, append-only event persistence, outbox/checkpoint/conflict/tombstone/path projections, deterministic replay digests, and compaction safety checks.
 - **@overeng/genie**: `githubLabels()` runtime primitive for declarative GitHub Issue/PR label management (color, description, deprecation, legacy migrations). Consumed by `mq-cli repo labels` in `schickling/dotfiles`.
 - **genie/external.ts**: Shared label catalog exports (`commonLabels`, `mqLabels`, `andonLabels`, `deprecatedDefaults`, `legacyMigrations`) for cross-repo label IaC. Effect-utils self-applies via `.github/labels.json.genie.ts`.
 - **@overeng/notion-effect-client**: Add database create/update/archive helpers and switch live Notion integration tests to provision isolated per-run fixtures under `NOTION_TEST_PARENT_PAGE_ID` instead of relying on stale hard-coded workspace page/database IDs.

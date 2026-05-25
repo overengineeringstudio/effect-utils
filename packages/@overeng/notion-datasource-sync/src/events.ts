@@ -2,6 +2,7 @@ import { Schema } from 'effect'
 
 import {
   BodyPointer,
+  CapabilityName,
   CommandId,
   DataSourceId,
   Hash,
@@ -9,8 +10,10 @@ import {
   NotionRequestId,
   PageId,
   PropertyId,
+  QueryCursor,
   SupportedNotionApiVersion,
 } from './domain.ts'
+import { GuardName } from './guards.ts'
 
 export const SyncEventId = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('NotionDatasourceSync.SyncEventId'),
@@ -118,19 +121,46 @@ export type LocalIntentAccepted = typeof LocalIntentAccepted.Type
 export const RemoteWritePlanned = Schema.TaggedStruct('RemoteWritePlanned', {
   ...eventEnvelopeFields('CommandEnqueued', 'RemoteWritePlanned'),
   commandId: CommandId,
+  commandKey: IdempotencyKey,
+  intentEventId: SyncEventId,
   commandTag: Schema.String,
+  baseHash: Schema.optional(Hash),
+  desiredHash: Hash,
+  preflight: Schema.Array(GuardName),
 }).annotations({ identifier: 'NotionDatasourceSync.RemoteWritePlanned' })
 export type RemoteWritePlanned = typeof RemoteWritePlanned.Type
+
+export const RemoteWriteAttempted = Schema.TaggedStruct('RemoteWriteAttempted', {
+  ...eventEnvelopeFields('CommandAttempted', 'RemoteWriteAttempted'),
+  commandId: CommandId,
+  attempt: Schema.NonNegativeInt,
+  attemptState: Schema.Literal('running', 'retryable', 'blocked', 'fenced', 'ambiguous'),
+  leaseToken: Schema.optional(Schema.NonEmptyTrimmedString),
+  guard: Schema.optional(GuardName),
+}).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteAttempted' })
+export type RemoteWriteAttempted = typeof RemoteWriteAttempted.Type
 
 export const RemoteWriteSettled = Schema.TaggedStruct('RemoteWriteSettled', {
   ...eventEnvelopeFields('CommandSettled', 'RemoteWriteSettled'),
   commandId: CommandId,
   requestId: NotionRequestId,
+  desiredHash: Hash,
 }).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteSettled' })
 export type RemoteWriteSettled = typeof RemoteWriteSettled.Type
 
 export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
   ...eventEnvelopeFields('ConflictDetected', 'ConflictRaised'),
+  conflictKind: Schema.optional(
+    Schema.Literal(
+      'property',
+      'body',
+      'schema',
+      'delete-vs-edit',
+      'path',
+      'relation',
+      'permission',
+    ),
+  ),
   pageId: PageId,
   propertyId: Schema.optional(PropertyId),
   baseHash: Hash,
@@ -149,6 +179,9 @@ export const TombstoneRecorded = Schema.TaggedStruct('TombstoneRecorded', {
     'inaccessible',
     'unknown',
   ),
+  directClassifierEventId: Schema.optional(SyncEventId),
+  destructiveIntentEventId: Schema.optional(SyncEventId),
+  policyProofHash: Schema.optional(Hash),
 }).annotations({ identifier: 'NotionDatasourceSync.TombstoneRecorded' })
 export type TombstoneRecorded = typeof TombstoneRecorded.Type
 
@@ -159,9 +192,50 @@ export const TombstoneCandidateObserved = Schema.TaggedStruct('TombstoneCandidat
     'query_absence_unclassified',
     'filtered_absence_not_proof',
     'permission_ambiguous',
+    'local_file_delete_candidate',
   ),
 }).annotations({ identifier: 'NotionDatasourceSync.TombstoneCandidateObserved' })
 export type TombstoneCandidateObserved = typeof TombstoneCandidateObserved.Type
+
+export const CapabilityPreflightChecked = Schema.TaggedStruct('CapabilityPreflightChecked', {
+  ...eventEnvelopeFields('CompatibilityChecked', 'CapabilityPreflightChecked'),
+  dataSourceId: DataSourceId,
+  capability: CapabilityName,
+  supported: Schema.Boolean,
+  requestId: Schema.optional(NotionRequestId),
+}).annotations({ identifier: 'NotionDatasourceSync.CapabilityPreflightChecked' })
+export type CapabilityPreflightChecked = typeof CapabilityPreflightChecked.Type
+
+export const QueryScanCheckpointRecorded = Schema.TaggedStruct('QueryScanCheckpointRecorded', {
+  ...eventEnvelopeFields('QueryScanRecorded', 'QueryScanCheckpointRecorded'),
+  dataSourceId: DataSourceId,
+  queryContractHash: Hash,
+  nextCursor: Schema.NullOr(QueryCursor),
+  complete: Schema.Boolean,
+  highWatermark: Schema.NullOr(Schema.DateTimeUtc),
+}).annotations({ identifier: 'NotionDatasourceSync.QueryScanCheckpointRecorded' })
+export type QueryScanCheckpointRecorded = typeof QueryScanCheckpointRecorded.Type
+
+export const PagePropertyCheckpointRecorded = Schema.TaggedStruct(
+  'PagePropertyCheckpointRecorded',
+  {
+    ...eventEnvelopeFields('QueryScanRecorded', 'PagePropertyCheckpointRecorded'),
+    pageId: PageId,
+    propertyId: PropertyId,
+    nextCursor: Schema.NullOr(QueryCursor),
+    complete: Schema.Boolean,
+    valueHash: Schema.optional(Hash),
+  },
+).annotations({ identifier: 'NotionDatasourceSync.PagePropertyCheckpointRecorded' })
+export type PagePropertyCheckpointRecorded = typeof PagePropertyCheckpointRecorded.Type
+
+export const PathClaimed = Schema.TaggedStruct('PathClaimed', {
+  ...eventEnvelopeFields('LocalIntentAccepted', 'PathClaimed'),
+  pageId: PageId,
+  relativePath: Schema.NonEmptyTrimmedString,
+  claimState: Schema.Literal('active', 'released', 'conflict'),
+}).annotations({ identifier: 'NotionDatasourceSync.PathClaimed' })
+export type PathClaimed = typeof PathClaimed.Type
 
 export const DecodeDriftBlocked = Schema.TaggedStruct('DecodeDriftBlocked', {
   ...eventEnvelopeFields('CompatibilityChecked', 'DecodeDriftBlocked'),
@@ -177,10 +251,15 @@ export const SyncEvent = Schema.Union(
   RowObserved,
   LocalIntentAccepted,
   RemoteWritePlanned,
+  RemoteWriteAttempted,
   RemoteWriteSettled,
   ConflictRaised,
   TombstoneRecorded,
   TombstoneCandidateObserved,
+  CapabilityPreflightChecked,
+  QueryScanCheckpointRecorded,
+  PagePropertyCheckpointRecorded,
+  PathClaimed,
   DecodeDriftBlocked,
 ).annotations({ identifier: 'NotionDatasourceSync.SyncEvent' })
 export type SyncEvent = typeof SyncEvent.Type
