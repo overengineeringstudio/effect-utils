@@ -223,6 +223,7 @@ describe('@overeng/notion-datasource-sync contracts', () => {
         idempotencyKey: 'settled:cmd-1',
         commandId: 'cmd-1',
         requestId,
+        desiredHash: hash,
       }),
     ).toThrow()
   })
