@@ -154,6 +154,12 @@ export type StoreStatusProjection = {
   readonly tombstones: {
     readonly unclassified: number
   }
+  readonly guards: {
+    readonly blocked: number
+  }
+  readonly capabilities: {
+    readonly unsupported: number
+  }
   readonly checkpoints: {
     readonly incompleteQueries: number
     readonly cappedQueries: number
@@ -383,11 +389,18 @@ export class NotionSyncStore {
   }
 
   appendEvent(event: SyncEvent): SyncEvent {
+    return this.appendEventWithResult(event).event
+  }
+
+  appendEventWithResult(event: SyncEvent): {
+    readonly event: SyncEvent
+    readonly inserted: boolean
+  } {
     this.#db.exec('BEGIN IMMEDIATE')
     try {
-      const eventWithAssignedFields = this.#appendEventInTransaction(event)
+      const result = this.#appendEventWithResultInTransaction(event)
       this.#db.exec('COMMIT')
-      return eventWithAssignedFields
+      return result
     } catch (cause) {
       this.#db.exec('ROLLBACK')
       throw cause
@@ -910,6 +923,30 @@ export class NotionSyncStore {
           'count',
         ),
       },
+      guards: {
+        blocked: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM guard_block_projection
+               WHERE root_id = ?`,
+            )
+            .get(rootId),
+          'count',
+        ),
+      },
+      capabilities: {
+        unsupported: readCount(
+          this.#db
+            .prepare(
+              `SELECT COUNT(*) AS count
+               FROM capability_projection
+               WHERE root_id = ? AND supported = 0`,
+            )
+            .get(rootId),
+          'count',
+        ),
+      },
       checkpoints: {
         incompleteQueries: readCount(
           this.#db
@@ -1008,6 +1045,13 @@ export class NotionSyncStore {
   }
 
   #appendEventInTransaction(event: SyncEvent): SyncEvent {
+    return this.#appendEventWithResultInTransaction(event).event
+  }
+
+  #appendEventWithResultInTransaction(event: SyncEvent): {
+    readonly event: SyncEvent
+    readonly inserted: boolean
+  } {
     this.#ensureRoot(event.rootId)
 
     const existing = this.#db
@@ -1019,7 +1063,7 @@ export class NotionSyncStore {
       .get(event.rootId, event.idempotencyKey)
 
     if (existing !== undefined) {
-      return decodeEventFromJson(readString(existing, 'event_json'))
+      return { event: decodeEventFromJson(readString(existing, 'event_json')), inserted: false }
     }
 
     const sequence = this.#nextSequence(event.rootId)
@@ -1067,7 +1111,7 @@ export class NotionSyncStore {
       )
 
     this.#rebuildProjectionsInTransaction(event.rootId)
-    return eventWithAssignedFields
+    return { event: eventWithAssignedFields, inserted: true }
   }
 
   #appendOutboxAttemptStateInTransaction(
@@ -1874,6 +1918,36 @@ export class NotionSyncStore {
             currentIso(this.#now),
           )
         this.#applyQueryAbsenceEvidence(event, true)
+        break
+      case 'GuardBlocked':
+        this.#db
+          .prepare(
+            `INSERT INTO guard_block_projection (
+               root_id,
+               block_id,
+               surface,
+               guard,
+               message,
+               event_id,
+               updated_at
+             )
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(root_id, block_id) DO UPDATE SET
+               surface = excluded.surface,
+               guard = excluded.guard,
+               message = excluded.message,
+               event_id = excluded.event_id,
+               updated_at = excluded.updated_at`,
+          )
+          .run(
+            event.rootId,
+            event.idempotencyKey,
+            event.surface ?? null,
+            event.guard,
+            event.message,
+            event.eventId,
+            currentIso(this.#now),
+          )
         break
       case 'PathClaimed':
         this.#db
