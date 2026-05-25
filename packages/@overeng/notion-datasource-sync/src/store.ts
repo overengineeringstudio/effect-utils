@@ -1557,9 +1557,7 @@ export class NotionSyncStore {
           const currentAttempt = Number(readInteger(existing, 'attempt_count'))
           const currentLeaseToken = readOptionalString(existing, 'lease_token')
           const eventMatchesCurrentLease =
-            currentLeaseToken === undefined ||
-            event.leaseToken === currentLeaseToken ||
-            (event.leaseToken === undefined && event.attemptState === 'running')
+            currentLeaseToken === undefined || event.leaseToken === currentLeaseToken
 
           if (event.attempt < currentAttempt) {
             break

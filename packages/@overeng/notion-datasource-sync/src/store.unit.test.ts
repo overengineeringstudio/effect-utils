@@ -718,6 +718,58 @@ describe('Notion sync SQLite store', () => {
     })
   })
 
+  it('ignores same-attempt legacy running events without a lease token', () => {
+    withStore((store) => {
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-legacy-running-planned',
+          idempotencyKey: 'command:cmd-1',
+          commandId: 'cmd-1',
+        }),
+      )
+
+      expect(
+        store.claimNextOutboxCommand({
+          rootId,
+          leaseToken: 'lease-1',
+          leaseDurationMs: 60_000,
+        }),
+      ).toMatchObject({ attempt: 1, leaseToken: 'lease-1' })
+
+      store.appendEvent(
+        remoteWriteAttempted({
+          eventId: 'event-legacy-running-without-lease',
+          idempotencyKey: 'attempt:cmd-1:1:legacy-running',
+          commandId: 'cmd-1',
+          attempt: 1,
+          attemptState: 'running',
+        }),
+      )
+
+      expect(
+        store.isOutboxLeaseActive({
+          rootId,
+          commandId,
+          leaseToken: 'lease-1',
+        }),
+      ).toBe(true)
+      expect(
+        store.claimNextOutboxCommand({
+          rootId,
+          leaseToken: 'lease-2',
+          leaseDurationMs: 60_000,
+        }),
+      ).toBeUndefined()
+      expect(
+        store.claimNextOutboxCommand({
+          rootId,
+          leaseToken: 'lease-2',
+          leaseDurationMs: 0,
+        }),
+      ).toMatchObject({ attempt: 2, leaseToken: 'lease-2', attemptState: 'ambiguous' })
+    })
+  })
+
   it('keeps the first verified settlement as terminal for duplicate settlement attempts', () => {
     withStore((store) => {
       store.appendEvent(
