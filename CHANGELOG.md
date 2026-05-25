@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-datasource-sync**: Add the Milestone 5A outbox executor and settlement core with lease-based command claiming, preflight stale-base blocking, verified no-op recovery, read-after-write mismatch diagnostics, and fake-service crash recovery coverage.
 - **@overeng/notion-datasource-sync**: Add the Milestone 5B real local filesystem workspace layer with temp-directory E2E coverage for path claims, symlink escapes, sidecar damage, own-write materialization suppression, and local delete candidates, plus an explicit unsupported NotionMD body adapter boundary.
 - **@overeng/notion-datasource-sync**: Add the Milestone 4B real Notion gateway adapter and live preflight harness, with explicit opt-in gating, sanitized cleanup ledger output, adapter-boundary request mapping tests, fail-closed permission ambiguity handling, and guarded unsupported paths for page-property pagination and schema updates.
 - **@overeng/notion-datasource-sync docs**: Add the initial VRS source of truth and derived E2E plan for a standalone bidirectional Notion data-source sync package, including SQLite authority, guard matrix, schema/delete/watch semantics, and live verification strategy.

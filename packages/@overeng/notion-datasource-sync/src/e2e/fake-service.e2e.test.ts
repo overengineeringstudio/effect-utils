@@ -3,7 +3,15 @@ import { describe, expect, it } from 'vitest'
 
 import { propertySurfaceKey } from '../canonical.ts'
 import { AbsolutePath } from '../domain.ts'
+import { executeOutboxOnce } from '../executor.ts'
 import { planIntent, type PlannerProjectionSnapshot } from '../planner.ts'
+import {
+  NotionDataSourceGateway,
+  PageBodySyncPort,
+  type NotionDataSourceGatewayShape,
+  type PageBodySyncPortShape,
+} from '../ports.ts'
+import { hashStoreBytes } from '../store-projections.ts'
 import {
   bodyAdapterResultIntent,
   bodyLocalChangeInput,
@@ -14,6 +22,7 @@ import {
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
+  pageSnapshot,
   propertyEditIntent,
   queryAbsenceIntent,
   querySurface,
@@ -52,7 +61,50 @@ const implementedFakeScenarioIds = new Set<ScenarioId>([
   'NDS-L2-body-adapter-surface-leak',
   'NDS-L2-local-delete-candidate-only',
   'NDS-L3-outbox-invalid-settlement-rejected',
+  'NDS-L3-outbox-property-patch-settles',
+  'NDS-L3-outbox-stale-base-blocks',
+  'NDS-L3-outbox-read-after-write-mismatch',
+  'NDS-L3-outbox-crash-after-attempt-recovery',
 ])
+
+const expectedPatchHash = () =>
+  hashStoreBytes(`page-properties\t${testIds.pageId}\t${testIds.commandId}\t${testIds.propertyA}`)
+
+const plannedPropertyCommand = () => {
+  const decision = planIntent(
+    buildPlannerSnapshot(),
+    propertyEditIntent({ desiredHash: expectedPatchHash() }),
+  )
+  expect(decision._tag).toBe('EnqueueCommands')
+  if (decision._tag !== 'EnqueueCommands') return undefined
+
+  return decision.commands[0]!
+}
+
+const runExecutor = ({
+  gateway,
+  body,
+  store,
+  leaseToken = 'lease-1',
+  leaseDurationMs = 60_000,
+}: {
+  readonly gateway: NotionDataSourceGatewayShape
+  readonly body: PageBodySyncPortShape
+  readonly store: ReturnType<typeof makeStoreFixture>['store']
+  readonly leaseToken?: string
+  readonly leaseDurationMs?: number
+}) =>
+  Effect.runPromise(
+    executeOutboxOnce({
+      store,
+      rootId: testIds.rootId,
+      leaseToken,
+      leaseDurationMs,
+    }).pipe(
+      Effect.provideService(NotionDataSourceGateway, gateway),
+      Effect.provideService(PageBodySyncPort, body),
+    ),
+  )
 
 describe('notion datasource sync fake-service E2E harness', () => {
   it('keeps typed scenario metadata in lockstep with guard and requirement coverage', () => {
@@ -379,6 +431,165 @@ describe('notion datasource sync fake-service E2E harness', () => {
           commandId: testIds.commandId,
           state: 'running',
           settlementEventId: undefined,
+        },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('executes and settles a property patch from the outbox', async () => {
+    const command = plannedPropertyCommand()
+    if (command === undefined) return
+
+    const gatewayHarness = makeFakeGatewayHarness()
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+
+    try {
+      appendPlannedCommand(storeFixture.store, command)
+
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toMatchObject({
+        _tag: 'settled',
+        settlementKind: 'verified-success',
+      })
+
+      expect(gatewayHarness.ledger.attemptedPatchPageProperties).toEqual([command.command])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        {
+          commandId: testIds.commandId,
+          state: 'settled',
+          settlementEventId: expect.any(String),
+        },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('blocks stale-base outbox commands without issuing duplicate remote writes', async () => {
+    const command = plannedPropertyCommand()
+    if (command === undefined) return
+
+    const gatewayHarness = makeFakeGatewayHarness({
+      pages: [pageSnapshot({ propertiesHash: hash('remote-properties') })],
+    })
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+
+    try {
+      appendPlannedCommand(storeFixture.store, command)
+
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toMatchObject({
+        _tag: 'failed',
+        attemptState: 'blocked',
+        guard: 'StaleSurfaceBase',
+      })
+
+      expect(gatewayHarness.ledger.attemptedPatchPageProperties).toEqual([])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        {
+          commandId: testIds.commandId,
+          state: 'blocked',
+          settlementEventId: undefined,
+        },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('keeps read-after-write mismatch attempts unsettled', async () => {
+    const command = plannedPropertyCommand()
+    if (command === undefined) return
+
+    const gatewayHarness = makeFakeGatewayHarness({
+      readAfterWriteMismatchPageIds: [testIds.pageId],
+    })
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+
+    try {
+      appendPlannedCommand(storeFixture.store, command)
+
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toMatchObject({
+        _tag: 'failed',
+        attemptState: 'retryable',
+        guard: 'ReadAfterWriteMismatch',
+      })
+
+      expect(gatewayHarness.ledger.attemptedPatchPageProperties).toEqual([command.command])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        {
+          commandId: testIds.commandId,
+          state: 'retryable',
+          settlementEventId: undefined,
+        },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('recovers a crash after a remote attempt by settling verified no-op without duplicate write', async () => {
+    const command = plannedPropertyCommand()
+    if (command === undefined) return
+
+    const gatewayHarness = makeFakeGatewayHarness({
+      pages: [pageSnapshot({ propertiesHash: expectedPatchHash() })],
+    })
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+
+    try {
+      appendPlannedCommand(storeFixture.store, command)
+      storeFixture.store.appendEvent(
+        remoteWriteAttemptedEvent({
+          eventId: 'event-crashed-attempt',
+          idempotencyKey: 'attempt:cmd-1:1',
+          commandId: testIds.commandId,
+          attemptState: 'running',
+        }),
+      )
+
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body: ports.body,
+          store: storeFixture.store,
+          leaseToken: 'lease-2',
+          leaseDurationMs: 0,
+        }),
+      ).resolves.toMatchObject({
+        _tag: 'settled',
+        settlementKind: 'verified-no-op',
+      })
+
+      expect(gatewayHarness.ledger.attemptedPatchPageProperties).toEqual([])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        {
+          commandId: testIds.commandId,
+          attemptCount: 2,
+          state: 'settled',
+          settlementEventId: expect.any(String),
         },
       ])
     } finally {

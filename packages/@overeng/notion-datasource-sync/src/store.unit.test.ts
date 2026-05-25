@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { propertySurfaceKey } from './canonical.ts'
 import { PatchPagePropertiesCommand } from './commands.ts'
-import { CommandId, Hash, PageId, PropertyId } from './domain.ts'
+import { CommandId, Hash, NotionRequestId, PageId, PropertyId } from './domain.ts'
 import {
   IdempotencyKey,
   SyncEvent,
@@ -573,6 +573,111 @@ describe('Notion sync SQLite store', () => {
             ],
           ]
         `)
+    })
+  })
+
+  it('claims one pending outbox command and fences active leases until they expire', () => {
+    withStore((store) => {
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-claim-planned',
+          idempotencyKey: 'command:cmd-1',
+          commandId: 'cmd-1',
+        }),
+      )
+
+      const first = store.claimNextOutboxCommand({
+        rootId,
+        leaseToken: 'lease-1',
+        leaseDurationMs: 60_000,
+      })
+      const activeLease = store.claimNextOutboxCommand({
+        rootId,
+        leaseToken: 'lease-2',
+        leaseDurationMs: 60_000,
+      })
+      const expiredLease = store.claimNextOutboxCommand({
+        rootId,
+        leaseToken: 'lease-2',
+        leaseDurationMs: 0,
+      })
+
+      expect(first).toMatchObject({
+        commandId,
+        attempt: 1,
+        previousState: 'queued',
+        attemptState: 'running',
+        leaseToken: 'lease-1',
+      })
+      expect(activeLease).toBeUndefined()
+      expect(expiredLease).toMatchObject({
+        commandId,
+        attempt: 2,
+        previousState: 'running',
+        attemptState: 'ambiguous',
+        leaseToken: 'lease-2',
+      })
+      expect(store.readOutbox(rootId)).toMatchObject([
+        {
+          commandId,
+          state: 'ambiguous',
+          attemptCount: 2,
+          leaseToken: 'lease-2',
+        },
+      ])
+    })
+  })
+
+  it('keeps the first verified settlement as terminal for duplicate settlement attempts', () => {
+    withStore((store) => {
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-settlement-planned',
+          idempotencyKey: 'command:cmd-1',
+          commandId: 'cmd-1',
+        }),
+      )
+      const claim = store.claimNextOutboxCommand({
+        rootId,
+        leaseToken: 'lease-1',
+        leaseDurationMs: 60_000,
+      })
+      expect(claim).not.toBeUndefined()
+
+      const first = store.appendOutboxSettlement({
+        rootId,
+        commandId,
+        commandKey,
+        surface: propertySurfaceKey(pageId, propertyId),
+        commandTag: 'PatchPageProperties',
+        requestId: decode(NotionRequestId, 'request-1'),
+        desiredHash: hash('b'),
+        observedHash: hash('b'),
+        settlementKind: 'verified-success',
+        idempotencyKey: decode(IdempotencyKey, 'settled:cmd-1'),
+      })
+      const duplicate = store.appendOutboxSettlement({
+        rootId,
+        commandId,
+        commandKey,
+        surface: propertySurfaceKey(pageId, propertyId),
+        commandTag: 'PatchPageProperties',
+        requestId: decode(NotionRequestId, 'request-2'),
+        desiredHash: hash('b'),
+        observedHash: hash('b'),
+        settlementKind: 'verified-no-op',
+        idempotencyKey: decode(IdempotencyKey, 'settled:cmd-1'),
+      })
+
+      expect(duplicate.eventId).toBe(first.eventId)
+      expect(store.readOutbox(rootId)).toMatchObject([
+        {
+          commandId,
+          state: 'settled',
+          settlementEventId: first.eventId,
+          leaseToken: undefined,
+        },
+      ])
     })
   })
 
