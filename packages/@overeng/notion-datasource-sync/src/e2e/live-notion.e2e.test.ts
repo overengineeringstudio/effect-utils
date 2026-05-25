@@ -13,9 +13,11 @@ import {
   ledgerEntry,
   liveNotionConfigFromEnv,
   liveNotionEnvFromProcessEnv,
+  runLiveFixtureLifecycle,
   runLiveNotionPreflight,
   strictLivePreflightCapabilities,
   type LiveFixtureLedger,
+  type LiveFixtureLifecycleClient,
 } from '../testing/live-notion.ts'
 import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
 
@@ -352,6 +354,113 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     expect(result.ledgerPath).toBe(processLiveConfig.ledgerPath)
   })
 
+  it('records create, mutate, verify, trash, and restore fixture lifecycle phases with an injected client', async () => {
+    const configured = {
+      _tag: 'configured' as const,
+      runId: 'notion-ds-sync-fixture-lifecycle-test',
+      parentPageId: '00000000000000000000000000000001',
+      dataSourceId: '00000000000000000000000000000002',
+      notionVersion: '2026-03-11' as const,
+      requiredCapabilities: defaultLivePreflightCapabilities,
+      ledgerPath: 'tmp/notion-datasource-sync-live/fixture-lifecycle-test.json',
+    }
+    const calls: string[] = []
+    const ledgers: LiveFixtureLedger[] = []
+    const client: LiveFixtureLifecycleClient = {
+      create: async () => {
+        calls.push('create')
+        return {
+          objectId: 'fixture-page-1',
+          objectType: 'page',
+          purpose: 'fixture-lifecycle',
+        }
+      },
+      mutate: async (fixture) => {
+        calls.push('mutate')
+        return fixture
+      },
+      verify: async () => {
+        calls.push('verify')
+      },
+      trash: async () => {
+        calls.push('trash')
+      },
+      restore: async () => {
+        calls.push('restore')
+      },
+    }
+
+    const ledger = await runLiveFixtureLifecycle(configured, client, {
+      writeLedger: async ({ ledger: writtenLedger }) => {
+        ledgers.push(writtenLedger)
+      },
+    })
+
+    expect(calls).toEqual(['create', 'mutate', 'verify', 'trash', 'restore'])
+    expect(ledger.entries.map((entry) => entry.phase)).toEqual([
+      'create',
+      'mutate',
+      'verify',
+      'trash',
+      'restore',
+    ])
+    expect(ledgers.at(-1)).toEqual(ledger)
+  })
+
+  it('cleans up the injected live fixture and records the ledger when verification fails', async () => {
+    const configured = {
+      _tag: 'configured' as const,
+      runId: 'notion-ds-sync-fixture-failure-cleanup-test',
+      parentPageId: '00000000000000000000000000000001',
+      dataSourceId: '00000000000000000000000000000002',
+      notionVersion: '2026-03-11' as const,
+      requiredCapabilities: defaultLivePreflightCapabilities,
+      ledgerPath: 'tmp/notion-datasource-sync-live/fixture-failure-cleanup-test.json',
+    }
+    const calls: string[] = []
+    const ledgers: LiveFixtureLedger[] = []
+    const client: LiveFixtureLifecycleClient = {
+      create: async () => {
+        calls.push('create')
+        return {
+          objectId: 'fixture-page-1',
+          objectType: 'page',
+          purpose: 'fixture-failure-cleanup',
+        }
+      },
+      mutate: async (fixture) => {
+        calls.push('mutate')
+        return fixture
+      },
+      verify: async () => {
+        calls.push('verify')
+        throw new Error('forced fixture verification failure')
+      },
+      trash: async () => {
+        calls.push('trash')
+      },
+      restore: async () => {
+        calls.push('restore')
+      },
+    }
+
+    await expect(
+      runLiveFixtureLifecycle(configured, client, {
+        writeLedger: async ({ ledger: writtenLedger }) => {
+          ledgers.push(writtenLedger)
+        },
+      }),
+    ).rejects.toThrow('forced fixture verification failure')
+
+    expect(calls).toEqual(['create', 'mutate', 'verify', 'trash', 'restore'])
+    expect(ledgers.at(-1)?.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ phase: 'trash', cleanupState: 'trashed' }),
+        expect.objectContaining({ phase: 'restore', cleanupState: 'restored' }),
+      ]),
+    )
+  })
+
   it('defines a sanitized cleanup ledger shape without exposing secrets', () => {
     const configured =
       processLiveConfig._tag === 'configured'
@@ -373,6 +482,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       ...emptyLiveFixtureLedger(configured),
       entries: [
         ledgerEntry({
+          phase: 'create',
           objectId: 'page-id-1',
           objectType: 'page',
           purpose: 'capability-preflight-fixture',
@@ -385,6 +495,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       notionVersion: '2026-03-11',
       entries: [
         {
+          phase: 'create',
           objectId: 'page-id-1',
           objectType: 'page',
           purpose: 'capability-preflight-fixture',

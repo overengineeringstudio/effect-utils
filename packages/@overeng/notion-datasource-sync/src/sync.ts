@@ -49,6 +49,7 @@ export type OneShotInitOptions = {
 
 export type OneShotPullOptions = {
   readonly store: NotionSyncStore
+  readonly dryRun?: boolean
 } & RemoteObservationOptions
 
 export type OneShotPushOptions = {
@@ -60,6 +61,7 @@ export type OneShotPushOptions = {
   readonly leaseToken?: string
   readonly leaseDurationMs?: number
   readonly now?: () => Date
+  readonly dryRun?: boolean
 }
 
 export type OneShotSyncOptions = OneShotPullOptions &
@@ -119,12 +121,14 @@ const appendDecision = ({
   decision,
   pageId,
   now,
+  dryRun,
 }: {
   readonly store: NotionSyncStore
   readonly rootId: RemoteObservationOptions['rootId']
   readonly decision: PlanDecision
   readonly pageId?: typeof PageId.Type
   readonly now: () => Date
+  readonly dryRun?: boolean
 }): OneShotPlanSummary => {
   switch (decision._tag) {
     case 'AppendEvents': {
@@ -132,6 +136,7 @@ const appendDecision = ({
       for (const plannerEvent of decision.events) {
         const event = makePlannerEvent({ rootId, event: plannerEvent, now })
         if (event === undefined) continue
+        if (dryRun === true) continue
         if (store.appendEventWithResult(event).inserted) {
           appendedEvents += 1
         }
@@ -147,6 +152,7 @@ const appendDecision = ({
     case 'EnqueueCommands': {
       let enqueuedCommands = 0
       for (const command of decision.commands) {
+        if (dryRun === true) continue
         if (store.appendEventWithResult(makeRemoteWritePlannedEvent(command, now)).inserted) {
           enqueuedCommands += 1
         }
@@ -162,6 +168,15 @@ const appendDecision = ({
     case 'OpenConflict': {
       const surface = decision.conflict.localSurface
       const propertyId = propertyIdFromSurface(surface)
+      if (dryRun === true) {
+        return {
+          decisions: [decision],
+          appendedEvents: 0,
+          enqueuedCommands: 0,
+          blocked: 0,
+          conflicts: 0,
+        }
+      }
       const inserted = store.appendEventWithResult(
         makeConflictRaisedEvent({
           rootId,
@@ -185,6 +200,15 @@ const appendDecision = ({
       }
     }
     case 'BlockedByGuard': {
+      if (dryRun === true) {
+        return {
+          decisions: [decision],
+          appendedEvents: 0,
+          enqueuedCommands: 0,
+          blocked: 0,
+          conflicts: 0,
+        }
+      }
       const inserted = store.appendEventWithResult(
         makeGuardBlockedEvent({
           rootId,
@@ -307,11 +331,13 @@ export const pullOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pullOneShotS
       const observation = yield* observeRemoteDataSource(options)
       let appendedEvents = 0
       for (const event of observation.events) {
+        if (options.dryRun === true) continue
         if (options.store.appendEventWithResult(event).inserted) {
           appendedEvents += 1
         }
       }
       for (const event of disappearanceCandidateEvents({ options, observation })) {
+        if (options.dryRun === true) continue
         if (options.store.appendEventWithResult(event).inserted) {
           appendedEvents += 1
         }
@@ -348,6 +374,7 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
             decision: planIntent(snapshot, intent),
             ...('pageId' in intent ? { pageId: intent.pageId } : {}),
             now,
+            ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
           }),
         )
       }
@@ -365,6 +392,7 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
               decision: planIntent(snapshot, localDeleteIntentFromObservation(observation)),
               pageId: observation.pageId,
               now,
+              ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
             }),
           )
           continue
@@ -389,19 +417,22 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
         })
 
         if (bodyPlan._tag === 'BodyConflict') {
-          const inserted = options.store.appendEventWithResult(
-            makeConflictRaisedEvent({
-              rootId: options.rootId,
-              pageId: observation.pageId,
-              surface: bodySurfaceKey(observation.pageId),
-              baseHash: bodyPlan.baseBodyPointer.bodyHash,
-              localHash: bodyPlan.localBodyHash,
-              remoteHash: bodyPlan.remoteBodyHash,
-              conflictKind: 'body',
-              message: bodyPlan.message ?? 'Body adapter reported a local body conflict',
-              now,
-            }),
-          ).inserted
+          const inserted =
+            options.dryRun === true
+              ? false
+              : options.store.appendEventWithResult(
+                  makeConflictRaisedEvent({
+                    rootId: options.rootId,
+                    pageId: observation.pageId,
+                    surface: bodySurfaceKey(observation.pageId),
+                    baseHash: bodyPlan.baseBodyPointer.bodyHash,
+                    localHash: bodyPlan.localBodyHash,
+                    remoteHash: bodyPlan.remoteBodyHash,
+                    conflictKind: 'body',
+                    message: bodyPlan.message ?? 'Body adapter reported a local body conflict',
+                    now,
+                  }),
+                ).inserted
           summaries.push({
             decisions: [],
             appendedEvents: inserted ? 1 : 0,
@@ -437,6 +468,7 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
             ),
             pageId: observation.pageId,
             now,
+            ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
           }),
         )
       }
@@ -445,18 +477,20 @@ export const pushOneShotSync = Effect.fn('NotionDatasourceSync.Sync.pushOneShotS
       const results: OutboxExecutionResult[] = []
       let maxStepsReached = false
 
-      for (let step = 0; step < maxExecutorSteps; step += 1) {
-        const result = yield* executeOutboxOnce({
-          store: options.store,
-          rootId: options.rootId,
-          leaseToken: options.leaseToken ?? `one-shot:${options.rootId}`,
-          leaseDurationMs: options.leaseDurationMs ?? 60_000,
-        })
-        results.push(result)
-        if (result._tag === 'idle') {
-          break
+      if (options.dryRun !== true) {
+        for (let step = 0; step < maxExecutorSteps; step += 1) {
+          const result = yield* executeOutboxOnce({
+            store: options.store,
+            rootId: options.rootId,
+            leaseToken: options.leaseToken ?? `one-shot:${options.rootId}`,
+            leaseDurationMs: options.leaseDurationMs ?? 60_000,
+          })
+          results.push(result)
+          if (result._tag === 'idle') {
+            break
+          }
+          maxStepsReached = step === maxExecutorSteps - 1
         }
-        maxStepsReached = step === maxExecutorSteps - 1
       }
 
       return {
