@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, readFile, readdir, realpath, rename, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { Effect, Layer, Schema, Stream } from 'effect'
@@ -408,6 +408,18 @@ const writeJsonFile = async (path: string, value: unknown): Promise<void> => {
   await rename(temporaryPath, path)
 }
 
+const writeTextFileAtomic = async (path: string, content: string): Promise<void> => {
+  await mkdir(dirname(path), { recursive: true })
+  const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
+  try {
+    await writeFile(temporaryPath, content, 'utf8')
+    await rename(temporaryPath, path)
+  } catch (cause) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined)
+    throw cause
+  }
+}
+
 const readPathClaims = async (
   root: AbsolutePath,
   operation: string,
@@ -461,7 +473,7 @@ const readFilesystemSidecars = async (
     },
   )
 
-  return Promise.all(
+  const sidecars = await Promise.all(
     entries
       .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
       .map((entry) =>
@@ -473,6 +485,20 @@ const readFilesystemSidecars = async (
         }),
       ),
   )
+
+  const seenPaths = new Map<WorkspaceRelativePathType, FilesystemWorkspaceSidecar>()
+  for (const sidecar of sidecars) {
+    const existing = seenPaths.get(sidecar.path)
+    if (existing !== undefined) {
+      throw localStoreError({
+        operation,
+        message: `Workspace page sidecars conflict for path ${sidecar.path}: ${existing.pageId} and ${sidecar.pageId}`,
+      })
+    }
+    seenPaths.set(sidecar.path, sidecar)
+  }
+
+  return sidecars
 }
 
 const materializedBodyPlaceholder = ({
@@ -516,6 +542,75 @@ const pathClaimConflict = ({
   if (sidecarConflict !== undefined) return sidecarConflict.pageId
 
   return claims.find((claim) => claim.path === path && claim.pageId !== pageId)?.pageId
+}
+
+const assertSafeMaterializeTarget = async ({
+  absolutePath,
+  relativePath,
+  pageId,
+  targetContentHash,
+  sidecars,
+  claims,
+}: {
+  readonly absolutePath: string
+  readonly relativePath: WorkspaceRelativePathType
+  readonly pageId: PageIdType
+  readonly targetContentHash: HashType
+  readonly sidecars: ReadonlyArray<FilesystemWorkspaceSidecar>
+  readonly claims: ReadonlyArray<FilesystemPathClaim>
+}): Promise<void> => {
+  const stats = await lstat(absolutePath).catch((cause: unknown) => {
+    if (typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === 'ENOENT') {
+      return undefined
+    }
+    throw localStoreError({
+      operation: 'materialize',
+      message: `Unable to inspect workspace body file ${relativePath}`,
+      cause,
+    })
+  })
+  if (stats === undefined) return
+
+  if (stats.isFile() === false) {
+    throw localStoreError({
+      operation: 'materialize',
+      message: `Workspace path collision requires repair before materialize: ${relativePath}`,
+    })
+  }
+
+  const samePageSidecar = sidecars.find(
+    (sidecar) => sidecar.path === relativePath && sidecar.pageId === pageId,
+  )
+  const samePageClaim = claims.find(
+    (claim) => claim.path === relativePath && claim.pageId === pageId,
+  )
+  if (samePageSidecar === undefined && samePageClaim === undefined) {
+    throw localStoreError({
+      operation: 'materialize',
+      message: `Workspace path collision has no sidecar or claim identity: ${relativePath}`,
+    })
+  }
+
+  const existingContent = await readFile(absolutePath, 'utf8').catch((cause: unknown) => {
+    throw localStoreError({
+      operation: 'materialize',
+      message: `Unable to read workspace body file ${relativePath}`,
+      cause,
+    })
+  })
+  const existingContentHash = sha256Hash(existingContent)
+  if (existingContentHash === targetContentHash) return
+  if (
+    samePageSidecar !== undefined &&
+    existingContentHash === samePageSidecar.materializedContentHash
+  ) {
+    return
+  }
+
+  throw localStoreError({
+    operation: 'materialize',
+    message: `Workspace body file has local edits; repair required before materialize: ${relativePath}`,
+  })
 }
 
 const scanFilesystemWorkspace = async ({
@@ -787,8 +882,15 @@ export const makeFilesystemLocalWorkspacePort = ({
           observedAt: new Date().toISOString(),
         }
 
-        await mkdir(dirname(absolutePath), { recursive: true })
-        await writeFile(absolutePath, content, 'utf8')
+        await assertSafeMaterializeTarget({
+          absolutePath,
+          relativePath,
+          pageId: plan.pageId,
+          targetContentHash: materializedContentHash,
+          sidecars,
+          claims,
+        })
+        await writeTextFileAtomic(absolutePath, content)
         await writeJsonFile(
           filesystemWorkspacePageSidecarPath({ root, pageId: plan.pageId }),
           sidecar,
