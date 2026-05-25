@@ -14,6 +14,12 @@ export type LiveNotionConfig =
       readonly missing: ReadonlyArray<string>
     }
   | {
+      readonly _tag: 'invalid-config'
+      readonly message: string
+      readonly missing: ReadonlyArray<string>
+      readonly invalid: ReadonlyArray<string>
+    }
+  | {
       readonly _tag: 'configured'
       readonly runId: string
       readonly parentPageId: string
@@ -43,20 +49,59 @@ export const liveNotionEnvFromProcessEnv = (
   ledgerPath: env.NOTION_DATASOURCE_SYNC_LEDGER_PATH,
 })
 
+const looksLikeDummySecret = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase()
+  return (
+    normalized.length === 0 ||
+    normalized === 'dummy' ||
+    normalized === 'fake' ||
+    normalized === 'placeholder' ||
+    normalized.includes('dummy') ||
+    normalized.includes('fake') ||
+    normalized.includes('placeholder') ||
+    normalized.includes('test-token')
+  )
+}
+
+const looksLikeNotionPageId = (value: string): boolean =>
+  /^[0-9a-f]{32}$/i.test(value.replaceAll('-', ''))
+
 export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig => {
   const parentPageId = env.parentPageId
   const token = env.token
+
+  if (env.enabled === false) {
+    return {
+      _tag: 'not-configured',
+      skipReason: 'live Notion E2E disabled; set NOTION_DATASOURCE_SYNC_LIVE=1 to opt in',
+      missing: ['NOTION_DATASOURCE_SYNC_LIVE=1'],
+    }
+  }
+
   const missing = [
-    ...(env.enabled ? [] : ['NOTION_DATASOURCE_SYNC_LIVE=1']),
     ...(token === undefined ? ['NOTION_TOKEN'] : []),
     ...(parentPageId === undefined ? ['NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID'] : []),
   ]
+  const invalid = [
+    ...(token !== undefined && looksLikeDummySecret(token) ? ['NOTION_TOKEN'] : []),
+    ...(parentPageId !== undefined && looksLikeNotionPageId(parentPageId) === false
+      ? ['NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID']
+      : []),
+  ]
 
-  if (missing.length > 0 || token === undefined || parentPageId === undefined) {
+  if (
+    missing.length > 0 ||
+    invalid.length > 0 ||
+    token === undefined ||
+    parentPageId === undefined
+  ) {
     return {
-      _tag: 'not-configured',
-      skipReason: `live Notion E2E disabled; missing ${missing.join(', ')}`,
+      _tag: 'invalid-config',
+      message: `live Notion E2E opted in with invalid configuration; missing ${missing.join(
+        ', ',
+      )}; invalid ${invalid.join(', ')}`,
       missing,
+      invalid,
     }
   }
 
