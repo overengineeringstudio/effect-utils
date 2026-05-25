@@ -334,6 +334,7 @@ export const pnpmStateSetupStep = {
   shell: 'bash',
   run: [
     `echo "PNPM_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`,
+    `echo "PNPM_CONFIG_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`,
     `echo "PNPM_HOME=${jobLocalPnpmHome}" >> "$GITHUB_ENV"`,
   ].join('\n'),
 } as const

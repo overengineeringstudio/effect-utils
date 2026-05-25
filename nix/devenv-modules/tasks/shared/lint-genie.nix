@@ -28,8 +28,20 @@ in
       after = [ "pnpm:install" ];
       exec = trace.exec "lint:check:lockfile" ''
         set -euo pipefail
+        store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-$PWD/.devenv/pnpm-store}}}"
+        export PNPM_STORE_DIR="$store_dir"
+        export PNPM_CONFIG_STORE_DIR="$store_dir"
+        export npm_config_store_dir="$store_dir"
         export npm_config_manage_package_manager_versions=false
-        pnpm install --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false
+        pnpm install \
+          --frozen-lockfile \
+          --ignore-scripts \
+          --config.confirmModulesPurge=false \
+          --config.manage-package-manager-versions=false \
+          --config.side-effects-cache=false \
+          --config.verify-store-integrity=true \
+          --config.package-import-method=copy \
+          --config.store-dir="$store_dir"
       '';
     };
     "lint:check" = {

@@ -133,6 +133,15 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(ciWorkflowSource).toContain('const path = opts?.path ?? jobLocalPnpmStatePaths')
   })
 
+  it('exports PNPM_CONFIG_STORE_DIR alongside pnpm store state', () => {
+    expect(ciWorkflowSource).toContain(
+      '`echo "PNPM_CONFIG_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`',
+    )
+    expect(ciWorkflowSource).toContain(
+      'PNPM_CONFIG_STORE_DIR="\\${PNPM_CONFIG_STORE_DIR:-${jobLocalPnpmStore}}"',
+    )
+  })
+
   it('uses exact-key pnpm state restore semantics with an explicit versioned prefix', () => {
     expect(restorePnpmStateStepSource).toContain(
       "const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'",

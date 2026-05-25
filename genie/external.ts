@@ -289,6 +289,7 @@ export const commonPnpmPolicySettings = {
     },
   },
   enableGlobalVirtualStore: true as const,
+  storeDir: '.pnpm-store',
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,
   verifyDepsBeforeRun: false as const,

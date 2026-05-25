@@ -691,6 +691,12 @@ export interface PnpmWorkspaceData {
   enableGlobalVirtualStore?: boolean
 
   /**
+   * The location of the content-addressable store.
+   * @see https://pnpm.io/settings#store-dir
+   */
+  storeDir?: string
+
+  /**
    * Behavior when workspace package depends on version not matched by local.
    * @see https://pnpm.io/settings#link-workspace-packages
    */
@@ -910,6 +916,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.enableGlobalVirtualStore !== undefined) {
     result.enableGlobalVirtualStore = data.enableGlobalVirtualStore
+  }
+
+  if (data.storeDir !== undefined) {
+    result.storeDir = data.storeDir
   }
 
   if (data.linkWorkspacePackages !== undefined) {

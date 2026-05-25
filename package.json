@@ -30,7 +30,7 @@
     "packages/@overeng/utils",
     "packages/@overeng/utils-dev"
   ],
-  "packageManager": "pnpm@11.0.0-rc.5",
+  "packageManager": "pnpm@11.3.0",
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

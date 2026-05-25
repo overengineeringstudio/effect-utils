@@ -67,3 +67,5 @@ dedupePeerDependents: true
 strictPeerDependencies: true
 
 enableGlobalVirtualStore: true
+
+storeDir: .pnpm-store

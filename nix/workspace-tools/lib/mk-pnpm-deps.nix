@@ -679,6 +679,11 @@ in
 
                 ${pkgs.nodejs}/bin/node ${lib.escapeShellArg normalizePreparedTreeScript} .
 
+                if [ -e "$SOURCE_DIR/.pnpm-store" ]; then
+                  echo "workspace-prep: FATAL - workspace-local .pnpm-store leaked into prepared output" >&2
+                  exit 1
+                fi
+
                 archiveStartedAt=$(timer_now)
                 log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
                 # Self-hosted darwin runners have shown `cp -a` spuriously failing
@@ -709,8 +714,8 @@ in
                 log_prep_phase "archive" "duration=''${archiveDuration}s mode=tar-stream-tree"
                 log_prep_event "archive" "$archiveDuration" "mode=tar-stream-tree"
                 prepDuration=$(timer_elapsed "$prepStartedAt")
-                log_prep_phase "complete" "duration=''${prepDuration}s output_hash=${pnpmDepsHash}"
-                log_prep_event "complete" "$prepDuration" "output_hash=${pnpmDepsHash}"
+                log_prep_phase "complete" "duration=''${prepDuration}s declared_output_hash=${pnpmDepsHash}"
+                log_prep_event "complete" "$prepDuration" "declared_output_hash=${pnpmDepsHash}"
 
                 runHook postInstall
       '';
