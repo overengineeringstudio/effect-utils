@@ -74,6 +74,51 @@ export type OutboxProjectionRow = {
   readonly settlementEventId: string | undefined
 }
 
+export type ConflictProjectionRow = {
+  readonly conflictId: SyncEventId
+  readonly pageId: PageId | undefined
+  readonly propertyId: PropertyId | undefined
+  readonly surface: SurfaceKey | undefined
+  readonly state: 'open' | 'resolved' | 'superseded' | 'ignored'
+  readonly kind:
+    | 'same-property'
+    | 'property'
+    | 'body'
+    | 'schema'
+    | 'delete-vs-edit'
+    | 'path'
+    | 'relation'
+    | 'permission'
+    | undefined
+  readonly baseHash: Hash | undefined
+  readonly localHash: Hash | undefined
+  readonly remoteHash: Hash | undefined
+  readonly message: string | undefined
+  readonly openedEventId: SyncEventId
+  readonly resolutionEventId: SyncEventId | undefined
+}
+
+export type GuardBlockProjectionRow = {
+  readonly blockId: string
+  readonly surface: SurfaceKey | undefined
+  readonly guard: typeof GuardName.Type
+  readonly message: string
+  readonly eventId: SyncEventId
+}
+
+export type TombstoneProjectionRow = {
+  readonly pageId: PageId
+  readonly classification:
+    | 'unclassified'
+    | 'remote_trash'
+    | 'moved_out'
+    | 'moved_between_tracked_sources'
+    | 'inaccessible'
+    | 'unknown'
+  readonly reason: string
+  readonly eventId: SyncEventId
+}
+
 export type OutboxClaimOptions = {
   readonly rootId: SyncRootId
   readonly leaseToken: string
@@ -205,6 +250,9 @@ const decodeQueryCheckpointProjectionPayload = Schema.decodeUnknownSync(
 const decodeQueryAbsenceProjectionPayload = Schema.decodeUnknownSync(
   Schema.parseJson(QueryAbsenceProjectionPayload),
 )
+const decodeConflictPayloadMessage = Schema.decodeUnknownSync(
+  Schema.parseJson(Schema.Struct({ message: Schema.optional(Schema.String) })),
+)
 
 const projectionName = 'core'
 
@@ -280,6 +328,26 @@ const readBoolean = (row: SqlRow, key: string): boolean => {
 
 const readOutboxState = (row: SqlRow, key: string): typeof OutboxState.Type =>
   Schema.decodeUnknownSync(OutboxState)(readString(row, key))
+
+const readConflictState = (row: SqlRow, key: string): ConflictProjectionRow['state'] =>
+  Schema.decodeUnknownSync(Schema.Literal('open', 'resolved', 'superseded', 'ignored'))(
+    readString(row, key),
+  )
+
+const readTombstoneClassification = (
+  row: SqlRow,
+  key: string,
+): TombstoneProjectionRow['classification'] =>
+  Schema.decodeUnknownSync(
+    Schema.Literal(
+      'unclassified',
+      'remote_trash',
+      'moved_out',
+      'moved_between_tracked_sources',
+      'inaccessible',
+      'unknown',
+    ),
+  )(readString(row, key))
 
 const readCount = (row: SqlRow | undefined, key: string): number =>
   row === undefined ? 0 : Number(readInteger(row, key))
@@ -649,6 +717,116 @@ export class NotionSyncStore {
         attemptCount: Number(readInteger(row, 'attempt_count')),
         leaseToken: readOptionalString(row, 'lease_token'),
         settlementEventId: readOptionalString(row, 'settlement_event_id'),
+      }))
+  }
+
+  readConflicts(rootId: SyncRootId): readonly ConflictProjectionRow[] {
+    return this.#db
+      .prepare(
+        `SELECT
+           conflict.conflict_id,
+           conflict.page_id,
+           conflict.property_id,
+           conflict.state,
+           conflict.base_hash,
+           conflict.local_hash,
+           conflict.remote_hash,
+           conflict.opened_event_id,
+           conflict.resolution_event_id,
+           opened.event_json
+         FROM conflict_projection conflict
+         JOIN sync_event opened
+           ON opened.root_id = conflict.root_id
+          AND opened.event_id = conflict.opened_event_id
+         WHERE conflict.root_id = ?
+         ORDER BY conflict.state, conflict.page_id, conflict.property_id, conflict.conflict_id`,
+      )
+      .all(rootId)
+      .map((row) => {
+        const openedEvent = decodeEventFromJson(readString(row, 'event_json'))
+        const surface =
+          openedEvent.surface === null ? undefined : decodeSurfaceKey(openedEvent.surface)
+        const kind =
+          openedEvent._tag === 'ConflictRaised'
+            ? openedEvent.propertyId !== undefined
+              ? 'same-property'
+              : openedEvent.conflictKind
+            : undefined
+        const message =
+          openedEvent._tag === 'ConflictRaised'
+            ? decodeConflictPayloadMessage(openedEvent.payload.canonicalJson).message
+            : undefined
+
+        return {
+          conflictId: decodeSyncEventId(readString(row, 'conflict_id')),
+          pageId:
+            readOptionalString(row, 'page_id') === undefined
+              ? undefined
+              : decodePageId(readString(row, 'page_id')),
+          propertyId:
+            readOptionalString(row, 'property_id') === undefined
+              ? undefined
+              : decodePropertyId(readString(row, 'property_id')),
+          surface,
+          state: readConflictState(row, 'state'),
+          kind,
+          baseHash:
+            readOptionalString(row, 'base_hash') === undefined
+              ? undefined
+              : decodeHash(readString(row, 'base_hash')),
+          localHash:
+            readOptionalString(row, 'local_hash') === undefined
+              ? undefined
+              : decodeHash(readString(row, 'local_hash')),
+          remoteHash:
+            readOptionalString(row, 'remote_hash') === undefined
+              ? undefined
+              : decodeHash(readString(row, 'remote_hash')),
+          message,
+          openedEventId: decodeSyncEventId(readString(row, 'opened_event_id')),
+          resolutionEventId:
+            readOptionalString(row, 'resolution_event_id') === undefined
+              ? undefined
+              : decodeSyncEventId(readString(row, 'resolution_event_id')),
+        }
+      })
+  }
+
+  readGuardBlocks(rootId: SyncRootId): readonly GuardBlockProjectionRow[] {
+    return this.#db
+      .prepare(
+        `SELECT block_id, surface, guard, message, event_id
+         FROM guard_block_projection
+         WHERE root_id = ?
+         ORDER BY guard, surface, block_id`,
+      )
+      .all(rootId)
+      .map((row) => ({
+        blockId: readString(row, 'block_id'),
+        surface:
+          readOptionalString(row, 'surface') === undefined
+            ? undefined
+            : decodeSurfaceKey(readString(row, 'surface')),
+        guard: Schema.decodeUnknownSync(GuardName)(readString(row, 'guard')),
+        message: readString(row, 'message'),
+        eventId: decodeSyncEventId(readString(row, 'event_id')),
+      }))
+  }
+
+  readTombstones(rootId: SyncRootId): readonly TombstoneProjectionRow[] {
+    return this.#db
+      .prepare(
+        `SELECT page_id, classification, reason, event_id
+         FROM tombstone_projection
+         WHERE root_id = ?
+         ORDER BY classification, page_id`,
+      )
+      .all(rootId)
+      .map((row) => ({
+        pageId: decodePageId(readString(row, 'page_id')),
+        classification: readTombstoneClassification(row, 'classification'),
+        reason: readString(row, 'reason'),
+        eventId: decodeSyncEventId(readString(row, 'event_id')),
       }))
   }
 
@@ -1870,6 +2048,19 @@ export class NotionSyncStore {
             currentIso(this.#now),
           )
         break
+      case 'ConflictResolved':
+        this.#db
+          .prepare(
+            `UPDATE conflict_projection
+             SET state = 'resolved',
+                 resolution_event_id = ?,
+                 updated_at = ?
+             WHERE root_id = ?
+               AND conflict_id = ?
+               AND state = 'open'`,
+          )
+          .run(event.eventId, currentIso(this.#now), event.rootId, event.conflictId)
+        break
       case 'TombstoneCandidateObserved':
         this.#db
           .prepare(
@@ -1975,6 +2166,58 @@ export class NotionSyncStore {
             event.eventId,
             currentIso(this.#now),
           )
+        break
+      case 'RowForgotten':
+        this.#db
+          .prepare(`DELETE FROM row_projection WHERE root_id = ? AND page_id = ?`)
+          .run(event.rootId, event.pageId)
+        this.#db
+          .prepare(`DELETE FROM property_shadow_projection WHERE root_id = ? AND page_id = ?`)
+          .run(event.rootId, event.pageId)
+        this.#db
+          .prepare(`DELETE FROM body_pointer_projection WHERE root_id = ? AND page_id = ?`)
+          .run(event.rootId, event.pageId)
+        this.#db
+          .prepare(`DELETE FROM tombstone_projection WHERE root_id = ? AND page_id = ?`)
+          .run(event.rootId, event.pageId)
+        this.#db
+          .prepare(`DELETE FROM query_absence_projection WHERE root_id = ? AND page_id = ?`)
+          .run(event.rootId, event.pageId)
+        this.#db
+          .prepare(`DELETE FROM path_claim WHERE root_id = ? AND page_id = ?`)
+          .run(event.rootId, event.pageId)
+        this.#db
+          .prepare(
+            `UPDATE outbox
+             SET state = 'fenced',
+                 lease_token = NULL,
+                 last_event_id = ?,
+                 updated_at = ?
+             WHERE root_id = ?
+               AND settlement_event_id IS NULL
+               AND (
+                 surface = ?
+                 OR surface LIKE ?
+               )`,
+          )
+          .run(
+            event.eventId,
+            currentIso(this.#now),
+            event.rootId,
+            `page:${event.pageId}`,
+            `page:${event.pageId}:%`,
+          )
+        this.#db
+          .prepare(
+            `UPDATE conflict_projection
+             SET state = 'ignored',
+                 resolution_event_id = ?,
+                 updated_at = ?
+             WHERE root_id = ?
+               AND page_id = ?
+               AND state = 'open'`,
+          )
+          .run(event.eventId, currentIso(this.#now), event.rootId, event.pageId)
         break
       case 'QueryScanCheckpointRecorded': {
         const payload = decodePayload(event, decodeQueryCheckpointProjectionPayload)
