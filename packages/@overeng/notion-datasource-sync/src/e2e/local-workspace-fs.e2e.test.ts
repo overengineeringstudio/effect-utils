@@ -131,6 +131,115 @@ describe('filesystem local workspace E2E', () => {
     }
   })
 
+  it('fails closed instead of overwriting an unclaimed existing body file', async () => {
+    const fixture = await makeTempWorkspace()
+    try {
+      const pageId = testPageId('page-1')
+      const path = testWorkspacePath('weekly-notes--page-1.nmd')
+      const bodyPath = join(fixture.root, path)
+      await writeFile(bodyPath, 'local-only body\n', 'utf8')
+
+      const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            workspace.materialize({
+              _tag: 'MaterializePlan',
+              pageId,
+              path,
+              bodyPointer: testBodyPointer({ pageId, bodyHash: testHash('body-a') }),
+            }),
+          ),
+        ),
+      ).resolves.toMatchObject({
+        _tag: 'LocalStoreError',
+        operation: 'materialize',
+        message: expect.stringContaining('no sidecar or claim identity'),
+      })
+      await expect(readFile(bodyPath, 'utf8')).resolves.toBe('local-only body\n')
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  it('fails closed instead of overwriting local edits on a claimed body file', async () => {
+    const fixture = await makeTempWorkspace()
+    try {
+      const pageId = testPageId('page-1')
+      const path = testWorkspacePath('weekly-notes--page-1.nmd')
+      const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
+
+      await Effect.runPromise(
+        workspace.materialize({
+          _tag: 'MaterializePlan',
+          pageId,
+          path,
+          bodyPointer: testBodyPointer({ pageId, bodyHash: testHash('body-a') }),
+        }),
+      )
+      const bodyPath = join(fixture.root, path)
+      await writeFile(bodyPath, `${await readFile(bodyPath, 'utf8')}local edit\n`, 'utf8')
+      const editedContent = await readFile(bodyPath, 'utf8')
+
+      await expect(
+        Effect.runPromise(
+          Effect.flip(
+            workspace.materialize({
+              _tag: 'MaterializePlan',
+              pageId,
+              path,
+              bodyPointer: testBodyPointer({ pageId, bodyHash: testHash('body-b') }),
+            }),
+          ),
+        ),
+      ).resolves.toMatchObject({
+        _tag: 'LocalStoreError',
+        operation: 'materialize',
+        message: expect.stringContaining('local edits'),
+      })
+      await expect(readFile(bodyPath, 'utf8')).resolves.toBe(editedContent)
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  it('fails closed when duplicate sidecars claim the same body path', async () => {
+    const fixture = await makeTempWorkspace()
+    try {
+      const pageId = testPageId('page-1')
+      const otherPageId = testPageId('page-2')
+      const path = testWorkspacePath('weekly-notes--page-1.nmd')
+      const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
+
+      await Effect.runPromise(
+        workspace.materialize({
+          _tag: 'MaterializePlan',
+          pageId,
+          path,
+          bodyPointer: testBodyPointer({ pageId, bodyHash: testHash('body-a') }),
+        }),
+      )
+      const sidecar = JSON.parse(
+        await readFile(filesystemWorkspacePageSidecarPath({ root: fixture.root, pageId }), 'utf8'),
+      ) as Record<string, unknown>
+      await writeFile(
+        filesystemWorkspacePageSidecarPath({ root: fixture.root, pageId: otherPageId }),
+        `${JSON.stringify({ ...sidecar, pageId: otherPageId }, null, 2)}\n`,
+        'utf8',
+      )
+
+      await expect(
+        Effect.runPromise(Effect.flip(Stream.runCollect(workspace.scan(fixture.root)))),
+      ).resolves.toMatchObject({
+        _tag: 'LocalStoreError',
+        operation: 'scan',
+        message: expect.stringContaining('sidecars conflict'),
+      })
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
   it('suppresses own materialization writes only while the marker evidence still matches', async () => {
     const fixture = await makeTempWorkspace()
     try {
