@@ -183,6 +183,16 @@ export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
 }).annotations({ identifier: 'NotionDatasourceSync.ConflictRaised' })
 export type ConflictRaised = typeof ConflictRaised.Type
 
+export const ConflictResolved = Schema.TaggedStruct('ConflictResolved', {
+  ...eventEnvelopeFields('ConflictResolved', 'ConflictResolved'),
+  conflictId: SyncEventId,
+  pageId: PageId,
+  propertyId: Schema.optional(PropertyId),
+  resolutionChoice: Schema.Literal('keep-local', 'keep-remote', 'manual'),
+  followupCommandId: Schema.optional(CommandId),
+}).annotations({ identifier: 'NotionDatasourceSync.ConflictResolved' })
+export type ConflictResolved = typeof ConflictResolved.Type
+
 export const TombstoneRecorded = Schema.TaggedStruct('TombstoneRecorded', {
   ...eventEnvelopeFields('TombstoneClassified', 'TombstoneRecorded'),
   pageId: PageId,
@@ -251,6 +261,13 @@ export const PathClaimed = Schema.TaggedStruct('PathClaimed', {
 }).annotations({ identifier: 'NotionDatasourceSync.PathClaimed' })
 export type PathClaimed = typeof PathClaimed.Type
 
+export const RowForgotten = Schema.TaggedStruct('RowForgotten', {
+  ...eventEnvelopeFields('LocalIntentAccepted', 'RowForgotten'),
+  pageId: PageId,
+  reason: Schema.Literal('user-forget'),
+}).annotations({ identifier: 'NotionDatasourceSync.RowForgotten' })
+export type RowForgotten = typeof RowForgotten.Type
+
 export const DecodeDriftBlocked = Schema.TaggedStruct('DecodeDriftBlocked', {
   ...eventEnvelopeFields('CompatibilityChecked', 'DecodeDriftBlocked'),
   apiVersion: SupportedNotionApiVersion,
@@ -276,12 +293,14 @@ export const SyncEvent = Schema.Union(
   RemoteWriteAttempted,
   RemoteWriteSettled,
   ConflictRaised,
+  ConflictResolved,
   TombstoneRecorded,
   TombstoneCandidateObserved,
   CapabilityPreflightChecked,
   QueryScanCheckpointRecorded,
   PagePropertyCheckpointRecorded,
   PathClaimed,
+  RowForgotten,
   DecodeDriftBlocked,
   GuardBlocked,
 ).annotations({ identifier: 'NotionDatasourceSync.SyncEvent' })

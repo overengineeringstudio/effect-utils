@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 
 import { bodySurfaceKey, pageSurfaceKey } from './canonical.ts'
-import { BodyPointer, Hash, PageId, type AbsolutePath } from './domain.ts'
+import { BodyPointer, Hash, PageId, PropertyId, type AbsolutePath } from './domain.ts'
 import type {
   BodySyncError,
   LocalStorageError,
@@ -108,6 +108,11 @@ const pageIdFromSurface = (surface: string): typeof PageId.Type => {
   return decode(PageId, match?.[1] ?? 'unknown-page')
 }
 
+const propertyIdFromSurface = (surface: string): typeof PropertyId.Type | undefined => {
+  const match = /^page:[^:]+:property:(.+)$/.exec(surface)
+  return match?.[1] === undefined ? undefined : decode(PropertyId, match[1])
+}
+
 const appendDecision = ({
   store,
   rootId,
@@ -156,14 +161,17 @@ const appendDecision = ({
     }
     case 'OpenConflict': {
       const surface = decision.conflict.localSurface
+      const propertyId = propertyIdFromSurface(surface)
       const inserted = store.appendEventWithResult(
         makeConflictRaisedEvent({
           rootId,
           pageId: pageId ?? pageIdFromSurface(surface),
+          ...(propertyId === undefined ? {} : { propertyId }),
           surface,
           baseHash: decision.conflict.baseHash ?? fallbackHash('missing-base'),
           localHash: decision.conflict.localHash ?? fallbackHash('missing-local'),
           remoteHash: decision.conflict.remoteHash ?? fallbackHash('missing-remote'),
+          ...(propertyId === undefined ? {} : { conflictKind: 'property' }),
           message: decision.conflict.message,
           now,
         }),

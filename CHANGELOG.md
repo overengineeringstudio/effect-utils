@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-datasource-sync**: Add the Milestone 6B user-command surface for listing conflict/blocked/tombstone/outbox state, durable same-property conflict resolution, forget, restore, dry-run result envelopes, and focused command/E2E coverage.
 - **@overeng/notion-datasource-sync**: Add the Milestone 6A one-shot orchestration API for init, pull, push, sync, and status, composing gateway/body/workspace observation, planner intents, bounded outbox execution, durable status counts, and idempotent fake-service E2E coverage.
 - **@overeng/notion-datasource-sync**: Add the Milestone 5A outbox executor and settlement core with lease-based command claiming, preflight stale-base blocking, verified no-op recovery, read-after-write mismatch diagnostics, and fake-service crash recovery coverage.
 - **@overeng/notion-datasource-sync**: Add the Milestone 5B real local filesystem workspace layer with temp-directory E2E coverage for path claims, symlink escapes, sidecar damage, own-write materialization suppression, and local delete candidates, plus an explicit unsupported NotionMD body adapter boundary.
