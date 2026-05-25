@@ -2,15 +2,29 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
 
-import { Hash } from './domain.ts'
+import {
+  BodySafetySnapshot,
+  CapabilityName,
+  DataSourceId,
+  Hash,
+  PageId,
+  PropertyId,
+} from './domain.ts'
 import { LocalStoreError } from './errors.ts'
-import { SyncEvent, type SyncRootId } from './events.ts'
+import { SyncEvent, SyncEventId, type SyncRootId } from './events.ts'
 import type { GuardName } from './guards.ts'
+import type { PlannerProjectionSnapshot } from './planner.ts'
 import {
   computePayloadHash,
   computeProjectionDigest,
+  DataSourceProjectionPayload,
+  BodyProjectionSafetyPayload,
   isCompactionBlockingOutboxState,
   OutboxState,
+  PropertyCheckpointProjectionPayload,
+  QueryAbsenceProjectionPayload,
+  QueryCheckpointProjectionPayload,
+  RowProjectionPayload,
   type ProjectionDigestInput,
 } from './store-projections.ts'
 import {
@@ -67,8 +81,63 @@ export type CompactionDecision =
 
 const decodeEventFromJson = Schema.decodeSync(Schema.parseJson(SyncEvent))
 const encodeEvent = Schema.encodeSync(SyncEvent)
+const decodeBodySafetyFromJson = Schema.decodeSync(Schema.parseJson(BodySafetySnapshot))
+const encodeBodySafety = Schema.encodeSync(BodySafetySnapshot)
+const decodeCapabilityName = Schema.decodeUnknownSync(CapabilityName)
+const decodeDataSourceId = Schema.decodeSync(DataSourceId)
+const decodeHash = Schema.decodeSync(Hash)
+const decodePageId = Schema.decodeSync(PageId)
+const decodePropertyId = Schema.decodeSync(PropertyId)
+const decodeSyncEventId = Schema.decodeSync(SyncEventId)
+const decodeDataSourceProjectionPayload = Schema.decodeUnknownSync(
+  Schema.parseJson(DataSourceProjectionPayload),
+)
+const decodeRowProjectionPayload = Schema.decodeUnknownSync(Schema.parseJson(RowProjectionPayload))
+const decodeBodyProjectionSafetyPayload = Schema.decodeUnknownSync(
+  Schema.parseJson(BodyProjectionSafetyPayload),
+)
+const decodePropertyCheckpointProjectionPayload = Schema.decodeUnknownSync(
+  Schema.parseJson(PropertyCheckpointProjectionPayload),
+)
+const decodeQueryCheckpointProjectionPayload = Schema.decodeUnknownSync(
+  Schema.parseJson(QueryCheckpointProjectionPayload),
+)
+const decodeQueryAbsenceProjectionPayload = Schema.decodeUnknownSync(
+  Schema.parseJson(QueryAbsenceProjectionPayload),
+)
 
 const projectionName = 'core'
+
+const defaultUnsafeBodySafety: typeof BodySafetySnapshot.Type = {
+  truncated: false,
+  unknownBlockCause: 'unknown',
+  selection: 'ambiguous',
+  wouldDeleteChildren: false,
+  syncedPageUnsupported: false,
+  adapterConflict: false,
+  adapterMutationSurfaces: ['body'],
+}
+
+const decodePayload = <TValue>(
+  event: SyncEvent,
+  decode: (value: unknown) => TValue,
+): TValue | undefined => {
+  try {
+    return decode(event.payload.canonicalJson)
+  } catch {
+    return undefined
+  }
+}
+
+const parsePropertySurface = (
+  surface: string | undefined,
+): { readonly pageId: string; readonly propertyId: string } | undefined => {
+  if (surface === undefined) return undefined
+  const match = /^page:([^:]+):property:(.+)$/.exec(surface)
+  if (match === null) return undefined
+
+  return { pageId: match[1]!, propertyId: match[2]! }
+}
 
 const readString = (row: SqlRow, key: string): string => {
   const value = row[key]
@@ -257,7 +326,7 @@ export class NotionSyncStore {
       rootId,
       projectorVersion: readString(row, 'projector_version'),
       highWaterSequence: readInteger(row, 'high_water_sequence'),
-      digest: Schema.decodeSync(Hash)(readString(row, 'digest')),
+      digest: decodeHash(readString(row, 'digest')),
     }
   }
 
@@ -298,6 +367,157 @@ export class NotionSyncStore {
         leaseToken: readOptionalString(row, 'lease_token'),
         settlementEventId: readOptionalString(row, 'settlement_event_id'),
       }))
+  }
+
+  readPlannerProjectionSnapshot(rootId: SyncRootId): PlannerProjectionSnapshot {
+    const apiRow = this.#db
+      .prepare(
+        `SELECT api_version
+         FROM api_contract_projection
+         WHERE root_id = ?
+         ORDER BY updated_at DESC, api_version
+         LIMIT 1`,
+      )
+      .get(rootId)
+    const capabilityRows = this.#db
+      .prepare(
+        `SELECT capability, supported
+         FROM capability_projection
+         WHERE root_id = ?
+         ORDER BY capability`,
+      )
+      .all(rootId)
+    const requiredCapabilities = capabilityRows.map((row) =>
+      decodeCapabilityName(readString(row, 'capability')),
+    )
+    const supportedCapabilities = capabilityRows
+      .filter((row) => readBoolean(row, 'supported'))
+      .map((row) => decodeCapabilityName(readString(row, 'capability')))
+
+    const pendingProperties = this.#pendingPropertyIntents(rootId)
+
+    return {
+      rootId,
+      api: {
+        configuredApiVersion:
+          apiRow === undefined ? '2026-03-11' : readString(apiRow, 'api_version'),
+        compatibilityProof: apiRow === undefined ? 'missing' : 'present',
+      },
+      capabilities: {
+        required: requiredCapabilities,
+        supported: supportedCapabilities,
+        preflight:
+          capabilityRows.length > 0 && capabilityRows.every((row) => readBoolean(row, 'supported'))
+            ? 'passed'
+            : 'failed',
+      },
+      schema: this.#db
+        .prepare(
+          `SELECT data_source_id, property_id, schema_hash, config_hash, write_class
+           FROM schema_property_projection
+           WHERE root_id = ?
+           ORDER BY data_source_id, property_id`,
+        )
+        .all(rootId)
+        .map((row) => ({
+          dataSourceId: decodeDataSourceId(readString(row, 'data_source_id')),
+          propertyId: decodePropertyId(readString(row, 'property_id')),
+          schemaHash: decodeHash(readString(row, 'schema_hash')),
+          configHash: decodeHash(readString(row, 'config_hash')),
+          writeClass: Schema.decodeUnknownSync(
+            Schema.Literal('writable', 'computed', 'unsupported'),
+          )(readString(row, 'write_class')),
+        })),
+      rows: this.#db
+        .prepare(
+          `SELECT page_id, data_source_id, properties_hash, in_trash, moved_out, local_delete_candidate
+           FROM row_projection
+           WHERE root_id = ?
+           ORDER BY data_source_id, page_id`,
+        )
+        .all(rootId)
+        .map((row) => ({
+          pageId: decodePageId(readString(row, 'page_id')),
+          dataSourceId: decodeDataSourceId(readString(row, 'data_source_id')),
+          propertiesHash: decodeHash(readString(row, 'properties_hash')),
+          inTrash: readBoolean(row, 'in_trash'),
+          movedOut: readBoolean(row, 'moved_out'),
+          localDeleteCandidate: readBoolean(row, 'local_delete_candidate'),
+        })),
+      properties: this.#db
+        .prepare(
+          `SELECT page_id, property_id, base_hash, remote_hash, availability
+           FROM property_shadow_projection
+           WHERE root_id = ?
+           ORDER BY page_id, property_id`,
+        )
+        .all(rootId)
+        .map((row) => {
+          const pageId = decodePageId(readString(row, 'page_id'))
+          const propertyId = decodePropertyId(readString(row, 'property_id'))
+
+          return {
+            pageId,
+            propertyId,
+            baseHash: decodeHash(readString(row, 'base_hash')),
+            remoteHash: decodeHash(readString(row, 'remote_hash')),
+            availability: Schema.decodeUnknownSync(
+              Schema.Literal(
+                'complete',
+                'computed',
+                'unsupported',
+                'paginated-incomplete',
+                'relation-target-inaccessible',
+                'related-data-source-unshared',
+              ),
+            )(readString(row, 'availability')),
+            pendingLocal: pendingProperties.get(`${pageId}\0${propertyId}`),
+          }
+        }),
+      bodies: this.#db
+        .prepare(
+          `SELECT
+             page_id,
+             path,
+             base_hash,
+             current_hash,
+             sidecar_identity_proven,
+             own_write_materialization_ids_json,
+             safety_json
+           FROM body_pointer_projection
+           WHERE root_id = ?
+           ORDER BY page_id`,
+        )
+        .all(rootId)
+        .map((row) => ({
+          pageId: decodePageId(readString(row, 'page_id')),
+          path: readString(row, 'path'),
+          baseHash: decodeHash(readString(row, 'base_hash')),
+          currentHash: decodeHash(readString(row, 'current_hash')),
+          sidecarIdentityProven: readBoolean(row, 'sidecar_identity_proven'),
+          ownWriteMaterializationIds: Schema.decodeSync(
+            Schema.parseJson(Schema.Array(Schema.String)),
+          )(readString(row, 'own_write_materialization_ids_json')),
+          safety: decodeBodySafetyFromJson(readString(row, 'safety_json')),
+        })),
+      tombstones: this.#readTombstones(rootId),
+      queries: this.#readQuerySurfaces(rootId),
+      pathClaims: this.#db
+        .prepare(
+          `SELECT relative_path, page_id, state
+           FROM path_claim
+           WHERE root_id = ?
+           ORDER BY relative_path`,
+        )
+        .all(rootId)
+        .map((row) => ({
+          path: readString(row, 'relative_path'),
+          ownerPageId: decodePageId(readString(row, 'page_id')),
+          released: readString(row, 'state') === 'released',
+        })),
+      localWorkspace: [],
+      remoteChanges: [],
+    }
   }
 
   getCompactionDecision(rootId: SyncRootId): CompactionDecision {
@@ -383,12 +603,26 @@ export class NotionSyncStore {
 
   #runMigrations(): void {
     this.#db.exec(createStoreSchemaSql)
+    for (const statement of [
+      `ALTER TABLE query_scan_checkpoint
+       ADD COLUMN capped_at_limit INTEGER NOT NULL DEFAULT 0 CHECK (capped_at_limit IN (0, 1))`,
+      `ALTER TABLE query_scan_checkpoint
+       ADD COLUMN contract_changed INTEGER NOT NULL DEFAULT 0 CHECK (contract_changed IN (0, 1))`,
+    ]) {
+      try {
+        this.#db.exec(statement)
+      } catch (cause) {
+        if (String(cause).includes('duplicate column name') === false) {
+          throw cause
+        }
+      }
+    }
     this.#db
       .prepare(
         `INSERT OR IGNORE INTO migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       )
-      .run(STORE_SCHEMA_VERSION, 'initial-sync-core-schema', currentIso(this.#now))
+      .run(STORE_SCHEMA_VERSION, 'planner-projection-schema', currentIso(this.#now))
   }
 
   #ensureRoot(rootId: SyncRootId): void {
@@ -429,6 +663,175 @@ export class NotionSyncStore {
       eventId: readString(row, 'event_id'),
       payloadHash: readString(row, 'payload_hash'),
     }))
+  }
+
+  #pendingPropertyIntents(
+    rootId: SyncRootId,
+  ): ReadonlyMap<
+    string,
+    { readonly intentEventId: typeof SyncEventId.Type; readonly targetHash: typeof Hash.Type }
+  > {
+    const pending = new Map<
+      string,
+      { readonly intentEventId: typeof SyncEventId.Type; readonly targetHash: typeof Hash.Type }
+    >()
+
+    const rows = this.#db
+      .prepare(
+        `SELECT intent_event_id, surface, desired_hash
+         FROM outbox
+         WHERE root_id = ?
+           AND command_tag = 'PatchPageProperties'
+           AND settlement_event_id IS NULL
+           AND state IN ('queued', 'running', 'retryable', 'blocked', 'ambiguous')
+         ORDER BY command_id`,
+      )
+      .all(rootId)
+
+    for (const row of rows) {
+      const surface = parsePropertySurface(readOptionalString(row, 'surface'))
+      if (surface === undefined) continue
+
+      pending.set(`${surface.pageId}\0${surface.propertyId}`, {
+        intentEventId: decodeSyncEventId(readString(row, 'intent_event_id')),
+        targetHash: decodeHash(readString(row, 'desired_hash')),
+      })
+    }
+
+    return pending
+  }
+
+  #readTombstones(rootId: SyncRootId): PlannerProjectionSnapshot['tombstones'] {
+    const directRetrieveByPage = new Map<
+      string,
+      PlannerProjectionSnapshot['tombstones'][number]['directRetrieve']
+    >()
+    for (const row of this.#db
+      .prepare(
+        `SELECT page_id, direct_retrieve
+         FROM query_absence_projection
+         WHERE root_id = ?
+         ORDER BY updated_at DESC, evidence_event_id DESC`,
+      )
+      .all(rootId)) {
+      const pageId = readString(row, 'page_id')
+      if (directRetrieveByPage.has(pageId) === false) {
+        directRetrieveByPage.set(
+          pageId,
+          Schema.decodeUnknownSync(
+            Schema.Literal(
+              'not-run',
+              'accessible',
+              'in-trash',
+              'moved-out',
+              'permission-ambiguous',
+              'inaccessible',
+              'unknown',
+            ),
+          )(readString(row, 'direct_retrieve')),
+        )
+      }
+    }
+
+    return this.#db
+      .prepare(
+        `SELECT page_id, classification
+         FROM tombstone_projection
+         WHERE root_id = ?
+         ORDER BY page_id`,
+      )
+      .all(rootId)
+      .map((row) => {
+        const pageId = readString(row, 'page_id')
+        const classification = readString(row, 'classification')
+        const state =
+          classification === 'unclassified'
+            ? 'candidate'
+            : classification === 'remote_trash'
+              ? 'remote-trash'
+              : classification === 'moved_out' || classification === 'moved_between_tracked_sources'
+                ? 'moved-out'
+                : classification === 'inaccessible' || classification === 'unknown'
+                  ? classification
+                  : 'none'
+        const directRetrieve =
+          directRetrieveByPage.get(pageId) ??
+          (classification === 'remote_trash'
+            ? 'in-trash'
+            : classification === 'moved_out' || classification === 'moved_between_tracked_sources'
+              ? 'moved-out'
+              : classification === 'inaccessible' || classification === 'unknown'
+                ? classification
+                : 'not-run')
+
+        return {
+          pageId: decodePageId(pageId),
+          state,
+          directRetrieve,
+        }
+      })
+  }
+
+  #readQuerySurfaces(rootId: SyncRootId): PlannerProjectionSnapshot['queries'] {
+    return this.#db
+      .prepare(
+        `SELECT
+           absence.data_source_id,
+           absence.page_id,
+           absence.query_contract_hash,
+           absence.classified,
+           absence.membership_scope,
+           absence.filtered,
+           absence.direct_retrieve,
+           checkpoint.complete,
+           checkpoint.capped_at_limit,
+           checkpoint.contract_changed
+         FROM query_absence_projection absence
+         LEFT JOIN query_scan_checkpoint checkpoint
+           ON checkpoint.root_id = absence.root_id
+          AND checkpoint.data_source_id = absence.data_source_id
+          AND checkpoint.query_contract_hash = absence.query_contract_hash
+         WHERE absence.root_id = ?
+         ORDER BY absence.data_source_id, absence.page_id, absence.query_contract_hash`,
+      )
+      .all(rootId)
+      .map((row) => ({
+        dataSourceId: decodeDataSourceId(readString(row, 'data_source_id')),
+        pageId: decodePageId(readString(row, 'page_id')),
+        queryContractHash: decodeHash(readString(row, 'query_contract_hash')),
+        completeness: {
+          terminal:
+            row.complete === null || row.complete === undefined
+              ? false
+              : readBoolean(row, 'complete'),
+          cappedAtLimit:
+            row.capped_at_limit === null || row.capped_at_limit === undefined
+              ? false
+              : readBoolean(row, 'capped_at_limit'),
+          contractChanged:
+            row.contract_changed === null || row.contract_changed === undefined
+              ? false
+              : readBoolean(row, 'contract_changed'),
+        },
+        absence: {
+          classified: readBoolean(row, 'classified'),
+          membershipScope: Schema.decodeUnknownSync(
+            Schema.Literal('all-data-source-rows', 'explicit-filter'),
+          )(readString(row, 'membership_scope')),
+          filtered: readBoolean(row, 'filtered'),
+          directRetrieve: Schema.decodeUnknownSync(
+            Schema.Literal(
+              'not-run',
+              'accessible',
+              'in-trash',
+              'moved-out',
+              'permission-ambiguous',
+              'inaccessible',
+              'unknown',
+            ),
+          )(readString(row, 'direct_retrieve')),
+        },
+      }))
   }
 
   #rebuildProjectionsInTransaction(rootId: SyncRootId): ProjectionMetadata {
@@ -475,6 +878,69 @@ export class NotionSyncStore {
     for (const table of rootScopedProjectionTables) {
       this.#db.prepare(`DELETE FROM ${table} WHERE root_id = ?`).run(rootId)
     }
+  }
+
+  #applyQueryAbsenceEvidence(
+    event: Extract<
+      SyncEvent,
+      { readonly _tag: 'TombstoneCandidateObserved' | 'TombstoneRecorded' }
+    >,
+    defaultClassified: boolean,
+  ): void {
+    const payload = decodePayload(event, decodeQueryAbsenceProjectionPayload)
+    if (
+      payload?.dataSourceId === undefined ||
+      payload.queryContractHash === undefined ||
+      (payload.pageId !== undefined && payload.pageId !== event.pageId)
+    ) {
+      return
+    }
+
+    const directRetrieve =
+      payload.directRetrieve ??
+      (event._tag === 'TombstoneRecorded'
+        ? event.reason === 'remote_trash'
+          ? 'in-trash'
+          : event.reason === 'moved_out' || event.reason === 'moved_between_tracked_sources'
+            ? 'moved-out'
+            : event.reason
+        : 'not-run')
+
+    this.#db
+      .prepare(
+        `INSERT INTO query_absence_projection (
+           root_id,
+           data_source_id,
+           page_id,
+           query_contract_hash,
+           classified,
+           membership_scope,
+           filtered,
+           direct_retrieve,
+           evidence_event_id,
+           updated_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(root_id, data_source_id, page_id, query_contract_hash) DO UPDATE SET
+           classified = excluded.classified,
+           membership_scope = excluded.membership_scope,
+           filtered = excluded.filtered,
+           direct_retrieve = excluded.direct_retrieve,
+           evidence_event_id = excluded.evidence_event_id,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        event.rootId,
+        payload.dataSourceId,
+        event.pageId,
+        payload.queryContractHash,
+        (payload.classified ?? defaultClassified) ? 1 : 0,
+        payload.membershipScope ?? 'all-data-source-rows',
+        payload.filtered === true ? 1 : 0,
+        directRetrieve,
+        event.eventId,
+        currentIso(this.#now),
+      )
   }
 
   #applyEvent(event: SyncEvent): void {
@@ -536,6 +1002,155 @@ export class NotionSyncStore {
             currentIso(this.#now),
           )
         break
+      case 'DataSourceObserved': {
+        const payload = decodePayload(event, decodeDataSourceProjectionPayload)
+        this.#db
+          .prepare(
+            `INSERT INTO data_source_projection (
+               root_id,
+               data_source_id,
+               request_id,
+               schema_hash,
+               observed_event_id,
+               observed_at,
+               updated_at
+             )
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(root_id, data_source_id) DO UPDATE SET
+               request_id = excluded.request_id,
+               schema_hash = excluded.schema_hash,
+               observed_event_id = excluded.observed_event_id,
+               observed_at = excluded.observed_at,
+               updated_at = excluded.updated_at`,
+          )
+          .run(
+            event.rootId,
+            event.dataSourceId,
+            event.requestId,
+            event.schemaHash,
+            event.eventId,
+            Schema.encodeSync(Schema.DateTimeUtc)(event.observedAt),
+            currentIso(this.#now),
+          )
+
+        for (const property of payload?.schemaProperties ?? []) {
+          this.#db
+            .prepare(
+              `INSERT INTO schema_property_projection (
+                 root_id,
+                 data_source_id,
+                 property_id,
+                 schema_hash,
+                 config_hash,
+                 write_class,
+                 observed_event_id,
+                 updated_at
+               )
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(root_id, data_source_id, property_id) DO UPDATE SET
+                 schema_hash = excluded.schema_hash,
+                 config_hash = excluded.config_hash,
+                 write_class = excluded.write_class,
+                 observed_event_id = excluded.observed_event_id,
+                 updated_at = excluded.updated_at`,
+            )
+            .run(
+              event.rootId,
+              event.dataSourceId,
+              property.propertyId,
+              event.schemaHash,
+              property.configHash,
+              property.writeClass,
+              event.eventId,
+              currentIso(this.#now),
+            )
+        }
+        break
+      }
+      case 'RowObserved': {
+        const payload = decodePayload(event, decodeRowProjectionPayload)
+        this.#db
+          .prepare(
+            `INSERT INTO row_projection (
+               root_id,
+               data_source_id,
+               page_id,
+               properties_hash,
+               in_trash,
+               moved_out,
+               local_delete_candidate,
+               observed_event_id,
+               observed_at,
+               updated_at
+             )
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(root_id, page_id) DO UPDATE SET
+               data_source_id = excluded.data_source_id,
+               properties_hash = excluded.properties_hash,
+               in_trash = excluded.in_trash,
+               moved_out = excluded.moved_out,
+               local_delete_candidate = excluded.local_delete_candidate,
+               observed_event_id = excluded.observed_event_id,
+               observed_at = excluded.observed_at,
+               updated_at = excluded.updated_at`,
+          )
+          .run(
+            event.rootId,
+            event.dataSourceId,
+            event.pageId,
+            event.propertiesHash,
+            event.inTrash ? 1 : 0,
+            payload?.movedOut === true ? 1 : 0,
+            payload?.localDeleteCandidate === true ? 1 : 0,
+            event.eventId,
+            Schema.encodeSync(Schema.DateTimeUtc)(event.observedAt),
+            currentIso(this.#now),
+          )
+
+        if (event.bodyPointer !== undefined) {
+          const safetyPayload = decodePayload(event, decodeBodyProjectionSafetyPayload)
+          const safety =
+            event.bodyPointer.safety ?? safetyPayload?.safety ?? defaultUnsafeBodySafety
+          const bodyHash = event.bodyPointer.bodyHash
+          this.#db
+            .prepare(
+              `INSERT INTO body_pointer_projection (
+                 root_id,
+                 page_id,
+                 path,
+                 base_hash,
+                 current_hash,
+                 sidecar_identity_proven,
+                 own_write_materialization_ids_json,
+                 safety_json,
+                 observed_event_id,
+                 updated_at
+               )
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(root_id, page_id) DO UPDATE SET
+                 path = excluded.path,
+                 current_hash = excluded.current_hash,
+                 sidecar_identity_proven = excluded.sidecar_identity_proven,
+                 own_write_materialization_ids_json = excluded.own_write_materialization_ids_json,
+                 safety_json = excluded.safety_json,
+                 observed_event_id = excluded.observed_event_id,
+                 updated_at = excluded.updated_at`,
+            )
+            .run(
+              event.rootId,
+              event.pageId,
+              payload?.bodyPath ?? `page:${event.pageId}:body`,
+              bodyHash,
+              bodyHash,
+              payload?.sidecarIdentityProven === true ? 1 : 0,
+              stringifyJson(payload?.ownWriteMaterializationIds ?? []),
+              stringifyJson(encodeBodySafety(safety)),
+              event.eventId,
+              currentIso(this.#now),
+            )
+        }
+        break
+      }
       case 'RemoteWritePlanned':
         this.#db
           .prepare(
@@ -690,9 +1305,10 @@ export class NotionSyncStore {
                classification = 'unclassified',
                reason = excluded.reason,
                event_id = excluded.event_id,
-               updated_at = excluded.updated_at`,
+             updated_at = excluded.updated_at`,
           )
           .run(event.rootId, event.pageId, event.reason, event.eventId, currentIso(this.#now))
+        this.#applyQueryAbsenceEvidence(event, false)
         break
       case 'TombstoneRecorded':
         this.#db
@@ -720,6 +1336,7 @@ export class NotionSyncStore {
             event.eventId,
             currentIso(this.#now),
           )
+        this.#applyQueryAbsenceEvidence(event, true)
         break
       case 'PathClaimed':
         this.#db
@@ -748,7 +1365,8 @@ export class NotionSyncStore {
             currentIso(this.#now),
           )
         break
-      case 'QueryScanCheckpointRecorded':
+      case 'QueryScanCheckpointRecorded': {
+        const payload = decodePayload(event, decodeQueryCheckpointProjectionPayload)
         this.#db
           .prepare(
             `INSERT INTO query_scan_checkpoint (
@@ -757,14 +1375,18 @@ export class NotionSyncStore {
                query_contract_hash,
                next_cursor,
                complete,
+               capped_at_limit,
+               contract_changed,
                high_watermark,
                event_id,
                updated_at
              )
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(root_id, data_source_id, query_contract_hash) DO UPDATE SET
                next_cursor = excluded.next_cursor,
                complete = excluded.complete,
+               capped_at_limit = excluded.capped_at_limit,
+               contract_changed = excluded.contract_changed,
                high_watermark = excluded.high_watermark,
                event_id = excluded.event_id,
                updated_at = excluded.updated_at`,
@@ -775,6 +1397,8 @@ export class NotionSyncStore {
             event.queryContractHash,
             event.nextCursor ?? null,
             event.complete ? 1 : 0,
+            payload?.cappedAtLimit === true ? 1 : 0,
+            payload?.contractChanged === true ? 1 : 0,
             event.highWatermark === null
               ? null
               : Schema.encodeSync(Schema.DateTimeUtc)(event.highWatermark),
@@ -782,7 +1406,9 @@ export class NotionSyncStore {
             currentIso(this.#now),
           )
         break
-      case 'PagePropertyCheckpointRecorded':
+      }
+      case 'PagePropertyCheckpointRecorded': {
+        const payload = decodePayload(event, decodePropertyCheckpointProjectionPayload)
         this.#db
           .prepare(
             `INSERT INTO page_property_checkpoint (
@@ -813,9 +1439,39 @@ export class NotionSyncStore {
             event.eventId,
             currentIso(this.#now),
           )
+        if (event.valueHash !== undefined) {
+          this.#db
+            .prepare(
+              `INSERT INTO property_shadow_projection (
+                 root_id,
+                 page_id,
+                 property_id,
+                 base_hash,
+                 remote_hash,
+                 availability,
+                 observed_event_id,
+                 updated_at
+               )
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(root_id, page_id, property_id) DO UPDATE SET
+                 remote_hash = excluded.remote_hash,
+                 availability = excluded.availability,
+                 observed_event_id = excluded.observed_event_id,
+                 updated_at = excluded.updated_at`,
+            )
+            .run(
+              event.rootId,
+              event.pageId,
+              event.propertyId,
+              payload?.baseHash ?? event.valueHash,
+              event.valueHash,
+              payload?.availability ?? (event.complete ? 'complete' : 'paginated-incomplete'),
+              event.eventId,
+              currentIso(this.#now),
+            )
+        }
         break
-      case 'DataSourceObserved':
-      case 'RowObserved':
+      }
       case 'LocalIntentAccepted':
       case 'DecodeDriftBlocked':
         break
