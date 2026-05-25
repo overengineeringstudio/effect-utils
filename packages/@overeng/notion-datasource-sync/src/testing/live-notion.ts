@@ -66,6 +66,11 @@ export type LiveNotionPreflightResult = {
   readonly ledgerPath: string
 }
 
+export type LiveNotionPreflightOptions = {
+  readonly gatewayLayer?: Layer.Layer<NotionDataSourceGateway>
+  readonly writeLedger?: typeof writeLiveFixtureLedger
+}
+
 export const defaultLivePreflightCapabilities = [
   'data_source_retrieve',
   'data_source_query',
@@ -241,21 +246,27 @@ export const writeLiveFixtureLedger = async (input: {
 export const runLiveNotionPreflight = async (
   env: LiveNotionEnv,
   config: Extract<LiveNotionConfig, { _tag: 'configured' }>,
+  options: LiveNotionPreflightOptions = {},
 ): Promise<LiveNotionPreflightResult> => {
   if (env.token === undefined) {
     throw new Error('live Notion preflight requires a token after configuration validation')
   }
 
-  const layer = Layer.mergeAll(
-    NotionConfigLive({
-      authToken: Redacted.make(env.token),
-      retryEnabled: true,
-      maxRetries: 2,
-      retryBaseDelay: 500,
-    }),
-    FetchHttpClient.layer,
-  )
-  const gatewayLayer = NotionDataSourceGatewayLive.pipe(Layer.provide(layer))
+  const gatewayLayer =
+    options.gatewayLayer ??
+    NotionDataSourceGatewayLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          NotionConfigLive({
+            authToken: Redacted.make(env.token),
+            retryEnabled: true,
+            maxRetries: 2,
+            retryBaseDelay: 500,
+          }),
+          FetchHttpClient.layer,
+        ),
+      ),
+    )
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -269,6 +280,10 @@ export const runLiveNotionPreflight = async (
         required: config.requiredCapabilities,
         supported: preflight.supportedCapabilities,
       })
+
+      if (capabilityGuard._tag === 'blocked') {
+        throw new Error(capabilityGuard.message)
+      }
 
       yield* gateway
         .queryRows({
@@ -314,11 +329,7 @@ export const runLiveNotionPreflight = async (
     ],
   }
 
-  await writeLiveFixtureLedger({ path: config.ledgerPath, ledger })
-
-  if (result.capabilityGuard._tag === 'blocked') {
-    throw new Error(result.capabilityGuard.message)
-  }
+  await (options.writeLedger ?? writeLiveFixtureLedger)({ path: config.ledgerPath, ledger })
 
   return {
     runId: config.runId,
