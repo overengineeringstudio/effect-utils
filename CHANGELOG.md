@@ -51,6 +51,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/react-inspector**: Render the schema display name exactly once in collapsed schema-aware object previews (#684). `SchemaAwareObjectPreview` is now the single owner of the schema title (rendered in the object-description slot, italicized when sourced from a `title`/`identifier` annotation); the collapsed branch in `SchemaAwareNodeRenderer` no longer prefixes a duplicate copy. Fixes `0: Source Origin Summary Source Origin Summary {…}` → `0: Source Origin Summary {…}`.
 - **devenv/tasks/shared/nix-cli**: Make `dt nix:hash:*` update nested `depsBuilds.".".hash` entries used by `mkPnpmCli`
   - Lets CLI package hash refreshes converge again after repo-root `pnpm-lock.yaml` changes instead of looping until max iterations
   - Restores the intended `dt nix:hash:genie` workflow for package-version bumps that only need the fixed-output deps hash refreshed

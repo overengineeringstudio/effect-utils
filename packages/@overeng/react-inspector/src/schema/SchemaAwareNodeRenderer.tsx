@@ -207,16 +207,11 @@ export const createSchemaAwareNodeRenderer = ({
       )
     }
 
-    /** When collapsed, show the full preview with schema name prefix */
-    if (schemaDisplayName !== undefined && isComplexObject === true) {
-      return (
-        <span title={title}>
-          <span style={{ fontStyle: 'italic' }}>{schemaDisplayName} </span>
-          <SchemaAwareObjectPreviewForPath data={data} path={path} />
-        </span>
-      )
-    }
-
+    /**
+     * When collapsed, delegate to the preview. `SchemaAwareObjectPreview` is the
+     * single owner of the schema display name (rendered in the object description
+     * slot, italicized when sourced from a schema annotation).
+     */
     return (
       <span title={title} style={{ display: 'contents' }}>
         <SchemaAwareObjectPreviewForPath data={data} path={path} />
