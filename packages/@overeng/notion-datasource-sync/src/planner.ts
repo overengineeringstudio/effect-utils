@@ -83,6 +83,7 @@ export type TombstoneSurfaceSnapshot = {
 
 export type QueryCheckpointSurfaceSnapshot = {
   readonly dataSourceId: DataSourceId
+  readonly pageId: PageId
   readonly queryContractHash: Hash
   readonly completeness: QueryCompletenessSnapshot
   readonly absence: QueryAbsenceSnapshot
@@ -233,6 +234,7 @@ export type PathClaimIntent = {
 export type QueryAbsenceIntent = {
   readonly _tag: 'query-absence'
   readonly surface: SurfaceKey
+  readonly dataSourceId: DataSourceId
   readonly pageId: PageId
   readonly queryContractHash: Hash
 }
@@ -301,9 +303,16 @@ const findRowSurface = (
 
 const findQuerySurface = (
   snapshot: PlannerProjectionSnapshot,
+  dataSourceId: DataSourceId,
+  pageId: PageId,
   queryContractHash: Hash,
 ): QueryCheckpointSurfaceSnapshot | undefined =>
-  snapshot.queries.find((query) => query.queryContractHash === queryContractHash)
+  snapshot.queries.find(
+    (query) =>
+      query.dataSourceId === dataSourceId &&
+      query.pageId === pageId &&
+      query.queryContractHash === queryContractHash,
+  )
 
 const firstBlocked = (
   surface: SurfaceKey,
@@ -716,7 +725,12 @@ const planQueryAbsence = (
   snapshot: PlannerProjectionSnapshot,
   intent: QueryAbsenceIntent,
 ): PlanDecision => {
-  const query = findQuerySurface(snapshot, intent.queryContractHash)
+  const query = findQuerySurface(
+    snapshot,
+    intent.dataSourceId,
+    intent.pageId,
+    intent.queryContractHash,
+  )
   if (query === undefined) {
     return blockDecision(
       'QueryAbsenceUnclassified',

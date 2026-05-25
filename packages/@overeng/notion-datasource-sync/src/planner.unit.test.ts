@@ -49,6 +49,7 @@ const rootId = decode(SyncRootId, 'root-1')
 const intentEventId = decode(SyncEventId, 'intent-1')
 const commandKey = decode(IdempotencyKey, 'intent:cmd-1')
 const dataSourceId = decode(DataSourceId, 'data-source-1')
+const otherDataSourceId = decode(DataSourceId, 'data-source-2')
 const pageId = decode(PageId, 'page-1')
 const otherPageId = decode(PageId, 'page-2')
 const propertyA = decode(PropertyId, 'prop-a')
@@ -724,6 +725,7 @@ describe('notion datasource planner', () => {
         queries: [
           {
             dataSourceId,
+            pageId,
             queryContractHash: hash('b'),
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
             absence: {
@@ -738,6 +740,7 @@ describe('notion datasource planner', () => {
       {
         _tag: 'query-absence',
         surface: querySurfaceKey(dataSourceId, hash('b')),
+        dataSourceId,
         pageId,
         queryContractHash: hash('b'),
       },
@@ -753,6 +756,7 @@ describe('notion datasource planner', () => {
         queries: [
           {
             dataSourceId,
+            pageId,
             queryContractHash: hash('b'),
             completeness: { terminal: false, cappedAtLimit: true, contractChanged: false },
             absence: {
@@ -767,6 +771,7 @@ describe('notion datasource planner', () => {
       {
         _tag: 'query-absence',
         surface: querySurfaceKey(dataSourceId, hash('b')),
+        dataSourceId,
         pageId,
         queryContractHash: hash('b'),
       },
@@ -784,6 +789,7 @@ describe('notion datasource planner', () => {
         queries: [
           {
             dataSourceId,
+            pageId,
             queryContractHash: hash('b'),
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
             absence: {
@@ -798,12 +804,160 @@ describe('notion datasource planner', () => {
       {
         _tag: 'query-absence',
         surface: querySurfaceKey(dataSourceId, hash('b')),
+        dataSourceId,
         pageId,
         queryContractHash: hash('b'),
       },
     )
 
     expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
+  })
+
+  it('does not reuse an accessible direct retrieve for another absent page', () => {
+    const decision = planIntent(
+      snapshot({
+        queries: [
+          {
+            dataSourceId,
+            pageId,
+            queryContractHash: hash('b'),
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              filtered: false,
+              membershipScope: 'all-data-source-rows',
+              directRetrieve: 'accessible',
+            },
+          },
+        ],
+      }),
+      {
+        _tag: 'query-absence',
+        surface: querySurfaceKey(dataSourceId, hash('b')),
+        dataSourceId,
+        pageId: otherPageId,
+        queryContractHash: hash('b'),
+      },
+    )
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'QueryAbsenceUnclassified',
+    })
+  })
+
+  it.each(['in-trash', 'moved-out', 'inaccessible', 'unknown'] as const)(
+    'does not reuse %s classification across page or data source boundaries',
+    (directRetrieve) => {
+      const queries = [
+        {
+          dataSourceId,
+          pageId: otherPageId,
+          queryContractHash: hash('b'),
+          completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+          absence: {
+            classified: true,
+            filtered: false,
+            membershipScope: 'all-data-source-rows',
+            directRetrieve,
+          },
+        },
+        {
+          dataSourceId: otherDataSourceId,
+          pageId,
+          queryContractHash: hash('b'),
+          completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+          absence: {
+            classified: true,
+            filtered: false,
+            membershipScope: 'all-data-source-rows',
+            directRetrieve,
+          },
+        },
+      ] satisfies PlannerProjectionSnapshot['queries']
+
+      const decision = planIntent(
+        snapshot({
+          queries,
+        }),
+        {
+          _tag: 'query-absence',
+          surface: querySurfaceKey(dataSourceId, hash('b')),
+          dataSourceId,
+          pageId,
+          queryContractHash: hash('b'),
+        },
+      )
+
+      expect(decision).toMatchObject({
+        _tag: 'BlockedByGuard',
+        guard: 'QueryAbsenceUnclassified',
+      })
+    },
+  )
+
+  it('blocks malformed query absence evidence instead of recording a tombstone', () => {
+    const missingIntentDataSource = {
+      _tag: 'query-absence',
+      surface: querySurfaceKey(dataSourceId, hash('b')),
+      pageId,
+      queryContractHash: hash('b'),
+    } as unknown as Parameters<typeof planIntent>[1]
+
+    const decisionWithoutIntentDataSource = planIntent(
+      snapshot({
+        queries: [
+          {
+            dataSourceId,
+            pageId,
+            queryContractHash: hash('b'),
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              filtered: false,
+              membershipScope: 'all-data-source-rows',
+              directRetrieve: 'in-trash',
+            },
+          },
+        ],
+      }),
+      missingIntentDataSource,
+    )
+
+    expect(decisionWithoutIntentDataSource).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'QueryAbsenceUnclassified',
+    })
+
+    const missingEvidencePage = {
+      dataSourceId,
+      queryContractHash: hash('b'),
+      completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+      absence: {
+        classified: true,
+        filtered: false,
+        membershipScope: 'all-data-source-rows',
+        directRetrieve: 'in-trash',
+      },
+    } as unknown as PlannerProjectionSnapshot['queries'][number]
+
+    const decisionWithoutEvidencePage = planIntent(
+      snapshot({
+        queries: [missingEvidencePage],
+      }),
+      {
+        _tag: 'query-absence',
+        surface: querySurfaceKey(dataSourceId, hash('b')),
+        dataSourceId,
+        pageId,
+        queryContractHash: hash('b'),
+      },
+    )
+
+    expect(decisionWithoutEvidencePage).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'QueryAbsenceUnclassified',
+    })
   })
 
   it.each([
@@ -817,6 +971,7 @@ describe('notion datasource planner', () => {
         queries: [
           {
             dataSourceId,
+            pageId,
             queryContractHash: hash('b'),
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
             absence: {
@@ -831,6 +986,7 @@ describe('notion datasource planner', () => {
       {
         _tag: 'query-absence',
         surface: querySurfaceKey(dataSourceId, hash('b')),
+        dataSourceId,
         pageId,
         queryContractHash: hash('b'),
       },
