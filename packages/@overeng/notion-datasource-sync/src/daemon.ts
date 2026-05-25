@@ -5,7 +5,7 @@ import { dirname } from 'node:path'
 import { Duration, Effect, Schema } from 'effect'
 
 import type { QueryContract } from './commands.ts'
-import type { AbsolutePath, DataSourceId } from './domain.ts'
+import type { AbsolutePath, CapabilityName, DataSourceId } from './domain.ts'
 import {
   LocalStoreError,
   type BodySyncError,
@@ -69,6 +69,8 @@ export type WatchDaemonOptions = {
   readonly workspaceRoot: AbsolutePath
   readonly queryContract: QueryContract
   readonly schemaProperties: ReadonlyArray<SchemaPropertyObservation>
+  readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
+  readonly materializeBodies?: boolean
   readonly statePath: string
   readonly mode?: WatchDaemonMode
   readonly maxCycles?: number
@@ -261,6 +263,12 @@ export const runWatchDaemonCycle = Effect.fn(
         workspaceRoot: options.workspaceRoot,
         queryContract: options.queryContract,
         schemaProperties: options.schemaProperties,
+        ...(options.requiredCapabilities === undefined
+          ? {}
+          : { requiredCapabilities: options.requiredCapabilities }),
+        ...(options.materializeBodies === undefined
+          ? {}
+          : { materializeBodies: options.materializeBodies }),
         maxExecutorSteps: options.maxExecutorSteps ?? 8,
         leaseToken:
           options.leaseToken ??

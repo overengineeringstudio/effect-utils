@@ -1,18 +1,25 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { propertySurfaceKey } from '../canonical.ts'
-import { CliArgumentError, parseCliCommand, runCliCommand, type CliContext } from '../cli.ts'
+import {
+  CliArgumentError,
+  parseCliCommand,
+  runCliCommand,
+  runCliCommandWithRuntime,
+  type CliContext,
+} from '../cli.ts'
 import { PagePropertyItemPage } from '../commands.ts'
 import { AbsolutePath, BodyPointer, WorkspaceRelativePath } from '../domain.ts'
 import { SyncEventId, type SyncEvent as SyncEventType } from '../events.ts'
+import type { NotionGatewayClient } from '../gateway-notion.ts'
 import { presentArtifactObservation } from '../local-workspace.ts'
 import { makeConflictRaisedEvent } from '../observation.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
@@ -89,17 +96,83 @@ const conflictEvent = (): SyncEventType =>
     now: () => new Date(fixedObservedAt),
   })
 
+const injectedNotionPage = () => ({
+  id: testIds.pageId,
+  parent: {
+    type: 'data_source_id',
+    data_source_id: testIds.dataSourceId,
+  },
+  properties: {
+    [testIds.propertyA]: {
+      type: 'title',
+      title: [{ plain_text: 'Row' }],
+    },
+  },
+  last_edited_time: fixedObservedAt,
+  in_trash: false,
+})
+
+const makeInjectedNotionClient = (calls: {
+  retrieveDataSource: number
+  queryDataSource: number
+  retrievePage: number
+}): NotionGatewayClient => ({
+  retrieveDataSource: () => {
+    calls.retrieveDataSource += 1
+    return Effect.succeed({
+      id: testIds.dataSourceId,
+      properties: {
+        [testIds.propertyA]: {
+          id: testIds.propertyA,
+          name: 'Row',
+          type: 'title',
+        },
+      },
+    })
+  },
+  queryDataSource: () => {
+    calls.queryDataSource += 1
+    return Effect.succeed({
+      results: [injectedNotionPage()],
+      nextCursor: Option.none(),
+      hasMore: false,
+    })
+  },
+  retrievePage: () => {
+    calls.retrievePage += 1
+    return Effect.succeed(injectedNotionPage())
+  },
+  updatePage: (input) =>
+    Effect.succeed({
+      ...injectedNotionPage(),
+      ...(input.inTrash === undefined ? {} : { in_trash: input.inTrash }),
+    }),
+  updateDataSource: () =>
+    Effect.succeed({
+      id: testIds.dataSourceId,
+      properties: {},
+    }),
+})
+
 const context = (input: {
   readonly store: CliContext['store']
   readonly clock: ReturnType<typeof makeFakeClock>
   readonly maxExecutorSteps?: number
+  readonly workspaceRoot?: CliContext['workspaceRoot']
+  readonly schemaProperties?: CliContext['schemaProperties']
+  readonly requiredCapabilities?: CliContext['requiredCapabilities']
+  readonly materializeBodies?: CliContext['materializeBodies']
 }): CliContext => ({
   store: input.store,
   rootId: testIds.rootId,
   dataSourceId: testIds.dataSourceId,
-  workspaceRoot,
+  workspaceRoot: input.workspaceRoot ?? workspaceRoot,
   queryContract: defaultQueryContract(),
-  schemaProperties,
+  schemaProperties: input.schemaProperties ?? schemaProperties,
+  ...(input.requiredCapabilities === undefined
+    ? {}
+    : { requiredCapabilities: input.requiredCapabilities }),
+  ...(input.materializeBodies === undefined ? {} : { materializeBodies: input.materializeBodies }),
   ...(input.maxExecutorSteps === undefined ? {} : { maxExecutorSteps: input.maxExecutorSteps }),
   now: input.clock.now,
 })
@@ -166,96 +239,100 @@ describe('CLI command surface', () => {
     })
   })
 
-  it('emits a structured diagnostic and exits nonzero for invalid numeric flags', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
-    try {
-      await expect(
-        execFileAsync(
-          cliPath,
-          [
-            'watch',
-            '--state',
-            '/tmp/watch.json',
-            '--max-cycles',
-            '--store',
-            join(dir, 'store.sqlite'),
-            '--root-id',
-            testIds.rootId,
-            '--data-source-id',
-            testIds.dataSourceId,
-            '--workspace-root',
-            workspaceRoot,
-          ],
-          { cwd: packageDir, timeout: cliTestTimeoutMs },
-        ),
-      ).rejects.toMatchObject({
-        code: 1,
-        stderr: expect.stringContaining('Missing value for --max-cycles'),
-      })
+  it(
+    'emits a structured diagnostic and exits nonzero for invalid numeric flags',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
+      try {
+        await expect(
+          execFileAsync(
+            cliPath,
+            [
+              'watch',
+              '--state',
+              '/tmp/watch.json',
+              '--max-cycles',
+              '--store',
+              join(dir, 'store.sqlite'),
+              '--root-id',
+              testIds.rootId,
+              '--data-source-id',
+              testIds.dataSourceId,
+              '--workspace-root',
+              workspaceRoot,
+            ],
+            { cwd: packageDir, timeout: cliTestTimeoutMs },
+          ),
+        ).rejects.toMatchObject({
+          code: 1,
+          stderr: expect.stringContaining('Missing value for --max-cycles'),
+        })
 
-      await expect(
-        execFileAsync(
-          cliPath,
-          [
-            'status',
-            '--store',
-            join(dir, 'store.sqlite'),
-            '--root-id',
-            testIds.rootId,
-            '--data-source-id',
-            testIds.dataSourceId,
-            '--workspace-root',
-            workspaceRoot,
-            '--max-executor-steps',
-          ],
-          { cwd: packageDir, timeout: cliTestTimeoutMs },
-        ),
-      ).rejects.toMatchObject({
-        code: 1,
-        stderr: expect.stringContaining('Missing value for --max-executor-steps'),
-      })
+        await expect(
+          execFileAsync(
+            cliPath,
+            [
+              'status',
+              '--store',
+              join(dir, 'store.sqlite'),
+              '--root-id',
+              testIds.rootId,
+              '--data-source-id',
+              testIds.dataSourceId,
+              '--workspace-root',
+              workspaceRoot,
+              '--max-executor-steps',
+            ],
+            { cwd: packageDir, timeout: cliTestTimeoutMs },
+          ),
+        ).rejects.toMatchObject({
+          code: 1,
+          stderr: expect.stringContaining('Missing value for --max-executor-steps'),
+        })
 
-      await expect(
-        execFileAsync(cliPath, ['watch', '--state', '/tmp/watch.json', '--max-cycles', 'NaN'], {
-          cwd: packageDir,
-          timeout: cliTestTimeoutMs,
-        }),
-      ).rejects.toMatchObject({
-        code: 1,
-        stderr: expect.stringContaining('CliErrorEnvelope'),
-      })
-
-      await expect(
-        execFileAsync(
-          cliPath,
-          [
-            'watch',
-            '--state',
-            '/tmp/watch.json',
-            '--max-cycles',
-            '0',
-            '--store',
-            join(dir, 'store.sqlite'),
-            '--root-id',
-            testIds.rootId,
-            '--data-source-id',
-            testIds.dataSourceId,
-            '--workspace-root',
-            workspaceRoot,
-          ],
-          {
+        await expect(
+          execFileAsync(cliPath, ['watch', '--state', '/tmp/watch.json', '--max-cycles', 'NaN'], {
             cwd: packageDir,
             timeout: cliTestTimeoutMs,
-          },
-        ),
-      ).rejects.toMatchObject({
-        code: 1,
-        stderr: expect.stringContaining('--max-cycles must be a positive integer'),
-      })
-    } finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
+          }),
+        ).rejects.toMatchObject({
+          code: 1,
+          stderr: expect.stringContaining('CliErrorEnvelope'),
+        })
+
+        await expect(
+          execFileAsync(
+            cliPath,
+            [
+              'watch',
+              '--state',
+              '/tmp/watch.json',
+              '--max-cycles',
+              '0',
+              '--store',
+              join(dir, 'store.sqlite'),
+              '--root-id',
+              testIds.rootId,
+              '--data-source-id',
+              testIds.dataSourceId,
+              '--workspace-root',
+              workspaceRoot,
+            ],
+            {
+              cwd: packageDir,
+              timeout: cliTestTimeoutMs,
+            },
+          ),
+        ).rejects.toMatchObject({
+          code: 1,
+          stderr: expect.stringContaining('--max-cycles must be a positive integer'),
+        })
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    cliTestTimeoutMs * 2,
+  )
 
   it('rejects unsupported numeric flag shapes before command execution', () => {
     expect(() =>
@@ -308,6 +385,95 @@ describe('CLI command surface', () => {
         ok: true,
       })
     } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('wires pull/sync through an injected Notion client, real adapter, and real filesystem workspace', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-runtime-'))
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      workspaceRoot: decode(AbsolutePath, dir),
+      schemaProperties: [],
+      requiredCapabilities: ['data_source_retrieve', 'data_source_query', 'page_retrieve'],
+    })
+    const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
+
+    try {
+      await Effect.runPromise(
+        runCliCommandWithRuntime(
+          { _tag: 'init', dataSourceId: testIds.dataSourceId, workspaceRoot: ctx.workspaceRoot },
+          ctx,
+          { gatewayClient: makeInjectedNotionClient(calls), body },
+        ),
+      )
+
+      const result = await Effect.runPromise(
+        runCliCommandWithRuntime({ _tag: 'sync' }, ctx, {
+          gatewayClient: makeInjectedNotionClient(calls),
+          body,
+        }),
+      )
+
+      expect(result).toMatchObject({
+        _tag: 'CliResultEnvelope',
+        command: 'sync',
+        status: { state: 'clean' },
+      })
+      expect(calls).toEqual({ retrieveDataSource: 2, queryDataSource: 1, retrievePage: 1 })
+      await expect(
+        readFile(join(dir, `page-${testIds.pageId}--${testIds.pageId}.nmd`), 'utf8'),
+      ).resolves.toContain('notion-datasource-sync body materialization placeholder')
+    } finally {
+      storeFixture.cleanup()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('runs one bounded watch cycle through real runtime wiring over a temp filesystem', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-watch-'))
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      workspaceRoot: decode(AbsolutePath, dir),
+      schemaProperties: [],
+      requiredCapabilities: ['data_source_retrieve', 'data_source_query', 'page_retrieve'],
+    })
+    const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
+
+    try {
+      await Effect.runPromise(
+        runCliCommandWithRuntime(
+          { _tag: 'init', dataSourceId: testIds.dataSourceId, workspaceRoot: ctx.workspaceRoot },
+          ctx,
+          { gatewayClient: makeInjectedNotionClient(calls), body },
+        ),
+      )
+
+      const result = await Effect.runPromise(
+        runCliCommandWithRuntime(
+          { _tag: 'watch', statePath: join(dir, 'watch.json'), maxCycles: 1 },
+          ctx,
+          { gatewayClient: makeInjectedNotionClient(calls), body },
+        ),
+      )
+
+      expect(result).toMatchObject({
+        command: 'watch',
+        result: { _tag: 'WatchDaemonRunResult', cycles: 1, completed: 1 },
+      })
+      await expect(readFile(join(dir, 'watch.json'), 'utf8')).resolves.toContain(
+        '"lastCompleteCycle": 1',
+      )
+    } finally {
+      storeFixture.cleanup()
       await rm(dir, { recursive: true, force: true })
     }
   })

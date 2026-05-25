@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-datasource-sync**: Add the Milestone 7A live CLI runtime wiring so the executable path uses the real Notion gateway, filesystem workspace, env-gated Notion credentials, and a fail-closed NotionMD body boundary, with injected-client CLI/watch E2E coverage and explicit page-property pagination capability blocking.
 - **@overeng/notion-datasource-sync**: Add the Milestone 6C CLI/watch surface with JSON result envelopes for init, pull, push, sync, status, watch, conflict list/resolve, forget, restore, and doctor, plus durable local daemon cycle state, cancellation/restart handling, and fake-service CLI/daemon E2E coverage.
 - **@overeng/notion-datasource-sync**: Add the Milestone 6B user-command surface for listing conflict/blocked/tombstone/outbox state, durable same-property conflict resolution, forget, restore, dry-run result envelopes, and focused command/E2E coverage.
 - **@overeng/notion-datasource-sync**: Add the Milestone 6A one-shot orchestration API for init, pull, push, sync, and status, composing gateway/body/workspace observation, planner intents, bounded outbox execution, durable status counts, and idempotent fake-service E2E coverage.

@@ -179,6 +179,72 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     )
   })
 
+  it('fails closed before read probes when page-property pagination is required but unsupported', async () => {
+    const configured = {
+      _tag: 'configured' as const,
+      runId: 'notion-ds-sync-page-property-capability-test',
+      parentPageId: '00000000000000000000000000000001',
+      dataSourceId: '00000000000000000000000000000002',
+      notionVersion: '2026-03-11' as const,
+      requiredCapabilities: ['page_property_paginate'] as const,
+      ledgerPath: 'tmp/notion-datasource-sync-live/page-property-capability-test.json',
+    }
+    const calls = {
+      queryRows: 0,
+      retrievePage: 0,
+      retrievePageProperty: 0,
+    }
+    const apiContract = makeNotionApiContract({
+      supportedCapabilities: ['data_source_retrieve', 'data_source_query', 'page_retrieve'],
+    })
+    const gateway: NotionDataSourceGatewayShape = {
+      apiContract,
+      preflightCapabilities: (input) =>
+        Effect.succeed({
+          _tag: 'CapabilityPreflightResult',
+          dataSourceId: input.dataSourceId,
+          apiContract,
+          supportedCapabilities: [],
+          missingCapabilities: input.requiredCapabilities,
+        }),
+      retrieveDataSource: () => Effect.die('retrieveDataSource should not be called'),
+      queryRows: () => {
+        calls.queryRows += 1
+        return Stream.die('queryRows should not be called')
+      },
+      retrievePage: () => {
+        calls.retrievePage += 1
+        return Effect.die('retrievePage should not be called')
+      },
+      retrievePageProperty: () => {
+        calls.retrievePageProperty += 1
+        return Stream.die('retrievePageProperty should not be called')
+      },
+      patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
+      patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
+      trashPage: () => Effect.die('trashPage should not be called'),
+      restorePage: () => Effect.die('restorePage should not be called'),
+    }
+
+    await expect(
+      runLiveNotionPreflight(
+        {
+          enabled: true,
+          token: 'ntn_realistic_token_shape',
+          tokenSource: 'NOTION_API_TOKEN',
+          parentPageId: configured.parentPageId,
+          dataSourceId: configured.dataSourceId,
+          requiredCapabilities: configured.requiredCapabilities.join(','),
+          ledgerPath: configured.ledgerPath,
+        },
+        configured,
+        { gatewayLayer: makeNotionDataSourceGatewayLayer(gateway) },
+      ),
+    ).rejects.toThrow('Missing Notion capability: page_property_paginate')
+
+    expect(calls).toEqual({ queryRows: 0, retrievePage: 0, retrievePageProperty: 0 })
+  })
+
   it('runs a real preflight when live Notion is explicitly configured', async () => {
     if (processLiveConfig._tag === 'not-configured') {
       expect(processLiveConfig.skipReason).toContain('live Notion E2E disabled')
@@ -186,6 +252,13 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     }
     if (processLiveConfig._tag === 'invalid-config') {
       expect(processLiveConfig.message).toContain('invalid configuration')
+      return
+    }
+
+    if (processLiveConfig.requiredCapabilities.includes('page_property_paginate')) {
+      await expect(
+        runLiveNotionPreflight(liveNotionEnvFromProcessEnv(), processLiveConfig),
+      ).rejects.toThrow('Missing Notion capability: page_property_paginate')
       return
     }
 
