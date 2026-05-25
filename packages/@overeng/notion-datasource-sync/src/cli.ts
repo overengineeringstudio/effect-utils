@@ -41,6 +41,7 @@ import {
 import { filesystemLocalWorkspacePortLayer } from './local-workspace.ts'
 import {
   otelServiceNameForCliArgv,
+  otelCorrelationSpanAttributes,
   otelServiceNames,
   processRoleForCliCommand,
   shortSpanId,
@@ -441,6 +442,10 @@ export const runCliCommand = Effect.fn(spanNames.cliCommand, {
     Effect.gen(function* () {
       yield* Effect.annotateCurrentSpan(
         spanAttributes({
+          ...otelCorrelationSpanAttributes({
+            agentRunId: process.env.OTEL_AGENT_RUN_ID,
+            resourceAttributes: process.env.OTEL_RESOURCE_ATTRIBUTES,
+          }),
           [spanAttr.spanLabel]: spanLabel(command._tag),
           [spanAttr.command]: command._tag,
           [spanAttr.processRole]: processRoleForCliCommand(command._tag),

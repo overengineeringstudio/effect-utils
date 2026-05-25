@@ -23,6 +23,7 @@ export const spanNames = {
 } as const
 
 export const spanAttr = {
+  agentIterationId: 'agent.iteration.id',
   apiVersion: 'notion.datasource.api_version',
   appendedEvents: 'notion.datasource.appended_events',
   attempt: 'notion.datasource.attempt',
@@ -115,4 +116,21 @@ export const statusSpanAttributes = (
     [spanAttr.outboxQueuedCount]: status.counts.outbox.queued,
     [spanAttr.outboxRetryableCount]: status.counts.outbox.retryable,
     [spanAttr.outboxRunningCount]: status.counts.outbox.running,
+  })
+
+const resourceAttributeValue = (input: string | undefined, key: string): string | undefined =>
+  input
+    ?.split(',')
+    .map((entry) => entry.split('='))
+    .find((entry) => entry.length === 2 && entry[0]?.trim() === key)?.[1]
+    ?.trim()
+
+export const otelCorrelationSpanAttributes = (input: {
+  readonly agentRunId?: string | undefined
+  readonly resourceAttributes?: string | undefined
+}): Record<string, SpanAttributeValue> =>
+  spanAttributes({
+    [spanAttr.agentIterationId]:
+      input.agentRunId ??
+      resourceAttributeValue(input.resourceAttributes, spanAttr.agentIterationId),
   })
