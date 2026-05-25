@@ -79,6 +79,61 @@ export const e2eHarnessScenarios = [
     file: 'src/e2e/daemon.e2e.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-L4-realistic-initial-materialization',
+    title: 'realistic initial pull materializes schema, row, property, and body state idempotently',
+    requirementIds: ['R05', 'R06', 'R08', 'R14', 'R15', 'R16', 'R17', 'R21', 'R61', 'R62', 'R63'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L4',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L3-realistic-remote-drift-local-write',
+    title: 'remote disjoint drift updates local projections before a guarded local property write',
+    requirementIds: ['R09', 'R10', 'R11', 'R21', 'R23', 'R24', 'R26', 'R61', 'R62'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L3-realistic-local-remote-conflict',
+    title:
+      'pending local property intent survives remote same-property drift as a durable conflict',
+    requirementIds: ['R09', 'R21', 'R24', 'R25', 'R27', 'R61', 'R62'],
+    guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L3-realistic-schema-capability-failure',
+    title: 'capability and schema drift failures block before remote mutation',
+    requirementIds: ['R23', 'R24', 'R29', 'R30', 'R41', 'R61', 'R66', 'R69', 'R71'],
+    guards: ['CapabilityPreflightFailed', 'SchemaDriftAffectsIntent'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L4-realistic-filesystem-delete-repair',
+    title: 'local delete remains candidate-only while filesystem damage and repair stay local',
+    requirementIds: ['R27', 'R38', 'R39', 'R40', 'R47', 'R61', 'R62', 'R63'],
+    guards: ['FilesystemDeleteAutoTrashBlocked', 'PathClaimCollision', 'PathEscapesRoot'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L4',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L5-realistic-daemon-restart-cancellation',
+    title: 'daemon restart and cancellation preserve durable work and fence unsafe settlement',
+    requirementIds: ['R42', 'R45', 'R46', 'R47', 'R64'],
+    guards: ['AmbiguousCommandOutcome', 'LeaseFenceMismatch', 'OwnMaterializationWriteSuppressed'],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/daemon.e2e.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-L2-clean-pull-status',
     title: 'fake gateway/body/workspace produce a clean pull status shape',
     requirementIds: ['R02', 'R06', 'R21', 'R67'],
@@ -286,7 +341,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
     title: 'live Notion skeleton is secret gated and records sanitized cleanup ledger shape',
-    requirementIds: ['R67', 'R68', 'R69', 'R70'],
+    requirementIds: ['R52', 'R65', 'R67', 'R68', 'R69', 'R70'],
     guards: ['CapabilityPreflightFailed', 'RawPayloadRetentionUnsafe'],
     lowestPlannerLevel: 'L6',
     highestIntegrationLevel: 'L6',
@@ -299,15 +354,15 @@ const guardScenarioIds = {
   ApiVersionUnverified: 'NDS-GUARD-api-version-unverified',
   ApiVersionCompatibilityMissing: 'NDS-GUARD-api-compatibility-missing',
   DecodeDriftUnsupported: 'NDS-GUARD-decode-drift-unsupported',
-  CapabilityPreflightFailed: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
+  CapabilityPreflightFailed: 'NDS-L3-realistic-schema-capability-failure',
   UnsupportedRemoteShape: 'NDS-GUARD-unsupported-remote-shape',
   ComputedPropertyWrite: 'NDS-GUARD-computed-property-write',
   PropertyValueIncomplete: 'NDS-L2-page-property-pagination-fail-closed',
   RelatedDataSourceUnshared: 'NDS-GUARD-related-data-source-unshared',
-  StaleSurfaceBase: 'NDS-L2-same-property-conflict',
+  StaleSurfaceBase: 'NDS-L3-realistic-local-remote-conflict',
   CurrentSurfaceMissing: 'NDS-L3-doctor-guard-state',
   PageTimestampWakeupOnly: 'NDS-GUARD-page-timestamp-wakeup-only',
-  SchemaDriftAffectsIntent: 'NDS-L2-local-property-edit-enqueue',
+  SchemaDriftAffectsIntent: 'NDS-L3-realistic-schema-capability-failure',
   DestructiveSchemaMigrationRequired: 'NDS-L2-schema-destructive-fail-closed',
   OptionDeletionLosesValues: 'NDS-L2-schema-destructive-fail-closed',
   BodyLossyRemote: 'NDS-L2-body-adapter-fail-closed-boundary',
@@ -316,7 +371,7 @@ const guardScenarioIds = {
   MarkdownWouldDeleteChildren: 'NDS-L2-body-adapter-fail-closed-boundary',
   MarkdownSyncedPageUnsupported: 'NDS-L2-body-adapter-fail-closed-boundary',
   BodyAdapterConflict: 'NDS-L2-body-adapter-fail-closed-boundary',
-  PathClaimCollision: 'NDS-GUARD-path-claim-collision',
+  PathClaimCollision: 'NDS-L4-realistic-filesystem-delete-repair',
   QueryAbsenceUnclassified: 'NDS-GUARD-query-absence-unclassified',
   PaginationIncomplete: 'NDS-L2-incomplete-scan-not-proof',
   QueryContractChanged: 'NDS-GUARD-query-contract-changed',
@@ -330,13 +385,13 @@ const guardScenarioIds = {
   ExpiringFileUrl: 'NDS-GUARD-expiring-file-url',
   ReadAfterWriteMismatch: 'NDS-L3-outbox-invalid-settlement-rejected',
   AmbiguousCommandOutcome: 'NDS-L3-outbox-invalid-settlement-rejected',
-  PendingIntentShadowViolation: 'NDS-GUARD-pending-intent-shadow-violation',
+  PendingIntentShadowViolation: 'NDS-L3-realistic-local-remote-conflict',
   BodyAdapterNonBodyMutation: 'NDS-L2-body-adapter-surface-leak',
-  FilesystemDeleteAutoTrashBlocked: 'NDS-L2-local-delete-candidate-only',
+  FilesystemDeleteAutoTrashBlocked: 'NDS-L4-realistic-filesystem-delete-repair',
   CursorSameBucketIncomplete: 'NDS-GUARD-cursor-same-bucket-incomplete',
-  OwnMaterializationWriteSuppressed: 'NDS-GUARD-own-materialization-write-suppressed',
+  OwnMaterializationWriteSuppressed: 'NDS-L5-realistic-daemon-restart-cancellation',
   CompactionUnsafe: 'NDS-GUARD-compaction-unsafe',
-  PathEscapesRoot: 'NDS-GUARD-path-escapes-root',
+  PathEscapesRoot: 'NDS-L4-realistic-filesystem-delete-repair',
   LeaseFenceMismatch: 'NDS-L3-outbox-legacy-running-lease-fence',
   OutboxFirstSettlementWins: 'NDS-L3-outbox-invalid-settlement-rejected',
   CheckpointDigestMismatch: 'NDS-GUARD-checkpoint-digest-mismatch',
@@ -413,13 +468,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'placeholder-guard-scenario',
-    guard: 'PathClaimCollision',
-    scenarioId: 'NDS-GUARD-path-claim-collision',
-    requirementIds: ['R27', 'R63'],
-    reason: 'Path collisions are filesystem-scope and owned by filesystem E2E hardening.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
     guard: 'QueryAbsenceUnclassified',
     scenarioId: 'NDS-GUARD-query-absence-unclassified',
     requirementIds: ['R36', 'R37'],
@@ -462,13 +510,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'placeholder-guard-scenario',
-    guard: 'PendingIntentShadowViolation',
-    scenarioId: 'NDS-GUARD-pending-intent-shadow-violation',
-    requirementIds: ['R09', 'R21'],
-    reason: 'Pending intent shadow checks require multi-cycle projection fixtures.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
     guard: 'CursorSameBucketIncomplete',
     scenarioId: 'NDS-GUARD-cursor-same-bucket-incomplete',
     requirementIds: ['R43', 'R71'],
@@ -476,25 +517,10 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'placeholder-guard-scenario',
-    guard: 'OwnMaterializationWriteSuppressed',
-    scenarioId: 'NDS-GUARD-own-materialization-write-suppressed',
-    requirementIds: ['R45', 'R63'],
-    reason:
-      'Own-write suppression is filesystem/daemon scope and owned by filesystem E2E hardening.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
     guard: 'CompactionUnsafe',
     scenarioId: 'NDS-GUARD-compaction-unsafe',
     requirementIds: ['R08', 'R12', 'R62'],
     reason: 'Compaction safety is store/migration scope and not fake-service E2E yet.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'PathEscapesRoot',
-    scenarioId: 'NDS-GUARD-path-escapes-root',
-    requirementIds: ['R52', 'R63'],
-    reason: 'Path escape coverage is filesystem-scope and owned by filesystem E2E hardening.',
   },
   {
     _tag: 'placeholder-guard-scenario',
@@ -534,13 +560,9 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R05',
-    reason: 'Data-source identity has domain coverage but no dedicated E2E scenario yet.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R08',
-    reason: 'Projection determinism is store/unit scope.',
+    requirementId: 'R07',
+    reason:
+      'Append-only event schema is covered by store/contract tests rather than fake-service E2E.',
   },
   {
     _tag: 'unmapped-requirement',
@@ -551,26 +573,6 @@ export const traceabilityResiduals = [
     _tag: 'unmapped-requirement',
     requirementId: 'R13',
     reason: 'Raw retention is telemetry/config scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R14',
-    reason: 'Property ID semantics are canonicalization scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R15',
-    reason: 'Schema hashing is unit/canonicalization scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R16',
-    reason: 'Row value hashing is unit/canonicalization scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R17',
-    reason: 'Body pointer modeling is covered indirectly by body boundary scenarios.',
   },
   {
     _tag: 'unmapped-requirement',
@@ -595,27 +597,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R25',
-    reason: 'No-silent-LWW is split across conflict/unit scenarios.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R26',
-    reason: 'Disjoint merge is scenario-covered but does not yet claim the full requirement.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R27',
-    reason: 'Full durable conflict matrix is split across follow-up E2E patches.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R30',
-    reason:
-      'Schema-drift observation and pending-intent reclassification need dedicated fake-service coverage.',
-  },
-  {
-    _tag: 'unmapped-requirement',
     requirementId: 'R31',
     reason: 'Additive schema writes are not in current product scope.',
   },
@@ -631,11 +612,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R38',
-    reason: 'Two-phase local delete is filesystem-scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
     requirementId: 'R43',
     reason: 'Poll overlap is daemon-scope.',
   },
@@ -643,23 +619,6 @@ export const traceabilityResiduals = [
     _tag: 'unmapped-requirement',
     requirementId: 'R44',
     reason: 'Known-page scans are daemon/repair scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R07',
-    reason:
-      'Append-only event schema is covered by store/contract tests rather than fake-service E2E.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R61',
-    reason:
-      'Fake-service integration is represented by the matrix itself rather than a product scenario row.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R63',
-    reason: 'Filesystem coverage is owned by filesystem E2E hardening.',
   },
   {
     _tag: 'unmapped-requirement',
@@ -675,11 +634,6 @@ export const traceabilityResiduals = [
     _tag: 'unmapped-requirement',
     requirementId: 'R51',
     reason: 'Human diagnostics are CLI scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R52',
-    reason: 'Secret safety is telemetry/CLI/live harness scope.',
   },
   {
     _tag: 'unmapped-requirement',
@@ -720,11 +674,6 @@ export const traceabilityResiduals = [
     _tag: 'unmapped-requirement',
     requirementId: 'R60',
     reason: 'Unit coverage is tracked outside the fake-service E2E matrix.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R65',
-    reason: 'Live Notion coverage is secret-gated and not required for fake-service E2E.',
   },
 ] as const satisfies ReadonlyArray<TraceabilityResidual>
 

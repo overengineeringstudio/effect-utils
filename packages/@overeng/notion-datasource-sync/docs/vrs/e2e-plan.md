@@ -319,6 +319,20 @@ E2E proof:
 
 ## Scenario Matrix
 
+### Executable Realistic Offline Slice
+
+The release-slice scenarios in `src/e2e/realistic-workflows.e2e.test.ts` compose the fake Notion gateway, SQLite store, one-shot planner/executor, body port, and real/fake workspace ports without credentials. They prove cross-component behavior for realistic workflows, while live Notion API semantics remain L6 evidence.
+
+| Scenario ID | Workflow proof | Remaining boundary |
+| --- | --- | --- |
+| `NDS-L4-realistic-initial-materialization` | Initial pull materializes datasource/schema/row/property/body state, rebuilds projections, and proves a second full sync is idempotent. | Live Notion datasource/page-property semantics. |
+| `NDS-L3-realistic-remote-drift-local-write` | Remote disjoint property drift updates projections before a local property write is enqueued, executed, and read-after-write verified. | Full writable property-type matrix. |
+| `NDS-L3-realistic-local-remote-conflict` | Pending local intent survives remote same-property drift and replays as an open durable conflict instead of shadowing either side. | Human conflict-resolution strategies. |
+| `NDS-L3-realistic-schema-capability-failure` | Missing page-property pagination and stale schema config block before remote mutation. | Live capability preflight and schema migration UX. |
+| `NDS-L4-realistic-filesystem-delete-repair` | Bare local delete remains candidate-only, explicit trusted trash settles, path collisions/escapes block, and sidecar damage is local repair state. | Broader platform filesystem matrix and live body adapter materialization. |
+| `NDS-L5-realistic-daemon-restart-cancellation` | Existing daemon E2E covers restart/cancellation durability, lease fencing, and own-write suppression. | Same-bucket polling and long-running soak. |
+| `NDS-LIVE-skeleton-gated-cleanup-ledger` | Secret-gated live skeleton records sanitized fixture ledger and cleanup shape. | Full live fixture mutation suite. |
+
 | Scenario | Required levels | Guards / requirements challenged |
 | --- | --- | --- |
 | Initial bind and pull | L2, L3, L4, L6 | R05, R06, R14-R17, R65 |
