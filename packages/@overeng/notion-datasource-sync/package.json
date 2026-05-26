@@ -17,9 +17,11 @@
   },
   "dependencies": {
     "@overeng/notion-effect-client": "workspace:^",
+    "@overeng/notion-md": "workspace:^",
     "@overeng/utils": "workspace:^"
   },
   "devDependencies": {
+    "@effect/cli": "0.75.1",
     "@effect/cluster": "0.58.2",
     "@effect/experimental": "0.60.0",
     "@effect/opentelemetry": "0.63.0",
@@ -35,6 +37,7 @@
     "vitest": "3.2.4"
   },
   "peerDependencies": {
+    "@effect/cli": "^0.75.1",
     "@effect/cluster": "^0.58.2",
     "@effect/experimental": "^0.60.0",
     "@effect/opentelemetry": "^0.63.0",
@@ -55,6 +58,9 @@
       "packages/@overeng/notion-datasource-sync",
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",
+      "packages/@overeng/notion-md",
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

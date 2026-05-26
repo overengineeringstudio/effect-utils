@@ -302,6 +302,39 @@ export const Page = Schema.Struct({
 
 export type Page = typeof Page.Type
 
+export const PagePropertyItem = Schema.extend(
+  Schema.Struct({
+    object: Schema.Literal('property_item'),
+    id: Schema.String,
+    type: Schema.String,
+  }),
+  Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+).annotations({
+  identifier: 'Notion.PagePropertyItem',
+  [docsPath]: 'page-property-item',
+})
+export type PagePropertyItem = typeof PagePropertyItem.Type
+
+export const PagePropertyItemList = Schema.Struct({
+  object: Schema.Literal('list'),
+  type: Schema.Literal('property_item'),
+  property_item: Schema.Unknown,
+  results: Schema.Array(PagePropertyItem),
+  next_cursor: Schema.NullOr(Schema.String),
+  has_more: Schema.Boolean,
+}).annotations({
+  identifier: 'Notion.PagePropertyItemList',
+  [docsPath]: 'retrieve-a-page-property',
+})
+export type PagePropertyItemList = typeof PagePropertyItemList.Type
+
+export const PagePropertyItemResponse = Schema.Union(PagePropertyItem, PagePropertyItemList)
+  .annotations({
+    identifier: 'Notion.PagePropertyItemResponse',
+    [docsPath]: 'retrieve-a-page-property',
+  })
+export type PagePropertyItemResponse = typeof PagePropertyItemResponse.Type
+
 // -----------------------------------------------------------------------------
 // Block Types
 // -----------------------------------------------------------------------------

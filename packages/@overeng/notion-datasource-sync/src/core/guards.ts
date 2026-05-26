@@ -155,7 +155,13 @@ export type FileReferenceSnapshot = {
 const allowed = (): GuardDecision => ({ _tag: 'allowed' })
 
 /** Constructs a `blocked` `GuardDecision` with the given guard name and reason message. */
-export const blocked = (guard: GuardName, message: string): GuardDecision => ({
+export const blocked = ({
+  guard,
+  message,
+}: {
+  readonly guard: GuardName
+  readonly message: string
+}): GuardDecision => ({
   _tag: 'blocked',
   guard,
   message,
@@ -173,8 +179,8 @@ export const guardApiVersion = (version: string): GuardDecision =>
   isSupportedApiVersion(version) === true
     ? allowed()
     : isFutureApiVersion(version) === true
-      ? blocked('ApiVersionUnverified', `Unverified future Notion API version: ${version}`)
-      : blocked('ApiVersionUnsupported', `Unsupported Notion API version: ${version}`)
+      ? blocked({ guard: 'ApiVersionUnverified', message: `Unverified future Notion API version: ${version}` })
+      : blocked({ guard: 'ApiVersionUnsupported', message: `Unsupported Notion API version: ${version}` })
 
 /** Composes `guardApiVersion` with a check that a compatibility proof has been recorded for the configured version. */
 export const guardApiCompatibility = (snapshot: ApiCompatibilitySnapshot): GuardDecision => {
@@ -185,17 +191,17 @@ export const guardApiCompatibility = (snapshot: ApiCompatibilitySnapshot): Guard
 
   return snapshot.compatibilityProof === 'present'
     ? allowed()
-    : blocked(
-        'ApiVersionCompatibilityMissing',
-        'Supported Notion API version is missing compatibility proof',
-      )
+    : blocked({
+        guard: 'ApiVersionCompatibilityMissing',
+        message: 'Supported Notion API version is missing compatibility proof',
+      })
 }
 
 /** Blocks sync when the decoded surface shape has drifted beyond what the current codec supports. */
 export const guardDecodeDrift = ({ supported }: { readonly supported: boolean }): GuardDecision =>
   supported === true
     ? allowed()
-    : blocked('DecodeDriftUnsupported', 'Unsupported decoded surface drift')
+    : blocked({ guard: 'DecodeDriftUnsupported', message: 'Unsupported decoded surface drift' })
 
 /** Blocks the operation if any of the required capabilities are absent from the supported set. */
 export const guardCapabilities = ({
@@ -210,14 +216,14 @@ export const guardCapabilities = ({
 
   return missing === undefined
     ? allowed()
-    : blocked('CapabilityPreflightFailed', `Missing Notion capability: ${missing}`)
+    : blocked({ guard: 'CapabilityPreflightFailed', message: `Missing Notion capability: ${missing}` })
 }
 
 /** Delegates to `guardCapabilities` only if the preflight step itself passed; otherwise blocks immediately. */
 export const guardCapabilityPreflight = (snapshot: CapabilityPreflightSnapshot): GuardDecision =>
   snapshot.preflight === 'passed'
     ? guardCapabilities(snapshot)
-    : blocked('CapabilityPreflightFailed', 'Notion capability preflight failed')
+    : blocked({ guard: 'CapabilityPreflightFailed', message: 'Notion capability preflight failed' })
 
 /** Blocks writes to computed or unsupported Notion property types. */
 export const guardPropertyWriteClass = ({
@@ -226,11 +232,11 @@ export const guardPropertyWriteClass = ({
   readonly writeClass: PropertyWriteClass
 }): GuardDecision => {
   if (writeClass === 'computed') {
-    return blocked('ComputedPropertyWrite', 'Computed Notion properties cannot be written')
+    return blocked({ guard: 'ComputedPropertyWrite', message: 'Computed Notion properties cannot be written' })
   }
 
   return writeClass === 'unsupported'
-    ? blocked('UnsupportedRemoteShape', 'Unsupported property shape cannot be written')
+    ? blocked({ guard: 'UnsupportedRemoteShape', message: 'Unsupported property shape cannot be written' })
     : allowed()
 }
 
@@ -245,13 +251,13 @@ export const guardPropertyAvailability = ({
     case 'computed':
       return allowed()
     case 'paginated-incomplete':
-      return blocked('PropertyValueIncomplete', 'Property value pagination is incomplete')
+      return blocked({ guard: 'PropertyValueIncomplete', message: 'Property value pagination is incomplete' })
     case 'relation-target-inaccessible':
-      return blocked('UnavailableRelationTarget', 'Relation target is unavailable')
+      return blocked({ guard: 'UnavailableRelationTarget', message: 'Relation target is unavailable' })
     case 'related-data-source-unshared':
-      return blocked('RelatedDataSourceUnshared', 'Related data source is not shared')
+      return blocked({ guard: 'RelatedDataSourceUnshared', message: 'Related data source is not shared' })
     case 'unsupported':
-      return blocked('UnsupportedRemoteShape', 'Unsupported property value shape')
+      return blocked({ guard: 'UnsupportedRemoteShape', message: 'Unsupported property value shape' })
   }
 }
 
@@ -265,23 +271,23 @@ export const guardStaleSurfaceBase = ({
 }): GuardDecision =>
   baseHash === currentHash
     ? allowed()
-    : blocked('StaleSurfaceBase', 'Local intent base hash is stale for the current surface')
+    : blocked({ guard: 'StaleSurfaceBase', message: 'Local intent base hash is stale for the current surface' })
 
 /** Blocks schema writes that would affect a pending local intent, require an explicit destructive migration, or delete option values still in use. */
 export const guardSchemaIntentSafety = (snapshot: SchemaIntentSafety): GuardDecision => {
   if (snapshot.affectsLocalIntent === true) {
-    return blocked('SchemaDriftAffectsIntent', 'Schema drift affects a pending local intent')
+    return blocked({ guard: 'SchemaDriftAffectsIntent', message: 'Schema drift affects a pending local intent' })
   }
 
   if (snapshot.destructiveMigrationRequired === true) {
-    return blocked(
-      'DestructiveSchemaMigrationRequired',
-      'Schema change requires an explicit destructive migration',
-    )
+    return blocked({
+      guard: 'DestructiveSchemaMigrationRequired',
+      message: 'Schema change requires an explicit destructive migration',
+    })
   }
 
   return snapshot.optionDeletionLosesValues === true
-    ? blocked('OptionDeletionLosesValues', 'Deleting this option would lose row values')
+    ? blocked({ guard: 'OptionDeletionLosesValues', message: 'Deleting this option would lose row values' })
     : allowed()
 }
 
@@ -292,37 +298,37 @@ export const guardSchemaIntentSafety = (snapshot: SchemaIntentSafety): GuardDeci
  */
 export const guardBodySafety = (snapshot: BodySafetySnapshot): GuardDecision => {
   if (snapshot.adapterMutationSurfaces.some((surface) => surface !== 'body') === true) {
-    return blocked('BodyAdapterNonBodyMutation', 'Body adapter attempted a non-body mutation')
+    return blocked({ guard: 'BodyAdapterNonBodyMutation', message: 'Body adapter attempted a non-body mutation' })
   }
 
   if (snapshot.truncated === true || snapshot.unknownBlockCause === 'truncation') {
-    return blocked('BodyLossyRemote', 'Remote markdown body is truncated')
+    return blocked({ guard: 'BodyLossyRemote', message: 'Remote markdown body is truncated' })
   }
 
   if (snapshot.unknownBlockCause !== undefined) {
-    return blocked(
-      'MarkdownUnknownBlocksAmbiguous',
-      'Unknown markdown blocks have ambiguous preservation semantics',
-    )
+    return blocked({
+      guard: 'MarkdownUnknownBlocksAmbiguous',
+      message: 'Unknown markdown blocks have ambiguous preservation semantics',
+    })
   }
 
   if (snapshot.selection === 'ambiguous') {
-    return blocked('MarkdownSelectionAmbiguous', 'Markdown update selection is ambiguous')
+    return blocked({ guard: 'MarkdownSelectionAmbiguous', message: 'Markdown update selection is ambiguous' })
   }
 
   if (snapshot.wouldDeleteChildren === true) {
-    return blocked(
-      'MarkdownWouldDeleteChildren',
-      'Markdown update would delete child pages or databases',
-    )
+    return blocked({
+      guard: 'MarkdownWouldDeleteChildren',
+      message: 'Markdown update would delete child pages or databases',
+    })
   }
 
   if (snapshot.syncedPageUnsupported === true) {
-    return blocked('MarkdownSyncedPageUnsupported', 'Synced page body update is unsupported')
+    return blocked({ guard: 'MarkdownSyncedPageUnsupported', message: 'Synced page body update is unsupported' })
   }
 
   return snapshot.adapterConflict === true
-    ? blocked('BodyAdapterConflict', 'Body adapter reported a delegated conflict')
+    ? blocked({ guard: 'BodyAdapterConflict', message: 'Body adapter reported a delegated conflict' })
     : allowed()
 }
 
@@ -333,25 +339,25 @@ export const guardPathClaimCollision = ({
   readonly collides: boolean
 }): GuardDecision =>
   collides === true
-    ? blocked('PathClaimCollision', 'Path is already claimed by another page')
+    ? blocked({ guard: 'PathClaimCollision', message: 'Path is already claimed by another page' })
     : allowed()
 
 /** Blocks checkpoint advancement if the query hit a result cap, the contract changed, or pagination is still in progress. */
 export const guardQueryCompleteness = (snapshot: QueryCompletenessSnapshot): GuardDecision => {
   if (snapshot.cappedAtLimit === true) {
-    return blocked(
-      'QueryResultCapExceeded',
-      'Query reached the result cap before proving completeness',
-    )
+    return blocked({
+      guard: 'QueryResultCapExceeded',
+      message: 'Query reached the result cap before proving completeness',
+    })
   }
 
   if (snapshot.contractChanged === true) {
-    return blocked('QueryContractChanged', 'Query contract changed; old absence proof is invalid')
+    return blocked({ guard: 'QueryContractChanged', message: 'Query contract changed; old absence proof is invalid' })
   }
 
   return snapshot.terminal === true
     ? allowed()
-    : blocked('PaginationIncomplete', 'Query pagination did not reach a terminal page')
+    : blocked({ guard: 'PaginationIncomplete', message: 'Query pagination did not reach a terminal page' })
 }
 
 /**
@@ -362,11 +368,11 @@ export const guardQueryCompleteness = (snapshot: QueryCompletenessSnapshot): Gua
  */
 export const guardQueryAbsence = (snapshot: QueryAbsenceSnapshot): GuardDecision => {
   if (snapshot.filtered === true && snapshot.membershipScope !== 'explicit-filter') {
-    return blocked('FilteredAbsenceNotProof', 'Filtered query absence is not tombstone proof')
+    return blocked({ guard: 'FilteredAbsenceNotProof', message: 'Filtered query absence is not tombstone proof' })
   }
 
   if (snapshot.directRetrieve === 'permission-ambiguous') {
-    return blocked('PermissionAmbiguous', 'Direct page retrieval is permission ambiguous')
+    return blocked({ guard: 'PermissionAmbiguous', message: 'Direct page retrieval is permission ambiguous' })
   }
 
   if (snapshot.directRetrieve === 'accessible') {
@@ -383,21 +389,21 @@ export const guardQueryAbsence = (snapshot: QueryAbsenceSnapshot): GuardDecision
     return allowed()
   }
 
-  return blocked('QueryAbsenceUnclassified', 'Query absence must be directly classified first')
+  return blocked({ guard: 'QueryAbsenceUnclassified', message: 'Query absence must be directly classified first' })
 }
 
 /** Blocks a tombstone from being applied if it conflicts with a local edit, if the page was moved rather than deleted, or if page lifecycle is permission-ambiguous. */
 export const guardTombstoneSafety = (snapshot: TombstoneSafetySnapshot): GuardDecision => {
   if (snapshot.deleteVsEdit === true) {
-    return blocked('DeleteVsEdit', 'Delete/trash conflicts with a local edit')
+    return blocked({ guard: 'DeleteVsEdit', message: 'Delete/trash conflicts with a local edit' })
   }
 
   if (snapshot.moveOutNotDelete === true) {
-    return blocked('MoveOutNotDelete', 'Moved-out page is not a remote delete')
+    return blocked({ guard: 'MoveOutNotDelete', message: 'Moved-out page is not a remote delete' })
   }
 
   return snapshot.permissionAmbiguous === true
-    ? blocked('PermissionAmbiguous', 'Page lifecycle is permission ambiguous')
+    ? blocked({ guard: 'PermissionAmbiguous', message: 'Page lifecycle is permission ambiguous' })
     : allowed()
 }
 
@@ -409,12 +415,12 @@ export const guardUnavailableRelationTarget = ({
 }): GuardDecision =>
   available === true
     ? allowed()
-    : blocked('UnavailableRelationTarget', 'Relation target is unavailable')
+    : blocked({ guard: 'UnavailableRelationTarget', message: 'Relation target is unavailable' })
 
 /** Blocks writes containing a Notion-hosted file URL that has no stable durable reference, preventing broken file links. */
 export const guardExpiringFileUrl = (snapshot: FileReferenceSnapshot): GuardDecision =>
   snapshot.kind === 'notion-hosted' && snapshot.stableRef === undefined
-    ? blocked('ExpiringFileUrl', 'Notion-hosted file URL is not durable identity')
+    ? blocked({ guard: 'ExpiringFileUrl', message: 'Notion-hosted file URL is not durable identity' })
     : allowed()
 
 /** Blocks a command if the body adapter touched any surface outside `'body'`, enforcing the adapter's mutation boundary contract. */
@@ -424,7 +430,7 @@ export const guardBodyAdapterBoundary = ({
   readonly mutationSurfaces: ReadonlyArray<BodyAdapterMutationSurface>
 }): GuardDecision =>
   mutationSurfaces.some((surface) => surface !== 'body') === true
-    ? blocked('BodyAdapterNonBodyMutation', 'Body adapter attempted a non-body mutation')
+    ? blocked({ guard: 'BodyAdapterNonBodyMutation', message: 'Body adapter attempted a non-body mutation' })
     : allowed()
 
 /** Returns `true` when a query page has no further pages; used to determine whether pagination has reached completion. */
@@ -434,13 +440,13 @@ export const isTerminalQueryRowsPage = (page: QueryRowsPage): boolean =>
 /** Allows a query checkpoint to advance only when the terminal page has been received and the result cap was not hit. */
 export const shouldAdvanceQueryCheckpoint = (page: QueryRowsPage): GuardDecision => {
   if (page.cappedAtLimit === true) {
-    return blocked(
-      'QueryResultCapExceeded',
-      'Query page hit the configured cap before a complete scan finished',
-    )
+    return blocked({
+      guard: 'QueryResultCapExceeded',
+      message: 'Query page hit the configured cap before a complete scan finished',
+    })
   }
 
   return isTerminalQueryRowsPage(page) === true
     ? allowed()
-    : blocked('PaginationIncomplete', 'Query checkpoint can advance only after the terminal page')
+    : blocked({ guard: 'PaginationIncomplete', message: 'Query checkpoint can advance only after the terminal page' })
 }

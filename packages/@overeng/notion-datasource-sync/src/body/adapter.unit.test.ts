@@ -1,7 +1,21 @@
-import { Effect, Schema } from 'effect'
+import { createHash } from 'node:crypto'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { NodeContext } from '@effect/platform-node'
+import { Chunk, Effect, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  NmdStateStore,
+  NmdStateStoreLive,
+  type NotionMdGatewayShape,
+  type PullPageResult,
+} from '@overeng/notion-md'
+
+import {
+  AbsolutePath,
   BodyPointer,
   CommandId,
   DataSourceId,
@@ -9,9 +23,12 @@ import {
   NotionRequestId,
   PageId,
   RowObserved,
+  WorkspaceRelativePath,
   bodySafetySnapshot,
   evaluateBodyAdapterContract,
   makeFakePageBodySyncPort,
+  makeNotionMdMaterializingLocalWorkspacePort,
+  makeNotionMdPageBodySyncPort,
   makeUnsupportedPageBodySyncPort,
   type BodySafetySnapshot,
 } from '../mod.ts'
@@ -20,6 +37,8 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (char: string) => decode(Hash, `sha256:${char.repeat(64)}`)
+const contentHash = (content: string) =>
+  decode(Hash, `sha256:${createHash('sha256').update(content).digest('hex')}`)
 
 const commandId = (value: string) => decode(CommandId, value)
 const pageId = decode(PageId, 'page-1')
@@ -44,6 +63,71 @@ const fakePort = (safety: BodySafetySnapshot) =>
       },
     ],
   })
+
+const nmdPageId = decode(PageId, '11111111-1111-4111-8111-111111111111')
+const nmdPath = decode(WorkspaceRelativePath, 'adapter-page.nmd')
+
+const pullPageResult = (input: {
+  readonly markdown?: string
+  readonly truncated?: boolean
+  readonly unknownBlockIds?: readonly string[]
+} = {}): PullPageResult => ({
+  page: {
+    id: nmdPageId,
+    title: 'Adapter page',
+    title_property_key: 'Name',
+    url: undefined,
+    parent: { type: 'workspace', workspace: true },
+    icon: null,
+    cover: null,
+    in_trash: false,
+    is_locked: false,
+    last_edited_time: '2026-05-25T00:00:00.000Z',
+    properties: {},
+  },
+  markdown: {
+    markdown: input.markdown ?? '# Adapter page\n\nHello from NotionMD.\n',
+    truncated: input.truncated ?? false,
+    unknown_block_ids: input.unknownBlockIds ?? [],
+  },
+  storage: {
+    _tag: 'self_contained',
+    unsupported_blocks: [],
+    files: [],
+    comments: [],
+  },
+})
+
+const bodyPointerFromTestMarkdown = (markdown: string) =>
+  decode(BodyPointer, {
+    _tag: 'BodyPointer',
+    pageId: nmdPageId,
+    bodyHash: contentHash(markdown),
+    observedAt: '2026-05-25T00:00:00.000Z',
+    safety: bodySafetySnapshot(),
+  })
+
+const fakeNotionMdGateway = (
+  result: PullPageResult,
+  input: {
+    readonly updateMarkdown?: NotionMdGatewayShape['updateMarkdown']
+  } = {},
+): NotionMdGatewayShape => ({
+  pullPage: () => Effect.succeed(result),
+  updateMarkdown:
+    input.updateMarkdown ??
+    (() => Effect.die('updateMarkdown should not be called by these tests')),
+  updatePageProperties: () => Effect.die('updatePageProperties should not be called by these tests'),
+  updatePageMetadata: () => Effect.die('updatePageMetadata should not be called by these tests'),
+  listChildPages: () => Effect.succeed([]),
+})
+
+const runWithNmdStateStore = <TValue, TError>(
+  effect: Effect.Effect<TValue, TError, NmdStateStore>,
+) =>
+  Effect.runPromise(
+    effect.pipe(Effect.provide(NmdStateStoreLive), Effect.provide(NodeContext.layer)),
+  )
 
 describe('body adapter contract', () => {
   it.each([
@@ -380,6 +464,231 @@ describe('body adapter contract', () => {
     ).toMatchObject({
       _tag: 'blocked',
       guard: 'MarkdownSyncedPageUnsupported',
+    })
+  })
+
+  it('observes NotionMD markdown through the public gateway and derives fail-closed safety', async () => {
+    const markdown = '# Adapter page\n\nBody from NotionMD.\n'
+    const port = makeNotionMdPageBodySyncPort({
+      gateway: fakeNotionMdGateway(
+        pullPageResult({
+          markdown,
+          unknownBlockIds: ['22222222-2222-4222-8222-222222222222'],
+        }),
+      ),
+    })
+
+    const observed = await Effect.runPromise(
+      port.observe({
+        _tag: 'ObserveBodyInput',
+        pageId: nmdPageId,
+      }),
+    )
+
+    expect(observed).toMatchObject({
+      _tag: 'BodyPointer',
+      pageId: nmdPageId,
+      bodyHash: contentHash(markdown),
+      safety: {
+        unknownBlockCause: 'unknown',
+        adapterMutationSurfaces: ['body'],
+      },
+    })
+    expect(evaluateBodyAdapterContract(observed.safety ?? bodySafetySnapshot())).toMatchObject({
+      _tag: 'blocked',
+      guard: 'MarkdownUnknownBlocksAmbiguous',
+    })
+  })
+
+  it('materializes real .nmd files and notion-md sidecars through the NotionMD adapter', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'notion-ds-sync-nmd-adapter-'))
+    const root = decode(AbsolutePath, rootPath)
+    const markdown = '# Adapter page\n\nMaterialized through NotionMD.\n'
+    const bodyPointer = decode(BodyPointer, {
+      _tag: 'BodyPointer',
+      pageId: nmdPageId,
+      bodyHash: contentHash(markdown),
+      observedAt: '2026-05-25T00:00:00.000Z',
+      safety: bodySafetySnapshot(),
+    })
+    const gateway = fakeNotionMdGateway(pullPageResult({ markdown }))
+
+    try {
+      const result = await runWithNmdStateStore(
+        Effect.gen(function* () {
+          const stateStore = yield* NmdStateStore
+          const port = makeNotionMdMaterializingLocalWorkspacePort({
+            root,
+            gateway,
+            stateStore,
+          })
+          return yield* port.materialize({
+            _tag: 'MaterializePlan',
+            pageId: nmdPageId,
+            path: nmdPath,
+            bodyPointer,
+          })
+        }),
+      )
+      const nmdContent = await readFile(join(rootPath, nmdPath), 'utf8')
+      const notionMdSidecar = await readFile(
+        join(rootPath, '.notion-md', 'sync', `${nmdPageId}.json`),
+        'utf8',
+      )
+      const datasourceSidecar = await readFile(
+        join(rootPath, '.notion-datasource-sync', 'pages', `${encodeURIComponent(nmdPageId)}.json`),
+        'utf8',
+      )
+
+      expect(result).toMatchObject({
+        _tag: 'MaterializeResult',
+        pageId: nmdPageId,
+        path: nmdPath,
+        bodyHash: bodyPointer.bodyHash,
+      })
+      expect(nmdContent).toContain('"page_id": "11111111-1111-4111-8111-111111111111"')
+      expect(nmdContent).toContain('Materialized through NotionMD.')
+      expect(JSON.parse(notionMdSidecar)).toMatchObject({
+        version: 1,
+        page_id: nmdPageId,
+        body: {
+          hash: bodyPointer.bodyHash,
+        },
+      })
+      expect(JSON.parse(datasourceSidecar)).toMatchObject({
+        version: 1,
+        pageId: nmdPageId,
+        path: nmdPath,
+        bodyHash: bodyPointer.bodyHash,
+      })
+
+      const observations = await runWithNmdStateStore(
+        Effect.gen(function* () {
+          const stateStore = yield* NmdStateStore
+          const port = makeNotionMdMaterializingLocalWorkspacePort({
+            root,
+            gateway,
+            stateStore,
+          })
+          return yield* port.scan(root).pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+        }),
+      )
+      expect(observations).toEqual([
+        expect.objectContaining({
+          _tag: 'LocalArtifactObservation',
+          pageId: nmdPageId,
+          path: nmdPath,
+          contentHash: bodyPointer.bodyHash,
+          state: 'present',
+          ownWriteSuppressionToken: result.ownWriteSuppressionToken,
+        }),
+      ])
+
+      const editedMarkdown = '# Adapter page\n\nEdited locally through NotionMD.\n'
+      await writeFile(
+        join(rootPath, nmdPath),
+        nmdContent.replace('Materialized through NotionMD.', 'Edited locally through NotionMD.'),
+        'utf8',
+      )
+
+      const editedObservations = await runWithNmdStateStore(
+        Effect.gen(function* () {
+          const stateStore = yield* NmdStateStore
+          const port = makeNotionMdMaterializingLocalWorkspacePort({
+            root,
+            gateway,
+            stateStore,
+          })
+          return yield* port.scan(root).pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+        }),
+      )
+      expect(editedObservations).toEqual([
+        expect.objectContaining({
+          _tag: 'LocalArtifactObservation',
+          pageId: nmdPageId,
+          path: nmdPath,
+          contentHash: contentHash(editedMarkdown),
+          bodyContent: editedMarkdown,
+          state: 'present',
+        }),
+      ])
+    } finally {
+      await rm(rootPath, { recursive: true, force: true })
+    }
+  })
+
+  it('pushes NotionMD body content when the command carries the local path and markdown body', async () => {
+    const localBodyContent = '# Adapter page\n\nPushed through datasource-sync.\n'
+    const updates: Parameters<NotionMdGatewayShape['updateMarkdown']>[0][] = []
+    const port = makeNotionMdPageBodySyncPort({
+      gateway: fakeNotionMdGateway(pullPageResult(), {
+        updateMarkdown: (opts) =>
+          Effect.sync(() => {
+            updates.push(opts)
+            return {
+              markdown: {
+                markdown: localBodyContent,
+                truncated: false,
+                unknown_block_ids: [],
+              },
+            }
+          }),
+      }),
+    })
+
+    const result = await Effect.runPromise(
+      port.push({
+        _tag: 'BodyPushCommand',
+        commandId: commandId('cmd-notion-md-push'),
+        pageId: nmdPageId,
+        baseBodyPointer: bodyPointerFromTestMarkdown('# Adapter page\n\nHello from NotionMD.\n'),
+        nextBodyHash: contentHash(localBodyContent),
+        localBodyPath: nmdPath,
+        localBodyContent,
+      }),
+    )
+
+    expect(updates).toEqual([
+      {
+        pageId: nmdPageId,
+        command: {
+          _tag: 'replace_content',
+          markdown: localBodyContent,
+        },
+        allowDeletingContent: false,
+      },
+    ])
+    expect(result).toMatchObject({
+      _tag: 'BodyPushResult',
+      pageId: nmdPageId,
+      bodyPointer: {
+        bodyHash: contentHash(localBodyContent),
+        safety: bodySafetySnapshot(),
+      },
+    })
+  })
+
+  it('keeps NotionMD body push fail-closed when queued commands lack body content', async () => {
+    const port = makeNotionMdPageBodySyncPort({
+      gateway: fakeNotionMdGateway(pullPageResult()),
+    })
+
+    await expect(
+      Effect.runPromise(
+        Effect.flip(
+          port.push({
+            _tag: 'BodyPushCommand',
+            commandId: commandId('cmd-notion-md-push-gap'),
+            pageId: nmdPageId,
+            baseBodyPointer: bodyPointerFromTestMarkdown('# Adapter page\n\nHello from NotionMD.\n'),
+            nextBodyHash: hash('b'),
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: 'BodySyncError',
+      operation: 'push',
+      message: expect.stringContaining('requires a datasource-sync command'),
     })
   })
 })

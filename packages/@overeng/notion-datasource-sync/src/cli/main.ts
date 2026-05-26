@@ -879,11 +879,15 @@ export const makeCliRuntimeLayer = ({
 }
 
 /** Convenience wrapper that runs `runCliCommand` with the runtime layer built by `makeCliRuntimeLayer`. */
-export const runCliCommandWithRuntime = (
-  command: CliCommand,
-  context: CliContext,
-  options: CliRuntimeOptions = {},
-) => runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer({ context, options })))
+export const runCliCommandWithRuntime = ({
+  command,
+  context,
+  options = {},
+}: {
+  readonly command: CliCommand
+  readonly context: CliContext
+  readonly options?: CliRuntimeOptions
+}) => runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer({ context, options })))
 
 /**
  * Top-level CLI entry point: parses `argv`, rejects unsupported commands early, runs the command,
@@ -892,7 +896,13 @@ export const runCliCommandWithRuntime = (
  * When the module is executed directly (`process.argv[1]` matches), it wires OTel and calls
  * `NodeRuntime.runMain`, writing errors as JSON to `stderr`.
  */
-export const runCliMain = (argv: ReadonlyArray<string>, options: CliRuntimeOptions = {}) =>
+export const runCliMain = ({
+  argv,
+  options = {},
+}: {
+  readonly argv: ReadonlyArray<string>
+  readonly options?: CliRuntimeOptions
+}) =>
   Effect.gen(function* () {
     const command = yield* Effect.try({
       try: () => parseCliCommand(argv),
@@ -906,7 +916,7 @@ export const runCliMain = (argv: ReadonlyArray<string>, options: CliRuntimeOptio
       try: () => parseCliContext(argv),
       catch: (cause) => cause,
     })
-    yield* runCliCommandWithRuntime(command, context, options).pipe(
+    yield* runCliCommandWithRuntime({ command, context, options }).pipe(
       Effect.tap((result) => Effect.sync(() => process.stdout.write(renderCliResultJson(result)))),
       Effect.ensuring(Effect.sync(() => context.store.close())),
     )
@@ -922,7 +932,7 @@ const serviceNameForArgv = (argv: ReadonlyArray<string>): string => {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2)
-  runCliMain(argv).pipe(
+  runCliMain({ argv }).pipe(
     Effect.tapError((error) => Effect.sync(() => process.stderr.write(renderCliErrorJson(error)))),
     Effect.scoped,
     Effect.provide(makeOtelCliLayer({ serviceName: serviceNameForArgv(argv) })),

@@ -31,7 +31,7 @@ import {
   testIds,
 } from '../testing/harness.ts'
 
-const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-one-shot')
+const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-one-shot' })
 
 const schemaProperties = [
   {
@@ -42,7 +42,7 @@ const schemaProperties = [
 ]
 
 const propertyPage = (valueHash = hash('property-a-base')) =>
-  decode(PagePropertyItemPage, {
+  decode({ schema: PagePropertyItemPage, value: {
     _tag: 'PagePropertyItemPage',
     apiVersion: '2026-03-11',
     requestId: testIds.requestId,
@@ -59,17 +59,17 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
     ],
     nextCursor: null,
     hasMore: false,
-  })
+  } })
 
 const bodyPageFor = (pageId: typeof testIds.pageId, bodyHash = hash(`body-${pageId}`)) =>
   fakeBodyPage({
     pageId,
-    pointer: decode(BodyPointer, {
+    pointer: decode({ schema: BodyPointer, value: {
       _tag: 'BodyPointer',
       pageId,
       bodyHash,
       observedAt: fixedObservedAt,
-    }),
+    } }),
   })
 
 const runWithPorts = <TValue, TError>(
@@ -237,13 +237,13 @@ describe('one-shot sync orchestration', () => {
         { gateway: gatewayHarness.gateway },
       )
 
-      const command = decode(PatchPagePropertiesCommand, {
+      const command = decode({ schema: PatchPagePropertiesCommand, value: {
         _tag: 'PatchPagePropertiesCommand',
         commandId: testIds.commandId,
         pageId: testIds.pageId,
         basePropertiesHash: hash('properties-a'),
         propertyPatch: { [testIds.propertyA]: propertyPatchValue('Local edit') },
-      })
+      } })
       const push = await runWithPorts(
         pushOneShotSync({
           store: storeFixture.store,
@@ -712,9 +712,9 @@ describe('one-shot sync orchestration', () => {
     const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
     const localObservation = presentArtifactObservation({
       pageId: testIds.pageId,
-      path: decode(WorkspaceRelativePath, 'page-1.nmd'),
+      path: decode({ schema: WorkspaceRelativePath, value: 'page-1.nmd' }),
       contentHash: hash('body-local'),
-      observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+      observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
     })
     const ports = makeHarnessPorts({
       bodyPages: [fakeBodyPage({ remoteBodyHash: hash('body-remote') })],

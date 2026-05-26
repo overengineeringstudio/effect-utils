@@ -66,6 +66,7 @@ export type {
   DatabaseSchema as NotionDatabase,
   DataSourceSchema as NotionDataSource,
   Page as NotionPage,
+  PagePropertyItem as NotionPagePropertyItem,
 } from '@overeng/notion-effect-schema'
 // Services
 export { NotionDatabases } from './databases.ts'
@@ -173,6 +174,7 @@ export type {
   PageParent,
   RetrievePageOptions,
   RetrievePageOptionsBase,
+  RetrievePagePropertyOptions,
   RetrievePageWithSchemaOptions,
   UpdateMarkdownOptions,
   UpdatePageOptions,

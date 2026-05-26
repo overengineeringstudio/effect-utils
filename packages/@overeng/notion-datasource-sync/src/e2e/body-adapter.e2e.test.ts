@@ -1,10 +1,27 @@
+import { createHash } from 'node:crypto'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { NodeContext } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import {
+  NmdStateStore,
+  NmdStateStoreLive,
+  type NotionMdGatewayShape,
+  type PullPageResult,
+} from '@overeng/notion-md'
+
 import { makeUnsupportedPageBodySyncPort } from '../body/adapter.ts'
+import {
+  makeNotionMdMaterializingLocalWorkspacePort,
+  makeNotionMdPageBodySyncPort,
+} from '../body/notion-md.ts'
 import { bodySurfaceKey } from '../core/canonical.ts'
 import type { BodyPushCommand as BodyPushCommandType } from '../core/commands.ts'
-import { AbsolutePath, WorkspaceRelativePath, type BodySafetySnapshot } from '../core/domain.ts'
+import { AbsolutePath, Hash, WorkspaceRelativePath, type BodySafetySnapshot } from '../core/domain.ts'
 import { BodySyncError } from '../core/errors.ts'
 import { RowObserved } from '../core/events.ts'
 import {
@@ -34,8 +51,10 @@ import {
 } from '../testing/harness.ts'
 import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
 
-const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-body-adapter')
-const bodyPath = decode(WorkspaceRelativePath, 'page-1.nmd')
+const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-body-adapter' })
+const bodyPath = decode({ schema: WorkspaceRelativePath, value: 'page-1.nmd' })
+const contentHash = (content: string) =>
+  decode({ schema: Hash, value: `sha256:${createHash('sha256').update(content).digest('hex')}` })
 const implementedBodyAdapterScenarioIds = new Set<ScenarioId>([
   'NDS-L2-body-adapter-fail-closed-boundary',
 ])
@@ -103,6 +122,40 @@ const pullOptions = (store: ReturnType<typeof makeStoreFixture>['store']) => ({
   now: makeFakeClock().now,
 })
 
+const pullPageResult = (markdown: string): PullPageResult => ({
+  page: {
+    id: testIds.pageId,
+    title: 'Page 1',
+    title_property_key: 'Name',
+    url: undefined,
+    parent: { type: 'workspace', workspace: true },
+    icon: null,
+    cover: null,
+    in_trash: false,
+    is_locked: false,
+    last_edited_time: '2026-05-25T00:00:00.000Z',
+    properties: {},
+  },
+  markdown: {
+    markdown,
+    truncated: false,
+    unknown_block_ids: [],
+  },
+  storage: {
+    _tag: 'self_contained',
+    unsupported_blocks: [],
+    files: [],
+    comments: [],
+  },
+})
+
+const runWithNmdStateStore = <TValue, TError>(
+  effect: Effect.Effect<TValue, TError, NmdStateStore>,
+) =>
+  Effect.runPromise(
+    effect.pipe(Effect.provide(NmdStateStoreLive), Effect.provide(NodeContext.layer)),
+  )
+
 const assertNoGatewayMutations = (ledger: ReturnType<typeof makeFakeGatewayHarness>['ledger']) => {
   expect(ledger.attemptedPatchPageProperties).toEqual([])
   expect(ledger.attemptedPatchDataSourceSchemas).toEqual([])
@@ -115,7 +168,7 @@ const appendObservedBodyProjection = (
   safety: BodySafetySnapshot,
 ) => {
   store.appendEvent(
-    decode(RowObserved, {
+    decode({ schema: RowObserved, value: {
       _tag: 'RowObserved',
       eventId: `body-adapter-row-observed:${hash(JSON.stringify(safety))}`,
       rootId: testIds.rootId,
@@ -149,7 +202,7 @@ const appendObservedBodyProjection = (
         safety,
       },
       inTrash: false,
-    }),
+    } }),
   )
 }
 
@@ -332,7 +385,7 @@ describe('body adapter E2E boundary', () => {
     }
 
     try {
-      appendPlannedCommand(storeFixture.store, {
+      appendPlannedCommand({ store: storeFixture.store, command: {
         rootId: testIds.rootId,
         commandId: testIds.commandId,
         commandKey: testIds.commandKey,
@@ -342,7 +395,7 @@ describe('body adapter E2E boundary', () => {
         baseHash: baseBodyPointer.bodyHash,
         desiredHash: hash('body-next'),
         preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'BodyAdapterConflict'],
-      })
+      } })
 
       await expect(
         Effect.runPromise(
@@ -376,6 +429,125 @@ describe('body adapter E2E boundary', () => {
       assertNoGatewayMutations(gatewayHarness.ledger)
     } finally {
       storeFixture.cleanup()
+    }
+  })
+
+  it('materializes, pushes, and verifies a NotionMD-backed local body edit', async () => {
+    const rootPath = await mkdtemp(join(tmpdir(), 'notion-ds-sync-body-adapter-'))
+    const root = decode({ schema: AbsolutePath, value: rootPath })
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+    const gatewayHarness = makeFakeGatewayHarness()
+    const updates: Parameters<NotionMdGatewayShape['updateMarkdown']>[0][] = []
+    let remoteMarkdown = '# Page 1\n\nRemote body.\n'
+    const notionMdGateway: NotionMdGatewayShape = {
+      pullPage: () => Effect.succeed(pullPageResult(remoteMarkdown)),
+      updateMarkdown: (opts) =>
+        Effect.sync(() => {
+          updates.push(opts)
+          remoteMarkdown =
+            opts.command._tag === 'replace_content'
+              ? opts.command.markdown
+              : opts.command.contentUpdates.reduce(
+                  (markdown, update) =>
+                    markdown.replaceAll(update.oldStr, update.newStr),
+                  remoteMarkdown,
+                )
+          return pullPageResult(remoteMarkdown)
+        }),
+      updatePageProperties: () =>
+        Effect.die('updatePageProperties should not be called by this test'),
+      updatePageMetadata: () =>
+        Effect.die('updatePageMetadata should not be called by this test'),
+      listChildPages: () => Effect.succeed([]),
+    }
+
+    try {
+      const stateStore = await runWithNmdStateStore(NmdStateStore)
+      const body = makeNotionMdPageBodySyncPort({ gateway: notionMdGateway })
+      const workspace = makeNotionMdMaterializingLocalWorkspacePort({
+        root,
+        gateway: notionMdGateway,
+        stateStore,
+      })
+
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot: root,
+        now: makeFakeClock().now,
+      })
+
+      await runWithPorts(
+        pullOneShotSync({
+          ...pullOptions(storeFixture.store),
+          workspaceRoot: root,
+          bodyPathForPage: () => bodyPath,
+        }),
+        {
+          gateway: gatewayHarness.gateway,
+          body,
+          workspace,
+        },
+      )
+
+      const absoluteBodyPath = join(rootPath, bodyPath)
+      const materialized = await readFile(absoluteBodyPath, 'utf8')
+      const localMarkdown = '# Page 1\n\nLocal body pushed through NotionMD.\n'
+      await writeFile(
+        absoluteBodyPath,
+        materialized.replace('Remote body.', 'Local body pushed through NotionMD.'),
+        'utf8',
+      )
+
+      const result = await runWithPorts(
+        pushOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot: root,
+          now: makeFakeClock().now,
+        }),
+        {
+          gateway: gatewayHarness.gateway,
+          body,
+          workspace,
+        },
+      )
+
+      expect(result.localObservations).toBe(1)
+      expect(result.plan.enqueuedCommands).toBe(1)
+      expect(result.executor.results).toEqual([
+        {
+          _tag: 'settled',
+          commandId: expect.any(String),
+          settlementKind: 'verified-success',
+        },
+        {
+          _tag: 'idle',
+        },
+      ])
+      expect(updates).toEqual([
+        {
+          pageId: testIds.pageId,
+          command: {
+            _tag: 'replace_content',
+            markdown: localMarkdown,
+          },
+          allowDeletingContent: false,
+        },
+      ])
+      expect(remoteMarkdown).toBe(localMarkdown)
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        {
+          commandTag: 'BodyPush',
+          state: 'settled',
+          desiredHash: contentHash(localMarkdown),
+        },
+      ])
+      assertNoGatewayMutations(gatewayHarness.ledger)
+    } finally {
+      storeFixture.cleanup()
+      await rm(rootPath, { recursive: true, force: true })
     }
   })
 

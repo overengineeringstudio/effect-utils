@@ -589,6 +589,21 @@ Requirement trace: R21-R29, R30-R41, R66-R73.
 
 Every guard must appear in the E2E plan with at least one verification level.
 
+## Current Fail-Closed Boundaries
+
+This section names the intentional unsupported surfaces for the current implementation. Unsupported means "typed blocked state, conflict, or capability failure"; it must not degrade into silent omission, empty value interpretation, or best-effort mutation.
+
+| Boundary                         | Current supported subset                                                                                  | Fail-closed cases that remain intentional                                                                                             |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Schema updates                   | Add property, rename property, and additive select/multi-select options with matching base schema hash     | property deletion, type conversion, status updates, status option changes, option removal/rename/replacement, property order changes |
+| Computed/generated properties    | Observation and canonical hashing when complete                                                           | writes to formula, rollup, created/last edited metadata, created by, last edited by, unique ID, verification, and other generated values |
+| Page-property pagination         | Cursor-backed property item retrieval for completing supported value hashes                                | incomplete streams, unshared relation targets, unsupported rollup semantics, or capability-missing page-property reads                |
+| Files                            | Read-only canonical references that exclude expiring signed URLs from durable identity                     | file byte upload, replacement, deletion, and signed URL identity                                                                      |
+| Body sync                        | NotionMD observation, materialization, repair, local body-content planning, and guarded body push          | truncated markdown, unknown block ambiguity, synced-page unsupported writes, child-page/database deletion without explicit approval, hash-only commands |
+| Page metadata and lifecycle      | Explicit row property, trash, restore, and body surfaces only                                              | title/icon/cover/lock/parent/status mutation through the body adapter or any implicit metadata mutation inferred from body sync       |
+| Query membership                 | Complete query checkpoints scoped by filter, sort, page size, API version, high-watermark, and membership | 10k cap exhaustion, changed query contracts, partial scans, filtered absence reused as delete proof                                   |
+| Live/soak verification           | Secret-gated fixture ledger plus deterministic fake daemon soak                                            | production readiness without representative live schema/body/page-property/high-cardinality/daemon soak proof                        |
+
 ## Schema Semantics
 
 Requirement trace: R30-R35.
@@ -602,6 +617,8 @@ Requirement trace: R30-R35.
 | Type conversion      | Migration only        | Show value conversion table and lossy/null conversions |
 | Select option add    | Allowed if explicit   | Read-after-write option ID/name state                  |
 | Select option delete | Migration only        | Detect rows that currently use removed option          |
+
+The executable schema subset is intentionally additive. Notion treats omitted select and multi-select options in an update as removal, so datasource sync requires explicit existing-option evidence before adding options and does not expose replace/remove semantics. Status properties remain read-only for datasource-sync because the public data-source update API does not support status property updates. Destructive schema migrations stay blocked until an impact report, explicit approval, and live proof exist.
 
 Schema ownership is explicit per binding:
 
@@ -639,7 +656,7 @@ Datasource sync treats public markdown operations as body-adapter internals, but
 
 The body adapter must not set `allow_deleting_content` as part of ordinary sync, conflict resolution, or repair. Destructive body operations are separate explicit commands with dry-run output.
 
-Staging note: the current package intentionally keeps NotionMD as a fail-closed boundary. `PageBodySyncPort` can model body hashes and safety metadata, but it cannot yet carry the local `.nmd` body content or path evidence that NotionMD needs to perform real extraction/rendering. Until that public adapter API exists, datasource-sync must treat an absent body adapter as unsupported: no body materialization, no body push execution, no outbox settlement for body commands, and no non-body mutation may be inferred from body sync.
+Staging note: the current package has a NotionMD-backed adapter slice for observe, materialize, plan, repair, and guarded body push. It uses NotionMD public APIs to write real `.nmd` files and sidecars, records datasource-sync sidecars for path identity and own-write suppression, and carries local path/content through body push commands. Hash-only commands, absent adapters, stale bases, truncated or unknown-block bodies, and any adapter attempt to mutate non-body surfaces remain unsupported: no body push settlement occurs and no non-body mutation may be inferred from body sync.
 
 ## Delete, Move, And Restore Semantics
 

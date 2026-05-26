@@ -49,7 +49,7 @@ const execFileAsync = promisify(execFile)
 const packageDir = fileURLToPath(new URL('../..', import.meta.url))
 const cliPath = join(packageDir, 'src/cli/main.ts')
 const cliTestTimeoutMs = 10_000
-const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-cli')
+const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-cli' })
 
 const schemaProperties = [
   {
@@ -68,7 +68,7 @@ const expectSqliteStoreFilesAbsent = async (storePath: string) => {
 }
 
 const propertyPage = (valueHash = hash('property-a-base')) =>
-  decode(PagePropertyItemPage, {
+  decode({ schema: PagePropertyItemPage, value: {
     _tag: 'PagePropertyItemPage',
     apiVersion: '2026-03-11',
     requestId: testIds.requestId,
@@ -85,16 +85,16 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
     ],
     nextCursor: null,
     hasMore: false,
-  })
+  } })
 
 const bodyPage = (bodyHash = hash('body-a'), remoteBodyHash = bodyHash) =>
   fakeBodyPage({
-    pointer: decode(BodyPointer, {
+    pointer: decode({ schema: BodyPointer, value: {
       _tag: 'BodyPointer',
       pageId: testIds.pageId,
       bodyHash,
       observedAt: fixedObservedAt,
-    }),
+    } }),
     remoteBodyHash,
   })
 
@@ -103,7 +103,7 @@ const conflictEvent = (): SyncEventType =>
     rootId: testIds.rootId,
     pageId: testIds.pageId,
     propertyId: testIds.propertyA,
-    surface: propertySurfaceKey(testIds.pageId, testIds.propertyA),
+    surface: propertySurfaceKey({ pageId: testIds.pageId, propertyId: testIds.propertyA }),
     baseHash: hash('property-a-base'),
     localHash: hash('property-a-local'),
     remoteHash: hash('property-a-remote'),
@@ -158,6 +158,12 @@ const makeInjectedNotionClient = (calls: {
     calls.retrievePage += 1
     return Effect.succeed(injectedNotionPage())
   },
+  retrievePageProperty: () =>
+    Effect.succeed({
+      results: [],
+      nextCursor: Option.none(),
+      hasMore: false,
+    }),
   updatePage: (input) =>
     Effect.succeed({
       ...injectedNotionPage(),
@@ -518,7 +524,7 @@ describe('CLI command surface', () => {
     try {
       await expect(
         Effect.runPromise(
-          runCliMain([
+          runCliMain({ argv: [
             'status',
             '--store',
             storePath,
@@ -530,7 +536,7 @@ describe('CLI command surface', () => {
             workspaceRoot,
             '--query-contract-json',
             '{',
-          ]),
+          ] }),
         ),
       ).rejects.toThrow()
 
@@ -576,8 +582,8 @@ describe('CLI command surface', () => {
     try {
       await expect(
         Effect.runPromise(
-          runCliMain(
-            [
+          runCliMain({
+            argv: [
               'pull',
               '--store',
               join(dir, 'store.sqlite'),
@@ -588,8 +594,8 @@ describe('CLI command surface', () => {
               '--workspace-root',
               workspaceRoot,
             ],
-            { gateway: failingGateway },
-          ),
+            options: { gateway: failingGateway },
+          }),
         ),
       ).rejects.toThrow('forced preflight failure')
       expect(closeCalls).toBe(1)
@@ -607,24 +613,25 @@ describe('CLI command surface', () => {
     const ctx = context({
       store: storeFixture.store,
       clock,
-      workspaceRoot: decode(AbsolutePath, dir),
+      workspaceRoot: decode({ schema: AbsolutePath, value: dir }),
       schemaProperties: [],
     })
     const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
 
     try {
       await Effect.runPromise(
-        runCliCommandWithRuntime(
-          { _tag: 'init', dataSourceId: testIds.dataSourceId, workspaceRoot: ctx.workspaceRoot },
-          ctx,
-          { gatewayClient: makeInjectedNotionClient(calls), body },
-        ),
+        runCliCommandWithRuntime({
+          command: { _tag: 'init', dataSourceId: testIds.dataSourceId, workspaceRoot: ctx.workspaceRoot },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
       )
 
       const result = await Effect.runPromise(
-        runCliCommandWithRuntime({ _tag: 'sync' }, ctx, {
-          gatewayClient: makeInjectedNotionClient(calls),
-          body,
+        runCliCommandWithRuntime({
+          command: { _tag: 'sync' },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
         }),
       )
 
@@ -651,26 +658,26 @@ describe('CLI command surface', () => {
     const ctx = context({
       store: storeFixture.store,
       clock,
-      workspaceRoot: decode(AbsolutePath, dir),
+      workspaceRoot: decode({ schema: AbsolutePath, value: dir }),
       schemaProperties: [],
     })
     const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
 
     try {
       await Effect.runPromise(
-        runCliCommandWithRuntime(
-          { _tag: 'init', dataSourceId: testIds.dataSourceId, workspaceRoot: ctx.workspaceRoot },
-          ctx,
-          { gatewayClient: makeInjectedNotionClient(calls), body },
-        ),
+        runCliCommandWithRuntime({
+          command: { _tag: 'init', dataSourceId: testIds.dataSourceId, workspaceRoot: ctx.workspaceRoot },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
       )
 
       const result = await Effect.runPromise(
-        runCliCommandWithRuntime(
-          { _tag: 'watch', statePath: join(dir, 'watch.json'), maxCycles: 1 },
-          ctx,
-          { gatewayClient: makeInjectedNotionClient(calls), body },
-        ),
+        runCliCommandWithRuntime({
+          command: { _tag: 'watch', statePath: join(dir, 'watch.json'), maxCycles: 1 },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
       )
 
       expect(result).toMatchObject({
@@ -745,9 +752,9 @@ describe('CLI command surface', () => {
             localObservations: [
               presentArtifactObservation({
                 pageId: testIds.pageId,
-                path: decode(WorkspaceRelativePath, 'row--page-1.nmd'),
+                path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
                 contentHash: hash('body-local'),
-                observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+                observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
               }),
             ],
           }).workspace,
@@ -789,9 +796,9 @@ describe('CLI command surface', () => {
             localObservations: [
               presentArtifactObservation({
                 pageId: testIds.pageId,
-                path: decode(WorkspaceRelativePath, 'row--page-1.nmd'),
+                path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
                 contentHash: hash('body-local'),
-                observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+                observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
               }),
             ],
           }).workspace,
@@ -814,9 +821,9 @@ describe('CLI command surface', () => {
       localObservations: [
         presentArtifactObservation({
           pageId: testIds.pageId,
-          path: decode(WorkspaceRelativePath, 'row--page-1.nmd'),
+          path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
           contentHash: hash('body-local'),
-          observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+          observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
         }),
       ],
     })
@@ -893,7 +900,7 @@ describe('CLI command surface', () => {
         runCliCommand(
           {
             _tag: 'conflicts-resolve',
-            conflictId: decode(SyncEventId, conflict.eventId),
+            conflictId: decode({ schema: SyncEventId, value: conflict.eventId }),
             choice: { _tag: 'keep-remote' },
           },
           ctx,
@@ -946,7 +953,7 @@ describe('CLI command surface', () => {
         runCliCommand(
           {
             _tag: 'conflicts-resolve',
-            conflictId: decode(SyncEventId, conflict.eventId),
+            conflictId: decode({ schema: SyncEventId, value: conflict.eventId }),
             choice: { _tag: 'keep-remote' },
             dryRun: true,
           },

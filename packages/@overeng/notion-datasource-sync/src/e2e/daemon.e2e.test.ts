@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 
-import { Effect, Fiber, Schema } from 'effect'
+import { Effect, Fiber, Schema, Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { makeFakePageBodySyncPort } from '../body/adapter.ts'
@@ -29,6 +29,7 @@ import {
   makeFilesystemLocalWorkspacePort,
   presentArtifactObservation,
 } from '../local/workspace.ts'
+import { spanAttr, spanNames } from '../observability/observability.ts'
 import { initOneShotSync, pullOneShotSync } from '../sync/sync.ts'
 import { collectWorkspaceScan, makeTempWorkspace } from '../testing/filesystem.ts'
 import {
@@ -44,8 +45,9 @@ import {
   pageSnapshot,
   testIds,
 } from '../testing/harness.ts'
+import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
 
-const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-daemon')
+const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-daemon' })
 
 const schemaProperties = [
   {
@@ -55,6 +57,16 @@ const schemaProperties = [
   },
 ]
 
+const implementedDaemonScenarioIds = new Set<ScenarioId>([
+  'NDS-L5-watch-daemon-local-cycle',
+  'NDS-L3-doctor-guard-state',
+  'NDS-L5-realistic-daemon-restart-cancellation',
+  'NDS-L5-daemon-query-cursor-resume',
+  'NDS-L5-daemon-bounded-outbox-drain',
+  'NDS-L5-daemon-repeated-fake-soak',
+  'NDS-L5-daemon-mixed-mutation-soak',
+])
+
 const propertyPage = ({
   pageId = testIds.pageId,
   itemHash = hash('property-a-base'),
@@ -62,7 +74,7 @@ const propertyPage = ({
   readonly pageId?: PageIdType
   readonly itemHash?: HashType
 } = {}) =>
-  decode(PagePropertyItemPage, {
+  decode({ schema: PagePropertyItemPage, value: {
     _tag: 'PagePropertyItemPage',
     apiVersion: '2026-03-11',
     requestId: testIds.requestId,
@@ -79,7 +91,7 @@ const propertyPage = ({
     ],
     nextCursor: null,
     hasMore: false,
-  })
+  } })
 
 const bodyPage = ({
   pageId = testIds.pageId,
@@ -90,17 +102,17 @@ const bodyPage = ({
 } = {}) =>
   fakeBodyPage({
     pageId,
-    pointer: decode(BodyPointer, {
+    pointer: decode({ schema: BodyPointer, value: {
       _tag: 'BodyPointer',
       pageId,
       bodyHash,
       observedAt: fixedObservedAt,
-    }),
+    } }),
   })
 
 const localBodyChange = ({
   pageId = testIds.pageId,
-  path = decode(WorkspaceRelativePath, 'row--page-1.nmd'),
+  path = decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
   contentHash = hash('body-local'),
 }: {
   readonly pageId?: PageIdType
@@ -111,7 +123,7 @@ const localBodyChange = ({
     pageId,
     path,
     contentHash,
-    observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+    observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
   })
 
 type QueryCheckpointRow = {
@@ -159,6 +171,7 @@ const context = (input: {
   readonly store: CliContext['store']
   readonly clock: ReturnType<typeof makeFakeClock>
   readonly queryContract?: CliContext['queryContract']
+  readonly schemaProperties?: CliContext['schemaProperties']
   readonly workspaceRoot?: CliContext['workspaceRoot']
 }): CliContext => ({
   store: input.store,
@@ -166,7 +179,7 @@ const context = (input: {
   dataSourceId: testIds.dataSourceId,
   workspaceRoot: input.workspaceRoot ?? workspaceRoot,
   queryContract: input.queryContract ?? defaultQueryContract(),
-  schemaProperties,
+  schemaProperties: input.schemaProperties ?? schemaProperties,
   now: input.clock.now,
 })
 
@@ -182,6 +195,7 @@ const daemonOptions = (input: {
   readonly leaseDurationMs?: number
   readonly sleep?: WatchDaemonOptions['sleep']
   readonly queryContract?: WatchDaemonOptions['queryContract']
+  readonly schemaProperties?: WatchDaemonOptions['schemaProperties']
   readonly workspaceRoot?: WatchDaemonOptions['workspaceRoot']
 }): WatchDaemonOptions => ({
   store: input.store,
@@ -189,7 +203,7 @@ const daemonOptions = (input: {
   dataSourceId: testIds.dataSourceId,
   workspaceRoot: input.workspaceRoot ?? workspaceRoot,
   queryContract: input.queryContract ?? defaultQueryContract(),
-  schemaProperties,
+  schemaProperties: input.schemaProperties ?? schemaProperties,
   statePath: input.statePath,
   ...(input.useDefaultLease === true
     ? {}
@@ -245,7 +259,68 @@ const withFailsafe = async <TValue>(promise: Promise<TValue>, label: string): Pr
   }
 }
 
+type RecordedDaemonSpan = {
+  readonly name: string
+  readonly attributes: Record<string, unknown>
+  ended: boolean
+}
+
+const makeDaemonRecordingTracer = (): {
+  readonly tracer: Tracer.Tracer
+  readonly spans: ReadonlyArray<RecordedDaemonSpan>
+} => {
+  const spans: RecordedDaemonSpan[] = []
+
+  return {
+    spans,
+    tracer: Tracer.make({
+      span: (name, parent, context, links, startTime, kind, options) => {
+        const attributes = new Map<string, unknown>(Object.entries(options?.attributes ?? {}))
+        const recorded: RecordedDaemonSpan = {
+          name,
+          attributes: Object.fromEntries(attributes),
+          ended: false,
+        }
+        spans.push(recorded)
+
+        return {
+          _tag: 'Span',
+          name,
+          spanId: `daemon-soak-span-${spans.length.toString()}`,
+          traceId: 'trace-daemon-soak-e2e',
+          parent,
+          context,
+          status: { _tag: 'Started', startTime },
+          attributes,
+          links,
+          sampled: true,
+          kind,
+          end: () => {
+            recorded.ended = true
+          },
+          attribute: (key, value) => {
+            attributes.set(key, value)
+            recorded.attributes[key] = value
+          },
+          event: () => {},
+          addLinks: () => {},
+        }
+      },
+      context: (f) => f(),
+    }),
+  }
+}
+
 describe('watch daemon surface', () => {
+  it('keeps daemon scenario metadata implemented', () => {
+    expect(
+      scenarioImplementationGaps({
+        file: 'src/e2e/daemon.e2e.test.ts',
+        implementedScenarioIds: implementedDaemonScenarioIds,
+      }),
+    ).toEqual([])
+  })
+
   it('runs unbounded by default until cancellation instead of stopping after one cycle', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ now: clock.now })
@@ -388,7 +463,7 @@ describe('watch daemon surface', () => {
       })
       await runWithPorts(
         pullOneShotSync({
-          ...context({ store: storeFixture.store, clock }),
+          ...context({ store: storeFixture.store, clock, schemaProperties: [] }),
           store: storeFixture.store,
         }),
         { gateway: gateway.gateway, body: baseBody, workspace: makeHarnessPorts().workspace },
@@ -400,6 +475,7 @@ describe('watch daemon surface', () => {
             statePath,
             clock,
             maxExecutorSteps: 0,
+            schemaProperties: [],
           }),
         ),
         { gateway: gateway.gateway, body: baseBody, workspace },
@@ -467,7 +543,7 @@ describe('watch daemon surface', () => {
       })
       await runWithPorts(
         pullOneShotSync({
-          ...context({ store: storeFixture.store, clock }),
+          ...context({ store: storeFixture.store, clock, schemaProperties: [] }),
           store: storeFixture.store,
         }),
         { gateway: gateway.gateway, body, workspace: makeHarnessPorts().workspace },
@@ -480,6 +556,7 @@ describe('watch daemon surface', () => {
             statePath,
             clock,
             maxExecutorSteps: 0,
+            schemaProperties: [],
           }),
         ),
         { gateway: gateway.gateway, body, workspace },
@@ -527,11 +604,260 @@ describe('watch daemon surface', () => {
     }
   })
 
+  it('converges repeated fake soak cycles after restart without duplicate body writes', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const statePath = `${storeFixture.path}.watch.json`
+    let bodyPushes = 0
+    const baseBody = makeFakePageBodySyncPort({ pages: [bodyPage()] })
+    const body = {
+      ...baseBody,
+      push: (command: Parameters<typeof baseBody.push>[0]) =>
+        Effect.sync(() => {
+          bodyPushes += 1
+        }).pipe(Effect.zipRight(baseBody.push(command))),
+    }
+    const workspace = makeHarnessPorts({ localObservations: [localBodyChange()] }).workspace
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          ...context({ store: storeFixture.store, clock }),
+          store: storeFixture.store,
+        }),
+        { gateway: gateway.gateway, body, workspace: makeHarnessPorts().workspace },
+      )
+
+      const first = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            maxExecutorSteps: 0,
+          }),
+        ),
+        { gateway: gateway.gateway, body, workspace },
+      )
+      expect(first.status.state).toBe('pending')
+      expect(bodyPushes).toBe(0)
+
+      const soak = await runWithPorts(
+        runWatchDaemon(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            maxCycles: 3,
+            schemaProperties: [],
+            sleep: () => Effect.sync(() => clock.advanceMillis(5_000)),
+          }),
+        ),
+        { gateway: gateway.gateway, body, workspace },
+      )
+
+      expect(soak).toMatchObject({
+        cycles: 3,
+        completed: 3,
+        cancelled: false,
+        state: {
+          lastCompleteCycle: 4,
+          repair: { _tag: 'none' },
+        },
+      })
+      expect(bodyPushes).toBe(1)
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([
+        expect.objectContaining({ state: 'settled' }),
+      ])
+      expect(storeFixture.store.readStatusProjection(testIds.rootId).outbox).toMatchObject({
+        queued: 0,
+        running: 0,
+        retryable: 0,
+        ambiguous: 0,
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('converges a bounded mixed-mutation daemon soak with low-cardinality trace metadata', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const statePath = `${storeFixture.path}.watch.json`
+    const addedPageId = decode({ schema: PageId, value: 'page-soak-2' })
+    const queryContract = {
+      ...defaultQueryContract(),
+      pageSize: 1,
+      highWatermark: decode({ schema: Schema.DateTimeUtc, value: '2026-05-24T23:59:00.000Z' }),
+    }
+    const baselineGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const soakGateway = makeFakeGatewayHarness({
+      pages: [
+        pageSnapshot({ propertiesHash: hash('properties-remote-cycle') }),
+        pageSnapshot({
+          pageId: addedPageId,
+          propertiesHash: hash('properties-added-cycle'),
+        }),
+      ],
+      propertyPages: [
+        propertyPage({ itemHash: hash('property-remote-cycle') }),
+        propertyPage({ pageId: addedPageId, itemHash: hash('property-added-cycle') }),
+      ],
+    })
+    const baseBody = makeFakePageBodySyncPort({
+      pages: [
+        bodyPage(),
+        bodyPage({
+          pageId: addedPageId,
+          bodyHash: hash('body-added-cycle'),
+        }),
+      ],
+    })
+    let bodyPushes = 0
+    const body = {
+      ...baseBody,
+      push: (command: Parameters<typeof baseBody.push>[0]) =>
+        Effect.sync(() => {
+          bodyPushes += 1
+        }).pipe(Effect.zipRight(baseBody.push(command))),
+    }
+    const workspace = makeHarnessPorts({
+      localObservations: [localBodyChange({ contentHash: hash('body-local-soak') })],
+    }).workspace
+    const trace = makeDaemonRecordingTracer()
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          ...context({ store: storeFixture.store, clock, schemaProperties: [] }),
+          store: storeFixture.store,
+        }),
+        {
+          gateway: baselineGateway.gateway,
+          body,
+          workspace: makeHarnessPorts().workspace,
+        },
+      )
+
+      const interrupted = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            queryContract,
+            maxExecutorSteps: 0,
+            schemaProperties: [],
+          }),
+        ),
+        { gateway: soakGateway.gateway, body, workspace },
+      )
+
+      expect(interrupted.status.state).toBe('pending')
+      expect(bodyPushes).toBe(0)
+      expect(interrupted.sync.pull.observation.query).toMatchObject({
+        rows: 2,
+        complete: true,
+      })
+
+      const soak = await Effect.runPromise(
+        runWatchDaemon(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            queryContract,
+            maxCycles: 3,
+            schemaProperties: [],
+            sleep: () => Effect.sync(() => clock.advanceMillis(5_000)),
+          }),
+        ).pipe(
+          Effect.provideService(NotionDataSourceGateway, soakGateway.gateway),
+          Effect.provideService(PageBodySyncPort, body),
+          Effect.provideService(LocalWorkspacePort, workspace),
+          Effect.withTracer(trace.tracer),
+        ),
+      )
+
+      expect(soak).toMatchObject({
+        cycles: 3,
+        completed: 3,
+        cancelled: false,
+        lastStatus: { state: 'clean' },
+        state: {
+          cycle: 4,
+          lastCompleteCycle: 4,
+          repair: { _tag: 'none' },
+        },
+      })
+      expect(bodyPushes).toBe(1)
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([
+        expect.objectContaining({ state: 'settled' }),
+      ])
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toMatchObject([
+        { pageId: testIds.pageId },
+        { pageId: addedPageId },
+      ])
+      expect(readQueryCheckpointRows(storeFixture.path)).toEqual(
+        expect.arrayContaining([
+          {
+            data_source_id: testIds.dataSourceId,
+            query_contract_hash: interrupted.sync.pull.observation.query.queryContractHash,
+            next_cursor: null,
+            complete: 1,
+            capped_at_limit: 0,
+            contract_changed: 0,
+            high_watermark: fixedObservedAt,
+          },
+        ]),
+      )
+
+      const daemonPassSpans = trace.spans.filter((span) => span.name === spanNames.daemonPass)
+      expect(daemonPassSpans).toHaveLength(3)
+      expect(daemonPassSpans.map((span) => span.attributes[spanAttr.spanLabel])).toEqual([
+        'cycle:2',
+        'cycle:3',
+        'cycle:4',
+      ])
+      expect(
+        new Set(
+          trace.spans
+            .map((span) => span.attributes[spanAttr.pageId])
+            .filter((pageId): pageId is string => typeof pageId === 'string'),
+        ).size,
+      ).toBeLessThanOrEqual(2)
+      for (const span of trace.spans.filter((candidate) => candidate.name.startsWith('notion.'))) {
+        expect(span.ended, `${span.name} should be ended`).toBe(true)
+        expect(span.attributes[spanAttr.spanLabel], `${span.name} span.label`).toEqual(
+          expect.any(String),
+        )
+        expect(String(span.attributes[spanAttr.spanLabel]).length).toBeLessThanOrEqual(39)
+      }
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('drains fake cursor pages without skipping same-timestamp rows', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ now: clock.now })
     const queryContract = { ...defaultQueryContract(), pageSize: 1 }
-    const thirdPageId = decode(PageId, 'page-3')
+    const thirdPageId = decode({ schema: PageId, value: 'page-3' })
     const gateway = makeFakeGatewayHarness({
       pages: [
         pageSnapshot({ pageId: testIds.pageId }),
@@ -669,9 +995,9 @@ describe('watch daemon surface', () => {
     const queryContract = {
       ...defaultQueryContract(),
       pageSize: 1,
-      highWatermark: decode(Schema.DateTimeUtc, '2026-05-24T23:59:00.000Z'),
+      highWatermark: decode({ schema: Schema.DateTimeUtc, value: '2026-05-24T23:59:00.000Z' }),
     }
-    const thirdPageId = decode(PageId, 'page-3')
+    const thirdPageId = decode({ schema: PageId, value: 'page-3' })
     const pages = [
       pageSnapshot({ pageId: testIds.pageId }),
       pageSnapshot({
@@ -836,7 +1162,7 @@ describe('watch daemon surface', () => {
       })
       await runWithPorts(
         pullOneShotSync({
-          ...context({ store: storeFixture.store, clock }),
+          ...context({ store: storeFixture.store, clock, schemaProperties: [] }),
           store: storeFixture.store,
         }),
         { gateway: gateway.gateway, body, workspace: makeHarnessPorts().workspace },
@@ -847,7 +1173,7 @@ describe('watch daemon surface', () => {
           localBodyChange(),
           localBodyChange({
             pageId: testIds.otherPageId,
-            path: decode(WorkspaceRelativePath, 'row--page-2.nmd'),
+            path: decode({ schema: WorkspaceRelativePath, value: 'row--page-2.nmd' }),
             contentHash: hash('body-local-2'),
           }),
         ],
@@ -859,6 +1185,7 @@ describe('watch daemon surface', () => {
             statePath,
             clock,
             maxExecutorSteps: 1,
+            schemaProperties: [],
           }),
         ),
         { gateway: gateway.gateway, body, workspace },
@@ -872,6 +1199,33 @@ describe('watch daemon surface', () => {
       expect(result.status).toMatchObject({
         state: 'pending',
         counts: { outbox: { queued: 1, settled: 1 } },
+      })
+      expect(storeFixture.store.readOutbox(testIds.rootId).map((row) => row.state)).toEqual([
+        'settled',
+        'queued',
+      ])
+
+      const drained = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            maxExecutorSteps: 1,
+            schemaProperties: [],
+          }),
+        ),
+        { gateway: gateway.gateway, body, workspace },
+      )
+
+      expect(bodyPushes).toBe(2)
+      expect(drained.sync.push.executor).toMatchObject({
+        steps: 1,
+        maxStepsReached: true,
+      })
+      expect(drained.status).toMatchObject({
+        state: 'clean',
+        counts: { outbox: { queued: 0, settled: 2 } },
       })
     } finally {
       storeFixture.cleanup()
@@ -1162,7 +1516,7 @@ describe('watch daemon surface', () => {
         ),
         { gateway: gateway.gateway, body: baseBody, workspace },
       )
-      const [ownWriteObservation] = await collectWorkspaceScan(workspace, fixture.root)
+      const [ownWriteObservation] = await collectWorkspaceScan({ workspace, root: fixture.root })
       const materializeResult = first.sync.pull.observation.materialized[0]
       expect(materializeResult).toBeDefined()
       expect(ownWriteObservation).toMatchObject({
@@ -1233,7 +1587,7 @@ describe('watch daemon surface', () => {
         runCliCommand(
           {
             _tag: 'conflicts-resolve',
-            conflictId: decode(SyncEventId, 'missing-conflict'),
+            conflictId: decode({ schema: SyncEventId, value: 'missing-conflict' }),
             choice: { _tag: 'keep-local', value: { _tag: 'title', plainText: 'Local' } },
           },
           context({ store: storeFixture.store, clock }),

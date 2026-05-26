@@ -86,7 +86,7 @@ const makeRecordingTracer = (): {
   }
 }
 
-const workspaceRoot = decode(AbsolutePath, '/tmp/notion-datasource-sync-otel')
+const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-datasource-sync-otel' })
 
 const context = (input: {
   readonly store: CliContext['store']
@@ -131,6 +131,13 @@ const expectSpan = (
   return span!
 }
 
+const expectSpanAttributes = (
+  span: RecordedSpan,
+  attributes: Record<string, unknown>,
+): void => {
+  expect(span.attributes).toMatchObject(attributes)
+}
+
 describe('notion datasource sync OTEL tracing', () => {
   it('records a safe nested watch trace with CLI, daemon, sync, gateway, and executor spans', async () => {
     expect(serviceNameForCliCommand({ _tag: 'sync' })).toBe(otelServiceNames.cli)
@@ -146,9 +153,9 @@ describe('notion datasource sync OTEL tracing', () => {
       localObservations: [
         presentArtifactObservation({
           pageId: testIds.pageId,
-          path: decode(WorkspaceRelativePath, 'row--page-1.nmd'),
+          path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
           contentHash: hash('body-local-edit'),
-          observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+          observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
         }),
       ],
     })
@@ -178,18 +185,32 @@ describe('notion datasource sync OTEL tracing', () => {
       expectSpan(trace.spans, spanNames.daemonRun, (span) =>
         spanAncestors(span).includes(spanNames.cliCommand),
       )
-      expectSpan(trace.spans, spanNames.daemonPass, (span) =>
+      const daemonPass = expectSpan(trace.spans, spanNames.daemonPass, (span) =>
         spanAncestors(span).includes(spanNames.daemonRun),
       )
+      expectSpanAttributes(daemonPass, {
+        [spanAttr.cycle]: 1,
+        [spanAttr.maxExecutorSteps]: 8,
+        [spanAttr.processRole]: 'daemon',
+        [spanAttr.result]: 'clean',
+        [spanAttr.spanLabel]: 'cycle:1',
+      })
       expectSpan(trace.spans, spanNames.syncOneShot, (span) =>
         spanAncestors(span).includes(spanNames.daemonPass),
       )
       expectSpan(trace.spans, spanNames.syncPull, (span) =>
         spanAncestors(span).includes(spanNames.syncOneShot),
       )
-      expectSpan(trace.spans, spanNames.syncPush, (span) =>
+      const syncPush = expectSpan(trace.spans, spanNames.syncPush, (span) =>
         spanAncestors(span).includes(spanNames.syncOneShot),
       )
+      expectSpanAttributes(syncPush, {
+        [spanAttr.enqueuedCommands]: 1,
+        [spanAttr.executorSteps]: 2,
+        [spanAttr.maxStepsReached]: false,
+        [spanAttr.outboxQueuedCount]: 0,
+        [spanAttr.statusState]: 'clean',
+      })
       expectSpan(trace.spans, spanNames.gatewayRequest, (span) =>
         spanAncestors(span).includes(spanNames.observationRemote),
       )

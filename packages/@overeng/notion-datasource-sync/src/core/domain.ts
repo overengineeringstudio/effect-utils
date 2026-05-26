@@ -244,6 +244,7 @@ export const LocalArtifactObservation = Schema.TaggedStruct('LocalArtifactObserv
   pageId: PageId,
   path: WorkspaceRelativePath,
   contentHash: Hash,
+  bodyContent: Schema.optional(Schema.String),
   observedAt: Schema.DateTimeUtc,
   state: Schema.Literal('present', 'delete-candidate'),
   ownWriteSuppressionToken: Schema.optional(OwnWriteSuppressionToken),

@@ -438,7 +438,7 @@ const matchingRemoteConflict = ({
   readonly snapshot: PlannerProjectionSnapshot
 }): ConflictPayload | undefined => {
   for (const remoteChange of snapshot.remoteChanges) {
-    const classification = classifyConflict(intentSurface, remoteChange)
+    const classification = classifyConflict({ local: intentSurface, remote: remoteChange })
     if (classification._tag === 'conflict') {
       return classification.conflict
     }
@@ -535,7 +535,7 @@ const planPropertyEdit = ({
         nextHash: propertySurface.remoteHash,
         surface: intent.surface,
       }
-      const classification = classifyConflict(localSurface, remoteSurface)
+      const classification = classifyConflict({ local: localSurface, remote: remoteSurface })
       return classification._tag === 'conflict'
         ? { _tag: 'OpenConflict', conflict: classification.conflict }
         : blockDecision({
@@ -837,7 +837,7 @@ const planPathClaim = ({
       existingPageId: existingClaim?.ownerPageId,
       surface: intent.surface,
     }
-    const classification = classifyConflict(localSurface, remoteSurface)
+    const classification = classifyConflict({ local: localSurface, remote: remoteSurface })
     return classification._tag === 'conflict'
       ? { _tag: 'OpenConflict', conflict: classification.conflict }
       : blockedDecision
@@ -960,10 +960,13 @@ const planBodyAdapterResult = (intent: BodyAdapterResultIntent): PlanDecision =>
 }
 
 /** Dispatch a `PlannerIntent` against the current projection snapshot and return the appropriate `PlanDecision`. Pure function — no side effects; all store mutations are the caller's responsibility. */
-export const planIntent = (
-  snapshot: PlannerProjectionSnapshot,
-  intent: PlannerIntent,
-): PlanDecision => {
+export const planIntent = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: PlannerIntent
+}): PlanDecision => {
   switch (intent._tag) {
     case 'property-edit':
       return planPropertyEdit({ snapshot, intent })

@@ -156,10 +156,13 @@ const samePage = ({
  * Rules (evaluated in priority order): permission ambiguity, path collision, relation unavailability,
  * lossy body, delete-vs-edit, schema-affects-property, same-property, property-vs-body, body-body.
  */
-export const classifyConflict = (
-  local: ConflictSurface,
-  remote: ConflictSurface,
-): ConflictClassification => {
+export const classifyConflict = ({
+  local,
+  remote,
+}: {
+  readonly local: ConflictSurface
+  readonly remote: ConflictSurface
+}): ConflictClassification => {
   if (local._tag === 'permission' || remote._tag === 'permission') {
     const permission =
       local._tag === 'permission' ? local : remote._tag === 'permission' ? remote : undefined

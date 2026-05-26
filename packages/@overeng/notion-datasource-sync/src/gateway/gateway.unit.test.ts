@@ -1,4 +1,4 @@
-import { Cause, Chunk, Effect, Option, Schema, Stream } from 'effect'
+import { Cause, Chunk, Effect, Exit, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { NotionApiError } from '@overeng/notion-effect-client'
@@ -15,6 +15,7 @@ import {
   PropertyName,
   QueryContract,
   RowPageSnapshot,
+  canonicalHash,
   hashStoreBytes,
   makeFakeNotionDataSourceGatewayLayer,
   makeNotionDataSourceGatewayFromClient,
@@ -236,7 +237,7 @@ describe('Notion data source gateway fake', () => {
       queryContract: queryContract(),
       startCursor: null,
     } as const
-    const baseHash = queryContractHash(baseInput, apiContract.apiVersion)
+    const baseHash = queryContractHash({ input: baseInput, apiVersion: apiContract.apiVersion })
     const selectFilter = {
       _tag: 'property_value',
       propertyId: propertyId('status'),
@@ -278,7 +279,7 @@ describe('Notion data source gateway fake', () => {
       direction: 'descending',
     } as const
     const hashFor = (contract: QueryContractType, apiVersion: string = apiContract.apiVersion) =>
-      queryContractHash({ ...baseInput, queryContract: contract }, apiVersion)
+      queryContractHash({ input: { ...baseInput, queryContract: contract }, apiVersion })
     const variants = [
       {
         label: 'filter value',
@@ -783,6 +784,53 @@ describe('Notion data source gateway fake', () => {
 
     expectGatewayFailure(result, { operation: 'restorePage', guard: 'StaleSurfaceBase' })
   })
+
+  it('applies supported schema operations and rejects empty operation lists fail-closed', async () => {
+    const gatewayConfig = config()
+
+    const success = await runWithGateway(
+      gatewayConfig,
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        const requestId = yield* gateway.patchDataSourceSchema({
+          _tag: 'PatchDataSourceSchemaCommand',
+          commandId: commandId('command-schema-1'),
+          dataSourceId,
+          baseSchemaHash: dataSource.schemaHash,
+          schemaPatch: {},
+          operations: [
+            {
+              _tag: 'AddProperty',
+              name: decode(PropertyName, 'Notes'),
+              definition: { _tag: 'rich_text' },
+            },
+          ],
+        })
+        const after = yield* gateway.retrieveDataSource(dataSourceId)
+        return { requestId, after }
+      }),
+    )
+    const empty = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway.patchDataSourceSchema({
+          _tag: 'PatchDataSourceSchemaCommand',
+          commandId: commandId('command-schema-empty'),
+          dataSourceId,
+          baseSchemaHash: dataSource.schemaHash,
+          schemaPatch: {},
+          operations: [],
+        })
+      }).pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(gatewayConfig))),
+    )
+
+    expect(success.requestId).toMatch(/^fake-req-/)
+    expect(success.after.schemaHash).not.toBe(dataSource.schemaHash)
+    expectGatewayFailure(empty, {
+      operation: 'patchDataSourceSchema',
+      guard: 'UnsupportedRemoteShape',
+    })
+  })
 })
 
 describe('Notion data source gateway real adapter boundary', () => {
@@ -809,6 +857,12 @@ describe('Notion data source gateway real adapter boundary', () => {
         hasMore: false,
       }),
     retrievePage: () => Effect.succeed(remotePage(pageId('page-1'), { title: { type: 'title' } })),
+    retrievePageProperty: () =>
+      Effect.succeed({
+        results: [],
+        nextCursor: Option.none(),
+        hasMore: false,
+      }),
     updatePage: () => Effect.succeed(remotePage(pageId('page-1'), { title: { type: 'title' } })),
     updateDataSource: () => Effect.succeed(remoteDataSource),
     ...overrides,
@@ -968,19 +1022,13 @@ describe('Notion data source gateway real adapter boundary', () => {
   })
 
   it('keeps missing adapter capabilities explicit instead of pretending unsupported endpoints exist', async () => {
-    const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
-    const gateway = makeNotionDataSourceGatewayFromClient(
-      makeClient({
-        updateDataSource: (input) =>
-          Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
-      }),
-    )
+    const gateway = makeNotionDataSourceGatewayFromClient(makeClient())
 
     const preflight = await Effect.runPromise(
       gateway.preflightCapabilities({
         _tag: 'CapabilityPreflightInput',
         dataSourceId,
-        requiredCapabilities: ['data_source_retrieve', 'page_property_paginate', 'schema_update'],
+        requiredCapabilities: ['data_source_retrieve', 'page_property_paginate'],
       }),
     )
     const propertyResult = await Effect.runPromiseExit(
@@ -993,32 +1041,273 @@ describe('Notion data source gateway real adapter boundary', () => {
         })
         .pipe(Stream.runCollect),
     )
-    const schemaResult = await Effect.runPromiseExit(
-      gateway.patchDataSourceSchema({
-        _tag: 'PatchDataSourceSchemaCommand',
-        commandId: commandId('command-schema'),
-        dataSourceId,
-        baseSchemaHash: dataSource.schemaHash,
-        schemaPatch: {
-          [propertyId('title')]: {
-            _tag: 'CanonicalDataSourceProperty',
-            propertyId: propertyId('title'),
-            name: decode(PropertyName, 'Name'),
-            type: 'title',
-            configHash: hash('config'),
-          },
-        },
+
+    expect(preflight.missingCapabilities).toEqual([])
+    expect(Exit.isSuccess(propertyResult)).toBe(true)
+  })
+
+  it('fails closed when a schema patch has no supported operations and never reaches updateDataSource', async () => {
+    const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
+    const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
+    const gateway = makeNotionDataSourceGatewayFromClient(
+      makeClient({
+        updateDataSource: (input) =>
+          Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
       }),
     )
 
-    expect(preflight.missingCapabilities).toEqual(['page_property_paginate', 'schema_update'])
-    expectGatewayFailure(propertyResult, {
-      operation: 'retrievePageProperty',
-      guard: 'UnsupportedRemoteShape',
-    })
-    expectGatewayFailure(schemaResult, {
+    const result = await Effect.runPromiseExit(
+      gateway.patchDataSourceSchema({
+        _tag: 'PatchDataSourceSchemaCommand',
+        commandId: commandId('command-schema-empty'),
+        dataSourceId,
+        baseSchemaHash: remoteSchemaHash,
+        schemaPatch: {},
+        operations: [],
+      }),
+    )
+
+    expectGatewayFailure(result, {
       operation: 'patchDataSourceSchema',
       guard: 'UnsupportedRemoteShape',
+    })
+    expect(updateDataSourceCalls).toEqual([])
+  })
+
+  it('translates the supported schema operation subset into a single updateDataSource call', async () => {
+    const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
+    const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
+    const gateway = makeNotionDataSourceGatewayFromClient(
+      makeClient({
+        updateDataSource: (input) =>
+          Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
+      }),
+    )
+
+    const requestId = await Effect.runPromise(
+      gateway.patchDataSourceSchema({
+        _tag: 'PatchDataSourceSchemaCommand',
+        commandId: commandId('command-schema-ok'),
+        dataSourceId,
+        baseSchemaHash: remoteSchemaHash,
+        schemaPatch: {},
+        operations: [
+          {
+            _tag: 'AddProperty',
+            name: decode(PropertyName, 'Notes'),
+            definition: { _tag: 'rich_text' },
+          },
+          {
+            _tag: 'RenameProperty',
+            propertyId: propertyId('title'),
+            newName: decode(PropertyName, 'Task'),
+          },
+          {
+            _tag: 'AddProperty',
+            name: decode(PropertyName, 'Stage'),
+            definition: {
+              _tag: 'select',
+              options: [
+                { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'Todo') },
+                {
+                  _tag: 'CanonicalOptionValue',
+                  name: decode(PropertyName, 'Doing'),
+                  color: 'blue',
+                },
+              ],
+            },
+          },
+          {
+            _tag: 'AddSelectOptions',
+            propertyId: propertyId('priority'),
+            propertyType: 'multi_select',
+            existingOptions: [
+              { _tag: 'CanonicalOptionValue', id: propertyId('opt-high'), name: decode(PropertyName, 'High') },
+              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'Low') },
+            ],
+            newOptions: [
+              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'Medium'), color: 'yellow' },
+            ],
+          },
+        ],
+      }),
+    )
+
+    expect(updateDataSourceCalls).toEqual([
+      {
+        dataSourceId,
+        properties: {
+          Notes: { rich_text: {} },
+          [propertyId('title')]: { name: 'Task' },
+          Stage: {
+            select: {
+              options: [
+                { name: 'Todo' },
+                { name: 'Doing', color: 'blue' },
+              ],
+            },
+          },
+          [propertyId('priority')]: {
+            multi_select: {
+              options: [
+                { id: propertyId('opt-high'), name: 'High' },
+                { name: 'Low' },
+                { name: 'Medium', color: 'yellow' },
+              ],
+            },
+          },
+        },
+      },
+    ])
+    expect(requestId).toBe('notion-client-success-request-id-unavailable')
+  })
+
+  it('fails closed when AddSelectOptions has empty newOptions and does not call updateDataSource', async () => {
+    const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
+    const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
+    const gateway = makeNotionDataSourceGatewayFromClient(
+      makeClient({
+        updateDataSource: (input) =>
+          Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
+      }),
+    )
+
+    const result = await Effect.runPromiseExit(
+      gateway.patchDataSourceSchema({
+        _tag: 'PatchDataSourceSchemaCommand',
+        commandId: commandId('command-schema-empty-new'),
+        dataSourceId,
+        baseSchemaHash: remoteSchemaHash,
+        schemaPatch: {},
+        operations: [
+          {
+            _tag: 'AddSelectOptions',
+            propertyId: propertyId('priority'),
+            propertyType: 'select',
+            existingOptions: [
+              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') },
+            ],
+            newOptions: [],
+          },
+        ],
+      }),
+    )
+
+    expectGatewayFailure(result, {
+      operation: 'patchDataSourceSchema',
+      guard: 'UnsupportedRemoteShape',
+    })
+    expect(updateDataSourceCalls).toEqual([])
+  })
+
+  it('fails closed when AddSelectOptions tries to add a name that already exists', async () => {
+    const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
+    const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
+    const gateway = makeNotionDataSourceGatewayFromClient(
+      makeClient({
+        updateDataSource: (input) =>
+          Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
+      }),
+    )
+
+    const result = await Effect.runPromiseExit(
+      gateway.patchDataSourceSchema({
+        _tag: 'PatchDataSourceSchemaCommand',
+        commandId: commandId('command-schema-dup-name'),
+        dataSourceId,
+        baseSchemaHash: remoteSchemaHash,
+        schemaPatch: {},
+        operations: [
+          {
+            _tag: 'AddSelectOptions',
+            propertyId: propertyId('priority'),
+            propertyType: 'select',
+            existingOptions: [
+              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') },
+            ],
+            newOptions: [
+              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') },
+            ],
+          },
+        ],
+      }),
+    )
+
+    expectGatewayFailure(result, {
+      operation: 'patchDataSourceSchema',
+      guard: 'UnsupportedRemoteShape',
+    })
+    expect(updateDataSourceCalls).toEqual([])
+  })
+
+  it('rejects ambiguous schema patches that target the same property key twice without calling Notion', async () => {
+    const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
+    const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
+    const gateway = makeNotionDataSourceGatewayFromClient(
+      makeClient({
+        updateDataSource: (input) =>
+          Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
+      }),
+    )
+
+    const result = await Effect.runPromiseExit(
+      gateway.patchDataSourceSchema({
+        _tag: 'PatchDataSourceSchemaCommand',
+        commandId: commandId('command-schema-conflict'),
+        dataSourceId,
+        baseSchemaHash: remoteSchemaHash,
+        schemaPatch: {},
+        operations: [
+          {
+            _tag: 'RenameProperty',
+            propertyId: propertyId('title'),
+            newName: decode(PropertyName, 'A'),
+          },
+          {
+            _tag: 'RenameProperty',
+            propertyId: propertyId('title'),
+            newName: decode(PropertyName, 'B'),
+          },
+        ],
+      }),
+    )
+
+    expectGatewayFailure(result, {
+      operation: 'patchDataSourceSchema',
+      guard: 'UnsupportedRemoteShape',
+    })
+    expect(updateDataSourceCalls).toEqual([])
+  })
+
+  it('fails closed when the schema base hash has drifted before updateDataSource is invoked', async () => {
+    const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
+    const gateway = makeNotionDataSourceGatewayFromClient(
+      makeClient({
+        updateDataSource: (input) =>
+          Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
+      }),
+    )
+
+    const result = await Effect.runPromiseExit(
+      gateway.patchDataSourceSchema({
+        _tag: 'PatchDataSourceSchemaCommand',
+        commandId: commandId('command-schema-stale'),
+        dataSourceId,
+        baseSchemaHash: hash('stale-schema'),
+        schemaPatch: {},
+        operations: [
+          {
+            _tag: 'RenameProperty',
+            propertyId: propertyId('title'),
+            newName: decode(PropertyName, 'Renamed'),
+          },
+        ],
+      }),
+    )
+
+    expectGatewayFailure(result, {
+      operation: 'patchDataSourceSchema',
+      guard: 'StaleSurfaceBase',
     })
     expect(updateDataSourceCalls).toEqual([])
   })

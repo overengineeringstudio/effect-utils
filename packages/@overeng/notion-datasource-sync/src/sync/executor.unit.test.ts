@@ -30,7 +30,7 @@ const expectedPatchHash = () =>
   hashStoreBytes(`page-properties\t${testIds.pageId}\t${testIds.commandId}\t${testIds.propertyA}`)
 
 const plannedPropertyCommand = (desiredHash: ReturnType<typeof expectedPatchHash>) => {
-  const decision = planIntent(buildPlannerSnapshot(), propertyEditIntent({ desiredHash }))
+  const decision = planIntent({ snapshot: buildPlannerSnapshot(), intent: propertyEditIntent({ desiredHash }) })
   if (decision._tag !== 'EnqueueCommands') {
     throw new Error(`Expected property edit to enqueue a command, got ${decision._tag}`)
   }
@@ -39,10 +39,7 @@ const plannedPropertyCommand = (desiredHash: ReturnType<typeof expectedPatchHash
 }
 
 const plannedTrustedTrashCommand = () => {
-  const decision = planIntent(
-    buildPlannerSnapshot(),
-    localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }),
-  )
+  const decision = planIntent({ snapshot: buildPlannerSnapshot(), intent: localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }), })
   if (decision._tag !== 'EnqueueCommands') {
     throw new Error(`Expected trusted local delete to enqueue a command, got ${decision._tag}`)
   }
@@ -51,12 +48,12 @@ const plannedTrustedTrashCommand = () => {
 }
 
 const plannedRestoreCommand = (): OutboxCommandEnvelope => {
-  const command = decode(RestorePageCommand, {
+  const command = decode({ schema: RestorePageCommand, value: {
     _tag: 'RestorePageCommand',
     commandId: testIds.commandId,
     pageId: testIds.pageId,
     basePropertiesHash: hash('properties-a'),
-  })
+  } })
 
   return {
     commandId: testIds.commandId,
@@ -66,7 +63,7 @@ const plannedRestoreCommand = (): OutboxCommandEnvelope => {
     surface: pageSurfaceKey(testIds.pageId),
     command,
     baseHash: hash('properties-a'),
-    desiredHash: pageLifecycleHash(testIds.pageId, false),
+    desiredHash: pageLifecycleHash({ pageId: testIds.pageId, inTrash: false }),
     preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'DeleteVsEdit'],
   }
 }
@@ -104,7 +101,7 @@ describe('outbox executor', () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
 
     try {
-      appendPlannedCommand(storeFixture.store, plannedPropertyCommand(desiredHash))
+      appendPlannedCommand({ store: storeFixture.store, command: plannedPropertyCommand(desiredHash) })
 
       await expect(
         runExecutor({
@@ -134,7 +131,7 @@ describe('outbox executor', () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
 
     try {
-      appendPlannedCommand(storeFixture.store, plannedPropertyCommand(expectedPatchHash()))
+      appendPlannedCommand({ store: storeFixture.store, command: plannedPropertyCommand(expectedPatchHash()) })
 
       await expect(
         runExecutor({
@@ -165,7 +162,7 @@ describe('outbox executor', () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
 
     try {
-      appendPlannedCommand(storeFixture.store, plannedPropertyCommand(expectedPatchHash()))
+      appendPlannedCommand({ store: storeFixture.store, command: plannedPropertyCommand(expectedPatchHash()) })
 
       await expect(
         runExecutor({
@@ -195,7 +192,7 @@ describe('outbox executor', () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
 
     try {
-      appendPlannedCommand(storeFixture.store, command)
+      appendPlannedCommand({ store: storeFixture.store, command })
 
       await expect(
         runExecutor({
@@ -234,7 +231,7 @@ describe('outbox executor', () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
 
     try {
-      appendPlannedCommand(storeFixture.store, command)
+      appendPlannedCommand({ store: storeFixture.store, command })
 
       await expect(
         runExecutor({

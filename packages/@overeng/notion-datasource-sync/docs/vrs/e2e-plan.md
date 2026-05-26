@@ -28,7 +28,7 @@ Every requirement must map to at least one scenario row. Every scenario row must
 | Concern              | Plan                                                                                                                                                                                                                                                                              |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Workspace            | Use a secret-provided parent page with permission to create child databases/data sources and pages. Create all data sources, rows, body pages, relation targets, and file fixtures under that parent.                                                                             |
-| Run identity         | Generate one opaque run ID. Prefix every temporary title with the run ID and persist a local run ledger containing only object IDs, fixture purpose, and cleanup state.                                                                                                           |
+| Run identity         | Generate one opaque run ID. Prefix every temporary title with the run ID and persist a local run ledger containing only object IDs, fixture purpose, and cleanup state. When `NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID` is configured, publish the same sanitized ledger summary to that Notion page. |
 | Isolation            | Never depend on pre-existing workspace schema, views, rows, permissions, or test order. Each live test creates the minimum schema it needs.                                                                                                                                       |
 | API version          | Pin live requests to `Notion-Version: 2026-03-11`. Diagnostics and private artifacts record the version used without recording tokens, workspace URLs, or private payloads.                                                                                                       |
 | Capability preflight | Before data assertions, verify the configured integration can read, query, update properties, update schema, update markdown, trash, restore, and access fixture parents. Capability failures are harness/configuration failures, not data facts.                                 |
@@ -43,14 +43,13 @@ Every requirement must map to at least one scenario row. Every scenario row must
 
 Live tests must be written so every created fixture can be cleaned up even if planning, assertion, or process shutdown fails after the fixture is created. The harness records each object before mutating it.
 
-Current page-property endpoint status: `@overeng/notion-effect-client` does not yet expose the Notion page-property-item endpoint (`GET /v1/pages/{page_id}/properties/{property_id}`), so `@overeng/notion-datasource-sync` must keep `page_property_paginate` fail-closed. Strict live mode that requires `page_property_paginate` must fail before row queries, page reads, property/schema/page mutations, or verified-cleaned ledger writes.
+Current page-property status: the Notion client and datasource gateway expose `GET /v1/pages/{page_id}/properties/{property_id}` with cursor parameters and list/single response decoding. Datasource sync may use it to complete property hashes, but remains fail-closed when a value stream is incomplete, a related data source is unshared, a rollup or computed value cannot be proven stable, or a capability preflight has not proven page-property access for the current API contract.
 
-Acceptance criteria for enabling `page_property_paginate`:
+Remaining live proof before release:
 
-- Add a Notion client wrapper for `GET /v1/pages/{page_id}/properties/{property_id}` with `page_id`, `property_id`, `start_cursor`, and `page_size`, using `Notion-Version: 2026-03-11`.
-- Decode both single `property_item` responses and paginated list responses, including `results`, `next_cursor`, `has_more`, and `next_url`.
-- Cover paginated property types `title`, `rich_text`, `relation`, `people`, and rollup pagination semantics with client tests.
-- Map decoded results to `PagePropertyItemPage` in the datasource gateway and advertise `page_property_paginate` only after fake-service and credential-gated live E2E coverage passes.
+- representative L6 pagination fixtures for title, rich text, relation, people, rollup, and high-cardinality values where fixture size is practical,
+- negative live assertions that incomplete page-property scans do not advance clean hashes or classify absence,
+- cleanup-ledger evidence for all page-property fixtures.
 
 ## Traceability Artifacts
 
@@ -60,7 +59,7 @@ Implementation must maintain these generated or test-owned artifacts:
 | ------------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Requirement-to-scenario matrix | Maps R01-R73 to scenario IDs and test files                                                              | Fails if a requirement has no test mapping                                                  |
 | Guard-to-test matrix           | Maps each spec guard to typed tests and higher-level proofs                                              | Fails if a guard lacks planner and integration coverage                                     |
-| Live fixture ledger            | Tracks run-created Notion objects and cleanup state                                                      | Secret-gated suite fails on leaked fixtures                                                 |
+| Live fixture ledger            | Tracks run-created Notion objects and cleanup state in local JSON and, when configured, a visible Notion page | Secret-gated suite fails on leaked fixtures                                                 |
 | Migration corpus               | Stores old SQLite schemas/event histories for forward migration tests                                    | L3 fails if current migrations cannot upgrade and replay them                               |
 | Redaction corpus               | Contains representative unsafe payload fragments and expected sanitized diagnostics                      | L1/L2 fail if unsafe data appears                                                           |
 | API compatibility manifest     | Records the supported Notion API version, required capability set, and live smoke proof for that version | Fails release if the pinned version or capability model changes without fake and live proof |
@@ -204,9 +203,10 @@ Work:
 
 Current executable contract:
 
-- Datasource-sync does not yet ship a real NotionMD adapter. The current public boundary carries body hashes and safety metadata, while NotionMD's implemented sync APIs are file/body-content oriented. That is not enough information to implement guarded `.nmd` extraction/rendering without inventing a private adapter contract.
-- Until a public NotionMD adapter API exists, `src/e2e/body-adapter.e2e.test.ts` is the release gate for this boundary: missing adapters fail before body materialization, unsafe safety snapshots create body conflicts without enqueueing body pushes, and already queued body pushes remain unsettled when the adapter is absent.
-- Real adapter acceptance requires a public API that can observe page body state, plan a local `.nmd` body change from actual local body content, push only the body surface, report mutation surfaces, report all `BodySafetySnapshot` fields, and prove that ordinary sync never sets `allow_deleting_content`.
+- Datasource-sync ships a NotionMD-backed adapter slice for safe observation, local-change planning, repair observation, `.nmd` materialization, and guarded body pushes that carry the local path and body content through the command path.
+- The adapter uses NotionMD public pull/state-store/push APIs, writes real `.nmd` files plus NotionMD sidecars, and records datasource-sync sidecars for path identity and own-write suppression.
+- Hash-only body push commands, stale body bases, truncated markdown, unknown block state, adapter-reported conflicts, and any non-body mutation attempt remain fail-closed.
+- `src/body/adapter.unit.test.ts` and `src/e2e/body-adapter.e2e.test.ts` prove the adapter boundary and the absent/unsafe-adapter failure modes. Credentialed live body push remains an L6 release proof, not a fake-service substitute.
 
 E2E proof:
 
@@ -275,6 +275,8 @@ E2E proof:
 - L2 webhook-input tests for duplicate, missing, aggregated, stale, delayed, and out-of-order dirty-entity hints.
 - L5 local edit coalescing, watcher drop plus repair scan, remote poll overlap, same-bucket timestamp/page ordering, partial-cycle cursor persistence, query-contract checkpoint preservation, daemon restart, stale lease, second-daemon fencing, cancellation during poll, cancellation during outbox attempt, stuck outbox, own-write suppression for materialization writes, and queue backpressure tests.
 - L5 interrupted materialization test proves restart repairs or resumes from durable body pointer/object state before planning downstream writes.
+- L5 bounded mixed-mutation daemon soak proves repeated cycles over remote row drift, high-watermark observation, durable cursor state, a queued local body edit, outbox drain, and low-cardinality trace metadata.
+- L6 bounded live fixture soak repeats isolated Notion row property mutation and cleanup through the existing ledger. Full live daemon mutation remains intentionally separate until the live NotionMD body adapter and schema drift fixtures are stable enough to avoid flakiness in shared workspaces.
 - L6 live daemon test with one local edit, one remote property edit, one remote body edit, one schema drift observation, and one trash/restore cycle.
 - L7 soak test with repeated mixed mutations, induced daemon restarts, repair scans, rate-limit throttling, final `doctor` clean state, and verified live cleanup.
 
@@ -339,8 +341,16 @@ The release-slice scenarios in `src/e2e/realistic-workflows.e2e.test.ts` compose
 | `NDS-L3-realistic-local-remote-conflict`       | Pending local intent survives remote same-property drift and replays as an open durable conflict instead of shadowing either side.                 | Human conflict-resolution strategies.                                     |
 | `NDS-L3-realistic-schema-capability-failure`   | Missing page-property pagination and stale schema config block before remote mutation.                                                             | Live capability preflight and schema migration UX.                        |
 | `NDS-L4-realistic-filesystem-delete-repair`    | Bare local delete remains candidate-only, explicit trusted trash settles, path collisions/escapes block, and sidecar damage is local repair state. | Broader platform filesystem matrix and live body adapter materialization. |
-| `NDS-L5-realistic-daemon-restart-cancellation` | Existing daemon E2E covers restart/cancellation durability, lease fencing, and own-write suppression.                                              | Same-bucket polling and long-running soak.                                |
+| `NDS-L5-realistic-daemon-restart-cancellation` | Daemon E2E covers restart/cancellation durability, lease fencing, cancellation during an attempt, and own-write suppression.                       | Live daemon behavior.                                                     |
+| `NDS-L5-daemon-query-cursor-resume`            | Fake daemon persists high-watermark cursors, resumes from the saved cursor, and keeps same-timestamp rows from being skipped.                     | Live cursor behavior under Notion rate limits.                            |
+| `NDS-L5-daemon-bounded-outbox-drain`           | Fake daemon proves max-executor-step backpressure leaves queued work durable and drains it on the next bounded cycle.                             | Larger queue-pressure soak.                                               |
+| `NDS-L5-daemon-repeated-fake-soak`             | Deterministic fake soak runs repeated daemon cycles after a restart and proves convergence without duplicate body writes.                         | Broader mixed mutation matrix.                                            |
+| `NDS-L5-daemon-mixed-mutation-soak`            | Deterministic daemon soak combines remote row drift, high-watermark query observation, a queued local body edit, bounded outbox drain, and trace cardinality assertions. | Full live daemon mutation once body/schema live fixtures are stable.       |
+| `NDS-L3-conflict-soak-matrix`                  | Declares the replay/conflict matrix for same-surface, cross-surface, delete-vs-edit, and pending-intent shadowing cases.                         | Additional concrete fake-service rows.                                    |
+| `NDS-L5-high-cardinality-fake-soak`            | Declares high-cardinality fake soak coverage for bounded pagination, cursor persistence, and outbox pressure.                                    | Scaled fixture counts beyond the release slice.                           |
+| `NDS-L3-property-data-type-matrix`             | Declares property data-type coverage for writable, computed, relation, file, paginated, and generated values.                                    | Representative row-property fixtures for every Notion type.               |
 | `NDS-LIVE-skeleton-gated-cleanup-ledger`       | Secret-gated live skeleton records sanitized fixture ledger and cleanup shape.                                                                     | Full live fixture mutation suite.                                         |
+| `NDS-LIVE-bounded-fixture-soak`                | Secret-gated live soak repeats isolated row property mutation, verification, trash/restore, and cleanup ledger publishing.                       | Live daemon mutation with NotionMD body/schema drift fixtures.            |
 
 | Scenario                                            | Required levels                                | Guards / requirements challenged          |
 | --------------------------------------------------- | ---------------------------------------------- | ----------------------------------------- |

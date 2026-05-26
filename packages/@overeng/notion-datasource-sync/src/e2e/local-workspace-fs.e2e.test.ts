@@ -371,7 +371,7 @@ describe('filesystem local workspace E2E', () => {
         }),
       )
 
-      const [ownWriteObservation] = await collectWorkspaceScan(workspace, fixture.root)
+      const [ownWriteObservation] = await collectWorkspaceScan({ workspace, root: fixture.root })
       expect(ownWriteObservation).toMatchObject({
         pageId,
         path,
@@ -388,7 +388,7 @@ describe('filesystem local workspace E2E', () => {
 
       const bodyPath = join(fixture.root, path)
       await writeFile(bodyPath, `${await readFile(bodyPath, 'utf8')}\nlocal edit\n`, 'utf8')
-      const [localEditObservation] = await collectWorkspaceScan(workspace, fixture.root)
+      const [localEditObservation] = await collectWorkspaceScan({ workspace, root: fixture.root })
 
       expect(localEditObservation).toMatchObject({
         pageId,
@@ -419,7 +419,7 @@ describe('filesystem local workspace E2E', () => {
       )
       await unlink(join(fixture.root, path))
 
-      await expect(collectWorkspaceScan(workspace, fixture.root)).resolves.toEqual([
+      await expect(collectWorkspaceScan({ workspace, root: fixture.root })).resolves.toEqual([
         expect.objectContaining({
           pageId,
           path,
@@ -466,7 +466,7 @@ describe('filesystem local workspace E2E', () => {
       await unlink(join(fixture.root, firstPath))
       await unlink(join(fixture.root, secondPath))
 
-      await expect(collectWorkspaceScan(workspace, fixture.root)).resolves.toEqual([
+      await expect(collectWorkspaceScan({ workspace, root: fixture.root })).resolves.toEqual([
         expect.objectContaining({
           pageId: firstPageId,
           path: firstPath,
@@ -508,7 +508,7 @@ describe('filesystem local workspace E2E', () => {
       )
       await unlink(join(fixture.root, path))
 
-      await expect(collectWorkspaceScan(workspace, fixture.root)).resolves.toEqual([
+      await expect(collectWorkspaceScan({ workspace, root: fixture.root })).resolves.toEqual([
         expect.objectContaining({
           pageId,
           path,
@@ -531,7 +531,7 @@ describe('filesystem local workspace E2E', () => {
         path,
         bodyHash: testHash('body-b'),
       })
-      await expect(collectWorkspaceScan(workspace, fixture.root)).resolves.toEqual([
+      await expect(collectWorkspaceScan({ workspace, root: fixture.root })).resolves.toEqual([
         expect.objectContaining({
           pageId,
           path,
@@ -612,7 +612,7 @@ describe('filesystem local workspace E2E', () => {
       )
       await writeFile(join(fixture.root, `${path}.123.tmp`), 'interrupted write\n', 'utf8')
 
-      await expect(collectWorkspaceScan(workspace, fixture.root)).resolves.toEqual([
+      await expect(collectWorkspaceScan({ workspace, root: fixture.root })).resolves.toEqual([
         expect.objectContaining({
           pageId,
           path,

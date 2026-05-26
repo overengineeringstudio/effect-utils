@@ -78,14 +78,30 @@ import {
 } from '../store/store.ts'
 
 /** Decode an unknown value against a schema using sync semantics — throws on invalid input (test-only helper, mirrors `Schema.decodeUnknownSync(schema)(value)`). */
-export const decode = <TSchema extends Schema.Schema.AnyNoContext>(
+export function decode<TSchema extends Schema.Schema.AnyNoContext>(
+  input: {
+    readonly schema: TSchema
+    readonly value: unknown
+  },
+): typeof input.schema.Type
+export function decode<TSchema extends Schema.Schema.AnyNoContext>(
   schema: TSchema,
   value: unknown,
-): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
+): typeof schema.Type
+export function decode<TSchema extends Schema.Schema.AnyNoContext>(
+  input: TSchema | { readonly schema: TSchema; readonly value: unknown },
+  value?: unknown,
+) {
+  if ('schema' in input) {
+    return Schema.decodeUnknownSync(input.schema)(input.value)
+  }
+
+  return Schema.decodeUnknownSync(input)(value)
+}
 
 /** Build a decoded `Hash` branded value from an arbitrary string — stable shorthand for test assertions. */
 export const hash = (value: string): HashType =>
-  decode(Hash, `sha256:${createHash('sha256').update(value).digest('hex')}`)
+  decode({ schema: Hash, value: `sha256:${createHash('sha256').update(value).digest('hex')}` })
 
 /** Canonical set of decoded branded IDs shared across unit and e2e tests — use `testIds` for the pre-built instance. */
 export type TestIds = {
@@ -104,17 +120,17 @@ export type TestIds = {
 
 /** Pre-built set of decoded branded IDs for use in tests — covers a single root, two data sources, two pages, two properties, one command, one intent event, one command key, and one request ID. */
 export const testIds: TestIds = {
-  rootId: decode(SyncRootId, 'root-1'),
-  dataSourceId: decode(DataSourceId, 'data-source-1'),
-  otherDataSourceId: decode(DataSourceId, 'data-source-2'),
-  pageId: decode(PageId, 'page-1'),
-  otherPageId: decode(PageId, 'page-2'),
-  propertyA: decode(PropertyId, 'prop-a'),
-  propertyB: decode(PropertyId, 'prop-b'),
-  commandId: decode(CommandId, 'cmd-1'),
-  intentEventId: decode(SyncEventId, 'intent-1'),
-  commandKey: decode(IdempotencyKey, 'intent:cmd-1'),
-  requestId: decode(NotionRequestId, 'request-1'),
+  rootId: decode({ schema: SyncRootId, value: 'root-1' }),
+  dataSourceId: decode({ schema: DataSourceId, value: 'data-source-1' }),
+  otherDataSourceId: decode({ schema: DataSourceId, value: 'data-source-2' }),
+  pageId: decode({ schema: PageId, value: 'page-1' }),
+  otherPageId: decode({ schema: PageId, value: 'page-2' }),
+  propertyA: decode({ schema: PropertyId, value: 'prop-a' }),
+  propertyB: decode({ schema: PropertyId, value: 'prop-b' }),
+  commandId: decode({ schema: CommandId, value: 'cmd-1' }),
+  intentEventId: decode({ schema: SyncEventId, value: 'intent-1' }),
+  commandKey: decode({ schema: IdempotencyKey, value: 'intent:cmd-1' }),
+  requestId: decode({ schema: NotionRequestId, value: 'request-1' }),
 }
 
 /** Fixed ISO timestamp used as the baseline `observedAt` value across all harness fixtures — keeps snapshots deterministic. */
@@ -220,7 +236,7 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
       _tag: 'DataSourceSnapshot',
       dataSourceId: testIds.dataSourceId,
       requestId: testIds.requestId,
-      observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+      observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
       schemaHash: hash('schema'),
     } satisfies DataSourceSnapshot)
   const propertyPages = input.propertyPages ?? []
@@ -337,19 +353,19 @@ export const makeStoreFixture = (
 
 /** Build a decoded `BodyPointer` fixture pointing to `testIds.pageId` — defaults to `hash('body-a')` for the body hash. */
 export const bodyPointer = (bodyHash: HashType = hash('body-a')): BodyPointerType =>
-  decode(BodyPointer, {
+  decode({ schema: BodyPointer, value: {
     _tag: 'BodyPointer',
     pageId: testIds.pageId,
     bodyHash,
     observedAt: fixedObservedAt,
-  })
+  } })
 
 /** Build a default `RowPageSnapshot` fixture — accepts partial overrides to vary only the fields under test. */
 export const rowSnapshot = (overrides: Partial<RowPageSnapshot> = {}): RowPageSnapshot => ({
   _tag: 'RowPageSnapshot',
   pageId: testIds.pageId,
   propertiesHash: hash('properties-a'),
-  lastEditedTime: decode(Schema.DateTimeUtc, fixedObservedAt),
+  lastEditedTime: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
   inTrash: false,
   ...overrides,
 })
@@ -360,7 +376,7 @@ export const pageSnapshot = (overrides: Partial<PageSnapshot> = {}): PageSnapsho
   pageId: testIds.pageId,
   dataSourceId: testIds.dataSourceId,
   requestId: testIds.requestId,
-  observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+  observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
   propertiesHash: hash('properties-a'),
   inTrash: false,
   ...overrides,
@@ -378,7 +394,7 @@ export const queryRowsPage = ({
   readonly nextCursor: QueryRowsPage['nextCursor']
   readonly cappedAtLimit: boolean
 }): QueryRowsPage =>
-  decode(QueryRowsPage, {
+  decode({ schema: QueryRowsPage, value: {
     _tag: 'QueryRowsPage',
     apiVersion: '2026-03-11',
     requestId: testIds.requestId,
@@ -393,7 +409,7 @@ export const queryRowsPage = ({
     nextCursor,
     hasMore,
     cappedAtLimit,
-  })
+  } })
 
 /** Build a baseline `QueryContract` with no filters, no sorts, a page size of 100, and `all-data-source-rows` membership scope. */
 export const defaultQueryContract = (): QueryContract => ({
@@ -493,7 +509,7 @@ export const propertyPatchValue = (plainText = 'Updated'): CanonicalPropertyValu
 export const propertyEditIntent = (
   overrides: Partial<PropertyEditIntent> = {},
 ): PropertyEditIntent => {
-  const command = decode(PatchPagePropertiesCommand, {
+  const command = decode({ schema: PatchPagePropertiesCommand, value: {
     _tag: 'PatchPagePropertiesCommand',
     commandId: testIds.commandId,
     pageId: testIds.pageId,
@@ -501,13 +517,13 @@ export const propertyEditIntent = (
     propertyPatch: {
       [testIds.propertyA]: propertyPatchValue(),
     },
-  })
+  } })
 
   return {
     _tag: 'property-edit',
     intentEventId: testIds.intentEventId,
     commandKey: testIds.commandKey,
-    surface: propertySurfaceKey(testIds.pageId, testIds.propertyA),
+    surface: propertySurfaceKey({ pageId: testIds.pageId, propertyId: testIds.propertyA }),
     pageId: testIds.pageId,
     propertyId: testIds.propertyA,
     command,
@@ -523,7 +539,7 @@ export const queryAbsenceIntent = (
   overrides: Partial<QueryAbsenceIntent> = {},
 ): QueryAbsenceIntent => ({
   _tag: 'query-absence',
-  surface: querySurfaceKey(testIds.dataSourceId, hash('query-contract')),
+  surface: querySurfaceKey({ dataSourceId: testIds.dataSourceId, queryContractHash: hash('query-contract') }),
   dataSourceId: testIds.dataSourceId,
   pageId: testIds.pageId,
   queryContractHash: hash('query-contract'),
@@ -557,12 +573,12 @@ export const bodyAdapterResultIntent = (safety: BodySafetySnapshot): BodyAdapter
 export const localDeleteIntent = (
   overrides: Partial<LocalDeleteIntent> = {},
 ): LocalDeleteIntent => {
-  const command = decode(TrashPageCommand, {
+  const command = decode({ schema: TrashPageCommand, value: {
     _tag: 'TrashPageCommand',
     commandId: testIds.commandId,
     pageId: testIds.pageId,
     basePropertiesHash: hash('properties-a'),
-  })
+  } })
 
   return {
     _tag: 'local-delete',
@@ -572,7 +588,7 @@ export const localDeleteIntent = (
     pageId: testIds.pageId,
     command,
     baseHash: hash('properties-a'),
-    desiredHash: pageLifecycleHash(testIds.pageId, true),
+    desiredHash: pageLifecycleHash({ pageId: testIds.pageId, inTrash: true }),
     explicitDestructiveIntent: false,
     policy: 'candidateOnly',
     directRetrieve: 'accessible',
@@ -660,7 +676,7 @@ export const remoteWritePlannedEvent = (input: {
   readonly desiredHash: HashType
   readonly preflight: ReadonlyArray<GuardName>
 }): SyncEventType =>
-  decode(SyncEvent, {
+  decode({ schema: SyncEvent, value: {
     _tag: 'RemoteWritePlanned',
     ...eventBase({
       eventId: input.eventId,
@@ -677,7 +693,7 @@ export const remoteWritePlannedEvent = (input: {
     ...(input.baseHash === undefined ? {} : { baseHash: input.baseHash }),
     desiredHash: input.desiredHash,
     preflight: input.preflight,
-  })
+  } })
 
 /** Build a decoded `RemoteWriteAttempted` `SyncEvent` fixture — simulates an in-flight or retryable outbox attempt for recovery tests. */
 export const remoteWriteAttemptedEvent = (input: {
@@ -688,7 +704,7 @@ export const remoteWriteAttemptedEvent = (input: {
   readonly attemptState?: 'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   readonly leaseToken?: string
 }): SyncEventType =>
-  decode(SyncEvent, {
+  decode({ schema: SyncEvent, value: {
     _tag: 'RemoteWriteAttempted',
     ...eventBase({
       eventId: input.eventId,
@@ -702,7 +718,7 @@ export const remoteWriteAttemptedEvent = (input: {
     attempt: input.attempt ?? 1,
     attemptState: input.attemptState ?? 'running',
     leaseToken: input.leaseToken ?? 'lease-1',
-  })
+  } })
 
 /** Build a decoded `RemoteWriteSettled` `SyncEvent` fixture — used in settlement verification tests to assert that the executor records the correct `observedHash`. */
 export const remoteWriteSettledEvent = (input: {
@@ -713,7 +729,7 @@ export const remoteWriteSettledEvent = (input: {
   readonly desiredHash: HashType
   readonly observedHash: HashType
 }): SyncEventType =>
-  decode(SyncEvent, {
+  decode({ schema: SyncEvent, value: {
     _tag: 'RemoteWriteSettled',
     ...eventBase({
       eventId: input.eventId,
@@ -729,13 +745,16 @@ export const remoteWriteSettledEvent = (input: {
     desiredHash: input.desiredHash,
     observedHash: input.observedHash,
     settlementKind: 'verified-success',
-  })
+  } })
 
 /** Append a `RemoteWritePlanned` event to the store for a given outbox envelope — shorthand for pre-populating the outbox in executor tests. */
-export const appendPlannedCommand = (
-  store: NotionSyncStore,
-  command: OutboxCommandEnvelope,
-): SyncEventType =>
+export const appendPlannedCommand = ({
+  store,
+  command,
+}: {
+  readonly store: NotionSyncStore
+  readonly command: OutboxCommandEnvelope
+}): SyncEventType =>
   store.appendEvent(
     remoteWritePlannedEvent({
       eventId: 'event-planned-1',
