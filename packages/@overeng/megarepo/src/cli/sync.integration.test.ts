@@ -1564,7 +1564,7 @@ describe('nested megarepo.lock sync scope', () => {
 
         const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          args: ['--output', 'json', '--all'],
+          args: ['--output', 'json', '--all', '--worktree-mode', 'tracking'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },

@@ -806,6 +806,13 @@ export const syncMember = <R = never>({
           ref: targetCommit!,
           refType: 'commit',
         })
+        const commitWorktreeExists = yield* store.hasWorktree({
+          source,
+          ref: targetCommit!,
+          refType: 'commit',
+        })
+        if (commitWorktreeExists === true) return
+
         yield* storeLock.withWorktreeLock(commitWorktreePath)(
           Effect.gen(function* () {
             const exists = yield* store.hasWorktree({
