@@ -75,8 +75,10 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
           repoCount={state.repoCount}
           completedRepoCount={state.completedRepoCount}
           discoveredWorktreeCount={state.discoveredWorktreeCount}
+          activeWorktreeCount={state.activeWorktreeCount}
           statusMessage={state.statusMessage}
           done={state.done}
+          interrupted={state.interrupted}
         />
       )
     case 'Add':
@@ -111,6 +113,8 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
       )
     case 'Error':
       return <StoreErrorView error={state.error} message={state.message} source={state.source} />
+    case 'Interrupted':
+      return <Text dim>Store command interrupted</Text>
   }
 }
 
@@ -490,8 +494,10 @@ const StoreGcView = ({
   repoCount,
   completedRepoCount,
   discoveredWorktreeCount,
+  activeWorktreeCount,
   statusMessage,
   done,
+  interrupted,
   maxInUseToShow = 5,
 }: {
   basePath: string
@@ -503,8 +509,10 @@ const StoreGcView = ({
   repoCount?: number | undefined
   completedRepoCount?: number | undefined
   discoveredWorktreeCount?: number | undefined
+  activeWorktreeCount?: number | undefined
   statusMessage?: string | undefined
   done?: boolean | undefined
+  interrupted?: boolean | undefined
   maxInUseToShow?: number
 }) => {
   const removed = results.filter((r) => r.status === 'removed')
@@ -522,12 +530,15 @@ const StoreGcView = ({
         <Text dim> path</Text>
         <Text>: {basePath}</Text>
         {dryRun && <Text dim> mode: dry run</Text>}
-        {done === false && (
+        {(done === false || interrupted === true) && (
           <>
             {statusMessage !== undefined && <Text dim> status: {statusMessage}</Text>}
             <Text dim>
               progress: {processedCount ?? results.length} checked
               {discoveredWorktreeCount !== undefined ? ` / ${discoveredWorktreeCount} found` : ''}
+              {activeWorktreeCount !== undefined && activeWorktreeCount > 0
+                ? `, ${activeWorktreeCount} active`
+                : ''}
               {repoCount !== undefined && completedRepoCount !== undefined
                 ? `, ${completedRepoCount}/${repoCount} repos`
                 : ''}
@@ -540,7 +551,13 @@ const StoreGcView = ({
       <Text dim>{'─'.repeat(40)}</Text>
       <Text> </Text>
       {results.length === 0 ? (
-        <Text dim>No worktrees found</Text>
+        <Text dim>
+          {interrupted === true
+            ? 'Interrupted before any worktrees completed'
+            : done === false
+              ? 'Scanning worktrees...'
+              : 'No worktrees found'}
+        </Text>
       ) : (
         <>
           {removed.map((result) => (
@@ -575,13 +592,20 @@ const StoreGcView = ({
         </>
       )}
       <Text> </Text>
-      <StoreGcSummary
-        removed={removed.length}
-        skippedDirty={skippedDirty.length}
-        skippedInUse={skippedInUse.length}
-        errors={errors.length}
-        dryRun={dryRun}
-      />
+      {interrupted === true ? (
+        <Text color="yellow">
+          Interrupted after {processedCount ?? results.length} checked
+          {discoveredWorktreeCount !== undefined ? ` / ${discoveredWorktreeCount} found` : ''}
+        </Text>
+      ) : done === false && results.length === 0 ? null : (
+        <StoreGcSummary
+          removed={removed.length}
+          skippedDirty={skippedDirty.length}
+          skippedInUse={skippedInUse.length}
+          errors={errors.length}
+          dryRun={dryRun}
+        />
+      )}
       {showForceHint && skippedDirty.length > 0 && (
         <Text dim>Use --force to remove dirty worktrees</Text>
       )}

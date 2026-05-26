@@ -39,5 +39,10 @@ export const StoreApp = createTuiApp({
   actionSchema: StoreAction,
   initial: createInitialStoreState(),
   reducer: storeReducer,
-  exitCode: (state) => (state._tag === 'Error' ? 1 : 0),
+  exitCode: (state) => {
+    if (state._tag === 'Interrupted') return 130
+    if (state._tag === 'Gc' && state.interrupted === true) return 130
+    if (state._tag === 'Error') return 1
+    return undefined
+  },
 })
