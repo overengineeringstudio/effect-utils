@@ -1475,13 +1475,23 @@ export class NotionSyncStore {
 
     const rows = this.#db
       .prepare(
-        `SELECT intent_event_id, surface, desired_hash
+        `SELECT
+           outbox.intent_event_id,
+           outbox.surface,
+           outbox.desired_hash
          FROM outbox
-         WHERE root_id = ?
-           AND command_tag = 'PatchPageProperties'
-           AND settlement_event_id IS NULL
-           AND state IN ('queued', 'running', 'retryable', 'blocked', 'ambiguous')
-         ORDER BY command_id`,
+         LEFT JOIN sync_event AS intent_event
+           ON intent_event.root_id = outbox.root_id
+          AND intent_event.event_id = outbox.intent_event_id
+         LEFT JOIN sync_event AS planned_event
+           ON planned_event.root_id = outbox.root_id
+          AND planned_event.event_type = 'RemoteWritePlanned'
+          AND planned_event.idempotency_key = outbox.command_key
+         WHERE outbox.root_id = ?
+           AND outbox.command_tag = 'PatchPageProperties'
+           AND outbox.settlement_event_id IS NULL
+           AND outbox.state IN ('queued', 'running', 'retryable', 'blocked', 'ambiguous')
+         ORDER BY COALESCE(intent_event.sequence, planned_event.sequence), outbox.command_id`,
       )
       .all(rootId)
 

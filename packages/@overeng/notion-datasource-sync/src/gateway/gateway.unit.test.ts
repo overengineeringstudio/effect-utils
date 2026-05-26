@@ -34,6 +34,7 @@ const dataSourceId = decode(DataSourceId, 'data-source-1')
 const commandId = (value: string) => decode(CommandId, value)
 const pageId = (value: string) => decode(PageId, value)
 const propertyId = (value: string) => decode(PropertyId, value)
+const dateTimeUtc = (value: string) => decode(Schema.DateTimeUtc, value)
 const observedAt = '2026-05-25T00:00:00.000Z'
 
 const queryContract = (overrides: Record<string, unknown> = {}) =>
@@ -189,6 +190,40 @@ describe('Notion data source gateway fake', () => {
     expect(
       pages.flatMap((queryPage) => queryPage.rows.map((queriedRow) => queriedRow.pageId)),
     ).toEqual([pageId('page-1'), pageId('page-2'), pageId('page-3')])
+    expect(pages.at(-1)).toMatchObject({ hasMore: false, nextCursor: null, cappedAtLimit: false })
+  })
+
+  it('streams high-cardinality query rows across Notion-sized pages', async () => {
+    const rowCount = 250
+    const rows = Array.from({ length: rowCount }, (_, index) => {
+      const suffix = index.toString().padStart(3, '0')
+      const id = pageId(`page-high-${suffix}`)
+
+      return {
+        snapshot: page(id, `snapshot-${suffix}`),
+        row: row(id, `row-${suffix}`),
+      }
+    })
+
+    const pages = await runWithGateway(
+      config({ pages: rows }),
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway
+          .queryRows({
+            _tag: 'QueryRowsInput',
+            dataSourceId,
+            queryContract: queryContract({ pageSize: 100 }),
+            startCursor: null,
+          })
+          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+      }),
+    )
+
+    expect(pages.map((queryPage) => queryPage.rows.length)).toEqual([100, 100, 50])
+    expect(
+      pages.flatMap((queryPage) => queryPage.rows.map((queriedRow) => queriedRow.pageId)),
+    ).toHaveLength(rowCount)
     expect(pages.at(-1)).toMatchObject({ hasMore: false, nextCursor: null, cappedAtLimit: false })
   })
 
@@ -388,6 +423,43 @@ describe('Notion data source gateway fake', () => {
     )
 
     expect(pages.map((propertyPage) => propertyPage.items.length)).toEqual([2, 1])
+    expect(pages.at(-1)).toMatchObject({ hasMore: false, nextCursor: null })
+  })
+
+  it('streams high-cardinality page-property items across Notion-sized pages', async () => {
+    const relation = propertyId('relation')
+    const itemCount = 251
+    const items = Array.from({ length: itemCount }, (_, index) =>
+      pagePropertyItem(pageId('page-1'), relation, `relation-${index.toString().padStart(3, '0')}`),
+    )
+    const gatewayConfig = config({
+      pagePropertyPageSize: 100,
+      pages: [
+        {
+          snapshot: page(pageId('page-1'), '1'),
+          row: row(pageId('page-1'), '1'),
+          propertyItems: [{ propertyId: relation, items }],
+        },
+      ],
+    })
+
+    const pages = await runWithGateway(
+      gatewayConfig,
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway
+          .retrievePageProperty({
+            _tag: 'RetrievePagePropertyInput',
+            pageId: pageId('page-1'),
+            propertyId: relation,
+            startCursor: null,
+          })
+          .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+      }),
+    )
+
+    expect(pages.map((propertyPage) => propertyPage.items.length)).toEqual([100, 100, 51])
+    expect(pages.flatMap((propertyPage) => propertyPage.items)).toHaveLength(itemCount)
     expect(pages.at(-1)).toMatchObject({ hasMore: false, nextCursor: null })
   })
 
@@ -808,6 +880,90 @@ describe('Notion data source gateway real adapter boundary', () => {
       },
     ])
     expect(requestId).toBe('notion-client-success-request-id-unavailable')
+  })
+
+  it('encodes the supported writable Notion page property matrix', async () => {
+    const patch = await Effect.runPromise(
+      pagePropertyPatchToNotion({
+        [propertyId('title')]: { _tag: 'title', plainText: 'Task title' },
+        [propertyId('rich')]: { _tag: 'rich_text', plainText: 'Longer note' },
+        [propertyId('number')]: { _tag: 'number', value: 42 },
+        [propertyId('checkbox')]: { _tag: 'checkbox', checked: true },
+        [propertyId('date')]: {
+          _tag: 'date',
+          start: dateTimeUtc('2026-05-25T10:00:00.000Z'),
+          end: dateTimeUtc('2026-05-26T10:00:00.000Z'),
+        },
+        [propertyId('select')]: {
+          _tag: 'select',
+          option: {
+            _tag: 'CanonicalOptionValue',
+            id: propertyId('opt-1'),
+            name: decode(PropertyName, 'Doing'),
+          },
+        },
+        [propertyId('select-null')]: { _tag: 'select', option: null },
+        [propertyId('multi')]: {
+          _tag: 'multi_select',
+          options: [
+            { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'Backend') },
+            {
+              _tag: 'CanonicalOptionValue',
+              id: propertyId('opt-2'),
+              name: decode(PropertyName, 'API'),
+              color: 'blue',
+            },
+          ],
+        },
+        [propertyId('status')]: {
+          _tag: 'status',
+          option: { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'In progress') },
+        },
+        [propertyId('relation')]: {
+          _tag: 'relation',
+          pageIds: [pageId('related-page-1'), pageId('related-page-2')],
+        },
+        [propertyId('people')]: { _tag: 'people', userIds: ['user-1', 'user-2'] },
+        [propertyId('email')]: { _tag: 'email', value: 'ada@example.com' },
+        [propertyId('url')]: { _tag: 'url', value: 'https://developers.notion.com/' },
+        [propertyId('phone')]: { _tag: 'phone_number', value: '+1 555 0100' },
+        [propertyId('email-null')]: { _tag: 'email', value: null },
+        [propertyId('url-null')]: { _tag: 'url', value: null },
+        [propertyId('phone-null')]: { _tag: 'phone_number', value: null },
+      }),
+    )
+
+    expect(patch).toEqual({
+      [propertyId('title')]: { title: [{ type: 'text', text: { content: 'Task title' } }] },
+      [propertyId('rich')]: { rich_text: [{ type: 'text', text: { content: 'Longer note' } }] },
+      [propertyId('number')]: { number: 42 },
+      [propertyId('checkbox')]: { checkbox: true },
+      [propertyId('date')]: {
+        date: {
+          start: '2026-05-25T10:00:00.000Z',
+          end: '2026-05-26T10:00:00.000Z',
+        },
+      },
+      [propertyId('select')]: { select: { id: propertyId('opt-1'), name: 'Doing' } },
+      [propertyId('select-null')]: { select: null },
+      [propertyId('multi')]: {
+        multi_select: [
+          { name: 'Backend' },
+          { id: propertyId('opt-2'), name: 'API', color: 'blue' },
+        ],
+      },
+      [propertyId('status')]: { status: { name: 'In progress' } },
+      [propertyId('relation')]: {
+        relation: [{ id: pageId('related-page-1') }, { id: pageId('related-page-2') }],
+      },
+      [propertyId('people')]: { people: [{ id: 'user-1' }, { id: 'user-2' }] },
+      [propertyId('email')]: { email: 'ada@example.com' },
+      [propertyId('url')]: { url: 'https://developers.notion.com/' },
+      [propertyId('phone')]: { phone_number: '+1 555 0100' },
+      [propertyId('email-null')]: { email: null },
+      [propertyId('url-null')]: { url: null },
+      [propertyId('phone-null')]: { phone_number: null },
+    })
   })
 
   it('keeps missing adapter capabilities explicit instead of pretending unsupported endpoints exist', async () => {

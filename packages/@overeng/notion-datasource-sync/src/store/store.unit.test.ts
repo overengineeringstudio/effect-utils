@@ -1119,6 +1119,49 @@ describe('Notion sync SQLite store', () => {
     })
   })
 
+  it('projects same-property pending intents by accepted event order instead of command id order', () => {
+    withStore((store) => {
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-base',
+          idempotencyKey: 'property:page-1:property-1:base',
+          valueHash: hash('a'),
+        }),
+      )
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-local-intent-first',
+          idempotencyKey: 'command:cmd-z',
+          commandId: 'cmd-z',
+          intentEventId: 'intent-property-first',
+          desiredHash: hash('b'),
+          surface: 'page:page-1:property:property-1',
+        }),
+      )
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-local-intent-second',
+          idempotencyKey: 'command:cmd-a',
+          commandId: 'cmd-a',
+          intentEventId: 'intent-property-second',
+          desiredHash: hash('c'),
+          surface: 'page:page-1:property:property-1',
+        }),
+      )
+
+      expect(store.readPlannerProjectionSnapshot(rootId).properties).toEqual([
+        expect.objectContaining({
+          pageId: 'page-1',
+          propertyId: 'property-1',
+          pendingLocal: {
+            intentEventId: 'intent-property-second',
+            targetHash: hash('c'),
+          },
+        }),
+      ])
+    })
+  })
+
   it('scopes query absence evidence to exact root, data source, page, and query identity', () => {
     withStore((store) => {
       store.appendEvent(

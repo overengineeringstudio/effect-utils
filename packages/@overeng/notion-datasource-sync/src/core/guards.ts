@@ -317,7 +317,7 @@ export const guardQueryCompleteness = (snapshot: QueryCompletenessSnapshot): Gua
 }
 
 export const guardQueryAbsence = (snapshot: QueryAbsenceSnapshot): GuardDecision => {
-  if (snapshot.filtered === true) {
+  if (snapshot.filtered === true && snapshot.membershipScope !== 'explicit-filter') {
     return blocked('FilteredAbsenceNotProof', 'Filtered query absence is not tombstone proof')
   }
 

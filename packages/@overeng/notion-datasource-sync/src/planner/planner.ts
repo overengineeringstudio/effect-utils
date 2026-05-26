@@ -429,6 +429,13 @@ const planPropertyEdit = (
   if (propertySurface !== undefined) {
     baseGuards.push(guardPropertyAvailability({ availability: propertySurface.availability }))
     if (propertySurface.remoteHash !== intent.baseHash) {
+      if (
+        propertySurface.availability === 'complete' &&
+        propertySurface.pendingLocal?.targetHash === intent.desiredHash &&
+        propertySurface.remoteHash === intent.desiredHash
+      ) {
+        return { _tag: 'AppendEvents', events: [] }
+      }
       const localSurface: ConflictSurface = {
         _tag: 'property',
         pageId: intent.pageId,
