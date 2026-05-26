@@ -1,0 +1,874 @@
+import type {
+  BodyPushCommand,
+  PatchDataSourceSchemaCommand,
+  PatchPagePropertiesCommand,
+  RemoteWriteCommand,
+  TrashPageCommand,
+} from '../core/commands.ts'
+import type { ConflictPayload } from '../core/conflicts.ts'
+import { classifyConflict, type ConflictSurface } from '../core/conflicts.ts'
+import type { CommandId, DataSourceId, Hash, PageId, PropertyId } from '../core/domain.ts'
+import type { IdempotencyKey, SurfaceKey, SyncEventId, SyncRootId } from '../core/events.ts'
+import {
+  guardApiCompatibility,
+  guardBodySafety,
+  guardCapabilityPreflight,
+  guardPathClaimCollision,
+  guardPropertyAvailability,
+  guardPropertyWriteClass,
+  guardQueryAbsence,
+  guardQueryCompleteness,
+  guardSchemaIntentSafety,
+  guardStaleSurfaceBase,
+  guardTombstoneSafety,
+  type ApiCompatibilitySnapshot,
+  type BodySafetySnapshot,
+  type CapabilityPreflightSnapshot,
+  type GuardDecision,
+  type GuardName,
+  type PropertyAvailability,
+  type PropertyWriteClass,
+  type QueryAbsenceSnapshot,
+  type QueryCompletenessSnapshot,
+  type SafeDiagnostic,
+  type SchemaIntentSafety,
+} from '../core/guards.ts'
+
+export type SchemaPropertySurface = {
+  readonly dataSourceId: DataSourceId
+  readonly propertyId: PropertyId
+  readonly schemaHash: Hash
+  readonly configHash: Hash
+  readonly writeClass: PropertyWriteClass
+}
+
+export type PropertySurfaceSnapshot = {
+  readonly pageId: PageId
+  readonly propertyId: PropertyId
+  readonly baseHash: Hash
+  readonly remoteHash: Hash
+  readonly availability: PropertyAvailability
+  readonly pendingLocal:
+    | {
+        readonly intentEventId: SyncEventId
+        readonly targetHash: Hash
+      }
+    | undefined
+}
+
+export type RowSurfaceSnapshot = {
+  readonly pageId: PageId
+  readonly dataSourceId: DataSourceId
+  readonly propertiesHash: Hash
+  readonly inTrash: boolean
+  readonly movedOut: boolean
+  readonly localDeleteCandidate: boolean
+}
+
+export type BodyPointerSurfaceSnapshot = {
+  readonly pageId: PageId
+  readonly path: string
+  readonly baseHash: Hash
+  readonly currentHash: Hash
+  readonly sidecarIdentityProven: boolean
+  readonly ownWriteMaterializationIds: ReadonlyArray<string>
+  readonly safety: BodySafetySnapshot
+}
+
+export type TombstoneSurfaceSnapshot = {
+  readonly pageId: PageId
+  readonly dataSourceId: DataSourceId | undefined
+  readonly queryContractHash: Hash | undefined
+  readonly state: 'none' | 'candidate' | 'remote-trash' | 'moved-out' | 'inaccessible' | 'unknown'
+  readonly directRetrieve: QueryAbsenceSnapshot['directRetrieve']
+}
+
+export type QueryCheckpointSurfaceSnapshot = {
+  readonly dataSourceId: DataSourceId
+  readonly pageId: PageId
+  readonly queryContractHash: Hash
+  readonly completeness: QueryCompletenessSnapshot
+  readonly absence: QueryAbsenceSnapshot
+}
+
+export type PathClaimSurfaceSnapshot = {
+  readonly path: string
+  readonly ownerPageId: PageId
+  readonly released: boolean
+}
+
+export type LocalWorkspaceSurfaceSnapshot = {
+  readonly pageId: PageId
+  readonly path: string
+  readonly sidecarIdentityProven: boolean
+  readonly deleted: boolean
+  readonly branchLikeMassDeletion: boolean
+  readonly materializationId: string | undefined
+}
+
+export type PlannerProjectionSnapshot = {
+  readonly rootId: SyncRootId
+  readonly api: ApiCompatibilitySnapshot
+  readonly capabilities: CapabilityPreflightSnapshot
+  readonly schema: ReadonlyArray<SchemaPropertySurface>
+  readonly rows: ReadonlyArray<RowSurfaceSnapshot>
+  readonly properties: ReadonlyArray<PropertySurfaceSnapshot>
+  readonly bodies: ReadonlyArray<BodyPointerSurfaceSnapshot>
+  readonly tombstones: ReadonlyArray<TombstoneSurfaceSnapshot>
+  readonly queries: ReadonlyArray<QueryCheckpointSurfaceSnapshot>
+  readonly pathClaims: ReadonlyArray<PathClaimSurfaceSnapshot>
+  readonly localWorkspace: ReadonlyArray<LocalWorkspaceSurfaceSnapshot>
+  readonly remoteChanges: ReadonlyArray<ConflictSurface>
+}
+
+export type OutboxCommandEnvelope = {
+  readonly commandId: CommandId
+  readonly commandKey: IdempotencyKey
+  readonly rootId: SyncRootId
+  readonly intentEventId: SyncEventId
+  readonly surface: SurfaceKey
+  readonly command: RemoteWriteCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+  readonly preflight: ReadonlyArray<GuardName>
+}
+
+export type PlannerEvent =
+  | {
+      readonly _tag: 'LocalDeleteCandidateAccepted'
+      readonly pageId: PageId
+      readonly surface: SurfaceKey
+      readonly reason: 'filesystem-delete-candidate' | 'workspace-repair-candidate'
+    }
+  | {
+      readonly _tag: 'TombstoneCandidateObserved'
+      readonly pageId: PageId
+      readonly surface: SurfaceKey
+      readonly reason: 'query-absence-unclassified' | 'filtered-absence-not-proof'
+    }
+  | {
+      readonly _tag: 'TombstoneClassified'
+      readonly pageId: PageId
+      readonly surface: SurfaceKey
+      readonly reason: 'remote-trash' | 'moved-out' | 'inaccessible' | 'unknown'
+    }
+  | {
+      readonly _tag: 'RemoteObservationAccepted'
+      readonly surface: SurfaceKey
+      readonly observedHash: Hash
+    }
+  | {
+      readonly _tag: 'PathClaimAccepted'
+      readonly pageId: PageId
+      readonly surface: SurfaceKey
+      readonly path: string
+    }
+
+export type PlanDecision =
+  | { readonly _tag: 'AppendEvents'; readonly events: ReadonlyArray<PlannerEvent> }
+  | { readonly _tag: 'EnqueueCommands'; readonly commands: ReadonlyArray<OutboxCommandEnvelope> }
+  | { readonly _tag: 'OpenConflict'; readonly conflict: ConflictPayload }
+  | {
+      readonly _tag: 'BlockedByGuard'
+      readonly guard: GuardName
+      readonly surface: SurfaceKey
+      readonly detail: SafeDiagnostic
+    }
+
+export type PropertyEditIntent = {
+  readonly _tag: 'property-edit'
+  readonly intentEventId: SyncEventId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly pageId: PageId
+  readonly propertyId: PropertyId
+  readonly command: PatchPagePropertiesCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+  readonly expectedPropertyConfigHash: Hash
+}
+
+export type BodyEditIntent = {
+  readonly _tag: 'body-edit'
+  readonly intentEventId: SyncEventId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly pageId: PageId
+  readonly command: BodyPushCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+}
+
+export type SchemaMigrationIntent = {
+  readonly _tag: 'schema-migration'
+  readonly intentEventId: SyncEventId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly dataSourceId: DataSourceId
+  readonly affectedPropertyIds: ReadonlyArray<PropertyId>
+  readonly command: PatchDataSourceSchemaCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+  readonly safety: SchemaIntentSafety
+}
+
+export type LocalDeleteIntent = {
+  readonly _tag: 'local-delete'
+  readonly intentEventId: SyncEventId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly pageId: PageId
+  readonly command: TrashPageCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+  readonly explicitDestructiveIntent: boolean
+  readonly policy: 'candidateOnly' | 'trustedRemoteTrash'
+  readonly directRetrieve: QueryAbsenceSnapshot['directRetrieve']
+}
+
+export type PathClaimIntent = {
+  readonly _tag: 'path-claim'
+  readonly surface: SurfaceKey
+  readonly pageId: PageId
+  readonly path: string
+}
+
+export type QueryAbsenceIntent = {
+  readonly _tag: 'query-absence'
+  readonly surface: SurfaceKey
+  readonly dataSourceId: DataSourceId
+  readonly pageId: PageId
+  readonly queryContractHash: Hash
+}
+
+export type BodyAdapterResultIntent = {
+  readonly _tag: 'body-adapter-result'
+  readonly surface: SurfaceKey
+  readonly pageId: PageId
+  readonly safety: BodySafetySnapshot
+}
+
+export type PlannerIntent =
+  | PropertyEditIntent
+  | BodyEditIntent
+  | SchemaMigrationIntent
+  | LocalDeleteIntent
+  | PathClaimIntent
+  | QueryAbsenceIntent
+  | BodyAdapterResultIntent
+
+const diagnostic = (summary: string, evidence: Record<string, string> = {}): SafeDiagnostic => ({
+  _tag: 'SafeDiagnostic',
+  summary,
+  evidence,
+})
+
+const blockDecision = (
+  guard: GuardName,
+  surface: SurfaceKey,
+  summary: string,
+  evidence: Record<string, string> = {},
+): PlanDecision => ({
+  _tag: 'BlockedByGuard',
+  guard,
+  surface,
+  detail: diagnostic(summary, evidence),
+})
+
+const fromGuard = (decision: GuardDecision, surface: SurfaceKey): PlanDecision | undefined =>
+  decision._tag === 'blocked' ? blockDecision(decision.guard, surface, decision.message) : undefined
+
+const findSchemaProperty = (
+  snapshot: PlannerProjectionSnapshot,
+  dataSourceId: DataSourceId,
+  propertyId: PropertyId,
+): SchemaPropertySurface | undefined =>
+  snapshot.schema.find(
+    (property) => property.dataSourceId === dataSourceId && property.propertyId === propertyId,
+  )
+
+const findPropertySurface = (
+  snapshot: PlannerProjectionSnapshot,
+  pageId: PageId,
+  propertyId: PropertyId,
+): PropertySurfaceSnapshot | undefined =>
+  snapshot.properties.find(
+    (property) => property.pageId === pageId && property.propertyId === propertyId,
+  )
+
+const findBodySurface = (
+  snapshot: PlannerProjectionSnapshot,
+  pageId: PageId,
+): BodyPointerSurfaceSnapshot | undefined => snapshot.bodies.find((body) => body.pageId === pageId)
+
+const findRowSurface = (
+  snapshot: PlannerProjectionSnapshot,
+  pageId: PageId,
+): RowSurfaceSnapshot | undefined => snapshot.rows.find((row) => row.pageId === pageId)
+
+const findQuerySurface = (
+  snapshot: PlannerProjectionSnapshot,
+  dataSourceId: DataSourceId,
+  pageId: PageId,
+  queryContractHash: Hash,
+): QueryCheckpointSurfaceSnapshot | undefined =>
+  snapshot.queries.find(
+    (query) =>
+      query.dataSourceId === dataSourceId &&
+      query.pageId === pageId &&
+      query.queryContractHash === queryContractHash,
+  )
+
+const firstBlocked = (
+  surface: SurfaceKey,
+  guards: ReadonlyArray<GuardDecision>,
+): PlanDecision | undefined => {
+  for (const guard of guards) {
+    const blockedDecision = fromGuard(guard, surface)
+    if (blockedDecision !== undefined) {
+      return blockedDecision
+    }
+  }
+
+  return undefined
+}
+
+const commandEnvelope = ({
+  snapshot,
+  intent,
+  command,
+  baseHash,
+  desiredHash,
+  preflight,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: Extract<
+    PlannerIntent,
+    PropertyEditIntent | BodyEditIntent | SchemaMigrationIntent | LocalDeleteIntent
+  >
+  readonly command: RemoteWriteCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+  readonly preflight: ReadonlyArray<GuardName>
+}): OutboxCommandEnvelope => ({
+  commandId: command.commandId,
+  commandKey: intent.commandKey,
+  rootId: snapshot.rootId,
+  intentEventId: intent.intentEventId,
+  surface: intent.surface,
+  command,
+  baseHash,
+  desiredHash,
+  preflight,
+})
+
+const matchingRemoteConflict = (
+  intentSurface: ConflictSurface,
+  snapshot: PlannerProjectionSnapshot,
+): ConflictPayload | undefined => {
+  for (const remoteChange of snapshot.remoteChanges) {
+    const classification = classifyConflict(intentSurface, remoteChange)
+    if (classification._tag === 'conflict') {
+      return classification.conflict
+    }
+  }
+
+  return undefined
+}
+
+const planPropertyEdit = (
+  snapshot: PlannerProjectionSnapshot,
+  intent: PropertyEditIntent,
+): PlanDecision => {
+  const row = findRowSurface(snapshot, intent.pageId)
+  if (row === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current row projection is missing; observe the row before planning a property write',
+    )
+  }
+
+  const schemaProperty = findSchemaProperty(snapshot, row.dataSourceId, intent.propertyId)
+  const propertySurface = findPropertySurface(snapshot, intent.pageId, intent.propertyId)
+
+  const baseGuards: GuardDecision[] = [
+    guardApiCompatibility(snapshot.api),
+    guardCapabilityPreflight(snapshot.capabilities),
+  ]
+
+  if (schemaProperty === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current schema property projection is missing; observe the data source schema before planning a property write',
+      {
+        dataSourceId: row.dataSourceId,
+        propertyId: intent.propertyId,
+      },
+    )
+  }
+
+  baseGuards.push(guardPropertyWriteClass({ writeClass: schemaProperty.writeClass }))
+  baseGuards.push(
+    guardSchemaIntentSafety({
+      affectsLocalIntent: schemaProperty.configHash !== intent.expectedPropertyConfigHash,
+      destructiveMigrationRequired: false,
+      optionDeletionLosesValues: false,
+    }),
+  )
+
+  if (propertySurface === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current property projection is missing; observe the property before planning a write',
+    )
+  }
+
+  if (propertySurface !== undefined) {
+    baseGuards.push(guardPropertyAvailability({ availability: propertySurface.availability }))
+    if (propertySurface.remoteHash !== intent.baseHash) {
+      const localSurface: ConflictSurface = {
+        _tag: 'property',
+        pageId: intent.pageId,
+        propertyId: intent.propertyId,
+        baseHash: intent.baseHash,
+        nextHash: intent.desiredHash,
+        surface: intent.surface,
+      }
+      const remoteSurface: ConflictSurface = {
+        _tag: 'property',
+        pageId: intent.pageId,
+        propertyId: intent.propertyId,
+        baseHash: propertySurface.baseHash,
+        nextHash: propertySurface.remoteHash,
+        surface: intent.surface,
+      }
+      const classification = classifyConflict(localSurface, remoteSurface)
+      return classification._tag === 'conflict'
+        ? { _tag: 'OpenConflict', conflict: classification.conflict }
+        : blockDecision(
+            'StaleSurfaceBase',
+            intent.surface,
+            'Local intent base hash is stale for the current surface',
+          )
+    }
+    baseGuards.push(
+      guardStaleSurfaceBase({
+        baseHash: intent.baseHash,
+        currentHash: propertySurface.remoteHash,
+      }),
+    )
+  }
+
+  const blockedDecision = firstBlocked(intent.surface, baseGuards)
+  if (blockedDecision !== undefined) {
+    return blockedDecision
+  }
+
+  const localSurface: ConflictSurface = {
+    _tag: 'property',
+    pageId: intent.pageId,
+    propertyId: intent.propertyId,
+    baseHash: intent.baseHash,
+    nextHash: intent.desiredHash,
+    surface: intent.surface,
+  }
+  const conflict = matchingRemoteConflict(localSurface, snapshot)
+  if (conflict !== undefined) {
+    return { _tag: 'OpenConflict', conflict }
+  }
+
+  return {
+    _tag: 'EnqueueCommands',
+    commands: [
+      commandEnvelope({
+        snapshot,
+        intent,
+        command: intent.command,
+        baseHash: intent.baseHash,
+        desiredHash: intent.desiredHash,
+        preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'SchemaDriftAffectsIntent'],
+      }),
+    ],
+  }
+}
+
+const planBodyEdit = (
+  snapshot: PlannerProjectionSnapshot,
+  intent: BodyEditIntent,
+): PlanDecision => {
+  const bodySurface = findBodySurface(snapshot, intent.pageId)
+  if (bodySurface === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current body projection is missing; observe the body before planning a write',
+    )
+  }
+
+  const bodyGuard = bodySurface === undefined ? undefined : guardBodySafety(bodySurface.safety)
+  const blockedDecision = firstBlocked(intent.surface, [
+    guardApiCompatibility(snapshot.api),
+    guardCapabilityPreflight(snapshot.capabilities),
+    ...(bodyGuard === undefined ? [] : [bodyGuard]),
+    ...(bodySurface === undefined
+      ? []
+      : [
+          guardStaleSurfaceBase({
+            baseHash: intent.baseHash,
+            currentHash: bodySurface.currentHash,
+          }),
+        ]),
+  ])
+  if (blockedDecision !== undefined) {
+    return blockedDecision
+  }
+
+  const localSurface: ConflictSurface = {
+    _tag: 'body',
+    pageId: intent.pageId,
+    baseHash: intent.baseHash,
+    nextHash: intent.desiredHash,
+    lossy: false,
+    surface: intent.surface,
+  }
+  const conflict = matchingRemoteConflict(localSurface, snapshot)
+  if (conflict !== undefined) {
+    return { _tag: 'OpenConflict', conflict }
+  }
+
+  return {
+    _tag: 'EnqueueCommands',
+    commands: [
+      commandEnvelope({
+        snapshot,
+        intent,
+        command: intent.command,
+        baseHash: intent.baseHash,
+        desiredHash: intent.desiredHash,
+        preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'BodyAdapterConflict'],
+      }),
+    ],
+  }
+}
+
+const planSchemaMigration = (
+  snapshot: PlannerProjectionSnapshot,
+  intent: SchemaMigrationIntent,
+): PlanDecision => {
+  const blockedDecision = firstBlocked(intent.surface, [
+    guardApiCompatibility(snapshot.api),
+    guardCapabilityPreflight(snapshot.capabilities),
+    guardSchemaIntentSafety(intent.safety),
+  ])
+  if (blockedDecision !== undefined) {
+    return blockedDecision
+  }
+
+  const localSurface: ConflictSurface = {
+    _tag: 'schema',
+    affectedPropertyIds: intent.affectedPropertyIds,
+    surface: intent.surface,
+  }
+  const conflict = matchingRemoteConflict(localSurface, snapshot)
+  if (conflict !== undefined) {
+    return { _tag: 'OpenConflict', conflict }
+  }
+
+  return {
+    _tag: 'EnqueueCommands',
+    commands: [
+      commandEnvelope({
+        snapshot,
+        intent,
+        command: intent.command,
+        baseHash: intent.baseHash,
+        desiredHash: intent.desiredHash,
+        preflight: [
+          'CapabilityPreflightFailed',
+          'StaleSurfaceBase',
+          'DestructiveSchemaMigrationRequired',
+          'OptionDeletionLosesValues',
+        ],
+      }),
+    ],
+  }
+}
+
+const planLocalDelete = (
+  snapshot: PlannerProjectionSnapshot,
+  intent: LocalDeleteIntent,
+): PlanDecision => {
+  const row = findRowSurface(snapshot, intent.pageId)
+  const body = findBodySurface(snapshot, intent.pageId)
+  const workspace = snapshot.localWorkspace.find((surface) => surface.pageId === intent.pageId)
+
+  if (
+    workspace?.materializationId !== undefined &&
+    body?.ownWriteMaterializationIds.includes(workspace.materializationId) === true
+  ) {
+    return blockDecision(
+      'OwnMaterializationWriteSuppressed',
+      intent.surface,
+      'Local delete observation came from this sync materialization',
+    )
+  }
+
+  if (workspace?.branchLikeMassDeletion === true) {
+    return {
+      _tag: 'AppendEvents',
+      events: [
+        {
+          _tag: 'LocalDeleteCandidateAccepted',
+          pageId: intent.pageId,
+          surface: intent.surface,
+          reason: 'workspace-repair-candidate',
+        },
+      ],
+    }
+  }
+
+  const blockedTombstone = fromGuard(
+    guardTombstoneSafety({
+      deleteVsEdit: snapshot.remoteChanges.some(
+        (change) =>
+          change._tag !== 'delete' && 'pageId' in change && change.pageId === intent.pageId,
+      ),
+      moveOutNotDelete: row?.movedOut === true,
+      permissionAmbiguous: snapshot.tombstones.some(
+        (tombstone) =>
+          tombstone.pageId === intent.pageId && tombstone.directRetrieve === 'permission-ambiguous',
+      ),
+    }),
+    intent.surface,
+  )
+  if (blockedTombstone !== undefined) {
+    return blockedTombstone
+  }
+
+  if (
+    intent.explicitDestructiveIntent === false ||
+    intent.policy === 'candidateOnly' ||
+    body?.sidecarIdentityProven !== true ||
+    intent.directRetrieve !== 'accessible'
+  ) {
+    return {
+      _tag: 'AppendEvents',
+      events: [
+        {
+          _tag: 'LocalDeleteCandidateAccepted',
+          pageId: intent.pageId,
+          surface: intent.surface,
+          reason: 'filesystem-delete-candidate',
+        },
+      ],
+    }
+  }
+
+  if (row === undefined) {
+    return blockDecision(
+      'CurrentSurfaceMissing',
+      intent.surface,
+      'Current row projection is missing; observe the row before planning remote trash',
+    )
+  }
+
+  const blockedDecision = firstBlocked(intent.surface, [
+    guardApiCompatibility(snapshot.api),
+    guardCapabilityPreflight(snapshot.capabilities),
+    guardStaleSurfaceBase({
+      baseHash: intent.baseHash,
+      currentHash: row.propertiesHash,
+    }),
+  ])
+  if (blockedDecision !== undefined) {
+    return blockedDecision
+  }
+
+  return {
+    _tag: 'EnqueueCommands',
+    commands: [
+      commandEnvelope({
+        snapshot,
+        intent,
+        command: intent.command,
+        baseHash: intent.baseHash,
+        desiredHash: intent.desiredHash,
+        preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'DeleteVsEdit'],
+      }),
+    ],
+  }
+}
+
+const planPathClaim = (
+  snapshot: PlannerProjectionSnapshot,
+  intent: PathClaimIntent,
+): PlanDecision => {
+  const existingClaim = snapshot.pathClaims.find(
+    (claim) => claim.path === intent.path && claim.released === false,
+  )
+  const collides = existingClaim !== undefined && existingClaim.ownerPageId !== intent.pageId
+  const blockedDecision = fromGuard(guardPathClaimCollision({ collides }), intent.surface)
+  if (blockedDecision !== undefined) {
+    const localSurface: ConflictSurface = {
+      _tag: 'path',
+      path: intent.path,
+      pageId: intent.pageId,
+      existingPageId: existingClaim?.ownerPageId,
+      surface: intent.surface,
+    }
+    const remoteSurface: ConflictSurface = {
+      _tag: 'path',
+      path: intent.path,
+      pageId: intent.pageId,
+      existingPageId: existingClaim?.ownerPageId,
+      surface: intent.surface,
+    }
+    const classification = classifyConflict(localSurface, remoteSurface)
+    return classification._tag === 'conflict'
+      ? { _tag: 'OpenConflict', conflict: classification.conflict }
+      : blockedDecision
+  }
+
+  return {
+    _tag: 'AppendEvents',
+    events: [
+      {
+        _tag: 'PathClaimAccepted',
+        pageId: intent.pageId,
+        surface: intent.surface,
+        path: intent.path,
+      },
+    ],
+  }
+}
+
+const planQueryAbsence = (
+  snapshot: PlannerProjectionSnapshot,
+  intent: QueryAbsenceIntent,
+): PlanDecision => {
+  const query = findQuerySurface(
+    snapshot,
+    intent.dataSourceId,
+    intent.pageId,
+    intent.queryContractHash,
+  )
+  if (query === undefined) {
+    return blockDecision(
+      'QueryAbsenceUnclassified',
+      intent.surface,
+      'No query checkpoint exists for absence classification',
+    )
+  }
+
+  const blockedDecision = firstBlocked(intent.surface, [
+    guardQueryCompleteness(query.completeness),
+    guardQueryAbsence(query.absence),
+  ])
+  if (blockedDecision !== undefined) {
+    return blockedDecision
+  }
+
+  switch (query.absence.directRetrieve) {
+    case 'accessible':
+      return { _tag: 'AppendEvents', events: [] }
+    case 'in-trash':
+      return {
+        _tag: 'AppendEvents',
+        events: [
+          {
+            _tag: 'TombstoneClassified',
+            pageId: intent.pageId,
+            surface: intent.surface,
+            reason: 'remote-trash',
+          },
+        ],
+      }
+    case 'moved-out':
+      return {
+        _tag: 'AppendEvents',
+        events: [
+          {
+            _tag: 'TombstoneClassified',
+            pageId: intent.pageId,
+            surface: intent.surface,
+            reason: 'moved-out',
+          },
+        ],
+      }
+    case 'inaccessible':
+      return {
+        _tag: 'AppendEvents',
+        events: [
+          {
+            _tag: 'TombstoneClassified',
+            pageId: intent.pageId,
+            surface: intent.surface,
+            reason: 'inaccessible',
+          },
+        ],
+      }
+    case 'unknown':
+      return {
+        _tag: 'AppendEvents',
+        events: [
+          {
+            _tag: 'TombstoneClassified',
+            pageId: intent.pageId,
+            surface: intent.surface,
+            reason: 'unknown',
+          },
+        ],
+      }
+    case 'not-run':
+    case 'permission-ambiguous':
+      return blockDecision(
+        'QueryAbsenceUnclassified',
+        intent.surface,
+        'Query absence must be directly classified before recording a tombstone candidate',
+      )
+  }
+}
+
+const planBodyAdapterResult = (intent: BodyAdapterResultIntent): PlanDecision => {
+  const guard = guardBodySafety(intent.safety)
+  const blockedDecision = fromGuard(guard, intent.surface)
+  if (blockedDecision !== undefined) {
+    return blockedDecision
+  }
+
+  return {
+    _tag: 'AppendEvents',
+    events: [],
+  }
+}
+
+export const planIntent = (
+  snapshot: PlannerProjectionSnapshot,
+  intent: PlannerIntent,
+): PlanDecision => {
+  switch (intent._tag) {
+    case 'property-edit':
+      return planPropertyEdit(snapshot, intent)
+    case 'body-edit':
+      return planBodyEdit(snapshot, intent)
+    case 'schema-migration':
+      return planSchemaMigration(snapshot, intent)
+    case 'local-delete':
+      return planLocalDelete(snapshot, intent)
+    case 'path-claim':
+      return planPathClaim(snapshot, intent)
+    case 'query-absence':
+      return planQueryAbsence(snapshot, intent)
+    case 'body-adapter-result':
+      return planBodyAdapterResult(intent)
+  }
+}
+
+export const blockedByGuard = (
+  guard: GuardName,
+  surface: SurfaceKey,
+  summary: string,
+): PlanDecision => blockDecision(guard, surface, summary)

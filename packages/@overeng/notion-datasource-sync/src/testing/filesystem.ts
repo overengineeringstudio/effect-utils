@@ -5,8 +5,8 @@ import { join } from 'node:path'
 
 import { Chunk, Effect, Schema, Stream } from 'effect'
 
-import { AbsolutePath, BodyPointer, Hash, PageId, WorkspaceRelativePath } from '../domain.ts'
-import type { LocalWorkspacePortShape } from '../ports.ts'
+import { AbsolutePath, BodyPointer, Hash, PageId, WorkspaceRelativePath } from '../core/domain.ts'
+import type { LocalWorkspacePortShape } from '../core/ports.ts'
 
 export const decode = <TSchema extends Schema.Schema.AnyNoContext>(
   schema: TSchema,

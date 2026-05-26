@@ -3,15 +3,9 @@ import { DatabaseSync } from 'node:sqlite'
 import { Effect, Fiber, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { makeFakePageBodySyncPort } from '../body-adapter.ts'
-import { runCliCommand, type CliContext } from '../cli.ts'
-import { PagePropertyItemPage } from '../commands.ts'
-import {
-  readWatchDaemonState,
-  runWatchDaemon,
-  runWatchDaemonCycle,
-  type WatchDaemonOptions,
-} from '../daemon.ts'
+import { makeFakePageBodySyncPort } from '../body/adapter.ts'
+import { runCliCommand, type CliContext } from '../cli/main.ts'
+import { PagePropertyItemPage } from '../core/commands.ts'
 import {
   AbsolutePath,
   BodyPointer,
@@ -19,17 +13,23 @@ import {
   WorkspaceRelativePath,
   type Hash as HashType,
   type PageId as PageIdType,
-} from '../domain.ts'
-import { BodySyncError } from '../errors.ts'
-import { SyncEventId } from '../events.ts'
-import { makeGatewayError } from '../gateway.ts'
+} from '../core/domain.ts'
+import { BodySyncError } from '../core/errors.ts'
+import { SyncEventId } from '../core/events.ts'
+import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
+import {
+  readWatchDaemonState,
+  runWatchDaemon,
+  runWatchDaemonCycle,
+  type WatchDaemonOptions,
+} from '../daemon/watch.ts'
+import { makeGatewayError } from '../gateway/gateway.ts'
 import {
   isOwnWriteObservation,
   makeFilesystemLocalWorkspacePort,
   presentArtifactObservation,
-} from '../local-workspace.ts'
-import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
-import { initOneShotSync, pullOneShotSync } from '../sync.ts'
+} from '../local/workspace.ts'
+import { initOneShotSync, pullOneShotSync } from '../sync/sync.ts'
 import { collectWorkspaceScan, makeTempWorkspace } from '../testing/filesystem.ts'
 import {
   defaultQueryContract,

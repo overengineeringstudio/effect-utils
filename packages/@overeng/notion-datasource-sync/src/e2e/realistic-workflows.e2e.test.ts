@@ -5,7 +5,7 @@ import { NodeFileSystem } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../commands.ts'
+import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../core/commands.ts'
 import {
   AbsolutePath,
   BodyPointer,
@@ -13,13 +13,7 @@ import {
   type Hash as HashType,
   type PageId as PageIdType,
   type PropertyId as PropertyIdType,
-} from '../domain.ts'
-import { allGatewayCapabilities } from '../gateway.ts'
-import {
-  canonicalizeWorkspaceRelativePath,
-  filesystemWorkspacePageSidecarPath,
-  makeFilesystemLocalWorkspacePort,
-} from '../local-workspace.ts'
+} from '../core/domain.ts'
 import {
   LocalWorkspacePort,
   NotionDataSourceGateway,
@@ -27,9 +21,15 @@ import {
   type LocalWorkspacePortShape,
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
-} from '../ports.ts'
-import { hashStoreBytes } from '../store-projections.ts'
-import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync.ts'
+} from '../core/ports.ts'
+import { allGatewayCapabilities } from '../gateway/gateway.ts'
+import {
+  canonicalizeWorkspaceRelativePath,
+  filesystemWorkspacePageSidecarPath,
+  makeFilesystemLocalWorkspacePort,
+} from '../local/workspace.ts'
+import { hashStoreBytes } from '../store/projections.ts'
+import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
 import { collectWorkspaceScan, makeTempWorkspace, testPageId } from '../testing/filesystem.ts'
 import {
   defaultQueryContract,

@@ -1,14 +1,12 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { makeUnsupportedPageBodySyncPort } from '../body-adapter.ts'
-import { bodySurfaceKey } from '../canonical.ts'
-import type { BodyPushCommand as BodyPushCommandType } from '../commands.ts'
-import { AbsolutePath, WorkspaceRelativePath, type BodySafetySnapshot } from '../domain.ts'
-import { BodySyncError } from '../errors.ts'
-import { RowObserved } from '../events.ts'
-import { executeOutboxOnce } from '../executor.ts'
-import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local-workspace.ts'
+import { makeUnsupportedPageBodySyncPort } from '../body/adapter.ts'
+import { bodySurfaceKey } from '../core/canonical.ts'
+import type { BodyPushCommand as BodyPushCommandType } from '../core/commands.ts'
+import { AbsolutePath, WorkspaceRelativePath, type BodySafetySnapshot } from '../core/domain.ts'
+import { BodySyncError } from '../core/errors.ts'
+import { RowObserved } from '../core/events.ts'
 import {
   LocalWorkspacePort,
   NotionDataSourceGateway,
@@ -16,8 +14,10 @@ import {
   type LocalWorkspacePortShape,
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
-} from '../ports.ts'
-import { initOneShotSync, pullOneShotSync, pushOneShotSync } from '../sync.ts'
+} from '../core/ports.ts'
+import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local/workspace.ts'
+import { executeOutboxOnce } from '../sync/executor.ts'
+import { initOneShotSync, pullOneShotSync, pushOneShotSync } from '../sync/sync.ts'
 import {
   appendPlannedCommand,
   bodyPointer,

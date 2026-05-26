@@ -1,20 +1,20 @@
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { makeFakePageBodySyncPort } from '../body-adapter.ts'
-import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../commands.ts'
+import { makeFakePageBodySyncPort } from '../body/adapter.ts'
+import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../core/commands.ts'
 import {
   AbsolutePath,
   BodyPointer,
   WorkspaceRelativePath,
   type MaterializePlan,
-} from '../domain.ts'
-import { allGatewayCapabilities } from '../gateway.ts'
-import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local-workspace.ts'
-import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
-import { readOneShotSyncStatus } from '../status.ts'
-import { hashStoreBytes } from '../store-projections.ts'
-import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync.ts'
+} from '../core/domain.ts'
+import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
+import { readOneShotSyncStatus } from '../core/status.ts'
+import { allGatewayCapabilities } from '../gateway/gateway.ts'
+import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local/workspace.ts'
+import { hashStoreBytes } from '../store/projections.ts'
+import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
 import {
   defaultQueryContract,
   decode,

@@ -5,16 +5,16 @@ import { join } from 'node:path'
 import { Effect, Option, Schema, Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { runCliCommand, serviceNameForCliCommand, type CliContext } from '../cli.ts'
-import { AbsolutePath, WorkspaceRelativePath } from '../domain.ts'
-import { presentArtifactObservation } from '../local-workspace.ts'
+import { runCliCommand, serviceNameForCliCommand, type CliContext } from '../cli/main.ts'
+import { AbsolutePath, WorkspaceRelativePath } from '../core/domain.ts'
+import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
+import { presentArtifactObservation } from '../local/workspace.ts'
 import {
   otelServiceNameForCliArgv,
   otelServiceNames,
   spanAttr,
   spanNames,
-} from '../observability.ts'
-import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
+} from '../observability/observability.ts'
 import {
   defaultQueryContract,
   decode,
