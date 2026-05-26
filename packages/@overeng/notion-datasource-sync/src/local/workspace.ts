@@ -24,8 +24,13 @@ import { LocalStoreError } from '../core/errors.ts'
 import type { GuardName } from '../core/guards.ts'
 import { LocalWorkspacePort, type LocalWorkspacePortShape } from '../core/ports.ts'
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
-  Schema.decodeUnknownSync(schema)(value)
+const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: unknown
+}) => Schema.decodeUnknownSync(schema)(value)
 
 const metadataDirectoryName = '.notion-datasource-sync'
 const pageSidecarDirectoryName = 'pages'
@@ -88,7 +93,7 @@ const pathEscapesRoot = (message: string): WorkspacePathDecision => ({
 
 const generatedTitleSlugMaxLength = 120
 
-const normalizeForPolicy = (value: string, policy: PathPolicy): string => {
+const normalizeForPolicy = ({ value, policy }: { readonly value: string; readonly policy: PathPolicy }): string => {
   const unicodeNormalized = policy.unicodeNormalization === 'NFC' ? value.normalize('NFC') : value
   return policy.caseFold === true ? unicodeNormalized.toLocaleLowerCase('en-US') : unicodeNormalized
 }
@@ -145,7 +150,7 @@ export const canonicalizeWorkspaceRelativePath = ({
   readonly policy?: PathPolicy
   readonly symlinkEscapes?: ReadonlyArray<string>
 }): WorkspacePathDecision => {
-  const normalizedInput = normalizeForPolicy(path.replaceAll('\\', '/'), policy)
+  const normalizedInput = normalizeForPolicy({ value: path.replaceAll('\\', '/'), policy })
   if (normalizedInput.length === 0) {
     return pathEscapesRoot('Workspace path must not be empty')
   }
@@ -174,7 +179,7 @@ export const canonicalizeWorkspaceRelativePath = ({
   const relativePath = parts.join('/')
   const escapingSymlinks = new Set(
     symlinkEscapes.map((escapePath) =>
-      normalizeForPolicy(escapePath.replaceAll('\\', '/'), policy),
+      normalizeForPolicy({ value: escapePath.replaceAll('\\', '/'), policy }),
     ),
   )
 
@@ -186,7 +191,7 @@ export const canonicalizeWorkspaceRelativePath = ({
 
   return {
     _tag: 'allowed',
-    path: decode(WorkspaceRelativePath, relativePath),
+    path: decode({ schema: WorkspaceRelativePath, value: relativePath }),
   }
 }
 
@@ -269,7 +274,7 @@ export const ownWriteSuppressionToken = ({
   readonly path: WorkspaceRelativePathType
   readonly bodyHash: HashType
 }): OwnWriteSuppressionTokenType =>
-  decode(OwnWriteSuppressionToken, `materialize:${pageId}:${bodyHash}:${path}`)
+  decode({ schema: OwnWriteSuppressionToken, value: `materialize:${pageId}:${bodyHash}:${path}` })
 
 /** Returns `true` when a local observation matches a known daemon-issued write token and should be suppressed. */
 export const isOwnWriteObservation = ({
@@ -281,9 +286,9 @@ export const isOwnWriteObservation = ({
 }): boolean => observation.ownWriteSuppressionToken === token
 
 const sha256Hash = (value: string): HashType =>
-  decode(Hash, `sha256:${createHash('sha256').update(value).digest('hex')}`)
+  decode({ schema: Hash, value: `sha256:${createHash('sha256').update(value).digest('hex')}` })
 
-const observedAtNow = () => decode(Schema.DateTimeUtc, new Date().toISOString())
+const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date().toISOString() })
 
 /**
  * Persisted JSON sidecar written alongside each materialized body file.
@@ -347,7 +352,7 @@ const localStoreError = ({
     ...(cause === undefined ? {} : { cause }),
   })
 
-const canonicalRoot = async (root: AbsolutePath, operation: string): Promise<string> => {
+const canonicalRoot = async ({ root, operation }: { readonly root: AbsolutePath; readonly operation: string }): Promise<string> => {
   if (isAbsolute(root) === false) {
     throw localStoreError({ operation, message: 'Workspace root must be absolute' })
   }
@@ -360,7 +365,7 @@ const canonicalRoot = async (root: AbsolutePath, operation: string): Promise<str
   }
 }
 
-const isInside = (root: string, path: string): boolean =>
+const isInside = ({ root, path }: { readonly root: string; readonly path: string }): boolean =>
   path === root || path.startsWith(`${root}${sep}`)
 
 const safeWorkspacePath = async ({
@@ -385,7 +390,7 @@ const safeWorkspacePath = async ({
   }
 
   const absolutePath = resolve(rootRealPath, decision.path)
-  if (isInside(rootRealPath, absolutePath) === false) {
+  if (isInside({ root: rootRealPath, path: absolutePath }) === false) {
     throw localStoreError({
       operation,
       message: 'Workspace path resolves outside the root',
@@ -426,7 +431,7 @@ const safeWorkspacePath = async ({
           cause,
         })
       })
-      if (isInside(rootRealPath, target) === false) {
+      if (isInside({ root: rootRealPath, path: target }) === false) {
         throw localStoreError({
           operation,
           message: 'Workspace path crosses a symlink that escapes the root',
@@ -450,20 +455,20 @@ const readJsonFile = async <TSchema extends Schema.Schema.AnyNoContext>({
   readonly damageMessage: string
 }): Promise<typeof schema.Type> => {
   try {
-    return decode(schema, JSON.parse(await readFile(path, 'utf8')))
+    return decode({ schema, value: JSON.parse(await readFile(path, 'utf8')) })
   } catch (cause) {
     throw localStoreError({ operation, message: `${damageMessage}: ${path}`, cause })
   }
 }
 
-const writeJsonFile = async (path: string, value: unknown): Promise<void> => {
+const writeJsonFile = async ({ path, value }: { readonly path: string; readonly value: unknown }): Promise<void> => {
   await mkdir(dirname(path), { recursive: true })
   const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
   await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
   await rename(temporaryPath, path)
 }
 
-const writeTextFileAtomic = async (path: string, content: string): Promise<void> => {
+const writeTextFileAtomic = async ({ path, content }: { readonly path: string; readonly content: string }): Promise<void> => {
   await mkdir(dirname(path), { recursive: true })
   const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
   try {
@@ -475,10 +480,13 @@ const writeTextFileAtomic = async (path: string, content: string): Promise<void>
   }
 }
 
-const readPathClaims = async (
-  root: AbsolutePath,
-  operation: string,
-): Promise<ReadonlyArray<FilesystemPathClaim>> => {
+const readPathClaims = async ({
+  root,
+  operation,
+}: {
+  readonly root: AbsolutePath
+  readonly operation: string
+}): Promise<ReadonlyArray<FilesystemPathClaim>> => {
   const claimsPath = pathClaimsPath(root)
   try {
     return await readJsonFile({
@@ -504,15 +512,21 @@ const readPathClaims = async (
   }
 }
 
-const writePathClaims = async (
-  root: AbsolutePath,
-  claims: ReadonlyArray<FilesystemPathClaim>,
-): Promise<void> => writeJsonFile(pathClaimsPath(root), claims)
+const writePathClaims = async ({
+  root,
+  claims,
+}: {
+  readonly root: AbsolutePath
+  readonly claims: ReadonlyArray<FilesystemPathClaim>
+}): Promise<void> => writeJsonFile({ path: pathClaimsPath(root), value: claims })
 
-const readFilesystemSidecars = async (
-  root: AbsolutePath,
-  operation: string,
-): Promise<ReadonlyArray<FilesystemWorkspaceSidecar>> => {
+const readFilesystemSidecars = async ({
+  root,
+  operation,
+}: {
+  readonly root: AbsolutePath
+  readonly operation: string
+}): Promise<ReadonlyArray<FilesystemWorkspaceSidecar>> => {
   const sidecarDirectory = join(root, metadataDirectoryName, pageSidecarDirectoryName)
   const entries = await readdir(sidecarDirectory, { withFileTypes: true }).catch(
     (cause: unknown) => {
@@ -572,10 +586,13 @@ const materializedBodyPlaceholder = ({
     '',
   ].join('\n')
 
-const upsertClaim = (
-  claims: ReadonlyArray<FilesystemPathClaim>,
-  claim: FilesystemPathClaim,
-): ReadonlyArray<FilesystemPathClaim> => [
+const upsertClaim = ({
+  claims,
+  claim,
+}: {
+  readonly claims: ReadonlyArray<FilesystemPathClaim>
+  readonly claim: FilesystemPathClaim
+}): ReadonlyArray<FilesystemPathClaim> => [
   ...claims.filter((existing) => existing.pageId !== claim.pageId),
   claim,
 ]
@@ -675,8 +692,8 @@ const scanFilesystemWorkspace = async ({
   readonly root: AbsolutePath
   readonly policy: WorkspacePolicy
 }): Promise<ReadonlyArray<LocalArtifactObservationType>> => {
-  const rootRealPath = await canonicalRoot(root, 'scan')
-  const sidecars = await readFilesystemSidecars(root, 'scan')
+  const rootRealPath = await canonicalRoot({ root, operation: 'scan' })
+  const sidecars = await readFilesystemSidecars({ root, operation: 'scan' })
   const sidecarByPath = new Map(sidecars.map((sidecar) => [sidecar.path, sidecar]))
 
   const scanDirectory = async (
@@ -716,7 +733,7 @@ const scanFilesystemWorkspace = async ({
               cause,
             })
           })
-          if (isInside(rootRealPath, target) === false) {
+          if (isInside({ root: rootRealPath, path: target }) === false) {
             throw localStoreError({
               operation: 'scan',
               message: 'Workspace path crosses a symlink that escapes the root',
@@ -855,7 +872,7 @@ export const makeFilesystemLocalWorkspacePort = ({
   claimPath: (claim) =>
     Effect.tryPromise({
       try: async () => {
-        const rootRealPath = await canonicalRoot(root, 'claimPath')
+        const rootRealPath = await canonicalRoot({ root, operation: 'claimPath' })
         const { relativePath } = await safeWorkspacePath({
           root,
           rootRealPath,
@@ -863,8 +880,8 @@ export const makeFilesystemLocalWorkspacePort = ({
           policy: policy.pathPolicy,
           operation: 'claimPath',
         })
-        const sidecars = await readFilesystemSidecars(root, 'claimPath')
-        const claims = await readPathClaims(root, 'claimPath')
+        const sidecars = await readFilesystemSidecars({ root, operation: 'claimPath' })
+        const claims = await readPathClaims({ root, operation: 'claimPath' })
         const existingPageId = pathClaimConflict({
           pageId: claim.pageId,
           path: relativePath,
@@ -880,10 +897,10 @@ export const makeFilesystemLocalWorkspacePort = ({
           } satisfies PathClaimResult
         }
 
-        await writePathClaims(
+        await writePathClaims({
           root,
-          upsertClaim(claims, { pageId: claim.pageId, path: relativePath }),
-        )
+          claims: upsertClaim({ claims, claim: { pageId: claim.pageId, path: relativePath } }),
+        })
         return {
           _tag: 'claimed',
           pageId: claim.pageId,
@@ -902,7 +919,7 @@ export const makeFilesystemLocalWorkspacePort = ({
   materialize: (plan) =>
     Effect.tryPromise({
       try: async () => {
-        const rootRealPath = await canonicalRoot(root, 'materialize')
+        const rootRealPath = await canonicalRoot({ root, operation: 'materialize' })
         const { relativePath, absolutePath } = await safeWorkspacePath({
           root,
           rootRealPath,
@@ -910,8 +927,8 @@ export const makeFilesystemLocalWorkspacePort = ({
           policy: policy.pathPolicy,
           operation: 'materialize',
         })
-        const sidecars = await readFilesystemSidecars(root, 'materialize')
-        const claims = await readPathClaims(root, 'materialize')
+        const sidecars = await readFilesystemSidecars({ root, operation: 'materialize' })
+        const claims = await readPathClaims({ root, operation: 'materialize' })
         const existingPageId = pathClaimConflict({
           pageId: plan.pageId,
           path: relativePath,
@@ -953,22 +970,25 @@ export const makeFilesystemLocalWorkspacePort = ({
           sidecars,
           claims,
         })
-        await writeTextFileAtomic(absolutePath, content)
-        await writeJsonFile(
-          filesystemWorkspacePageSidecarPath({ root, pageId: plan.pageId }),
-          sidecar,
-        )
-        await writePathClaims(
+        await writeTextFileAtomic({ path: absolutePath, content })
+        await writeJsonFile({
+          path: filesystemWorkspacePageSidecarPath({ root, pageId: plan.pageId }),
+          value: sidecar,
+        })
+        await writePathClaims({
           root,
-          upsertClaim(claims, { pageId: plan.pageId, path: relativePath }),
-        )
+          claims: upsertClaim({ claims, claim: { pageId: plan.pageId, path: relativePath } }),
+        })
 
-        return decode(MaterializeResult, {
-          _tag: 'MaterializeResult',
-          pageId: plan.pageId,
-          path: relativePath,
-          bodyHash: plan.bodyPointer.bodyHash,
-          ownWriteSuppressionToken: token,
+        return decode({
+          schema: MaterializeResult,
+          value: {
+            _tag: 'MaterializeResult',
+            pageId: plan.pageId,
+            path: relativePath,
+            bodyHash: plan.bodyPointer.bodyHash,
+            ownWriteSuppressionToken: token,
+          },
         })
       },
       catch: (cause) =>
@@ -1013,7 +1033,7 @@ export const makeFakeLocalWorkspacePort = ({
 
   return {
     scan: (root) => {
-      decode(AbsolutePath, root)
+      decode({ schema: AbsolutePath, value: root })
       return Stream.fromIterable(observations)
     },
     claimPath: (claim) => {
@@ -1056,12 +1076,15 @@ export const makeFakeLocalWorkspacePort = ({
         path: plan.path,
         bodyHash: plan.bodyPointer.bodyHash,
       })
-      const result = decode(MaterializeResult, {
-        _tag: 'MaterializeResult',
-        pageId: plan.pageId,
-        path: plan.path,
-        bodyHash: plan.bodyPointer.bodyHash,
-        ownWriteSuppressionToken: token,
+      const result = decode({
+        schema: MaterializeResult,
+        value: {
+          _tag: 'MaterializeResult',
+          pageId: plan.pageId,
+          path: plan.path,
+          bodyHash: plan.bodyPointer.bodyHash,
+          ownWriteSuppressionToken: token,
+        },
       })
       return Effect.succeed(result)
     },

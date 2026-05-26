@@ -1526,7 +1526,7 @@ describe('Notion sync SQLite store', () => {
           reason: 'query_absence_unclassified',
         }),
       )
-      store.replaceProjectionDigestForRepairTest(rootId, hash('f'))
+      store.replaceProjectionDigestForRepairTest({ rootId, digest: hash('f') })
 
       const decision = store.getCompactionDecision(rootId)
 
