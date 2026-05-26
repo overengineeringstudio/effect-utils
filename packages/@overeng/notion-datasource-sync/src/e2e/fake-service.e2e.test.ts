@@ -491,7 +491,7 @@ describe('notion datasource sync fake-service E2E harness', () => {
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
             absence: {
               classified: true,
-              membershipScope: 'explicit-filter',
+              membershipScope: 'all-data-source-rows',
               filtered: true,
               directRetrieve: 'accessible',
             },
@@ -505,6 +505,27 @@ describe('notion datasource sync fake-service E2E harness', () => {
       _tag: 'BlockedByGuard',
       guard: 'FilteredAbsenceNotProof',
     })
+  })
+
+  it('allows explicit-filter absence to stay scoped without tombstoning accessible pages', () => {
+    const decision = planIntent(
+      buildPlannerSnapshot({
+        queries: [
+          querySurface({
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              membershipScope: 'explicit-filter',
+              filtered: true,
+              directRetrieve: 'accessible',
+            },
+          }),
+        ],
+      }),
+      queryAbsenceIntent(),
+    )
+
+    expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
   })
 
   it('keeps incomplete query scans from producing tombstones', () => {

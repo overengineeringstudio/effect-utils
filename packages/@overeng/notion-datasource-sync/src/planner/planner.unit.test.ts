@@ -289,7 +289,7 @@ describe('notion datasource planner guards', () => {
       guardQueryAbsence({
         classified: false,
         filtered: true,
-        membershipScope: 'explicit-filter',
+        membershipScope: 'all-data-source-rows',
         directRetrieve: 'accessible',
       }),
       'FilteredAbsenceNotProof',
@@ -718,6 +718,37 @@ describe('notion datasource planner', () => {
     })
   })
 
+  it('treats a pending local intent as already landed when the remote hash reaches its target', () => {
+    const decision = planIntent(
+      snapshot({
+        properties: [
+          {
+            pageId,
+            propertyId: propertyA,
+            baseHash: hash('a'),
+            remoteHash: hash('f'),
+            availability: 'complete',
+            pendingLocal: { intentEventId, targetHash: hash('f') },
+          },
+        ],
+      }),
+      {
+        _tag: 'property-edit',
+        intentEventId,
+        commandKey,
+        surface: propertySurfaceKey(pageId, propertyA),
+        pageId,
+        propertyId: propertyA,
+        command: propertyCommand,
+        baseHash: hash('a'),
+        desiredHash: hash('f'),
+        expectedPropertyConfigHash: hash('c'),
+      },
+    )
+
+    expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
+  })
+
   it('allows disjoint property merge when bases are independent', () => {
     const decision = planIntent(
       snapshot({
@@ -818,7 +849,7 @@ describe('notion datasource planner', () => {
             absence: {
               classified: false,
               filtered: true,
-              membershipScope: 'explicit-filter',
+              membershipScope: 'all-data-source-rows',
               directRetrieve: 'accessible',
             },
           },
@@ -868,6 +899,36 @@ describe('notion datasource planner', () => {
       _tag: 'BlockedByGuard',
       guard: 'QueryResultCapExceeded',
     })
+  })
+
+  it('allows explicit-filter absence to prove a page is only outside the sync scope', () => {
+    const decision = planIntent(
+      snapshot({
+        queries: [
+          {
+            dataSourceId,
+            pageId,
+            queryContractHash: hash('b'),
+            completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
+            absence: {
+              classified: true,
+              filtered: true,
+              membershipScope: 'explicit-filter',
+              directRetrieve: 'accessible',
+            },
+          },
+        ],
+      }),
+      {
+        _tag: 'query-absence',
+        surface: querySurfaceKey(dataSourceId, hash('b')),
+        dataSourceId,
+        pageId,
+        queryContractHash: hash('b'),
+      },
+    )
+
+    expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
   })
 
   it('ignores query absence when direct retrieve proves the page is still accessible', () => {
