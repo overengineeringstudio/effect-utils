@@ -35,9 +35,19 @@ const StoreWorkspaceRecord = Schema.Struct({
 
 type StoreWorkspaceRecord = Schema.Schema.Type<typeof StoreWorkspaceRecord>
 
+const StoreManagedWorktreeRecord = Schema.Struct({
+  version: Schema.Literal(REGISTRY_VERSION),
+  path: Schema.String,
+  updatedAt: Schema.String,
+})
+
+type StoreManagedWorktreeRecord = Schema.Schema.Type<typeof StoreManagedWorktreeRecord>
+
 /** Store worktree paths that are currently known to be used by registered workspaces. */
 export interface StoreLiveSet {
   readonly paths: ReadonlySet<string>
+  readonly managedPaths: ReadonlySet<string>
+  readonly managedCount: number
   readonly workspaceCount: number
 }
 
@@ -51,6 +61,9 @@ const workspaceLabel = (workspaceRoot: AbsoluteDirPath): string =>
 const workspaceRegistryDir = (store: MegarepoStore): AbsoluteDirPath =>
   EffectPath.ops.join(store.basePath, EffectPath.unsafe.relativeDir('.state/workspaces/'))
 
+const managedWorktreeRegistryDir = (store: MegarepoStore): AbsoluteDirPath =>
+  EffectPath.ops.join(store.basePath, EffectPath.unsafe.relativeDir('.state/worktrees/'))
+
 const workspaceRecordPath = ({
   store,
   workspaceRoot,
@@ -61,6 +74,12 @@ const workspaceRecordPath = ({
   EffectPath.ops.join(
     workspaceRegistryDir(store),
     EffectPath.unsafe.relativeFile(`${hashPath(normalizePath(workspaceRoot))}.json`),
+  )
+
+const managedWorktreeRecordPath = ({ store, path }: { store: MegarepoStore; path: string }) =>
+  EffectPath.ops.join(
+    managedWorktreeRegistryDir(store),
+    EffectPath.unsafe.relativeFile(`${hashPath(normalizePath(path))}.json`),
   )
 
 const isStorePath = ({ store, path }: { store: MegarepoStore; path: string }): boolean =>
@@ -196,12 +215,70 @@ export const refreshWorkspaceRegistry = ({
       record,
     )
     yield* fs.writeFileString(workspaceRecordPath({ store, workspaceRoot }), content + '\n')
+    for (const livePath of record.livePaths) {
+      yield* markWorktreeManaged({ store, path: livePath })
+    }
     return record
   }).pipe(
     Effect.withSpan('megarepo/store/liveness/refresh-workspace', {
       attributes: {
         'span.label': workspaceLabel(workspaceRoot),
         workspaceRoot,
+      },
+    }),
+  )
+
+/** Marks a worktree as managed by megarepo so default GC may reclaim it when it is no longer live. */
+export const markWorktreeManaged = ({
+  store,
+  path,
+}: {
+  store: MegarepoStore
+  path: string
+}): Effect.Effect<
+  StoreManagedWorktreeRecord,
+  PlatformError.PlatformError | ParseResult.ParseError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const record: StoreManagedWorktreeRecord = {
+      version: REGISTRY_VERSION,
+      path: normalizePath(path),
+      updatedAt: new Date().toISOString(),
+    }
+    const registryDir = managedWorktreeRegistryDir(store)
+    yield* fs.makeDirectory(registryDir, { recursive: true })
+    const content = yield* Schema.encode(
+      Schema.parseJson(StoreManagedWorktreeRecord, { space: 2 }),
+    )(record)
+    yield* fs.writeFileString(managedWorktreeRecordPath({ store, path }), content + '\n')
+    return record
+  }).pipe(
+    Effect.withSpan('megarepo/store/liveness/mark-managed-worktree', {
+      attributes: {
+        'span.label': path.split('/').findLast((part) => part.length > 0) ?? 'worktree',
+      },
+    }),
+  )
+
+/** Removes managed-worktree metadata after GC removes a worktree. */
+export const removeManagedWorktreeRecord = ({
+  store,
+  path,
+}: {
+  store: MegarepoStore
+  path: string
+}): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    yield* fs
+      .remove(managedWorktreeRecordPath({ store, path }))
+      .pipe(Effect.catchAll(() => Effect.void))
+  }).pipe(
+    Effect.withSpan('megarepo/store/liveness/remove-managed-worktree', {
+      attributes: {
+        'span.label': path.split('/').findLast((part) => part.length > 0) ?? 'worktree',
       },
     }),
   )
@@ -256,6 +333,56 @@ const readRegistryRecords = ({
     }),
   )
 
+const readManagedWorktreeRecords = ({
+  store,
+  pruneStale,
+}: {
+  store: MegarepoStore
+  pruneStale: boolean
+}): Effect.Effect<
+  ReadonlyArray<StoreManagedWorktreeRecord>,
+  PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const registryDir = managedWorktreeRegistryDir(store)
+    const exists = yield* fs.exists(registryDir).pipe(Effect.catchAll(() => Effect.succeed(false)))
+    if (exists === false) return []
+
+    const entries = yield* fs
+      .readDirectory(registryDir)
+      .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+    const records: StoreManagedWorktreeRecord[] = []
+
+    for (const entry of entries) {
+      if (entry.endsWith('.json') === false) continue
+      const recordPath = EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(entry))
+      const parsed = yield* fs.readFileString(recordPath).pipe(
+        Effect.flatMap((content) =>
+          Schema.decodeUnknown(Schema.parseJson(StoreManagedWorktreeRecord))(content),
+        ),
+        Effect.catchAll(() => Effect.succeed(null)),
+      )
+      if (parsed === null) continue
+
+      const worktreeExists = yield* fs
+        .exists(parsed.path)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+      if (worktreeExists === true) {
+        records.push(parsed)
+      } else if (pruneStale === true) {
+        yield* fs.remove(recordPath).pipe(Effect.catchAll(() => Effect.void))
+      }
+    }
+
+    return records
+  }).pipe(
+    Effect.withSpan('megarepo/store/liveness/read-managed-worktrees', {
+      attributes: { 'span.label': 'managed' },
+    }),
+  )
+
 /** Collects the store-wide protected path set from the workspace registry. */
 export const collectStoreLiveSet = ({
   store,
@@ -283,7 +410,12 @@ export const collectStoreLiveSet = ({
     }
 
     const records = yield* readRegistryRecords({ store, pruneStale: pruneStaleRegistry })
+    const managedRecords = yield* readManagedWorktreeRecords({
+      store,
+      pruneStale: pruneStaleRegistry,
+    })
     const paths = new Set<string>()
+    const managedPaths = new Set<string>()
     for (const record of records) {
       for (const livePath of record.livePaths) {
         if (isStorePath({ store, path: livePath }) === true) {
@@ -294,8 +426,15 @@ export const collectStoreLiveSet = ({
     for (const livePath of currentWorkspacePaths ?? []) {
       paths.add(normalizePath(livePath))
     }
+    for (const record of managedRecords) {
+      if (isStorePath({ store, path: record.path }) === true) {
+        managedPaths.add(normalizePath(record.path))
+      }
+    }
 
     return {
+      managedCount: managedRecords.length,
+      managedPaths,
       paths,
       workspaceCount: records.length,
     } satisfies StoreLiveSet
@@ -318,3 +457,12 @@ export const isPathProtected = ({
   liveSet: StoreLiveSet
   path: string
 }): boolean => liveSet.paths.has(normalizePath(path))
+
+/** Checks whether a worktree path is owned by megarepo's store metadata. */
+export const isPathManaged = ({
+  liveSet,
+  path,
+}: {
+  liveSet: StoreLiveSet
+  path: string
+}): boolean => liveSet.managedPaths.has(normalizePath(path))

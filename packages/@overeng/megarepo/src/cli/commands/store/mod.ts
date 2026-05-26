@@ -22,7 +22,13 @@ import * as Git from '../../../lib/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { classifyRef } from '../../../lib/ref.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
-import { collectStoreLiveSet, isPathProtected } from '../../../lib/store-liveness.ts'
+import {
+  collectStoreLiveSet,
+  isPathManaged,
+  isPathProtected,
+  markWorktreeManaged,
+  removeManagedWorktreeRecord,
+} from '../../../lib/store-liveness.ts'
 import { StoreLock } from '../../../lib/store-lock.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
@@ -394,7 +400,7 @@ const storeGcCommand = Cli.Command.make(
     ),
     includeUnleased: Cli.Options.boolean('include-unleased').pipe(
       Cli.Options.withDescription(
-        'Remove clean worktrees that are not protected by the workspace registry',
+        'Remove clean unmanaged worktrees that are not protected by the workspace registry',
       ),
       Cli.Options.withDefault(false),
     ),
@@ -474,7 +480,11 @@ const storeGcCommand = Cli.Command.make(
                     return { worktree, action: 'skipped_in_use' as const, status: undefined }
                   }
 
-                  if (all === false && includeUnleased === false) {
+                  if (
+                    all === false &&
+                    includeUnleased === false &&
+                    isPathManaged({ liveSet, path: worktree.path }) === false
+                  ) {
                     return { worktree, action: 'skipped_unleased' as const, status: undefined }
                   }
 
@@ -528,7 +538,7 @@ const storeGcCommand = Cli.Command.make(
                   ref: worktree.ref,
                   path: worktree.path,
                   status: 'skipped_unleased',
-                  message: 'not protected by registry; pass --include-unleased to remove',
+                  message: 'unmanaged; pass --include-unleased to remove',
                 })
                 continue
               }
@@ -568,6 +578,13 @@ const storeGcCommand = Cli.Command.make(
                       ) {
                         return { _tag: 'skipped_live' as const }
                       }
+                      if (
+                        all === false &&
+                        includeUnleased === false &&
+                        isPathManaged({ liveSet: removalLiveSet, path: worktree.path }) === false
+                      ) {
+                        return { _tag: 'skipped_unmanaged' as const }
+                      }
 
                       if (worktree.broken === true) {
                         /** Broken worktrees can't be removed via git — just delete the directory */
@@ -586,6 +603,7 @@ const storeGcCommand = Cli.Command.make(
                         )
                       }
 
+                      yield* removeManagedWorktreeRecord({ store, path: worktree.path })
                       return { _tag: 'removed' as const }
                     }),
                   )
@@ -605,6 +623,17 @@ const storeGcCommand = Cli.Command.make(
                     path: worktree.path,
                     status: 'skipped_in_use',
                     message: 'became protected before removal',
+                  })
+                  continue
+                }
+
+                if (removeResult._tag === 'skipped_unmanaged') {
+                  repoResults.push({
+                    repo: repo.relativePath,
+                    ref: worktree.ref,
+                    path: worktree.path,
+                    status: 'skipped_unleased',
+                    message: 'lost managed metadata before removal',
                   })
                   continue
                 }
@@ -800,6 +829,7 @@ const storeAddCommand = Cli.Command.make(
           )
         }
       }
+      yield* markWorktreeManaged({ store, path: worktreePath })
 
       // Get the current commit
       const commitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
@@ -1182,6 +1212,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
           )
         }
       }
+      yield* markWorktreeManaged({ store, path: worktreePath })
 
       // Get the current commit in the new worktree
       const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)

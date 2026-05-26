@@ -22,6 +22,7 @@ import * as Git from '../git.ts'
 import { detectRefMismatch, formatRefMismatchMessage } from '../issues.ts'
 import type { LockFile } from '../lock.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../ref.ts'
+import { markWorktreeManaged } from '../store-liveness.ts'
 import { StoreLock } from '../store-lock.ts'
 import { Store } from '../store.ts'
 import type { MemberSyncResult, SyncMode } from './types.ts'
@@ -894,6 +895,9 @@ export const syncMember = <R = never>({
       ref: worktreeRef,
       refType: worktreeRefType,
     })
+    if (dryRun === false) {
+      yield* markWorktreeManaged({ store, path: finalWorktreePath })
+    }
 
     // Create symlink from workspace to worktree
     const existingLink = yield* fs

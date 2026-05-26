@@ -701,7 +701,7 @@ const StoreGcSummary = ({
   if (skippedUnleased > 0) {
     parts.push({
       key: 'unleased',
-      element: <Text>{skippedUnleased} skipped (unleased)</Text>,
+      element: <Text>{skippedUnleased} skipped (unmanaged)</Text>,
     })
   }
   if (errors > 0) {

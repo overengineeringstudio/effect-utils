@@ -35,6 +35,7 @@ import {
 } from '../../lib/lock.ts'
 import { classifyRef } from '../../lib/ref.ts'
 import { runPreflightChecks } from '../../lib/store-hygiene.ts'
+import { markWorktreeManaged } from '../../lib/store-liveness.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import {
@@ -299,6 +300,7 @@ export const pinCommand = Cli.Command.make(
                 )
               }
             }
+            yield* markWorktreeManaged({ store, path: worktreePath })
 
             // Update the symlink
             // Ensure repos directory exists
@@ -442,6 +444,7 @@ export const pinCommand = Cli.Command.make(
           })
 
           if (worktreeReady === true) {
+            yield* markWorktreeManaged({ store, path: commitWorktreePath })
             // Update the symlink
             if (
               currentLink !== null &&

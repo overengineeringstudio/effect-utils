@@ -11,7 +11,12 @@ import {
   createWorkspaceWithLock,
   getWorktreeCommit,
 } from '../test-utils/store-setup.ts'
-import { collectWorkspaceLivePaths, refreshWorkspaceRegistry } from './store-liveness.ts'
+import {
+  collectStoreLiveSet,
+  collectWorkspaceLivePaths,
+  markWorktreeManaged,
+  refreshWorkspaceRegistry,
+} from './store-liveness.ts'
 import { makeStoreLayer, Store } from './store.ts'
 
 const normalizePath = (path: string): string => path.replace(/\/+$/, '')
@@ -120,6 +125,32 @@ describe('store-liveness', () => {
           workspaceRoot: normalizePath(workspacePath),
           livePaths: [normalizePath(commitWorktreePath), normalizePath(mainWorktreePath)].sort(),
         })
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'collectStoreLiveSet includes managed worktree records',
+    Effect.fnUntraced(
+      function* () {
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'github.com',
+            owner: 'test-owner',
+            repo: 'managed-repo',
+            branches: ['main'],
+          },
+        ])
+        const mainWorktreePath = worktreePaths['github.com/test-owner/managed-repo#main']!
+        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+
+        yield* markWorktreeManaged({ store, path: mainWorktreePath })
+        const liveSet = yield* collectStoreLiveSet({ store })
+
+        expect(liveSet.managedPaths).toEqual(new Set([normalizePath(mainWorktreePath)]))
+        expect(liveSet.managedCount).toBe(1)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
