@@ -405,8 +405,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       },
     }
 
-    const result = await runLiveNotionPreflight(
-      {
+    const result = await runLiveNotionPreflight({
+      env: {
         enabled: true,
         token: 'ntn_realistic_token_shape',
         tokenSource: 'NOTION_API_TOKEN',
@@ -415,14 +415,14 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         requiredCapabilities: undefined,
         ledgerPath: configured.ledgerPath,
       },
-      configured,
-      {
+      config: configured,
+      options: {
         gatewayLayer: makeNotionDataSourceGatewayLayer(gateway),
         writeLedger: async ({ ledger }) => {
           ledgers.push(ledger)
         },
       },
-    )
+    })
 
     expect(result.missingCapabilities).toEqual([])
     expect(calls).toEqual({ queryRows: 1, retrievePage: 1, retrievePageProperty: 0 })
@@ -480,8 +480,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     }
 
     await expect(
-      runLiveNotionPreflight(
-        {
+      runLiveNotionPreflight({
+        env: {
           enabled: true,
           token: 'ntn_realistic_token_shape',
           tokenSource: 'NOTION_API_TOKEN',
@@ -490,14 +490,14 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           requiredCapabilities: configured.requiredCapabilities.join(','),
           ledgerPath: configured.ledgerPath,
         },
-        configured,
-        {
+        config: configured,
+        options: {
           gatewayLayer: makeNotionDataSourceGatewayLayer(gateway),
           writeLedger: async ({ ledger }) => {
             ledgers.push(ledger)
           },
         },
-      ),
+      }),
     ).rejects.toThrow('Missing Notion capability: page_retrieve')
 
     expect(calls).toEqual({ queryRows: 0, retrievePage: 0 })
@@ -558,8 +558,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     }
 
     await expect(
-      runLiveNotionPreflight(
-        {
+      runLiveNotionPreflight({
+        env: {
           enabled: true,
           token: 'ntn_realistic_token_shape',
           tokenSource: 'NOTION_API_TOKEN',
@@ -568,9 +568,9 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           requiredCapabilities: configured.requiredCapabilities.join(','),
           ledgerPath: configured.ledgerPath,
         },
-        configured,
-        { gatewayLayer: makeNotionDataSourceGatewayLayer(gateway) },
-      ),
+        config: configured,
+        options: { gatewayLayer: makeNotionDataSourceGatewayLayer(gateway) },
+      }),
     ).rejects.toThrow('Missing Notion capability: page_property_paginate')
 
     expect(calls).toEqual({ queryRows: 0, retrievePage: 0, retrievePageProperty: 0 })
@@ -645,8 +645,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       },
     }
 
-    const result = await runLiveNotionPreflight(
-      {
+    const result = await runLiveNotionPreflight({
+      env: {
         enabled: true,
         token: 'ntn_realistic_token_shape',
         tokenSource: 'NOTION_API_TOKEN',
@@ -657,8 +657,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         requiredCapabilities: configured.requiredCapabilities.join(','),
         ledgerPath: configured.ledgerPath,
       },
-      configured,
-      {
+      config: configured,
+      options: {
         gatewayLayer: makeNotionDataSourceGatewayLayer(
           makeNotionDataSourceGatewayFromClient({ client }),
         ),
@@ -666,7 +666,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           ledgers.push(ledger)
         },
       },
-    )
+    })
 
     expect(calls).toEqual({
       retrieveDataSource: 1,
@@ -690,15 +690,17 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       return
     }
 
-    const provisioned = await provisionLiveNotionDataSourceFixture(
-      liveNotionEnvFromProcessEnv(),
-      processLiveConfig,
-    )
+    const provisioned = await provisionLiveNotionDataSourceFixture({
+      env: liveNotionEnvFromProcessEnv(),
+      config: processLiveConfig,
+    })
 
     if (provisioned.config.requiredCapabilities.includes('page_property_paginate') === true) {
       await expect(
-        runLiveNotionPreflight(liveNotionEnvFromProcessEnv(), provisioned.config, {
-          initialLedger: provisioned.ledger,
+        runLiveNotionPreflight({
+          env: liveNotionEnvFromProcessEnv(),
+          config: provisioned.config,
+          options: { initialLedger: provisioned.ledger },
         }),
       ).rejects.toThrow('Missing Notion capability: page_property_paginate')
       await provisioned.cleanup(provisioned.ledger)
@@ -707,11 +709,11 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
     let ledger = provisioned.ledger
     try {
-      const result = await runLiveNotionPreflight(
-        liveNotionEnvFromProcessEnv(),
-        provisioned.config,
-        { initialLedger: ledger },
-      )
+      const result = await runLiveNotionPreflight({
+        env: liveNotionEnvFromProcessEnv(),
+        config: provisioned.config,
+        options: { initialLedger: ledger },
+      })
       ledger = result.ledger
       expect(result.supportedCapabilities).toEqual(
         expect.arrayContaining([...provisioned.config.requiredCapabilities]),
@@ -744,22 +746,24 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
         const env = liveNotionEnvFromProcessEnv()
         const fixtureConfig = { ...processLiveConfig, dataSourceId: undefined }
-        const provisioned = await provisionLiveNotionDataSourceFixture(env, fixtureConfig)
+        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: fixtureConfig })
         let ledger = provisioned.ledger
 
         try {
-          const preflight = await runLiveNotionPreflight(env, provisioned.config, {
-            initialLedger: ledger,
+          const preflight = await runLiveNotionPreflight({
+            env,
+            config: provisioned.config,
+            options: { initialLedger: ledger },
           })
           ledger = preflight.ledger
-          ledger = await runLiveFixtureLifecycle(
-            provisioned.config,
-            makeLiveNotionFixtureLifecycleClient(env, provisioned.config),
-            {
+          ledger = await runLiveFixtureLifecycle({
+            config: provisioned.config,
+            client: makeLiveNotionFixtureLifecycleClient({ env, config: provisioned.config }),
+            options: {
               initialLedger: ledger,
               writeLedger: makeLiveFixtureLedgerWriter({ env, config: provisioned.config }),
             },
-          )
+          })
 
           expect(ledger.entries).toEqual(
             expect.arrayContaining([
@@ -782,7 +786,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         if (processLiveConfig._tag !== 'configured') return
 
         const env = liveNotionEnvFromProcessEnv()
-        const provisioned = await provisionLiveNotionDataSourceFixture(env, processLiveConfig)
+        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: processLiveConfig })
         const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
 
         try {
@@ -1149,7 +1153,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         if (processLiveConfig._tag !== 'configured') return
 
         const env = liveNotionEnvFromProcessEnv()
-        const provisioned = await provisionLiveNotionDataSourceFixture(env, processLiveConfig)
+        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: processLiveConfig })
         const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
 
         try {
@@ -1238,20 +1242,20 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
         const env = liveNotionEnvFromProcessEnv()
         const fixtureConfig = { ...processLiveConfig, dataSourceId: undefined }
-        const provisioned = await provisionLiveNotionDataSourceFixture(env, fixtureConfig)
+        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: fixtureConfig })
         let ledger = provisioned.ledger
 
         try {
-          ledger = await runLiveFixtureSoak(
-            provisioned.config,
-            makeLiveNotionFixtureLifecycleClient(env, provisioned.config),
-            {
+          ledger = await runLiveFixtureSoak({
+            config: provisioned.config,
+            client: makeLiveNotionFixtureLifecycleClient({ env, config: provisioned.config }),
+            options: {
               scenarioName: 'NDS-LIVE-bounded-fixture-soak',
               cycles: 2,
               initialLedger: ledger,
               writeLedger: makeLiveFixtureLedgerWriter({ env, config: provisioned.config }),
             },
-          )
+          })
 
           expect(ledger.entries).toEqual(
             expect.arrayContaining([
@@ -1318,9 +1322,13 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       },
     }
 
-    const ledger = await runLiveFixtureLifecycle(configured, client, {
-      writeLedger: async ({ ledger: writtenLedger }) => {
-        ledgers.push(writtenLedger)
+    const ledger = await runLiveFixtureLifecycle({
+      config: configured,
+      client,
+      options: {
+        writeLedger: async ({ ledger: writtenLedger }) => {
+          ledgers.push(writtenLedger)
+        },
       },
     })
 
@@ -1365,11 +1373,15 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       restore: async () => {},
     }
 
-    const ledger = await runLiveFixtureSoak(configured, client, {
-      scenarioName: 'NDS-LIVE-bounded-fixture-soak',
-      cycles: 2,
-      writeLedger: async ({ ledger: writtenLedger }) => {
-        ledgers.push(writtenLedger)
+    const ledger = await runLiveFixtureSoak({
+      config: configured,
+      client,
+      options: {
+        scenarioName: 'NDS-LIVE-bounded-fixture-soak',
+        cycles: 2,
+        writeLedger: async ({ ledger: writtenLedger }) => {
+          ledgers.push(writtenLedger)
+        },
       },
     })
 
@@ -1550,9 +1562,13 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     }
 
     await expect(
-      runLiveFixtureLifecycle(configured, client, {
-        writeLedger: async ({ ledger: writtenLedger }) => {
-          ledgers.push(writtenLedger)
+      runLiveFixtureLifecycle({
+        config: configured,
+        client,
+        options: {
+          writeLedger: async ({ ledger: writtenLedger }) => {
+            ledgers.push(writtenLedger)
+          },
         },
       }),
     ).rejects.toThrow('forced fixture verification failure')
@@ -1623,9 +1639,13 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
       let failure: unknown
       try {
-        await runLiveFixtureLifecycle(configured, client, {
-          writeLedger: async ({ ledger: writtenLedger }) => {
-            ledgers.push(writtenLedger)
+        await runLiveFixtureLifecycle({
+          config: configured,
+          client,
+          options: {
+            writeLedger: async ({ ledger: writtenLedger }) => {
+              ledgers.push(writtenLedger)
+            },
           },
         })
       } catch (cause) {
@@ -1668,7 +1688,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         }
 
         const env = liveNotionEnvFromProcessEnv()
-        const result = await runLiveNotionDemoShowcase(env, processLiveConfig)
+        const result = await runLiveNotionDemoShowcase({ env, config: processLiveConfig })
 
         expect(result.demoPageId).toBe(processLiveConfig.demoPageId)
         expect(result.rowIds).toHaveLength(6)

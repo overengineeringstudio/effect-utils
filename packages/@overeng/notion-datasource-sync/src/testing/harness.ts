@@ -78,26 +78,13 @@ import {
 } from '../store/store.ts'
 
 /** Decode an unknown value against a schema using sync semantics — throws on invalid input (test-only helper, mirrors `Schema.decodeUnknownSync(schema)(value)`). */
-export function decode<TSchema extends Schema.Schema.AnyNoContext>(
-  input: {
-    readonly schema: TSchema
-    readonly value: unknown
-  },
-): typeof input.schema.Type
-export function decode<TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: unknown,
-): typeof schema.Type
-export function decode<TSchema extends Schema.Schema.AnyNoContext>(
-  input: TSchema | { readonly schema: TSchema; readonly value: unknown },
-  value?: unknown,
-) {
-  if ('schema' in input) {
-    return Schema.decodeUnknownSync(input.schema)(input.value)
-  }
-
-  return Schema.decodeUnknownSync(input)(value)
-}
+export const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: unknown
+}): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
 /** Build a decoded `Hash` branded value from an arbitrary string — stable shorthand for test assertions. */
 export const hash = (value: string): HashType =>
