@@ -35,6 +35,7 @@ import { NotionDataSourceGatewayLive } from '../gateway/notion.ts'
 import { makeFilesystemLocalWorkspacePort } from '../local/workspace.ts'
 import { observeRemoteDataSource } from '../sync/observation.ts'
 
+/** Raw environment variables consumed by live-Notion E2E tests, parsed from `process.env` before validation. */
 export type LiveNotionEnv = {
   readonly enabled: boolean
   readonly token: string | undefined
@@ -47,6 +48,7 @@ export type LiveNotionEnv = {
   readonly ledgerPath: string | undefined
 }
 
+/** Tagged union representing the outcome of parsing live-Notion E2E config — either skipped, invalid, or fully configured with a run ID. */
 export type LiveNotionConfig =
   | {
       readonly _tag: 'not-configured'
@@ -71,12 +73,15 @@ export type LiveNotionConfig =
       readonly demoPageId?: string | undefined
     }
 
+/** Narrowed alias for the `'configured'` variant of `LiveNotionConfig` — guarantees a run ID, parent page, and ledger path are present. */
 export type ConfiguredLiveNotionConfig = Extract<LiveNotionConfig, { readonly _tag: 'configured' }>
 
+/** `ConfiguredLiveNotionConfig` narrowed further to guarantee `dataSourceId` is non-undefined — required for fixture lifecycle and preflight operations. */
 export type LiveNotionConfigWithDataSource = ConfiguredLiveNotionConfig & {
   readonly dataSourceId: string
 }
 
+/** Single record in the fixture ledger tracking one Notion object through its lifecycle phase and current cleanup state. */
 export type LiveFixtureLedgerEntry = {
   readonly phase: 'preflight' | 'create' | 'mutate' | 'verify' | 'trash' | 'restore'
   readonly objectId: string
@@ -92,12 +97,14 @@ export type LiveFixtureLedgerEntry = {
     | 'cleanup-failed'
 }
 
+/** Append-only run ledger written to disk (and optionally published to Notion) so fixture cleanup state survives test crashes. */
 export type LiveFixtureLedger = {
   readonly runId: string
   readonly notionVersion: '2026-03-11'
   readonly entries: ReadonlyArray<LiveFixtureLedgerEntry>
 }
 
+/** Structured result returned by `runLiveNotionPreflight` — carries capability sets, the initial ledger snapshot, and identifiers for the run. */
 export type LiveNotionPreflightResult = {
   readonly runId: string
   readonly dataSourceId: string
@@ -108,18 +115,21 @@ export type LiveNotionPreflightResult = {
   readonly ledger: LiveFixtureLedger
 }
 
+/** Optional overrides for `runLiveNotionPreflight` — swap the gateway layer in unit tests or inject a custom ledger writer/initial state. */
 export type LiveNotionPreflightOptions = {
   readonly gatewayLayer?: Layer.Layer<NotionDataSourceGateway>
   readonly writeLedger?: WriteLiveFixtureLedger
   readonly initialLedger?: LiveFixtureLedger
 }
 
+/** Minimal identity descriptor for a Notion object created by a fixture lifecycle step — passed between create/mutate/verify/trash/restore callbacks. */
 export type LiveFixtureObject = {
   readonly objectId: string
   readonly objectType: LiveFixtureLedgerEntry['objectType']
   readonly purpose: string
 }
 
+/** Strategy interface that a test supplies to drive a single fixture through the full create→mutate→verify→trash→restore lifecycle against real Notion. */
 export type LiveFixtureLifecycleClient = {
   readonly create: (input: {
     readonly runId: string
@@ -132,11 +142,13 @@ export type LiveFixtureLifecycleClient = {
   readonly restore: (fixture: LiveFixtureObject) => Promise<void>
 }
 
+/** Optional overrides for `runLiveFixtureLifecycle` and `runLiveFixtureSoak` — inject a custom ledger writer or seed the ledger with prior state. */
 export type LiveFixtureLifecycleOptions = {
   readonly writeLedger?: WriteLiveFixtureLedger
   readonly initialLedger?: LiveFixtureLedger
 }
 
+/** Thrown when a fixture trash or restore step fails; carries the final ledger state so the caller can persist or report partial cleanup. */
 export class LiveFixtureCleanupError extends Error {
   readonly phase: 'trash' | 'restore'
   readonly ledger: LiveFixtureLedger
@@ -153,9 +165,11 @@ export class LiveFixtureCleanupError extends Error {
   }
 }
 
+/** Default capability set for preflight checks — mirrors `readOnlyGatewayCapabilities`, sufficient for read-only E2E tests. */
 export const defaultLivePreflightCapabilities =
   readOnlyGatewayCapabilities satisfies ReadonlyArray<CapabilityName>
 
+/** Stricter capability set that requires paginated property access in addition to basic retrieve/query — used by the demo showcase and soak tests. */
 export const strictLivePreflightCapabilities = [
   'data_source_retrieve',
   'data_source_query',
@@ -174,6 +188,7 @@ const capabilityNames = new Set<CapabilityName>([
   'page_restore',
 ])
 
+/** Read live-Notion test configuration from `process.env` (or an injected env map) and normalize it into `LiveNotionEnv`. */
 export const liveNotionEnvFromProcessEnv = (
   env: NodeJS.ProcessEnv = process.env,
 ): LiveNotionEnv => {
@@ -245,6 +260,7 @@ const parseRequiredCapabilities = (
   }
 }
 
+/** Validate a `LiveNotionEnv` and produce a typed `LiveNotionConfig` — returns `not-configured` when the opt-in flag is absent, `invalid-config` when tokens or IDs are missing/malformed. */
 export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig => {
   const parentPageId = env.parentPageId
   const dataSourceId = env.dataSourceId
@@ -264,7 +280,7 @@ export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig =>
     ...(parentPageId === undefined ? ['NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID'] : []),
   ]
   const invalid = [
-    ...(token !== undefined && looksLikeDummySecret(token)
+    ...(token !== undefined && looksLikeDummySecret(token) === true
       ? [env.tokenSource ?? 'NOTION_API_TOKEN or NOTION_TOKEN']
       : []),
     ...(parentPageId !== undefined && looksLikeNotionPageId(parentPageId) === false
@@ -313,6 +329,7 @@ export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig =>
   }
 }
 
+/** Construct a fresh empty ledger for a run, seeded with the run ID and Notion API version from the config. */
 export const emptyLiveFixtureLedger = (config: ConfiguredLiveNotionConfig): LiveFixtureLedger =>
   ({
     runId: config.runId,
@@ -320,6 +337,7 @@ export const emptyLiveFixtureLedger = (config: ConfiguredLiveNotionConfig): Live
     entries: [],
   }) satisfies LiveFixtureLedger
 
+/** Build a `LiveFixtureLedgerEntry` with `cleanupState` defaulting to `'created'` when not supplied. */
 export const ledgerEntry = (
   input: Omit<LiveFixtureLedgerEntry, 'cleanupState'> & {
     readonly cleanupState?: LiveFixtureLedgerEntry['cleanupState']
@@ -329,29 +347,36 @@ export const ledgerEntry = (
   ...input,
 })
 
-const appendLedgerEntry = (
-  ledger: LiveFixtureLedger,
-  entry: LiveFixtureLedgerEntry,
-): LiveFixtureLedger => ({
+const appendLedgerEntry = ({
+  ledger,
+  entry,
+}: {
+  readonly ledger: LiveFixtureLedger
+  readonly entry: LiveFixtureLedgerEntry
+}): LiveFixtureLedger => ({
   ...ledger,
   entries: [...ledger.entries, entry],
 })
 
+/** Callback signature for persisting a `LiveFixtureLedger` to a path — the default impl writes JSON; tests may inject an in-memory variant. */
 export type WriteLiveFixtureLedger = (input: {
   readonly path: string
   readonly ledger: LiveFixtureLedger
 }) => Promise<void>
 
+/** Callback signature for pushing a rendered ledger as Markdown to a Notion page — used to publish live run status when `e2eLedgerPageId` is configured. */
 export type PublishLiveFixtureLedger = (input: {
   readonly pageId: string
   readonly markdown: string
 }) => Promise<void>
 
+/** Default `WriteLiveFixtureLedger` impl — serializes the ledger to formatted JSON and writes it to `input.path`, creating parent directories as needed. */
 export const writeLiveFixtureLedger: WriteLiveFixtureLedger = async (input) => {
   await mkdir(dirname(input.path), { recursive: true })
   await writeFile(input.path, `${JSON.stringify(input.ledger, null, 2)}\n`, 'utf8')
 }
 
+/** Render a `LiveFixtureLedger` as a Markdown string suitable for publishing to a Notion ledger page — includes run metadata, entry list, and a derived status badge. */
 export const formatLiveFixtureLedgerMarkdown = (input: {
   readonly ledger: LiveFixtureLedger
   readonly ledgerPath: string
@@ -399,6 +424,7 @@ export const formatLiveFixtureLedgerMarkdown = (input: {
   ].join('\n')
 }
 
+/** Build a `WriteLiveFixtureLedger` that writes locally and, when `e2eLedgerPageId` is set, also publishes the rendered Markdown to the configured Notion ledger page. */
 export const makeLiveFixtureLedgerWriter = (input: {
   readonly env: LiveNotionEnv
   readonly config: ConfiguredLiveNotionConfig
@@ -528,6 +554,7 @@ const isAlreadyArchivedNotionError = (cause: unknown): boolean => {
   return visit(cause)
 }
 
+/** Result returned by `runLiveNotionDemoShowcase` — includes the created database/data-source identifiers, row IDs, and observation metrics. */
 export type LiveNotionDemoShowcaseResult = {
   readonly runId: string
   readonly demoPageId: string
@@ -679,7 +706,7 @@ const cleanupPreviousDemoBlocks = (pageId: string) =>
             : undefined
         if (
           childDatabaseTitle !== undefined &&
-          staleDemoDatabaseTitlePrefixes.some((prefix) => childDatabaseTitle.startsWith(prefix))
+          staleDemoDatabaseTitlePrefixes.some((prefix) => childDatabaseTitle.startsWith(prefix)) === true
         ) {
           return archiveDemoDatabase(block.id)
         }
@@ -731,10 +758,20 @@ const resolvePropertyId = ({
   return property.id
 }
 
-export const runLiveNotionDemoShowcase = async (
-  env: LiveNotionEnv,
-  config: ConfiguredLiveNotionConfig,
-): Promise<LiveNotionDemoShowcaseResult> => {
+/**
+ * End-to-end demo run against a real Notion workspace — creates an inline database with six rows, observes it
+ * through the full datasource-sync pipeline (including body materialization and a filtered high-watermark query),
+ * and appends a verification summary to the configured demo page.
+ *
+ * Cleans up the temporary workspace directory in a `finally` block but does NOT archive the Notion database.
+ */
+export const runLiveNotionDemoShowcase = async ({
+  env,
+  config,
+}: {
+  readonly env: LiveNotionEnv
+  readonly config: ConfiguredLiveNotionConfig
+}): Promise<LiveNotionDemoShowcaseResult> => {
   if (env.token === undefined) {
     throw new Error('live Notion demo showcase requires a token after configuration validation')
   }
@@ -917,10 +954,14 @@ const makeNotionLiveLayer = (token: string) =>
     FetchHttpClient.layer,
   )
 
-export const makeLiveNotionFixtureLifecycleClient = (
-  env: LiveNotionEnv,
-  config: LiveNotionConfigWithDataSource,
-): LiveFixtureLifecycleClient => {
+/** Create a `LiveFixtureLifecycleClient` that operates on real Notion pages in the given data source — suitable for passing to `runLiveFixtureLifecycle`. */
+export const makeLiveNotionFixtureLifecycleClient = ({
+  env,
+  config,
+}: {
+  readonly env: LiveNotionEnv
+  readonly config: LiveNotionConfigWithDataSource
+}): LiveFixtureLifecycleClient => {
   if (env.token === undefined) {
     throw new Error('live Notion fixture lifecycle requires a token after configuration validation')
   }
@@ -1023,17 +1064,29 @@ export const makeLiveNotionFixtureLifecycleClient = (
   }
 }
 
+/** Provisioned fixture handle returned by `provisionLiveNotionDataSourceFixture` — bundles the resolved config (with a concrete data-source ID) and a cleanup callback. */
 export type LiveNotionDataSourceFixture = {
   readonly config: LiveNotionConfigWithDataSource
   readonly ledger: LiveFixtureLedger
   readonly cleanup: (ledger: LiveFixtureLedger) => Promise<LiveFixtureLedger>
 }
 
-export const provisionLiveNotionDataSourceFixture = async (
-  env: LiveNotionEnv,
-  config: ConfiguredLiveNotionConfig,
-  options: LiveFixtureLifecycleOptions = {},
-): Promise<LiveNotionDataSourceFixture> => {
+/**
+ * Provision a disposable inline Notion database for a test run and return a `LiveNotionDataSourceFixture`.
+ *
+ * When `config.dataSourceId` is already set, it short-circuits without creating anything. Otherwise it creates
+ * a new inline database under `config.parentPageId` and registers both the database and the derived data-source
+ * in the ledger. The returned `cleanup` callback archives the database and updates the ledger accordingly.
+ */
+export const provisionLiveNotionDataSourceFixture = async ({
+  env,
+  config,
+  options = {},
+}: {
+  readonly env: LiveNotionEnv
+  readonly config: ConfiguredLiveNotionConfig
+  readonly options?: LiveFixtureLifecycleOptions
+}): Promise<LiveNotionDataSourceFixture> => {
   if (env.token === undefined) {
     throw new Error(
       'live Notion data source fixture requires a token after configuration validation',
@@ -1057,7 +1110,7 @@ export const provisionLiveNotionDataSourceFixture = async (
   }
 
   const record = async (entry: LiveFixtureLedgerEntry) => {
-    ledger = appendLedgerEntry(ledger, entry)
+    ledger = appendLedgerEntry({ ledger, entry })
     await persist()
   }
 
@@ -1166,11 +1219,21 @@ export const provisionLiveNotionDataSourceFixture = async (
   }
 }
 
-export const runLiveFixtureLifecycle = async (
-  config: LiveNotionConfigWithDataSource,
-  client: LiveFixtureLifecycleClient,
-  options: LiveFixtureLifecycleOptions = {},
-): Promise<LiveFixtureLedger> => {
+/**
+ * Drive a single create→mutate→verify→trash→restore→re-trash cycle against real Notion using the supplied client.
+ *
+ * Records each phase in the ledger and persists it after every step. If the operation phase throws, the fixture
+ * is still trashed before the error is re-raised. Throws `LiveFixtureCleanupError` if cleanup itself fails.
+ */
+export const runLiveFixtureLifecycle = async ({
+  config,
+  client,
+  options = {},
+}: {
+  readonly config: LiveNotionConfigWithDataSource
+  readonly client: LiveFixtureLifecycleClient
+  readonly options?: LiveFixtureLifecycleOptions
+}): Promise<LiveFixtureLedger> => {
   const writeLedger = options.writeLedger ?? writeLiveFixtureLedger
   let ledger = options.initialLedger ?? emptyLiveFixtureLedger(config)
   let fixture: LiveFixtureObject | undefined
@@ -1180,14 +1243,17 @@ export const runLiveFixtureLifecycle = async (
   }
 
   const record = async (entry: LiveFixtureLedgerEntry) => {
-    ledger = appendLedgerEntry(ledger, entry)
+    ledger = appendLedgerEntry({ ledger, entry })
     await persist()
   }
 
-  const trashFixture = async (
-    fixtureToTrash: LiveFixtureObject,
-    cleanupState: LiveFixtureLedgerEntry['cleanupState'],
-  ) => {
+  const trashFixture = async ({
+    fixtureToTrash,
+    cleanupState,
+  }: {
+    readonly fixtureToTrash: LiveFixtureObject
+    readonly cleanupState: LiveFixtureLedgerEntry['cleanupState']
+  }) => {
     try {
       await client.trash(fixtureToTrash)
       await record(
@@ -1270,9 +1336,9 @@ export const runLiveFixtureLifecycle = async (
 
   if (fixture !== undefined) {
     if (operationFailure !== undefined) {
-      await trashFixture(fixture, 'verified-cleaned')
+      await trashFixture({ fixtureToTrash: fixture, cleanupState: 'verified-cleaned' })
     } else {
-      await trashFixture(fixture, 'trashed')
+      await trashFixture({ fixtureToTrash: fixture, cleanupState: 'trashed' })
 
       try {
         await client.restore(fixture)
@@ -1298,7 +1364,7 @@ export const runLiveFixtureLifecycle = async (
         throw new LiveFixtureCleanupError({ phase: 'restore', cause, ledger })
       }
 
-      await trashFixture(fixture, 'verified-cleaned')
+      await trashFixture({ fixtureToTrash: fixture, cleanupState: 'verified-cleaned' })
     }
   }
 
@@ -1309,14 +1375,19 @@ export const runLiveFixtureLifecycle = async (
   return ledger
 }
 
-export const runLiveFixtureSoak = async (
-  config: LiveNotionConfigWithDataSource,
-  client: LiveFixtureLifecycleClient,
-  options: LiveFixtureLifecycleOptions & {
+/** Run `runLiveFixtureLifecycle` repeatedly for `options.cycles` iterations, accumulating the ledger across cycles — useful for stress-testing Notion API reliability. */
+export const runLiveFixtureSoak = async ({
+  config,
+  client,
+  options,
+}: {
+  readonly config: LiveNotionConfigWithDataSource
+  readonly client: LiveFixtureLifecycleClient
+  readonly options: LiveFixtureLifecycleOptions & {
     readonly scenarioName: string
     readonly cycles: number
-  },
-): Promise<LiveFixtureLedger> => {
+  }
+}): Promise<LiveFixtureLedger> => {
   if (options.cycles < 1 || Number.isInteger(options.cycles) === false) {
     throw new Error('live fixture soak requires a positive integer cycle count')
   }
@@ -1329,7 +1400,7 @@ export const runLiveFixtureSoak = async (
   }
 
   const record = async (entry: LiveFixtureLedgerEntry) => {
-    ledger = appendLedgerEntry(ledger, entry)
+    ledger = appendLedgerEntry({ ledger, entry })
     await persist()
   }
 
@@ -1344,9 +1415,10 @@ export const runLiveFixtureSoak = async (
   )
 
   for (let cycle = 1; cycle <= options.cycles; cycle += 1) {
-    ledger = await runLiveFixtureLifecycle(config, client, {
-      initialLedger: ledger,
-      writeLedger,
+    ledger = await runLiveFixtureLifecycle({
+      config,
+      client,
+      options: { initialLedger: ledger, writeLedger },
     })
     await record(
       ledgerEntry({
@@ -1372,11 +1444,22 @@ export const runLiveFixtureSoak = async (
   return ledger
 }
 
-export const runLiveNotionPreflight = async (
-  env: LiveNotionEnv,
-  config: LiveNotionConfigWithDataSource,
-  options: LiveNotionPreflightOptions = {},
-): Promise<LiveNotionPreflightResult> => {
+/**
+ * Verify that the configured Notion data source and parent page are accessible and that the integration token
+ * carries at least the required capabilities.
+ *
+ * Writes an initial preflight ledger snapshot and returns a `LiveNotionPreflightResult` with capability details.
+ * Throws if any required capability is missing or if either API call fails.
+ */
+export const runLiveNotionPreflight = async ({
+  env,
+  config,
+  options = {},
+}: {
+  readonly env: LiveNotionEnv
+  readonly config: LiveNotionConfigWithDataSource
+  readonly options?: LiveNotionPreflightOptions
+}): Promise<LiveNotionPreflightResult> => {
   if (env.token === undefined) {
     throw new Error('live Notion preflight requires a token after configuration validation')
   }
