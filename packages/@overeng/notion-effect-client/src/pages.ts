@@ -4,6 +4,7 @@ import { Effect, Option, Schema } from 'effect'
 import {
   type Page,
   PageMarkdownSchema,
+  type PagePropertyItem,
   PagePropertyItemResponseSchema,
   PageSchema,
 } from '@overeng/notion-effect-schema'
@@ -12,7 +13,7 @@ import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { NotionApiError as NotionApiErrorClass } from './error.ts'
 import { get, patch, post } from './internal/http.ts'
-import { toPaginatedResult } from './internal/pagination.ts'
+import { type PaginatedResult, toPaginatedResult } from './internal/pagination.ts'
 import { decodePage, type PageDecodeError, type TypedPage } from './typed-page.ts'
 
 // -----------------------------------------------------------------------------
@@ -36,6 +37,10 @@ export interface RetrievePagePropertyOptions {
   readonly propertyId: string
   readonly startCursor?: string
   readonly pageSize?: number
+}
+
+export interface RetrievePagePropertyResult extends PaginatedResult<PagePropertyItem> {
+  readonly propertyItem?: unknown
 }
 
 /** Options for retrieving a page (without schema = raw Page result) */
@@ -247,14 +252,19 @@ export const retrieveProperty = Effect.fn('NotionPages.retrieveProperty')(functi
   })
 
   if (response.object === 'list') {
-    return toPaginatedResult(response)
+    const result: RetrievePagePropertyResult = {
+      ...toPaginatedResult(response),
+      propertyItem: response.property_item,
+    }
+    return result
   }
 
-  return {
+  const result: RetrievePagePropertyResult = {
     results: [response],
     nextCursor: Option.none(),
     hasMore: false,
   }
+  return result
 })
 
 /**

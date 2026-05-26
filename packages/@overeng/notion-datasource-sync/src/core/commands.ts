@@ -208,6 +208,7 @@ export const PagePropertyItemPage = Schema.TaggedStruct('PagePropertyItemPage', 
   pageId: PageId,
   propertyId: PropertyId,
   items: Schema.Array(PagePropertyItem),
+  listMetadataHash: Schema.optional(Hash),
   nextCursor: Schema.NullOr(QueryCursor),
   hasMore: Schema.Boolean,
 }).annotations({ identifier: 'NotionDatasourceSync.PagePropertyItemPage' })

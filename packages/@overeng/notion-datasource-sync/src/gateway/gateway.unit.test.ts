@@ -937,6 +937,49 @@ describe('Notion data source gateway real adapter boundary', () => {
     expect(requestId).toBe('notion-client-success-request-id-unavailable')
   })
 
+  it('preserves paginated page-property list metadata separately from relation item count', async () => {
+    const relation = propertyId('relation')
+    const propertyItem = {
+      id: relation,
+      type: 'rollup',
+      rollup: { type: 'number', number: 2, function: 'count' },
+      next_url: null,
+    }
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
+        retrievePageProperty: () =>
+          Effect.succeed({
+            results: [
+              {
+                object: 'property_item',
+                id: relation,
+                type: 'relation',
+                relation: { id: pageId('related-page-1') },
+              },
+            ],
+            propertyItem,
+            nextCursor: Option.none(),
+            hasMore: false,
+          }),
+      }),
+    })
+
+    const pages = await Effect.runPromise(
+      gateway
+        .retrievePageProperty({
+          _tag: 'RetrievePagePropertyInput',
+          pageId: pageId('page-1'),
+          propertyId: relation,
+          startCursor: null,
+        })
+        .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)),
+    )
+
+    expect(pages).toHaveLength(1)
+    expect(pages[0]?.items).toHaveLength(1)
+    expect(pages[0]?.listMetadataHash).toBe(canonicalHash(propertyItem))
+  })
+
   it('encodes the supported writable Notion page property matrix', async () => {
     const patch = await Effect.runPromise(
       pagePropertyPatchToNotion({

@@ -63,6 +63,10 @@ export type NotionGatewayPage = Pick<
   'id' | 'parent' | 'properties' | 'last_edited_time' | 'in_trash'
 >
 
+type NotionGatewayPagePropertyResult = PaginatedResult<NotionPagePropertyItem> & {
+  readonly propertyItem?: unknown
+}
+
 /**
  * Minimal Notion API surface the live datasource-sync gateway depends on.
  *
@@ -89,7 +93,7 @@ export type NotionGatewayClient = {
     readonly propertyId: string
     readonly pageSize: number
     readonly startCursor: string | undefined
-  }) => Effect.Effect<PaginatedResult<NotionPagePropertyItem>, unknown>
+  }) => Effect.Effect<NotionGatewayPagePropertyResult, unknown>
   readonly updatePage: (input: {
     readonly pageId: string
     readonly properties?: Record<string, unknown>
@@ -797,7 +801,7 @@ const pagePropertyItemsPageFromRemote = (input: {
     readonly propertyId: PropertyId
   }
   readonly apiContract: NotionApiContractType
-  readonly result: PaginatedResult<NotionPagePropertyItem>
+  readonly result: NotionGatewayPagePropertyResult
 }) =>
   PagePropertyItemPage.make({
     _tag: 'PagePropertyItemPage',
@@ -814,6 +818,8 @@ const pagePropertyItemsPageFromRemote = (input: {
         valueHash: canonicalHash(propertyValueFromRemoteItem(item)),
       }),
     ),
+    listMetadataHash:
+      input.result.propertyItem === undefined ? undefined : canonicalHash(input.result.propertyItem),
     nextCursor: Option.match(input.result.nextCursor, {
       onNone: () => null,
       onSome: (cursor) => QueryCursor.make(cursor),

@@ -32,6 +32,13 @@ Vitest.describe('NotionPages.retrieveProperty', () => {
           relation: { id: 'related-page-1' },
         },
       ])
+      expect(result.propertyItem).toEqual({
+        id: 'relation',
+        type: 'rollup',
+        relation: {},
+        rollup: { type: 'number', number: 3, function: 'count' },
+        next_url: null,
+      })
       expect(result.hasMore).toBe(true)
       expect(Option.getOrNull(result.nextCursor)).toBe('cursor-2')
     }).pipe(
@@ -47,8 +54,9 @@ Vitest.describe('NotionPages.retrieveProperty', () => {
               type: 'property_item',
               property_item: {
                 id: 'relation',
-                type: 'relation',
+                type: 'rollup',
                 relation: {},
+                rollup: { type: 'number', number: 3, function: 'count' },
                 next_url: null,
               },
               results: [
