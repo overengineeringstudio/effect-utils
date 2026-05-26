@@ -42,12 +42,14 @@ import { spanAttr, spanAttributes, spanNames } from '../observability/observabil
 import type { OutboxCommandEnvelope, PlannerEvent } from '../planner/planner.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 
+/** Caller-supplied descriptor for a schema property that should be observed per row during a remote observation pass. */
 export type SchemaPropertyObservation = {
   readonly propertyId: PropertyIdType
   readonly configHash: HashType
   readonly writeClass: PropertyWriteClass
 }
 
+/** Configuration for `observeRemoteDataSource`: identifies the data source, the query contract, schema properties to fetch per row, and optional body materialization settings. */
 export type RemoteObservationOptions = {
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceIdType
@@ -61,6 +63,7 @@ export type RemoteObservationOptions = {
   readonly now?: () => Date
 }
 
+/** Output of `observeRemoteDataSource`: the raw sync events to persist, materialized body results, and query/property scan summaries. */
 export type RemoteObservationResult = {
   readonly events: ReadonlyArray<SyncEventType>
   readonly materialized: ReadonlyArray<MaterializeResult>
@@ -192,6 +195,7 @@ const requiredObservationCapabilities = (
 const pagePropertyFailureAvailability = (error: NotionGatewayError): PropertyAvailability =>
   error.guard === 'UnsupportedRemoteShape' ? 'unsupported' : 'paginated-incomplete'
 
+/** Build a `SyncBindingRecorded` event that anchors a data source to its local workspace root path; idempotent via content-based event id. */
 export const makeSyncBindingRecordedEvent = (input: {
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceIdType
@@ -222,6 +226,7 @@ export const makeSyncBindingRecordedEvent = (input: {
   })
 }
 
+/** Build a `RemoteWritePlanned` event from an outbox command envelope, recording it in the event log before the command is executed. */
 export const makeRemoteWritePlannedEvent = (
   command: OutboxCommandEnvelope,
   now: () => Date = () => new Date(),
@@ -247,6 +252,7 @@ export const makeRemoteWritePlannedEvent = (
     preflight: command.preflight,
   })
 
+/** Translate a `PlannerEvent` into its corresponding store `SyncEvent`; returns `undefined` for event variants that have no durable representation (e.g. `LocalDeleteCandidateAccepted`). */
 export const makePlannerEvent = ({
   rootId,
   event,
@@ -320,6 +326,7 @@ export const makePlannerEvent = ({
   }
 }
 
+/** Build a `GuardBlocked` event recording that a named guard prevented planning on a given surface. */
 export const makeGuardBlockedEvent = (input: {
   readonly rootId: SyncRootId
   readonly guard: GuardName
@@ -346,6 +353,7 @@ export const makeGuardBlockedEvent = (input: {
   })
 }
 
+/** Build a `TombstoneCandidateObserved` event for a page that was absent from a completed query scan, signalling it as a candidate for tombstone classification. */
 export const makeQueryAbsenceCandidateEvent = (input: {
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceIdType
@@ -384,6 +392,7 @@ export const makeQueryAbsenceCandidateEvent = (input: {
   })
 }
 
+/** Build a `ConflictRaised` event recording a detected divergence between local and remote content on a given surface. */
 export const makeConflictRaisedEvent = (input: {
   readonly rootId: SyncRootId
   readonly pageId: PageIdType
@@ -421,15 +430,19 @@ export const makeConflictRaisedEvent = (input: {
   })
 }
 
+/** Derive a deterministic `CommandId` from a semantic key string; prefixes with `cmd:` after URL-safe escaping. */
 export const commandIdFor = (value: string): typeof CommandId.Type =>
   decode(CommandId, `cmd:${eventIdPart(value)}`)
 
+/** Derive a deterministic intent `SyncEventId` from a semantic key string; prefixes with `intent:`. */
 export const intentEventIdFor = (value: string): typeof SyncEventId.Type =>
   decode(SyncEventId, `intent:${eventIdPart(value)}`)
 
+/** Derive a deterministic `IdempotencyKey` for an outbox command from a semantic key string; uses the `intent:` prefix. */
 export const commandKeyFor = (value: string): typeof IdempotencyKey.Type =>
   decode(IdempotencyKey, `intent:${eventIdPart(value)}`)
 
+/** Query the remote Notion data source, retrieve per-row properties and bodies, and return the full set of sync events to persist — without writing to the store. */
 export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
   attributes: spanAttributes({
     [spanAttr.spanLabel]: 'remote',
@@ -727,6 +740,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
     }),
 )
 
+/** Construct a `BodyPushCommand` from a locally-observed body change, deriving a deterministic command id from the page id and local hash. */
 export const bodyPushCommandFromLocalChange = (input: {
   readonly pageId: PageId
   readonly baseBodyPointer: BodyPointerType
@@ -740,6 +754,7 @@ export const bodyPushCommandFromLocalChange = (input: {
     nextBodyHash: input.localBodyHash,
   })
 
+/** Derive stable `commandId`, `intentEventId`, and `commandKey` for a property write intent from its page, property, and target hash. */
 export const localPropertyIntentIds = (input: {
   readonly pageId: PageId
   readonly propertyId: PropertyId
@@ -752,10 +767,12 @@ export const localPropertyIntentIds = (input: {
   commandKey: commandKeyFor(`property:${input.pageId}:${input.propertyId}:${input.desiredHash}`),
 })
 
+/** Result of scanning the local workspace; wraps the raw `LocalArtifactObservation` stream output. */
 export type LocalWorkspaceObservationResult = {
   readonly observations: ReadonlyArray<LocalArtifactObservation>
 }
 
+/** Scan the local workspace directory via `LocalWorkspacePort` and collect all artifact observations (changed, deleted, unchanged pages). */
 export const observeLocalWorkspace = Effect.fn(spanNames.observationLocal, {
   attributes: spanAttributes({
     [spanAttr.spanLabel]: 'local',

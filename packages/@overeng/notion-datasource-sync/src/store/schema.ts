@@ -1,7 +1,20 @@
+/** SQLite schema version — incremented when a migration is needed. */
 export const STORE_SCHEMA_VERSION = 2
 
+/** Opaque identifier stamped into every projection_metadata row to detect when projections were built by an incompatible projector. */
 export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'
 
+/**
+ * DDL for the full store schema applied on initial bootstrap.
+ *
+ * Creates the immutable event log (`sync_root`, `sync_event`) and all
+ * projection tables: `projection_metadata`, `outbox`, `conflict_projection`,
+ * `tombstone_projection`, `guard_block_projection`, `path_claim`, `lease`,
+ * `api_contract_projection`, `capability_projection`, `data_source_projection`,
+ * `schema_property_projection`, `row_projection`, `property_shadow_projection`,
+ * `body_pointer_projection`, `query_absence_projection`,
+ * `query_scan_checkpoint`, `page_property_checkpoint`, and `migration_history`.
+ */
 export const createStoreSchemaSql = `
 CREATE TABLE IF NOT EXISTS sync_root (
   root_id TEXT PRIMARY KEY,
@@ -280,6 +293,13 @@ CREATE TABLE IF NOT EXISTS migration_history (
 );
 `
 
+/**
+ * SQL that wipes all projection tables in preparation for a full replay.
+ *
+ * Deletes rows from all seventeen projection tables (everything except
+ * `sync_root`, `sync_event`, and `migration_history`) without touching the
+ * append-only event log.
+ */
 export const clearProjectionTablesSql = `
 DELETE FROM projection_metadata;
 DELETE FROM outbox;
@@ -300,6 +320,10 @@ DELETE FROM query_scan_checkpoint;
 DELETE FROM page_property_checkpoint;
 `
 
+/**
+ * All projection table names that are scoped to a `sync_root`, used when
+ * deleting a root to cascade-clean its projection rows via generated SQL.
+ */
 export const rootScopedProjectionTables = [
   'projection_metadata',
   'outbox',

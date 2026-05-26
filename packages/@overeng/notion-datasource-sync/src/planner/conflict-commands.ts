@@ -23,6 +23,7 @@ import type { ConflictProjectionRow, NotionSyncStore } from '../store/store.ts'
 import { makeGuardBlockedEvent, makeRemoteWritePlannedEvent } from '../sync/observation.ts'
 import { planIntent, type OutboxCommandEnvelope, type PropertyEditIntent } from './planner.ts'
 
+/** The user's chosen strategy when resolving a same-property conflict: keep the local value, accept the remote value, or supply a manual replacement. */
 export type ConflictResolutionChoice =
   | {
       readonly _tag: 'keep-local'
@@ -36,6 +37,7 @@ export type ConflictResolutionChoice =
       readonly value: CanonicalPropertyValue
     }
 
+/** Planned (and separately applied) events, outbox commands, and guard records produced by a user-initiated command before they are written to the store. */
 export type PlannedUserAction = {
   readonly events: ReadonlyArray<SyncEventType>
   readonly commands: ReadonlyArray<OutboxCommandEnvelope>
@@ -363,6 +365,7 @@ const conflictResolutionPlan = ({
   }
 }
 
+/** Apply a `ConflictResolutionChoice` to an open same-property conflict, emitting a `ConflictResolved` event and (for keep-local/manual) a follow-up `PatchPageProperties` command. Returns a `UserCommandResultEnvelope`; respects `dryRun`. */
 export const resolveConflictCommand = <const TChoice extends ConflictResolutionChoice>(
   options: UserActionOptions & {
     readonly conflictId: SyncEventId
@@ -383,6 +386,7 @@ export const resolveConflictCommand = <const TChoice extends ConflictResolutionC
   })
 }
 
+/** Enqueue a `RestorePageCommand` for a page that is in remote trash or classified as `remote-trash`; blocked if the page cannot be unambiguously restored. Respects `dryRun`. */
 export const restorePageCommand = (
   options: UserActionOptions & {
     readonly pageId: typeof PageId.Type

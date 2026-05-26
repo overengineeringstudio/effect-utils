@@ -34,9 +34,11 @@ import {
   spanNames,
 } from '../observability/observability.ts'
 
+/** The Notion API version string that this gateway implementation targets. */
 export const supportedNotionApiVersion: SupportedNotionApiVersionType =
   SupportedNotionApiVersion.pipe(Schema.decodeSync)('2026-03-11')
 
+/** The full set of capabilities that a complete gateway implementation should support. */
 export const allGatewayCapabilities = [
   'data_source_retrieve',
   'data_source_query',
@@ -48,12 +50,14 @@ export const allGatewayCapabilities = [
   'page_restore',
 ] as const satisfies ReadonlyArray<CapabilityName>
 
+/** Subset of capabilities required for read-only access (retrieve + query, no writes). */
 export const readOnlyGatewayCapabilities = [
   'data_source_retrieve',
   'data_source_query',
   'page_retrieve',
 ] as const satisfies ReadonlyArray<CapabilityName>
 
+/** All operation names that can appear in a `NotionGatewayError`. */
 export type GatewayOperation =
   | 'preflightCapabilities'
   | 'retrieveDataSource'
@@ -65,6 +69,7 @@ export type GatewayOperation =
   | 'trashPage'
   | 'restorePage'
 
+/** Input shape for constructing a `NotionGatewayError` — all fields except `operation` are optional context. */
 export type GatewayErrorInput = {
   readonly operation: GatewayOperation
   readonly dataSourceId?: DataSourceId
@@ -75,6 +80,7 @@ export type GatewayErrorInput = {
   readonly cause?: unknown
 }
 
+/** Construct a `NotionGatewayError` from a `GatewayErrorInput`, omitting undefined optional fields. */
 export const makeGatewayError = (input: GatewayErrorInput): NotionGatewayError =>
   new NotionGatewayError({
     operation: input.operation,
@@ -86,6 +92,7 @@ export const makeGatewayError = (input: GatewayErrorInput): NotionGatewayError =
     ...(input.cause === undefined ? {} : { cause: input.cause }),
   })
 
+/** Build a `NotionApiContract` stamped with `supportedNotionApiVersion` and the given capabilities (defaults to `allGatewayCapabilities`). */
 export const makeNotionApiContract = (input?: {
   readonly clientVersion?: string
   readonly supportedCapabilities?: ReadonlyArray<CapabilityName>
@@ -97,6 +104,7 @@ export const makeNotionApiContract = (input?: {
     supportedCapabilities: [...(input?.supportedCapabilities ?? allGatewayCapabilities)],
   })
 
+/** Fail with a guard error if `configuredApiVersion` is not the supported Notion API version. */
 export const ensureSupportedGatewayApiVersion = ({
   operation,
   configuredApiVersion,
@@ -123,6 +131,7 @@ export const ensureSupportedGatewayApiVersion = ({
       )
 }
 
+/** Compute a `CapabilityPreflightResult` by intersecting the requested capabilities against the contract's supported set. */
 export const makeCapabilityPreflightResult = ({
   input,
   apiContract,
@@ -147,6 +156,13 @@ export const makeCapabilityPreflightResult = ({
   })
 }
 
+/**
+ * Adapter contract passed to `makeNotionDataSourceGateway`.
+ *
+ * Extends the full gateway shape with an optional `configuredApiVersion`
+ * (overrides the one from `apiContract`) and makes `preflightCapabilities`
+ * optional so adapters can rely on the default capability-intersection logic.
+ */
 export type NotionDataSourceGatewayAdapter = Omit<
   NotionDataSourceGatewayShape,
   'apiContract' | 'preflightCapabilities'
@@ -185,6 +201,12 @@ const gatewayRequestSpan = (input: {
   }
 }
 
+/**
+ * Wrap a `NotionDataSourceGatewayAdapter` into the full `NotionDataSourceGatewayShape`.
+ *
+ * Adds API-version gating and OTel span instrumentation to every gateway
+ * operation. Used by both the live Notion adapter and the fake.
+ */
 export const makeNotionDataSourceGateway = (
   adapter: NotionDataSourceGatewayAdapter,
 ): NotionDataSourceGatewayShape => {
@@ -354,8 +376,10 @@ export const makeNotionDataSourceGateway = (
   }
 }
 
+/** Lift a pre-built `NotionDataSourceGatewayShape` into an Effect Layer. */
 export const makeNotionDataSourceGatewayLayer = (
   gateway: NotionDataSourceGatewayShape,
 ): Layer.Layer<NotionDataSourceGateway> => Layer.succeed(NotionDataSourceGateway, gateway)
 
+/** Construct a branded `NotionRequestId` from a raw string. */
 export const notionRequestId = (value: string): NotionRequestId => NotionRequestId.make(value)

@@ -1,10 +1,12 @@
 import type { OneShotSyncStatus } from '../core/status.ts'
 
+/** OTel service names used when registering the CLI and daemon tracer providers. */
 export const otelServiceNames = {
   cli: 'notion-datasource-sync-cli',
   daemon: 'notion-datasource-sync-daemon',
 } as const
 
+/** Canonical OTel span names for every traced operation in the sync pipeline and CLI. */
 export const spanNames = {
   cliCommand: 'notion.datasource.cli',
   daemonPass: 'notion.datasource.daemon.pass',
@@ -22,6 +24,7 @@ export const spanNames = {
   syncOneShot: 'notion.datasource.sync.one-shot',
 } as const
 
+/** Typed map of every OTel span attribute key emitted by this package — use instead of raw strings. */
 export const spanAttr = {
   agentIterationId: 'agent.iteration.id',
   apiVersion: 'notion.datasource.api_version',
@@ -69,10 +72,13 @@ export const spanAttr = {
   statusState: 'notion.datasource.status.state',
 } as const
 
+/** Scalar types accepted as OTel span attribute values. */
 export type SpanAttributeValue = string | number | boolean
 
+/** Identifies the kind of process emitting a span, recorded on `spanAttr.processRole`. */
 export type ProcessRole = 'cli' | 'daemon' | 'fake-gateway' | 'library'
 
+/** Filters out `undefined` values from an attribute map so it can be passed directly to OTel span APIs. */
 export const spanAttributes = (
   attributes: Record<string, SpanAttributeValue | undefined>,
 ): Record<string, SpanAttributeValue> =>
@@ -83,9 +89,15 @@ export const spanAttributes = (
     }),
   )
 
+/** Truncates a span / root ID to at most 12 characters for use in human-readable `span.label` values. */
 export const shortSpanId = (value: string): string =>
   value.length <= 12 ? value : value.slice(0, 12)
 
+/**
+ * Joins non-empty parts into a colon-delimited `span.label` string, capped at 39 characters.
+ *
+ * Used to build a compact human-readable identifier (e.g. `"cycle:42"`) stored on `spanAttr.spanLabel`.
+ */
 export const spanLabel = (
   ...parts: ReadonlyArray<string | number | boolean | undefined>
 ): string => {
@@ -96,14 +108,23 @@ export const spanLabel = (
   return label.length <= 39 ? label : label.slice(0, 39)
 }
 
+/** Strips the `Command` suffix from a command `_tag` to get a short kind string for span attributes. */
 export const commandKind = (tag: string): string => tag.replace(/Command$/, '')
 
+/** Maps a CLI command name to its `ProcessRole` — `watch` becomes `daemon`, everything else becomes `cli`. */
 export const processRoleForCliCommand = (command: string): ProcessRole =>
   command === 'watch' ? 'daemon' : 'cli'
 
+/** Picks the correct OTel service name from raw `argv` (before full parsing) — falls back to the CLI service name when the command is not `watch`. */
 export const otelServiceNameForCliArgv = (argv: ReadonlyArray<string>): string =>
   argv[0] === 'watch' ? otelServiceNames.daemon : otelServiceNames.cli
 
+/**
+ * Converts a `OneShotSyncStatus` snapshot into OTel span attributes.
+ *
+ * Emits state, per-category counts (blocked, conflict, outbox buckets) so dashboards
+ * can filter or alert on sync health without parsing log messages.
+ */
 export const statusSpanAttributes = (
   status: OneShotSyncStatus,
 ): Record<string, SpanAttributeValue> =>
@@ -125,6 +146,13 @@ const resourceAttributeValue = (input: string | undefined, key: string): string 
     .find((entry) => entry.length === 2 && entry[0]?.trim() === key)?.[1]
     ?.trim()
 
+/**
+ * Extracts correlation attributes (`agent.iteration.id`) from an agent run ID or
+ * a raw `OTEL_RESOURCE_ATTRIBUTES` string and returns them as span attributes.
+ *
+ * Used to link CLI/daemon spans back to the orchestrating agent's iteration when
+ * the process is launched by an automated runner.
+ */
 export const otelCorrelationSpanAttributes = (input: {
   readonly agentRunId?: string | undefined
   readonly resourceAttributes?: string | undefined

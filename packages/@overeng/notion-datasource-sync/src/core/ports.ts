@@ -42,6 +42,7 @@ import type {
 } from './errors.ts'
 import type { SyncEvent } from './events.ts'
 
+/** Contract for the Notion API gateway: all remote read and write operations go through this shape, keeping the sync core independent of the HTTP implementation. */
 export type NotionDataSourceGatewayShape = {
   readonly apiContract: NotionApiContract
   readonly preflightCapabilities: (
@@ -69,10 +70,12 @@ export type NotionDataSourceGatewayShape = {
   ) => Effect.Effect<NotionRequestId, NotionGatewayError>
 }
 
+/** Effect service tag for the Notion API gateway; inject an implementation to connect the sync core to the real Notion HTTP API. */
 export class NotionDataSourceGateway extends Context.Tag(
   '@overeng/notion-datasource-sync/NotionDataSourceGateway',
 )<NotionDataSourceGateway, NotionDataSourceGatewayShape>() {}
 
+/** Contract for the body-sync adapter: observe, plan local changes against, push, and repair the markdown body of a Notion page. */
 export type PageBodySyncPortShape = {
   readonly observe: (input: ObserveBodyInput) => Effect.Effect<BodyPointer, BodySyncError>
   readonly planLocalChange: (
@@ -84,10 +87,12 @@ export type PageBodySyncPortShape = {
   ) => Effect.Effect<BodyPointer | BodyConflict, BodySyncError>
 }
 
+/** Effect service tag for the page body sync adapter; implementations translate between `BodyPointer` and the actual file/Notion content representation. */
 export class PageBodySyncPort extends Context.Tag(
   '@overeng/notion-datasource-sync/PageBodySyncPort',
 )<PageBodySyncPort, PageBodySyncPortShape>() {}
 
+/** Contract for local filesystem interactions: scan for artifact observations, claim paths for pages, and materialize body content as files. */
 export type LocalWorkspacePortShape = {
   readonly scan: (root: AbsolutePath) => Stream.Stream<LocalArtifactObservation, LocalStorageError>
   readonly claimPath: (claim: PathClaimPlan) => Effect.Effect<PathClaimResult, LocalStorageError>
@@ -96,15 +101,18 @@ export type LocalWorkspacePortShape = {
   ) => Effect.Effect<MaterializeResult, LocalStorageError>
 }
 
+/** Effect service tag for the local workspace adapter; inject to connect the sync core to the real filesystem implementation. */
 export class LocalWorkspacePort extends Context.Tag(
   '@overeng/notion-datasource-sync/LocalWorkspacePort',
 )<LocalWorkspacePort, LocalWorkspacePortShape>() {}
 
+/** Contract for the append-only sync event store: `append` persists new events and `replay` streams all recorded events for projection rebuilding. */
 export type SyncEventStoreShape = {
   readonly append: (event: SyncEvent) => Effect.Effect<void, LocalStoreError>
   readonly replay: Stream.Stream<SyncEvent, LocalStoreError>
 }
 
+/** Effect service tag for the sync event store; the store is the authoritative source of truth for all sync state. */
 export class SyncEventStore extends Context.Tag('@overeng/notion-datasource-sync/SyncEventStore')<
   SyncEventStore,
   SyncEventStoreShape

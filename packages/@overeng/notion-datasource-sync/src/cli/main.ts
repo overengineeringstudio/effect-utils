@@ -94,6 +94,12 @@ const remoteObservationContext = (context: CliContext) => ({
     : { materializeBodies: context.materializeBodies }),
 })
 
+/**
+ * Tagged union of all commands the CLI accepts.
+ *
+ * Each variant carries only the flags that are meaningful for that sub-command.
+ * Use `parseCliCommand` to decode raw `argv` into this type.
+ */
 export type CliCommand =
   | {
       readonly _tag: 'init'
@@ -132,6 +138,12 @@ export type CliCommand =
   | { readonly _tag: 'repair'; readonly dryRun?: boolean }
   | { readonly _tag: 'doctor' }
 
+/**
+ * Resolved runtime context shared across all CLI command handlers.
+ *
+ * Produced by `parseCliContext` from `argv`; holds the open sync store, root / data-source IDs,
+ * workspace root, query contract, schema properties, and optional tuning knobs.
+ */
 export type CliContext = {
   readonly store: NotionSyncStore
   readonly rootId: SyncRootIdType
@@ -147,11 +159,18 @@ export type CliContext = {
   readonly now?: () => Date
 }
 
+/** Environment variables read by `makeCliRuntimeLayer` to obtain the Notion API token. */
 export type CliRuntimeEnv = {
   readonly NOTION_API_TOKEN?: string
   readonly NOTION_TOKEN?: string
 }
 
+/**
+ * Dependency injection overrides for the CLI runtime layer.
+ *
+ * Allows callers (library consumers, tests) to substitute custom gateway, body-sync,
+ * or workspace implementations instead of the default live/filesystem adapters.
+ */
 export type CliRuntimeOptions = {
   readonly env?: CliRuntimeEnv
   readonly gateway?: NotionDataSourceGatewayShape
@@ -160,6 +179,7 @@ export type CliRuntimeOptions = {
   readonly workspace?: LocalWorkspacePortShape
 }
 
+/** Aggregated health check result from the `doctor` command: sync status, compaction decision, and user-action surface. */
 export type DoctorResult = {
   readonly _tag: 'DoctorResult'
   readonly clean: boolean
@@ -168,6 +188,13 @@ export type DoctorResult = {
   readonly surface: UserActionSurface
 }
 
+/**
+ * Successful JSON output envelope written to `stdout` by every CLI command.
+ *
+ * Always carries the current sync `status` and `surface` so consumers can inspect
+ * workspace health without a separate `status` call. `ok` is `true` iff the sync
+ * state is `clean`.
+ */
 export type CliResultEnvelope<TResult = unknown> = {
   readonly _tag: 'CliResultEnvelope'
   readonly version: 'v1'
@@ -179,6 +206,7 @@ export type CliResultEnvelope<TResult = unknown> = {
   readonly result: TResult
 }
 
+/** Error JSON envelope written to `stderr` when a CLI command fails, carrying a `_tag` and `message`. */
 export type CliErrorEnvelope = {
   readonly _tag: 'CliErrorEnvelope'
   readonly version: 'v1'
@@ -189,10 +217,12 @@ export type CliErrorEnvelope = {
   }
 }
 
+/** Thrown during argument parsing when a required flag is missing, invalid, or unsupported. */
 export class CliArgumentError extends Schema.TaggedError<CliArgumentError>()('CliArgumentError', {
   message: Schema.String,
 }) {}
 
+/** Raised when the user invokes a recognized but not-yet-implemented command (e.g. `migrate-store`, `repair`). */
 export class CliUnsupportedCommandError extends Schema.TaggedError<CliUnsupportedCommandError>()(
   'CliUnsupportedCommandError',
   {
@@ -210,6 +240,7 @@ const makeUnsupportedCommandError = (command: CliCommand['_tag']): CliUnsupporte
 const isUnsupportedCommand = (command: CliCommand): boolean =>
   command._tag === 'migrate-store' || command._tag === 'migrate-schema' || command._tag === 'repair'
 
+/** Returns the OTel service name for the given parsed command — `watch` maps to the daemon service, all others to the CLI service. */
 export const serviceNameForCliCommand = (command: CliCommand): string =>
   command._tag === 'watch' ? otelServiceNames.daemon : otelServiceNames.cli
 
@@ -429,6 +460,13 @@ const runCliCommandEffect = (
   }
 }
 
+/**
+ * Runs a parsed `CliCommand` against the provided context under the `notion.datasource.cli` span.
+ *
+ * Annotates the span with correlation attributes, command identity, and final status before returning
+ * a `CliResultEnvelope`. Requires `NotionDataSourceGateway`, `PageBodySyncPort`, and `LocalWorkspacePort`
+ * in the Effect context.
+ */
 export const runCliCommand = Effect.fn(spanNames.cliCommand, {
   attributes: spanAttributes({
     [spanAttr.spanLabel]: 'command',
@@ -468,9 +506,11 @@ export const runCliCommand = Effect.fn(spanNames.cliCommand, {
     }),
 )
 
+/** Serializes a `CliResultEnvelope` to a pretty-printed JSON string with a trailing newline for stdout. */
 export const renderCliResultJson = (result: CliResultEnvelope): string =>
   `${JSON.stringify(result, null, 2)}\n`
 
+/** Serializes any thrown error into a `CliErrorEnvelope` JSON string with a trailing newline for stderr. */
 export const renderCliErrorJson = (error: unknown): string => {
   const errorEnvelope: CliErrorEnvelope = {
     _tag: 'CliErrorEnvelope',
@@ -600,6 +640,12 @@ const parseChoice = (flags: Map<string, string | true>): ConflictResolutionChoic
   }
 }
 
+/**
+ * Parses raw `argv` into a typed `CliCommand`.
+ *
+ * Throws `CliArgumentError` for missing required flags, unknown commands,
+ * or invalid flag values. Does not validate semantic context (store path, IDs, etc.).
+ */
 export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   const flags = parseFlags(argv)
   const words = argv.filter((item) => item.startsWith('--') === false)
@@ -674,6 +720,13 @@ const serviceNameForArgv = (argv: ReadonlyArray<string>): string => {
   }
 }
 
+/**
+ * Parses `argv` into a `CliContext`, opening the sync store in the process.
+ *
+ * Requires `--store`, `--root-id`, `--data-source-id`, and `--workspace-root`.
+ * Throws `CliArgumentError` for missing or invalid flags; the caller is responsible
+ * for closing `context.store` when the command completes.
+ */
 export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
   const flags = parseFlags(argv)
   const storePath = requiredFlag(flags, 'store')
@@ -747,6 +800,14 @@ const missingTokenCliGateway: NotionDataSourceGatewayShape = {
   restorePage: () => Effect.fail(cliGatewayConfigurationError('restorePage')),
 }
 
+/**
+ * Builds the Effect `Layer` that provides `NotionDataSourceGateway`, `PageBodySyncPort`,
+ * and `LocalWorkspacePort` for a CLI command run.
+ *
+ * Gateway priority: explicit `options.gateway` > `options.gatewayClient` > live Notion client
+ * (token from env) > stub that returns `CapabilityPreflightFailed` on every call.
+ * Body sync defaults to an unsupported stub; workspace defaults to the filesystem adapter.
+ */
 export const makeCliRuntimeLayer = (
   context: CliContext,
   options: CliRuntimeOptions = {},
@@ -792,12 +853,20 @@ export const makeCliRuntimeLayer = (
   )
 }
 
+/** Convenience wrapper that runs `runCliCommand` with the runtime layer built by `makeCliRuntimeLayer`. */
 export const runCliCommandWithRuntime = (
   command: CliCommand,
   context: CliContext,
   options: CliRuntimeOptions = {},
 ) => runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer(context, options)))
 
+/**
+ * Top-level CLI entry point: parses `argv`, rejects unsupported commands early, runs the command,
+ * and writes the JSON result to `stdout`. The store is closed via `Effect.ensuring` regardless of outcome.
+ *
+ * When the module is executed directly (`process.argv[1]` matches), it wires OTel and calls
+ * `NodeRuntime.runMain`, writing errors as JSON to `stderr`.
+ */
 export const runCliMain = (argv: ReadonlyArray<string>, options: CliRuntimeOptions = {}) =>
   Effect.gen(function* () {
     const command = yield* Effect.try({
