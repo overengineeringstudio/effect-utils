@@ -2,8 +2,10 @@ import type { NotionSyncStore, StoreStatusProjection } from '../store/store.ts'
 import type { AbsolutePath, DataSourceId } from './domain.ts'
 import type { SyncRootId } from './events.ts'
 
+/** Aggregated health state of a sync root for a single command run; priority order: `conflict` > `blocked` > `pending` > `clean`. */
 export type OneShotStatusState = 'clean' | 'pending' | 'conflict' | 'blocked'
 
+/** Full status snapshot for a sync root: binding info, aggregated `state`, and detailed projection counts used to derive that state. */
 export type OneShotSyncStatus = {
   readonly rootId: SyncRootId
   readonly binding:
@@ -48,6 +50,7 @@ const latestBinding = (
     : undefined
 }
 
+/** Computes the `OneShotSyncStatus` for a sync root by reading projections from the store and applying the conflict > blocked > pending > clean priority rule. */
 export const readOneShotSyncStatus = ({
   store,
   rootId,

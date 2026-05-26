@@ -22,10 +22,18 @@ import {
   type OutboxClaimOptions,
 } from '../store/store.ts'
 
+/** Options for `executeOutboxOnce`: combines the store reference with outbox claim parameters (lease token, duration, root id). */
 export type OutboxExecutorOptions = OutboxClaimOptions & {
   readonly store: NotionSyncStore
 }
 
+/**
+ * Outcome of a single outbox executor step.
+ *
+ * - `idle` — no commands were ready to execute.
+ * - `settled` — command executed and surface hash verified (success or idempotent no-op).
+ * - `failed` — command was blocked, fenced, ambiguous, or encountered a retryable error; `guard` names the blocking condition.
+ */
 export type OutboxExecutionResult =
   | { readonly _tag: 'idle' }
   | {
@@ -284,6 +292,7 @@ const annotateOutboxResult = (result: OutboxExecutionResult) =>
     }),
   )
 
+/** Claim and attempt to execute one pending outbox command: observe the current surface, execute the write if safe, then verify the post-write state. Returns `idle` when the outbox is empty. */
 export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
   (
     options: OutboxExecutorOptions,

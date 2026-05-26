@@ -31,6 +31,7 @@ const metadataDirectoryName = '.notion-datasource-sync'
 const pageSidecarDirectoryName = 'pages'
 const pathClaimsFileName = 'path-claims.json'
 
+/** Controls how workspace body file paths are derived from page titles and IDs. */
 export type PathPolicy = {
   readonly strategy: 'title-slug-with-row-id-suffix'
   readonly bodyExtension: '.nmd'
@@ -38,6 +39,7 @@ export type PathPolicy = {
   readonly unicodeNormalization: 'NFC'
 }
 
+/** Top-level sync policy governing schema ownership, deletion behavior, and path derivation. */
 export type WorkspacePolicy = {
   readonly schemaOwnership: 'userManaged' | 'appOwned'
   readonly filesystemDelete:
@@ -46,6 +48,7 @@ export type WorkspacePolicy = {
   readonly pathPolicy: PathPolicy
 }
 
+/** Default path policy: lowercase NFC slugs with a row-ID suffix and `.nmd` body extension. */
 export const defaultPathPolicy: PathPolicy = {
   strategy: 'title-slug-with-row-id-suffix',
   bodyExtension: '.nmd',
@@ -53,12 +56,19 @@ export const defaultPathPolicy: PathPolicy = {
   unicodeNormalization: 'NFC',
 }
 
+/** Default workspace policy: user-managed schema, candidate-only filesystem deletes. */
 export const defaultWorkspacePolicy: WorkspacePolicy = {
   schemaOwnership: 'userManaged',
   filesystemDelete: { _tag: 'candidateOnly' },
   pathPolicy: defaultPathPolicy,
 }
 
+/**
+ * Result of validating a candidate workspace-relative path.
+ *
+ * `allowed` carries the canonicalized path; `blocked` carries the `PathEscapesRoot` guard name
+ * and a human-readable reason (control characters, `..` traversal, reserved names, escaping symlinks, etc.).
+ */
 export type WorkspacePathDecision =
   | {
       readonly _tag: 'allowed'
@@ -119,6 +129,13 @@ const isReservedPathSegment = (segment: string): boolean => {
   return reservedName !== undefined && reservedPathSegments.has(reservedName)
 }
 
+/**
+ * Validates and normalizes a raw path string into a safe workspace-relative path.
+ *
+ * Rejects absolute paths, control characters, dot-traversals, Windows reserved names,
+ * and any symlinks that resolve outside `root`. Returns a `WorkspacePathDecision` tagged union
+ * rather than throwing, so callers can pattern-match on the outcome.
+ */
 export const canonicalizeWorkspaceRelativePath = ({
   path,
   policy = defaultPathPolicy,
@@ -173,6 +190,12 @@ export const canonicalizeWorkspaceRelativePath = ({
   }
 }
 
+/**
+ * Converts a Notion page title into a URL-safe lowercase slug (max 120 chars).
+ *
+ * Non-alphanumeric runs become single hyphens; leading/trailing hyphens are trimmed.
+ * Returns `"untitled"` for blank or all-punctuation titles.
+ */
 export const titleSlug = (title: string): string => {
   const slug = title
     .normalize('NFC')
@@ -185,6 +208,10 @@ export const titleSlug = (title: string): string => {
   return slug.length > 0 ? slug : 'untitled'
 }
 
+/**
+ * Derives the workspace-relative body file path for a database row using
+ * `<title-slug>--<pageId><extension>` under the active `PathPolicy`.
+ */
 export const bodyPathForRow = ({
   title,
   pageId,
@@ -199,6 +226,12 @@ export const bodyPathForRow = ({
     policy,
   })
 
+/**
+ * Describes a workspace file that is a candidate for deletion.
+ *
+ * `remoteTrash` is always `'blocked-by-default'` until an explicit remote-trash policy is active,
+ * preventing accidental Notion page trashing from a local delete.
+ */
 export type LocalDeleteClassification = {
   readonly _tag: 'local-delete-candidate'
   readonly pageId: PageIdType
@@ -206,6 +239,7 @@ export type LocalDeleteClassification = {
   readonly remoteTrash: 'blocked-by-default'
 }
 
+/** Builds a `LocalDeleteClassification` for a page that has been removed locally, with remote trash blocked by default. */
 export const classifyLocalDelete = ({
   pageId,
   path,
@@ -219,6 +253,13 @@ export const classifyLocalDelete = ({
   remoteTrash: 'blocked-by-default',
 })
 
+/**
+ * Derives the own-write suppression token for a materialized body file.
+ *
+ * The token encodes `pageId`, `bodyHash`, and `path` so the file-watcher can
+ * distinguish daemon-originated writes from genuine user edits and suppress
+ * spurious outbox entries.
+ */
 export const ownWriteSuppressionToken = ({
   pageId,
   path,
@@ -230,6 +271,7 @@ export const ownWriteSuppressionToken = ({
 }): OwnWriteSuppressionTokenType =>
   decode(OwnWriteSuppressionToken, `materialize:${pageId}:${bodyHash}:${path}`)
 
+/** Returns `true` when a local observation matches a known daemon-issued write token and should be suppressed. */
 export const isOwnWriteObservation = ({
   observation,
   token,
@@ -243,6 +285,13 @@ const sha256Hash = (value: string): HashType =>
 
 const observedAtNow = () => decode(Schema.DateTimeUtc, new Date().toISOString())
 
+/**
+ * Persisted JSON sidecar written alongside each materialized body file.
+ *
+ * Tracks the `pageId`, canonical `path`, `bodyHash`, materialized content hash,
+ * own-write suppression token, and observation timestamp so the scan can detect
+ * whether a file has been edited by the user since the last materialization.
+ */
 export const FilesystemWorkspaceSidecar = Schema.Struct({
   version: Schema.Literal(1),
   pageId: PageId,
@@ -264,11 +313,13 @@ const FilesystemPathClaims = Schema.Array(FilesystemPathClaim).annotations({
   identifier: 'NotionDatasourceSync.FilesystemPathClaims',
 })
 
+/** Construction input for a filesystem-backed `LocalWorkspacePort`: absolute workspace root and optional policy overrides. */
 export type FilesystemLocalWorkspaceInput = {
   readonly root: AbsolutePath
   readonly policy?: WorkspacePolicy
 }
 
+/** Returns the absolute filesystem path for a page's JSON sidecar file under the workspace metadata directory. */
 export const filesystemWorkspacePageSidecarPath = ({
   root,
   pageId,
@@ -779,6 +830,14 @@ const scanFilesystemWorkspace = async ({
   ]
 }
 
+/**
+ * Creates a `LocalWorkspacePortShape` backed by the real filesystem.
+ *
+ * Implements `scan` (recursive directory walk with sidecar correlation),
+ * `claimPath` (conflict-checked path reservation), and `materialize`
+ * (atomic placeholder write + sidecar + path-claims update).
+ * All operations resolve symlinks and reject paths that escape the workspace root.
+ */
 export const makeFilesystemLocalWorkspacePort = ({
   root,
   policy = defaultWorkspacePolicy,
@@ -923,9 +982,11 @@ export const makeFilesystemLocalWorkspacePort = ({
     }),
 })
 
+/** Effect `Layer` that provides `LocalWorkspacePort` backed by the real filesystem. */
 export const filesystemLocalWorkspacePortLayer = (input: FilesystemLocalWorkspaceInput) =>
   Layer.succeed(LocalWorkspacePort, makeFilesystemLocalWorkspacePort(input))
 
+/** Seed data for the in-memory fake `LocalWorkspacePort` used in unit tests. */
 export type FakeLocalWorkspaceInput = {
   readonly observations?: ReadonlyArray<LocalArtifactObservationType>
   readonly claimedPaths?: ReadonlyArray<PathClaimPlan>
@@ -933,6 +994,13 @@ export type FakeLocalWorkspaceInput = {
   readonly policy?: WorkspacePolicy
 }
 
+/**
+ * Creates an in-memory `LocalWorkspacePortShape` for use in unit tests.
+ *
+ * `scan` returns the pre-seeded observations; `claimPath` and `materialize` validate
+ * path safety against the supplied policy and detect conflicts in an in-memory map,
+ * without touching the filesystem.
+ */
 export const makeFakeLocalWorkspacePort = ({
   observations = [],
   claimedPaths = [],
@@ -1000,9 +1068,11 @@ export const makeFakeLocalWorkspacePort = ({
   }
 }
 
+/** Effect `Layer` that provides `LocalWorkspacePort` backed by the in-memory fake (for tests). */
 export const fakeLocalWorkspacePortLayer = (input?: FakeLocalWorkspaceInput) =>
   Layer.succeed(LocalWorkspacePort, makeFakeLocalWorkspacePort(input))
 
+/** Convenience constructor that builds a `LocalArtifactObservation` in the `present` state from the supplied fields. */
 export const presentArtifactObservation = (
   input: Omit<LocalArtifactObservationType, '_tag' | 'state'>,
 ): LocalArtifactObservationType => ({

@@ -53,6 +53,7 @@ import {
   type RemoteObservationResult,
 } from './observation.ts'
 
+/** Options for `initOneShotSync`, which records the initial `SyncBindingRecorded` event tying a data source to a local workspace root. */
 export type OneShotInitOptions = {
   readonly store: NotionSyncStore
   readonly rootId: RemoteObservationOptions['rootId']
@@ -63,11 +64,13 @@ export type OneShotInitOptions = {
   readonly dryRun?: boolean
 }
 
+/** Options for `pullOneShotSync`; extends `RemoteObservationOptions` with store access and a `dryRun` flag. */
 export type OneShotPullOptions = {
   readonly store: NotionSyncStore
   readonly dryRun?: boolean
 } & RemoteObservationOptions
 
+/** Options for `pushOneShotSync`; controls the local workspace root, pre-built intents, executor step limit, and outbox lease settings. */
 export type OneShotPushOptions = {
   readonly store: NotionSyncStore
   readonly rootId: RemoteObservationOptions['rootId']
@@ -80,9 +83,11 @@ export type OneShotPushOptions = {
   readonly dryRun?: boolean
 }
 
+/** Combined options for `syncOneShot`, merging pull and push settings into a single pass. */
 export type OneShotSyncOptions = OneShotPullOptions &
   Pick<OneShotPushOptions, 'localIntents' | 'maxExecutorSteps' | 'leaseToken' | 'leaseDurationMs'>
 
+/** Aggregate counts produced by the planning phase of a push: how many decisions were made and how many events, commands, blocks, and conflicts resulted. */
 export type OneShotPlanSummary = {
   readonly decisions: ReadonlyArray<PlanDecision>
   readonly appendedEvents: number
@@ -91,6 +96,7 @@ export type OneShotPlanSummary = {
   readonly conflicts: number
 }
 
+/** Result of a single push pass: local observation count, planning summary, outbox executor run, and current sync status. */
 export type OneShotPushResult = {
   readonly localObservations: number
   readonly plan: OneShotPlanSummary
@@ -102,12 +108,14 @@ export type OneShotPushResult = {
   readonly status: OneShotSyncStatus
 }
 
+/** Result of a single pull pass: raw remote observation, count of events appended to the store, and current sync status. */
 export type OneShotPullResult = {
   readonly observation: RemoteObservationResult
   readonly appendedEvents: number
   readonly status: OneShotSyncStatus
 }
 
+/** Combined result of a full pull-then-push sync pass. */
 export type OneShotSyncResult = {
   readonly pull: OneShotPullResult
   readonly push: OneShotPushResult
@@ -360,6 +368,7 @@ const disappearanceCandidateEvents = ({
     )
 }
 
+/** Record the initial `SyncBindingRecorded` event that ties a data source to its local workspace root; idempotent and synchronous. */
 export const initOneShotSync = (options: OneShotInitOptions): OneShotSyncStatus => {
   if (options.dryRun !== true) {
     options.store.appendEvent(
@@ -376,6 +385,7 @@ export const initOneShotSync = (options: OneShotInitOptions): OneShotSyncStatus 
   return readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
 }
 
+/** Observe the remote data source (API, schema, rows, properties, bodies) and persist the resulting events to the local store. Resumes a partial query scan if a checkpoint cursor exists. */
 export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
   (
     options: OneShotPullOptions,
@@ -428,6 +438,7 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
     }),
 )
 
+/** Plan and execute local-to-remote changes: observe the local workspace, run intents through the planner, and drain the outbox up to `maxExecutorSteps`. */
 export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
   (
     options: OneShotPushOptions,
@@ -605,6 +616,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
     }),
 )
 
+/** Run a full pull-then-push sync cycle in a single Effect: observe remote, record events, plan local changes, execute outbox. */
 export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
   (
     options: OneShotSyncOptions,

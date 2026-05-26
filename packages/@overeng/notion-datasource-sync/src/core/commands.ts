@@ -15,18 +15,21 @@ import {
   SupportedNotionApiVersion,
 } from './domain.ts'
 
+/** Defines how row membership is determined: `all-data-source-rows` treats any absence as potential removal; `explicit-filter` limits absence proofs to the filter scope. */
 export const QueryMembershipScope = Schema.Literal(
   'all-data-source-rows',
   'explicit-filter',
 ).annotations({ identifier: 'NotionDatasourceSync.QueryMembershipScope' })
 export type QueryMembershipScope = typeof QueryMembershipScope.Type
 
+/** Canonical sort specification for a Notion query: property-based with an explicit direction. */
 export const CanonicalNotionSort = Schema.TaggedStruct('CanonicalNotionSort', {
   propertyId: PropertyId,
   direction: Schema.Literal('ascending', 'descending'),
 }).annotations({ identifier: 'NotionDatasourceSync.CanonicalNotionSort' })
 export type CanonicalNotionSort = typeof CanonicalNotionSort.Type
 
+/** Canonical representation of a select/multi-select/status option, normalized for stable hash comparison. */
 export const CanonicalOptionValue = Schema.TaggedStruct('CanonicalOptionValue', {
   id: Schema.optional(PropertyId),
   name: PropertyName,
@@ -34,12 +37,14 @@ export const CanonicalOptionValue = Schema.TaggedStruct('CanonicalOptionValue', 
 }).annotations({ identifier: 'NotionDatasourceSync.CanonicalOptionValue' })
 export type CanonicalOptionValue = typeof CanonicalOptionValue.Type
 
+/** Canonical file attachment value: name plus a stable identity hash used for change detection. */
 export const CanonicalFileValue = Schema.TaggedStruct('CanonicalFileValue', {
   name: Schema.NonEmptyTrimmedString,
   identityHash: Hash,
 }).annotations({ identifier: 'NotionDatasourceSync.CanonicalFileValue' })
 export type CanonicalFileValue = typeof CanonicalFileValue.Type
 
+/** Normalized representation of any Notion property value type; the `_tag` discriminates the variant. Computed properties carry only their hash. */
 export const CanonicalPropertyValue = Schema.Union(
   Schema.TaggedStruct('empty', {}),
   Schema.TaggedStruct('title', {
@@ -91,6 +96,7 @@ export const CanonicalPropertyValue = Schema.Union(
 ).annotations({ identifier: 'NotionDatasourceSync.CanonicalPropertyValue' })
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
+/** Canonical schema descriptor for a single Notion database property; `configHash` covers all type-configuration details not in the `type` discriminator. */
 export const CanonicalDataSourceProperty = Schema.TaggedStruct('CanonicalDataSourceProperty', {
   propertyId: PropertyId,
   name: PropertyName,
@@ -120,6 +126,7 @@ export const CanonicalDataSourceProperty = Schema.TaggedStruct('CanonicalDataSou
 }).annotations({ identifier: 'NotionDatasourceSync.CanonicalDataSourceProperty' })
 export type CanonicalDataSourceProperty = typeof CanonicalDataSourceProperty.Type
 
+/** Canonical filter expression for a Notion query; complex filters are represented as a hash to keep the contract stable. */
 export const CanonicalNotionFilter = Schema.Union(
   Schema.TaggedStruct('none', {}),
   Schema.TaggedStruct('property_value', {
@@ -147,6 +154,7 @@ export const CanonicalNotionFilter = Schema.Union(
 ).annotations({ identifier: 'NotionDatasourceSync.CanonicalNotionFilter' })
 export type CanonicalNotionFilter = typeof CanonicalNotionFilter.Type
 
+/** Immutable contract describing how rows are queried; any change invalidates prior absence proofs and query checkpoints. */
 export const QueryContract = Schema.TaggedStruct('QueryContract', {
   apiVersion: SupportedNotionApiVersion,
   filter: Schema.NullOr(CanonicalNotionFilter),
@@ -157,6 +165,7 @@ export const QueryContract = Schema.TaggedStruct('QueryContract', {
 }).annotations({ identifier: 'NotionDatasourceSync.QueryContract' })
 export type QueryContract = typeof QueryContract.Type
 
+/** Input to a paginated row query: identifies the data source, the query contract, and the optional resume cursor. */
 export const QueryRowsInput = Schema.TaggedStruct('QueryRowsInput', {
   dataSourceId: DataSourceId,
   queryContract: QueryContract,
@@ -164,6 +173,7 @@ export const QueryRowsInput = Schema.TaggedStruct('QueryRowsInput', {
 }).annotations({ identifier: 'NotionDatasourceSync.QueryRowsInput' })
 export type QueryRowsInput = typeof QueryRowsInput.Type
 
+/** A single page of query results; `hasMore` and `nextCursor` drive pagination, `cappedAtLimit` indicates a result-cap was hit. */
 export const QueryRowsPage = Schema.TaggedStruct('QueryRowsPage', {
   apiVersion: SupportedNotionApiVersion,
   requestId: NotionRequestId,
@@ -182,6 +192,7 @@ export const QueryRowsPage = Schema.TaggedStruct('QueryRowsPage', {
 }).annotations({ identifier: 'NotionDatasourceSync.QueryRowsPage' })
 export type QueryRowsPage = typeof QueryRowsPage.Type
 
+/** Input to a paginated property-value retrieval for a specific page + property combination. */
 export const RetrievePagePropertyInput = Schema.TaggedStruct('RetrievePagePropertyInput', {
   pageId: PageId,
   propertyId: PropertyId,
@@ -189,6 +200,7 @@ export const RetrievePagePropertyInput = Schema.TaggedStruct('RetrievePageProper
 }).annotations({ identifier: 'NotionDatasourceSync.RetrievePagePropertyInput' })
 export type RetrievePagePropertyInput = typeof RetrievePagePropertyInput.Type
 
+/** A single page of property items returned by a paginated property retrieval. */
 export const PagePropertyItemPage = Schema.TaggedStruct('PagePropertyItemPage', {
   apiVersion: SupportedNotionApiVersion,
   requestId: NotionRequestId,
@@ -200,6 +212,7 @@ export const PagePropertyItemPage = Schema.TaggedStruct('PagePropertyItemPage', 
 }).annotations({ identifier: 'NotionDatasourceSync.PagePropertyItemPage' })
 export type PagePropertyItemPage = typeof PagePropertyItemPage.Type
 
+/** Remote write command: applies a partial property patch to a Notion page, gated on the base properties hash matching. */
 export const PatchPagePropertiesCommand = Schema.TaggedStruct('PatchPagePropertiesCommand', {
   commandId: CommandId,
   pageId: PageId,
@@ -208,6 +221,7 @@ export const PatchPagePropertiesCommand = Schema.TaggedStruct('PatchPageProperti
 }).annotations({ identifier: 'NotionDatasourceSync.PatchPagePropertiesCommand' })
 export type PatchPagePropertiesCommand = typeof PatchPagePropertiesCommand.Type
 
+/** Remote write command: applies a partial schema patch to a Notion database, gated on the base schema hash matching. */
 export const PatchDataSourceSchemaCommand = Schema.TaggedStruct('PatchDataSourceSchemaCommand', {
   commandId: CommandId,
   dataSourceId: DataSourceId,
@@ -216,6 +230,7 @@ export const PatchDataSourceSchemaCommand = Schema.TaggedStruct('PatchDataSource
 }).annotations({ identifier: 'NotionDatasourceSync.PatchDataSourceSchemaCommand' })
 export type PatchDataSourceSchemaCommand = typeof PatchDataSourceSchemaCommand.Type
 
+/** Remote write command: moves a Notion page to the trash, gated on the base properties hash. */
 export const TrashPageCommand = Schema.TaggedStruct('TrashPageCommand', {
   commandId: CommandId,
   pageId: PageId,
@@ -223,6 +238,7 @@ export const TrashPageCommand = Schema.TaggedStruct('TrashPageCommand', {
 }).annotations({ identifier: 'NotionDatasourceSync.TrashPageCommand' })
 export type TrashPageCommand = typeof TrashPageCommand.Type
 
+/** Remote write command: restores a trashed Notion page, gated on the base properties hash. */
 export const RestorePageCommand = Schema.TaggedStruct('RestorePageCommand', {
   commandId: CommandId,
   pageId: PageId,
@@ -230,11 +246,13 @@ export const RestorePageCommand = Schema.TaggedStruct('RestorePageCommand', {
 }).annotations({ identifier: 'NotionDatasourceSync.RestorePageCommand' })
 export type RestorePageCommand = typeof RestorePageCommand.Type
 
+/** Input to `PageBodySyncPort.observe`: fetches the current body state and returns a `BodyPointer`. */
 export const ObserveBodyInput = Schema.TaggedStruct('ObserveBodyInput', {
   pageId: PageId,
 }).annotations({ identifier: 'NotionDatasourceSync.ObserveBodyInput' })
 export type ObserveBodyInput = typeof ObserveBodyInput.Type
 
+/** Input to `PageBodySyncPort.planLocalChange`: describes the local body modification to be evaluated for conflicts or intent promotion. */
 export const BodyLocalChangeInput = Schema.TaggedStruct('BodyLocalChangeInput', {
   pageId: PageId,
   baseBodyPointer: BodyPointer,
@@ -242,6 +260,7 @@ export const BodyLocalChangeInput = Schema.TaggedStruct('BodyLocalChangeInput', 
 }).annotations({ identifier: 'NotionDatasourceSync.BodyLocalChangeInput' })
 export type BodyLocalChangeInput = typeof BodyLocalChangeInput.Type
 
+/** A confirmed local body intent: the desired next body hash relative to a known base pointer, ready to become a `BodyPushCommand`. */
 export const BodyIntent = Schema.TaggedStruct('BodyIntent', {
   pageId: PageId,
   baseBodyPointer: BodyPointer,
@@ -249,6 +268,7 @@ export const BodyIntent = Schema.TaggedStruct('BodyIntent', {
 }).annotations({ identifier: 'NotionDatasourceSync.BodyIntent' })
 export type BodyIntent = typeof BodyIntent.Type
 
+/** Named reason for a body conflict; maps directly to the `GuardName` values that can block a body push. */
 export const BodyConflictReason = Schema.Literal(
   'StaleSurfaceBase',
   'BodyLossyRemote',
@@ -261,6 +281,7 @@ export const BodyConflictReason = Schema.Literal(
 ).annotations({ identifier: 'NotionDatasourceSync.BodyConflictReason' })
 export type BodyConflictReason = typeof BodyConflictReason.Type
 
+/** Conflict detected by the body adapter between local and remote body states; prevents the push from proceeding without resolution. */
 export const BodyConflict = Schema.TaggedStruct('BodyConflict', {
   pageId: PageId,
   baseBodyPointer: BodyPointer,
@@ -271,6 +292,7 @@ export const BodyConflict = Schema.TaggedStruct('BodyConflict', {
 }).annotations({ identifier: 'NotionDatasourceSync.BodyConflict' })
 export type BodyConflict = typeof BodyConflict.Type
 
+/** Remote write command: pushes the next body hash to Notion, gated on the base body pointer. */
 export const BodyPushCommand = Schema.TaggedStruct('BodyPushCommand', {
   commandId: CommandId,
   pageId: PageId,
@@ -279,6 +301,7 @@ export const BodyPushCommand = Schema.TaggedStruct('BodyPushCommand', {
 }).annotations({ identifier: 'NotionDatasourceSync.BodyPushCommand' })
 export type BodyPushCommand = typeof BodyPushCommand.Type
 
+/** Result of a successful body push; carries the updated `BodyPointer` for post-write verification. */
 export const BodyPushResult = Schema.TaggedStruct('BodyPushResult', {
   pageId: PageId,
   requestId: NotionRequestId,
@@ -286,12 +309,14 @@ export const BodyPushResult = Schema.TaggedStruct('BodyPushResult', {
 }).annotations({ identifier: 'NotionDatasourceSync.BodyPushResult' })
 export type BodyPushResult = typeof BodyPushResult.Type
 
+/** Input to `PageBodySyncPort.repair`: re-reads the current body state to reconcile a prior desynchronization. */
 export const BodyRepairInput = Schema.TaggedStruct('BodyRepairInput', {
   pageId: PageId,
   currentBodyPointer: BodyPointer,
 }).annotations({ identifier: 'NotionDatasourceSync.BodyRepairInput' })
 export type BodyRepairInput = typeof BodyRepairInput.Type
 
+/** Discriminated union of all commands that cause a remote write to Notion; the `_tag` selects the operation kind. */
 export const RemoteWriteCommand = Schema.Union(
   PatchPagePropertiesCommand,
   PatchDataSourceSchemaCommand,
@@ -301,6 +326,7 @@ export const RemoteWriteCommand = Schema.Union(
 ).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteCommand' })
 export type RemoteWriteCommand = typeof RemoteWriteCommand.Type
 
+/** Payload stored in the outbox for a planned remote write; wraps the command so the outbox projection can decode it without knowing the concrete type. */
 export const RemoteWritePlanPayload = Schema.Struct({
   command: RemoteWriteCommand,
 }).annotations({ identifier: 'NotionDatasourceSync.RemoteWritePlanPayload' })

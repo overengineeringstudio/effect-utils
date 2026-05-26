@@ -77,14 +77,17 @@ import {
   type OpenNotionSyncStoreOptions,
 } from '../store/store.ts'
 
+/** Decode an unknown value against a schema using sync semantics — throws on invalid input (test-only helper, mirrors `Schema.decodeUnknownSync(schema)(value)`). */
 export const decode = <TSchema extends Schema.Schema.AnyNoContext>(
   schema: TSchema,
   value: unknown,
 ): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
+/** Build a decoded `Hash` branded value from an arbitrary string — stable shorthand for test assertions. */
 export const hash = (value: string): HashType =>
   decode(Hash, `sha256:${createHash('sha256').update(value).digest('hex')}`)
 
+/** Canonical set of decoded branded IDs shared across unit and e2e tests — use `testIds` for the pre-built instance. */
 export type TestIds = {
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceId
@@ -99,6 +102,7 @@ export type TestIds = {
   readonly requestId: NotionRequestId
 }
 
+/** Pre-built set of decoded branded IDs for use in tests — covers a single root, two data sources, two pages, two properties, one command, one intent event, one command key, and one request ID. */
 export const testIds: TestIds = {
   rootId: decode(SyncRootId, 'root-1'),
   dataSourceId: decode(DataSourceId, 'data-source-1'),
@@ -113,14 +117,17 @@ export const testIds: TestIds = {
   requestId: decode(NotionRequestId, 'request-1'),
 }
 
+/** Fixed ISO timestamp used as the baseline `observedAt` value across all harness fixtures — keeps snapshots deterministic. */
 export const fixedObservedAt = '2026-05-25T00:00:00.000Z'
 
+/** Controllable clock for tests — use `makeFakeClock` to create an instance whose time can be advanced deterministically. */
 export type FakeClock = {
   readonly now: () => Date
   readonly nowIso: () => string
   readonly advanceMillis: (millis: number) => Date
 }
 
+/** Create a `FakeClock` starting at `initial` (defaults to `fixedObservedAt`) — `advanceMillis` moves the clock forward and returns the new time. */
 export const makeFakeClock = (initial = fixedObservedAt): FakeClock => {
   let current = new Date(initial)
 
@@ -134,15 +141,18 @@ export const makeFakeClock = (initial = fixedObservedAt): FakeClock => {
   }
 }
 
+/** Tagged union representing a single rate-limiter decision — `allowed` lets the call through; `retry-after` signals a backoff delay. */
 export type FakeRateLimitDecision =
   | { readonly _tag: 'allowed' }
   | { readonly _tag: 'retry-after'; readonly retryAfterMillis: number }
 
+/** Scriptable rate-limiter for tests — replays a fixed sequence of `decisions`, repeating the last entry once exhausted. */
 export type FakeRateLimiter = {
   readonly decisions: ReadonlyArray<FakeRateLimitDecision>
   readonly acquire: () => FakeRateLimitDecision
 }
 
+/** Create a `FakeRateLimiter` from a sequence of decisions — defaults to a single `allowed` entry. */
 export const makeFakeRateLimiter = (
   decisions: ReadonlyArray<FakeRateLimitDecision> = [{ _tag: 'allowed' }],
 ): FakeRateLimiter => {
@@ -158,6 +168,7 @@ export const makeFakeRateLimiter = (
   }
 }
 
+/** Configuration knobs for `makeFakeGatewayHarness` — all fields are optional and fall back to sensible defaults. */
 export type FakeGatewayInput = {
   readonly capabilities?: ReadonlyArray<CapabilityName>
   readonly dataSource?: DataSourceSnapshot
@@ -171,6 +182,7 @@ export type FakeGatewayInput = {
   readonly readAfterWriteMismatchPageIds?: ReadonlyArray<PageId>
 }
 
+/** Wrapper around a fake `NotionDataSourceGatewayShape` that intercepts mutations and exposes observed command lists for assertions. */
 export type FakeGatewayHarness = {
   readonly gateway: NotionDataSourceGatewayShape
   readonly ledger: FakeGatewayMutationLedger
@@ -180,6 +192,7 @@ export type FakeGatewayHarness = {
   readonly restoredPages: ReadonlyArray<RestorePageCommand>
 }
 
+/** Separate attempted vs. successful mutation counts for each command type — lets tests assert that commands were attempted but not committed when an error is injected. */
 export type FakeGatewayMutationLedger = {
   readonly attemptedPatchPageProperties: ReadonlyArray<PatchPagePropertiesCommand>
   readonly successfulPatchPageProperties: ReadonlyArray<PatchPagePropertiesCommand>
@@ -191,6 +204,7 @@ export type FakeGatewayMutationLedger = {
   readonly successfulRestorePages: ReadonlyArray<RestorePageCommand>
 }
 
+/** Build a `FakeGatewayHarness` — wraps `makeFakeNotionDataSourceGateway` and taps all mutation calls into the `ledger` for assertion. */
 export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewayHarness => {
   const patchedPageProperties: PatchPagePropertiesCommand[] = []
   const patchedDataSourceSchemas: PatchDataSourceSchemaCommand[] = []
@@ -287,12 +301,14 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
   }
 }
 
+/** An open `NotionSyncStore` instance paired with its on-disk path and a `cleanup()` that closes the store and removes the temp directory. */
 export type StoreFixture = {
   readonly store: NotionSyncStore
   readonly path: string
   readonly cleanup: () => void
 }
 
+/** Open an in-memory (default) or file-backed `NotionSyncStore` for a test — returns a `StoreFixture` with a `cleanup()` that closes the store. */
 export const makeStoreFixture = (
   options: Partial<OpenNotionSyncStoreOptions> & { readonly mode?: 'file' | 'memory' } = {},
 ): StoreFixture => {
@@ -319,6 +335,7 @@ export const makeStoreFixture = (
   }
 }
 
+/** Build a decoded `BodyPointer` fixture pointing to `testIds.pageId` — defaults to `hash('body-a')` for the body hash. */
 export const bodyPointer = (bodyHash: HashType = hash('body-a')): BodyPointerType =>
   decode(BodyPointer, {
     _tag: 'BodyPointer',
@@ -327,6 +344,7 @@ export const bodyPointer = (bodyHash: HashType = hash('body-a')): BodyPointerTyp
     observedAt: fixedObservedAt,
   })
 
+/** Build a default `RowPageSnapshot` fixture — accepts partial overrides to vary only the fields under test. */
 export const rowSnapshot = (overrides: Partial<RowPageSnapshot> = {}): RowPageSnapshot => ({
   _tag: 'RowPageSnapshot',
   pageId: testIds.pageId,
@@ -336,6 +354,7 @@ export const rowSnapshot = (overrides: Partial<RowPageSnapshot> = {}): RowPageSn
   ...overrides,
 })
 
+/** Build a default `PageSnapshot` fixture — accepts partial overrides to vary only the fields under test. */
 export const pageSnapshot = (overrides: Partial<PageSnapshot> = {}): PageSnapshot => ({
   _tag: 'PageSnapshot',
   pageId: testIds.pageId,
@@ -347,6 +366,7 @@ export const pageSnapshot = (overrides: Partial<PageSnapshot> = {}): PageSnapsho
   ...overrides,
 })
 
+/** Build a decoded `QueryRowsPage` fixture from row snapshots — wraps the raw rows in `QueriedRow` records with the fixed test request ID and contract hash. */
 export const queryRowsPage = ({
   rows,
   hasMore,
@@ -375,6 +395,7 @@ export const queryRowsPage = ({
     cappedAtLimit,
   })
 
+/** Build a baseline `QueryContract` with no filters, no sorts, a page size of 100, and `all-data-source-rows` membership scope. */
 export const defaultQueryContract = (): QueryContract => ({
   _tag: 'QueryContract',
   apiVersion: '2026-03-11',
@@ -385,8 +406,10 @@ export const defaultQueryContract = (): QueryContract => ({
   membershipScope: 'all-data-source-rows',
 })
 
+/** Alias for `bodySafetySnapshot` — convenience re-export for test files that only import from the harness. */
 export const bodySafety = bodySafetySnapshot
 
+/** Build a fully populated `PlannerProjectionSnapshot` fixture — covers schema, rows, properties, bodies, and an empty tombstone/query/path state. Accepts partial overrides. */
 export const buildPlannerSnapshot = (
   overrides: Partial<PlannerProjectionSnapshot> = {},
 ): PlannerProjectionSnapshot => ({
@@ -460,11 +483,13 @@ export const buildPlannerSnapshot = (
   ...overrides,
 })
 
+/** Build a `title`-typed `CanonicalPropertyValue` fixture — defaults to plain text `'Updated'`. */
 export const propertyPatchValue = (plainText = 'Updated'): CanonicalPropertyValue => ({
   _tag: 'title',
   plainText,
 })
 
+/** Build a default `property-edit` planner intent fixture targeting `testIds.propertyA` — accepts partial overrides for scenario-specific fields. */
 export const propertyEditIntent = (
   overrides: Partial<PropertyEditIntent> = {},
 ): PropertyEditIntent => {
@@ -493,6 +518,7 @@ export const propertyEditIntent = (
   }
 }
 
+/** Build a default `query-absence` planner intent fixture — accepts partial overrides for scenario-specific fields. */
 export const queryAbsenceIntent = (
   overrides: Partial<QueryAbsenceIntent> = {},
 ): QueryAbsenceIntent => ({
@@ -504,6 +530,7 @@ export const queryAbsenceIntent = (
   ...overrides,
 })
 
+/** Build a query surface fixture combining completeness and absence snapshots — uses `testIds.dataSourceId` and a stable contract hash. */
 export const querySurface = ({
   completeness,
   absence,
@@ -518,6 +545,7 @@ export const querySurface = ({
   absence,
 })
 
+/** Build a `body-adapter-result` planner intent fixture — the `safety` snapshot controls which body-safety guards are exercised. */
 export const bodyAdapterResultIntent = (safety: BodySafetySnapshot): BodyAdapterResultIntent => ({
   _tag: 'body-adapter-result',
   surface: bodySurfaceKey(testIds.pageId),
@@ -525,6 +553,7 @@ export const bodyAdapterResultIntent = (safety: BodySafetySnapshot): BodyAdapter
   safety,
 })
 
+/** Build a default `local-delete` planner intent fixture — policy defaults to `candidateOnly` so no remote trash is enqueued without an explicit override. */
 export const localDeleteIntent = (
   overrides: Partial<LocalDeleteIntent> = {},
 ): LocalDeleteIntent => {
@@ -551,6 +580,7 @@ export const localDeleteIntent = (
   }
 }
 
+/** Build a default `FakeBodyPageState` fixture — useful as the backing page state for `makeFakePageBodySyncPort`. */
 export const fakeBodyPage = (overrides: Partial<FakeBodyPageState> = {}): FakeBodyPageState => ({
   pageId: testIds.pageId,
   pointer: bodyPointer(),
@@ -559,6 +589,7 @@ export const fakeBodyPage = (overrides: Partial<FakeBodyPageState> = {}): FakeBo
   ...overrides,
 })
 
+/** Build a `BodyLocalChangeInput` fixture representing a local body edit from `hash('body-a')` to `hash('body-next')`. */
 export const bodyLocalChangeInput = (
   overrides: Partial<BodyLocalChangeInput> = {},
 ): BodyLocalChangeInput => ({
@@ -569,6 +600,7 @@ export const bodyLocalChangeInput = (
   ...overrides,
 })
 
+/** Build the `body` and `workspace` fake ports used by most planner-level tests — defaults to a single `fakeBodyPage` and the default workspace policy. */
 export const makeHarnessPorts = (
   input: {
     readonly bodyPages?: ReadonlyArray<FakeBodyPageState>
@@ -615,6 +647,7 @@ const eventBase = (input: {
 const commandTag = (command: { readonly _tag: string }): string =>
   command._tag.replace(/Command$/, '')
 
+/** Build a decoded `RemoteWritePlanned` `SyncEvent` fixture — used to pre-populate the outbox before exercising the executor. */
 export const remoteWritePlannedEvent = (input: {
   readonly eventId: string
   readonly commandId: CommandId
@@ -646,6 +679,7 @@ export const remoteWritePlannedEvent = (input: {
     preflight: input.preflight,
   })
 
+/** Build a decoded `RemoteWriteAttempted` `SyncEvent` fixture — simulates an in-flight or retryable outbox attempt for recovery tests. */
 export const remoteWriteAttemptedEvent = (input: {
   readonly eventId: string
   readonly idempotencyKey: string
@@ -670,6 +704,7 @@ export const remoteWriteAttemptedEvent = (input: {
     leaseToken: input.leaseToken ?? 'lease-1',
   })
 
+/** Build a decoded `RemoteWriteSettled` `SyncEvent` fixture — used in settlement verification tests to assert that the executor records the correct `observedHash`. */
 export const remoteWriteSettledEvent = (input: {
   readonly eventId: string
   readonly idempotencyKey: string
@@ -696,6 +731,7 @@ export const remoteWriteSettledEvent = (input: {
     settlementKind: 'verified-success',
   })
 
+/** Append a `RemoteWritePlanned` event to the store for a given outbox envelope — shorthand for pre-populating the outbox in executor tests. */
 export const appendPlannedCommand = (
   store: NotionSyncStore,
   command: OutboxCommandEnvelope,

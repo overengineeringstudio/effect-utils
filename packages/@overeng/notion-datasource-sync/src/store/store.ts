@@ -48,18 +48,21 @@ import {
 
 type SqlRow = Record<string, unknown>
 
+/** Active SQLite PRAGMA values read back after the store is opened. */
 export type SqliteStoreSettings = {
   readonly journalMode: string
   readonly foreignKeys: boolean
   readonly busyTimeoutMs: number
 }
 
+/** Options for opening or creating a `NotionSyncStore`. `now` is injectable for deterministic testing. */
 export type OpenNotionSyncStoreOptions = {
   readonly path: string
   readonly busyTimeoutMs?: number
   readonly now?: () => Date
 }
 
+/** Record in `projection_metadata` tracking the projector version and event sequence at which a projection was last rebuilt. */
 export type ProjectionMetadata = {
   readonly rootId: SyncRootId
   readonly projectorVersion: string
@@ -67,6 +70,7 @@ export type ProjectionMetadata = {
   readonly digest: Hash
 }
 
+/** A row from the `outbox` projection table, representing a pending or settled remote-write command. */
 export type OutboxProjectionRow = {
   readonly commandId: string
   readonly commandKey: string
@@ -81,6 +85,7 @@ export type OutboxProjectionRow = {
   readonly settlementEventId: string | undefined
 }
 
+/** A row from `conflict_projection`, representing an open or resolved three-way sync conflict. */
 export type ConflictProjectionRow = {
   readonly conflictId: SyncEventId
   readonly pageId: PageId | undefined
@@ -105,6 +110,7 @@ export type ConflictProjectionRow = {
   readonly resolutionEventId: SyncEventId | undefined
 }
 
+/** A row from `guard_block_projection`, representing an active guard block that halted sync progress. */
 export type GuardBlockProjectionRow = {
   readonly blockId: string
   readonly surface: SurfaceKey | undefined
@@ -113,6 +119,7 @@ export type GuardBlockProjectionRow = {
   readonly eventId: SyncEventId
 }
 
+/** A row from `tombstone_projection`, representing a page classified as deleted or moved out of the tracked data source. */
 export type TombstoneProjectionRow = {
   readonly pageId: PageId
   readonly classification:
@@ -126,6 +133,7 @@ export type TombstoneProjectionRow = {
   readonly eventId: SyncEventId
 }
 
+/** A row from `query_scan_checkpoint` tracking pagination state for an ongoing or completed data-source query scan. */
 export type QueryCheckpointRow = {
   readonly dataSourceId: DataSourceId
   readonly queryContractHash: Hash
@@ -137,12 +145,14 @@ export type QueryCheckpointRow = {
   readonly eventId: SyncEventId
 }
 
+/** Parameters for atomically claiming an outbox command for execution under a lease. */
 export type OutboxClaimOptions = {
   readonly rootId: SyncRootId
   readonly leaseToken: string
   readonly leaseDurationMs: number
 }
 
+/** An outbox command that has been atomically claimed for execution, including its decoded payload and the attempt event already written to the log. */
 export type ClaimedOutboxCommand = {
   readonly rootId: SyncRootId
   readonly commandId: CommandId
@@ -164,6 +174,7 @@ export type ClaimedOutboxCommand = {
   readonly attemptEvent: Extract<SyncEvent, { readonly _tag: 'RemoteWriteAttempted' }>
 }
 
+/** Input for recording the mid-flight state of an outbox command attempt (running, retryable, blocked, fenced, ambiguous). */
 export type OutboxAttemptStateInput = {
   readonly rootId: SyncRootId
   readonly commandId: CommandId
@@ -179,6 +190,7 @@ export type OutboxAttemptStateInput = {
   readonly idempotencyKey?: IdempotencyKey
 }
 
+/** Input for marking an outbox command as successfully settled after a verified remote write. */
 export type OutboxSettlementInput = {
   readonly rootId: SyncRootId
   readonly commandId: CommandId
@@ -192,15 +204,18 @@ export type OutboxSettlementInput = {
   readonly idempotencyKey?: IdempotencyKey
 }
 
+/** A guard-identified reason why compaction cannot proceed right now. */
 export type CompactionBlocker = {
   readonly guard: typeof GuardName.Type
   readonly message: string
 }
 
+/** Tagged union indicating whether event-log compaction may proceed or is blocked by in-flight outbox commands. */
 export type CompactionDecision =
   | { readonly _tag: 'allowed' }
   | { readonly _tag: 'blocked'; readonly blockers: readonly CompactionBlocker[] }
 
+/** Aggregated health summary across all projection tables, used for status reporting and liveness checks. */
 export type StoreStatusProjection = {
   readonly outbox: {
     readonly queued: number
@@ -434,6 +449,13 @@ const preflightMigrationSafety = (path: string): void => {
   }
 }
 
+/**
+ * SQLite-backed store for the notion-datasource-sync event log and projections.
+ *
+ * Holds the append-only `sync_event` log plus all derived projection tables.
+ * Runs migrations on open and exposes synchronous read/write methods used by
+ * the sync engine. Opened via `openNotionSyncStore`.
+ */
 export class NotionSyncStore {
   readonly #db: DatabaseSync
   readonly #now: () => Date
@@ -2402,5 +2424,6 @@ export class NotionSyncStore {
   }
 }
 
+/** Open (or create) a `NotionSyncStore` at the given path, running any pending schema migrations. */
 export const openNotionSyncStore = (options: OpenNotionSyncStoreOptions): NotionSyncStore =>
   new NotionSyncStore(options)

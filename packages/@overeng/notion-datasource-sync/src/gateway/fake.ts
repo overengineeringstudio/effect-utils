@@ -42,11 +42,13 @@ import {
   notionRequestId,
 } from './gateway.ts'
 
+/** Seeded property item list for a single property in the fake gateway. */
 export type FakePagePropertyItems = {
   readonly propertyId: PropertyId
   readonly items: ReadonlyArray<PagePropertyItem>
 }
 
+/** A single page entry seeded into the fake gateway, including its snapshot, row, and optional property item pages. */
 export type FakeNotionPageRecord = {
   readonly snapshot: PageSnapshotType
   readonly row: RowPageSnapshotType
@@ -54,6 +56,7 @@ export type FakeNotionPageRecord = {
   readonly visibleInFilteredQueries?: boolean
 }
 
+/** Full configuration for the in-memory fake gateway — data sources, pages, pagination limits, and fault-injection flags. */
 export type FakeNotionDataSourceGatewayConfig = {
   readonly configuredApiVersion?: string
   readonly apiContract?: NotionApiContract
@@ -201,6 +204,12 @@ const validatePageSize = ({
 
 export { queryContractHash } from '../core/canonical.ts'
 
+/**
+ * Create an in-memory `NotionDataSourceGatewayShape` for testing.
+ *
+ * Simulates pagination, permission ambiguity, stale-base rejection, and
+ * read-after-write mismatches. Mutable page state supports multi-step test flows.
+ */
 export const makeFakeNotionDataSourceGateway = (
   config: FakeNotionDataSourceGatewayConfig,
 ): NotionDataSourceGatewayShape => {
@@ -569,6 +578,7 @@ export const makeFakeNotionDataSourceGateway = (
   })
 }
 
+/** Effect Layer that provides `NotionDataSourceGateway` backed by the fake in-memory implementation. */
 export const makeFakeNotionDataSourceGatewayLayer = (
   config: FakeNotionDataSourceGatewayConfig,
 ): Layer.Layer<NotionDataSourceGateway> =>

@@ -8,6 +8,7 @@ import type { SyncEvent } from '../core/events.ts'
 import { type PropertyAvailability, type PropertyWriteClass } from '../core/guards.ts'
 import { PROJECTOR_VERSION } from './schema.ts'
 
+/** All possible lifecycle states of an outbox command row. */
 export const OutboxState = Schema.Literal(
   'queued',
   'running',
@@ -19,18 +20,22 @@ export const OutboxState = Schema.Literal(
 ).annotations({ identifier: 'NotionDatasourceSync.OutboxState' })
 export type OutboxState = typeof OutboxState.Type
 
+/** Minimal event fields needed to compute a deterministic projection digest. */
 export type ProjectionDigestInput = {
   readonly sequence: bigint
   readonly eventId: string
   readonly payloadHash: string
 }
 
+/** Compute a `sha256:`-prefixed `Hash` from an arbitrary UTF-8 string. */
 export const hashStoreBytes = (value: string): Hash =>
   Schema.decodeSync(Hash)(`sha256:${createHash('sha256').update(value).digest('hex')}`)
 
+/** Stable hash encoding a page's trash state, used for stale-base detection on `trashPage` / `restorePage`. */
 export const pageLifecycleHash = (pageId: PageId, inTrash: boolean): Hash =>
   hashStoreBytes(`page-lifecycle\t${pageId}\t${inTrash ? 'in-trash' : 'active'}`)
 
+/** Compute a deterministic digest over a contiguous run of events, used to verify that a stored projection is still current. */
 export const computeProjectionDigest = (events: ReadonlyArray<ProjectionDigestInput>): Hash => {
   const lines = events.map(
     (event) =>
@@ -40,19 +45,24 @@ export const computeProjectionDigest = (events: ReadonlyArray<ProjectionDigestIn
   return hashStoreBytes(`${lines.join('\n')}\n`)
 }
 
+/** Hash the canonical JSON payload of a `SyncEvent`, used for deduplication and projection digest computation. */
 export const computePayloadHash = (event: SyncEvent): Hash =>
   hashStoreBytes(event.payload.canonicalJson)
 
+/** Returns true when an outbox command in the given state must prevent compaction from proceeding. */
 export const isCompactionBlockingOutboxState = (state: OutboxState): boolean =>
   state === 'queued' || state === 'running' || state === 'retryable' || state === 'ambiguous'
 
+/** Schema-encoded write-class literal stored in `schema_property_projection`. */
 export const ProjectionPropertyWriteClass = Schema.Literal(
   'writable',
   'computed',
   'unsupported',
 ).annotations({ identifier: 'NotionDatasourceSync.ProjectionPropertyWriteClass' })
+/** TypeScript alias for `PropertyWriteClass` — re-exported alongside the Schema literal for symmetry. */
 export type ProjectionPropertyWriteClass = PropertyWriteClass
 
+/** Schema-encoded availability literal stored in `property_shadow_projection`. */
 export const ProjectionPropertyAvailability = Schema.Literal(
   'complete',
   'computed',
@@ -61,8 +71,10 @@ export const ProjectionPropertyAvailability = Schema.Literal(
   'relation-target-inaccessible',
   'related-data-source-unshared',
 ).annotations({ identifier: 'NotionDatasourceSync.ProjectionPropertyAvailability' })
+/** TypeScript alias for `PropertyAvailability` — re-exported alongside the Schema literal for symmetry. */
 export type ProjectionPropertyAvailability = PropertyAvailability
 
+/** Schema-encoded direct-retrieve outcome stored in `query_absence_projection`. */
 export const ProjectionDirectRetrieve = Schema.Literal(
   'not-run',
   'accessible',
@@ -74,6 +86,7 @@ export const ProjectionDirectRetrieve = Schema.Literal(
 ).annotations({ identifier: 'NotionDatasourceSync.ProjectionDirectRetrieve' })
 export type ProjectionDirectRetrieve = typeof ProjectionDirectRetrieve.Type
 
+/** Auxiliary JSON payload stored alongside `data_source_projection` rows (schema property list). */
 export const DataSourceProjectionPayload = Schema.Struct({
   schemaProperties: Schema.optional(
     Schema.Array(
@@ -87,6 +100,7 @@ export const DataSourceProjectionPayload = Schema.Struct({
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceProjectionPayload' })
 export type DataSourceProjectionPayload = typeof DataSourceProjectionPayload.Type
 
+/** Auxiliary JSON payload stored alongside `row_projection` rows (body path, move status, sidecar identity). */
 export const RowProjectionPayload = Schema.Struct({
   movedOut: Schema.optional(Schema.Boolean),
   localDeleteCandidate: Schema.optional(Schema.Boolean),
@@ -96,18 +110,21 @@ export const RowProjectionPayload = Schema.Struct({
 }).annotations({ identifier: 'NotionDatasourceSync.RowProjectionPayload' })
 export type RowProjectionPayload = typeof RowProjectionPayload.Type
 
+/** Auxiliary JSON payload stored alongside `page_property_checkpoint` rows (base hash, availability). */
 export const PropertyCheckpointProjectionPayload = Schema.Struct({
   baseHash: Schema.optional(Hash),
   availability: Schema.optional(ProjectionPropertyAvailability),
 }).annotations({ identifier: 'NotionDatasourceSync.PropertyCheckpointProjectionPayload' })
 export type PropertyCheckpointProjectionPayload = typeof PropertyCheckpointProjectionPayload.Type
 
+/** Auxiliary JSON payload stored alongside `query_scan_checkpoint` rows (cap/contract-change flags). */
 export const QueryCheckpointProjectionPayload = Schema.Struct({
   cappedAtLimit: Schema.optional(Schema.Boolean),
   contractChanged: Schema.optional(Schema.Boolean),
 }).annotations({ identifier: 'NotionDatasourceSync.QueryCheckpointProjectionPayload' })
 export type QueryCheckpointProjectionPayload = typeof QueryCheckpointProjectionPayload.Type
 
+/** Auxiliary JSON payload stored alongside `query_absence_projection` rows (absence classification details). */
 export const QueryAbsenceProjectionPayload = Schema.Struct({
   dataSourceId: Schema.optional(DataSourceId),
   pageId: Schema.optional(PageId),
@@ -119,6 +136,7 @@ export const QueryAbsenceProjectionPayload = Schema.Struct({
 }).annotations({ identifier: 'NotionDatasourceSync.QueryAbsenceProjectionPayload' })
 export type QueryAbsenceProjectionPayload = typeof QueryAbsenceProjectionPayload.Type
 
+/** Auxiliary JSON payload stored alongside `body_pointer_projection` rows (safety snapshot used for conflict detection). */
 export const BodyProjectionSafetyPayload = Schema.Struct({
   safety: Schema.optional(BodySafetySnapshot),
 }).annotations({ identifier: 'NotionDatasourceSync.BodyProjectionSafetyPayload' })

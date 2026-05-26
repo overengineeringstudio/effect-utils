@@ -94,6 +94,7 @@ const makeRowForgottenEvent = ({
     reason: 'user-forget',
   })
 
+/** Return a `UserCommandResultEnvelope` describing the current sync surface without planning or applying any changes — useful for CLI list/status commands. */
 export const listUserCommandSurface = (options: UserActionOptions) =>
   resultEnvelope({
     ...options,
@@ -103,6 +104,7 @@ export const listUserCommandSurface = (options: UserActionOptions) =>
     applied: emptyPlan(),
   })
 
+/** Emit a `RowForgotten` event to remove a page from the local sync projection without touching the remote; useful for evicting orphaned or stale rows. Respects `dryRun`. */
 export const forgetPageCommand = (
   options: UserActionOptions & {
     readonly pageId: PageId

@@ -31,8 +31,15 @@ import type { NotionSyncStore } from '../store/store.ts'
 import type { SchemaPropertyObservation } from '../sync/observation.ts'
 import { syncOneShot, type OneShotSyncResult } from '../sync/sync.ts'
 
+/** Backoff tier for the watch daemon loop — controls the inter-cycle sleep duration (1 s / 5 s / 15 s). */
 export type WatchDaemonMode = 'development' | 'normal' | 'low-priority'
 
+/**
+ * Persistent state written to disk after each daemon cycle.
+ *
+ * Tracks cycle counter, last-complete cycle, timestamps, and a `repair` tag that records
+ * whether the previous cycle failed and how long to back off before retrying.
+ */
 export type WatchDaemonState = {
   readonly version: 1
   readonly rootId: SyncRootId
@@ -51,6 +58,7 @@ export type WatchDaemonState = {
   readonly lastStatus: OneShotSyncStatus | undefined
 }
 
+/** Outcome of a single completed sync cycle, including the status snapshot, full sync result, and updated daemon state. */
 export type WatchDaemonCycleResult = {
   readonly _tag: 'WatchDaemonCycleResult'
   readonly rootId: SyncRootId
@@ -60,6 +68,7 @@ export type WatchDaemonCycleResult = {
   readonly state: WatchDaemonState
 }
 
+/** Aggregate result for a full `runWatchDaemon` invocation: total attempted/completed cycles, cancellation flag, and final daemon state. */
 export type WatchDaemonRunResult = {
   readonly _tag: 'WatchDaemonRunResult'
   readonly rootId: SyncRootId
@@ -70,6 +79,13 @@ export type WatchDaemonRunResult = {
   readonly state: WatchDaemonState
 }
 
+/**
+ * Runtime configuration for `runWatchDaemon` and `runWatchDaemonCycle`.
+ *
+ * Includes the sync dependencies (store, gateway ports, workspace root, contracts),
+ * daemon identity / lease parameters, backoff mode, cycle cap, and optional
+ * test-seam overrides for `sleep`, `now`, and the `AbortSignal`.
+ */
 export type WatchDaemonOptions = {
   readonly store: NotionSyncStore
   readonly rootId: SyncRootId
@@ -91,6 +107,7 @@ export type WatchDaemonOptions = {
   readonly signal?: AbortSignal
 }
 
+/** Tagged error raised when an `AbortSignal` fires mid-cycle, allowing the daemon loop to exit cleanly. */
 export class WatchDaemonCancelled extends Schema.TaggedError<WatchDaemonCancelled>()(
   'WatchDaemonCancelled',
   {
@@ -132,8 +149,10 @@ const modeBackoffMillis = (mode: WatchDaemonMode): number => {
   }
 }
 
+/** Generates a fresh random UUID to identify one daemon process instance across its lifecycle. */
 export const makeWatchDaemonInstanceId = (): string => randomUUID()
 
+/** Derives the default event-log lease token for a daemon instance, encoding root and instance identity. */
 export const defaultWatchDaemonLeaseToken = ({
   rootId,
   instanceId,
@@ -158,6 +177,12 @@ const localStoreError = (operation: string, message: string, cause?: unknown) =>
     ...(cause === undefined ? {} : { cause }),
   })
 
+/**
+ * Reads and deserializes the daemon state JSON file from `statePath`.
+ *
+ * Returns the stored state if the `rootId` matches; returns a fresh initial state if the file
+ * is missing or belongs to a different root. Fails with `LocalStoreError` on I/O or parse errors.
+ */
 export const readWatchDaemonState = (input: {
   readonly rootId: SyncRootId
   readonly statePath: string
@@ -187,6 +212,7 @@ export const readWatchDaemonState = (input: {
       ),
   })
 
+/** Atomically writes the daemon state to `statePath` via a `.tmp` rename, failing with `LocalStoreError` on I/O errors. */
 export const writeWatchDaemonState = (input: {
   readonly statePath: string
   readonly state: WatchDaemonState
@@ -268,6 +294,13 @@ const interruptOnAbort = <TValue, TError, TContext>(
     ? effect
     : effect.pipe(Effect.raceFirst(abortSignalEffect({ ...input, signal: input.signal })))
 
+/**
+ * Executes one full sync cycle under the `notion.datasource.daemon.pass` span.
+ *
+ * Reads the previous daemon state, increments the cycle counter, runs `syncOneShot`,
+ * and writes the updated state on both success and failure. Emits status span attributes
+ * on completion. Propagates `WatchDaemonCancelled` if the `AbortSignal` fires mid-cycle.
+ */
 export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
   attributes: spanAttributes({
     [spanAttr.spanLabel]: 'cycle',
@@ -396,6 +429,16 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
     }),
 )
 
+/**
+ * Runs the watch daemon loop under the `notion.datasource.daemon.run` span.
+ *
+ * Repeatedly calls `runWatchDaemonCycle`, sleeping between cycles according to the
+ * mode backoff or the `repair.retryAfterMillis` from the last failed cycle.
+ * Stops when `maxCycles` is reached or the `AbortSignal` fires, returning a
+ * `WatchDaemonRunResult` with aggregate cycle counts. Sync errors are swallowed
+ * per-cycle and converted to a retry with backoff; only `LocalStoreError` writing
+ * state can propagate out.
+ */
 export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
   attributes: spanAttributes({
     [spanAttr.spanLabel]: 'watch',

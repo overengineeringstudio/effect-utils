@@ -34,6 +34,7 @@ import {
   type SchemaIntentSafety,
 } from '../core/guards.ts'
 
+/** Planner-visible view of a single property column in the remote data source schema. */
 export type SchemaPropertySurface = {
   readonly dataSourceId: DataSourceId
   readonly propertyId: PropertyId
@@ -42,6 +43,7 @@ export type SchemaPropertySurface = {
   readonly writeClass: PropertyWriteClass
 }
 
+/** Observed state of a single page property used by the planner to detect conflicts and stale intents. */
 export type PropertySurfaceSnapshot = {
   readonly pageId: PageId
   readonly propertyId: PropertyId
@@ -56,6 +58,7 @@ export type PropertySurfaceSnapshot = {
     | undefined
 }
 
+/** Observed state of a remote row used to check lifecycle guards (trash, move-out) before planning writes or deletes. */
 export type RowSurfaceSnapshot = {
   readonly pageId: PageId
   readonly dataSourceId: DataSourceId
@@ -65,6 +68,7 @@ export type RowSurfaceSnapshot = {
   readonly localDeleteCandidate: boolean
 }
 
+/** Observed body pointer state for a page, including safety diagnostics and own-write suppression tokens. */
 export type BodyPointerSurfaceSnapshot = {
   readonly pageId: PageId
   readonly path: string
@@ -75,6 +79,7 @@ export type BodyPointerSurfaceSnapshot = {
   readonly safety: BodySafetySnapshot
 }
 
+/** Planner-visible tombstone record; `state` tracks lifecycle classification from unclassified candidate through to a definitive absence reason. */
 export type TombstoneSurfaceSnapshot = {
   readonly pageId: PageId
   readonly dataSourceId: DataSourceId | undefined
@@ -83,6 +88,7 @@ export type TombstoneSurfaceSnapshot = {
   readonly directRetrieve: QueryAbsenceSnapshot['directRetrieve']
 }
 
+/** Planner-visible state of a query scan checkpoint, combining completeness and page absence proofs needed for tombstone classification. */
 export type QueryCheckpointSurfaceSnapshot = {
   readonly dataSourceId: DataSourceId
   readonly pageId: PageId
@@ -91,12 +97,14 @@ export type QueryCheckpointSurfaceSnapshot = {
   readonly absence: QueryAbsenceSnapshot
 }
 
+/** Active or released path claim; used to detect collisions when a new page intent tries to claim the same local file path. */
 export type PathClaimSurfaceSnapshot = {
   readonly path: string
   readonly ownerPageId: PageId
   readonly released: boolean
 }
 
+/** Observed state of a page's local workspace artifact, used to distinguish intentional deletes from mass-deletion heuristics and own-write suppression. */
 export type LocalWorkspaceSurfaceSnapshot = {
   readonly pageId: PageId
   readonly path: string
@@ -106,6 +114,7 @@ export type LocalWorkspaceSurfaceSnapshot = {
   readonly materializationId: string | undefined
 }
 
+/** Full read-model snapshot fed into the planner; aggregates every surface the planner may inspect to make a `PlanDecision`. */
 export type PlannerProjectionSnapshot = {
   readonly rootId: SyncRootId
   readonly api: ApiCompatibilitySnapshot
@@ -121,6 +130,7 @@ export type PlannerProjectionSnapshot = {
   readonly remoteChanges: ReadonlyArray<ConflictSurface>
 }
 
+/** Wrapper that pairs a `RemoteWriteCommand` with its sync metadata (surface key, intent event id, preflight guards) for safe outbox enqueuing. */
 export type OutboxCommandEnvelope = {
   readonly commandId: CommandId
   readonly commandKey: IdempotencyKey
@@ -133,6 +143,7 @@ export type OutboxCommandEnvelope = {
   readonly preflight: ReadonlyArray<GuardName>
 }
 
+/** Side-effect-free event emitted by the planner when it accepts an observation (path claim, tombstone classification, etc.) without needing a remote write. */
 export type PlannerEvent =
   | {
       readonly _tag: 'LocalDeleteCandidateAccepted'
@@ -164,6 +175,14 @@ export type PlannerEvent =
       readonly path: string
     }
 
+/**
+ * Tagged union returned by `planIntent` describing what the planner decided.
+ *
+ * - `AppendEvents` — intent resolved locally; emit these planner events to the store.
+ * - `EnqueueCommands` — intent requires a remote write; enqueue these outbox commands.
+ * - `OpenConflict` — a conflicting remote change was detected; raise a conflict record.
+ * - `BlockedByGuard` — a guard condition prevents planning; record a guard-blocked event.
+ */
 export type PlanDecision =
   | { readonly _tag: 'AppendEvents'; readonly events: ReadonlyArray<PlannerEvent> }
   | { readonly _tag: 'EnqueueCommands'; readonly commands: ReadonlyArray<OutboxCommandEnvelope> }
@@ -175,6 +194,7 @@ export type PlanDecision =
       readonly detail: SafeDiagnostic
     }
 
+/** Intent to patch a single page property value on the remote data source. */
 export type PropertyEditIntent = {
   readonly _tag: 'property-edit'
   readonly intentEventId: SyncEventId
@@ -188,6 +208,7 @@ export type PropertyEditIntent = {
   readonly expectedPropertyConfigHash: Hash
 }
 
+/** Intent to push a local body change to the remote page. */
 export type BodyEditIntent = {
   readonly _tag: 'body-edit'
   readonly intentEventId: SyncEventId
@@ -199,6 +220,7 @@ export type BodyEditIntent = {
   readonly desiredHash: Hash
 }
 
+/** Intent to update the remote data source schema — e.g. rename a property or add/remove select options. */
 export type SchemaMigrationIntent = {
   readonly _tag: 'schema-migration'
   readonly intentEventId: SyncEventId
@@ -212,6 +234,7 @@ export type SchemaMigrationIntent = {
   readonly safety: SchemaIntentSafety
 }
 
+/** Intent to trash a page on the remote, triggered by a local workspace deletion; `policy` and `explicitDestructiveIntent` control whether the planner escalates to a real remote trash or treats it as a candidate. */
 export type LocalDeleteIntent = {
   readonly _tag: 'local-delete'
   readonly intentEventId: SyncEventId
@@ -226,6 +249,7 @@ export type LocalDeleteIntent = {
   readonly directRetrieve: QueryAbsenceSnapshot['directRetrieve']
 }
 
+/** Intent to record a page's ownership of a local filesystem path; blocked if another page already holds the same path. */
 export type PathClaimIntent = {
   readonly _tag: 'path-claim'
   readonly surface: SurfaceKey
@@ -233,6 +257,7 @@ export type PathClaimIntent = {
   readonly path: string
 }
 
+/** Intent to classify why a previously-known page no longer appears in a query result; resolves to a tombstone event or a block if proof is insufficient. */
 export type QueryAbsenceIntent = {
   readonly _tag: 'query-absence'
   readonly surface: SurfaceKey
@@ -241,6 +266,7 @@ export type QueryAbsenceIntent = {
   readonly queryContractHash: Hash
 }
 
+/** Intent that records the outcome of a body adapter safety check; blocked if the adapter reports lossy or non-body mutations. */
 export type BodyAdapterResultIntent = {
   readonly _tag: 'body-adapter-result'
   readonly surface: SurfaceKey
@@ -248,6 +274,7 @@ export type BodyAdapterResultIntent = {
   readonly safety: BodySafetySnapshot
 }
 
+/** Discriminated union of all intents the planner can process; dispatch via `planIntent`. */
 export type PlannerIntent =
   | PropertyEditIntent
   | BodyEditIntent
@@ -852,6 +879,7 @@ const planBodyAdapterResult = (intent: BodyAdapterResultIntent): PlanDecision =>
   }
 }
 
+/** Dispatch a `PlannerIntent` against the current projection snapshot and return the appropriate `PlanDecision`. Pure function — no side effects; all store mutations are the caller's responsibility. */
 export const planIntent = (
   snapshot: PlannerProjectionSnapshot,
   intent: PlannerIntent,
@@ -874,6 +902,7 @@ export const planIntent = (
   }
 }
 
+/** Construct a `BlockedByGuard` `PlanDecision` directly — useful for callers outside the planner that need to synthesise a guard block (e.g. user-command paths). */
 export const blockedByGuard = (
   guard: GuardName,
   surface: SurfaceKey,

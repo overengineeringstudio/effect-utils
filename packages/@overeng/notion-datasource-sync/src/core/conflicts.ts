@@ -3,6 +3,7 @@ import { Schema } from 'effect'
 import type { Hash, PageId, PropertyId } from './domain.ts'
 import type { SurfaceKey } from './events.ts'
 
+/** Discriminator for the type of conflict detected between local and remote changes. */
 export const ConflictKind = Schema.Literal(
   'same-property',
   'disjoint-property',
@@ -17,6 +18,7 @@ export const ConflictKind = Schema.Literal(
 ).annotations({ identifier: 'NotionDatasourceSync.ConflictKind' })
 export type ConflictKind = typeof ConflictKind.Type
 
+/** A change surface representing a property-value mutation on a specific page; carries base and next hashes for three-way merge. */
 export type PropertyChangeSurface = {
   readonly _tag: 'property'
   readonly pageId: PageId
@@ -26,6 +28,7 @@ export type PropertyChangeSurface = {
   readonly surface: SurfaceKey
 }
 
+/** A change surface representing a markdown body mutation; `lossy` is true when the body has a known lossiness condition. */
 export type BodyChangeSurface = {
   readonly _tag: 'body'
   readonly pageId: PageId
@@ -35,18 +38,21 @@ export type BodyChangeSurface = {
   readonly surface: SurfaceKey
 }
 
+/** A change surface representing a data-source schema mutation; lists the affected property IDs so independent properties can be excluded. */
 export type SchemaChangeSurface = {
   readonly _tag: 'schema'
   readonly affectedPropertyIds: ReadonlyArray<PropertyId>
   readonly surface: SurfaceKey
 }
 
+/** A change surface representing a page deletion or trash operation; always conflicts with any concurrent edit. */
 export type DeleteChangeSurface = {
   readonly _tag: 'delete'
   readonly pageId: PageId
   readonly surface: SurfaceKey
 }
 
+/** A change surface representing a path-claim attempt; carries the existing page ID when a collision is detected. */
 export type PathClaimChangeSurface = {
   readonly _tag: 'path'
   readonly path: string
@@ -55,6 +61,7 @@ export type PathClaimChangeSurface = {
   readonly surface: SurfaceKey
 }
 
+/** A change surface representing a relation-property update; `available: false` indicates the target page is inaccessible. */
 export type RelationAvailabilitySurface = {
   readonly _tag: 'relation'
   readonly pageId: PageId
@@ -63,6 +70,7 @@ export type RelationAvailabilitySurface = {
   readonly surface: SurfaceKey
 }
 
+/** A change surface representing a permission-ambiguous lifecycle event; `ambiguous: true` blocks the operation until permissions are resolved. */
 export type PermissionSurface = {
   readonly _tag: 'permission'
   readonly pageId: PageId
@@ -70,6 +78,7 @@ export type PermissionSurface = {
   readonly surface: SurfaceKey
 }
 
+/** Discriminated union of all change-surface types passed to `classifyConflict`; the `_tag` selects the surface kind. */
 export type ConflictSurface =
   | PropertyChangeSurface
   | BodyChangeSurface
@@ -79,6 +88,7 @@ export type ConflictSurface =
   | RelationAvailabilitySurface
   | PermissionSurface
 
+/** Data carried by a `conflict` classification result; includes the conflict kind, surface keys, three-way hashes, and a message. */
 export type ConflictPayload = {
   readonly kind: Exclude<ConflictKind, 'disjoint-property' | 'property-vs-body'>
   readonly localSurface: SurfaceKey
@@ -89,6 +99,9 @@ export type ConflictPayload = {
   readonly message: string
 }
 
+/**
+ * Result of `classifyConflict`: tagged union of `conflict` (requires resolution), `mergeable` (auto-mergeable kind), and `independent` (no overlap).
+ */
 export type ConflictClassification =
   | {
       readonly _tag: 'conflict'
@@ -132,6 +145,12 @@ const conflict = ({
 const samePage = (left: { readonly pageId: PageId }, right: { readonly pageId: PageId }) =>
   left.pageId === right.pageId
 
+/**
+ * Classifies the relationship between two change surfaces as `conflict`, `mergeable`, or `independent`.
+ *
+ * Rules (evaluated in priority order): permission ambiguity, path collision, relation unavailability,
+ * lossy body, delete-vs-edit, schema-affects-property, same-property, property-vs-body, body-body.
+ */
 export const classifyConflict = (
   local: ConflictSurface,
   remote: ConflictSurface,
