@@ -111,6 +111,8 @@ const commandBaseHash = (command: RemoteWriteCommand): Hash => {
       return command.basePropertiesHash
     case 'PatchDataSourceSchemaCommand':
       return command.baseSchemaHash
+    case 'PatchDataSourceMetadataCommand':
+      return command.baseMetadataHash
     case 'BodyPushCommand':
       return command.baseBodyPointer.bodyHash
   }
@@ -152,6 +154,25 @@ const observeCurrentSurface = (
           requestId: dataSource.requestId,
         }
       }
+      case 'PatchDataSourceMetadataCommand': {
+        const gateway = yield* NotionDataSourceGateway
+        const dataSource = yield* gateway.retrieveDataSource(command.dataSourceId)
+        if (dataSource.metadataHash === undefined) {
+          return yield* Effect.fail(
+            new NotionGatewayError({
+              operation: 'retrieveDataSource',
+              dataSourceId: command.dataSourceId,
+              guard: 'CurrentSurfaceMissing',
+              message: 'Current data-source metadata projection is missing',
+            }),
+          )
+        }
+        return {
+          baseHash: dataSource.metadataHash,
+          verificationHash: dataSource.metadataHash,
+          requestId: dataSource.requestId,
+        }
+      }
       case 'BodyPushCommand': {
         const body = yield* PageBodySyncPort
         const pointer = yield* body.observe({ _tag: 'ObserveBodyInput', pageId: command.pageId })
@@ -187,6 +208,10 @@ const executeRemoteWrite = (
       case 'PatchDataSourceSchemaCommand': {
         const gateway = yield* NotionDataSourceGateway
         return yield* gateway.patchDataSourceSchema(command)
+      }
+      case 'PatchDataSourceMetadataCommand': {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway.patchDataSourceMetadata(command)
       }
       case 'TrashPageCommand': {
         const gateway = yield* NotionDataSourceGateway

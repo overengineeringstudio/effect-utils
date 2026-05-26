@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 
 import { hashStoreBytes } from '../store/projections.ts'
-import type { QueryRowsInput } from './commands.ts'
+import type { CanonicalDataSourceMetadata, QueryRowsInput } from './commands.ts'
 import type { DataSourceId, PageId, PropertyId } from './domain.ts'
 import { SurfaceKey } from './events.ts'
 
@@ -31,6 +31,10 @@ export const schemaSurfaceKey = ({
   readonly dataSourceId: DataSourceId
   readonly propertyId: PropertyId
 }): SurfaceKey => surfaceKey(`data-source:${dataSourceId}:schema:${propertyId}`)
+
+/** Surface key for data-source metadata such as title and description. */
+export const dataSourceMetadataSurfaceKey = (dataSourceId: DataSourceId): SurfaceKey =>
+  surfaceKey(`data-source:${dataSourceId}:metadata`)
 
 /** Surface key for a local file path (`path:<path>`); used in path-claim conflict detection. */
 export const pathSurfaceKey = (path: string): SurfaceKey => surfaceKey(`path:${path}`)
@@ -74,6 +78,10 @@ const stableStringify = (value: unknown): string => {
 
 /** SHA-256 hash for canonicalized datasource-sync contract and surface data. */
 export const canonicalHash = (value: unknown) => hashStoreBytes(stableStringify(value))
+
+/** Hash data-source metadata independently from the property schema surface. */
+export const dataSourceMetadataHash = (metadata: CanonicalDataSourceMetadata) =>
+  canonicalHash(metadata)
 
 /** Hash the query contract fields that define durable query membership identity. */
 export const queryContractHash = ({

@@ -124,6 +124,15 @@ export const DataSourceObserved = Schema.TaggedStruct('DataSourceObserved', {
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceObserved' })
 export type DataSourceObserved = typeof DataSourceObserved.Type
 
+/** Records the observation of Notion data-source presentation metadata independently from schema. */
+export const DataSourceMetadataObserved = Schema.TaggedStruct('DataSourceMetadataObserved', {
+  ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'DataSourceMetadataObserved' }),
+  dataSourceId: DataSourceId,
+  requestId: NotionRequestId,
+  metadataHash: Hash,
+}).annotations({ identifier: 'NotionDatasourceSync.DataSourceMetadataObserved' })
+export type DataSourceMetadataObserved = typeof DataSourceMetadataObserved.Type
+
 /** Records the observation of a single Notion database row (page) during a query scan, including its properties hash and trash state. */
 export const RowObserved = Schema.TaggedStruct('RowObserved', {
   ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'RowObserved' }),
@@ -318,6 +327,7 @@ export const SyncEvent = Schema.Union(
   SyncBindingRecorded,
   ApiContractObserved,
   DataSourceObserved,
+  DataSourceMetadataObserved,
   RowObserved,
   LocalIntentAccepted,
   RemoteWritePlanned,

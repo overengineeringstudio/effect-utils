@@ -31,6 +31,7 @@ import {
   type NotionDataSourceGatewayShape,
   PageBodySyncPort,
   PageId,
+  PatchDataSourceMetadataCommand,
   PropertyId,
   PropertyName,
   SchemaPatchOperation,
@@ -476,6 +477,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       retrievePageProperty: () => Stream.die('retrievePageProperty should not be called'),
       patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
+      patchDataSourceMetadata: () =>
+        Effect.die('patchDataSourceMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
       restorePage: () => Effect.die('restorePage should not be called'),
     }
@@ -523,7 +526,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       retrievePageProperty: 0,
     }
     const apiContract = makeNotionApiContract({
-      supportedCapabilities: ['data_source_retrieve', 'data_source_query', 'page_retrieve'],
+      supportedCapabilities: [
+        'data_source_retrieve',
+        'data_source_query',
+        'data_source_metadata_update',
+        'page_retrieve',
+      ],
     })
     const gateway: NotionDataSourceGatewayShape = {
       apiContract,
@@ -554,6 +562,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       },
       patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
+      patchDataSourceMetadata: () =>
+        Effect.die('patchDataSourceMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
       restorePage: () => Effect.die('restorePage should not be called'),
     }
@@ -625,6 +635,13 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         calls.retrievePageProperty += 1
         return Effect.succeed({ results: [], nextCursor: Option.none(), hasMore: false })
       },
+      retrieveDatabase: () =>
+        Effect.succeed({
+          id: 'database-1',
+          title: [],
+          description: [],
+          icon: null,
+        }),
       updatePage: ({ pageId }) => {
         calls.updatePage += 1
         return Effect.succeed({
@@ -644,6 +661,13 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           },
         })
       },
+      updateDatabase: () =>
+        Effect.succeed({
+          id: 'database-1',
+          title: [],
+          description: [],
+          icon: null,
+        }),
     }
 
     const result = await runLiveNotionPreflight({
@@ -921,6 +945,64 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await provisioned.cleanup(recorder.current())
         }
       }, 180_000)
+
+      it('patches data-source description metadata against live Notion', async () => {
+        if (processLiveConfig._tag !== 'configured') return
+
+        const env = liveNotionEnvFromProcessEnv()
+        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: processLiveConfig })
+        const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
+        const description = `datasource-sync metadata description ${provisioned.config.runId}`
+
+        try {
+          await runLiveGateway(
+            env,
+            Effect.gen(function* () {
+              const gateway = yield* NotionDataSourceGateway
+              const dataSourceId = decode(DataSourceId, provisioned.config.dataSourceId)
+              const initial = yield* gateway.retrieveDataSource(dataSourceId)
+              if (initial.metadataHash === undefined) {
+                throw new Error('live data-source metadata hash was unavailable')
+              }
+
+              yield* gateway.patchDataSourceMetadata(
+                decode(PatchDataSourceMetadataCommand, {
+                  _tag: 'PatchDataSourceMetadataCommand',
+                  commandId: `${provisioned.config.runId}:metadata:description`,
+                  dataSourceId,
+                  baseMetadataHash: initial.metadataHash,
+                  metadataPatch: { descriptionPlainText: description },
+                }),
+              )
+
+              const updated = yield* NotionDataSources.retrieve({
+                dataSourceId: provisioned.config.dataSourceId,
+              })
+              expect(updated.description.map((part) => part.plain_text).join('')).toBe(description)
+              const finalSnapshot = yield* gateway.retrieveDataSource(dataSourceId)
+              expect(finalSnapshot.schemaHash).toBe(initial.schemaHash)
+              expect(finalSnapshot.metadataHash).not.toBe(initial.metadataHash)
+            }),
+          )
+
+          await recorder.record({
+            phase: 'mutate',
+            objectId: provisioned.config.dataSourceId,
+            objectType: 'data_source',
+            purpose: 'live-metadata-description-patch',
+            cleanupState: 'mutated',
+          })
+          await recorder.record({
+            phase: 'verify',
+            objectId: provisioned.config.dataSourceId,
+            objectType: 'data_source',
+            purpose: 'live-metadata-description-patch',
+            cleanupState: 'verified',
+          })
+        } finally {
+          await provisioned.cleanup(recorder.current())
+        }
+      }, 120_000)
 
       it('pushes a NotionMD body through the datasource-sync body adapter against live Notion', async () => {
         if (processLiveConfig._tag !== 'configured') return
@@ -1724,9 +1806,11 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         expect(markdown.markdown).toContain('notion datasource sync demo customers')
         expect(markdown.markdown).toContain('notion datasource sync demo activity events')
         expect(markdown.markdown).toContain('500 rows')
+        expect(markdown.markdown).toContain('Metadata proof')
         expect(markdown.markdown).toContain(result.runId)
         for (const dataSource of result.dataSources) {
           expect(markdown.markdown).toContain(dataSource.dataSourceId)
+          expect(markdown.markdown).toContain(dataSource.description)
         }
         expect(markdown.markdown).not.toContain(env.token ?? 'token-not-configured')
         expect(markdown.markdown).not.toContain('NOTION_API_TOKEN')
@@ -1747,6 +1831,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             )
             return {
               title: remote.title?.map((part) => part.plain_text ?? '').join('') ?? '',
+              description: remote.description?.map((part) => part.plain_text ?? '').join('') ?? '',
               propertyNames: Object.keys(remote.properties),
               rowCount,
             }
@@ -1759,6 +1844,9 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           'notion datasource sync demo customers',
           'notion datasource sync demo activity events',
         ])
+        expect(remoteCounts.map((remote) => remote.description)).toEqual(
+          result.dataSources.map((dataSource) => dataSource.description),
+        )
         expect(remoteCounts[0]?.propertyNames).toEqual(
           expect.arrayContaining(['Name', 'State', 'Budget', 'Strategic', 'Kickoff', 'Teams', 'Summary', 'Brief']),
         )
@@ -1771,7 +1859,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         expect(remoteCounts[3]?.propertyNames).toEqual(
           expect.arrayContaining(['Name', 'Segment', 'Sequence', 'Automated', 'EventDate', 'Labels', 'Payload']),
         )
-      }, 900_000)
+      }, 1_200_000)
     },
   )
 

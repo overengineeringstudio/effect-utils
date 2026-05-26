@@ -97,6 +97,28 @@ export const CanonicalPropertyValue = Schema.Union(
 ).annotations({ identifier: 'NotionDatasourceSync.CanonicalPropertyValue' })
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
+/** Stable data-source icon identity; transient Notion-hosted signed URLs are intentionally excluded from the canonical surface. */
+export const CanonicalDataSourceIcon = Schema.Union(
+  Schema.TaggedStruct('none', {}),
+  Schema.TaggedStruct('emoji', { emoji: Schema.String }),
+  Schema.TaggedStruct('custom_emoji', { id: Schema.NonEmptyTrimmedString }),
+  Schema.TaggedStruct('notion_icon', {
+    name: Schema.NonEmptyTrimmedString,
+    color: Schema.optional(Schema.NonEmptyTrimmedString),
+  }),
+  Schema.TaggedStruct('external', { urlHash: Hash }),
+  Schema.TaggedStruct('transient_file', {}),
+).annotations({ identifier: 'NotionDatasourceSync.CanonicalDataSourceIcon' })
+export type CanonicalDataSourceIcon = typeof CanonicalDataSourceIcon.Type
+
+/** Canonical data-source metadata kept separate from schema, rows, and body materialization. */
+export const CanonicalDataSourceMetadata = Schema.TaggedStruct('CanonicalDataSourceMetadata', {
+  titlePlainText: Schema.String,
+  descriptionPlainText: Schema.String,
+  icon: CanonicalDataSourceIcon,
+}).annotations({ identifier: 'NotionDatasourceSync.CanonicalDataSourceMetadata' })
+export type CanonicalDataSourceMetadata = typeof CanonicalDataSourceMetadata.Type
+
 /** Canonical schema descriptor for a single Notion database property; `configHash` covers all type-configuration details not in the `type` discriminator. */
 export const CanonicalDataSourceProperty = Schema.TaggedStruct('CanonicalDataSourceProperty', {
   propertyId: PropertyId,
@@ -304,6 +326,21 @@ export const PatchDataSourceSchemaCommand = Schema.TaggedStruct('PatchDataSource
 }).annotations({ identifier: 'NotionDatasourceSync.PatchDataSourceSchemaCommand' })
 export type PatchDataSourceSchemaCommand = typeof PatchDataSourceSchemaCommand.Type
 
+/** Remote write command: patches data-source presentation metadata, gated on the base metadata hash matching. */
+export const PatchDataSourceMetadataCommand = Schema.TaggedStruct(
+  'PatchDataSourceMetadataCommand',
+  {
+    commandId: CommandId,
+    dataSourceId: DataSourceId,
+    baseMetadataHash: Hash,
+    metadataPatch: Schema.Struct({
+      titlePlainText: Schema.optional(Schema.String),
+      descriptionPlainText: Schema.optional(Schema.String),
+    }),
+  },
+).annotations({ identifier: 'NotionDatasourceSync.PatchDataSourceMetadataCommand' })
+export type PatchDataSourceMetadataCommand = typeof PatchDataSourceMetadataCommand.Type
+
 /** Remote write command: moves a Notion page to the trash, gated on the base properties hash. */
 export const TrashPageCommand = Schema.TaggedStruct('TrashPageCommand', {
   commandId: CommandId,
@@ -400,6 +437,7 @@ export type BodyRepairInput = typeof BodyRepairInput.Type
 export const RemoteWriteCommand = Schema.Union(
   PatchPagePropertiesCommand,
   PatchDataSourceSchemaCommand,
+  PatchDataSourceMetadataCommand,
   TrashPageCommand,
   RestorePageCommand,
   BodyPushCommand,

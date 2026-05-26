@@ -114,6 +114,7 @@ export type NotionPageSize = typeof NotionPageSize.Type
 export const CapabilityName = Schema.Literal(
   'data_source_retrieve',
   'data_source_query',
+  'data_source_metadata_update',
   'page_retrieve',
   'page_property_paginate',
   'page_property_update',
@@ -147,12 +148,13 @@ export const CapabilityPreflightResult = Schema.TaggedStruct('CapabilityPrefligh
 }).annotations({ identifier: 'NotionDatasourceSync.CapabilityPreflightResult' })
 export type CapabilityPreflightResult = typeof CapabilityPreflightResult.Type
 
-/** Point-in-time observation of a Notion database: captures request metadata and a hash of the database schema. */
+/** Point-in-time observation of a Notion database: captures request metadata plus independent schema and metadata hashes. */
 export const DataSourceSnapshot = Schema.TaggedStruct('DataSourceSnapshot', {
   dataSourceId: DataSourceId,
   requestId: NotionRequestId,
   observedAt: Schema.DateTimeUtc,
   schemaHash: Hash,
+  metadataHash: Schema.optional(Hash),
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceSnapshot' })
 export type DataSourceSnapshot = typeof DataSourceSnapshot.Type
 

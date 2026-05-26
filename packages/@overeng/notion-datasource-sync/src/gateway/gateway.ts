@@ -2,6 +2,7 @@ import { Effect, Layer, Schema, Stream } from 'effect'
 
 import type {
   RetrievePagePropertyInput,
+  PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
   QueryRowsInput,
@@ -42,6 +43,7 @@ export const supportedNotionApiVersion: SupportedNotionApiVersionType =
 export const allGatewayCapabilities = [
   'data_source_retrieve',
   'data_source_query',
+  'data_source_metadata_update',
   'page_retrieve',
   'page_property_paginate',
   'page_property_update',
@@ -66,6 +68,7 @@ export type GatewayOperation =
   | 'retrievePageProperty'
   | 'patchPageProperties'
   | 'patchDataSourceSchema'
+  | 'patchDataSourceMetadata'
   | 'trashPage'
   | 'restorePage'
 
@@ -330,6 +333,24 @@ export const makeNotionDataSourceGateway = (
           spanNames.gatewayRequest,
           gatewayRequestSpan({
             operation: 'patchDataSourceSchema',
+            configuredApiVersion,
+            dataSourceId: command.dataSourceId,
+            commandId: command.commandId,
+            commandKind: commandKind(command._tag),
+          }),
+        ),
+      ),
+    patchDataSourceMetadata: (command: PatchDataSourceMetadataCommand) =>
+      ensureSupportedGatewayApiVersion({
+        operation: 'patchDataSourceMetadata',
+        configuredApiVersion,
+        dataSourceId: command.dataSourceId,
+      }).pipe(
+        Effect.flatMap(() => adapter.patchDataSourceMetadata(command)),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'patchDataSourceMetadata',
             configuredApiVersion,
             dataSourceId: command.dataSourceId,
             commandId: command.commandId,

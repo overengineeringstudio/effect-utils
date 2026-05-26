@@ -14,11 +14,13 @@ pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
   src/e2e/live-notion.e2e.test.ts --config vitest.config.ts
 ```
 
-The showcase refreshes the demo page, creates four current inline data sources,
-adds realistic rows and representative bodies, observes them through
+The showcase refreshes the demo page, ensures four current inline data sources,
+patches meaningful data-source descriptions through the datasource-sync metadata
+surface, tops them up to the requested row counts, observes them through
 datasource-sync with the live Notion adapter plus NotionMD body adapter, and
-appends a sanitized verification summary. Reruns archive previous demo
-data-source blocks before creating the new ones so the page stays bounded.
+appends a sanitized verification summary. Reruns reuse the current demo data
+sources and archive stale extras so the page stays bounded without rebuilding
+hundreds of Notion pages each time.
 
 Current domains and cardinalities:
 

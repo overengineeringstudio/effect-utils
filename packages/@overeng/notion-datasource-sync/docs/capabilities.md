@@ -16,6 +16,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Page-property retrieve     | Cursor pagination for truncated property-item values                   |
 | Property writes            | Guarded row property patches for modeled writable values               |
 | Schema writes              | Safe add/rename/add-option subset with base schema hash                |
+| Data-source metadata       | Guarded title/description patches with a separate metadata hash        |
 | Trash/restore              | Explicit command surface with outbox verification                      |
 | Body observation           | Via NotionMD-backed `PageBodySyncPort`                                 |
 | Body materialization       | `.nmd` files plus sidecar identity through the body port               |
@@ -34,6 +35,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | People property                  | Safe only when the integration can observe stable people values            |
 | Notion-hosted signed URLs        | Excluded from stable hashes and diagnostics                                |
 | Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts      |
+| Data-source icon metadata         | Observed as stable identity when possible; writable icon sync is deferred   |
 | Filtered query membership        | Does not classify row absence outside the explicit query contract          |
 
 ## Unsupported Or Deferred
@@ -41,7 +43,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Notion surface                    | Current policy                                                          |
 | --------------------------------- | ----------------------------------------------------------------------- |
 | Data-source views                 | Not synced; views are a separate Notion surface and not local authority |
-| Data-source icon/description      | Not managed by datasource sync                                          |
+| Data-source writable icons        | Deferred until file/custom/external icon identity has complete proof     |
 | Database/data-source presentation | Layout, grouping, sorts, filters, hidden properties, and view settings are not synced |
 | File upload/download bytes        | Deferred; file identity remains fail-closed when bytes matter           |
 | Destructive schema migrations     | Property delete, type conversion, option removal/rename are blocked     |

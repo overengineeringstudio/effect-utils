@@ -3,10 +3,11 @@ import { Effect, Layer, Schema, Stream } from 'effect'
 import { queryContractHash as computeQueryContractHash } from '../core/canonical.ts'
 import type {
   PagePropertyItemPage,
-  RetrievePagePropertyInput,
+  PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
   QueryRowsPage,
+  RetrievePagePropertyInput,
   RestorePageCommand,
   TrashPageCommand,
 } from '../core/commands.ts'
@@ -156,7 +157,11 @@ const findDataSource = ({
 }: {
   readonly dataSources: Map<string, DataSourceSnapshot>
   readonly dataSourceId: DataSourceId
-  readonly operation: 'retrieveDataSource' | 'queryRows' | 'patchDataSourceSchema'
+  readonly operation:
+    | 'retrieveDataSource'
+    | 'queryRows'
+    | 'patchDataSourceSchema'
+    | 'patchDataSourceMetadata'
 }): Effect.Effect<DataSourceSnapshot, NotionGatewayError> => {
   const snapshot = dataSources.get(dataSourceKey(dataSourceId))
 
@@ -581,6 +586,49 @@ export const makeFakeNotionDataSourceGateway = (
               )
                 .toSorted()
                 .join(',')}\t${operationFingerprint}`,
+            ),
+          })
+
+          return Effect.succeed(requestId)
+        }),
+      ),
+    patchDataSourceMetadata: (command: PatchDataSourceMetadataCommand) =>
+      findDataSource({
+        dataSources,
+        dataSourceId: command.dataSourceId,
+        operation: 'patchDataSourceMetadata',
+      }).pipe(
+        Effect.flatMap((snapshot) => {
+          if (snapshot.metadataHash === undefined) {
+            return Effect.fail(
+              makeGatewayError({
+                operation: 'patchDataSourceMetadata',
+                dataSourceId: command.dataSourceId,
+                guard: 'CurrentSurfaceMissing',
+                message: `Metadata projection is missing for data source: ${command.dataSourceId}`,
+              }),
+            )
+          }
+
+          if (snapshot.metadataHash !== command.baseMetadataHash) {
+            return Effect.fail(
+              makeGatewayError({
+                operation: 'patchDataSourceMetadata',
+                dataSourceId: command.dataSourceId,
+                guard: 'StaleSurfaceBase',
+                message: `Metadata patch base does not match current data source metadata: ${command.dataSourceId}`,
+              }),
+            )
+          }
+
+          const requestId = nextRequestId()
+          dataSources.set(dataSourceKey(command.dataSourceId), {
+            ...snapshot,
+            requestId,
+            metadataHash: hashStoreBytes(
+              `data-source-metadata\t${command.dataSourceId}\t${command.commandId}\t${JSON.stringify(
+                command.metadataPatch,
+              )}`,
             ),
           })
 

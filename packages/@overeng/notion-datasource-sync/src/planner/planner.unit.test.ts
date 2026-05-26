@@ -9,12 +9,14 @@ import {
   IdempotencyKey,
   PageId,
   PatchDataSourceSchemaCommand,
+  PatchDataSourceMetadataCommand,
   PatchPagePropertiesCommand,
   PropertyId,
   PropertyName,
   SyncEventId,
   SyncRootId,
   bodySurfaceKey,
+  dataSourceMetadataSurfaceKey,
   classifyConflict,
   guardApiCompatibility,
   guardBodyAdapterBoundary,
@@ -92,16 +94,25 @@ const bodyCommand = decode(BodyPushCommand, {
   nextBodyHash: hash('e'),
 })
 
+const metadataCommand = decode(PatchDataSourceMetadataCommand, {
+  _tag: 'PatchDataSourceMetadataCommand',
+  commandId,
+  dataSourceId,
+  baseMetadataHash: hash('e'),
+  metadataPatch: { descriptionPlainText: 'Synced description' },
+})
+
 const snapshot = (
   overrides: Partial<PlannerProjectionSnapshot> = {},
 ): PlannerProjectionSnapshot => ({
   rootId,
   api: { configuredApiVersion: '2026-03-11', compatibilityProof: 'present' },
   capabilities: {
-    required: ['page_property_update'],
-    supported: ['page_property_update'],
+    required: ['page_property_update', 'data_source_metadata_update'],
+    supported: ['page_property_update', 'data_source_metadata_update'],
     preflight: 'passed',
   },
+  metadata: [{ dataSourceId, metadataHash: hash('e') }],
   schema: [
     {
       dataSourceId,
@@ -487,6 +498,54 @@ describe('notion datasource conflict classifier', () => {
 })
 
 describe('notion datasource planner', () => {
+  it('enqueues metadata patches against the independent data-source metadata surface', () => {
+    const decision = planIntent({ snapshot: snapshot(), intent: {
+      _tag: 'data-source-metadata-edit',
+      intentEventId,
+      commandKey,
+      surface: dataSourceMetadataSurfaceKey(dataSourceId),
+      dataSourceId,
+      command: metadataCommand,
+      baseHash: hash('e'),
+      desiredHash: hash('f'),
+    } })
+
+    expect(decision).toMatchObject({
+      _tag: 'EnqueueCommands',
+      commands: [
+        {
+          rootId,
+          intentEventId,
+          commandKey,
+          surface: dataSourceMetadataSurfaceKey(dataSourceId),
+          baseHash: hash('e'),
+          desiredHash: hash('f'),
+          preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase'],
+        },
+      ],
+    })
+  })
+
+  it('blocks stale metadata patches without consulting schema state', () => {
+    const decision = planIntent({ snapshot: snapshot({
+      metadata: [{ dataSourceId, metadataHash: hash('d') }],
+    }), intent: {
+      _tag: 'data-source-metadata-edit',
+      intentEventId,
+      commandKey,
+      surface: dataSourceMetadataSurfaceKey(dataSourceId),
+      dataSourceId,
+      command: metadataCommand,
+      baseHash: hash('e'),
+      desiredHash: hash('f'),
+    } })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'StaleSurfaceBase',
+    })
+  })
+
   it('enqueues outbox-ready command envelopes for safe property edits', () => {
     const decision = planIntent({ snapshot: snapshot(), intent: {
       _tag: 'property-edit',

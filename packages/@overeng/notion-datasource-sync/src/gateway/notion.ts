@@ -9,16 +9,22 @@ import {
   NotionDatabases,
   NotionPages,
   type NotionApiError,
-  type NotionDataSource,
   type NotionPage,
   type NotionPagePropertyItem,
   type PaginatedResult,
 } from '@overeng/notion-effect-client'
 
-import { canonicalHash, queryContractHash } from '../core/canonical.ts'
+import {
+  canonicalHash,
+  dataSourceMetadataHash,
+  queryContractHash,
+} from '../core/canonical.ts'
 import type {
+  CanonicalDataSourceIcon,
+  CanonicalDataSourceMetadata,
   CanonicalOptionValue,
   CanonicalPropertyValue,
+  PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
   QueryRowsInput,
@@ -55,7 +61,14 @@ import {
 } from './gateway.ts'
 
 /** Schema-backed data-source projection consumed by the datasource-sync adapter. */
-export type NotionGatewayDataSource = Pick<NotionDataSource, 'id' | 'properties'>
+export type NotionGatewayDataSource = {
+  readonly id: string
+  readonly properties: Record<string, unknown>
+  readonly title?: readonly unknown[]
+  readonly description?: readonly unknown[]
+  readonly icon?: unknown
+  readonly parent?: { readonly type: 'database_id'; readonly database_id: string }
+}
 
 /** Schema-backed page projection consumed by the datasource-sync adapter. */
 export type NotionGatewayPage = Pick<
@@ -65,6 +78,13 @@ export type NotionGatewayPage = Pick<
 
 type NotionGatewayPagePropertyResult = PaginatedResult<NotionPagePropertyItem> & {
   readonly propertyItem?: unknown
+}
+
+type NotionGatewayDatabase = {
+  readonly id: string
+  readonly title?: readonly unknown[]
+  readonly description?: readonly unknown[]
+  readonly icon?: unknown
 }
 
 /**
@@ -94,14 +114,24 @@ export type NotionGatewayClient = {
     readonly pageSize: number
     readonly startCursor: string | undefined
   }) => Effect.Effect<NotionGatewayPagePropertyResult, unknown>
+  readonly retrieveDatabase: (input: {
+    readonly databaseId: string
+  }) => Effect.Effect<NotionGatewayDatabase, unknown>
   readonly updatePage: (input: {
     readonly pageId: string
     readonly properties?: Record<string, unknown>
     readonly inTrash?: boolean
   }) => Effect.Effect<NotionGatewayPage, unknown>
+  readonly updateDatabase: (input: {
+    readonly databaseId: string
+    readonly title?: readonly unknown[]
+    readonly description?: readonly unknown[]
+  }) => Effect.Effect<NotionGatewayDatabase, unknown>
   readonly updateDataSource: (input: {
     readonly dataSourceId: string
-    readonly properties: Record<string, unknown>
+    readonly properties?: Record<string, unknown>
+    readonly title?: readonly unknown[]
+    readonly description?: readonly unknown[]
   }) => Effect.Effect<NotionGatewayDataSource, unknown>
 }
 
@@ -130,6 +160,7 @@ const supportedNotionEffectClientCapabilities: ReadonlyArray<CapabilityName> = [
   'page_trash',
   'page_restore',
   'schema_update',
+  'data_source_metadata_update',
 ] as const satisfies ReadonlyArray<CapabilityName>
 
 const unavailableRequestId = NotionRequestId.make('notion-client-success-request-id-unavailable')
@@ -224,6 +255,82 @@ const gatewayGuardError = (input: {
 const optionalDataSourceIdFromPage = (page: NotionGatewayPage): DataSourceId | undefined =>
   page.parent.type === 'data_source_id' ? DataSourceId.make(page.parent.data_source_id) : undefined
 
+const richTextPlainText = (value: readonly unknown[]): string =>
+  value
+    .map((part) =>
+      typeof part === 'object' && part !== null && 'plain_text' in part
+        ? String((part as { readonly plain_text: unknown }).plain_text)
+        : '',
+    )
+    .join('')
+
+const canonicalIconFromRemote = (
+  icon: NotionGatewayDataSource['icon'],
+): CanonicalDataSourceIcon => {
+  if (icon === undefined || icon === null || typeof icon !== 'object' || !('type' in icon)) {
+    return { _tag: 'none' }
+  }
+  const iconRecord = icon as Record<string, unknown>
+  switch (iconRecord.type) {
+    case 'emoji':
+      return { _tag: 'emoji', emoji: String(iconRecord.emoji ?? '') }
+    case 'custom_emoji':
+      return {
+        _tag: 'custom_emoji',
+        id:
+          typeof iconRecord.custom_emoji === 'object' &&
+          iconRecord.custom_emoji !== null &&
+          'id' in iconRecord.custom_emoji
+            ? String(iconRecord.custom_emoji.id)
+            : 'unknown',
+      }
+    case 'icon':
+      return {
+        _tag: 'notion_icon',
+        name:
+          typeof iconRecord.icon === 'object' &&
+          iconRecord.icon !== null &&
+          'name' in iconRecord.icon
+            ? String(iconRecord.icon.name)
+            : 'unknown',
+        ...(typeof iconRecord.icon === 'object' &&
+        iconRecord.icon !== null &&
+        'color' in iconRecord.icon &&
+        typeof iconRecord.icon.color === 'string'
+          ? { color: iconRecord.icon.color }
+          : {}),
+      }
+    case 'external':
+      return {
+        _tag: 'external',
+        urlHash: canonicalHash(
+          typeof iconRecord.external === 'object' &&
+            iconRecord.external !== null &&
+            'url' in iconRecord.external
+            ? String(iconRecord.external.url)
+            : '',
+        ),
+      }
+    case 'file':
+      return { _tag: 'transient_file' }
+    default:
+      return { _tag: 'none' }
+  }
+}
+
+export const canonicalDataSourceMetadataFromRemote = (
+  dataSource: NotionGatewayDataSource,
+): CanonicalDataSourceMetadata => ({
+  _tag: 'CanonicalDataSourceMetadata',
+  titlePlainText: richTextPlainText(dataSource.title ?? []),
+  descriptionPlainText: richTextPlainText(dataSource.description ?? []),
+  icon: canonicalIconFromRemote(dataSource.icon),
+})
+
+const richTextWrite = (plainText: string): ReadonlyArray<unknown> => [
+  { type: 'text', text: { content: plainText } },
+]
+
 const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) =>
   DataSourceSnapshot.make({
     _tag: 'DataSourceSnapshot',
@@ -231,6 +338,7 @@ const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) =>
     requestId: unavailableRequestId,
     observedAt: observedNow(),
     schemaHash: canonicalHash(dataSource.properties),
+    metadataHash: dataSourceMetadataHash(canonicalDataSourceMetadataFromRemote(dataSource)),
   })
 
 const pageSnapshotFromRemote = (page: NotionGatewayPage) =>
@@ -861,6 +969,7 @@ export const makeNotionEffectClientGatewayClient = (
         ...(startCursor === undefined ? {} : { startCursor }),
       }),
     ),
+  retrieveDatabase: ({ databaseId }) => provideClientEnv(NotionDatabases.retrieve({ databaseId })),
   updatePage: ({ pageId, properties, inTrash }) =>
     provideClientEnv(
       NotionPages.update({
@@ -869,8 +978,23 @@ export const makeNotionEffectClientGatewayClient = (
         ...(inTrash === undefined ? {} : { in_trash: inTrash }),
       }),
     ),
-  updateDataSource: ({ dataSourceId, properties }) =>
-    provideClientEnv(NotionDataSources.update({ dataSourceId, properties })),
+  updateDatabase: ({ databaseId, title, description }) =>
+    provideClientEnv(
+      NotionDatabases.update({
+        databaseId,
+        ...(title === undefined ? {} : { title }),
+        ...(description === undefined ? {} : { description }),
+      }),
+    ),
+  updateDataSource: ({ dataSourceId, properties, title, description }) =>
+    provideClientEnv(
+      NotionDataSources.update({
+        dataSourceId,
+        ...(properties === undefined ? {} : { properties }),
+        ...(title === undefined ? {} : { title }),
+        ...(description === undefined ? {} : { description }),
+      }),
+    ),
 })
 
 /**
@@ -1058,6 +1182,64 @@ export const makeNotionDataSourceGatewayFromClient = ({
                 }),
               ),
             ),
+        ),
+      ),
+    patchDataSourceMetadata: (command: PatchDataSourceMetadataCommand) =>
+      client.retrieveDataSource({ dataSourceId: command.dataSourceId }).pipe(
+        Effect.mapError(
+          mapClientError({
+            operation: 'patchDataSourceMetadata',
+            dataSourceId: command.dataSourceId,
+          }),
+        ),
+        Effect.tap((dataSource) => {
+          const currentHash = dataSourceMetadataHash(canonicalDataSourceMetadataFromRemote(dataSource))
+          const decision = guardStaleSurfaceBase({
+            baseHash: command.baseMetadataHash,
+            currentHash,
+          })
+          return decision._tag === 'allowed'
+            ? Effect.void
+            : Effect.fail(
+                gatewayGuardError({
+                  operation: 'patchDataSourceMetadata',
+                  dataSourceId: command.dataSourceId,
+                  guard: decision.guard,
+                  message: decision.message,
+                }),
+              )
+        }),
+        Effect.flatMap(() =>
+          client.retrieveDataSource({ dataSourceId: command.dataSourceId }).pipe(
+            Effect.flatMap((dataSource) =>
+              dataSource.parent?.database_id === undefined
+                ? Effect.fail(
+                    unsupportedOperation({
+                      operation: 'patchDataSourceMetadata',
+                      capability: 'data_source_metadata_update',
+                      dataSourceId: command.dataSourceId,
+                      message:
+                        'Data-source metadata description writes require an owning database parent',
+                    }),
+                  )
+                : client.updateDatabase({
+                    databaseId: dataSource.parent.database_id,
+                    ...(command.metadataPatch.titlePlainText === undefined
+                      ? {}
+                      : { title: richTextWrite(command.metadataPatch.titlePlainText) }),
+                    ...(command.metadataPatch.descriptionPlainText === undefined
+                      ? {}
+                      : { description: richTextWrite(command.metadataPatch.descriptionPlainText) }),
+                  }),
+            ),
+            Effect.as(unavailableRequestId),
+            Effect.mapError(
+              mapClientError({
+                operation: 'patchDataSourceMetadata',
+                dataSourceId: command.dataSourceId,
+              }),
+            ),
+          ),
         ),
       ),
     trashPage: (command: TrashPageCommand) =>

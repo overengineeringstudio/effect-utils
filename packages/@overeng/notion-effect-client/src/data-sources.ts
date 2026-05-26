@@ -22,6 +22,8 @@ export interface CreateDataSourceOptions {
   readonly properties: Record<string, unknown>
   /** Data source title */
   readonly title?: readonly unknown[]
+  /** Data source description */
+  readonly description?: readonly unknown[]
   /** Data source icon */
   readonly icon?:
     | { readonly type: 'emoji'; readonly emoji: string }
@@ -35,6 +37,8 @@ export interface UpdateDataSourceOptions {
   readonly dataSourceId: string
   /** Update title */
   readonly title?: readonly unknown[]
+  /** Update description */
+  readonly description?: readonly unknown[]
   /** Update icon */
   readonly icon?:
     | { readonly type: 'emoji'; readonly emoji: string }
@@ -82,6 +86,7 @@ export const create = Effect.fn('NotionDataSources.create')(function* (
   }
 
   if (opts.title !== undefined) body.title = opts.title
+  if (opts.description !== undefined) body.description = opts.description
   if (opts.icon !== undefined) body.icon = opts.icon
 
   return yield* post({

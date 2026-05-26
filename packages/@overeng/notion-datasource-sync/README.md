@@ -52,7 +52,7 @@ fallback. The default CLI body adapter is intentionally fail-closed unless a
 - Remote effects execute from the outbox and settle only after verification.
 - Query cursors, high-watermarks, and page-property pagination are part of the
   observation contract.
-- Body, schema, properties, lifecycle, path claims, and conflict state are
+- Body, schema, data-source metadata, properties, lifecycle, path claims, and conflict state are
   separate surfaces.
 - Unsupported schema changes, computed properties, incomplete paginated values,
   file bytes, views, and unproven metadata writes block instead of degrading

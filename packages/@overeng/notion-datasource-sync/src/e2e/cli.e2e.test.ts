@@ -164,6 +164,13 @@ const makeInjectedNotionClient = (calls: {
       nextCursor: Option.none(),
       hasMore: false,
     }),
+  retrieveDatabase: () =>
+    Effect.succeed({
+      id: 'database-1',
+      title: [],
+      description: [],
+      icon: null,
+    }),
   updatePage: (input) =>
     Effect.succeed({
       ...injectedNotionPage(),
@@ -173,6 +180,13 @@ const makeInjectedNotionClient = (calls: {
     Effect.succeed({
       id: testIds.dataSourceId,
       properties: {},
+    }),
+  updateDatabase: () =>
+    Effect.succeed({
+      id: 'database-1',
+      title: [],
+      description: [],
+      icon: null,
     }),
 })
 
@@ -575,6 +589,7 @@ describe('CLI command surface', () => {
       retrievePageProperty: () => Stream.die('retrievePageProperty should not be called'),
       patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
+      patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
       restorePage: () => Effect.die('restorePage should not be called'),
     }
