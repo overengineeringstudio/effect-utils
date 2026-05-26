@@ -885,7 +885,19 @@ const installCtrlCInterrupt = <S, A, B, E>({
     yield* input.events.pipe(
       Stream.runForEach((event) => {
         if (event._tag === 'Event.Key' && isCtrlC(event) === true) {
-          return Fiber.interrupt(handlerFiber).pipe(Effect.asVoid)
+          const interruptStartedAt = performance.now()
+          return Fiber.interrupt(handlerFiber).pipe(
+            Effect.tap(() =>
+              Effect.annotateCurrentSpan(
+                'tui.interrupt.latency_ms',
+                performance.now() - interruptStartedAt,
+              ),
+            ),
+            Effect.asVoid,
+            Effect.withSpan('tui/ctrl-c/interrupt-handler', {
+              attributes: { 'span.label': 'ctrl-c' },
+            }),
+          )
         }
 
         return Effect.void
