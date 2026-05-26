@@ -46,7 +46,7 @@ export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions =
   const { name, runsOn, env, permissions, defaults, preSteps, postSteps, ...stepOpts } = opts
 
   return {
-    name: name ?? 'First-party default refs',
+    ...(name === undefined ? {} : { name }),
     'runs-on': runsOn ?? linuxX64Runner,
     permissions: permissions ?? { contents: 'read' },
     defaults: defaults ?? bashShellDefaults,

@@ -269,7 +269,7 @@ describe('ci workflow pnpm cache defaults', () => {
 
   it('provides a dedicated default-ref policy job so regular jobs keep their signal', () => {
     expect(ciWorkflowSource).toContain('export const defaultRefPolicyCheckJob')
-    expect(ciWorkflowSource).toContain('First-party default refs')
+    expect(ciWorkflowSource).toContain('name === undefined ? {} : { name }')
     expect(ciWorkflowSource).toContain('defaultRefPolicyCheckStep(stepOpts)')
   })
 })
