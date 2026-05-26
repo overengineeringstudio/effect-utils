@@ -114,6 +114,15 @@ export interface PnpmSettings {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
+   * Hard-link all local workspace dependencies instead of symlinking them.
+   * This lets package-local dependency projections stay complete when a
+   * workspace package is consumed from another workspace member.
+   *
+   * @see https://pnpm.io/settings#inject-workspace-packages
+   */
+  injectWorkspacePackages?: boolean
+
+  /**
    * Pnpm-lock.yaml will be deterministic and independent of system environment.
    * @see https://pnpm.io/settings#use-lockfile-v6
    * @deprecated Use lockfileVersion instead
@@ -700,6 +709,15 @@ export interface PnpmWorkspaceData {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
+   * Hard-link all local workspace dependencies instead of symlinking them.
+   * This lets package-local dependency projections stay complete when a
+   * workspace package is consumed from another workspace member.
+   *
+   * @see https://pnpm.io/settings#inject-workspace-packages
+   */
+  injectWorkspacePackages?: boolean
+
+  /**
    * Store dependency contents in a global content-addressed store keyed by
    * dependency graph hash. Required for identity convergence: equivalent
    * standalone and composed dependency graphs for the same physical source
@@ -978,6 +996,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.nodeLinker !== undefined) {
     result.nodeLinker = data.nodeLinker
+  }
+
+  if (data.injectWorkspacePackages !== undefined) {
+    result.injectWorkspacePackages = data.injectWorkspacePackages
   }
 
   if (data.enableGlobalVirtualStore !== undefined) {

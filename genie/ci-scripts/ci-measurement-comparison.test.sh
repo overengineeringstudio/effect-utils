@@ -7,19 +7,35 @@ cd "$ROOT"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-run_bun() {
+run_bun_to_file() {
+  local output_file="$1"
+  local script_file="$2"
+
   if command -v bun >/dev/null 2>&1; then
-    bun "$@"
+    bun "$script_file" >"$output_file"
+  elif command -v nix >/dev/null 2>&1; then
+    nix run nixpkgs#bun -- "$script_file" >"$output_file"
   elif [ -n "${DEVENV_BIN:-}" ]; then
-    "$DEVENV_BIN" shell --no-reload -- bun "$@"
+    "$DEVENV_BIN" shell --no-reload -- bash -lc 'bun "$1" > "$2"' bash "$script_file" "$output_file"
   else
-    echo "bun is not available and DEVENV_BIN is not set" >&2
+    echo "bun is not available and neither nix nor DEVENV_BIN is set" >&2
     return 127
   fi
 }
 
 emit_compare_script() {
-  run_bun -e "import { compareCiMeasurementsStep } from './genie/ci-workflow/measurements.ts'; process.stdout.write(compareCiMeasurementsStep({ currentDir: '$tmp_dir/current', baselineDir: '$tmp_dir/baseline', outputFile: '$tmp_dir/comparison.json', regressionMode: 'warn' }).run)" >"$tmp_dir/compare.sh"
+  local emitter="$tmp_dir/emit-compare.ts"
+  cat >"$emitter" <<TS
+import { compareCiMeasurementsStep } from '$ROOT/genie/ci-workflow/measurements.ts'
+
+process.stdout.write(compareCiMeasurementsStep({
+  currentDir: '$tmp_dir/current',
+  baselineDir: '$tmp_dir/baseline',
+  outputFile: '$tmp_dir/comparison.json',
+  regressionMode: 'warn',
+}).run)
+TS
+  run_bun_to_file "$tmp_dir/compare.sh" "$emitter"
 }
 
 write_measurement() {

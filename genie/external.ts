@@ -288,6 +288,7 @@ export const commonPnpmPolicySettings = {
       '@effect/rpc': '>=0.73.0',
     },
   },
+  injectWorkspacePackages: true as const,
   enableGlobalVirtualStore: true as const,
   storeDir: '.devenv/pnpm-store-pure-v1',
   packageImportMethod: 'clone-or-copy' as const,
