@@ -450,7 +450,7 @@ export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions
     VERIFY_REACHABLE: opts.verifyReachable === true ? '1' : '0',
     NORMALIZE_GIT_BRANCH_REFS: opts.normalizeGitBranchRefs === true ? '1' : '0',
   },
-  run: `nix run nixpkgs#nodejs_24 -- node <<'NODE'
+  run: `nix shell nixpkgs#nodejs_24 -c node <<'NODE'
 ${defaultRefPolicyCheckScript}
 NODE`,
   shell: 'bash',
