@@ -161,7 +161,7 @@ const appendDecision = ({
         const event = makePlannerEvent({ rootId, event: plannerEvent, now })
         if (event === undefined) continue
         if (dryRun === true) continue
-        if (store.appendEventWithResult(event).inserted) {
+        if (store.appendEventWithResult(event).inserted === true) {
           appendedEvents += 1
         }
       }
@@ -177,7 +177,7 @@ const appendDecision = ({
       let enqueuedCommands = 0
       for (const command of decision.commands) {
         if (dryRun === true) continue
-        if (store.appendEventWithResult(makeRemoteWritePlannedEvent(command, now)).inserted) {
+        if (store.appendEventWithResult(makeRemoteWritePlannedEvent(command, now)).inserted === true) {
           enqueuedCommands += 1
         }
       }
@@ -217,10 +217,10 @@ const appendDecision = ({
       ).inserted
       return {
         decisions: [decision],
-        appendedEvents: inserted ? 1 : 0,
+        appendedEvents: inserted === true ? 1 : 0,
         enqueuedCommands: 0,
         blocked: 0,
-        conflicts: inserted ? 1 : 0,
+        conflicts: inserted === true ? 1 : 0,
       }
     }
     case 'BlockedByGuard': {
@@ -245,9 +245,9 @@ const appendDecision = ({
       ).inserted
       return {
         decisions: [decision],
-        appendedEvents: inserted ? 1 : 0,
+        appendedEvents: inserted === true ? 1 : 0,
         enqueuedCommands: 0,
-        blocked: inserted ? 1 : 0,
+        blocked: inserted === true ? 1 : 0,
         conflicts: 0,
       }
     }
@@ -408,13 +408,13 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
       let appendedEvents = 0
       for (const event of observation.events) {
         if (options.dryRun === true) continue
-        if (options.store.appendEventWithResult(event).inserted) {
+        if (options.store.appendEventWithResult(event).inserted === true) {
           appendedEvents += 1
         }
       }
       for (const event of disappearanceCandidateEvents({ options, observation })) {
         if (options.dryRun === true) continue
-        if (options.store.appendEventWithResult(event).inserted) {
+        if (options.store.appendEventWithResult(event).inserted === true) {
           appendedEvents += 1
         }
       }
@@ -534,10 +534,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
                 ).inserted
           summaries.push({
             decisions: [],
-            appendedEvents: inserted ? 1 : 0,
+            appendedEvents: inserted === true ? 1 : 0,
             enqueuedCommands: 0,
             blocked: 0,
-            conflicts: inserted ? 1 : 0,
+            conflicts: inserted === true ? 1 : 0,
           })
           continue
         }

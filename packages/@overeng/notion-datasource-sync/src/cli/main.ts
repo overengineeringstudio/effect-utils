@@ -500,7 +500,7 @@ export const runCliCommand = Effect.fn(spanNames.cliCommand, {
       const result = yield* runCliCommandEffect(command, context)
       yield* Effect.annotateCurrentSpan({
         ...statusSpanAttributes(result.status),
-        [spanAttr.result]: result.ok ? 'ok' : result.status.state,
+        [spanAttr.result]: result.ok === true ? 'ok' : result.status.state,
       })
       return result
     }),

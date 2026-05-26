@@ -90,7 +90,7 @@ const generatedTitleSlugMaxLength = 120
 
 const normalizeForPolicy = (value: string, policy: PathPolicy): string => {
   const unicodeNormalized = policy.unicodeNormalization === 'NFC' ? value.normalize('NFC') : value
-  return policy.caseFold ? unicodeNormalized.toLocaleLowerCase('en-US') : unicodeNormalized
+  return policy.caseFold === true ? unicodeNormalized.toLocaleLowerCase('en-US') : unicodeNormalized
 }
 
 const isDriveAbsolute = (path: string): boolean => /^[A-Za-z]:[\\/]/.test(path)
@@ -154,7 +154,7 @@ export const canonicalizeWorkspaceRelativePath = ({
     return pathEscapesRoot('Workspace path must be root-relative')
   }
 
-  if (containsControlCharacter(normalizedInput)) {
+  if (containsControlCharacter(normalizedInput) === true) {
     return pathEscapesRoot('Workspace path contains a control character')
   }
 
@@ -767,10 +767,10 @@ const scanFilesystemWorkspace = async ({
             _tag: 'LocalArtifactObservation',
             pageId: sidecar.pageId,
             path: sidecar.path,
-            contentHash: ownWriteSuppressed ? sidecar.bodyHash : contentHash,
+            contentHash: ownWriteSuppressed === true ? sidecar.bodyHash : contentHash,
             observedAt: observedAtNow(),
             state: 'present',
-            ...(ownWriteSuppressed
+            ...(ownWriteSuppressed === true
               ? { ownWriteSuppressionToken: sidecar.ownWriteSuppressionToken }
               : {}),
           },

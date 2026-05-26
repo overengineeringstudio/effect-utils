@@ -388,7 +388,7 @@ export const makeQueryAbsenceCandidateEvent = (input: {
       now,
     }),
     pageId: input.pageId,
-    reason: filtered ? 'filtered_absence_not_proof' : 'query_absence_unclassified',
+    reason: filtered === true ? 'filtered_absence_not_proof' : 'query_absence_unclassified',
   })
 }
 
@@ -693,7 +693,8 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
       }
 
       if (queryContractHash !== undefined) {
-        const queryCheckpointState = complete && cappedAtLimit === false ? 'complete' : 'incomplete'
+        const queryCheckpointState =
+          complete === true && cappedAtLimit === false ? 'complete' : 'incomplete'
         const nextCursor = queryPages.at(-1)?.nextCursor ?? null
         const cursorPart = nextCursor === null ? 'terminal' : eventIdPart(nextCursor)
         events.push(

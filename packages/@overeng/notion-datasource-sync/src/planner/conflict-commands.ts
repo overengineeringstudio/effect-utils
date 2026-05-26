@@ -156,7 +156,7 @@ const applyPlan = ({
   readonly plan: PlannedUserAction
   readonly now: () => Date
 }): PlannedUserAction => {
-  if (dryRun) return emptyPlan()
+  if (dryRun === true) return emptyPlan()
 
   const appliedEvents: SyncEventType[] = []
   const appliedCommands: OutboxCommandEnvelope[] = []
@@ -164,14 +164,14 @@ const applyPlan = ({
 
   for (const event of plan.events) {
     const result = store.appendEventWithResult(event)
-    if (result.inserted) {
+    if (result.inserted === true) {
       appliedEvents.push(result.event)
     }
   }
 
   for (const command of plan.commands) {
     const result = store.appendEventWithResult(makeRemoteWritePlannedEvent(command, now))
-    if (result.inserted) {
+    if (result.inserted === true) {
       appliedCommands.push(command)
     }
   }
@@ -187,7 +187,7 @@ const applyPlan = ({
         now,
       }),
     )
-    if (result.inserted) {
+    if (result.inserted === true) {
       appliedGuards.push(guard)
     }
   }

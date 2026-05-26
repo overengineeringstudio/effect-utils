@@ -33,7 +33,7 @@ export const hashStoreBytes = (value: string): Hash =>
 
 /** Stable hash encoding a page's trash state, used for stale-base detection on `trashPage` / `restorePage`. */
 export const pageLifecycleHash = (pageId: PageId, inTrash: boolean): Hash =>
-  hashStoreBytes(`page-lifecycle\t${pageId}\t${inTrash ? 'in-trash' : 'active'}`)
+  hashStoreBytes(`page-lifecycle\t${pageId}\t${inTrash === true ? 'in-trash' : 'active'}`)
 
 /** Compute a deterministic digest over a contiguous run of events, used to verify that a stored projection is still current. */
 export const computeProjectionDigest = (events: ReadonlyArray<ProjectionDigestInput>): Hash => {
