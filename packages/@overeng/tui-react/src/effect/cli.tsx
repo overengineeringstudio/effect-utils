@@ -343,17 +343,23 @@ const runTuiMainImpl = <E, A>({
   const formatError = options?.formatError ?? defaultFormatError
 
   effect.pipe(
-    Effect.tapErrorCause((cause) =>
+    Effect.catchAllCause((cause) =>
       Effect.sync(() => {
         if (Cause.isInterruptedOnly(cause) === true) {
-          return
+          process.exitCode = 130
+          return undefined
         }
 
         const formatted = formatError(cause)
         if (Option.isSome(formatted) === true) {
           process.stderr.write(formatted.value + '\n')
         }
-      }),
+        return cause
+      }).pipe(
+        Effect.flatMap((handledCause) =>
+          handledCause === undefined ? Effect.void : Effect.failCause(handledCause),
+        ),
+      ),
     ),
     runtime.runMain({
       disableErrorReporting: true,

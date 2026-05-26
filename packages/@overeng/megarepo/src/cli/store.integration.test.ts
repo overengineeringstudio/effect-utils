@@ -497,6 +497,43 @@ describe('mr store ls', () => {
   )
 
   it.effect(
+    'should ignore internal scratch roots when listing repos',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+        const repoPath = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir('localhost/owner/repo/'),
+        )
+        const scratchRepoPath = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir('tmp/owner/repo/'),
+        )
+
+        yield* fs.makeDirectory(
+          EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('.bare/')),
+          { recursive: true },
+        )
+        yield* fs.makeDirectory(
+          EffectPath.ops.join(scratchRepoPath, EffectPath.unsafe.relativeDir('.bare/')),
+          { recursive: true },
+        )
+
+        const storeLayer = makeStoreLayer({ basePath: storePath })
+        const store = yield* Store.pipe(Effect.provide(storeLayer))
+
+        const repos = yield* store.listRepos()
+        expect(repos.map((repo) => repo.relativePath)).toStrictEqual(['localhost/owner/repo/'])
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'should discover repos below path segments named refs',
     Effect.fnUntraced(
       function* () {

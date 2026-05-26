@@ -109,6 +109,9 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // Store Implementation
 // =============================================================================
 
+const shouldSkipStoreRootEntry = (entry: string): boolean =>
+  entry.startsWith('.') === true || entry === 'tmp'
+
 const make = ({
   config,
   fs,
@@ -244,6 +247,7 @@ const make = ({
 
         const walk = (dir: AbsoluteDirPath): Effect.Effect<void, PlatformError.PlatformError> =>
           Effect.gen(function* () {
+            yield* Effect.yieldNow()
             const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
             const hasBare = yield* fs.exists(barePath)
             if (hasBare === true) {
@@ -279,7 +283,28 @@ const make = ({
             )
           })
 
-        yield* walk(basePath).pipe(
+        const namespaces = yield* fs.readDirectory(basePath)
+        yield* Effect.all(
+          namespaces.map((entry) =>
+            Effect.gen(function* () {
+              if (shouldSkipStoreRootEntry(entry) === true) {
+                return
+              }
+
+              const entryPath = EffectPath.ops.join(
+                basePath,
+                EffectPath.unsafe.relativeDir(`${entry}/`),
+              )
+              const entryStat = yield* fs
+                .stat(entryPath)
+                .pipe(Effect.catchAll(() => Effect.succeed(null)))
+              if (entryStat?.type !== 'Directory') return
+
+              yield* walk(entryPath)
+            }),
+          ),
+          { concurrency: 32 },
+        ).pipe(
           Effect.withSpan('megarepo/store/list-repos', {
             attributes: { 'span.label': 'repos' },
           }),

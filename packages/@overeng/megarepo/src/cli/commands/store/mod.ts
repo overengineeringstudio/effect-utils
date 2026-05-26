@@ -66,8 +66,8 @@ type GcWorktreeDecision =
       }
     }
 
-const GC_REPO_CONCURRENCY = 8
-const GC_WORKTREE_CONCURRENCY = 8
+const GC_REPO_CONCURRENCY = 1
+const GC_WORKTREE_CONCURRENCY = 1
 const GC_PROGRESS_BATCH_SIZE = 10
 
 const collectStoreWorktrees = ({

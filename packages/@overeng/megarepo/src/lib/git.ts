@@ -5,7 +5,7 @@
  */
 
 import { Command } from '@effect/platform'
-import { Chunk, Duration, Effect, Option, Schedule, Stream } from 'effect'
+import { Cause, Chunk, Duration, Effect, Option, Schedule, Stream } from 'effect'
 
 // =============================================================================
 // Git URL Parsing
@@ -96,6 +96,20 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
     )
 
     const process = yield* Command.start(cmd)
+    yield* Effect.addFinalizer((exit) =>
+      Effect.gen(function* () {
+        if (exit._tag !== 'Failure' || Cause.isInterruptedOnly(exit.cause) === false) {
+          return
+        }
+
+        const isRunning = yield* process.isRunning.pipe(
+          Effect.catchAll(() => Effect.succeed(false)),
+        )
+        if (isRunning === false) return
+
+        yield* process.kill('SIGKILL').pipe(Effect.catchAll(() => Effect.void))
+      }),
+    )
 
     // Collect stdout and stderr
     const decoder = new TextDecoder('utf-8')

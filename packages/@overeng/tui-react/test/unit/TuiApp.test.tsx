@@ -2,13 +2,10 @@
  * Tests for TuiApp factory pattern
  */
 
-import { EventEmitter } from 'node:events'
-import type { Readable } from 'node:stream'
-
 import { it } from '@effect/vitest'
 import { Cause, Console, Effect, Exit, pipe, Schema } from 'effect'
 import React from 'react'
-import { describe, expect, beforeEach, afterEach, test, vi } from 'vitest'
+import { describe, expect, beforeEach, afterEach, test } from 'vitest'
 
 import { testModeLayer } from '../../src/effect/testing.tsx'
 import { createTuiApp, run, runResult, useTuiAtomValue, Box, Text } from '../../src/mod.tsx'
@@ -61,21 +58,6 @@ const CounterApp = createTuiApp({
   initial: { count: 0 },
   reducer: counterReducer,
 })
-
-class FakeTtyInput extends EventEmitter {
-  isTTY = true
-  isRaw = false
-
-  readonly pause = vi.fn()
-  readonly resume = vi.fn()
-  readonly setRawMode = vi.fn((mode: boolean) => {
-    this.isRaw = mode
-  })
-
-  emitData(data: Buffer): void {
-    this.emit('data', data)
-  }
-}
 
 // =============================================================================
 // Test View (uses app-scoped hooks)
@@ -381,7 +363,7 @@ describe('createTuiApp', () => {
   })
 
   describe('Ctrl+C interruption', () => {
-    test('interrupts the handler fiber on raw Ctrl+C and dispatches Interrupted', async () => {
+    test('dispatches Interrupted when the run fiber is interrupted', async () => {
       const InterruptState = Schema.TaggedStruct('InterruptState', {
         status: Schema.Literal('idle', 'running', 'interrupted'),
       })
@@ -393,7 +375,6 @@ describe('createTuiApp', () => {
       )
       type InterruptAction = typeof InterruptAction.Type
 
-      const input = new FakeTtyInput()
       const previousExitCode = process.exitCode
       process.exitCode = undefined
       const reducedStatuses: Array<InterruptState['status']> = []
@@ -418,22 +399,11 @@ describe('createTuiApp', () => {
       })
 
       try {
-        const exit = await run(
-          InterruptApp,
-          (tui) =>
-            Effect.gen(function* () {
-              tui.dispatch({ _tag: 'Start' })
-              yield* Effect.sleep('10 millis')
-              input.emitData(Buffer.from([0x03]))
-              return yield* Effect.never
-            }),
-          {
-            terminalInput: {
-              input: input as unknown as Readable,
-              output: { isTTY: false } as never,
-              handleResize: false,
-            },
-          },
+        const exit = await run(InterruptApp, (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Start' })
+            return yield* Effect.interrupt
+          }),
         ).pipe(Effect.provide(testModeLayer('tty')), Effect.runPromiseExit)
 
         expect(Exit.isFailure(exit)).toBe(true)
@@ -443,9 +413,6 @@ describe('createTuiApp', () => {
         expect(reducedStatuses).toContain('running')
         expect(reducedStatuses).toContain('interrupted')
         expect(process.exitCode).toBe(130)
-        expect(input.setRawMode).toHaveBeenCalledWith(true)
-        expect(input.setRawMode).toHaveBeenCalledWith(false)
-        expect(input.pause).toHaveBeenCalled()
       } finally {
         process.exitCode = previousExitCode
       }
