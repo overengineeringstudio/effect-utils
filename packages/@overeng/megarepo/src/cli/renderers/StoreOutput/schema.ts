@@ -124,6 +124,8 @@ export const StoreGcState = Schema.TaggedStruct('Gc', {
   processedCount: Schema.optional(Schema.Number),
   repoCount: Schema.optional(Schema.Number),
   completedRepoCount: Schema.optional(Schema.Number),
+  discoveredWorktreeCount: Schema.optional(Schema.Number),
+  statusMessage: Schema.optional(Schema.String),
   done: Schema.optional(Schema.Boolean),
 })
 
@@ -265,6 +267,8 @@ export const StoreAction = Schema.Union(
     processedCount: Schema.optional(Schema.Number),
     repoCount: Schema.optional(Schema.Number),
     completedRepoCount: Schema.optional(Schema.Number),
+    discoveredWorktreeCount: Schema.optional(Schema.Number),
+    statusMessage: Schema.optional(Schema.String),
     done: Schema.optional(Schema.Boolean),
   }),
   Schema.TaggedStruct('SetAdd', {
@@ -340,6 +344,8 @@ export const storeReducer = ({
         processedCount: action.processedCount,
         repoCount: action.repoCount,
         completedRepoCount: action.completedRepoCount,
+        discoveredWorktreeCount: action.discoveredWorktreeCount,
+        statusMessage: action.statusMessage,
         done: action.done,
       }
     case 'SetAdd':

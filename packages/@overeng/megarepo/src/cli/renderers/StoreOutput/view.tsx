@@ -74,6 +74,8 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
           processedCount={state.processedCount}
           repoCount={state.repoCount}
           completedRepoCount={state.completedRepoCount}
+          discoveredWorktreeCount={state.discoveredWorktreeCount}
+          statusMessage={state.statusMessage}
           done={state.done}
         />
       )
@@ -487,6 +489,8 @@ const StoreGcView = ({
   processedCount,
   repoCount,
   completedRepoCount,
+  discoveredWorktreeCount,
+  statusMessage,
   done,
   maxInUseToShow = 5,
 }: {
@@ -498,6 +502,8 @@ const StoreGcView = ({
   processedCount?: number | undefined
   repoCount?: number | undefined
   completedRepoCount?: number | undefined
+  discoveredWorktreeCount?: number | undefined
+  statusMessage?: string | undefined
   done?: boolean | undefined
   maxInUseToShow?: number
 }) => {
@@ -517,12 +523,16 @@ const StoreGcView = ({
         <Text>: {basePath}</Text>
         {dryRun && <Text dim> mode: dry run</Text>}
         {done === false && (
-          <Text dim>
-            progress: {processedCount ?? results.length} worktrees
-            {repoCount !== undefined && completedRepoCount !== undefined
-              ? `, ${completedRepoCount}/${repoCount} repos`
-              : ''}
-          </Text>
+          <>
+            {statusMessage !== undefined && <Text dim> status: {statusMessage}</Text>}
+            <Text dim>
+              progress: {processedCount ?? results.length} checked
+              {discoveredWorktreeCount !== undefined ? ` / ${discoveredWorktreeCount} found` : ''}
+              {repoCount !== undefined && completedRepoCount !== undefined
+                ? `, ${completedRepoCount}/${repoCount} repos`
+                : ''}
+            </Text>
+          </>
         )}
         <Text> </Text>
       </Box>

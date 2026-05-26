@@ -649,31 +649,34 @@ export const getWorktreeStatus = (worktreePath: string) =>
  */
 export const getWorktreeRemovalStatus = (worktreePath: string) =>
   Effect.gen(function* () {
-    const trackedStatusOutput = yield* runGitCommand({
-      args: ['status', '--porcelain', '--untracked-files=no'],
+    const statusOutput = yield* runGitCommand({
+      args: ['status', '--porcelain', '--untracked-files=normal'],
       cwd: worktreePath,
-    })
-    const trackedChanges = trackedStatusOutput.split('\n').filter((line) => line.trim() !== '')
-    const hasUnpushed = yield* getUnpushedStatus(worktreePath)
+    }).pipe(
+      Effect.withSpan('git/worktree-removal-status/dirty', {
+        attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+      }),
+    )
+    const changes = statusOutput.split('\n').filter((line) => line.trim() !== '')
 
-    if (trackedChanges.length > 0 || hasUnpushed === true) {
+    if (changes.length > 0) {
       return {
-        isDirty: trackedChanges.length > 0,
-        hasUnpushed,
-        changesCount: trackedChanges.length,
+        isDirty: true,
+        hasUnpushed: false,
+        changesCount: changes.length,
       } satisfies WorktreeStatus
     }
 
-    const fullStatusOutput = yield* runGitCommand({
-      args: ['status', '--porcelain', '--untracked-files=all'],
-      cwd: worktreePath,
-    })
-    const changes = fullStatusOutput.split('\n').filter((line) => line.trim() !== '')
+    const hasUnpushed = yield* getUnpushedStatus(worktreePath).pipe(
+      Effect.withSpan('git/worktree-removal-status/unpushed', {
+        attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+      }),
+    )
 
     return {
-      isDirty: changes.length > 0,
-      hasUnpushed: false,
-      changesCount: changes.length,
+      isDirty: false,
+      hasUnpushed,
+      changesCount: 0,
     } satisfies WorktreeStatus
   }).pipe(
     Effect.withSpan('git/worktree-removal-status', {
