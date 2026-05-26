@@ -56,6 +56,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/tui-react**: Handle Ctrl-C for `run(App, handler)` at the TUI library layer. Apps whose action schema includes `Interrupted` now get scoped raw terminal input in progressive visual mode, interrupt the handler fiber through Effect, dispatch `Interrupted` during normal `TuiApp` finalization, restore raw mode, and suppress noisy interrupt-only error output in `runTuiMain`.
 - **@overeng/megarepo**: Improve `mr store gc --dry-run --output tty` progress UX with early phase updates, heartbeat refreshes, realtime worktree discovery/active-check counts, explicit interrupted output, exit code 130 for Ctrl-C, and more granular OTel spans for removal status checks. GC removal checks now use a single `git status --untracked-files=normal` dirty preflight before the upstream check, avoiding expensive recursive untracked-file enumeration while still failing closed for dirty worktrees.
 - **@overeng/megarepo**: Avoid recursive `mr fetch --apply --all` hangs when nested apply falls back from a detached branch worktree to an already-created commit worktree.
 - **@overeng/megarepo**: Make `mr store gc` data-loss safe for shared stores.

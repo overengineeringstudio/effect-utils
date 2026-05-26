@@ -513,7 +513,14 @@ export const createTerminalInput = Effect.fn('TerminalInput.create')(function* (
   let didEnableRawMode = false
   const isTTY = 'isTTY' in input && input.isTTY
   const isRaw = 'isRaw' in input && input.isRaw === true
-  const setRawMode = 'setRawMode' in input ? (input.setRawMode as (mode: boolean) => void) : null
+  type RawModeReadable = Readable & { setRawMode: (mode: boolean) => void }
+  const setRawMode =
+    'setRawMode' in input && typeof input.setRawMode === 'function'
+      ? (mode: boolean) => {
+          const rawInput = input as RawModeReadable
+          rawInput.setRawMode(mode)
+        }
+      : null
   let dataHandler: ((data: Buffer) => void) | undefined
   let resizeHandler: (() => void) | undefined
   let cleanedUp = false

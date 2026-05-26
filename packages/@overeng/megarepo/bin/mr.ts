@@ -30,13 +30,6 @@ for (const key of [
   delete process.env[key]
 }
 
-process.prependOnceListener('SIGINT', () => {
-  process.exitCode = 130
-  setTimeout(() => {
-    process.exit(130)
-  }, 500).unref()
-})
-
 // Build stamp placeholder replaced by nix build with NixStamp JSON
 const buildStamp = '__CLI_BUILD_STAMP__'
 const version = resolveCliVersion({

@@ -46,6 +46,7 @@ import {
   Console,
   Context,
   Effect,
+  Fiber,
   Function as Fn,
   Layer,
   Logger,
@@ -59,6 +60,7 @@ import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.tsx'
+import { isCtrlC } from './events.ts'
 import { useContext, useSyncExternalStore, useCallback } from './hooks.tsx'
 import { CapturedLogsProvider, type LogCaptureHandle } from './LogCapture.ts'
 import {
@@ -69,6 +71,7 @@ import {
   ViewOutputStreamTag,
   stripAnsi,
 } from './OutputMode.tsx'
+import { createTerminalInput, supportsRawMode, type TerminalInputOptions } from './TerminalInput.ts'
 
 // =============================================================================
 // TuiApp TypeId (for dual API dispatch)
@@ -823,6 +826,15 @@ export interface TuiAppRunOptions {
    * Omit for headless mode (JSON modes, testing).
    */
   readonly view?: ReactElement
+
+  /**
+   * Terminal input options for automatic Ctrl+C handling.
+   *
+   * When the app action schema includes an `Interrupted` action, progressive
+   * visual runs install a scoped raw terminal input reader and interrupt the
+   * handler fiber on Ctrl+C. Pass `false` to disable, or custom options in tests.
+   */
+  readonly terminalInput?: TerminalInputOptions | false
 }
 
 // oxlint-disable-next-line overeng/named-args -- dual API pattern requires positional args
@@ -831,7 +843,57 @@ const runImpl = <S, A, B, E, R>(
   handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
   options?: TuiAppRunOptions,
 ): Effect.Effect<B, E, R | OutputModeTag> =>
-  Effect.scoped(app.run(options?.view).pipe(Effect.flatMap(handler)))
+  Effect.gen(function* () {
+    const mode = yield* OutputModeTag
+
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const api = yield* app.run(options?.view)
+        const handlerFiber = yield* handler(api).pipe(Effect.forkScoped)
+
+        yield* installCtrlCInterrupt({
+          app,
+          handlerFiber,
+          mode,
+          terminalInput: options?.terminalInput,
+        })
+
+        return yield* Fiber.join(handlerFiber)
+      }),
+    )
+  })
+
+const installCtrlCInterrupt = <S, A, B, E>({
+  app,
+  handlerFiber,
+  mode,
+  terminalInput,
+}: {
+  readonly app: TuiApp<S, A>
+  readonly handlerFiber: Fiber.Fiber<B, E>
+  readonly mode: OutputMode
+  readonly terminalInput: TerminalInputOptions | false | undefined
+}): Effect.Effect<void, never, Scope.Scope> => {
+  if (terminalInput === false) return Effect.void
+  if (createInterruptedAction(app.config.actionSchema) === null) return Effect.void
+  if (mode._tag !== 'react' || mode.timing !== 'progressive') return Effect.void
+  if (terminalInput === undefined && supportsRawMode() === false) return Effect.void
+
+  return Effect.gen(function* () {
+    const input = yield* createTerminalInput(terminalInput ?? {})
+
+    yield* input.events.pipe(
+      Stream.runForEach((event) => {
+        if (event._tag === 'Event.Key' && isCtrlC(event) === true) {
+          return Fiber.interrupt(handlerFiber).pipe(Effect.asVoid)
+        }
+
+        return Effect.void
+      }),
+      Effect.forkScoped,
+    )
+  })
+}
 
 /**
  * Run a TuiApp with a handler callback. State/view is the contract.

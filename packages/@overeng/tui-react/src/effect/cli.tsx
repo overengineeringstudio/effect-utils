@@ -345,6 +345,10 @@ const runTuiMainImpl = <E, A>({
   effect.pipe(
     Effect.tapErrorCause((cause) =>
       Effect.sync(() => {
+        if (Cause.isInterruptedOnly(cause) === true) {
+          return
+        }
+
         const formatted = formatError(cause)
         if (Option.isSome(formatted) === true) {
           process.stderr.write(formatted.value + '\n')
