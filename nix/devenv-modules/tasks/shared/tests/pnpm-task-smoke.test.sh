@@ -228,7 +228,7 @@ extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
-extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--ignore-scripts" "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--no-frozen-lockfile" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-equals.exec.sh" 'packages = [ "." ]; installFlags = [ "--frozen-lockfile=false" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-separated.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.package-import-method" "hardlink" ];' "pnpm:install"
@@ -291,7 +291,7 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
-  grep -qxF "install --force --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false --config.manage-package-manager-versions=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.package-import-method=copy --config.store-dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --config.manage-package-manager-versions=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.package-import-method=copy --config.store-dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
 )
@@ -480,7 +480,7 @@ echo "Test 16: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --ignore-scripts --config.public-hoist-pattern=* --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false --config.manage-package-manager-versions=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.package-import-method=copy --config.store-dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --config.manage-package-manager-versions=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.package-import-method=copy --config.store-dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
 echo "Test 17: impure no-frozen install flags are rejected before pnpm runs"

@@ -214,19 +214,44 @@ let
         }
       }
 
-      const snapshots = findTopLevelSection(lines, "snapshots");
-      if (snapshots !== undefined) {
-        for (let index = snapshots.startIndex + 1; index < snapshots.endIndex; index += 1) {
-          const snapshotMatch = lines[index].match(/^  (.+?):(.*)$/);
-          if (snapshotMatch === null) continue;
-          const key = stripYamlQuotes(snapshotMatch[1]);
+      const duplicatePatchedSectionEntries = (sectionName) => {
+        const section = findTopLevelSection(lines, sectionName);
+        if (section === undefined) return;
+        const existing = new Set();
+        for (let index = section.startIndex + 1; index < section.endIndex; index += 1) {
+          const match = lines[index].match(/^  (\S.+?):/);
+          if (match !== null) existing.add(stripYamlQuotes(match[1]));
+        }
+
+        for (let index = section.endIndex - 1; index > section.startIndex; index -= 1) {
+          const match = lines[index].match(/^  (\S.+?):(.*)$/);
+          if (match === null) continue;
+          const key = stripYamlQuotes(match[1]);
           const parsed = parsePackageNameVersion(key);
-          if (parsed === undefined) continue;
+          if (parsed === undefined || key.includes("patch_hash=")) continue;
           const entry = byNameVersion.get(parsed.name + "@" + parsed.baseVersion);
-          if (entry === undefined || key.includes("patch_hash=")) continue;
-          lines[index] = "  '" + parsed.name + "@" + parsed.baseVersion + "(patch_hash=" + entry.hash + ")" + parsed.suffix + "':" + snapshotMatch[2];
+          if (entry === undefined) continue;
+
+          const patchedKey = parsed.name + "@" + parsed.baseVersion + "(patch_hash=" + entry.hash + ")" + parsed.suffix;
+          if (existing.has(patchedKey)) continue;
+
+          let blockEnd = section.endIndex;
+          for (let cursor = index + 1; cursor < section.endIndex; cursor += 1) {
+            if (lines[cursor].match(/^  (\S.+?):/) !== null) {
+              blockEnd = cursor;
+              break;
+            }
+          }
+
+          const block = lines.slice(index, blockEnd);
+          block[0] = "  '" + patchedKey + "':" + match[2];
+          lines.splice(blockEnd, 0, ...block);
+          existing.add(patchedKey);
         }
       }
+
+      duplicatePatchedSectionEntries("packages");
+      duplicatePatchedSectionEntries("snapshots");
 
       return lines.join("\n");
     };

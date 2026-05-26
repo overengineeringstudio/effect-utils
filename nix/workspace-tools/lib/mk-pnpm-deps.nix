@@ -604,7 +604,7 @@ in
                 # workspace-only. Use env vars and .npmrc instead.
                 # Back up .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nenable-global-virtual-store=false\nmanage-package-manager-versions=false\nnode-linker=isolated\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nenable-global-virtual-store=false\nmanage-package-manager-versions=false\nverify-deps-before-run=false\nnode-linker=isolated\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
         if [ -f pnpm-workspace.yaml ]; then
           ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|enableGlobalVirtualStore):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
         fi

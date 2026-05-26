@@ -79,7 +79,6 @@ let
   installFlagsString = lib.escapeShellArgs installFlags;
   pureInstallFlags = [
     "--frozen-lockfile"
-    "--ignore-scripts"
     "--config.confirmModulesPurge=false"
     "--config.manage-package-manager-versions=false"
     "--config.side-effects-cache=false"
@@ -273,7 +272,7 @@ let
           --no-frozen-lockfile | --frozen-lockfile=false | \
           --fix-lockfile | --lockfile-only | --no-lockfile | \
           --config.frozen-lockfile=false | --config.frozen-lockfile | \
-          --config.ignore-scripts=false | --config.ignore-scripts | \
+          --ignore-scripts | --config.ignore-scripts=true | --config.ignore-scripts | \
           --config.side-effects-cache=true | --config.side-effects-cache | --side-effects-cache | \
           --no-verify-store-integrity | --verify-store-integrity=false | \
           --config.verify-store-integrity=false | --config.verify-store-integrity | \

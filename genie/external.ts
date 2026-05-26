@@ -165,7 +165,7 @@ export const catalog = defineCatalog({
   // React ecosystem
   react: '19.2.3',
   'react-dom': '19.2.3',
-  'react-aria-components': '1.16.0',
+  'react-aria-components': '1.17.0',
 
   // Notion rendering (optional peer deps)
   katex: '0.16.45',
