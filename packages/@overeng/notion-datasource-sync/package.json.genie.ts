@@ -6,9 +6,11 @@ import {
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
+import notionMdPkg from '../notion-md/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
+  '@effect/cli',
   '@effect/cluster',
   '@effect/experimental',
   '@effect/opentelemetry',
@@ -23,7 +25,7 @@ const peerDepNames = [
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-datasource-sync' }),
   dependencies: {
-    workspace: [notionEffectClientPkg, utilsPkg],
+    workspace: [notionEffectClientPkg, notionMdPkg, utilsPkg],
   },
   devDependencies: {
     external: {

@@ -48,8 +48,8 @@ import {
 } from '../testing/harness.ts'
 import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
 
-const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-realistic')
-const bodyPath = decode(WorkspaceRelativePath, 'row--page-1.nmd')
+const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-realistic' })
+const bodyPath = decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' })
 
 const schemaProperties = [
   {
@@ -81,7 +81,7 @@ const propertyPage = ({
   readonly propertyId?: PropertyIdType
   readonly valueHash?: HashType
 } = {}) =>
-  decode(PagePropertyItemPage, {
+  decode({ schema: PagePropertyItemPage, value: {
     _tag: 'PagePropertyItemPage',
     apiVersion: '2026-03-11',
     requestId: testIds.requestId,
@@ -98,7 +98,7 @@ const propertyPage = ({
     ],
     nextCursor: null,
     hasMore: false,
-  })
+  } })
 
 const propertyPages = ({
   propertyA = hash('property-a-base'),
@@ -191,7 +191,7 @@ const writeFileString = (path: string, content: string) =>
   )
 
 const propertyCommand = (basePropertiesHash: HashType) =>
-  decode(PatchPagePropertiesCommand, {
+  decode({ schema: PatchPagePropertiesCommand, value: {
     _tag: 'PatchPagePropertiesCommand',
     commandId: testIds.commandId,
     pageId: testIds.pageId,
@@ -199,7 +199,7 @@ const propertyCommand = (basePropertiesHash: HashType) =>
     propertyPatch: {
       [testIds.propertyA]: propertyPatchValue('Local edit'),
     },
-  })
+  } })
 
 describe('realistic offline workflow E2E matrix', () => {
   it('keeps realistic workflow scenario metadata implemented', () => {
@@ -234,7 +234,7 @@ describe('realistic offline workflow E2E matrix', () => {
         body: ports.body,
         workspace,
       })
-      const scan = await collectWorkspaceScan(workspace, fixture.root)
+      const scan = await collectWorkspaceScan({ workspace, root: fixture.root })
       const eventCount = storeFixture.store.replay(testIds.rootId).length
       const digest = storeFixture.store.computeCurrentProjectionDigest(testIds.rootId)
       const metadata = storeFixture.store.readProjectionMetadata(testIds.rootId)
@@ -527,7 +527,7 @@ describe('realistic offline workflow E2E matrix', () => {
                 pageId: testIds.pageId,
                 path: bodyPath,
                 contentHash: hash('body-a'),
-                observedAt: decode(Schema.DateTimeUtc, fixedObservedAt),
+                observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
                 state: 'delete-candidate',
               },
             ],
@@ -583,8 +583,8 @@ describe('realistic offline workflow E2E matrix', () => {
       const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
       const pageId = testIds.pageId
       const otherPageId = testPageId('page-2')
-      const path = decode(WorkspaceRelativePath, 'weekly-notes--page-1.nmd')
-      const collisionPath = decode(WorkspaceRelativePath, 'shared--page.nmd')
+      const path = decode({ schema: WorkspaceRelativePath, value: 'weekly-notes--page-1.nmd' })
+      const collisionPath = decode({ schema: WorkspaceRelativePath, value: 'shared--page.nmd' })
 
       await expect(
         Effect.runPromise(
@@ -611,7 +611,7 @@ describe('realistic offline workflow E2E matrix', () => {
             workspace.claimPath({
               _tag: 'PathClaimPlan',
               pageId,
-              path: decode(WorkspaceRelativePath, '../escape.nmd'),
+              path: decode({ schema: WorkspaceRelativePath, value: '../escape.nmd' }),
             }),
           ),
         ),
@@ -625,16 +625,16 @@ describe('realistic offline workflow E2E matrix', () => {
           _tag: 'MaterializePlan',
           pageId,
           path,
-          bodyPointer: decode(BodyPointer, {
+          bodyPointer: decode({ schema: BodyPointer, value: {
             _tag: 'BodyPointer',
             pageId,
             bodyHash: hash('body-a'),
             observedAt: fixedObservedAt,
-          }),
+          } }),
         }),
       )
       await removeFile(join(fixture.root, path))
-      await expect(collectWorkspaceScan(workspace, fixture.root)).resolves.toEqual([
+      await expect(collectWorkspaceScan({ workspace, root: fixture.root })).resolves.toEqual([
         expect.objectContaining({
           pageId,
           path,
@@ -648,12 +648,12 @@ describe('realistic offline workflow E2E matrix', () => {
             _tag: 'MaterializePlan',
             pageId,
             path,
-            bodyPointer: decode(BodyPointer, {
+            bodyPointer: decode({ schema: BodyPointer, value: {
               _tag: 'BodyPointer',
               pageId,
               bodyHash: hash('body-b'),
               observedAt: fixedObservedAt,
-            }),
+            } }),
           }),
         ),
       ).resolves.toMatchObject({ _tag: 'MaterializeResult', pageId, bodyHash: hash('body-b') })
@@ -661,7 +661,7 @@ describe('realistic offline workflow E2E matrix', () => {
         filesystemWorkspacePageSidecarPath({ root: fixture.root, pageId }),
         '{ damaged',
       )
-      await expect(collectWorkspaceScan(workspace, fixture.root)).rejects.toThrow(
+      await expect(collectWorkspaceScan({ workspace, root: fixture.root })).rejects.toThrow(
         'Workspace page sidecar is damaged',
       )
     } finally {

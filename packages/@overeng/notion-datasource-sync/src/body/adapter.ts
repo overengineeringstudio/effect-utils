@@ -86,11 +86,15 @@ export type FakePageBodySyncPortInput = {
   readonly pages: ReadonlyArray<FakeBodyPageState>
 }
 
-const findPage = (
-  pages: ReadonlyMap<PageId, FakeBodyPageState>,
-  operation: string,
-  pageId: PageId,
-) =>
+const findPage = ({
+  pages,
+  operation,
+  pageId,
+}: {
+  readonly pages: ReadonlyMap<PageId, FakeBodyPageState>
+  readonly operation: string
+  readonly pageId: PageId
+}) =>
   Effect.fromNullable(pages.get(pageId)).pipe(
     Effect.mapError(
       () =>
@@ -125,10 +129,13 @@ const conflictFromBlocked = ({
 const safetyForPage = (page: FakeBodyPageState): BodySafetySnapshot =>
   page.pointer.safety ?? page.safety ?? bodySafetySnapshot()
 
-const pointerWithSafety = (
-  pointer: BodyPointer,
-  safety: BodySafetySnapshot = pointer.safety ?? bodySafetySnapshot(),
-): BodyPointer => ({
+const pointerWithSafety = ({
+  pointer,
+  safety = pointer.safety ?? bodySafetySnapshot(),
+}: {
+  readonly pointer: BodyPointer
+  readonly safety?: BodySafetySnapshot
+}): BodyPointer => ({
   ...pointer,
   safety,
 })
@@ -160,7 +167,7 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
     port
       .observe(input)
       .pipe(
-        Effect.map((pointer) => pointerWithSafety(pointer, pointer.safety ?? bodySafetySnapshot())),
+        Effect.map((pointer) => pointerWithSafety({ pointer, safety: pointer.safety ?? bodySafetySnapshot() })),
       ),
   planLocalChange: (input) => {
     const safety = input.baseBodyPointer.safety ?? bodySafetySnapshot()
@@ -169,7 +176,7 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
       return Effect.succeed(
         conflictFromPointer({
           pageId: input.pageId,
-          pointer: pointerWithSafety(input.baseBodyPointer, safety),
+          pointer: pointerWithSafety({ pointer: input.baseBodyPointer, safety }),
           localBodyHash: input.localBodyHash,
           guard: contract.guard,
           message: contract.message,
@@ -179,7 +186,7 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
 
     return port.planLocalChange({
       ...input,
-      baseBodyPointer: pointerWithSafety(input.baseBodyPointer, safety),
+      baseBodyPointer: pointerWithSafety({ pointer: input.baseBodyPointer, safety }),
     })
   },
   push: (command) => {
@@ -197,7 +204,7 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
 
     return port.push({
       ...command,
-      baseBodyPointer: pointerWithSafety(command.baseBodyPointer, safety),
+      baseBodyPointer: pointerWithSafety({ pointer: command.baseBodyPointer, safety }),
     })
   },
   repair: (input) => {
@@ -207,7 +214,7 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
       return Effect.succeed(
         conflictFromPointer({
           pageId: input.pageId,
-          pointer: pointerWithSafety(input.currentBodyPointer, safety),
+          pointer: pointerWithSafety({ pointer: input.currentBodyPointer, safety }),
           localBodyHash: input.currentBodyPointer.bodyHash,
           guard: contract.guard,
           message: contract.message,
@@ -217,7 +224,7 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
 
     return port.repair({
       ...input,
-      currentBodyPointer: pointerWithSafety(input.currentBodyPointer, safety),
+      currentBodyPointer: pointerWithSafety({ pointer: input.currentBodyPointer, safety }),
     })
   },
 })
@@ -227,14 +234,14 @@ export const makeUnsupportedPageBodySyncPort = ({
 }: {
   readonly message?: string
 } = {}): PageBodySyncPortShape => {
-  const fail = (operation: string, pageId: PageId) =>
+  const fail = ({ operation, pageId }: { readonly operation: string; readonly pageId: PageId }) =>
     Effect.fail(new BodySyncError({ operation, pageId, message }))
 
   return {
-    observe: (input) => fail('observe', input.pageId),
-    planLocalChange: (input) => fail('planLocalChange', input.pageId),
-    push: (command) => fail('push', command.pageId),
-    repair: (input) => fail('repair', input.pageId),
+    observe: (input) => fail({ operation: 'observe', pageId: input.pageId }),
+    planLocalChange: (input) => fail({ operation: 'planLocalChange', pageId: input.pageId }),
+    push: (command) => fail({ operation: 'push', pageId: command.pageId }),
+    repair: (input) => fail({ operation: 'repair', pageId: input.pageId }),
   }
 }
 
@@ -248,7 +255,7 @@ export const makeFakePageBodySyncPort = ({
         page.pageId,
         {
           ...page,
-          pointer: pointerWithSafety(page.pointer, safety),
+          pointer: pointerWithSafety({ pointer: page.pointer, safety }),
           safety,
         },
       ]
@@ -257,11 +264,11 @@ export const makeFakePageBodySyncPort = ({
 
   return withBodyAdapterContract({
     observe: (input: ObserveBodyInput) =>
-      findPage(byPageId, 'observe', input.pageId).pipe(
-        Effect.map((page) => pointerWithSafety(page.pointer, safetyForPage(page))),
+      findPage({ pages: byPageId, operation: 'observe', pageId: input.pageId }).pipe(
+        Effect.map((page) => pointerWithSafety({ pointer: page.pointer, safety: safetyForPage(page) })),
       ),
     planLocalChange: (input: BodyLocalChangeInput) =>
-      findPage(byPageId, 'planLocalChange', input.pageId).pipe(
+      findPage({ pages: byPageId, operation: 'planLocalChange', pageId: input.pageId }).pipe(
         Effect.map((page): BodyIntent | BodyConflict => {
           const contract = evaluateBodyAdapterContract(safetyForPage(page))
           if (contract._tag === 'blocked') {
@@ -288,11 +295,15 @@ export const makeFakePageBodySyncPort = ({
             pageId: input.pageId,
             baseBodyPointer: input.baseBodyPointer,
             nextBodyHash: input.localBodyHash,
+            ...(input.localBodyPath === undefined ? {} : { localBodyPath: input.localBodyPath }),
+            ...(input.localBodyContent === undefined
+              ? {}
+              : { localBodyContent: input.localBodyContent }),
           }
         }),
       ),
     push: (command: BodyPushCommand) =>
-      findPage(byPageId, 'push', command.pageId).pipe(
+      findPage({ pages: byPageId, operation: 'push', pageId: command.pageId }).pipe(
         Effect.flatMap((page) => {
           const safety = safetyForPage(page)
           const contract = evaluateBodyAdapterContract(safety)
@@ -317,15 +328,15 @@ export const makeFakePageBodySyncPort = ({
             )
           }
 
-          const bodyPointer = pointerWithSafety(
-            {
+          const bodyPointer = pointerWithSafety({
+            pointer: {
               _tag: 'BodyPointer',
               pageId: command.pageId,
               bodyHash: command.nextBodyHash,
               observedAt: page.pointer.observedAt,
             },
             safety,
-          )
+          })
           byPageId.set(command.pageId, {
             ...page,
             pointer: bodyPointer,
@@ -343,12 +354,12 @@ export const makeFakePageBodySyncPort = ({
         }),
       ),
     repair: (input: BodyRepairInput) =>
-      findPage(byPageId, 'repair', input.pageId).pipe(
+      findPage({ pages: byPageId, operation: 'repair', pageId: input.pageId }).pipe(
         Effect.map((page): BodyPointer | BodyConflict => {
           const contract = evaluateBodyAdapterContract(safetyForPage(page))
           return contract._tag === 'blocked'
             ? conflictFromBlocked({ page, input, guard: contract.guard, message: contract.message })
-            : pointerWithSafety(page.pointer, safetyForPage(page))
+            : pointerWithSafety({ pointer: page.pointer, safety: safetyForPage(page) })
         }),
       ),
   })

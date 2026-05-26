@@ -13,6 +13,7 @@ import {
   PropertyName,
   QueryCursor,
   SupportedNotionApiVersion,
+  WorkspaceRelativePath,
 } from './domain.ts'
 
 /** Defines how row membership is determined: `all-data-source-rows` treats any absence as potential removal; `explicit-filter` limits absence proofs to the filter scope. */
@@ -221,12 +222,84 @@ export const PatchPagePropertiesCommand = Schema.TaggedStruct('PatchPageProperti
 }).annotations({ identifier: 'NotionDatasourceSync.PatchPagePropertiesCommand' })
 export type PatchPagePropertiesCommand = typeof PatchPagePropertiesCommand.Type
 
-/** Remote write command: applies a partial schema patch to a Notion database, gated on the base schema hash matching. */
+/**
+ * Typed property definition for `AddProperty` schema operations.
+ *
+ * Limited to the conservative subset of Notion property types where the
+ * adapter can build a fully specified remote payload without inferring
+ * additional configuration. `title` is intentionally excluded because every
+ * data source already has exactly one title property. `status` is excluded
+ * because the Notion `Update a data source` endpoint documents status among
+ * the properties that cannot be updated via the API; advertising it here
+ * would suggest behavior the adapter cannot actually deliver.
+ */
+export const AddPropertyDefinition = Schema.Union(
+  Schema.TaggedStruct('rich_text', {}),
+  Schema.TaggedStruct('number', {}),
+  Schema.TaggedStruct('checkbox', {}),
+  Schema.TaggedStruct('date', {}),
+  Schema.TaggedStruct('url', {}),
+  Schema.TaggedStruct('email', {}),
+  Schema.TaggedStruct('phone_number', {}),
+  Schema.TaggedStruct('people', {}),
+  Schema.TaggedStruct('select', { options: Schema.Array(CanonicalOptionValue) }),
+  Schema.TaggedStruct('multi_select', { options: Schema.Array(CanonicalOptionValue) }),
+).annotations({ identifier: 'NotionDatasourceSync.AddPropertyDefinition' })
+export type AddPropertyDefinition = typeof AddPropertyDefinition.Type
+
+/**
+ * Single conservative schema patch operation.
+ *
+ * - `AddProperty` introduces a new property by name with a fully specified type.
+ * - `RenameProperty` changes the human-readable name of an existing property.
+ * - `AddSelectOptions` extends the option list of an existing
+ *   `select`/`multi_select` property by appending `newOptions` after the
+ *   explicit `existingOptions` snapshot the caller observed. The adapter
+ *   sends the full `existingOptions ++ newOptions` list to Notion so omitted
+ *   options are not silently removed by the `update_data_source` endpoint.
+ *   `status` is intentionally unsupported: Notion documents status as a
+ *   property type that cannot be updated via the API.
+ *
+ * Destructive operations (delete, change-type, remove-option, set/replace
+ * options) are deliberately absent so unsupported intents fail closed at the
+ * planner/adapter boundary.
+ */
+export const SchemaPatchOperation = Schema.Union(
+  Schema.TaggedStruct('AddProperty', {
+    name: PropertyName,
+    definition: AddPropertyDefinition,
+  }),
+  Schema.TaggedStruct('RenameProperty', {
+    propertyId: PropertyId,
+    newName: PropertyName,
+  }),
+  Schema.TaggedStruct('AddSelectOptions', {
+    propertyId: PropertyId,
+    propertyType: Schema.Literal('select', 'multi_select'),
+    existingOptions: Schema.Array(CanonicalOptionValue),
+    newOptions: Schema.Array(CanonicalOptionValue),
+  }),
+).annotations({ identifier: 'NotionDatasourceSync.SchemaPatchOperation' })
+export type SchemaPatchOperation = typeof SchemaPatchOperation.Type
+
+/**
+ * Remote write command: applies a partial schema patch to a Notion database,
+ * gated on the base schema hash matching.
+ *
+ * The legacy `schemaPatch` record carries opaque per-property identity for
+ * planner accounting; the newer `operations` list carries the typed
+ * conservative subset that the adapter can actually translate to a Notion
+ * `update_data_source` payload. Absent or empty `operations` keeps the
+ * adapter on the fail-closed path.
+ */
 export const PatchDataSourceSchemaCommand = Schema.TaggedStruct('PatchDataSourceSchemaCommand', {
   commandId: CommandId,
   dataSourceId: DataSourceId,
   baseSchemaHash: Hash,
   schemaPatch: Schema.Record({ key: PropertyId, value: CanonicalDataSourceProperty }),
+  operations: Schema.optionalWith(Schema.Array(SchemaPatchOperation), {
+    default: () => [] as ReadonlyArray<SchemaPatchOperation>,
+  }),
 }).annotations({ identifier: 'NotionDatasourceSync.PatchDataSourceSchemaCommand' })
 export type PatchDataSourceSchemaCommand = typeof PatchDataSourceSchemaCommand.Type
 
@@ -257,6 +330,8 @@ export const BodyLocalChangeInput = Schema.TaggedStruct('BodyLocalChangeInput', 
   pageId: PageId,
   baseBodyPointer: BodyPointer,
   localBodyHash: Hash,
+  localBodyPath: Schema.optional(WorkspaceRelativePath),
+  localBodyContent: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.BodyLocalChangeInput' })
 export type BodyLocalChangeInput = typeof BodyLocalChangeInput.Type
 
@@ -265,6 +340,8 @@ export const BodyIntent = Schema.TaggedStruct('BodyIntent', {
   pageId: PageId,
   baseBodyPointer: BodyPointer,
   nextBodyHash: Hash,
+  localBodyPath: Schema.optional(WorkspaceRelativePath),
+  localBodyContent: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.BodyIntent' })
 export type BodyIntent = typeof BodyIntent.Type
 
@@ -298,6 +375,8 @@ export const BodyPushCommand = Schema.TaggedStruct('BodyPushCommand', {
   pageId: PageId,
   baseBodyPointer: BodyPointer,
   nextBodyHash: Hash,
+  localBodyPath: Schema.optional(WorkspaceRelativePath),
+  localBodyContent: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.BodyPushCommand' })
 export type BodyPushCommand = typeof BodyPushCommand.Type
 

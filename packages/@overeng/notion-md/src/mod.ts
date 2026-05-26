@@ -46,8 +46,15 @@ export type {
 } from './state-store.ts'
 export { decideStorage } from './storage-policy.ts'
 export type { StorageDecision } from './storage-policy.ts'
-export { statusPage, syncPage } from './sync.ts'
-export type { StatusOptions, StatusResult, SyncOptions, SyncResult } from './sync.ts'
+export { pullPage, statusPage, syncPage } from './sync.ts'
+export type {
+  PullOptions,
+  PullResult,
+  StatusOptions,
+  StatusResult,
+  SyncOptions,
+  SyncResult,
+} from './sync.ts'
 export { NOTION_MD_VERSION } from './version.ts'
 export {
   isManagedWorkspace,

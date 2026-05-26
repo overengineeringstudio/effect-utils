@@ -1,5 +1,6 @@
 export * from './core/canonical.ts'
 export * from './body/adapter.ts'
+export * from './body/notion-md.ts'
 export * from './cli/main.ts'
 export * from './core/commands.ts'
 export * from './planner/conflict-commands.ts'

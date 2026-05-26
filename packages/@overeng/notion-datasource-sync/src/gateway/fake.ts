@@ -172,16 +172,20 @@ const findDataSource = ({
     : Effect.succeed(snapshot)
 }
 
-const findPage = (
-  pages: Map<string, MutablePageRecord>,
-  pageId: PageId,
-  operation:
+const findPage = ({
+  pages,
+  pageId,
+  operation,
+}: {
+  readonly pages: Map<string, MutablePageRecord>
+  readonly pageId: PageId
+  readonly operation:
     | 'retrievePage'
     | 'retrievePageProperty'
     | 'patchPageProperties'
     | 'trashPage'
-    | 'restorePage',
-): Effect.Effect<MutablePageRecord, NotionGatewayError> => {
+    | 'restorePage'
+}): Effect.Effect<MutablePageRecord, NotionGatewayError> => {
   const page = pages.get(pageKey(pageId))
 
   return page === undefined
@@ -377,7 +381,10 @@ export const makeFakeNotionDataSourceGateway = (
                 _tag: 'QueryRowsPage',
                 apiVersion: apiContract.apiVersion,
                 requestId: nextRequestId(),
-                queryContractHash: computeQueryContractHash(input, apiContract.apiVersion),
+                queryContractHash: computeQueryContractHash({
+                  input,
+                  apiVersion: apiContract.apiVersion,
+                }),
                 rows,
                 nextCursor: hasMore === true ? cursorForOffset(nextOffset) : null,
                 hasMore,
@@ -403,7 +410,7 @@ export const makeFakeNotionDataSourceGateway = (
               message: `Page retrieval is permission ambiguous: ${id}`,
             }),
           )
-        : findPage(pages, id, 'retrievePage').pipe(
+        : findPage({ pages, pageId: id, operation: 'retrievePage' }).pipe(
             Effect.map((page) => page.snapshot),
             Effect.withSpan(
               spanNames.fakeGatewayRequest,
@@ -425,7 +432,7 @@ export const makeFakeNotionDataSourceGateway = (
                 message: `Page property retrieval is permission ambiguous: ${input.pageId}`,
               }),
             )
-          : findPage(pages, input.pageId, 'retrievePageProperty')
+          : findPage({ pages, pageId: input.pageId, operation: 'retrievePageProperty' })
         ).pipe(
           Effect.zipWith(
             validatePageSize({
@@ -492,7 +499,7 @@ export const makeFakeNotionDataSourceGateway = (
         ),
       ).pipe(Stream.flatMap((propertyPages) => Stream.fromIterable(propertyPages))),
     patchPageProperties: (command: PatchPagePropertiesCommand) =>
-      findPage(pages, command.pageId, 'patchPageProperties').pipe(
+      findPage({ pages, pageId: command.pageId, operation: 'patchPageProperties' }).pipe(
         Effect.flatMap((page) => {
           if (page.snapshot.propertiesHash !== command.basePropertiesHash) {
             return Effect.fail(
@@ -581,7 +588,7 @@ export const makeFakeNotionDataSourceGateway = (
         }),
       ),
     trashPage: (command: TrashPageCommand) =>
-      findPage(pages, command.pageId, 'trashPage').pipe(
+      findPage({ pages, pageId: command.pageId, operation: 'trashPage' }).pipe(
         Effect.flatMap((page) => {
           if (page.snapshot.propertiesHash !== command.basePropertiesHash) {
             return Effect.fail(
@@ -601,7 +608,7 @@ export const makeFakeNotionDataSourceGateway = (
         }),
       ),
     restorePage: (command: RestorePageCommand) =>
-      findPage(pages, command.pageId, 'restorePage').pipe(
+      findPage({ pages, pageId: command.pageId, operation: 'restorePage' }).pipe(
         Effect.flatMap((page) => {
           if (page.snapshot.propertiesHash !== command.basePropertiesHash) {
             return Effect.fail(

@@ -29,7 +29,7 @@ import {
   testIds,
 } from '../testing/harness.ts'
 
-const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-conflicts')
+const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-conflicts' })
 
 const schemaProperties = [
   {
@@ -40,7 +40,7 @@ const schemaProperties = [
 ]
 
 const propertyPage = (valueHash = hash('property-a-base')) =>
-  decode(PagePropertyItemPage, {
+  decode({ schema: PagePropertyItemPage, value: {
     _tag: 'PagePropertyItemPage',
     apiVersion: '2026-03-11',
     requestId: testIds.requestId,
@@ -57,7 +57,7 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
     ],
     nextCursor: null,
     hasMore: false,
-  })
+  } })
 
 const runWithPorts = <TValue, TError>(
   effect: Effect.Effect<
@@ -168,7 +168,7 @@ const conflictIdFromList = (store: ReturnType<typeof makeStoreFixture>['store'])
     surface: { conflicts: [{ kind: 'same-property', propertyId: testIds.propertyA }] },
   })
 
-  return decode(SyncEventId, list.surface.conflicts[0]!.conflictId)
+  return decode({ schema: SyncEventId, value: list.surface.conflicts[0]!.conflictId })
 }
 
 describe('conflict resolution user command E2E', () => {
@@ -395,7 +395,7 @@ describe('conflict resolution user command E2E', () => {
         { gateway: gatewayHarness.gateway },
       )
       storeFixture.store.appendEvent(
-        decode(SyncEvent, {
+        decode({ schema: SyncEvent, value: {
           _tag: 'TombstoneRecorded',
           eventId: 'tombstone-remote-trash',
           rootId: testIds.rootId,
@@ -415,7 +415,7 @@ describe('conflict resolution user command E2E', () => {
           observedAt: clock.now().toISOString(),
           pageId: testIds.pageId,
           reason: 'remote_trash',
-        }),
+        } }),
       )
 
       const result = restorePageCommand({

@@ -8,8 +8,10 @@ import {
   Hash,
   IdempotencyKey,
   PageId,
+  PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
   PropertyId,
+  PropertyName,
   SyncEventId,
   SyncRootId,
   bodySurfaceKey,
@@ -366,7 +368,7 @@ describe('notion datasource conflict classifier', () => {
     propertyId: id,
     baseHash: hash('a'),
     nextHash: hash('b'),
-    surface: propertySurfaceKey(pageId, id),
+    surface: propertySurfaceKey({ pageId: pageId, propertyId: id }),
   })
 
   it.each([
@@ -402,7 +404,7 @@ describe('notion datasource conflict classifier', () => {
       {
         _tag: 'schema',
         affectedPropertyIds: [propertyA],
-        surface: schemaSurfaceKey(dataSourceId, propertyA),
+        surface: schemaSurfaceKey({ dataSourceId: dataSourceId, propertyId: propertyA }),
       } satisfies ConflictSurface,
       propertySurface(propertyA),
       'schema-affects-property',
@@ -414,7 +416,7 @@ describe('notion datasource conflict classifier', () => {
         pageId,
         propertyId: propertyA,
         available: false,
-        surface: propertySurfaceKey(pageId, propertyA),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
       } satisfies ConflictSurface,
       propertySurface(propertyA),
       'relation-unavailable',
@@ -456,27 +458,27 @@ describe('notion datasource conflict classifier', () => {
       'permission-ambiguous',
     ],
   ])('classifies %s', (_name, local, remote, kind) => {
-    expect(classifyConflict(local, remote)).toMatchObject({
+    expect(classifyConflict({ local, remote })).toMatchObject({
       _tag: 'conflict',
       conflict: { kind },
     })
   })
 
   it('classifies disjoint property and property-vs-body changes as mergeable', () => {
-    expect(classifyConflict(propertySurface(propertyA), propertySurface(propertyB))).toMatchObject({
+    expect(classifyConflict({ local: propertySurface(propertyA), remote: propertySurface(propertyB) })).toMatchObject({
       _tag: 'mergeable',
       kind: 'disjoint-property',
     })
 
     expect(
-      classifyConflict(propertySurface(propertyA), {
+      classifyConflict({ local: propertySurface(propertyA), remote: {
         _tag: 'body',
         pageId,
         baseHash: hash('a'),
         nextHash: hash('b'),
         lossy: false,
         surface: bodySurfaceKey(pageId),
-      }),
+      } }),
     ).toMatchObject({
       _tag: 'mergeable',
       kind: 'property-vs-body',
@@ -486,18 +488,18 @@ describe('notion datasource conflict classifier', () => {
 
 describe('notion datasource planner', () => {
   it('enqueues outbox-ready command envelopes for safe property edits', () => {
-    const decision = planIntent(snapshot(), {
+    const decision = planIntent({ snapshot: snapshot(), intent: {
       _tag: 'property-edit',
       intentEventId,
       commandKey,
-      surface: propertySurfaceKey(pageId, propertyA),
+      surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
       pageId,
       propertyId: propertyA,
       command: propertyCommand,
       baseHash: hash('a'),
       desiredHash: hash('f'),
       expectedPropertyConfigHash: hash('c'),
-    })
+    } })
 
     expect(decision).toMatchObject({
       _tag: 'EnqueueCommands',
@@ -506,7 +508,7 @@ describe('notion datasource planner', () => {
           rootId,
           intentEventId,
           commandKey,
-          surface: propertySurfaceKey(pageId, propertyA),
+          surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
           baseHash: hash('a'),
           desiredHash: hash('f'),
           preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'SchemaDriftAffectsIntent'],
@@ -516,23 +518,20 @@ describe('notion datasource planner', () => {
   })
 
   it('blocks property edits when the current property projection is missing', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         properties: [],
-      }),
-      {
+      }), intent: {
         _tag: 'property-edit',
         intentEventId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyA),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
         pageId,
         propertyId: propertyA,
         command: propertyCommand,
         baseHash: hash('a'),
         desiredHash: hash('f'),
         expectedPropertyConfigHash: hash('c'),
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -541,8 +540,7 @@ describe('notion datasource planner', () => {
   })
 
   it('blocks property edits when the row data source no longer has the schema property', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         schema: [
           {
             dataSourceId,
@@ -552,20 +550,18 @@ describe('notion datasource planner', () => {
             writeClass: 'writable',
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'property-edit',
         intentEventId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyA),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
         pageId,
         propertyId: propertyA,
         command: propertyCommand,
         baseHash: hash('a'),
         desiredHash: hash('f'),
         expectedPropertyConfigHash: hash('c'),
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -578,8 +574,7 @@ describe('notion datasource planner', () => {
   })
 
   it('scopes property edit schema lookup to the row data source', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         schema: [
           {
             dataSourceId,
@@ -606,20 +601,18 @@ describe('notion datasource planner', () => {
             localDeleteCandidate: false,
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'property-edit',
         intentEventId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyA),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
         pageId,
         propertyId: propertyA,
         command: propertyCommand,
         baseHash: hash('a'),
         desiredHash: hash('f'),
         expectedPropertyConfigHash: hash('e'),
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -628,11 +621,9 @@ describe('notion datasource planner', () => {
   })
 
   it('blocks body edits when the current body projection is missing', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         bodies: [],
-      }),
-      {
+      }), intent: {
         _tag: 'body-edit',
         intentEventId,
         commandKey,
@@ -641,8 +632,7 @@ describe('notion datasource planner', () => {
         command: bodyCommand,
         baseHash: hash('f'),
         desiredHash: hash('e'),
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -651,8 +641,7 @@ describe('notion datasource planner', () => {
   })
 
   it('opens same-property conflict instead of silently overwriting a remote observation', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         properties: [
           {
             pageId,
@@ -663,20 +652,18 @@ describe('notion datasource planner', () => {
             pendingLocal: undefined,
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'property-edit',
         intentEventId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyA),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
         pageId,
         propertyId: propertyA,
         command: propertyCommand,
         baseHash: hash('a'),
         desiredHash: hash('f'),
         expectedPropertyConfigHash: hash('c'),
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'OpenConflict',
@@ -685,8 +672,7 @@ describe('notion datasource planner', () => {
   })
 
   it('keeps pending local intent as the shadowed target when remote changes arrive', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         properties: [
           {
             pageId,
@@ -697,20 +683,18 @@ describe('notion datasource planner', () => {
             pendingLocal: { intentEventId, targetHash: hash('f') },
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'property-edit',
         intentEventId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyA),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
         pageId,
         propertyId: propertyA,
         command: propertyCommand,
         baseHash: hash('a'),
         desiredHash: hash('f'),
         expectedPropertyConfigHash: hash('c'),
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'OpenConflict',
@@ -719,8 +703,7 @@ describe('notion datasource planner', () => {
   })
 
   it('treats a pending local intent as already landed when the remote hash reaches its target', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         properties: [
           {
             pageId,
@@ -731,27 +714,24 @@ describe('notion datasource planner', () => {
             pendingLocal: { intentEventId, targetHash: hash('f') },
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'property-edit',
         intentEventId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyA),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
         pageId,
         propertyId: propertyA,
         command: propertyCommand,
         baseHash: hash('a'),
         desiredHash: hash('f'),
         expectedPropertyConfigHash: hash('c'),
-      },
-    )
+      }, })
 
     expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
   })
 
   it('allows disjoint property merge when bases are independent', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         remoteChanges: [
           {
             _tag: 'property',
@@ -759,29 +739,27 @@ describe('notion datasource planner', () => {
             propertyId: propertyB,
             baseHash: hash('a'),
             nextHash: hash('d'),
-            surface: propertySurfaceKey(pageId, propertyB),
+            surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyB }),
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'property-edit',
         intentEventId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyA),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
         pageId,
         propertyId: propertyA,
         command: propertyCommand,
         baseHash: hash('a'),
         desiredHash: hash('f'),
         expectedPropertyConfigHash: hash('c'),
-      },
-    )
+      }, })
 
     expect(decision._tag).toBe('EnqueueCommands')
   })
 
   it('keeps local file deletion as a candidate by default and does not enqueue trash', () => {
-    const decision = planIntent(snapshot(), {
+    const decision = planIntent({ snapshot: snapshot(), intent: {
       _tag: 'local-delete',
       intentEventId,
       commandKey,
@@ -798,7 +776,7 @@ describe('notion datasource planner', () => {
       explicitDestructiveIntent: false,
       policy: 'candidateOnly',
       directRetrieve: 'not-run',
-    })
+    } })
 
     expect(decision).toMatchObject({
       _tag: 'AppendEvents',
@@ -807,11 +785,9 @@ describe('notion datasource planner', () => {
   })
 
   it('blocks trusted local deletes when the current row projection is missing', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         rows: [],
-      }),
-      {
+      }), intent: {
         _tag: 'local-delete',
         intentEventId,
         commandKey,
@@ -828,8 +804,7 @@ describe('notion datasource planner', () => {
         explicitDestructiveIntent: true,
         policy: 'trustedRemoteTrash',
         directRetrieve: 'accessible',
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -838,8 +813,7 @@ describe('notion datasource planner', () => {
   })
 
   it('blocks filtered absence and capped queries from tombstone decisions', () => {
-    const filteredDecision = planIntent(
-      snapshot({
+    const filteredDecision = planIntent({ snapshot: snapshot({
         queries: [
           {
             dataSourceId,
@@ -854,23 +828,20 @@ describe('notion datasource planner', () => {
             },
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'query-absence',
-        surface: querySurfaceKey(dataSourceId, hash('b')),
+        surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
         dataSourceId,
         pageId,
         queryContractHash: hash('b'),
-      },
-    )
+      }, })
 
     expect(filteredDecision).toMatchObject({
       _tag: 'BlockedByGuard',
       guard: 'FilteredAbsenceNotProof',
     })
 
-    const cappedDecision = planIntent(
-      snapshot({
+    const cappedDecision = planIntent({ snapshot: snapshot({
         queries: [
           {
             dataSourceId,
@@ -885,15 +856,13 @@ describe('notion datasource planner', () => {
             },
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'query-absence',
-        surface: querySurfaceKey(dataSourceId, hash('b')),
+        surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
         dataSourceId,
         pageId,
         queryContractHash: hash('b'),
-      },
-    )
+      }, })
 
     expect(cappedDecision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -902,8 +871,7 @@ describe('notion datasource planner', () => {
   })
 
   it('allows explicit-filter absence to prove a page is only outside the sync scope', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         queries: [
           {
             dataSourceId,
@@ -918,22 +886,19 @@ describe('notion datasource planner', () => {
             },
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'query-absence',
-        surface: querySurfaceKey(dataSourceId, hash('b')),
+        surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
         dataSourceId,
         pageId,
         queryContractHash: hash('b'),
-      },
-    )
+      }, })
 
     expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
   })
 
   it('ignores query absence when direct retrieve proves the page is still accessible', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         queries: [
           {
             dataSourceId,
@@ -948,22 +913,19 @@ describe('notion datasource planner', () => {
             },
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'query-absence',
-        surface: querySurfaceKey(dataSourceId, hash('b')),
+        surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
         dataSourceId,
         pageId,
         queryContractHash: hash('b'),
-      },
-    )
+      }, })
 
     expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
   })
 
   it('does not reuse an accessible direct retrieve for another absent page', () => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         queries: [
           {
             dataSourceId,
@@ -978,15 +940,13 @@ describe('notion datasource planner', () => {
             },
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'query-absence',
-        surface: querySurfaceKey(dataSourceId, hash('b')),
+        surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
         dataSourceId,
         pageId: otherPageId,
         queryContractHash: hash('b'),
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -1024,18 +984,15 @@ describe('notion datasource planner', () => {
         },
       ] satisfies PlannerProjectionSnapshot['queries']
 
-      const decision = planIntent(
-        snapshot({
+      const decision = planIntent({ snapshot: snapshot({
           queries,
-        }),
-        {
+        }), intent: {
           _tag: 'query-absence',
-          surface: querySurfaceKey(dataSourceId, hash('b')),
+          surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
           dataSourceId,
           pageId,
           queryContractHash: hash('b'),
-        },
-      )
+        }, })
 
       expect(decision).toMatchObject({
         _tag: 'BlockedByGuard',
@@ -1047,13 +1004,12 @@ describe('notion datasource planner', () => {
   it('blocks malformed query absence evidence instead of recording a tombstone', () => {
     const missingIntentDataSource = {
       _tag: 'query-absence',
-      surface: querySurfaceKey(dataSourceId, hash('b')),
+      surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
       pageId,
       queryContractHash: hash('b'),
-    } as unknown as Parameters<typeof planIntent>[1]
+    } as unknown as Parameters<typeof planIntent>[0]['intent']
 
-    const decisionWithoutIntentDataSource = planIntent(
-      snapshot({
+    const decisionWithoutIntentDataSource = planIntent({ snapshot: snapshot({
         queries: [
           {
             dataSourceId,
@@ -1068,9 +1024,7 @@ describe('notion datasource planner', () => {
             },
           },
         ],
-      }),
-      missingIntentDataSource,
-    )
+      }), intent: missingIntentDataSource, })
 
     expect(decisionWithoutIntentDataSource).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -1089,18 +1043,15 @@ describe('notion datasource planner', () => {
       },
     } as unknown as PlannerProjectionSnapshot['queries'][number]
 
-    const decisionWithoutEvidencePage = planIntent(
-      snapshot({
+    const decisionWithoutEvidencePage = planIntent({ snapshot: snapshot({
         queries: [missingEvidencePage],
-      }),
-      {
+      }), intent: {
         _tag: 'query-absence',
-        surface: querySurfaceKey(dataSourceId, hash('b')),
+        surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
         dataSourceId,
         pageId,
         queryContractHash: hash('b'),
-      },
-    )
+      }, })
 
     expect(decisionWithoutEvidencePage).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -1114,8 +1065,7 @@ describe('notion datasource planner', () => {
     ['inaccessible', 'inaccessible'],
     ['unknown', 'unknown'],
   ] as const)('preserves classified query absence for %s', (directRetrieve, reason) => {
-    const decision = planIntent(
-      snapshot({
+    const decision = planIntent({ snapshot: snapshot({
         queries: [
           {
             dataSourceId,
@@ -1130,15 +1080,13 @@ describe('notion datasource planner', () => {
             },
           },
         ],
-      }),
-      {
+      }), intent: {
         _tag: 'query-absence',
-        surface: querySurfaceKey(dataSourceId, hash('b')),
+        surface: querySurfaceKey({ dataSourceId: dataSourceId, queryContractHash: hash('b') }),
         dataSourceId,
         pageId,
         queryContractHash: hash('b'),
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'AppendEvents',
@@ -1147,12 +1095,12 @@ describe('notion datasource planner', () => {
   })
 
   it('blocks body adapter surface leaks before command settlement', () => {
-    const decision = planIntent(snapshot(), {
+    const decision = planIntent({ snapshot: snapshot(), intent: {
       _tag: 'body-adapter-result',
       surface: bodySurfaceKey(pageId),
       pageId,
       safety: bodySafety({ adapterMutationSurfaces: ['body', 'schema'] }),
-    })
+    } })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -1160,18 +1108,101 @@ describe('notion datasource planner', () => {
     })
   })
 
-  it('opens path claim conflicts instead of overwriting another page claim', () => {
-    const decision = planIntent(
-      snapshot({
-        pathClaims: [{ path: 'same.nmd', ownerPageId: otherPageId, released: false }],
-      }),
+  const schemaCommandWithOperations = decode(PatchDataSourceSchemaCommand, {
+    _tag: 'PatchDataSourceSchemaCommand',
+    commandId,
+    dataSourceId,
+    baseSchemaHash: hash('b'),
+    schemaPatch: {},
+    operations: [
       {
+        _tag: 'AddProperty',
+        name: decode(PropertyName, 'Notes'),
+        definition: { _tag: 'rich_text' },
+      },
+      {
+        _tag: 'RenameProperty',
+        propertyId: propertyA,
+        newName: decode(PropertyName, 'Task'),
+      },
+    ],
+  })
+
+  const schemaMigrationIntent = (
+    overrides: {
+      readonly safety?: {
+        readonly affectsLocalIntent: boolean
+        readonly destructiveMigrationRequired: boolean
+        readonly optionDeletionLosesValues: boolean
+      }
+    } = {},
+  ) =>
+    ({
+      _tag: 'schema-migration',
+      intentEventId,
+      commandKey,
+      surface: schemaSurfaceKey({ dataSourceId: dataSourceId, propertyId: propertyA }),
+      dataSourceId,
+      affectedPropertyIds: [propertyA],
+      command: schemaCommandWithOperations,
+      baseHash: hash('b'),
+      desiredHash: hash('e'),
+      safety: overrides.safety ?? {
+        affectsLocalIntent: false,
+        destructiveMigrationRequired: false,
+        optionDeletionLosesValues: false,
+      },
+    }) as const
+
+  it('enqueues a typed schema patch command when the conservative subset is safe', () => {
+    const decision = planIntent({ snapshot: snapshot(), intent: schemaMigrationIntent() })
+
+    expect(decision._tag).toBe('EnqueueCommands')
+    if (decision._tag === 'EnqueueCommands') {
+      const [envelope] = decision.commands
+      expect(envelope?.command).toBe(schemaCommandWithOperations)
+      expect(envelope?.command._tag).toBe('PatchDataSourceSchemaCommand')
+      if (envelope?.command._tag === 'PatchDataSourceSchemaCommand') {
+        expect(envelope.command.operations).toHaveLength(2)
+        expect(envelope.command.operations[0]?._tag).toBe('AddProperty')
+        expect(envelope.command.operations[1]?._tag).toBe('RenameProperty')
+      }
+      expect(envelope?.preflight).toContain('DestructiveSchemaMigrationRequired')
+      expect(envelope?.preflight).toContain('OptionDeletionLosesValues')
+    }
+  })
+
+  it.each([
+    ['destructive migration required', 'DestructiveSchemaMigrationRequired' as const, {
+      affectsLocalIntent: false,
+      destructiveMigrationRequired: true,
+      optionDeletionLosesValues: false,
+    }],
+    ['option deletion loses values', 'OptionDeletionLosesValues' as const, {
+      affectsLocalIntent: false,
+      destructiveMigrationRequired: false,
+      optionDeletionLosesValues: true,
+    }],
+    ['schema drift affects intent', 'SchemaDriftAffectsIntent' as const, {
+      affectsLocalIntent: true,
+      destructiveMigrationRequired: false,
+      optionDeletionLosesValues: false,
+    }],
+  ])('blocks schema migration when %s', (_label, expectedGuard, safety) => {
+    const decision = planIntent({ snapshot: snapshot(), intent: schemaMigrationIntent({ safety }) })
+
+    expect(decision).toMatchObject({ _tag: 'BlockedByGuard', guard: expectedGuard })
+  })
+
+  it('opens path claim conflicts instead of overwriting another page claim', () => {
+    const decision = planIntent({ snapshot: snapshot({
+        pathClaims: [{ path: 'same.nmd', ownerPageId: otherPageId, released: false }],
+      }), intent: {
         _tag: 'path-claim',
         surface: pathSurfaceKey('same.nmd'),
         pageId,
         path: 'same.nmd',
-      },
-    )
+      }, })
 
     expect(decision).toMatchObject({
       _tag: 'OpenConflict',

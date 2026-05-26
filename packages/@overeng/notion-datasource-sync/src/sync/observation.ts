@@ -81,10 +81,13 @@ export type RemoteObservationResult = {
   }
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: unknown,
-): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
+const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: unknown
+}): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
 const eventPayload = (value: unknown): SyncEventType['payload'] => ({
   _tag: 'VersionedJson',
@@ -138,7 +141,7 @@ const commandTag = (command: { readonly _tag: string }): string =>
 const defaultBodyPathForPage = (pageId: PageIdType): WorkspaceRelativePath => {
   const decision = bodyPathForRow({ title: `page-${pageId}`, pageId })
   if (decision._tag === 'blocked') {
-    return decode(WorkspaceRelativePath, `page-${pageId}.nmd`)
+    return decode({ schema: WorkspaceRelativePath, value: `page-${pageId}.nmd` })
   }
 
   return decision.path
@@ -204,52 +207,61 @@ export const makeSyncBindingRecordedEvent = (input: {
   readonly now?: () => Date
 }): Extract<SyncEventType, { readonly _tag: 'SyncBindingRecorded' }> => {
   const now = input.now ?? (() => new Date())
-  return decode(SyncEvent, {
-    _tag: 'SyncBindingRecorded',
-    ...eventBase({
-      rootId: input.rootId,
-      eventId: `binding:${eventIdPart(input.dataSourceId)}:${hashStoreBytes(input.workspaceRoot)}`,
-      family: 'SyncRootBound',
-      eventType: 'SyncBindingRecorded',
-      idempotencyKey: `binding:${input.dataSourceId}:${hashStoreBytes(input.workspaceRoot)}`,
-      surface: querySurfaceKey(input.dataSourceId, hashStoreBytes(input.workspaceRoot)),
-      payload: {
-        dataSourceId: input.dataSourceId,
-        workspaceRootHash: hashStoreBytes(input.workspaceRoot),
-        storeIdentity: input.storeIdentity,
-      },
-      now,
-    }),
-    dataSourceId: input.dataSourceId,
-    workspaceRoot: input.workspaceRoot,
-    storeIdentity: input.storeIdentity,
+  return decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'SyncBindingRecorded',
+      ...eventBase({
+        rootId: input.rootId,
+        eventId: `binding:${eventIdPart(input.dataSourceId)}:${hashStoreBytes(input.workspaceRoot)}`,
+        family: 'SyncRootBound',
+        eventType: 'SyncBindingRecorded',
+        idempotencyKey: `binding:${input.dataSourceId}:${hashStoreBytes(input.workspaceRoot)}`,
+        surface: querySurfaceKey({ dataSourceId: input.dataSourceId, queryContractHash: hashStoreBytes(input.workspaceRoot) }),
+        payload: {
+          dataSourceId: input.dataSourceId,
+          workspaceRootHash: hashStoreBytes(input.workspaceRoot),
+          storeIdentity: input.storeIdentity,
+        },
+        now,
+      }),
+      dataSourceId: input.dataSourceId,
+      workspaceRoot: input.workspaceRoot,
+      storeIdentity: input.storeIdentity,
+    },
   })
 }
 
 /** Build a `RemoteWritePlanned` event from an outbox command envelope, recording it in the event log before the command is executed. */
-export const makeRemoteWritePlannedEvent = (
-  command: OutboxCommandEnvelope,
-  now: () => Date = () => new Date(),
-): Extract<SyncEventType, { readonly _tag: 'RemoteWritePlanned' }> =>
-  decode(SyncEvent, {
-    _tag: 'RemoteWritePlanned',
-    ...eventBase({
-      rootId: command.rootId,
-      eventId: `planned:${eventIdPart(command.commandId)}`,
-      family: 'CommandEnqueued',
-      eventType: 'RemoteWritePlanned',
-      idempotencyKey: command.commandKey,
-      surface: command.surface,
-      payload: { command: command.command },
-      now,
-    }),
-    commandId: command.commandId,
-    commandKey: command.commandKey,
-    intentEventId: command.intentEventId,
-    commandTag: commandTag(command.command),
-    baseHash: command.baseHash,
-    desiredHash: command.desiredHash,
-    preflight: command.preflight,
+export const makeRemoteWritePlannedEvent = ({
+  command,
+  now = () => new Date(),
+}: {
+  readonly command: OutboxCommandEnvelope
+  readonly now?: () => Date
+}): Extract<SyncEventType, { readonly _tag: 'RemoteWritePlanned' }> =>
+  decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'RemoteWritePlanned',
+      ...eventBase({
+        rootId: command.rootId,
+        eventId: `planned:${eventIdPart(command.commandId)}`,
+        family: 'CommandEnqueued',
+        eventType: 'RemoteWritePlanned',
+        idempotencyKey: command.commandKey,
+        surface: command.surface,
+        payload: { command: command.command },
+        now,
+      }),
+      commandId: command.commandId,
+      commandKey: command.commandKey,
+      intentEventId: command.intentEventId,
+      commandTag: commandTag(command.command),
+      baseHash: command.baseHash,
+      desiredHash: command.desiredHash,
+      preflight: command.preflight,
+    },
   })
 
 /** Translate a `PlannerEvent` into its corresponding store `SyncEvent`; returns `undefined` for event variants that have no durable representation (e.g. `LocalDeleteCandidateAccepted`). */
@@ -264,61 +276,70 @@ export const makePlannerEvent = ({
 }): SyncEventType | undefined => {
   switch (event._tag) {
     case 'PathClaimAccepted':
-      return decode(SyncEvent, {
-        _tag: 'PathClaimed',
-        ...eventBase({
-          rootId,
-          eventId: `path:${eventIdPart(event.path)}:${eventIdPart(event.pageId)}`,
-          family: 'LocalIntentAccepted',
-          eventType: 'PathClaimed',
-          idempotencyKey: `path:${event.path}:${event.pageId}`,
-          surface: event.surface,
-          payload: { path: event.path, pageId: event.pageId },
-          now,
-        }),
-        pageId: event.pageId,
-        relativePath: event.path,
-        claimState: 'active',
+      return decode({
+        schema: SyncEvent,
+        value: {
+          _tag: 'PathClaimed',
+          ...eventBase({
+            rootId,
+            eventId: `path:${eventIdPart(event.path)}:${eventIdPart(event.pageId)}`,
+            family: 'LocalIntentAccepted',
+            eventType: 'PathClaimed',
+            idempotencyKey: `path:${event.path}:${event.pageId}`,
+            surface: event.surface,
+            payload: { path: event.path, pageId: event.pageId },
+            now,
+          }),
+          pageId: event.pageId,
+          relativePath: event.path,
+          claimState: 'active',
+        },
       })
     case 'TombstoneCandidateObserved':
-      return decode(SyncEvent, {
-        _tag: 'TombstoneCandidateObserved',
-        ...eventBase({
-          rootId,
-          eventId: `tombstone-candidate:${eventIdPart(event.pageId)}`,
-          family: 'RemoteObserved',
-          eventType: 'TombstoneCandidateObserved',
-          idempotencyKey: `tombstone-candidate:${event.pageId}`,
-          surface: event.surface,
-          payload: {},
-          now,
-        }),
-        pageId: event.pageId,
-        reason:
-          event.reason === 'filtered-absence-not-proof'
-            ? 'filtered_absence_not_proof'
-            : 'query_absence_unclassified',
+      return decode({
+        schema: SyncEvent,
+        value: {
+          _tag: 'TombstoneCandidateObserved',
+          ...eventBase({
+            rootId,
+            eventId: `tombstone-candidate:${eventIdPart(event.pageId)}`,
+            family: 'RemoteObserved',
+            eventType: 'TombstoneCandidateObserved',
+            idempotencyKey: `tombstone-candidate:${event.pageId}`,
+            surface: event.surface,
+            payload: {},
+            now,
+          }),
+          pageId: event.pageId,
+          reason:
+            event.reason === 'filtered-absence-not-proof'
+              ? 'filtered_absence_not_proof'
+              : 'query_absence_unclassified',
+        },
       })
     case 'TombstoneClassified':
-      return decode(SyncEvent, {
-        _tag: 'TombstoneRecorded',
-        ...eventBase({
-          rootId,
-          eventId: `tombstone:${eventIdPart(event.pageId)}:${event.reason}`,
-          family: 'TombstoneClassified',
-          eventType: 'TombstoneRecorded',
-          idempotencyKey: `tombstone:${event.pageId}:${event.reason}`,
-          surface: event.surface,
-          payload: {},
-          now,
-        }),
-        pageId: event.pageId,
-        reason:
-          event.reason === 'remote-trash'
-            ? 'remote_trash'
-            : event.reason === 'moved-out'
-              ? 'moved_out'
-              : event.reason,
+      return decode({
+        schema: SyncEvent,
+        value: {
+          _tag: 'TombstoneRecorded',
+          ...eventBase({
+            rootId,
+            eventId: `tombstone:${eventIdPart(event.pageId)}:${event.reason}`,
+            family: 'TombstoneClassified',
+            eventType: 'TombstoneRecorded',
+            idempotencyKey: `tombstone:${event.pageId}:${event.reason}`,
+            surface: event.surface,
+            payload: {},
+            now,
+          }),
+          pageId: event.pageId,
+          reason:
+            event.reason === 'remote-trash'
+              ? 'remote_trash'
+              : event.reason === 'moved-out'
+                ? 'moved_out'
+                : event.reason,
+        },
       })
     case 'LocalDeleteCandidateAccepted':
     case 'RemoteObservationAccepted':
@@ -336,20 +357,23 @@ export const makeGuardBlockedEvent = (input: {
   readonly now?: () => Date
 }): Extract<SyncEventType, { readonly _tag: 'GuardBlocked' }> => {
   const now = input.now ?? (() => new Date())
-  return decode(SyncEvent, {
-    _tag: 'GuardBlocked',
-    ...eventBase({
-      rootId: input.rootId,
-      eventId: `guard-block:${eventIdPart(input.surface)}:${input.guard}`,
-      family: 'GuardBlocked',
-      eventType: 'GuardBlocked',
-      idempotencyKey: `guard-block:${input.surface}:${input.guard}`,
-      surface: input.surface,
-      payload: { evidence: input.evidence ?? {} },
-      now,
-    }),
-    guard: input.guard,
-    message: input.message,
+  return decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'GuardBlocked',
+      ...eventBase({
+        rootId: input.rootId,
+        eventId: `guard-block:${eventIdPart(input.surface)}:${input.guard}`,
+        family: 'GuardBlocked',
+        eventType: 'GuardBlocked',
+        idempotencyKey: `guard-block:${input.surface}:${input.guard}`,
+        surface: input.surface,
+        payload: { evidence: input.evidence ?? {} },
+        now,
+      }),
+      guard: input.guard,
+      message: input.message,
+    },
   })
 }
 
@@ -367,28 +391,31 @@ export const makeQueryAbsenceCandidateEvent = (input: {
     input.queryContract.filter !== null ||
     input.queryContract.membershipScope !== 'all-data-source-rows'
 
-  return decode(SyncEvent, {
-    _tag: 'TombstoneCandidateObserved',
-    ...eventBase({
-      rootId: input.rootId,
-      eventId: `absence:${eventIdPart(input.dataSourceId)}:${eventIdPart(input.pageId)}:${input.queryContractHash}`,
-      family: 'RemoteObserved',
-      eventType: 'TombstoneCandidateObserved',
-      idempotencyKey: `absence:${input.dataSourceId}:${input.pageId}:${input.queryContractHash}`,
-      surface: querySurfaceKey(input.dataSourceId, input.queryContractHash),
-      payload: {
-        dataSourceId: input.dataSourceId,
-        pageId: input.pageId,
-        queryContractHash: input.queryContractHash,
-        classified: false,
-        membershipScope: input.queryContract.membershipScope,
-        filtered,
-        directRetrieve: 'not-run',
-      },
-      now,
-    }),
-    pageId: input.pageId,
-    reason: filtered === true ? 'filtered_absence_not_proof' : 'query_absence_unclassified',
+  return decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'TombstoneCandidateObserved',
+      ...eventBase({
+        rootId: input.rootId,
+        eventId: `absence:${eventIdPart(input.dataSourceId)}:${eventIdPart(input.pageId)}:${input.queryContractHash}`,
+        family: 'RemoteObserved',
+        eventType: 'TombstoneCandidateObserved',
+        idempotencyKey: `absence:${input.dataSourceId}:${input.pageId}:${input.queryContractHash}`,
+        surface: querySurfaceKey({ dataSourceId: input.dataSourceId, queryContractHash: input.queryContractHash }),
+        payload: {
+          dataSourceId: input.dataSourceId,
+          pageId: input.pageId,
+          queryContractHash: input.queryContractHash,
+          classified: false,
+          membershipScope: input.queryContract.membershipScope,
+          filtered,
+          directRetrieve: 'not-run',
+        },
+        now,
+      }),
+      pageId: input.pageId,
+      reason: filtered === true ? 'filtered_absence_not_proof' : 'query_absence_unclassified',
+    },
   })
 }
 
@@ -409,38 +436,41 @@ export const makeConflictRaisedEvent = (input: {
   readonly now?: () => Date
 }): Extract<SyncEventType, { readonly _tag: 'ConflictRaised' }> => {
   const now = input.now ?? (() => new Date())
-  return decode(SyncEvent, {
-    _tag: 'ConflictRaised',
-    ...eventBase({
-      rootId: input.rootId,
-      eventId: `conflict:${eventIdPart(input.surface)}:${input.localHash}:${input.remoteHash}`,
-      family: 'ConflictDetected',
-      eventType: 'ConflictRaised',
-      idempotencyKey: `conflict:${input.surface}:${input.localHash}:${input.remoteHash}`,
-      surface: input.surface,
-      payload: { message: input.message },
-      now,
-    }),
-    conflictKind: input.conflictKind,
-    pageId: input.pageId,
-    propertyId: input.propertyId,
-    baseHash: input.baseHash,
-    localHash: input.localHash,
-    remoteHash: input.remoteHash,
+  return decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'ConflictRaised',
+      ...eventBase({
+        rootId: input.rootId,
+        eventId: `conflict:${eventIdPart(input.surface)}:${input.localHash}:${input.remoteHash}`,
+        family: 'ConflictDetected',
+        eventType: 'ConflictRaised',
+        idempotencyKey: `conflict:${input.surface}:${input.localHash}:${input.remoteHash}`,
+        surface: input.surface,
+        payload: { message: input.message },
+        now,
+      }),
+      conflictKind: input.conflictKind,
+      pageId: input.pageId,
+      propertyId: input.propertyId,
+      baseHash: input.baseHash,
+      localHash: input.localHash,
+      remoteHash: input.remoteHash,
+    },
   })
 }
 
 /** Derive a deterministic `CommandId` from a semantic key string; prefixes with `cmd:` after URL-safe escaping. */
 export const commandIdFor = (value: string): typeof CommandId.Type =>
-  decode(CommandId, `cmd:${eventIdPart(value)}`)
+  decode({ schema: CommandId, value: `cmd:${eventIdPart(value)}` })
 
 /** Derive a deterministic intent `SyncEventId` from a semantic key string; prefixes with `intent:`. */
 export const intentEventIdFor = (value: string): typeof SyncEventId.Type =>
-  decode(SyncEventId, `intent:${eventIdPart(value)}`)
+  decode({ schema: SyncEventId, value: `intent:${eventIdPart(value)}` })
 
 /** Derive a deterministic `IdempotencyKey` for an outbox command from a semantic key string; uses the `intent:` prefix. */
 export const commandKeyFor = (value: string): typeof IdempotencyKey.Type =>
-  decode(IdempotencyKey, `intent:${eventIdPart(value)}`)
+  decode({ schema: IdempotencyKey, value: `intent:${eventIdPart(value)}` })
 
 /** Query the remote Notion data source, retrieve per-row properties and bodies, and return the full set of sync events to persist — without writing to the store. */
 export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
@@ -470,40 +500,46 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
         requiredCapabilities: [...requiredCapabilities],
       })
       const events: SyncEventType[] = [
-        decode(SyncEvent, {
-          _tag: 'ApiContractObserved',
-          ...eventBase({
-            rootId: options.rootId,
-            eventId: `api:${gateway.apiContract.apiVersion}`,
-            family: 'CompatibilityChecked',
-            eventType: 'ApiContractObserved',
-            idempotencyKey: `api:${gateway.apiContract.apiVersion}`,
-            payload: gateway.apiContract,
-            now,
-          }),
-          apiContract: gateway.apiContract,
+        decode({
+          schema: SyncEvent,
+          value: {
+            _tag: 'ApiContractObserved',
+            ...eventBase({
+              rootId: options.rootId,
+              eventId: `api:${gateway.apiContract.apiVersion}`,
+              family: 'CompatibilityChecked',
+              eventType: 'ApiContractObserved',
+              idempotencyKey: `api:${gateway.apiContract.apiVersion}`,
+              payload: gateway.apiContract,
+              now,
+            }),
+            apiContract: gateway.apiContract,
+          },
         }),
         ...requiredCapabilities.map((capability) => {
           const capabilityState = preflight.supportedCapabilities.includes(capability) === true
             ? 'supported'
             : 'unsupported'
 
-          return decode(SyncEvent, {
-            _tag: 'CapabilityPreflightChecked',
-            ...eventBase({
-              rootId: options.rootId,
-              eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}:${observationPart}`,
-              family: 'CompatibilityChecked',
-              eventType: 'CapabilityPreflightChecked',
-              idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}:${observationPart}`,
-              surface: querySurfaceKey(options.dataSourceId, hashStoreBytes('capabilities')),
-              payload: { capability },
-              now,
-            }),
-            dataSourceId: options.dataSourceId,
-            capability,
-            supported: capabilityState === 'supported',
-            requestId: preflight.dataSourceId === options.dataSourceId ? undefined : undefined,
+          return decode({
+            schema: SyncEvent,
+            value: {
+              _tag: 'CapabilityPreflightChecked',
+              ...eventBase({
+                rootId: options.rootId,
+                eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}:${observationPart}`,
+                family: 'CompatibilityChecked',
+                eventType: 'CapabilityPreflightChecked',
+                idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}:${observationPart}`,
+                surface: querySurfaceKey({ dataSourceId: options.dataSourceId, queryContractHash: hashStoreBytes('capabilities') }),
+                payload: { capability },
+                now,
+              }),
+              dataSourceId: options.dataSourceId,
+              capability,
+              supported: capabilityState === 'supported',
+              requestId: preflight.dataSourceId === options.dataSourceId ? undefined : undefined,
+            },
           })
         }),
       ]
@@ -547,21 +583,24 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
         complete: complete && cappedAtLimit === false,
       })
       events.push(
-        decode(SyncEvent, {
-          _tag: 'DataSourceObserved',
-          ...eventBase({
-            rootId: options.rootId,
-            eventId: `data-source:${eventIdPart(dataSource.dataSourceId)}:${dataSource.schemaHash}`,
-            family: 'RemoteObserved',
-            eventType: 'DataSourceObserved',
-            idempotencyKey: `data-source:${dataSource.dataSourceId}:${dataSource.schemaHash}`,
-            surface: querySurfaceKey(dataSource.dataSourceId, hashStoreBytes('schema')),
-            payload: { schemaProperties: options.schemaProperties },
-            now,
-          }),
-          dataSourceId: dataSource.dataSourceId,
-          requestId: dataSource.requestId,
-          schemaHash: dataSource.schemaHash,
+        decode({
+          schema: SyncEvent,
+          value: {
+            _tag: 'DataSourceObserved',
+            ...eventBase({
+              rootId: options.rootId,
+              eventId: `data-source:${eventIdPart(dataSource.dataSourceId)}:${dataSource.schemaHash}`,
+              family: 'RemoteObserved',
+              eventType: 'DataSourceObserved',
+              idempotencyKey: `data-source:${dataSource.dataSourceId}:${dataSource.schemaHash}`,
+              surface: querySurfaceKey({ dataSourceId: dataSource.dataSourceId, queryContractHash: hashStoreBytes('schema') }),
+              payload: { schemaProperties: options.schemaProperties },
+              now,
+            }),
+            dataSourceId: dataSource.dataSourceId,
+            requestId: dataSource.requestId,
+            schemaHash: dataSource.schemaHash,
+          },
         }),
       )
       const materialized: MaterializeResult[] = []
@@ -588,31 +627,34 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           }
 
           events.push(
-            decode(SyncEvent, {
-              _tag: 'RowObserved',
-              ...eventBase({
-                rootId: options.rootId,
-                eventId: `row:${eventIdPart(row.pageId)}:${page.propertiesHash}:${bodyPointer.bodyHash}`,
-                family: 'RemoteObserved',
-                eventType: 'RowObserved',
-                idempotencyKey: `row:${row.pageId}:${page.propertiesHash}:${bodyPointer.bodyHash}`,
-                surface: pageSurfaceKey(row.pageId),
-                payload: {
-                  bodyPath: path,
-                  sidecarIdentityProven: materializeResult !== undefined,
-                  ownWriteMaterializationIds:
-                    materializeResult === undefined
-                      ? []
-                      : [materializeResult.ownWriteSuppressionToken],
-                  safety: bodyPointer.safety,
-                },
-                now,
-              }),
-              dataSourceId: page.dataSourceId ?? options.dataSourceId,
-              pageId: row.pageId,
-              propertiesHash: page.propertiesHash,
-              bodyPointer: Schema.encodeSync(BodyPointer)(bodyPointer),
-              inTrash: page.inTrash,
+            decode({
+              schema: SyncEvent,
+              value: {
+                _tag: 'RowObserved',
+                ...eventBase({
+                  rootId: options.rootId,
+                  eventId: `row:${eventIdPart(row.pageId)}:${page.propertiesHash}:${bodyPointer.bodyHash}`,
+                  family: 'RemoteObserved',
+                  eventType: 'RowObserved',
+                  idempotencyKey: `row:${row.pageId}:${page.propertiesHash}:${bodyPointer.bodyHash}`,
+                  surface: pageSurfaceKey(row.pageId),
+                  payload: {
+                    bodyPath: path,
+                    sidecarIdentityProven: materializeResult !== undefined,
+                    ownWriteMaterializationIds:
+                      materializeResult === undefined
+                        ? []
+                        : [materializeResult.ownWriteSuppressionToken],
+                    safety: bodyPointer.safety,
+                  },
+                  now,
+                }),
+                dataSourceId: page.dataSourceId ?? options.dataSourceId,
+                pageId: row.pageId,
+                propertiesHash: page.propertiesHash,
+                bodyPointer: Schema.encodeSync(BodyPointer)(bodyPointer),
+                inTrash: page.inTrash,
+              },
             }),
           )
 
@@ -638,22 +680,25 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                   : 'paginated-incomplete'
               incompleteProperties += 1
               events.push(
-                decode(SyncEvent, {
-                  _tag: 'PagePropertyCheckpointRecorded',
-                  ...eventBase({
-                    rootId: options.rootId,
-                    eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed:${observationPart}`,
-                    family: 'QueryScanRecorded',
-                    eventType: 'PagePropertyCheckpointRecorded',
-                    idempotencyKey: `property:${row.pageId}:${property.propertyId}:failed:${observationPart}`,
-                    surface: propertySurfaceKey(row.pageId, property.propertyId),
-                    payload: { availability },
-                    now,
-                  }),
-                  pageId: row.pageId,
-                  propertyId: property.propertyId,
-                  nextCursor: null,
-                  complete: false,
+                decode({
+                  schema: SyncEvent,
+                  value: {
+                    _tag: 'PagePropertyCheckpointRecorded',
+                    ...eventBase({
+                      rootId: options.rootId,
+                      eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed:${observationPart}`,
+                      family: 'QueryScanRecorded',
+                      eventType: 'PagePropertyCheckpointRecorded',
+                      idempotencyKey: `property:${row.pageId}:${property.propertyId}:failed:${observationPart}`,
+                      surface: propertySurfaceKey({ pageId: row.pageId, propertyId: property.propertyId }),
+                      payload: { availability },
+                      now,
+                    }),
+                    pageId: row.pageId,
+                    propertyId: property.propertyId,
+                    nextCursor: null,
+                    complete: false,
+                  },
                 }),
               )
               continue
@@ -669,23 +714,26 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             }
 
             events.push(
-              decode(SyncEvent, {
-                _tag: 'PagePropertyCheckpointRecorded',
-                ...eventBase({
-                  rootId: options.rootId,
-                  eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:${valueHash ?? 'incomplete'}:${observationPart}`,
-                  family: 'QueryScanRecorded',
-                  eventType: 'PagePropertyCheckpointRecorded',
-                  idempotencyKey: `property:${row.pageId}:${property.propertyId}:${valueHash ?? 'incomplete'}:${observationPart}`,
-                  surface: propertySurfaceKey(row.pageId, property.propertyId),
-                  payload: { availability, baseHash: valueHash },
-                  now,
-                }),
-                pageId: row.pageId,
-                propertyId: property.propertyId,
-                nextCursor: propertyPages.at(-1)?.nextCursor ?? null,
-                complete: valueHash !== undefined,
-                ...(valueHash === undefined ? {} : { valueHash }),
+              decode({
+                schema: SyncEvent,
+                value: {
+                  _tag: 'PagePropertyCheckpointRecorded',
+                  ...eventBase({
+                    rootId: options.rootId,
+                    eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:${valueHash ?? 'incomplete'}:${observationPart}`,
+                    family: 'QueryScanRecorded',
+                    eventType: 'PagePropertyCheckpointRecorded',
+                    idempotencyKey: `property:${row.pageId}:${property.propertyId}:${valueHash ?? 'incomplete'}:${observationPart}`,
+                    surface: propertySurfaceKey({ pageId: row.pageId, propertyId: property.propertyId }),
+                    payload: { availability, baseHash: valueHash },
+                    now,
+                  }),
+                  pageId: row.pageId,
+                  propertyId: property.propertyId,
+                  nextCursor: propertyPages.at(-1)?.nextCursor ?? null,
+                  complete: valueHash !== undefined,
+                  ...(valueHash === undefined ? {} : { valueHash }),
+                },
               }),
             )
           }
@@ -698,26 +746,29 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
         const nextCursor = queryPages.at(-1)?.nextCursor ?? null
         const cursorPart = nextCursor === null ? 'terminal' : eventIdPart(nextCursor)
         events.push(
-          decode(SyncEvent, {
-            _tag: 'QueryScanCheckpointRecorded',
-            ...eventBase({
-              rootId: options.rootId,
-              eventId: `query:${eventIdPart(options.dataSourceId)}:${queryContractHash}:${queryCheckpointState}:${cursorPart}`,
-              family: 'QueryScanRecorded',
-              eventType: 'QueryScanCheckpointRecorded',
-              idempotencyKey: `query:${options.dataSourceId}:${queryContractHash}:${queryCheckpointState}:${cursorPart}`,
-              surface: querySurfaceKey(options.dataSourceId, queryContractHash),
-              payload: {
-                cappedAtLimit,
-                contractChanged: false,
-              },
-              now,
-            }),
-            dataSourceId: options.dataSourceId,
-            queryContractHash,
-            nextCursor,
-            complete: complete && cappedAtLimit === false,
-            highWatermark: highWatermark === null ? null : encodeDateTimeUtc(highWatermark),
+          decode({
+            schema: SyncEvent,
+            value: {
+              _tag: 'QueryScanCheckpointRecorded',
+              ...eventBase({
+                rootId: options.rootId,
+                eventId: `query:${eventIdPart(options.dataSourceId)}:${queryContractHash}:${queryCheckpointState}:${cursorPart}`,
+                family: 'QueryScanRecorded',
+                eventType: 'QueryScanCheckpointRecorded',
+                idempotencyKey: `query:${options.dataSourceId}:${queryContractHash}:${queryCheckpointState}:${cursorPart}`,
+                surface: querySurfaceKey({ dataSourceId: options.dataSourceId, queryContractHash }),
+                payload: {
+                  cappedAtLimit,
+                  contractChanged: false,
+                },
+                now,
+              }),
+              dataSourceId: options.dataSourceId,
+              queryContractHash,
+              nextCursor,
+              complete: complete && cappedAtLimit === false,
+              highWatermark: highWatermark === null ? null : encodeDateTimeUtc(highWatermark),
+            },
           }),
         )
       }
@@ -746,13 +797,20 @@ export const bodyPushCommandFromLocalChange = (input: {
   readonly pageId: PageId
   readonly baseBodyPointer: BodyPointerType
   readonly localBodyHash: Hash
+  readonly localBodyPath?: WorkspaceRelativePath
+  readonly localBodyContent?: string
 }): typeof BodyPushCommand.Type =>
-  decode(BodyPushCommand, {
-    _tag: 'BodyPushCommand',
-    commandId: commandIdFor(`body:${input.pageId}:${input.localBodyHash}`),
-    pageId: input.pageId,
-    baseBodyPointer: Schema.encodeSync(BodyPointer)(input.baseBodyPointer),
-    nextBodyHash: input.localBodyHash,
+  decode({
+    schema: BodyPushCommand,
+    value: {
+      _tag: 'BodyPushCommand',
+      commandId: commandIdFor(`body:${input.pageId}:${input.localBodyHash}`),
+      pageId: input.pageId,
+      baseBodyPointer: Schema.encodeSync(BodyPointer)(input.baseBodyPointer),
+      nextBodyHash: input.localBodyHash,
+      ...(input.localBodyPath === undefined ? {} : { localBodyPath: input.localBodyPath }),
+      ...(input.localBodyContent === undefined ? {} : { localBodyContent: input.localBodyContent }),
+    },
   })
 
 /** Derive stable `commandId`, `intentEventId`, and `commandKey` for a property write intent from its page, property, and target hash. */

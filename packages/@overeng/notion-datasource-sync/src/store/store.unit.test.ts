@@ -790,7 +790,7 @@ describe('Notion sync SQLite store', () => {
         rootId,
         commandId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyId),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyId }),
         commandTag: 'PatchPageProperties',
         requestId: decode(NotionRequestId, 'request-1'),
         desiredHash: hash('b'),
@@ -802,7 +802,7 @@ describe('Notion sync SQLite store', () => {
         rootId,
         commandId,
         commandKey,
-        surface: propertySurfaceKey(pageId, propertyId),
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyId }),
         commandTag: 'PatchPageProperties',
         requestId: decode(NotionRequestId, 'request-2'),
         desiredHash: hash('b'),
@@ -1053,18 +1053,18 @@ describe('Notion sync SQLite store', () => {
       })
 
       expect(
-        planIntent(snapshot, {
+        planIntent({ snapshot: snapshot, intent: {
           _tag: 'property-edit',
           intentEventId,
           commandKey,
-          surface: propertySurfaceKey(pageId, propertyId),
+          surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyId }),
           pageId,
           propertyId,
           command,
           baseHash: hash('8'),
           desiredHash: hash('a'),
           expectedPropertyConfigHash: hash('c'),
-        }),
+        } }),
       ).toMatchObject({
         _tag: 'BlockedByGuard',
         guard: 'CurrentSurfaceMissing',

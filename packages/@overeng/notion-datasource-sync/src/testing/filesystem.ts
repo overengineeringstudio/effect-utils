@@ -56,8 +56,11 @@ export const makeTempWorkspace = async () => {
 }
 
 /** Run a workspace `scan` to completion and return all observed paths as a plain readonly array — convenience wrapper for synchronous assertions in tests. */
-export const collectWorkspaceScan = (
-  workspace: LocalWorkspacePortShape,
-  root: typeof AbsolutePath.Type,
-) =>
+export const collectWorkspaceScan = ({
+  workspace,
+  root,
+}: {
+  readonly workspace: LocalWorkspacePortShape
+  readonly root: typeof AbsolutePath.Type
+}) =>
   Effect.runPromise(workspace.scan(root).pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray)))

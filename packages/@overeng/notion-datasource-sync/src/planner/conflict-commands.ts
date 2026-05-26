@@ -173,7 +173,7 @@ const applyPlan = ({
   }
 
   for (const command of plan.commands) {
-    const result = store.appendEventWithResult(makeRemoteWritePlannedEvent(command, now))
+    const result = store.appendEventWithResult(makeRemoteWritePlannedEvent({ command: command, now: now }))
     if (result.inserted === true) {
       appliedCommands.push(command)
     }
@@ -321,7 +321,7 @@ const conflictResolutionPlan = ({
       schema: IdempotencyKey,
       value: `resolve:${conflictId}:${choice._tag}:${eventIdPart(commandStamp)}`,
     }),
-    surface: propertySurfaceKey(conflict.pageId, conflict.propertyId),
+    surface: propertySurfaceKey({ pageId: conflict.pageId, propertyId: conflict.propertyId }),
     pageId: conflict.pageId,
     propertyId: conflict.propertyId,
     command,
@@ -331,7 +331,7 @@ const conflictResolutionPlan = ({
     ),
     expectedPropertyConfigHash: schemaProperty?.configHash ?? hashStoreBytes('missing-schema'),
   }
-  const decision = planIntent(snapshot, intent)
+  const decision = planIntent({ snapshot: snapshot, intent: intent })
 
   switch (decision._tag) {
     case 'EnqueueCommands': {
@@ -441,7 +441,7 @@ export const restorePageCommand = (
                     basePropertiesHash: row.propertiesHash,
                   } }),
                   baseHash: row.propertiesHash,
-                  desiredHash: pageLifecycleHash(options.pageId, false),
+                  desiredHash: pageLifecycleHash({ pageId: options.pageId, inTrash: false }),
                   preflight: [
                     'CapabilityPreflightFailed',
                     'StaleSurfaceBase',

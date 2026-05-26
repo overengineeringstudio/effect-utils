@@ -12,24 +12,37 @@ export const surfaceKey = (value: string): SurfaceKey => Schema.decodeUnknownSyn
 export const pageSurfaceKey = (pageId: PageId): SurfaceKey => surfaceKey(`page:${pageId}`)
 
 /** Surface key scoped to a single property on a page (`page:<id>:property:<id>`). */
-export const propertySurfaceKey = (pageId: PageId, propertyId: PropertyId): SurfaceKey =>
-  surfaceKey(`page:${pageId}:property:${propertyId}`)
+export const propertySurfaceKey = ({
+  pageId,
+  propertyId,
+}: {
+  readonly pageId: PageId
+  readonly propertyId: PropertyId
+}): SurfaceKey => surfaceKey(`page:${pageId}:property:${propertyId}`)
 
 /** Surface key for the markdown body of a page (`page:<id>:body`). */
 export const bodySurfaceKey = (pageId: PageId): SurfaceKey => surfaceKey(`page:${pageId}:body`)
 
 /** Surface key for a schema property within a data source (`data-source:<id>:schema:<propId>`). */
-export const schemaSurfaceKey = (dataSourceId: DataSourceId, propertyId: PropertyId): SurfaceKey =>
-  surfaceKey(`data-source:${dataSourceId}:schema:${propertyId}`)
+export const schemaSurfaceKey = ({
+  dataSourceId,
+  propertyId,
+}: {
+  readonly dataSourceId: DataSourceId
+  readonly propertyId: PropertyId
+}): SurfaceKey => surfaceKey(`data-source:${dataSourceId}:schema:${propertyId}`)
 
 /** Surface key for a local file path (`path:<path>`); used in path-claim conflict detection. */
 export const pathSurfaceKey = (path: string): SurfaceKey => surfaceKey(`path:${path}`)
 
 /** Surface key for a query contract within a data source; the hash encodes the full contract so changing any query parameter invalidates prior checkpoints. */
-export const querySurfaceKey = (
-  dataSourceId: DataSourceId,
-  queryContractHash: string,
-): SurfaceKey => surfaceKey(`data-source:${dataSourceId}:query:${queryContractHash}`)
+export const querySurfaceKey = ({
+  dataSourceId,
+  queryContractHash,
+}: {
+  readonly dataSourceId: DataSourceId
+  readonly queryContractHash: string
+}): SurfaceKey => surfaceKey(`data-source:${dataSourceId}:query:${queryContractHash}`)
 
 const stableStringify = (value: unknown): string => {
   if (value === undefined) {
@@ -63,7 +76,13 @@ const stableStringify = (value: unknown): string => {
 export const canonicalHash = (value: unknown) => hashStoreBytes(stableStringify(value))
 
 /** Hash the query contract fields that define durable query membership identity. */
-export const queryContractHash = (input: QueryRowsInput, apiVersion: string) =>
+export const queryContractHash = ({
+  input,
+  apiVersion,
+}: {
+  readonly input: QueryRowsInput
+  readonly apiVersion: string
+}) =>
   canonicalHash({
     apiVersion,
     dataSourceId: input.dataSourceId,

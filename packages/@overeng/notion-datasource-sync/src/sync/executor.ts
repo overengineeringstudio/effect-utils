@@ -139,7 +139,7 @@ const observeCurrentSurface = (
         }
         return {
           baseHash: page.propertiesHash,
-          verificationHash: pageLifecycleHash(command.pageId, page.inTrash),
+          verificationHash: pageLifecycleHash({ pageId: command.pageId, inTrash: page.inTrash }),
           requestId: page.requestId,
         }
       }

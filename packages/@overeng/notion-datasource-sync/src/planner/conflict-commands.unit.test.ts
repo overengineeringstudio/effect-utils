@@ -21,7 +21,7 @@ const conflictEvent = (): SyncEventType =>
     rootId: testIds.rootId,
     pageId: testIds.pageId,
     propertyId: testIds.propertyA,
-    surface: propertySurfaceKey(testIds.pageId, testIds.propertyA),
+    surface: propertySurfaceKey({ pageId: testIds.pageId, propertyId: testIds.propertyA }),
     baseHash: hash('property-a-base'),
     localHash: hash('property-a-local'),
     remoteHash: hash('property-a-remote'),
@@ -31,7 +31,7 @@ const conflictEvent = (): SyncEventType =>
   })
 
 const rowObserved = () =>
-  decode(SyncEvent, {
+  decode({ schema: SyncEvent, value: {
     _tag: 'RowObserved',
     eventId: 'row-observed',
     rootId: testIds.rootId,
@@ -53,7 +53,7 @@ const rowObserved = () =>
     pageId: testIds.pageId,
     propertiesHash: hash('properties-a'),
     inTrash: false,
-  })
+  } })
 
 describe('conflict and user command surface', () => {
   it('lists open conflicts in a stable result envelope', () => {
@@ -100,7 +100,7 @@ describe('conflict and user command surface', () => {
       const result = resolveConflictCommand({
         store: storeFixture.store,
         rootId: testIds.rootId,
-        conflictId: decode(SyncEventId, conflict.eventId),
+        conflictId: decode({ schema: SyncEventId, value: conflict.eventId }),
         choice: { _tag: 'keep-remote' },
         dryRun: true,
         now: clock.now,
@@ -125,17 +125,17 @@ describe('conflict and user command surface', () => {
 
     try {
       storeFixture.store.appendEvent(rowObserved())
-      appendPlannedCommand(storeFixture.store, {
+      appendPlannedCommand({ store: storeFixture.store, command: {
         commandId: testIds.commandId,
         commandKey: testIds.commandKey,
         rootId: testIds.rootId,
         intentEventId: testIds.intentEventId,
-        surface: propertySurfaceKey(testIds.pageId, testIds.propertyA),
+        surface: propertySurfaceKey({ pageId: testIds.pageId, propertyId: testIds.propertyA }),
         command: propertyEditIntent().command,
         baseHash: hash('properties-a'),
         desiredHash: hash('properties-next'),
         preflight: ['StaleSurfaceBase'],
-      })
+      } })
       expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toHaveLength(1)
       expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([{ state: 'queued' }])
 
@@ -166,7 +166,7 @@ describe('conflict and user command surface', () => {
         resolveConflictCommand({
           store: storeFixture.store,
           rootId: testIds.rootId,
-          conflictId: decode(SyncEventId, 'missing-conflict'),
+          conflictId: decode({ schema: SyncEventId, value: 'missing-conflict' }),
           choice: { _tag: 'keep-local', value: propertyPatchValue('Local') },
         }),
       ).toMatchObject({
@@ -193,7 +193,7 @@ describe('conflict and user command surface', () => {
 
       try {
         const conflict = storeFixture.store.appendEvent(conflictEvent())
-        const conflictId = decode(SyncEventId, conflict.eventId)
+        const conflictId = decode({ schema: SyncEventId, value: conflict.eventId })
 
         const result = resolveConflictCommand({
           store: storeFixture.store,

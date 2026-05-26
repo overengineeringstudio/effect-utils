@@ -134,6 +134,75 @@ export const e2eHarnessScenarios = [
     file: 'src/e2e/daemon.e2e.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-L5-daemon-query-cursor-resume',
+    title: 'daemon persists high-watermark cursors and resumes without skipping rows',
+    requirementIds: ['R43', 'R44', 'R47', 'R71'],
+    guards: ['CursorSameBucketIncomplete', 'PaginationIncomplete'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/daemon.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L5-daemon-bounded-outbox-drain',
+    title: 'daemon bounds outbox execution per cycle and drains queued work on later cycles',
+    requirementIds: ['R45', 'R64'],
+    guards: ['QueueBackpressureExceeded'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/daemon.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L5-daemon-repeated-fake-soak',
+    title: 'daemon repeated fake soak cycles converge cleanly without duplicate writes',
+    requirementIds: ['R42', 'R45', 'R47', 'R64'],
+    guards: ['OwnMaterializationWriteSuppressed'],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/daemon.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L5-daemon-mixed-mutation-soak',
+    title:
+      'daemon bounded mixed-mutation soak converges with durable cursors and low-cardinality trace metadata',
+    requirementIds: ['R42', 'R43', 'R44', 'R45', 'R47', 'R64', 'R71'],
+    guards: ['CursorSameBucketIncomplete', 'OwnMaterializationWriteSuppressed'],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/daemon.e2e.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L3-conflict-soak-matrix',
+    title: 'conflict soak matrix declares same-surface and cross-surface replay scenarios',
+    requirementIds: ['R24', 'R25', 'R26', 'R27', 'R61', 'R62'],
+    guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation', 'DeleteVsEdit'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L3',
+    file: 'docs/vrs/e2e-plan.md',
+  }),
+  scenario({
+    scenarioId: 'NDS-L5-high-cardinality-fake-soak',
+    title: 'high-cardinality fake soak declares bounded pagination and outbox pressure scenarios',
+    requirementIds: ['R43', 'R44', 'R45', 'R64', 'R71'],
+    guards: ['CursorSameBucketIncomplete', 'PaginationIncomplete', 'QueueBackpressureExceeded'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L5',
+    file: 'docs/vrs/e2e-plan.md',
+  }),
+  scenario({
+    scenarioId: 'NDS-L3-property-data-type-matrix',
+    title: 'property data-type matrix declares writable computed relation file and rollup scenarios',
+    requirementIds: ['R16', 'R18', 'R19', 'R20', 'R24', 'R71'],
+    guards: [
+      'ComputedPropertyWrite',
+      'PropertyValueIncomplete',
+      'UnavailableRelationTarget',
+      'ExpiringFileUrl',
+    ],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L3',
+    file: 'docs/vrs/e2e-plan.md',
+  }),
+  scenario({
     scenarioId: 'NDS-L2-clean-pull-status',
     title: 'fake gateway/body/workspace produce a clean pull status shape',
     requirementIds: ['R02', 'R06', 'R21', 'R67'],
@@ -267,6 +336,16 @@ export const e2eHarnessScenarios = [
     file: 'src/e2e/fake-service.e2e.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-L2-schema-safe-additive-patch',
+    title:
+      'safe additive schema patch enqueues add-property and rename-property operations through the gateway',
+    requirementIds: ['R31', 'R32'],
+    guards: [],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L2',
+    file: 'src/planner/planner.unit.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-L2-page-property-pagination-fail-closed',
     title: 'incomplete page-property pagination blocks local property writes',
     requirementIds: ['R71'],
@@ -347,6 +426,16 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L6',
     file: 'src/e2e/live-notion.e2e.test.ts',
   }),
+  scenario({
+    scenarioId: 'NDS-LIVE-bounded-fixture-soak',
+    title:
+      'live Notion bounded fixture soak repeats row property mutation and cleanup against isolated fixtures',
+    requirementIds: ['R52', 'R65', 'R67', 'R68', 'R69', 'R70'],
+    guards: ['CapabilityPreflightFailed', 'RawPayloadRetentionUnsafe'],
+    lowestPlannerLevel: 'L6',
+    highestIntegrationLevel: 'L6',
+    file: 'src/e2e/live-notion.e2e.test.ts',
+  }),
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {
@@ -388,7 +477,7 @@ const guardScenarioIds = {
   PendingIntentShadowViolation: 'NDS-L3-realistic-local-remote-conflict',
   BodyAdapterNonBodyMutation: 'NDS-L2-body-adapter-surface-leak',
   FilesystemDeleteAutoTrashBlocked: 'NDS-L4-realistic-filesystem-delete-repair',
-  CursorSameBucketIncomplete: 'NDS-GUARD-cursor-same-bucket-incomplete',
+  CursorSameBucketIncomplete: 'NDS-L5-daemon-query-cursor-resume',
   OwnMaterializationWriteSuppressed: 'NDS-L5-realistic-daemon-restart-cancellation',
   CompactionUnsafe: 'NDS-GUARD-compaction-unsafe',
   PathEscapesRoot: 'NDS-L4-realistic-filesystem-delete-repair',
@@ -396,7 +485,7 @@ const guardScenarioIds = {
   OutboxFirstSettlementWins: 'NDS-L3-outbox-invalid-settlement-rejected',
   CheckpointDigestMismatch: 'NDS-GUARD-checkpoint-digest-mismatch',
   StoreMigrationBlocked: 'NDS-GUARD-store-migration-blocked',
-  QueueBackpressureExceeded: 'NDS-GUARD-queue-backpressure-exceeded',
+  QueueBackpressureExceeded: 'NDS-L5-daemon-bounded-outbox-drain',
   RawPayloadRetentionUnsafe: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
 } as const satisfies Record<GuardNameType, ScenarioId>
 
@@ -510,13 +599,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'placeholder-guard-scenario',
-    guard: 'CursorSameBucketIncomplete',
-    scenarioId: 'NDS-GUARD-cursor-same-bucket-incomplete',
-    requirementIds: ['R43', 'R71'],
-    reason: 'Cursor bucket overlap is daemon/checkpoint scope.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
     guard: 'CompactionUnsafe',
     scenarioId: 'NDS-GUARD-compaction-unsafe',
     requirementIds: ['R08', 'R12', 'R62'],
@@ -535,13 +617,6 @@ export const traceabilityResiduals = [
     scenarioId: 'NDS-GUARD-store-migration-blocked',
     requirementIds: ['R12', 'R62'],
     reason: 'Store migration blocking is covered by store tests and awaits E2E promotion.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'QueueBackpressureExceeded',
-    scenarioId: 'NDS-GUARD-queue-backpressure-exceeded',
-    requirementIds: ['R45', 'R64'],
-    reason: 'Queue backpressure is daemon-scope and owned by daemon E2E hardening.',
   },
   {
     _tag: 'unmapped-requirement',
@@ -576,49 +651,13 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R18',
-    reason:
-      'Read-only/computed property write blocking remains unit-level until fake row-property fixtures land.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R19',
-    reason: 'Relation availability awaits relation fixtures.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R20',
-    reason: 'File-reference semantics await file property fixtures.',
-  },
-  {
-    _tag: 'unmapped-requirement',
     requirementId: 'R22',
     reason: 'Timestamp wake-up behavior is daemon-scope.',
   },
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R31',
-    reason: 'Additive schema writes are not in current product scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R32',
-    reason: 'Rename semantics need schema fixture coverage.',
-  },
-  {
-    _tag: 'unmapped-requirement',
     requirementId: 'R34',
     reason: 'Conversion reporting needs schema migration command UX.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R43',
-    reason: 'Poll overlap is daemon-scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R44',
-    reason: 'Known-page scans are daemon/repair scope.',
   },
   {
     _tag: 'unmapped-requirement',
@@ -690,10 +729,13 @@ const placeholderResidualByGuard: ReadonlyMap<
     .map((residual) => [residual.guard, residual]),
 )
 
-const scenarioRequirementIds = (
-  guard: GuardNameType,
-  scenarioId: ScenarioId,
-): ReadonlyArray<RequirementId> => {
+const scenarioRequirementIds = ({
+  guard,
+  scenarioId,
+}: {
+  readonly guard: GuardNameType
+  readonly scenarioId: ScenarioId
+}): ReadonlyArray<RequirementId> => {
   const scenarioEntry = concreteScenarioById.get(scenarioId)
   if (scenarioEntry !== undefined) {
     return scenarioEntry.requirementIds
@@ -706,7 +748,7 @@ export const coreGuardScenarioEntries = (Object.keys(guardScenarioIds) as GuardN
   (guard): GuardScenarioEntry => ({
     guard,
     scenarioId: guardScenarioIds[guard],
-    requirementIds: scenarioRequirementIds(guard, guardScenarioIds[guard]),
+    requirementIds: scenarioRequirementIds({ guard, scenarioId: guardScenarioIds[guard] }),
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L2',
   }),
@@ -770,11 +812,15 @@ export const guardScenarioCoverageGaps = (
   return [...missing, ...unknown]
 }
 
-export const concreteScenarioReferenceGaps = (
-  entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
-  scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
-  residuals: ReadonlyArray<TraceabilityResidual> = traceabilityResiduals,
-): ReadonlyArray<ScenarioCoverageGap> => {
+export const concreteScenarioReferenceGaps = ({
+  entries = coreGuardScenarioEntries,
+  scenarios = e2eHarnessScenarios,
+  residuals = traceabilityResiduals,
+}: {
+  readonly entries?: ReadonlyArray<GuardScenarioEntry>
+  readonly scenarios?: ReadonlyArray<ScenarioMetadata>
+  readonly residuals?: ReadonlyArray<TraceabilityResidual>
+} = {}): ReadonlyArray<ScenarioCoverageGap> => {
   const scenarioIds = new Set(scenarios.map((entry) => entry.scenarioId))
   const residualScenarioIds = new Set(
     residuals
@@ -795,10 +841,13 @@ export const concreteScenarioReferenceGaps = (
     }))
 }
 
-export const placeholderGuardScenarioReferenceGaps = (
-  entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
-  residuals: ReadonlyArray<TraceabilityResidual> = traceabilityResiduals,
-): ReadonlyArray<ScenarioCoverageGap> => {
+export const placeholderGuardScenarioReferenceGaps = ({
+  entries = coreGuardScenarioEntries,
+  residuals = traceabilityResiduals,
+}: {
+  readonly entries?: ReadonlyArray<GuardScenarioEntry>
+  readonly residuals?: ReadonlyArray<TraceabilityResidual>
+} = {}): ReadonlyArray<ScenarioCoverageGap> => {
   const residualScenarioIds = new Set(
     residuals
       .filter((residual) => residual._tag === 'placeholder-guard-scenario')
@@ -815,10 +864,13 @@ export const placeholderGuardScenarioReferenceGaps = (
     }))
 }
 
-export const concreteScenarioMatrixGaps = (
-  entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
-  scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
-): ReadonlyArray<ScenarioCoverageGap> => {
+export const concreteScenarioMatrixGaps = ({
+  entries = coreGuardScenarioEntries,
+  scenarios = e2eHarnessScenarios,
+}: {
+  readonly entries?: ReadonlyArray<GuardScenarioEntry>
+  readonly scenarios?: ReadonlyArray<ScenarioMetadata>
+} = {}): ReadonlyArray<ScenarioCoverageGap> => {
   const scenarioEntries = new Map(scenarios.map((entry) => [entry.scenarioId, entry] as const))
 
   return entries.flatMap((entry) => {
@@ -890,10 +942,13 @@ export const invalidScenarioRequirementIdGaps = (
       })),
   )
 
-export const requirementTraceabilityGaps = (
-  scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
-  residuals: ReadonlyArray<TraceabilityResidual> = traceabilityResiduals,
-): ReadonlyArray<ScenarioCoverageGap> => {
+export const requirementTraceabilityGaps = ({
+  scenarios = e2eHarnessScenarios,
+  residuals = traceabilityResiduals,
+}: {
+  readonly scenarios?: ReadonlyArray<ScenarioMetadata>
+  readonly residuals?: ReadonlyArray<TraceabilityResidual>
+} = {}): ReadonlyArray<ScenarioCoverageGap> => {
   const mappedRequirementIds = new Set(scenarios.flatMap((entry) => entry.requirementIds))
   const residualRequirementIds = new Set(
     residuals
@@ -938,9 +993,9 @@ export const assertAllCoreGuardsHaveScenarioEntries = (input?: {
   const guardEntries = input?.entries ?? coreGuardScenarioEntries
   const gaps = [
     ...guardScenarioCoverageGaps(guardEntries),
-    ...concreteScenarioReferenceGaps(guardEntries),
-    ...placeholderGuardScenarioReferenceGaps(guardEntries),
-    ...concreteScenarioMatrixGaps(guardEntries),
+    ...concreteScenarioReferenceGaps({ entries: guardEntries }),
+    ...placeholderGuardScenarioReferenceGaps({ entries: guardEntries }),
+    ...concreteScenarioMatrixGaps({ entries: guardEntries }),
     ...invalidScenarioRequirementIdGaps(),
     ...requirementTraceabilityGaps(),
     ...(input?.file === undefined || input.implementedScenarioIds === undefined

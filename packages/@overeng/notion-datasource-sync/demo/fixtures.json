@@ -1,0 +1,8 @@
+{
+  "automatedDemo": {
+    "pageId": "36cf141b18dc803b98ebd21f2a243453",
+    "url": "https://www.notion.so/overeng-notion-datasource-sync-demo-automated-36cf141b18dc803b98ebd21f2a243453",
+    "retainedArtifacts": "one refreshed inline demo data source plus sanitized verification summary",
+    "scenario": "live datasource-sync observation with realistic property data, paginated query, NotionMD body observation, and bounded reruns"
+  }
+}

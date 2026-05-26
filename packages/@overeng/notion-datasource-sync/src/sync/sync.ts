@@ -122,21 +122,25 @@ export type OneShotSyncResult = {
   readonly status: OneShotSyncStatus
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: unknown,
-): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
+const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: unknown
+}): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
-const fallbackHash = (_value: string) => decode(Hash, `sha256:${'0'.repeat(64)}`)
+const fallbackHash = (_value: string) =>
+  decode({ schema: Hash, value: `sha256:${'0'.repeat(64)}` })
 
 const pageIdFromSurface = (surface: string): typeof PageId.Type => {
   const match = /^page:([^:]+)/.exec(surface)
-  return decode(PageId, match?.[1] ?? 'unknown-page')
+  return decode({ schema: PageId, value: match?.[1] ?? 'unknown-page' })
 }
 
 const propertyIdFromSurface = (surface: string): typeof PropertyId.Type | undefined => {
   const match = /^page:[^:]+:property:(.+)$/.exec(surface)
-  return match?.[1] === undefined ? undefined : decode(PropertyId, match[1])
+  return match?.[1] === undefined ? undefined : decode({ schema: PropertyId, value: match[1] })
 }
 
 const appendDecision = ({
@@ -177,7 +181,7 @@ const appendDecision = ({
       let enqueuedCommands = 0
       for (const command of decision.commands) {
         if (dryRun === true) continue
-        if (store.appendEventWithResult(makeRemoteWritePlannedEvent(command, now)).inserted === true) {
+        if (store.appendEventWithResult(makeRemoteWritePlannedEvent({ command, now })).inserted === true) {
           enqueuedCommands += 1
         }
       }
@@ -278,7 +282,7 @@ const localDeleteIntentFromObservation = (observation: {
     basePropertiesHash: observation.contentHash,
   },
   baseHash: observation.contentHash,
-  desiredHash: pageLifecycleHash(observation.pageId, true),
+  desiredHash: pageLifecycleHash({ pageId: observation.pageId, inTrash: true }),
   explicitDestructiveIntent: false,
   policy: 'candidateOnly',
   directRetrieve: 'accessible',
@@ -311,15 +315,15 @@ const annotateOneShotStart = (input: {
   )
 
 const resumeCursorForPull = (options: OneShotPullOptions) => {
-  const expectedQueryContractHash = computeQueryContractHash(
-    {
+  const expectedQueryContractHash = computeQueryContractHash({
+    input: {
       _tag: 'QueryRowsInput',
       dataSourceId: options.dataSourceId,
       queryContract: options.queryContract,
       startCursor: null,
     },
-    options.queryContract.apiVersion,
-  )
+    apiVersion: options.queryContract.apiVersion,
+  })
   const checkpoint = options.store.readQueryCheckpoint({
     rootId: options.rootId,
     dataSourceId: options.dataSourceId,
@@ -470,7 +474,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           appendDecision({
             store: options.store,
             rootId: options.rootId,
-            decision: planIntent(snapshot, intent),
+            decision: planIntent({ snapshot, intent }),
             ...('pageId' in intent ? { pageId: intent.pageId } : {}),
             now,
             ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
@@ -488,7 +492,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
             appendDecision({
               store: options.store,
               rootId: options.rootId,
-              decision: planIntent(snapshot, localDeleteIntentFromObservation(observation)),
+              decision: planIntent({ snapshot, intent: localDeleteIntentFromObservation(observation) }),
               pageId: observation.pageId,
               now,
               ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
@@ -501,18 +505,25 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           continue
         }
 
-        const baseBodyPointer = decode(BodyPointer, {
-          _tag: 'BodyPointer',
-          pageId: observation.pageId,
-          bodyHash: bodySurface.currentHash,
-          observedAt: now().toISOString(),
-          safety: bodySurface.safety,
+        const baseBodyPointer = decode({
+          schema: BodyPointer,
+          value: {
+            _tag: 'BodyPointer',
+            pageId: observation.pageId,
+            bodyHash: bodySurface.currentHash,
+            observedAt: now().toISOString(),
+            safety: bodySurface.safety,
+          },
         })
         const bodyPlan = yield* body.planLocalChange({
           _tag: 'BodyLocalChangeInput',
           pageId: observation.pageId,
           baseBodyPointer,
           localBodyHash: observation.contentHash,
+          localBodyPath: observation.path,
+          ...(observation.bodyContent === undefined
+            ? {}
+            : { localBodyContent: observation.bodyContent }),
         })
 
         if (bodyPlan._tag === 'BodyConflict') {
@@ -546,6 +557,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           pageId: bodyPlan.pageId,
           baseBodyPointer: bodyPlan.baseBodyPointer,
           localBodyHash: bodyPlan.nextBodyHash,
+          ...(bodyPlan.localBodyPath === undefined ? {} : { localBodyPath: bodyPlan.localBodyPath }),
+          ...(bodyPlan.localBodyContent === undefined
+            ? {}
+            : { localBodyContent: bodyPlan.localBodyContent }),
         })
         const intent: BodyEditIntent = {
           _tag: 'body-edit',
@@ -561,10 +576,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           appendDecision({
             store: options.store,
             rootId: options.rootId,
-            decision: planIntent(
-              options.store.readPlannerProjectionSnapshot(options.rootId),
-              intent,
-            ),
+            decision: planIntent({ snapshot: options.store.readPlannerProjectionSnapshot(options.rootId), intent }),
             pageId: observation.pageId,
             now,
             ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
