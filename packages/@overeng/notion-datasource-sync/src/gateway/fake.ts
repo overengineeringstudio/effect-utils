@@ -187,7 +187,7 @@ const validatePageSize = ({
   readonly dataSourceId?: DataSourceId
   readonly pageId?: PageId
 }): Effect.Effect<number, NotionGatewayError> =>
-  Number.isInteger(pageSize) && pageSize >= 1 && pageSize <= 100
+  Number.isInteger(pageSize) === true && pageSize >= 1 && pageSize <= 100
     ? Effect.succeed(pageSize)
     : Effect.fail(
         makeGatewayError({
@@ -259,7 +259,7 @@ export const makeFakeNotionDataSourceGateway = (
         ),
       ),
     retrieveDataSource: (id) =>
-      hasDataSourceId(permissionAmbiguousDataSourceIds, id)
+      hasDataSourceId(permissionAmbiguousDataSourceIds, id) === true
         ? Effect.fail(
             makeGatewayError({
               operation: 'retrieveDataSource',
@@ -280,7 +280,7 @@ export const makeFakeNotionDataSourceGateway = (
           ),
     queryRows: (input) =>
       Stream.fromEffect(
-        (hasDataSourceId(permissionAmbiguousDataSourceIds, input.dataSourceId)
+        (hasDataSourceId(permissionAmbiguousDataSourceIds, input.dataSourceId) === true
           ? Effect.fail(
               makeGatewayError({
                 operation: 'queryRows',
@@ -368,7 +368,7 @@ export const makeFakeNotionDataSourceGateway = (
         ),
       ).pipe(Stream.flatMap((queryPages) => Stream.fromIterable(queryPages))),
     retrievePage: (id) =>
-      hasPageId(permissionAmbiguousPageIds, id)
+      hasPageId(permissionAmbiguousPageIds, id) === true
         ? Effect.fail(
             makeGatewayError({
               operation: 'retrievePage',
@@ -390,7 +390,7 @@ export const makeFakeNotionDataSourceGateway = (
           ),
     retrievePageProperty: (input: RetrievePagePropertyInput) =>
       Stream.fromEffect(
-        (hasPageId(permissionAmbiguousPageIds, input.pageId)
+        (hasPageId(permissionAmbiguousPageIds, input.pageId) === true
           ? Effect.fail(
               makeGatewayError({
                 operation: 'retrievePageProperty',

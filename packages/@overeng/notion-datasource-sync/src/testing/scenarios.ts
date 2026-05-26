@@ -822,7 +822,7 @@ export const concreteScenarioMatrixGaps = (
   const scenarioEntries = new Map(scenarios.map((entry) => [entry.scenarioId, entry] as const))
 
   return entries.flatMap((entry) => {
-    if (entry.scenarioId.startsWith('NDS-GUARD-')) {
+    if (entry.scenarioId.startsWith('NDS-GUARD-') === true) {
       return []
     }
 
@@ -831,7 +831,7 @@ export const concreteScenarioMatrixGaps = (
       return []
     }
 
-    const guardGaps = scenarioEntry.guards.includes(entry.guard)
+    const guardGaps = scenarioEntry.guards.includes(entry.guard) === true
       ? []
       : [
           {

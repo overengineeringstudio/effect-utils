@@ -471,7 +471,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           apiContract: gateway.apiContract,
         }),
         ...requiredCapabilities.map((capability) => {
-          const capabilityState = preflight.supportedCapabilities.includes(capability)
+          const capabilityState = preflight.supportedCapabilities.includes(capability) === true
             ? 'supported'
             : 'unsupported'
 

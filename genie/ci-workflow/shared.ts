@@ -208,7 +208,7 @@ export const cachixHostsFromBinaryCaches = (caches: readonly NixBinaryCache[]) =
   ...new Set(
     caches.flatMap((cache) => {
       const host = new URL(cache.uri).host
-      return host.endsWith('.cachix.org') ? [host] : []
+      return host.endsWith('.cachix.org') === true ? [host] : []
     }),
   ),
 ]

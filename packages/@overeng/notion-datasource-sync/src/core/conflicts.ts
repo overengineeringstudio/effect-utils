@@ -192,7 +192,7 @@ export const classifyConflict = (
   }
 
   if (local._tag === 'schema' && remote._tag === 'property') {
-    return local.affectedPropertyIds.includes(remote.propertyId)
+    return local.affectedPropertyIds.includes(remote.propertyId) === true
       ? conflict({
           kind: 'schema-affects-property',
           local,
@@ -203,7 +203,7 @@ export const classifyConflict = (
   }
 
   if (local._tag === 'property' && remote._tag === 'schema') {
-    return remote.affectedPropertyIds.includes(local.propertyId)
+    return remote.affectedPropertyIds.includes(local.propertyId) === true
       ? conflict({
           kind: 'schema-affects-property',
           local,

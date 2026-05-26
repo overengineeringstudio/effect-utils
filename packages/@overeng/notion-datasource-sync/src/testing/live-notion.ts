@@ -331,7 +331,7 @@ const propertyPlainText = (property: unknown): string => {
   if (Array.isArray(titleValue) === false) return ''
 
   return titleValue
-    .map((item) => (isRecord(item) && typeof item.plain_text === 'string' ? item.plain_text : ''))
+    .map((item) => (isRecord(item) === true && typeof item.plain_text === 'string' ? item.plain_text : ''))
     .join('')
 }
 
@@ -346,7 +346,7 @@ const resolveTitlePropertyName = (properties: Record<string, unknown>): string =
   }
 
   const [fallbackName, property] = titleEntry
-  return isRecord(property) && typeof property.name === 'string' ? property.name : fallbackName
+  return isRecord(property) === true && typeof property.name === 'string' ? property.name : fallbackName
 }
 
 const makeNotionLiveLayer = (token: string) =>

@@ -504,7 +504,7 @@ const parseFlags = (argv: ReadonlyArray<string>): Map<string, string | true> => 
     const item = argv[index]
     if (item?.startsWith('--') !== true) continue
     const key = item.slice(2)
-    if (flags.has(key)) {
+    if (flags.has(key) === true) {
       throw new CliArgumentError({ message: `Repeated --${key} is not supported` })
     }
     const next = argv[index + 1]
@@ -546,7 +546,7 @@ const positiveIntegerFlag = (
   }
 
   const parsed = Number(value)
-  if (Number.isSafeInteger(parsed) && parsed > 0) return parsed
+  if (Number.isSafeInteger(parsed) === true && parsed > 0) return parsed
 
   throw new CliArgumentError({
     message: `--${name} must be a positive integer`,
@@ -804,7 +804,7 @@ export const runCliMain = (argv: ReadonlyArray<string>, options: CliRuntimeOptio
       try: () => parseCliCommand(argv),
       catch: (cause) => cause,
     })
-    if (isUnsupportedCommand(command)) {
+    if (isUnsupportedCommand(command) === true) {
       return yield* Effect.fail(makeUnsupportedCommandError(command._tag))
     }
 
