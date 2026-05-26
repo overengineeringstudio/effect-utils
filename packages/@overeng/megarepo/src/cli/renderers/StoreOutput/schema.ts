@@ -33,8 +33,9 @@ export type StoreFetchResult = Schema.Schema.Type<typeof StoreFetchResult>
 export const StoreGcResult = Schema.Struct({
   repo: Schema.String,
   ref: Schema.String,
+  refType: Schema.Literal('heads', 'tags', 'commits'),
   path: Schema.String,
-  status: Schema.Literal('removed', 'skipped_dirty', 'skipped_in_use', 'skipped_unleased', 'error'),
+  status: Schema.Literal('removed', 'skipped_dirty', 'skipped_in_use', 'error'),
   message: Schema.optional(Schema.String),
 })
 

@@ -24,10 +24,8 @@ import { classifyRef } from '../../../lib/ref.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
 import {
   collectStoreLiveSet,
-  isPathManaged,
   isPathProtected,
-  markWorktreeManaged,
-  removeManagedWorktreeRecord,
+  type StoreLiveSet,
 } from '../../../lib/store-liveness.ts'
 import { StoreLock } from '../../../lib/store-lock.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
@@ -44,6 +42,9 @@ type CollectedWorktree = {
   path: AbsoluteDirPath
   broken: boolean
 }
+
+const isNamedRefWorktree = (worktree: CollectedWorktree): boolean =>
+  worktree.refType === 'heads' || worktree.refType === 'tags'
 
 const collectStoreWorktrees = ({
   fs,
@@ -129,6 +130,21 @@ const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ outpu
   ),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
 
+const protectedMessage = (worktree: CollectedWorktree): string =>
+  isNamedRefWorktree(worktree) === true
+    ? `named ${worktree.refType === 'heads' ? 'branch' : 'tag'} ref`
+    : 'referenced by workspace root set'
+
+const isProtectedByGcRootSet = ({
+  liveSet,
+  worktree,
+}: {
+  liveSet: StoreLiveSet
+  worktree: CollectedWorktree
+}): boolean =>
+  isNamedRefWorktree(worktree) === true ||
+  isPathProtected({ liveSet, path: worktree.path }) === true
+
 /** Show store status and detect issues */
 const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, ({ output }) =>
   Effect.gen(function* () {
@@ -136,36 +152,13 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     const store = yield* Store
     const fs = yield* FileSystem.FileSystem
 
-    // Get lock file from current megarepo (if any) to determine orphaned worktrees
     const root = yield* findMegarepoRoot(cwd)
-    let inUsePaths = new Set<string>()
-
-    if (Option.isSome(root) === true) {
-      const lockPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-      )
-      const lockFileOpt = yield* readLockFile(lockPath)
-      const lockFile = Option.getOrUndefined(lockFileOpt)
-
-      if (lockFile !== undefined) {
-        const { config } = yield* readMegarepoConfig(root.value)
-
-        for (const [name, sourceString] of Object.entries(config.members)) {
-          const source = parseSourceString(sourceString)
-          if (source === undefined || isRemoteSource(source) === false) continue
-
-          const lockedMember = lockFile.members[name]
-          if (lockedMember === undefined) continue
-
-          const worktreePath = store.getWorktreePath({
-            source,
-            ref: lockedMember.ref,
-          })
-          inUsePaths.add(worktreePath)
-        }
-      }
-    }
+    const liveSet = yield* collectStoreLiveSet({
+      store,
+      ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+      pruneStaleRegistry: true,
+      refreshCurrentWorkspace: true,
+    })
 
     // List all repos and analyze worktrees in parallel
     const repos = yield* store.listRepos()
@@ -273,11 +266,21 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                     }
                   }
 
-                  if (inUsePaths.has(worktreePath) === false) {
+                  if (
+                    isProtectedByGcRootSet({
+                      liveSet,
+                      worktree: {
+                        ref: expectedRef,
+                        refType: refTypeDir,
+                        path: worktreePath,
+                        broken,
+                      },
+                    }) === false
+                  ) {
                     issues.push({
                       type: 'orphaned',
                       severity: 'info',
-                      message: 'not in current megarepo.lock',
+                      message: 'unrooted commit worktree; eligible for store gc when clean',
                     })
                   }
 
@@ -398,14 +401,8 @@ const storeGcCommand = Cli.Command.make(
       Cli.Options.withDescription('Remove all worktrees (not just unused ones)'),
       Cli.Options.withDefault(false),
     ),
-    includeUnleased: Cli.Options.boolean('include-unleased').pipe(
-      Cli.Options.withDescription(
-        'Remove clean unmanaged worktrees that are not protected by the workspace registry',
-      ),
-      Cli.Options.withDefault(false),
-    ),
   },
-  ({ output, dryRun, force, all, includeUnleased }) =>
+  ({ output, dryRun, force, all }) =>
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const store = yield* Store
@@ -476,16 +473,8 @@ const storeGcCommand = Cli.Command.make(
             const worktreeStatuses = yield* Effect.all(
               worktrees.map((worktree) =>
                 Effect.gen(function* () {
-                  if (isPathProtected({ liveSet, path: worktree.path }) === true) {
+                  if (all === false && isProtectedByGcRootSet({ liveSet, worktree }) === true) {
                     return { worktree, action: 'skipped_in_use' as const, status: undefined }
-                  }
-
-                  if (
-                    all === false &&
-                    includeUnleased === false &&
-                    isPathManaged({ liveSet, path: worktree.path }) === false
-                  ) {
-                    return { worktree, action: 'skipped_unleased' as const, status: undefined }
                   }
 
                   /** Broken worktrees have no .git — skip git status, proceed directly to removal */
@@ -516,8 +505,9 @@ const storeGcCommand = Cli.Command.make(
             const repoResults: Array<{
               repo: string
               ref: string
+              refType: 'heads' | 'tags' | 'commits'
               path: string
-              status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'skipped_unleased' | 'error'
+              status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'error'
               message?: string
             }> = []
 
@@ -526,19 +516,10 @@ const storeGcCommand = Cli.Command.make(
                 repoResults.push({
                   repo: repo.relativePath,
                   ref: worktree.ref,
+                  refType: worktree.refType,
                   path: worktree.path,
                   status: 'skipped_in_use',
-                })
-                continue
-              }
-
-              if (action === 'skipped_unleased') {
-                repoResults.push({
-                  repo: repo.relativePath,
-                  ref: worktree.ref,
-                  path: worktree.path,
-                  status: 'skipped_unleased',
-                  message: 'unmanaged; pass --include-unleased to remove',
+                  message: protectedMessage(worktree),
                 })
                 continue
               }
@@ -551,6 +532,7 @@ const storeGcCommand = Cli.Command.make(
                 repoResults.push({
                   repo: repo.relativePath,
                   ref: worktree.ref,
+                  refType: worktree.refType,
                   path: worktree.path,
                   status: 'skipped_dirty',
                   message:
@@ -574,18 +556,11 @@ const storeGcCommand = Cli.Command.make(
                         refreshCurrentWorkspace: false,
                       })
                       if (
-                        isPathProtected({ liveSet: removalLiveSet, path: worktree.path }) === true
+                        all === false &&
+                        isProtectedByGcRootSet({ liveSet: removalLiveSet, worktree }) === true
                       ) {
                         return { _tag: 'skipped_live' as const }
                       }
-                      if (
-                        all === false &&
-                        includeUnleased === false &&
-                        isPathManaged({ liveSet: removalLiveSet, path: worktree.path }) === false
-                      ) {
-                        return { _tag: 'skipped_unmanaged' as const }
-                      }
-
                       if (worktree.broken === true) {
                         /** Broken worktrees can't be removed via git — just delete the directory */
                         yield* fs.remove(worktree.path, { recursive: true })
@@ -603,7 +578,6 @@ const storeGcCommand = Cli.Command.make(
                         )
                       }
 
-                      yield* removeManagedWorktreeRecord({ store, path: worktree.path })
                       return { _tag: 'removed' as const }
                     }),
                   )
@@ -620,20 +594,10 @@ const storeGcCommand = Cli.Command.make(
                   repoResults.push({
                     repo: repo.relativePath,
                     ref: worktree.ref,
+                    refType: worktree.refType,
                     path: worktree.path,
                     status: 'skipped_in_use',
-                    message: 'became protected before removal',
-                  })
-                  continue
-                }
-
-                if (removeResult._tag === 'skipped_unmanaged') {
-                  repoResults.push({
-                    repo: repo.relativePath,
-                    ref: worktree.ref,
-                    path: worktree.path,
-                    status: 'skipped_unleased',
-                    message: 'lost managed metadata before removal',
+                    message: protectedMessage(worktree),
                   })
                   continue
                 }
@@ -642,6 +606,7 @@ const storeGcCommand = Cli.Command.make(
                   repoResults.push({
                     repo: repo.relativePath,
                     ref: worktree.ref,
+                    refType: worktree.refType,
                     path: worktree.path,
                     status: 'error',
                     message: removeResult.message,
@@ -653,6 +618,7 @@ const storeGcCommand = Cli.Command.make(
               repoResults.push({
                 repo: repo.relativePath,
                 ref: worktree.ref,
+                refType: worktree.refType,
                 path: worktree.path,
                 status: 'removed',
               })
@@ -665,6 +631,29 @@ const storeGcCommand = Cli.Command.make(
       )
 
       const results = repoGcResults.flat()
+      yield* Effect.annotateCurrentSpan('gc.policy', all === true ? 'all' : 'root-set')
+      yield* Effect.annotateCurrentSpan('gc.root_set.workspace_count', liveSet.workspaceCount)
+      yield* Effect.annotateCurrentSpan('gc.result.total', results.length)
+      yield* Effect.annotateCurrentSpan(
+        'gc.result.removed',
+        results.filter((result) => result.status === 'removed').length,
+      )
+      yield* Effect.annotateCurrentSpan(
+        'gc.result.skipped_in_use',
+        results.filter((result) => result.status === 'skipped_in_use').length,
+      )
+      yield* Effect.annotateCurrentSpan(
+        'gc.result.skipped_dirty',
+        results.filter((result) => result.status === 'skipped_dirty').length,
+      )
+      yield* Effect.annotateCurrentSpan(
+        'gc.candidate.commits',
+        results.filter((result) => result.refType === 'commits').length,
+      )
+      yield* Effect.annotateCurrentSpan(
+        'gc.candidate.named_refs',
+        results.filter((result) => result.refType === 'heads' || result.refType === 'tags').length,
+      )
 
       // Use TuiApp for output
       yield* run(
@@ -691,7 +680,6 @@ const storeGcCommand = Cli.Command.make(
           'gc.dry_run': dryRun,
           'gc.force': force,
           'gc.all': all,
-          'gc.include_unleased': includeUnleased,
         },
       }),
     ),
@@ -829,8 +817,6 @@ const storeAddCommand = Cli.Command.make(
           )
         }
       }
-      yield* markWorktreeManaged({ store, path: worktreePath })
-
       // Get the current commit
       const commitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
       const commit = Option.getOrUndefined(commitOpt)
@@ -1212,8 +1198,6 @@ const storeWorktreeNewCommand = Cli.Command.make(
           )
         }
       }
-      yield* markWorktreeManaged({ store, path: worktreePath })
-
       // Get the current commit in the new worktree
       const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
       const resolvedCommit = Option.getOrUndefined(commitSha)

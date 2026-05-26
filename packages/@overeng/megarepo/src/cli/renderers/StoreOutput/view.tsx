@@ -292,7 +292,7 @@ const getIssueHint = ({
     case 'orphaned':
       return {
         fix: 'mr store gc',
-        explanation: 'remove unused worktrees',
+        explanation: 'remove unrooted commit worktrees',
       }
     case 'missing_bare':
     case 'broken_worktree':
@@ -492,7 +492,6 @@ const StoreGcView = ({
   const removed = results.filter((r) => r.status === 'removed')
   const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
   const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
-  const skippedUnleased = results.filter((r) => r.status === 'skipped_unleased')
   const errors = results.filter((r) => r.status === 'error')
 
   // Determine which results to show
@@ -536,13 +535,6 @@ const StoreGcView = ({
                 dryRun={dryRun}
               />
             ))}
-          {skippedUnleased.map((result) => (
-            <StoreGcResultRow
-              key={`${result.repo}-${result.ref}-unleased`}
-              result={result}
-              dryRun={dryRun}
-            />
-          ))}
           {errors.map((result) => (
             <StoreGcResultRow
               key={`${result.repo}-${result.ref}-error`}
@@ -557,7 +549,6 @@ const StoreGcView = ({
         removed={removed.length}
         skippedDirty={skippedDirty.length}
         skippedInUse={skippedInUse.length}
-        skippedUnleased={skippedUnleased.length}
         errors={errors.length}
         dryRun={dryRun}
       />
@@ -573,7 +564,7 @@ const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
   if (warning.type === 'not_in_megarepo') {
     return (
       <Box flexDirection="column">
-        <Text dim>Not in a megarepo - all worktrees will be considered unused</Text>
+        <Text dim>Not in a megarepo - only named refs and dirty worktrees are protected</Text>
         <Text> </Text>
       </Box>
     )
@@ -584,10 +575,10 @@ const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
       <Box flexDirection="column">
         <Box flexDirection="row">
           <Text color="yellow">{SYMBOLS.warning}</Text>
-          <Text color="yellow"> Only checking current megarepo for in-use worktrees</Text>
+          <Text color="yellow"> Using registered megarepo workspaces for liveness</Text>
         </Box>
-        <Text dim> Worktrees used by other megarepos may be removed</Text>
-        <Text dim> Run from each megarepo to preserve its worktrees, or use --dry-run first</Text>
+        <Text dim> Unregistered commit worktrees may be removed when clean</Text>
+        <Text dim> Run mr status from active megarepos to refresh their root-set records</Text>
         <Text> </Text>
       </Box>
     )
@@ -617,8 +608,6 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
         return <Text color="yellow">{SYMBOLS.circle}</Text>
       case 'skipped_in_use':
         return <Text dim>{SYMBOLS.check}</Text>
-      case 'skipped_unleased':
-        return <Text color="yellow">{SYMBOLS.circle}</Text>
     }
   }
 
@@ -629,9 +618,7 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
       case 'skipped_dirty':
         return <Text dim> ({result.message ?? 'dirty'})</Text>
       case 'skipped_in_use':
-        return <Text dim> (in use)</Text>
-      case 'skipped_unleased':
-        return <Text dim> ({result.message ?? 'unleased'})</Text>
+        return <Text dim> ({result.message ?? 'in use'})</Text>
       case 'error':
         return <Text color="red"> (error: {result.message})</Text>
     }
@@ -645,12 +632,12 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
       {isDim === true ? (
         <Text dim>
           {' '}
-          {result.repo}refs/{result.ref}{' '}
+          {result.repo}refs/{result.refType}/{result.ref}{' '}
         </Text>
       ) : (
         <Text>
           {' '}
-          {result.repo}refs/{result.ref}{' '}
+          {result.repo}refs/{result.refType}/{result.ref}{' '}
         </Text>
       )}
       {getStatusText()}
@@ -663,14 +650,12 @@ const StoreGcSummary = ({
   removed,
   skippedDirty,
   skippedInUse,
-  skippedUnleased,
   errors,
   dryRun,
 }: {
   removed: number
   skippedDirty: number
   skippedInUse: number
-  skippedUnleased: number
   errors: number
   dryRun: boolean
 }) => {
@@ -696,12 +681,6 @@ const StoreGcSummary = ({
     parts.push({
       key: 'in-use',
       element: <Text>{skippedInUse} in use</Text>,
-    })
-  }
-  if (skippedUnleased > 0) {
-    parts.push({
-      key: 'unleased',
-      element: <Text>{skippedUnleased} skipped (unmanaged)</Text>,
     })
   }
   if (errors > 0) {

@@ -76,8 +76,9 @@ This document tracks potential future features for consideration. These are **no
 
 **What**: `mr store gc` that scans multiple megarepos.
 
-**Current**: GC only considers current megarepo's lock file.
+**Current**: GC uses the store-local workspace registry plus the current
+workspace root set.
 
-**Future**: Registry of known megarepos for comprehensive GC.
+**Future**: Explicit store pins and richer registry freshness reporting.
 
 **Status**: Current single-megarepo approach should suffice initially.
