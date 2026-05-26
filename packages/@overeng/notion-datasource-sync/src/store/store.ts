@@ -328,7 +328,7 @@ const readOptionalString = (row: SqlRow, key: string): string | undefined => {
 const readInteger = (row: SqlRow, key: string): bigint => {
   const value = row[key]
   if (typeof value === 'bigint') return value
-  if (typeof value === 'number' && Number.isInteger(value)) return BigInt(value)
+  if (typeof value === 'number' && Number.isInteger(value) === true) return BigInt(value)
   throw new LocalStoreError({
     operation: 'read-sqlite-row',
     message: `Expected SQLite column ${key} to be an integer`,
@@ -927,7 +927,7 @@ export class NotionSyncStore {
         required: requiredCapabilities,
         supported: supportedCapabilities,
         preflight:
-          capabilityRows.length > 0 && capabilityRows.every((row) => readBoolean(row, 'supported'))
+          capabilityRows.length > 0 && capabilityRows.every((row) => readBoolean(row, 'supported')) === true
             ? 'passed'
             : 'failed',
       },
@@ -1064,7 +1064,7 @@ export class NotionSyncStore {
       const state = readOutboxState(row, 'state')
       const leaseToken = readOptionalString(row, 'lease_token')
       if (
-        isCompactionBlockingOutboxState(state) ||
+        isCompactionBlockingOutboxState(state) === true ||
         (state !== 'settled' && leaseToken !== undefined)
       ) {
         blockers.push({

@@ -179,15 +179,6 @@
       }
     },
     {
-      "files": ["**/notion-datasource-sync/**"],
-      "rules": {
-        "overeng/jsdoc-require-exports": "off",
-        "overeng/explicit-boolean-compare": "off",
-        "overeng/named-args": "off",
-        "overeng/exports-first": "off"
-      }
-    },
-    {
       "files": ["**/notion-react/**"],
       "rules": {
         "overeng/jsdoc-require-exports": "off",

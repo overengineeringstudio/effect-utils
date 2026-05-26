@@ -151,9 +151,9 @@ const isFutureApiVersion = (version: string): boolean =>
   /^\d{4}-\d{2}-\d{2}$/.test(version) && version > '2026-03-11'
 
 export const guardApiVersion = (version: string): GuardDecision =>
-  isSupportedApiVersion(version)
+  isSupportedApiVersion(version) === true
     ? allowed()
-    : isFutureApiVersion(version)
+    : isFutureApiVersion(version) === true
       ? blocked('ApiVersionUnverified', `Unverified future Notion API version: ${version}`)
       : blocked('ApiVersionUnsupported', `Unsupported Notion API version: ${version}`)
 
@@ -257,7 +257,7 @@ export const guardSchemaIntentSafety = (snapshot: SchemaIntentSafety): GuardDeci
 }
 
 export const guardBodySafety = (snapshot: BodySafetySnapshot): GuardDecision => {
-  if (snapshot.adapterMutationSurfaces.some((surface) => surface !== 'body')) {
+  if (snapshot.adapterMutationSurfaces.some((surface) => surface !== 'body') === true) {
     return blocked('BodyAdapterNonBodyMutation', 'Body adapter attempted a non-body mutation')
   }
 
@@ -373,7 +373,7 @@ export const guardBodyAdapterBoundary = ({
 }: {
   readonly mutationSurfaces: ReadonlyArray<BodyAdapterMutationSurface>
 }): GuardDecision =>
-  mutationSurfaces.some((surface) => surface !== 'body')
+  mutationSurfaces.some((surface) => surface !== 'body') === true
     ? blocked('BodyAdapterNonBodyMutation', 'Body adapter attempted a non-body mutation')
     : allowed()
 
@@ -388,7 +388,7 @@ export const shouldAdvanceQueryCheckpoint = (page: QueryRowsPage): GuardDecision
     )
   }
 
-  return isTerminalQueryRowsPage(page)
+  return isTerminalQueryRowsPage(page) === true
     ? allowed()
     : blocked('PaginationIncomplete', 'Query checkpoint can advance only after the terminal page')
 }

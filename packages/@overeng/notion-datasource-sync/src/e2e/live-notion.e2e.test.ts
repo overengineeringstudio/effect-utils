@@ -463,7 +463,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       processLiveConfig,
     )
 
-    if (provisioned.config.requiredCapabilities.includes('page_property_paginate')) {
+    if (provisioned.config.requiredCapabilities.includes('page_property_paginate') === true) {
       await expect(
         runLiveNotionPreflight(liveNotionEnvFromProcessEnv(), provisioned.config, {
           initialLedger: provisioned.ledger,

@@ -58,7 +58,7 @@ const bodyConflictReasons = new Set<GuardName>([
 ])
 
 const toBodyConflictReason = (guard: GuardName): BodyConflictReason =>
-  bodyConflictReasons.has(guard) ? (guard as BodyConflictReason) : 'BodyAdapterConflict'
+  bodyConflictReasons.has(guard) === true ? (guard as BodyConflictReason) : 'BodyAdapterConflict'
 
 export const evaluateBodyAdapterContract = (
   safety: BodySafetySnapshot,

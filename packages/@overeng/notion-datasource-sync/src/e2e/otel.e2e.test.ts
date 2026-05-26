@@ -102,7 +102,7 @@ const context = (input: {
 })
 
 const spanParentName = (span: RecordedSpan): string | undefined =>
-  Option.isSome(span.parent) && span.parent.value._tag === 'Span'
+  Option.isSome(span.parent) === true && span.parent.value._tag === 'Span'
     ? span.parent.value.name
     : undefined
 
@@ -110,7 +110,7 @@ const spanAncestors = (span: RecordedSpan): ReadonlyArray<string> => {
   const ancestors: string[] = []
   let current = span.parent
 
-  while (Option.isSome(current) && current.value._tag === 'Span') {
+  while (Option.isSome(current) === true && current.value._tag === 'Span') {
     ancestors.push(current.value.name)
     current = current.value.parent
   }

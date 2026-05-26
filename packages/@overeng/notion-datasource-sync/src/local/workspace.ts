@@ -133,7 +133,7 @@ export const canonicalizeWorkspaceRelativePath = ({
     return pathEscapesRoot('Workspace path must not be empty')
   }
 
-  if (normalizedInput.startsWith('/') || isDriveAbsolute(path)) {
+  if (normalizedInput.startsWith('/') === true || isDriveAbsolute(path) === true) {
     return pathEscapesRoot('Workspace path must be root-relative')
   }
 
@@ -142,15 +142,15 @@ export const canonicalizeWorkspaceRelativePath = ({
   }
 
   const parts = normalizedInput.split('/')
-  if (parts.length === 0 || parts.some((part) => part.length === 0)) {
+  if (parts.length === 0 || parts.some((part) => part.length === 0) === true) {
     return pathEscapesRoot('Workspace path must not contain empty segments')
   }
 
-  if (parts.some((part) => part === '.' || part === '..')) {
+  if (parts.some((part) => part === '.' || part === '..') === true) {
     return pathEscapesRoot('Workspace path must not traverse outside the root')
   }
 
-  if (parts.some(isReservedPathSegment)) {
+  if (parts.some(isReservedPathSegment) === true) {
     return pathEscapesRoot('Workspace path contains a reserved segment')
   }
 
@@ -162,7 +162,7 @@ export const canonicalizeWorkspaceRelativePath = ({
   )
 
   for (let index = 1; index <= parts.length; index += 1) {
-    if (escapingSymlinks.has(parts.slice(0, index).join('/'))) {
+    if (escapingSymlinks.has(parts.slice(0, index).join('/')) === true) {
       return pathEscapesRoot('Workspace path crosses a symlink that escapes the root')
     }
   }
@@ -657,7 +657,7 @@ const scanFilesystemWorkspace = async ({
           })
         })
 
-        if (stats.isSymbolicLink()) {
+        if (stats.isSymbolicLink() === true) {
           const target = await realpath(absolutePath).catch((cause: unknown) => {
             throw localStoreError({
               operation: 'scan',
@@ -674,7 +674,7 @@ const scanFilesystemWorkspace = async ({
           return []
         }
 
-        if (stats.isDirectory()) {
+        if (stats.isDirectory() === true) {
           return scanDirectory(absolutePath)
         }
 
@@ -734,7 +734,7 @@ const scanFilesystemWorkspace = async ({
   const seenSidecarPageIds = new Set(presentObservations.map((observation) => observation.pageId))
   const deleteCandidateObservations = await Promise.all(
     sidecars.map(async (sidecar): Promise<LocalArtifactObservationType | undefined> => {
-      if (seenSidecarPageIds.has(sidecar.pageId)) return undefined
+      if (seenSidecarPageIds.has(sidecar.pageId) === true) return undefined
       const { absolutePath } = await safeWorkspacePath({
         root,
         rootRealPath,

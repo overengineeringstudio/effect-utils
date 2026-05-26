@@ -41,19 +41,6 @@ export default oxlintConfig({
         'overeng/jsdoc-require-exports': 'off',
       },
     },
-    // notion-datasource-sync: incubation lint waiver for the milestone branch.
-    // The package has a large internal Effect service surface while the sync
-    // contracts are still being reviewed in #683; keep behavior guarded by
-    // TypeScript and E2E tests, then remove this before GA.
-    {
-      files: ['**/notion-datasource-sync/**'],
-      rules: {
-        'overeng/jsdoc-require-exports': 'off',
-        'overeng/explicit-boolean-compare': 'off',
-        'overeng/named-args': 'off',
-        'overeng/exports-first': 'off',
-      },
-    },
     // notion-react: incubation lint waiver (tracked in #599; remove before GA)
     {
       files: ['**/notion-react/**'],
