@@ -606,23 +606,25 @@ mr root --json
 Garbage collect unused worktrees:
 
 ```bash
-mr store gc [--dry-run] [--force]
+mr store gc [--dry-run] [--force] [--all]
 ```
 
 **Behavior:**
 
-1. Read current megarepo's lock file to find in-use worktrees
-2. Walk the store to find all worktrees
-3. Remove worktrees not referenced by the lock
+1. Refresh the current workspace liveness record, then read the store-local root set from registered workspaces.
+2. Walk the store to find all `refs/heads/*`, `refs/tags/*`, and `refs/commits/*` worktrees.
+3. Keep named `refs/heads/*` and `refs/tags/*` worktrees by default.
+4. Remove clean `refs/commits/*` worktrees that are not referenced by any workspace root set.
 
 **Options:**
 
 - `--dry-run`: show what would be removed
 - `--force`: remove even dirty worktrees
+- `--all`: also consider named branch and tag worktrees for removal
 
-**Safety:** Skips worktrees with uncommitted changes or unpushed commits unless `--force`.
+**Safety:** Skips worktrees with uncommitted changes or unpushed commits unless `--force`, and rechecks the root set under the worktree lock before removal.
 
-**Scope:** Only considers the current megarepo's lock file. Worktrees used by other megarepos may be removed. Run from each megarepo to preserve its worktrees, or manually verify before using `--force`.
+**Scope:** Uses the store-local workspace registry plus the current workspace. Run `mr status` or another registry-refreshing command from active megarepos so their commit worktrees remain rooted.
 
 #### `mr store ls`
 

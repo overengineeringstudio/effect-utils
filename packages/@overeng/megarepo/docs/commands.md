@@ -109,4 +109,6 @@ mr store fetch [--json]
 mr store gc [--dry-run] [--force] [--all]
 ```
 
-Removes unused worktrees. Dirty worktrees are preserved unless `--force` is used.
+Removes clean unrooted `refs/commits/*` worktrees. Named `refs/heads/*` and
+`refs/tags/*` worktrees are kept by default. Dirty worktrees are preserved
+unless `--force` is used. `--all` also considers named refs for removal.
