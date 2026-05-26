@@ -1415,11 +1415,16 @@ export const runLiveFixtureSoak = async ({
   )
 
   for (let cycle = 1; cycle <= options.cycles; cycle += 1) {
+    // Cycles must run serially: each cycle's verification asserts state set
+    // by the previous cycle's cleanup; parallel execution would invalidate
+    // the soak invariant.
+    // oxlint-disable-next-line no-await-in-loop
     ledger = await runLiveFixtureLifecycle({
       config,
       client,
       options: { initialLedger: ledger, writeLedger },
     })
+    // oxlint-disable-next-line no-await-in-loop
     await record(
       ledgerEntry({
         phase: 'verify',
