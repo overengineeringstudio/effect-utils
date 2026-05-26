@@ -15,7 +15,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { parseSourceString, isRemoteSource } from '../lib/config.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../lib/lock.ts'
-import { markWorktreeManaged, refreshWorkspaceRegistry } from '../lib/store-liveness.ts'
+import { refreshWorkspaceRegistry } from '../lib/store-liveness.ts'
 import { makeStoreLayer, Store } from '../lib/store.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import {
@@ -388,78 +388,28 @@ describe('mr store gc', () => {
     )
 
     it.effect(
-      'should not delete unleased clean worktrees by default',
+      'should keep clean heads and tags while removing clean unprotected commit worktrees by default',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
+          const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
 
           const { storePath, worktreePaths } = yield* createStoreFixture([
             {
               host: 'github.com',
               owner: 'test-owner',
-              repo: 'unleased-repo',
-              branches: ['main', 'feature-a'],
-            },
-          ])
-
-          const mainWorktreePath = worktreePaths['github.com/test-owner/unleased-repo#main']!
-          const featureWorktreePath =
-            worktreePaths['github.com/test-owner/unleased-repo#feature-a']!
-          const mainCommit = yield* getWorktreeCommit(mainWorktreePath)
-
-          const { workspacePath } = yield* createWorkspaceWithLock({
-            members: { repo: 'test-owner/unleased-repo#main' },
-            lockEntries: {
-              repo: {
-                url: 'git@github.com:test-owner/unleased-repo.git',
-                ref: 'main',
-                commit: mainCommit,
-              },
-            },
-          })
-          yield* fs.makeDirectory(
-            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/')),
-            { recursive: true },
-          )
-          yield* fs.symlink(
-            mainWorktreePath.replace(/\/$/, ''),
-            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/repo')),
-          )
-
-          const gc = yield* runMrCommand({
-            cwd: workspacePath,
-            command: ['store', 'gc', '--output', 'json'],
-            env: { MEGAREPO_STORE: storePath },
-          })
-          expect(gc.exitCode).toBe(0)
-          const json = decodeStoreGcJsonOutput(gc.stdout)
-          const featureResult = json.results.find((r) => r.path === featureWorktreePath)
-          expect(featureResult?.status).toBe('skipped_unleased')
-          expect(yield* fs.exists(featureWorktreePath)).toBe(true)
-        },
-        Effect.provide(NodeContext.layer),
-        Effect.scoped,
-      ),
-    )
-
-    it.effect(
-      'should delete managed unprotected clean worktrees by default',
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'managed-repo',
+              repo: 'default-policy-repo',
               branches: ['main'],
+              tags: ['v1.0.0'],
+              commits: [commitRef],
             },
           ])
 
-          const mainWorktreePath = worktreePaths['github.com/test-owner/managed-repo#main']!
-          const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
-          yield* markWorktreeManaged({ store, path: mainWorktreePath })
+          const branchWorktreePath =
+            worktreePaths['github.com/test-owner/default-policy-repo#main']!
+          const tagWorktreePath = worktreePaths['github.com/test-owner/default-policy-repo#v1.0.0']!
+          const commitWorktreePath =
+            worktreePaths[`github.com/test-owner/default-policy-repo#${commitRef}`]!
 
           const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
           const cwd = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('outside/'))
@@ -472,9 +422,103 @@ describe('mr store gc', () => {
           })
           expect(gc.exitCode).toBe(0)
           const json = decodeStoreGcJsonOutput(gc.stdout)
-          const result = json.results.find((r) => r.path === mainWorktreePath)
-          expect(result?.status).toBe('removed')
-          expect(yield* fs.exists(mainWorktreePath)).toBe(false)
+          const branchResult = json.results.find((r) => r.path === branchWorktreePath)
+          const tagResult = json.results.find((r) => r.path === tagWorktreePath)
+          const commitResult = json.results.find((r) => r.path === commitWorktreePath)
+
+          expect(branchResult?.status).not.toBe('removed')
+          expect(tagResult?.status).not.toBe('removed')
+          expect(commitResult?.status).toBe('removed')
+          expect(yield* fs.exists(branchWorktreePath)).toBe(true)
+          expect(yield* fs.exists(tagWorktreePath)).toBe(true)
+          expect(yield* fs.exists(commitWorktreePath)).toBe(false)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should skip dirty or unpushed commit worktrees unless forced',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const dirtyCommitRef = '1111111111111111111111111111111111111111'
+          const unpushedCommitRef = '2222222222222222222222222222222222222222'
+
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'commit-state-repo',
+              commits: [dirtyCommitRef, unpushedCommitRef],
+            },
+          ])
+
+          const dirtyWorktreePath =
+            worktreePaths[`github.com/test-owner/commit-state-repo#${dirtyCommitRef}`]!
+          const unpushedWorktreePath =
+            worktreePaths[`github.com/test-owner/commit-state-repo#${unpushedCommitRef}`]!
+
+          yield* fs.writeFileString(
+            EffectPath.ops.join(dirtyWorktreePath, EffectPath.unsafe.relativeFile('dirty.txt')),
+            'uncommitted changes\n',
+          )
+
+          yield* runGitCommand(unpushedWorktreePath, 'checkout', '-B', 'local-unpushed', 'main')
+          yield* runGitCommand(
+            unpushedWorktreePath,
+            'branch',
+            '--set-upstream-to=main',
+            'local-unpushed',
+          )
+          yield* runGitCommand(unpushedWorktreePath, 'config', 'user.email', 'test@example.com')
+          yield* runGitCommand(unpushedWorktreePath, 'config', 'user.name', 'Test User')
+          yield* fs.writeFileString(
+            EffectPath.ops.join(
+              unpushedWorktreePath,
+              EffectPath.unsafe.relativeFile('unpushed.txt'),
+            ),
+            'unpushed commit\n',
+          )
+          yield* runGitCommand(unpushedWorktreePath, 'add', '-A')
+          yield* runGitCommand(unpushedWorktreePath, 'commit', '--no-verify', '-m', 'Local work')
+
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const cwd = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('outside/'))
+          yield* fs.makeDirectory(cwd, { recursive: true })
+
+          const gc = yield* runMrCommand({
+            cwd,
+            command: ['store', 'gc', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(gc.exitCode).toBe(0)
+          const json = decodeStoreGcJsonOutput(gc.stdout)
+          const dirtyResult = json.results.find((r) => r.path === dirtyWorktreePath)
+          const unpushedResult = json.results.find((r) => r.path === unpushedWorktreePath)
+
+          expect(dirtyResult?.status).toBe('skipped_dirty')
+          expect(dirtyResult?.message).toContain('uncommitted change')
+          expect(unpushedResult?.status).toBe('skipped_dirty')
+          expect(unpushedResult?.message).toContain('unpushed commits')
+          expect(yield* fs.exists(dirtyWorktreePath)).toBe(true)
+          expect(yield* fs.exists(unpushedWorktreePath)).toBe(true)
+
+          const forceGc = yield* runMrCommand({
+            cwd,
+            command: ['store', 'gc', '--force', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(forceGc.exitCode).toBe(0)
+          const forceJson = decodeStoreGcJsonOutput(forceGc.stdout)
+          const forceDirtyResult = forceJson.results.find((r) => r.path === dirtyWorktreePath)
+          const forceUnpushedResult = forceJson.results.find((r) => r.path === unpushedWorktreePath)
+
+          expect(forceDirtyResult?.status).toBe('removed')
+          expect(forceUnpushedResult?.status).toBe('removed')
+          expect(yield* fs.exists(dirtyWorktreePath)).toBe(false)
+          expect(yield* fs.exists(unpushedWorktreePath)).toBe(false)
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,

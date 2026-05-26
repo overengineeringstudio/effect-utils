@@ -1,4 +1,4 @@
-import { FileSystem } from '@effect/platform'
+import { Command, FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
@@ -14,12 +14,18 @@ import {
 import {
   collectStoreLiveSet,
   collectWorkspaceLivePaths,
-  markWorktreeManaged,
   refreshWorkspaceRegistry,
 } from './store-liveness.ts'
 import { makeStoreLayer, Store } from './store.ts'
 
 const normalizePath = (path: string): string => path.replace(/\/+$/, '')
+
+const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
+    const result = yield* Command.string(command)
+    return result.trim()
+  })
 
 describe('store-liveness', () => {
   it.effect(
@@ -132,25 +138,61 @@ describe('store-liveness', () => {
   )
 
   it.effect(
-    'collectStoreLiveSet includes managed worktree records',
+    'collectStoreLiveSet protects lock-referenced commit worktree paths',
     Effect.fnUntraced(
       function* () {
-        const { storePath, worktreePaths } = yield* createStoreFixture([
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
           {
             host: 'github.com',
             owner: 'test-owner',
-            repo: 'managed-repo',
+            repo: 'commit-live-repo',
             branches: ['main'],
           },
         ])
-        const mainWorktreePath = worktreePaths['github.com/test-owner/managed-repo#main']!
+        const mainWorktreePath = worktreePaths['github.com/test-owner/commit-live-repo#main']!
+        const commit = yield* getWorktreeCommit(mainWorktreePath)
         const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const commitWorktreePath = store.getWorktreePath({
+          source: {
+            type: 'github',
+            owner: 'test-owner',
+            repo: 'commit-live-repo',
+            ref: Option.some('main'),
+          },
+          ref: commit,
+          refType: 'commit',
+        })
+        const bareRepoPath = bareRepoPaths['github.com/test-owner/commit-live-repo']!
 
-        yield* markWorktreeManaged({ store, path: mainWorktreePath })
-        const liveSet = yield* collectStoreLiveSet({ store })
+        yield* fs.makeDirectory(EffectPath.ops.parent(commitWorktreePath)!, { recursive: true })
+        yield* runGitCommand(
+          bareRepoPath,
+          'worktree',
+          'add',
+          '--detach',
+          commitWorktreePath,
+          commit,
+        )
 
-        expect(liveSet.managedPaths).toEqual(new Set([normalizePath(mainWorktreePath)]))
-        expect(liveSet.managedCount).toBe(1)
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: { repo: 'test-owner/commit-live-repo#main' },
+          lockEntries: {
+            repo: {
+              url: 'git@github.com:test-owner/commit-live-repo.git',
+              ref: 'main',
+              commit,
+            },
+          },
+        })
+
+        yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store })
+        const liveSet = yield* collectStoreLiveSet({
+          store,
+          refreshCurrentWorkspace: false,
+        })
+
+        expect(liveSet.paths).toContain(normalizePath(commitWorktreePath))
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
