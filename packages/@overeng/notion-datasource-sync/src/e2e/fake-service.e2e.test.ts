@@ -6,6 +6,7 @@ import { PatchDataSourceSchemaCommand, RestorePageCommand } from '../core/comman
 import { AbsolutePath, PropertyName } from '../core/domain.ts'
 import { SyncEvent } from '../core/events.ts'
 import {
+  LocalWorkspacePort,
   NotionDataSourceGateway,
   PageBodySyncPort,
   type NotionDataSourceGatewayShape,
@@ -19,6 +20,7 @@ import {
 } from '../planner/planner.ts'
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import { executeOutboxOnce } from '../sync/executor.ts'
+import { observeRemoteDataSource } from '../sync/observation.ts'
 import {
   bodyAdapterResultIntent,
   bodyLocalChangeInput,
@@ -170,6 +172,43 @@ const schemaMigrationIntent = (
     },
     ...overrides,
   }
+}
+
+const observeFakeRemote = async ({
+  inTrash = false,
+  materializeBodies = true,
+  configHash = hash('config-a'),
+}: {
+  readonly inTrash?: boolean
+  readonly materializeBodies?: boolean
+  readonly configHash?: ReturnType<typeof hash>
+} = {}) => {
+  const gatewayHarness = makeFakeGatewayHarness({
+    pages: [pageSnapshot({ inTrash })],
+  })
+  const ports = makeHarnessPorts()
+
+  return await Effect.runPromise(
+    observeRemoteDataSource({
+      rootId: testIds.rootId,
+      dataSourceId: testIds.dataSourceId,
+      workspaceRoot: decode({ schema: AbsolutePath, value: '/workspace' }),
+      queryContract: defaultQueryContract(),
+      schemaProperties: [
+        {
+          propertyId: testIds.propertyA,
+          configHash,
+          writeClass: 'writable',
+        },
+      ],
+      materializeBodies,
+      now: () => new Date('2026-05-25T00:00:00.000Z'),
+    }).pipe(
+      Effect.provideService(NotionDataSourceGateway, gatewayHarness.gateway),
+      Effect.provideService(PageBodySyncPort, ports.body),
+      Effect.provideService(LocalWorkspacePort, ports.workspace),
+    ),
+  )
 }
 
 const legacyRunningAttemptedEvent = () =>
@@ -389,6 +428,25 @@ describe('notion datasource sync fake-service E2E harness', () => {
     } finally {
       storeFixture.cleanup()
     }
+  })
+
+  it('keys remote observations by projection-affecting schema, lifecycle, and sidecar state', async () => {
+    const base = await observeFakeRemote({ materializeBodies: false })
+    const materialized = await observeFakeRemote({ materializeBodies: true })
+    const trashed = await observeFakeRemote({ inTrash: true, materializeBodies: true })
+    const reconfigured = await observeFakeRemote({
+      materializeBodies: true,
+      configHash: hash('config-b'),
+    })
+
+    const dataSourceKey = (result: Awaited<ReturnType<typeof observeFakeRemote>>) =>
+      result.events.find((event) => event._tag === 'DataSourceObserved')?.idempotencyKey
+    const rowKey = (result: Awaited<ReturnType<typeof observeFakeRemote>>) =>
+      result.events.find((event) => event._tag === 'RowObserved')?.idempotencyKey
+
+    expect(dataSourceKey(base)).not.toBe(dataSourceKey(reconfigured))
+    expect(rowKey(base)).not.toBe(rowKey(materialized))
+    expect(rowKey(materialized)).not.toBe(rowKey(trashed))
   })
 
   it('plans and persists a local property edit as one guarded outbox command', () => {
