@@ -176,15 +176,15 @@ let
         export PNPM_STORE_DIR="$store_dir"
         export PNPM_CONFIG_STORE_DIR="$store_dir"
         export npm_config_store_dir="$store_dir"
-        export npm_config_manage_package_manager_versions=false
         pnpm install \
           --frozen-lockfile \
           --ignore-scripts \
           --config.confirmModulesPurge=false \
-          --config.manage-package-manager-versions=false \
           --config.side-effects-cache=false \
           --config.verify-store-integrity=true \
-          --config.package-import-method=copy \
+          --config.strict-store-pkg-content-check=true \
+          --config.package-import-method=clone-or-copy \
+          --pm-on-fail=ignore \
           --config.store-dir="$store_dir"
       '';
     };

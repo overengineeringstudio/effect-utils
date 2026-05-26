@@ -1326,7 +1326,7 @@ pkgs.stdenv.mkDerivation {
     export PNPM_HOME="$HOME/.local/share/pnpm"
     export WORKSPACE_ROOT_BIN_DIR="$NIX_BUILD_TOP/workspace/node_modules/.bin"
     mkdir -p "$PNPM_HOME"
-    printf '\nmanage-package-manager-versions=false\n' >> .npmrc
+    printf 'pm-on-fail=ignore\n' >> .npmrc
     run_workspace_bin() {
       local bin_name="$1"
       shift

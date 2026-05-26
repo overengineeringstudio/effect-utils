@@ -51,9 +51,9 @@ let
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
   defaultPnpmStoreDir =
     if workspaceRoot == "." then
-      "${config.devenv.root}/.devenv/pnpm-store-split-v1"
+      "${config.devenv.root}/.devenv/pnpm-store-pure-v1"
     else
-      "${config.devenv.root}/.devenv/pnpm-store-split-v1/${workspaceCacheName}";
+      "${config.devenv.root}/.devenv/pnpm-store-pure-v1/${workspaceCacheName}";
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -80,10 +80,11 @@ let
   pureInstallFlags = [
     "--frozen-lockfile"
     "--config.confirmModulesPurge=false"
-    "--config.manage-package-manager-versions=false"
     "--config.side-effects-cache=false"
     "--config.verify-store-integrity=true"
-    "--config.package-import-method=copy"
+    "--config.strict-store-pkg-content-check=true"
+    "--config.package-import-method=clone-or-copy"
+    "--pm-on-fail=ignore"
   ];
   pureInstallFlagsString = lib.concatStringsSep " " pureInstallFlags;
 
@@ -274,9 +275,13 @@ let
           --config.frozen-lockfile=false | --config.frozen-lockfile | \
           --ignore-scripts | --config.ignore-scripts=true | --config.ignore-scripts | \
           --config.side-effects-cache=true | --config.side-effects-cache | --side-effects-cache | \
+          --side-effects-cache-readonly | --config.side-effects-cache-readonly=true | --config.side-effects-cache-readonly | \
           --no-verify-store-integrity | --verify-store-integrity=false | \
           --config.verify-store-integrity=false | --config.verify-store-integrity | \
+          --strict-store-pkg-content-check=false | --no-strict-store-pkg-content-check | \
+          --config.strict-store-pkg-content-check=false | --config.strict-store-pkg-content-check | \
           --config.manage-package-manager-versions=true | --config.manage-package-manager-versions | \
+          --pm-on-fail=* | --pm-on-fail | --config.pm-on-fail=* | --config.pm-on-fail | \
           --config.package-import-method=* | --config.package-import-method | --package-import-method=* | --package-import-method | \
           --config.store-dir=* | --config.store-dir | --store-dir=* | --store-dir)
             echo "[pnpm] Refusing impure install argument: $arg" >&2
@@ -403,8 +408,6 @@ let
           echo "[pnpm] Another pnpm install sharing this store-dir may be stuck" >&2
           exit 1
         fi
-
-        export npm_config_manage_package_manager_versions=false
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
@@ -547,8 +550,7 @@ let
         ${ensureLocalPnpmStoreDirFn}
         ${ensureSharedPnpmFilesStoreFn}
         ensure_shared_pnpm_files_store
-        export npm_config_manage_package_manager_versions=false
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir"
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -595,7 +597,7 @@ in
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"
     export npm_config_cache="$HOME/.cache/pnpm"
-    export npm_config_manage_package_manager_versions=false
+    export npm_config_pm_on_fail=ignore
     if [ -z "''${CI:-}" ]; then
       _pnpm_shared_files="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
       mkdir -p "$PNPM_STORE_DIR/v11" "$_pnpm_shared_files"

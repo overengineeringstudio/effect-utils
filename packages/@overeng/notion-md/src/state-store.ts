@@ -17,6 +17,8 @@ import {
 import { NmdFileSystemError, NmdObjectStoreError } from './errors.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 
+const compareStrings = new Intl.Collator().compare
+
 /** Strict schema for overflow `.nmd` storage payloads in the object store. */
 export const NmdStorageObjectV2 = Schema.Struct({
   version: Schema.Literal(2),
@@ -142,15 +144,17 @@ const inventory = (
   switch (storage._tag) {
     case 'self_contained':
       return {
-        unsupportedBlockIds: storage.unsupported_blocks.map((block) => block.block_id).toSorted(),
-        fileIds: storage.files.map((file) => file.id).toSorted(),
-        commentIds: storage.comments.map((comment) => comment.id).toSorted(),
+        unsupportedBlockIds: storage.unsupported_blocks
+          .map((block) => block.block_id)
+          .toSorted(compareStrings),
+        fileIds: storage.files.map((file) => file.id).toSorted(compareStrings),
+        commentIds: storage.comments.map((comment) => comment.id).toSorted(compareStrings),
       }
     case 'object_store':
       return {
-        unsupportedBlockIds: [...storage.unsupported_block_ids].toSorted(),
-        fileIds: [...storage.file_ids].toSorted(),
-        commentIds: [...storage.comment_ids].toSorted(),
+        unsupportedBlockIds: [...storage.unsupported_block_ids].toSorted(compareStrings),
+        fileIds: [...storage.file_ids].toSorted(compareStrings),
+        commentIds: [...storage.comment_ids].toSorted(compareStrings),
       }
   }
 }

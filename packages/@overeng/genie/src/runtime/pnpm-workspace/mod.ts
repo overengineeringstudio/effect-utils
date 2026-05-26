@@ -138,7 +138,7 @@ export interface PnpmSettings {
   storeDir?: string
 
   /**
-   * If true, pnpm only copies files from the store.
+   * How packages are imported from the store into the virtual store.
    * @see https://pnpm.io/settings#package-import-method
    */
   packageImportMethod?: 'auto' | 'hardlink' | 'copy' | 'clone' | 'clone-or-copy'
@@ -308,6 +308,12 @@ export interface PnpmSettings {
   verifyStoreIntegrity?: boolean
 
   /**
+   * Validate that packages in the store match their expected package identity.
+   * @see https://pnpm.io/settings#strict-store-pkg-content-check
+   */
+  strictStorePkgContentCheck?: boolean
+
+  /**
    * Ignore scripts in build.
    * @see https://pnpm.io/settings#ignore-scripts
    */
@@ -348,10 +354,10 @@ export interface PnpmSettings {
   useNodeVersion?: string
 
   /**
-   * Check that pnpm version matches packageManager field.
-   * @see https://pnpm.io/settings#manage-package-manager-versions
+   * Behavior when the configured package manager cannot be resolved.
+   * @see https://pnpm.io/settings#pm-on-fail
    */
-  managePackageManagerVersions?: boolean
+  pmOnFail?: 'download' | 'error' | 'ignore'
 
   // ---------------------------------------------------------------------------
   // Workspace Settings
@@ -697,6 +703,12 @@ export interface PnpmWorkspaceData {
   storeDir?: string
 
   /**
+   * How packages are imported from the store into the virtual store.
+   * @see https://pnpm.io/settings#package-import-method
+   */
+  packageImportMethod?: 'auto' | 'hardlink' | 'copy' | 'clone' | 'clone-or-copy'
+
+  /**
    * Behavior when workspace package depends on version not matched by local.
    * @see https://pnpm.io/settings#link-workspace-packages
    */
@@ -721,6 +733,30 @@ export interface PnpmWorkspaceData {
   ignoreScripts?: boolean
 
   /**
+   * Cache dependency lifecycle build outputs in the pnpm store.
+   * @see https://pnpm.io/settings#side-effects-cache
+   */
+  sideEffectsCache?: boolean
+
+  /**
+   * Only use existing side-effects cache entries without creating new ones.
+   * @see https://pnpm.io/settings#side-effects-cache-readonly
+   */
+  sideEffectsCacheReadonly?: boolean
+
+  /**
+   * Verify store package integrity before linking.
+   * @see https://pnpm.io/settings#verify-store-integrity
+   */
+  verifyStoreIntegrity?: boolean
+
+  /**
+   * Check package content conflicts by package name and version.
+   * @see https://pnpm.io/settings#strict-store-pkg-content-check
+   */
+  strictStorePkgContentCheck?: boolean
+
+  /**
    * If true, pnpm will exit with error if script is not found.
    * @see https://pnpm.io/settings#strict-scripts
    * @deprecated Use `scriptMissing` instead
@@ -732,6 +768,12 @@ export interface PnpmWorkspaceData {
    * @see https://pnpm.io/settings#script-missing
    */
   scriptMissing?: 'error' | 'warn' | 'silent'
+
+  /**
+   * Behavior when the packageManager field does not match the running pnpm.
+   * @see https://pnpm.io/settings#pm-on-fail
+   */
+  pmOnFail?: 'download' | 'error' | 'ignore'
 
   /**
    * Save to dev dependencies by default.
@@ -922,6 +964,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
     result.storeDir = data.storeDir
   }
 
+  if (data.packageImportMethod !== undefined) {
+    result.packageImportMethod = data.packageImportMethod
+  }
+
   if (data.linkWorkspacePackages !== undefined) {
     result.linkWorkspacePackages = data.linkWorkspacePackages
   }
@@ -938,8 +984,28 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
     result.ignoreScripts = data.ignoreScripts
   }
 
+  if (data.sideEffectsCache !== undefined) {
+    result.sideEffectsCache = data.sideEffectsCache
+  }
+
+  if (data.sideEffectsCacheReadonly !== undefined) {
+    result.sideEffectsCacheReadonly = data.sideEffectsCacheReadonly
+  }
+
+  if (data.verifyStoreIntegrity !== undefined) {
+    result.verifyStoreIntegrity = data.verifyStoreIntegrity
+  }
+
+  if (data.strictStorePkgContentCheck !== undefined) {
+    result.strictStorePkgContentCheck = data.strictStorePkgContentCheck
+  }
+
   if (data.scriptMissing !== undefined) {
     result.scriptMissing = data.scriptMissing
+  }
+
+  if (data.pmOnFail !== undefined) {
+    result.pmOnFail = data.pmOnFail
   }
 
   if (data.saveWorkspaceProtocol !== undefined) {
