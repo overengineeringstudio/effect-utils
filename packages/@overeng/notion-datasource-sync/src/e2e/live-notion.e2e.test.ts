@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
-import { Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
+import { Chunk, Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -1692,11 +1692,24 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         const result = await runLiveNotionDemoShowcase({ env, config: processLiveConfig })
 
         expect(result.demoPageId).toBe(processLiveConfig.demoPageId)
-        expect(result.rowIds).toHaveLength(6)
-        expect(result.observation.pages).toBeGreaterThanOrEqual(4)
-        expect(result.observation.rows).toBeGreaterThanOrEqual(9)
-        expect(result.observation.materializedBodies).toBe(6)
-        expect(result.observation.observedProperties).toBe(6)
+        expect(result.dataSources.map((dataSource) => dataSource.key)).toEqual([
+          'projects',
+          'incidents',
+          'customers',
+          'activity',
+        ])
+        expect(result.dataSources.map((dataSource) => dataSource.rowIds.length)).toEqual([
+          12,
+          30,
+          48,
+          500,
+        ])
+        expect(result.dataSources.find((dataSource) => dataSource.key === 'activity')?.observation.pages)
+          .toBeGreaterThanOrEqual(10)
+        expect(result.observation.pages).toBeGreaterThanOrEqual(20)
+        expect(result.observation.rows).toBeGreaterThanOrEqual(700)
+        expect(result.observation.materializedBodies).toBe(12)
+        expect(result.observation.observedProperties).toBe(90)
         expect(result.observation.incompleteProperties).toBe(0)
 
         const markdown = await runLive(
@@ -1705,12 +1718,60 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         )
         expect(markdown.markdown).toContain('notion datasource sync automated demo')
         expect(markdown.markdown).toContain('Verification summary')
+        expect(markdown.markdown).toContain('Data source matrix')
+        expect(markdown.markdown).toContain('notion datasource sync demo projects')
+        expect(markdown.markdown).toContain('notion datasource sync demo incidents')
+        expect(markdown.markdown).toContain('notion datasource sync demo customers')
+        expect(markdown.markdown).toContain('notion datasource sync demo activity events')
+        expect(markdown.markdown).toContain('500 rows')
         expect(markdown.markdown).toContain(result.runId)
-        expect(markdown.markdown).toContain(result.dataSourceId)
+        for (const dataSource of result.dataSources) {
+          expect(markdown.markdown).toContain(dataSource.dataSourceId)
+        }
         expect(markdown.markdown).not.toContain(env.token ?? 'token-not-configured')
         expect(markdown.markdown).not.toContain('NOTION_API_TOKEN')
         expect(markdown.markdown).not.toContain('op://')
-      }, 180_000)
+
+        const remoteCounts = await Promise.all(
+          result.dataSources.map(async (dataSource) => {
+            const remote = await runLive(
+              env,
+              NotionDataSources.retrieve({ dataSourceId: dataSource.dataSourceId }),
+            )
+            const rowCount = await runLive(
+              env,
+              NotionDatabases.queryStream({
+                dataSourceId: dataSource.dataSourceId,
+                pageSize: 100,
+              }).pipe(Stream.runCollect, Effect.map(Chunk.size)),
+            )
+            return {
+              title: remote.title?.map((part) => part.plain_text ?? '').join('') ?? '',
+              propertyNames: Object.keys(remote.properties),
+              rowCount,
+            }
+          }),
+        )
+        expect(remoteCounts.map((remote) => remote.rowCount)).toEqual([12, 30, 48, 500])
+        expect(remoteCounts.map((remote) => remote.title)).toEqual([
+          'notion datasource sync demo projects',
+          'notion datasource sync demo incidents',
+          'notion datasource sync demo customers',
+          'notion datasource sync demo activity events',
+        ])
+        expect(remoteCounts[0]?.propertyNames).toEqual(
+          expect.arrayContaining(['Name', 'State', 'Budget', 'Strategic', 'Kickoff', 'Teams', 'Summary', 'Brief']),
+        )
+        expect(remoteCounts[1]?.propertyNames).toEqual(
+          expect.arrayContaining(['Name', 'Severity', 'Open', 'Started', 'Impact', 'Systems', 'Notes']),
+        )
+        expect(remoteCounts[2]?.propertyNames).toEqual(
+          expect.arrayContaining(['Name', 'Plan', 'ARR', 'Renewal', 'Contacted', 'Regions', 'Health', 'Email', 'Phone']),
+        )
+        expect(remoteCounts[3]?.propertyNames).toEqual(
+          expect.arrayContaining(['Name', 'Segment', 'Sequence', 'Automated', 'EventDate', 'Labels', 'Payload']),
+        )
+      }, 900_000)
     },
   )
 
