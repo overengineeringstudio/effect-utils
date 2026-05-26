@@ -175,6 +175,7 @@ export type {
   RetrievePageOptions,
   RetrievePageOptionsBase,
   RetrievePagePropertyOptions,
+  RetrievePagePropertyResult,
   RetrievePageWithSchemaOptions,
   UpdateMarkdownOptions,
   UpdatePageOptions,

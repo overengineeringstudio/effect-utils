@@ -172,7 +172,10 @@ const maxObservedHighWatermark = ({
 const propertyValueHash = (pages: ReadonlyArray<PagePropertyItemPage>): HashType | undefined => {
   const terminalPage = pages.at(-1)
   if (terminalPage === undefined || terminalPage.hasMore === true) return undefined
-  const valueHashes = pages.flatMap((page) => page.items.map((item) => item.valueHash))
+  const valueHashes = pages.flatMap((page) => [
+    ...page.items.map((item) => item.valueHash),
+    ...(page.listMetadataHash === undefined ? [] : [page.listMetadataHash]),
+  ])
   if (valueHashes.length === 1) return valueHashes[0]
   return hashStoreBytes(`property-items\t${valueHashes.join('\n')}`)
 }
