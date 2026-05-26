@@ -34,6 +34,8 @@ import {
   syncWorkspace,
 } from './workspace.ts'
 
+const compareStrings = new Intl.Collator().compare
+
 const pageId = '00000000-0000-4000-8000-000000000001'
 const secondPageId = '00000000-0000-4000-8000-000000000011'
 const blockId = '00000000-0000-4000-8000-000000000002'
@@ -655,8 +657,8 @@ describe('notion-md e2e prototype', () => {
 
       expect('_tag' in result ? result._tag : undefined).toBe('workspace')
       const materialized = 'materialized' in result ? result.materialized : []
-      expect(materialized.map((item) => item.pageId).toSorted()).toEqual(
-        [pageId, secondPageId].toSorted(),
+      expect(materialized.map((item) => item.pageId).toSorted(compareStrings)).toEqual(
+        [pageId, secondPageId].toSorted(compareStrings),
       )
       expect(root.frontmatter.notion_md.page_id).toBe(pageId)
       expect(child.frontmatter.notion_md.page_id).toBe(secondPageId)
@@ -900,7 +902,7 @@ describe('notion-md e2e prototype', () => {
       )
 
       expect(resolved.errors).toEqual([])
-      expect(resolved.paths).toEqual([nestedPath, rootPath].toSorted())
+      expect(resolved.paths).toEqual([nestedPath, rootPath].toSorted(compareStrings))
     })
   })
 

@@ -165,7 +165,7 @@ export const catalog = defineCatalog({
   // React ecosystem
   react: '19.2.3',
   'react-dom': '19.2.3',
-  'react-aria-components': '1.16.0',
+  'react-aria-components': '1.17.0',
 
   // Notion rendering (optional peer deps)
   katex: '0.16.45',
@@ -289,6 +289,12 @@ export const commonPnpmPolicySettings = {
     },
   },
   enableGlobalVirtualStore: true as const,
+  storeDir: '.devenv/pnpm-store-pure-v1',
+  packageImportMethod: 'clone-or-copy' as const,
+  sideEffectsCache: false as const,
+  verifyStoreIntegrity: true as const,
+  strictStorePkgContentCheck: true as const,
+  pmOnFail: 'ignore' as const,
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,
   verifyDepsBeforeRun: false as const,

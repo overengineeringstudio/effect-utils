@@ -133,6 +133,15 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(ciWorkflowSource).toContain('const path = opts?.path ?? jobLocalPnpmStatePaths')
   })
 
+  it('exports PNPM_CONFIG_STORE_DIR alongside pnpm store state', () => {
+    expect(ciWorkflowSource).toContain(
+      '`echo "PNPM_CONFIG_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`',
+    )
+    expect(ciWorkflowSource).toContain(
+      'PNPM_CONFIG_STORE_DIR="\\${PNPM_CONFIG_STORE_DIR:-${jobLocalPnpmStore}}"',
+    )
+  })
+
   it('uses exact-key pnpm state restore semantics with an explicit versioned prefix', () => {
     expect(restorePnpmStateStepSource).toContain(
       "const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'",
@@ -252,6 +261,16 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(defaultRefPolicyCheckStepSource).toContain(
       'fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })',
     )
+  })
+
+  it('uses the same Nix-provided Node runtime for default-ref policy checks', () => {
+    expect(ciWorkflowSource).toContain('nix shell nixpkgs#nodejs_24 -c node')
+  })
+
+  it('provides a dedicated default-ref policy job so regular jobs keep their signal', () => {
+    expect(ciWorkflowSource).toContain('export const defaultRefPolicyCheckJob')
+    expect(ciWorkflowSource).toContain('name === undefined ? {} : { name }')
+    expect(ciWorkflowSource).toContain('defaultRefPolicyCheckStep(stepOpts)')
   })
 })
 

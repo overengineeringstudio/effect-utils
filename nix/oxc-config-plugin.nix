@@ -28,7 +28,7 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-OJ9dWG148c37Elw/W06TC4kFzg09x8qZEacgS0BVzxI=";
+  pnpmDepsHash = "sha256-0FpUv8pn7KNn9PdP5BzwDX2BUtgA/p56lv7eLEG1gio=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -85,10 +85,16 @@ let
           else
             lines;
 
-      stripGvs =
-        lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
+      stripPrepLocalPnpmSettings =
+        lines:
+        builtins.filter (
+          l:
+          !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l)) && !(lib.hasPrefix "storeDir" (lib.trim l))
+        ) lines;
     in
-    stripGvs (dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml)));
+    stripPrepLocalPnpmSettings (
+      dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml))
+    );
 
   formatWorkspaceYaml =
     packageDirs: suffixLines:
@@ -111,6 +117,7 @@ let
     ".turbo"
     ".next"
     ".bun"
+    ".pnpm-store"
     "node_modules"
     "dist"
     "result"

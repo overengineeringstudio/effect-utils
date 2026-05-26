@@ -151,12 +151,13 @@ if [ "${1:-}" = "--version" ]; then
   if [ "${TEST_PNPM_VERSION_READS_STDIN:-0}" = "1" ]; then
     cat >/dev/null
   fi
-  echo "11.0.0-rc.5"
+  echo "11.3.0"
   exit 0
 fi
 if [ "${1:-}" = "install" ]; then
   printf 'PNPM_HOME=%s\n' "${PNPM_HOME:-}" >> "${TEST_PNPM_LOG:?}"
   printf 'PNPM_STORE_DIR=%s\n' "${PNPM_STORE_DIR:-}" >> "${TEST_PNPM_LOG:?}"
+  printf 'PNPM_CONFIG_STORE_DIR=%s\n' "${PNPM_CONFIG_STORE_DIR:-}" >> "${TEST_PNPM_LOG:?}"
   printf 'npm_config_store_dir=%s\n' "${npm_config_store_dir:-}" >> "${TEST_PNPM_LOG:?}"
   if [ "${TEST_PNPM_FAIL_NETWORK:-0}" = "1" ]; then
     echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
@@ -227,7 +228,13 @@ extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
-extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--ignore-scripts" "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--no-frozen-lockfile" ];' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-equals.exec.sh" 'packages = [ "." ]; installFlags = [ "--frozen-lockfile=false" ];' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-separated.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.package-import-method" "hardlink" ];' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-store-dir-separated.exec.sh" 'packages = [ "." ]; installFlags = [ "--store-dir" "/tmp/other-pnpm-store" ];' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-strict-store.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.strict-store-pkg-content-check=false" ];' "pnpm:install"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-pm-on-fail.exec.sh" 'packages = [ "." ]; installFlags = [ "--pm-on-fail=download" ];' "pnpm:install"
 extract_shared_task_script \
   "nix/devenv-modules/tasks/shared/test.nix" \
   "test:demo" \
@@ -246,6 +253,11 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-clean.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-flags.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-flags.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-equals.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-separated.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-strict-store.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-pm-on-fail.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/test-demo.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/storybook-demo.exec.sh"
 
@@ -254,6 +266,7 @@ export TEST_PNPM_LOG="$tmpdir/pnpm.log"
 export TEST_FLOCK_LOG="$tmpdir/flock.log"
 unset CI
 unset PNPM_STORE_DIR
+unset PNPM_CONFIG_STORE_DIR
 unset npm_config_store_dir
 
 echo "Test 1: status misses before install"
@@ -282,7 +295,7 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
-  grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.devenv/pnpm-store --force" "$tmpdir/pnpm.log"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
 )
@@ -348,8 +361,11 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install.exec.sh"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  test -L "$workspace/.devenv/pnpm-store-pure-v1/v11/files"
+  test "$(readlink "$workspace/.devenv/pnpm-store-pure-v1/v11/files")" = "$tmpdir/home/.local/share/pnpm/shared-files/v11"
 )
 
 echo "Test 8: status hits after install with the default GVS path"
@@ -397,7 +413,8 @@ echo "Test 11: status misses after effective store-dir changes"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
-  export PNPM_STORE_DIR="$workspace/.other-pnpm-store"
+  export PNPM_CONFIG_STORE_DIR="$workspace/.other-pnpm-store"
+  unset PNPM_STORE_DIR
   unset npm_config_store_dir
   set +e
   bash "$tmpdir/pnpm-install.status.sh"
@@ -422,8 +439,9 @@ echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and sto
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store/nested" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store-pure-v1/nested" "$tmpdir/pnpm.log"
 )
 
 echo "Test 14: nested workspace status hits after nested install"
@@ -445,11 +463,13 @@ echo "Test 15: nested workspace suffixes an inherited store-dir"
   cd "$workspace"
   export HOME="$tmpdir/home"
   unset PNPM_HOME
-  export PNPM_STORE_DIR="$workspace/.inherited-pnpm-store"
+  unset PNPM_STORE_DIR
+  export PNPM_CONFIG_STORE_DIR="$workspace/.inherited-pnpm-store"
   unset npm_config_store_dir
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-nested.exec.sh"
   grep -qxF "PNPM_STORE_DIR=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_CONFIG_STORE_DIR=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
   grep -qxF "npm_config_store_dir=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
 )
 
@@ -464,10 +484,114 @@ echo "Test 16: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.devenv/pnpm-store --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
 )
 
-echo "Test 17: CI install failures preserve and classify the pnpm log"
+echo "Test 17: impure no-frozen install flags are rejected before pnpm runs"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm.log"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install-impure-flags.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "impure install flags should be rejected"
+  grep -qF "[pnpm] Refusing impure install argument: --no-frozen-lockfile" <<< "$output"
+  if grep -q "^install " "$tmpdir/pnpm.log"; then
+    echo "FAIL: impure install flags should be rejected before invoking pnpm"
+    exit 1
+  fi
+)
+
+echo "Test 18: impure equals-form install flags are rejected before pnpm runs"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm.log"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install-impure-equals.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "equals-form impure install flags should be rejected"
+  grep -qF "[pnpm] Refusing impure install argument: --frozen-lockfile=false" <<< "$output"
+  if grep -q "^install " "$tmpdir/pnpm.log"; then
+    echo "FAIL: equals-form impure install flags should be rejected before invoking pnpm"
+    exit 1
+  fi
+)
+
+echo "Test 19: impure separated install flags are rejected before pnpm runs"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm.log"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install-impure-separated.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "separated impure install flags should be rejected"
+  grep -qF "[pnpm] Refusing impure install argument: --config.package-import-method" <<< "$output"
+  if grep -q "^install " "$tmpdir/pnpm.log"; then
+    echo "FAIL: separated impure install flags should be rejected before invoking pnpm"
+    exit 1
+  fi
+)
+
+echo "Test 20: impure separated store-dir flags are rejected before pnpm runs"
+grep -qF -- "--config.store-dir=* | --config.store-dir | --store-dir=* | --store-dir)" "$tmpdir/pnpm-install-impure-store-dir-separated.exec.sh"
+grep -qF -- 'reject_impure_pnpm_install_args "${extra_install_args[@]}" --store-dir /tmp/other-pnpm-store' "$tmpdir/pnpm-install-impure-store-dir-separated.exec.sh"
+
+echo "Test 21: impure strict-store flags are rejected before pnpm runs"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm.log"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install-impure-strict-store.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "strict-store override should be rejected"
+  grep -qF "[pnpm] Refusing impure install argument: --config.strict-store-pkg-content-check=false" <<< "$output"
+  if grep -q "^install " "$tmpdir/pnpm.log"; then
+    echo "FAIL: strict-store override should be rejected before invoking pnpm"
+    exit 1
+  fi
+)
+
+echo "Test 22: impure pm-on-fail flags are rejected before pnpm runs"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm.log"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install-impure-pm-on-fail.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "pm-on-fail override should be rejected"
+  grep -qF "[pnpm] Refusing impure install argument: --pm-on-fail=download" <<< "$output"
+  if grep -q "^install " "$tmpdir/pnpm.log"; then
+    echo "FAIL: pm-on-fail override should be rejected before invoking pnpm"
+    exit 1
+  fi
+)
+
+echo "Test 23: CI install failures preserve and classify the pnpm log"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -491,27 +615,28 @@ echo "Test 17: CI install failures preserve and classify the pnpm log"
   grep -qF "Socket timeout" <<< "$output"
 )
 
-echo "Test 18: generated test task runs vitest without pnpm exec"
+echo "Test 24: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 19: generated storybook task runs storybook without pnpm exec"
+echo "Test 25: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
   [ "$output" = "storybook-shim:build" ]
 )
 
-echo "Test 20: clean leaves shared GVS links intact"
+echo "Test 26: clean leaves shared GVS links intact"
 (
   cd "$workspace"
-  mkdir -p "$workspace/.devenv/pnpm-store/v11/links/shared-pkg"
+  export HOME="$tmpdir/home"
+  mkdir -p "$workspace/.devenv/pnpm-store-pure-v1/v11/links/shared-pkg"
   mkdir -p "$workspace/node_modules" "$workspace/packages/demo/node_modules"
   bash "$tmpdir/pnpm-clean.exec.sh"
-  test -d "$workspace/.devenv/pnpm-store/v11/links/shared-pkg"
+  test -d "$workspace/.devenv/pnpm-store-pure-v1/v11/links/shared-pkg"
   test ! -e "$workspace/node_modules"
   test ! -e "$workspace/packages/demo/node_modules"
 )

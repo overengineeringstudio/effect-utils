@@ -318,6 +318,12 @@ importers:
         specifier: 2.0.0
         version: 2.0.0(peer@1.0.0)
 
+packages:
+  peer-pkg@2.0.0:
+    resolution: {integrity: sha512-peer}
+    peerDependencies:
+      peer: ^1.0.0
+
 snapshots:
   foo@1.2.30: {}
   peer-pkg@2.0.0(peer@1.0.0): {}
@@ -336,6 +342,9 @@ YAML
   grep -q "'foo@1.2.30': hash-foo-30" "$fixture/target/pnpm-lock.yaml"
   grep -q "'peer-pkg@2.0.0': hash-peer" "$fixture/target/pnpm-lock.yaml"
   grep -q "version: 2.0.0(patch_hash=hash-peer)(peer@1.0.0)" "$fixture/target/pnpm-lock.yaml"
+  grep -q "  peer-pkg@2.0.0:" "$fixture/target/pnpm-lock.yaml"
+  grep -q "'peer-pkg@2.0.0(patch_hash=hash-peer)':" "$fixture/target/pnpm-lock.yaml"
+  grep -q "  peer-pkg@2.0.0(peer@1.0.0):" "$fixture/target/pnpm-lock.yaml"
   grep -q "'peer-pkg@2.0.0(patch_hash=hash-peer)(peer@1.0.0)':" "$fixture/target/pnpm-lock.yaml"
   grep -q "'peer-pkg@2.0.0': .root-patches/patches/peer.patch" "$fixture/target/pnpm-workspace.yaml"
   rm -rf "$fixture"

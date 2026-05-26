@@ -81,6 +81,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -321,7 +322,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run otel:test --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test --mode before'
+          run_nix_gc_race_retry 'devenv tasks run otel:test --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run otel:test --mode before'
           command -v script >/dev/null 2>&1
           tmp_log="$(mktemp)"
           printf 'printf "OTEL_MODE=%%s\n" "$OTEL_MODE"
@@ -446,7 +447,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run ts:check:strict --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check:strict --mode before'
+          run_nix_gc_race_retry 'devenv tasks run ts:check:strict --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check:strict --mode before'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -562,6 +563,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -801,7 +803,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run lint:check --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
+          run_nix_gc_race_retry 'devenv tasks run lint:check --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -920,6 +922,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -1159,7 +1162,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run test:run --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
+          run_nix_gc_race_retry 'devenv tasks run test:run --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -1278,6 +1281,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -1517,7 +1521,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run nix:check --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
+          run_nix_gc_race_retry 'devenv tasks run nix:check --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -1910,6 +1914,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -2046,8 +2051,12 @@ jobs:
             exit 1
           fi
           for required in \
-            'manage-package-manager-versions=false' \
-            'npm_config_manage_package_manager_versions=false' \
+            'store-dir=%s' \
+            'side-effects-cache=false' \
+            'verify-store-integrity=true' \
+            'package-import-method=%s' \
+            'pm-on-fail=ignore' \
+            'strict-store-pkg-content-check=true' \
             'frozenLockfile ? true' \
             'pnpm install --frozen-lockfile --ignore-scripts'; do
             if ! grep -Fq -- "$required" "$builder"; then
@@ -2056,6 +2065,7 @@ jobs:
             fi
           done
           for forbidden in \
+            'package-import-method=hardlink' \
             'lockfile-only' \
             'pnpm add pnpm@'; do
             if grep -Fq -- "$forbidden" "$builder"; then
@@ -2178,6 +2188,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -2434,6 +2445,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -3271,6 +3283,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -6737,6 +6750,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -6976,7 +6990,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run test:notion-integration --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration --mode before'
+          run_nix_gc_race_retry 'devenv tasks run test:notion-integration --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration --mode before'
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -7096,6 +7110,7 @@ jobs:
         shell: bash
         run: |
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-state
         name: Restore pnpm state
@@ -7344,7 +7359,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run netlify:deploy --show-output --input type=prod --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --mode before' 2>&1 | tee "$tmp_log"
+          run_nix_gc_race_retry 'devenv tasks run netlify:deploy --show-output --input type=prod --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --mode before' 2>&1 | tee "$tmp_log"
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             __nix_gc_retry_helper=$(mktemp)
           cat > "$__nix_gc_retry_helper" <<'EOF'
@@ -7457,7 +7472,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' 2>&1 | tee "$tmp_log"
+          run_nix_gc_race_retry 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" PNPM_CONFIG_STORE_DIR="${PNPM_CONFIG_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' 2>&1 | tee "$tmp_log"
           fi
           deploy_exit=${PIPESTATUS[0]}
           if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi

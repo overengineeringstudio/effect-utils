@@ -24,7 +24,7 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-hgy6ERXJmrm7qCVCdm+ZIGcCNgvPOINvQa8bbEVUWsI=";
+        hash = "sha256-l3vx+W5mdMqQjTkRQZT15ic9suFBFMPL12FW4NjekDQ=";
       };
     };
     nativeNodePackages = [ opentuiCoreNative ];
