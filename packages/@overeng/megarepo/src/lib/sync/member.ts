@@ -894,7 +894,6 @@ export const syncMember = <R = never>({
       ref: worktreeRef,
       refType: worktreeRefType,
     })
-
     // Create symlink from workspace to worktree
     const existingLink = yield* fs
       .readLink(memberPathNormalized)

@@ -56,7 +56,19 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/tui-react**: Let Effect CLI own Ctrl-C entrypoint handling for `run(App, handler)`. Apps whose action schema includes `Interrupted` now dispatch it during normal Effect interruption finalization, map interrupt-only CLI exits to code 130, and suppress noisy interrupt-only error output in `runTuiMain`.
+- **@overeng/megarepo**: Stop store repository discovery from walking internal scratch roots like `tmp` before scanning repos, yield during repository discovery so Effect interruption can propagate promptly, and tighten CLI OTel flush timing so interrupted TTY commands return quickly while still exporting traces.
+- **@overeng/megarepo**: Improve `mr store gc --dry-run --output tty` progress UX with early phase updates, heartbeat refreshes, realtime worktree discovery/active-check counts, explicit interrupted output, exit code 130 for Ctrl-C, and more granular OTel spans for removal status checks. GC removal checks now use a single `git status --untracked-files=normal` dirty preflight before the upstream check, avoiding expensive recursive untracked-file enumeration while still failing closed for dirty worktrees.
+- **@overeng/megarepo**: Make store GC worktree discovery layout-authoritative across branch, tag, and commit ref roots, and add OTel/log visibility when `git worktree list` cannot be read.
 - **@overeng/megarepo**: Avoid recursive `mr fetch --apply --all` hangs when nested apply falls back from a detached branch worktree to an already-created commit worktree.
+- **@overeng/megarepo**: Make `mr store gc` data-loss safe for shared stores.
+  - Tracks workspace liveness in a store-local registry and protects both active `repos/*` symlink targets and lock-derived `refs/heads/*` / `refs/commits/*` paths.
+  - Keeps named `refs/heads/*` and `refs/tags/*` worktrees by default while reclaiming clean unrooted `refs/commits/*` worktrees.
+  - Removes the temporary managed/unmanaged store metadata model and the `--include-unleased` GC mode.
+  - Forces untracked-file detection during worktree status checks so user/global Git config cannot hide untracked work from GC.
+  - Skips worktrees whose git status cannot be inspected unless `--force` is passed, preserving the fail-closed deletion policy.
+  - Acquires worktree locks before removal and reports deletion errors as `error` instead of `removed`.
+  - Discovers store repositories by `.bare/` presence instead of assuming only `host/owner/repo` paths, traverses discovery concurrently, skips dirty checks for named refs protected by default, streams GC progress through TTY/NDJSON output, avoids recursive worktree-content scans during GC discovery, prunes Git worktree metadata once per repo after safe removals, and adds OTel spans for GC, liveness, and repo discovery.
 - **@overeng/react-inspector**: Render the schema display name exactly once in collapsed schema-aware object previews (#684). `SchemaAwareObjectPreview` is now the single owner of the schema title (rendered in the object-description slot, italicized when sourced from a `title`/`identifier` annotation); the collapsed branch in `SchemaAwareNodeRenderer` no longer prefixes a duplicate copy. Fixes `0: Source Origin Summary Source Origin Summary {…}` → `0: Source Origin Summary {…}`.
 - **devenv/tasks/shared/nix-cli**: Make `dt nix:hash:*` update nested `depsBuilds.".".hash` entries used by `mkPnpmCli`
   - Lets CLI package hash refreshes converge again after repo-root `pnpm-lock.yaml` changes instead of looping until max iterations

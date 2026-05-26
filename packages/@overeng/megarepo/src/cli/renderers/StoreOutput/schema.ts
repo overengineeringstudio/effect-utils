@@ -33,6 +33,7 @@ export type StoreFetchResult = Schema.Schema.Type<typeof StoreFetchResult>
 export const StoreGcResult = Schema.Struct({
   repo: Schema.String,
   ref: Schema.String,
+  refType: Schema.Literal('heads', 'tags', 'commits'),
   path: Schema.String,
   status: Schema.Literal('removed', 'skipped_dirty', 'skipped_in_use', 'error'),
   message: Schema.optional(Schema.String),
@@ -120,6 +121,14 @@ export const StoreGcState = Schema.TaggedStruct('Gc', {
   dryRun: Schema.Boolean,
   warning: Schema.optional(StoreGcWarning),
   showForceHint: Schema.Boolean,
+  processedCount: Schema.optional(Schema.Number),
+  repoCount: Schema.optional(Schema.Number),
+  completedRepoCount: Schema.optional(Schema.Number),
+  discoveredWorktreeCount: Schema.optional(Schema.Number),
+  activeWorktreeCount: Schema.optional(Schema.Number),
+  statusMessage: Schema.optional(Schema.String),
+  done: Schema.optional(Schema.Boolean),
+  interrupted: Schema.optional(Schema.Boolean),
 })
 
 /**
@@ -176,6 +185,11 @@ export const StoreErrorState = Schema.TaggedStruct('Error', {
 })
 
 /**
+ * Interrupted state - command was cancelled by the user.
+ */
+export const StoreInterruptedState = Schema.TaggedStruct('Interrupted', {})
+
+/**
  * State for all store commands - discriminated by _tag property.
  */
 export const StoreState = Schema.Union(
@@ -187,6 +201,7 @@ export const StoreState = Schema.Union(
   StoreWorktreeNewState,
   StoreFixState,
   StoreErrorState,
+  StoreInterruptedState,
 )
 
 export type StoreState = typeof StoreState.Type
@@ -257,6 +272,14 @@ export const StoreAction = Schema.Union(
     dryRun: Schema.Boolean,
     warning: Schema.optional(StoreGcWarning),
     showForceHint: Schema.Boolean,
+    processedCount: Schema.optional(Schema.Number),
+    repoCount: Schema.optional(Schema.Number),
+    completedRepoCount: Schema.optional(Schema.Number),
+    discoveredWorktreeCount: Schema.optional(Schema.Number),
+    activeWorktreeCount: Schema.optional(Schema.Number),
+    statusMessage: Schema.optional(Schema.String),
+    done: Schema.optional(Schema.Boolean),
+    interrupted: Schema.optional(Schema.Boolean),
   }),
   Schema.TaggedStruct('SetAdd', {
     status: Schema.Literal('added', 'already_exists', 'created'),
@@ -284,6 +307,7 @@ export const StoreAction = Schema.Union(
     message: Schema.String,
     source: Schema.optional(Schema.String),
   }),
+  Schema.TaggedStruct('Interrupted', {}),
 )
 
 /** Inferred type for store actions. */
@@ -328,6 +352,14 @@ export const storeReducer = ({
         dryRun: action.dryRun,
         warning: action.warning,
         showForceHint: action.showForceHint,
+        processedCount: action.processedCount,
+        repoCount: action.repoCount,
+        completedRepoCount: action.completedRepoCount,
+        discoveredWorktreeCount: action.discoveredWorktreeCount,
+        activeWorktreeCount: action.activeWorktreeCount,
+        statusMessage: action.statusMessage,
+        done: action.done,
+        interrupted: action.interrupted,
       }
     case 'SetAdd':
       return {
@@ -363,5 +395,16 @@ export const storeReducer = ({
         message: action.message,
         source: action.source,
       }
+    case 'Interrupted':
+      if (_state._tag === 'Gc') {
+        return {
+          ..._state,
+          activeWorktreeCount: 0,
+          statusMessage: 'interrupted',
+          done: true,
+          interrupted: true,
+        }
+      }
+      return { _tag: 'Interrupted' }
   }
 }

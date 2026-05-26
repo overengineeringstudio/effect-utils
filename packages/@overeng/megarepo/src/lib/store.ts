@@ -109,6 +109,9 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // Store Implementation
 // =============================================================================
 
+const shouldSkipStoreRootEntry = (entry: string): boolean =>
+  entry.startsWith('.') === true || entry === 'tmp'
+
 const make = ({
   config,
   fs,
@@ -242,63 +245,72 @@ const make = ({
           fullPath: AbsoluteDirPath
         }> = []
 
-        // Walk the store directory (2 levels deep for host/owner/repo structure)
-        const hosts = yield* fs.readDirectory(basePath)
-        for (const host of hosts) {
-          // Skip hidden files/directories (like .DS_Store)
-          if (host.startsWith('.') === true) continue
-
-          const hostPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${host}/`))
-          const hostStat = yield* fs
-            .stat(hostPath)
-            .pipe(Effect.catchAll(() => Effect.succeed(null)))
-          if (hostStat?.type !== 'Directory') continue
-
-          const owners = yield* fs.readDirectory(hostPath)
-          for (const owner of owners) {
-            // Skip hidden files/directories
-            if (owner.startsWith('.') === true) continue
-
-            const ownerPath = EffectPath.ops.join(
-              hostPath,
-              EffectPath.unsafe.relativeDir(`${owner}/`),
-            )
-            const ownerStat = yield* fs
-              .stat(ownerPath)
-              .pipe(Effect.catchAll(() => Effect.succeed(null)))
-            if (ownerStat?.type !== 'Directory') continue
-
-            const repos = yield* fs.readDirectory(ownerPath)
-            for (const repo of repos) {
-              // Skip hidden files/directories
-              if (repo.startsWith('.') === true) continue
-
-              const repoPath = EffectPath.ops.join(
-                ownerPath,
-                EffectPath.unsafe.relativeDir(`${repo}/`),
-              )
-              const repoStat = yield* fs
-                .stat(repoPath)
-                .pipe(Effect.catchAll(() => Effect.succeed(null)))
-              if (repoStat?.type !== 'Directory') continue
-
-              // Only include repos that have a .bare directory
-              const barePath = EffectPath.ops.join(
-                repoPath,
-                EffectPath.unsafe.relativeDir('.bare/'),
-              )
-              const hasBare = yield* fs.exists(barePath)
-              if (hasBare === false) continue
-
+        const walk = (dir: AbsoluteDirPath): Effect.Effect<void, PlatformError.PlatformError> =>
+          Effect.gen(function* () {
+            yield* Effect.yieldNow()
+            const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
+            const hasBare = yield* fs.exists(barePath)
+            if (hasBare === true) {
+              const relativePath = `${dir.slice(basePath.length).replace(/^\/+/, '').replace(/\/?$/, '/')}`
               result.push({
-                relativePath: EffectPath.unsafe.relativeDir(`${host}/${owner}/${repo}/`),
-                fullPath: repoPath,
+                relativePath: EffectPath.unsafe.relativeDir(relativePath),
+                fullPath: dir,
               })
+              return
             }
-          }
-        }
 
-        return result
+            const entries = yield* fs.readDirectory(dir)
+            yield* Effect.all(
+              entries.map((entry) =>
+                Effect.gen(function* () {
+                  if (entry.startsWith('.') === true) {
+                    return
+                  }
+
+                  const entryPath = EffectPath.ops.join(
+                    dir,
+                    EffectPath.unsafe.relativeDir(`${entry}/`),
+                  )
+                  const entryStat = yield* fs
+                    .stat(entryPath)
+                    .pipe(Effect.catchAll(() => Effect.succeed(null)))
+                  if (entryStat?.type !== 'Directory') return
+
+                  yield* walk(entryPath)
+                }),
+              ),
+              { concurrency: 32 },
+            )
+          })
+
+        const namespaces = yield* fs.readDirectory(basePath)
+        yield* Effect.all(
+          namespaces.map((entry) =>
+            Effect.gen(function* () {
+              if (shouldSkipStoreRootEntry(entry) === true) {
+                return
+              }
+
+              const entryPath = EffectPath.ops.join(
+                basePath,
+                EffectPath.unsafe.relativeDir(`${entry}/`),
+              )
+              const entryStat = yield* fs
+                .stat(entryPath)
+                .pipe(Effect.catchAll(() => Effect.succeed(null)))
+              if (entryStat?.type !== 'Directory') return
+
+              yield* walk(entryPath)
+            }),
+          ),
+          { concurrency: 32 },
+        ).pipe(
+          Effect.withSpan('megarepo/store/list-repos', {
+            attributes: { 'span.label': 'repos' },
+          }),
+        )
+
+        return result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
       }),
 
     listWorktrees: (source) =>

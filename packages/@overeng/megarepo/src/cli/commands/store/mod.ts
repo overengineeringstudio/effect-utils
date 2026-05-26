@@ -6,7 +6,7 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schedule, Stream } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -19,15 +19,23 @@ import {
   readMegarepoConfig,
 } from '../../../lib/config.ts'
 import * as Git from '../../../lib/git.ts'
-import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
+import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { classifyRef } from '../../../lib/ref.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
+import { collectStoreLiveSet, type StoreLiveSet } from '../../../lib/store-liveness.ts'
+import { StoreLock } from '../../../lib/store-lock.ts'
+import { classifyStoreWorktreePolicy } from '../../../lib/store-worktree-policy.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { StoreCommandError } from '../../errors.ts'
 import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
-import type { StoreWorktreeStatus, StoreWorktreeIssue } from '../../renderers/StoreOutput/mod.ts'
+import type {
+  StoreAction,
+  StoreGcResult,
+  StoreWorktreeStatus,
+  StoreWorktreeIssue,
+} from '../../renderers/StoreOutput/mod.ts'
 
 /** Entry returned by collectStoreWorktrees — `broken` indicates a directory that looks like a worktree but is missing its .git file */
 type CollectedWorktree = {
@@ -36,6 +44,32 @@ type CollectedWorktree = {
   path: AbsoluteDirPath
   broken: boolean
 }
+
+type GcWorktreeDecision =
+  | {
+      readonly worktree: CollectedWorktree
+      readonly action: 'skipped_in_use'
+      readonly message?: string | undefined
+    }
+  | {
+      readonly worktree: CollectedWorktree
+      readonly action: 'status_failed'
+      readonly message: string
+    }
+  | {
+      readonly worktree: CollectedWorktree
+      readonly action: 'check'
+      readonly status: {
+        readonly isDirty: boolean
+        readonly hasUnpushed: boolean
+        readonly changesCount: number
+      }
+    }
+
+const GC_REPO_CONCURRENCY = 1
+const GC_WORKTREE_CONCURRENCY = 1
+const GC_PROGRESS_BATCH_SIZE = 10
+const STORE_REF_TYPES = ['heads', 'tags', 'commits'] as const
 
 const collectStoreWorktrees = ({
   fs,
@@ -97,6 +131,168 @@ const collectStoreWorktrees = ({
     return result
   })
 
+const collectRepoStoreWorktrees = ({
+  fs,
+  repoPath,
+  bareRepoPath,
+}: {
+  fs: FileSystem.FileSystem
+  repoPath: AbsoluteDirPath
+  bareRepoPath: AbsoluteDirPath
+}) =>
+  Effect.gen(function* () {
+    const repoPrefix = repoPath.replace(/\/+$/, '')
+    const refsPrefix = `${repoPrefix}/refs/`
+    const realRepoPrefix = yield* fs.realPath(repoPath).pipe(
+      Effect.map((path) => path.replace(/\/+$/, '')),
+      Effect.catchAll(() => Effect.succeed(repoPrefix)),
+    )
+    const realRefsPrefix = `${realRepoPrefix}/refs/`
+    const result: Array<CollectedWorktree> = []
+    const seenPaths = new Set<string>()
+
+    const gitWorktrees = yield* Git.listWorktrees(bareRepoPath).pipe(
+      Effect.tapError((error) =>
+        Effect.gen(function* () {
+          yield* Effect.annotateCurrentSpan('store.git_worktree_list.failed', true)
+          yield* Effect.logWarning('Falling back to store layout worktree discovery').pipe(
+            Effect.annotateLogs({
+              repoPath,
+              bareRepoPath,
+              error: error instanceof Error === true ? error.message : String(error),
+            }),
+          )
+        }),
+      ),
+      Effect.catchAll(() => Effect.succeed([])),
+    )
+
+    for (const worktree of gitWorktrees) {
+      const normalizedPath = worktree.path.replace(/\/+$/, '')
+      const relativePath =
+        normalizedPath.startsWith(refsPrefix) === true
+          ? normalizedPath.slice(refsPrefix.length)
+          : normalizedPath.startsWith(realRefsPrefix) === true
+            ? normalizedPath.slice(realRefsPrefix.length)
+            : undefined
+      if (relativePath === undefined) continue
+
+      const separatorIndex = relativePath.indexOf('/')
+      if (separatorIndex === -1) continue
+
+      const refType = relativePath.slice(0, separatorIndex)
+      if (refType !== 'heads' && refType !== 'tags' && refType !== 'commits') continue
+
+      const ref = relativePath.slice(separatorIndex + 1)
+      if (ref.length === 0) continue
+
+      seenPaths.add(normalizedPath)
+      seenPaths.add(`${repoPrefix}/refs/${relativePath}`)
+      result.push({
+        ref,
+        refType,
+        path: EffectPath.unsafe.absoluteDir(`${repoPrefix}/refs/${relativePath}/`),
+        broken: false,
+      })
+    }
+
+    for (const refType of STORE_REF_TYPES) {
+      const refTypePath = EffectPath.ops.join(
+        repoPath,
+        EffectPath.unsafe.relativeDir(`refs/${refType}/`),
+      )
+      const refTypeStat = yield* fs
+        .stat(refTypePath)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)))
+      if (refTypeStat?.type !== 'Directory') continue
+
+      const layoutWorktrees = yield* collectStoreWorktrees({
+        fs,
+        refTypePath,
+        currentPath: refTypePath,
+        refType,
+      })
+
+      for (const worktree of layoutWorktrees) {
+        const normalizedPath = worktree.path.replace(/\/+$/, '')
+        if (seenPaths.has(normalizedPath) === true) continue
+
+        seenPaths.add(normalizedPath)
+        result.push(worktree)
+      }
+    }
+
+    return result
+  }).pipe(
+    Effect.withSpan('megarepo/store/gc/collect-worktrees', {
+      attributes: {
+        'span.label': repoPath,
+        'store.repo.path': repoPath,
+        'store.bare_repo.path': bareRepoPath,
+      },
+    }),
+  )
+
+const classifyGcWorktree = ({
+  worktree,
+  liveSet,
+  all,
+}: {
+  worktree: CollectedWorktree
+  liveSet: StoreLiveSet
+  all: boolean
+}) =>
+  Effect.gen(function* () {
+    const policy = classifyStoreWorktreePolicy({
+      liveSet,
+      mode: all === true ? 'all' : 'default',
+      worktree,
+    })
+    if (policy.isProtected === true) {
+      return {
+        worktree,
+        action: 'skipped_in_use' as const,
+        ...(policy.message !== undefined ? { message: policy.message } : {}),
+      }
+    }
+
+    /** Broken worktrees have no .git — skip git status, proceed directly to removal. */
+    if (worktree.broken === true) {
+      return {
+        worktree,
+        action: 'check' as const,
+        status: { isDirty: false, hasUnpushed: false, changesCount: 0 },
+      }
+    }
+
+    const statusResult = yield* Git.getWorktreeRemovalStatus(worktree.path).pipe(
+      Effect.map((status) => ({ _tag: 'status' as const, status })),
+      Effect.catchAll((error) =>
+        Effect.succeed({
+          _tag: 'status_failed' as const,
+          message: error instanceof Error === true ? error.message : String(error),
+        }),
+      ),
+    )
+    if (statusResult._tag === 'status_failed') {
+      return {
+        worktree,
+        action: 'status_failed' as const,
+        message: statusResult.message,
+      }
+    }
+
+    return { worktree, action: 'check' as const, status: statusResult.status }
+  }).pipe(
+    Effect.withSpan('megarepo/store/gc/classify-worktree', {
+      attributes: {
+        'span.label': `${worktree.refType}/${worktree.ref}`,
+        'store.ref.type': worktree.refType,
+        'store.worktree.broken': worktree.broken,
+      },
+    }),
+  )
+
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
   Effect.gen(function* () {
@@ -128,36 +324,13 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     const store = yield* Store
     const fs = yield* FileSystem.FileSystem
 
-    // Get lock file from current megarepo (if any) to determine orphaned worktrees
     const root = yield* findMegarepoRoot(cwd)
-    let inUsePaths = new Set<string>()
-
-    if (Option.isSome(root) === true) {
-      const lockPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-      )
-      const lockFileOpt = yield* readLockFile(lockPath)
-      const lockFile = Option.getOrUndefined(lockFileOpt)
-
-      if (lockFile !== undefined) {
-        const { config } = yield* readMegarepoConfig(root.value)
-
-        for (const [name, sourceString] of Object.entries(config.members)) {
-          const source = parseSourceString(sourceString)
-          if (source === undefined || isRemoteSource(source) === false) continue
-
-          const lockedMember = lockFile.members[name]
-          if (lockedMember === undefined) continue
-
-          const worktreePath = store.getWorktreePath({
-            source,
-            ref: lockedMember.ref,
-          })
-          inUsePaths.add(worktreePath)
-        }
-      }
-    }
+    const liveSet = yield* collectStoreLiveSet({
+      store,
+      ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+      pruneStaleRegistry: true,
+      refreshCurrentWorkspace: true,
+    })
 
     // List all repos and analyze worktrees in parallel
     const repos = yield* store.listRepos()
@@ -265,11 +438,20 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                     }
                   }
 
-                  if (inUsePaths.has(worktreePath) === false) {
+                  if (
+                    classifyStoreWorktreePolicy({
+                      liveSet,
+                      mode: 'default',
+                      worktree: {
+                        refType: refTypeDir,
+                        path: worktreePath,
+                      },
+                    }).isProtected === false
+                  ) {
                     issues.push({
                       type: 'orphaned',
                       severity: 'info',
-                      message: 'not in current megarepo.lock',
+                      message: 'unrooted commit worktree; eligible for store gc when clean',
                     })
                   }
 
@@ -395,224 +577,351 @@ const storeGcCommand = Cli.Command.make(
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const store = yield* Store
+      const storeLock = yield* StoreLock
       const fs = yield* FileSystem.FileSystem
 
-      // Get lock file from current megarepo (if any)
-      const root = yield* findMegarepoRoot(cwd)
-      let lockFile: LockFile | undefined
-      let inUsePaths = new Set<string>()
+      let root = Option.none<AbsoluteDirPath>()
+      let liveSetForMetrics: StoreLiveSet | undefined
+      let gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined
+      let repoCount: number | undefined
 
-      if (Option.isSome(root) === true && all === false) {
-        const lockPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-        )
-        const lockFileOpt = yield* readLockFile(lockPath)
-        lockFile = Option.getOrUndefined(lockFileOpt)
+      const processGcDecision = ({
+        decision,
+        repoRelativePath,
+        bareRepoPath,
+      }: {
+        decision: GcWorktreeDecision
+        repoRelativePath: string
+        bareRepoPath: AbsoluteDirPath
+      }) =>
+        Effect.gen(function* () {
+          const { worktree } = decision
 
-        // Build set of worktree paths that are "in use"
-        if (lockFile !== undefined) {
-          const { config } = yield* readMegarepoConfig(root.value)
-
-          for (const [name, sourceString] of Object.entries(config.members)) {
-            const source = parseSourceString(sourceString)
-            if (source === undefined || isRemoteSource(source) === false) continue
-
-            const lockedMember = lockFile.members[name]
-            if (lockedMember === undefined) continue
-
-            // Mark the worktree path as in use
-            const worktreePath = store.getWorktreePath({
-              source,
-              ref: lockedMember.ref,
-            })
-            inUsePaths.add(worktreePath)
+          if (decision.action === 'skipped_in_use') {
+            return {
+              repo: repoRelativePath,
+              ref: worktree.ref,
+              refType: worktree.refType,
+              path: worktree.path,
+              status: 'skipped_in_use',
+              ...(decision.message !== undefined ? { message: decision.message } : {}),
+            } satisfies StoreGcResult
           }
-        }
-      }
 
-      // Determine warning type for output
-      const gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined =
-        all === false && Option.isNone(root) === true
-          ? { type: 'not_in_megarepo' }
-          : all === false && Option.isSome(root) === true
-            ? { type: 'only_current_megarepo' }
-            : undefined
+          if (decision.action === 'status_failed' && force === false) {
+            return {
+              repo: repoRelativePath,
+              ref: worktree.ref,
+              refType: worktree.refType,
+              path: worktree.path,
+              status: 'skipped_dirty',
+              message: `unable to inspect worktree status: ${decision.message}`,
+            } satisfies StoreGcResult
+          }
 
-      // List all repos and process their worktrees (parallel across repos,
-      // sequential within a repo to avoid git conflicts on the same bare repo)
-      const repos = yield* store.listRepos()
+          if (
+            decision.action === 'check' &&
+            (decision.status.isDirty === true || decision.status.hasUnpushed === true) &&
+            force === false
+          ) {
+            return {
+              repo: repoRelativePath,
+              ref: worktree.ref,
+              refType: worktree.refType,
+              path: worktree.path,
+              status: 'skipped_dirty',
+              message:
+                decision.status.isDirty === true
+                  ? `${decision.status.changesCount} uncommitted change(s)`
+                  : 'has unpushed commits',
+            } satisfies StoreGcResult
+          }
 
-      const repoGcResults = yield* Effect.all(
-        repos.map((repo) =>
-          Effect.gen(function* () {
-            const worktrees = yield* Effect.gen(function* () {
-              const refsDir = EffectPath.ops.join(
-                repo.fullPath,
-                EffectPath.unsafe.relativeDir('refs/'),
-              )
-              const exists = yield* fs.exists(refsDir)
-              if (exists === false) return []
-
-              const result: Array<CollectedWorktree> = []
-
-              const refTypes = yield* fs.readDirectory(refsDir)
-              for (const refTypeDir of refTypes) {
-                if (refTypeDir !== 'heads' && refTypeDir !== 'tags' && refTypeDir !== 'commits')
-                  continue
-
-                const refTypePath = EffectPath.ops.join(
-                  refsDir,
-                  EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
-                )
-                const refTypeStat = yield* fs
-                  .stat(refTypePath)
-                  .pipe(Effect.catchAll(() => Effect.succeed(null)))
-                if (refTypeStat?.type !== 'Directory') continue
-
-                result.push(
-                  ...(yield* collectStoreWorktrees({
-                    fs,
-                    refTypePath,
-                    currentPath: refTypePath,
-                    refType: refTypeDir,
-                  })),
-                )
-              }
-
-              return result
-            })
-
-            // First: check status of all worktrees in parallel (the expensive part)
-            const worktreeStatuses = yield* Effect.all(
-              worktrees.map((worktree) =>
+          if (dryRun === false) {
+            const removeResult = yield* storeLock
+              .withWorktreeLock(worktree.path)(
                 Effect.gen(function* () {
-                  if (inUsePaths.has(worktree.path) === true) {
-                    return { worktree, action: 'skipped_in_use' as const, status: undefined }
+                  const removalLiveSet = yield* collectStoreLiveSet({
+                    store,
+                    ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+                    pruneStaleRegistry: true,
+                    refreshCurrentWorkspace: false,
+                  })
+                  const removalPolicy = classifyStoreWorktreePolicy({
+                    liveSet: removalLiveSet,
+                    mode: all === true ? 'all' : 'default',
+                    worktree,
+                  })
+                  if (removalPolicy.isProtected === true) {
+                    return { _tag: 'skipped_live' as const, message: removalPolicy.message }
                   }
 
-                  /** Broken worktrees have no .git — skip git status, proceed directly to removal */
-                  if (worktree.broken === true) {
-                    return {
-                      worktree,
-                      action: 'check' as const,
-                      status: { isDirty: false, hasUnpushed: false, changesCount: 0 },
-                    }
-                  }
-
-                  const status = yield* Git.getWorktreeStatus(worktree.path).pipe(
-                    Effect.catchAll(() =>
-                      Effect.succeed({
-                        isDirty: false,
-                        hasUnpushed: false,
-                        changesCount: 0,
-                      }),
-                    ),
-                  )
-                  return { worktree, action: 'check' as const, status }
+                  yield* fs.remove(worktree.path, { recursive: true })
+                  return { _tag: 'removed' as const }
                 }),
-              ),
-              { concurrency: 8 },
-            )
+              )
+              .pipe(
+                Effect.catchAll((error) =>
+                  Effect.succeed({
+                    _tag: 'error' as const,
+                    message: error instanceof Error === true ? error.message : String(error),
+                  }),
+                ),
+              )
 
-            // Then: process removals sequentially (git operations on the same bare repo)
-            const repoResults: Array<{
-              repo: string
-              ref: string
-              path: string
-              status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'error'
-              message?: string
-            }> = []
-
-            for (const { worktree, action, status } of worktreeStatuses) {
-              if (action === 'skipped_in_use') {
-                repoResults.push({
-                  repo: repo.relativePath,
-                  ref: worktree.ref,
-                  path: worktree.path,
-                  status: 'skipped_in_use',
-                })
-                continue
-              }
-
-              if (
-                status !== undefined &&
-                (status.isDirty === true || status.hasUnpushed === true) &&
-                force === false
-              ) {
-                repoResults.push({
-                  repo: repo.relativePath,
-                  ref: worktree.ref,
-                  path: worktree.path,
-                  status: 'skipped_dirty',
-                  message:
-                    status.isDirty === true
-                      ? `${status.changesCount} uncommitted change(s)`
-                      : 'has unpushed commits',
-                })
-                continue
-              }
-
-              if (dryRun === false) {
-                yield* Effect.gen(function* () {
-                  if (worktree.broken === true) {
-                    /** Broken worktrees can't be removed via git — just delete the directory */
-                    yield* fs.remove(worktree.path, { recursive: true })
-                  } else {
-                    const bareRepoPath = EffectPath.ops.join(
-                      repo.fullPath,
-                      EffectPath.unsafe.relativeDir('.bare/'),
-                    )
-                    yield* Git.removeWorktree({
-                      repoPath: bareRepoPath,
-                      worktreePath: worktree.path,
-                      force: force,
-                    }).pipe(Effect.catchAll(() => fs.remove(worktree.path, { recursive: true })))
-                  }
-                }).pipe(
-                  Effect.catchAll((error) =>
-                    Effect.succeed({
-                      error: error instanceof Error === true ? error.message : String(error),
-                    }),
-                  ),
-                )
-              }
-
-              repoResults.push({
-                repo: repo.relativePath,
+            if (removeResult._tag === 'skipped_live') {
+              return {
+                repo: repoRelativePath,
                 ref: worktree.ref,
+                refType: worktree.refType,
                 path: worktree.path,
-                status: 'removed',
-              })
+                status: 'skipped_in_use',
+                ...(removeResult.message !== undefined ? { message: removeResult.message } : {}),
+              } satisfies StoreGcResult
             }
 
-            return repoResults
-          }),
-        ),
-        { concurrency: 8 },
-      )
+            if (removeResult._tag === 'error') {
+              return {
+                repo: repoRelativePath,
+                ref: worktree.ref,
+                refType: worktree.refType,
+                path: worktree.path,
+                status: 'error',
+                message: removeResult.message,
+              } satisfies StoreGcResult
+            }
+          }
 
-      const results = repoGcResults.flat()
+          return {
+            repo: repoRelativePath,
+            ref: worktree.ref,
+            refType: worktree.refType,
+            path: worktree.path,
+            status: 'removed',
+          } satisfies StoreGcResult
+        }).pipe(
+          Effect.withSpan('megarepo/store/gc/process-worktree', {
+            attributes: {
+              'span.label': `${repoRelativePath}refs/${decision.worktree.refType}/${decision.worktree.ref}`,
+              'store.repo': repoRelativePath,
+              'store.ref.type': decision.worktree.refType,
+              'store.worktree.path': decision.worktree.path,
+              'store.bare_repo.path': bareRepoPath,
+            },
+          }),
+        )
+
+      const results: StoreGcResult[] = []
+      let lastProgressResultCount = 0
+      let completedRepoCount = 0
+      let discoveredWorktreeCount = 0
+      let activeWorktreeCount = 0
+      let statusMessage: string | undefined = 'preparing store gc'
+
+      const dispatchGc = ({
+        done,
+        forceDispatch = false,
+      }: {
+        done: boolean
+        forceDispatch?: boolean
+      }) =>
+        Effect.sync(() => {
+          if (
+            forceDispatch === false &&
+            done === false &&
+            results.length - lastProgressResultCount < GC_PROGRESS_BATCH_SIZE
+          ) {
+            return
+          }
+          lastProgressResultCount = results.length
+          const dispatch = tuiDispatch
+          if (dispatch === undefined) return
+          dispatch({
+            _tag: 'SetGc',
+            basePath: store.basePath,
+            results: [...results],
+            dryRun,
+            warning: gcWarning,
+            showForceHint: !force,
+            processedCount: results.length,
+            repoCount,
+            completedRepoCount,
+            discoveredWorktreeCount,
+            activeWorktreeCount,
+            statusMessage,
+            done,
+          })
+        })
+
+      let tuiDispatch: ((action: StoreAction) => void) | undefined
 
       // Use TuiApp for output
       yield* run(
         StoreApp,
         (tui) =>
-          Effect.sync(() => {
-            tui.dispatch({
-              _tag: 'SetGc',
-              basePath: store.basePath,
-              results: results,
-              dryRun,
-              warning: gcWarning,
-              showForceHint: !force,
+          Effect.gen(function* () {
+            tuiDispatch = tui.dispatch
+            yield* dispatchGc({ done: false, forceDispatch: true })
+            yield* Stream.fromSchedule(Schedule.spaced('1 second')).pipe(
+              Stream.runForEach(() => dispatchGc({ done: false, forceDispatch: true })),
+              Effect.forkScoped,
+            )
+
+            statusMessage = 'collecting liveness registry'
+            yield* dispatchGc({ done: false, forceDispatch: true })
+            root = yield* findMegarepoRoot(cwd)
+            const liveSet = yield* collectStoreLiveSet({
+              store,
+              ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+              pruneStaleRegistry: dryRun === false,
+              refreshCurrentWorkspace: dryRun === false,
             })
+            liveSetForMetrics = liveSet
+
+            gcWarning =
+              all === false && Option.isNone(root) === true
+                ? { type: 'not_in_megarepo' }
+                : all === false && Option.isSome(root) === true
+                  ? { type: 'only_current_megarepo' }
+                  : undefined
+
+            statusMessage = 'listing store repositories'
+            yield* dispatchGc({ done: false, forceDispatch: true })
+            const repos = yield* store.listRepos()
+            repoCount = repos.length
+            statusMessage = 'checking worktrees'
+            yield* dispatchGc({ done: false, forceDispatch: true })
+
+            yield* Stream.fromIterable(repos).pipe(
+              Stream.mapEffect(
+                (repo) =>
+                  Effect.gen(function* () {
+                    let removedForRepo = 0
+                    const bareRepoPath = EffectPath.ops.join(
+                      repo.fullPath,
+                      EffectPath.unsafe.relativeDir('.bare/'),
+                    )
+                    const worktrees = yield* collectRepoStoreWorktrees({
+                      fs,
+                      repoPath: repo.fullPath,
+                      bareRepoPath,
+                    })
+
+                    yield* Stream.fromIterable(worktrees).pipe(
+                      Stream.mapEffect(
+                        (worktree) =>
+                          Effect.gen(function* () {
+                            discoveredWorktreeCount += 1
+                            activeWorktreeCount += 1
+                            yield* dispatchGc({ done: false, forceDispatch: true })
+                            yield* Effect.gen(function* () {
+                              const decision = yield* classifyGcWorktree({
+                                worktree,
+                                liveSet,
+                                all,
+                              })
+                              const result = yield* processGcDecision({
+                                decision,
+                                repoRelativePath: repo.relativePath,
+                                bareRepoPath,
+                              })
+                              if (result.status === 'removed' && dryRun === false) {
+                                removedForRepo += 1
+                              }
+                              results.push(result)
+                            }).pipe(
+                              Effect.ensuring(
+                                Effect.sync(() => {
+                                  activeWorktreeCount -= 1
+                                }).pipe(
+                                  Effect.zipRight(dispatchGc({ done: false, forceDispatch: true })),
+                                ),
+                              ),
+                            )
+                          }),
+                        { concurrency: GC_WORKTREE_CONCURRENCY, unordered: true },
+                      ),
+                      Stream.runDrain,
+                    )
+
+                    if (removedForRepo > 0) {
+                      yield* Git.pruneWorktrees(bareRepoPath).pipe(
+                        Effect.catchAll((error) =>
+                          Effect.sync(() => {
+                            results.push({
+                              repo: repo.relativePath,
+                              ref: '.bare',
+                              refType: 'commits',
+                              path: bareRepoPath,
+                              status: 'error',
+                              message:
+                                error instanceof Error === true ? error.message : String(error),
+                            })
+                          }),
+                        ),
+                      )
+                    }
+
+                    completedRepoCount += 1
+                    yield* dispatchGc({ done: false, forceDispatch: true })
+                  }).pipe(
+                    Effect.withSpan('megarepo/store/gc/repo', {
+                      attributes: {
+                        'span.label': repo.relativePath,
+                        'store.repo': repo.relativePath,
+                      },
+                    }),
+                  ),
+                { concurrency: GC_REPO_CONCURRENCY, unordered: true },
+              ),
+              Stream.runDrain,
+            )
+
+            statusMessage = undefined
+            yield* dispatchGc({ done: true, forceDispatch: true })
           }),
         { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
+
+      yield* Effect.annotateCurrentSpan('gc.policy', all === true ? 'all' : 'root-set')
+      yield* Effect.annotateCurrentSpan(
+        'gc.root_set.workspace_count',
+        liveSetForMetrics?.workspaceCount ?? 0,
+      )
+      yield* Effect.annotateCurrentSpan('gc.repo.total', repoCount ?? 0)
+      yield* Effect.annotateCurrentSpan('gc.worktree.discovered', discoveredWorktreeCount)
+      yield* Effect.annotateCurrentSpan('gc.result.total', results.length)
+      yield* Effect.annotateCurrentSpan(
+        'gc.result.removed',
+        results.filter((result) => result.status === 'removed').length,
+      )
+      yield* Effect.annotateCurrentSpan(
+        'gc.result.skipped_in_use',
+        results.filter((result) => result.status === 'skipped_in_use').length,
+      )
+      yield* Effect.annotateCurrentSpan(
+        'gc.result.skipped_dirty',
+        results.filter((result) => result.status === 'skipped_dirty').length,
+      )
+      yield* Effect.annotateCurrentSpan(
+        'gc.candidate.commits',
+        results.filter((result) => result.refType === 'commits').length,
+      )
+      yield* Effect.annotateCurrentSpan(
+        'gc.candidate.named_refs',
+        results.filter((result) => result.refType === 'heads' || result.refType === 'tags').length,
+      )
     }).pipe(
       Effect.provide(StoreLayer),
-      Effect.withSpan('megarepo/store/gc', { attributes: { 'span.label': 'gc' } }),
+      Effect.withSpan('megarepo/store/gc', {
+        root: true,
+        attributes: {
+          'span.label': 'gc',
+          'gc.dry_run': dryRun,
+          'gc.force': force,
+          'gc.all': all,
+        },
+      }),
     ),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
 
@@ -748,7 +1057,6 @@ const storeAddCommand = Cli.Command.make(
           )
         }
       }
-
       // Get the current commit
       const commitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
       const commit = Option.getOrUndefined(commitOpt)
@@ -1130,7 +1438,6 @@ const storeWorktreeNewCommand = Cli.Command.make(
           )
         }
       }
-
       // Get the current commit in the new worktree
       const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
       const resolvedCommit = Option.getOrUndefined(commitSha)
