@@ -712,14 +712,6 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   })
 }
 
-const serviceNameForArgv = (argv: ReadonlyArray<string>): string => {
-  try {
-    return serviceNameForCliCommand(parseCliCommand(argv))
-  } catch {
-    return otelServiceNameForCliArgv(argv)
-  }
-}
-
 /**
  * Parses `argv` into a `CliContext`, opening the sync store in the process.
  *
@@ -886,6 +878,14 @@ export const runCliMain = (argv: ReadonlyArray<string>, options: CliRuntimeOptio
       Effect.ensuring(Effect.sync(() => context.store.close())),
     )
   })
+
+const serviceNameForArgv = (argv: ReadonlyArray<string>): string => {
+  try {
+    return serviceNameForCliCommand(parseCliCommand(argv))
+  } catch {
+    return otelServiceNameForCliArgv(argv)
+  }
+}
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2)
