@@ -142,8 +142,13 @@ const conflict = ({
   },
 })
 
-const samePage = (left: { readonly pageId: PageId }, right: { readonly pageId: PageId }) =>
-  left.pageId === right.pageId
+const samePage = ({
+  left,
+  right,
+}: {
+  readonly left: { readonly pageId: PageId }
+  readonly right: { readonly pageId: PageId }
+}) => left.pageId === right.pageId
 
 /**
  * Classifies the relationship between two change surfaces as `conflict`, `mergeable`, or `independent`.
@@ -235,7 +240,7 @@ export const classifyConflict = (
   if (
     local._tag === 'property' &&
     remote._tag === 'property' &&
-    samePage(local, remote) === true
+    samePage({ left: local, right: remote }) === true
   ) {
     return local.propertyId === remote.propertyId
       ? conflict({
@@ -255,7 +260,7 @@ export const classifyConflict = (
   if (
     ((local._tag === 'property' && remote._tag === 'body') ||
       (local._tag === 'body' && remote._tag === 'property')) &&
-    samePage(local, remote) === true
+    samePage({ left: local, right: remote }) === true
   ) {
     return {
       _tag: 'mergeable',
@@ -265,7 +270,7 @@ export const classifyConflict = (
     }
   }
 
-  if (local._tag === 'body' && remote._tag === 'body' && samePage(local, remote) === true) {
+  if (local._tag === 'body' && remote._tag === 'body' && samePage({ left: local, right: remote }) === true) {
     return conflict({
       kind: 'body-body-delegated',
       local,

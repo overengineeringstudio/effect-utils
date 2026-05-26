@@ -77,10 +77,13 @@ export const VersionedJson = Schema.TaggedStruct('VersionedJson', {
 export type VersionedJson = typeof VersionedJson.Type
 
 /** Returns the common envelope field schemas shared by every sync event; spread into each concrete event struct. */
-export const eventEnvelopeFields = <TFamily extends EventFamily, TEventType extends string>(
-  family: TFamily,
-  eventType: TEventType,
-) =>
+export const eventEnvelopeFields = <TFamily extends EventFamily, TEventType extends string>({
+  family,
+  eventType,
+}: {
+  readonly family: TFamily
+  readonly eventType: TEventType
+}) =>
   ({
     eventId: SyncEventId,
     rootId: SyncRootId,
@@ -98,7 +101,7 @@ export const eventEnvelopeFields = <TFamily extends EventFamily, TEventType exte
 
 /** Records that a data source has been bound to a local workspace root; anchors all subsequent events for this sync root. */
 export const SyncBindingRecorded = Schema.TaggedStruct('SyncBindingRecorded', {
-  ...eventEnvelopeFields('SyncRootBound', 'SyncBindingRecorded'),
+  ...eventEnvelopeFields({ family: 'SyncRootBound', eventType: 'SyncBindingRecorded' }),
   dataSourceId: DataSourceId,
   workspaceRoot: AbsolutePath,
   storeIdentity: Schema.NonEmptyTrimmedString,
@@ -107,14 +110,14 @@ export type SyncBindingRecorded = typeof SyncBindingRecorded.Type
 
 /** Records the Notion API contract (version + capabilities) observed at a sync checkpoint; drives compatibility guards. */
 export const ApiContractObserved = Schema.TaggedStruct('ApiContractObserved', {
-  ...eventEnvelopeFields('CompatibilityChecked', 'ApiContractObserved'),
+  ...eventEnvelopeFields({ family: 'CompatibilityChecked', eventType: 'ApiContractObserved' }),
   apiContract: NotionApiContract,
 }).annotations({ identifier: 'NotionDatasourceSync.ApiContractObserved' })
 export type ApiContractObserved = typeof ApiContractObserved.Type
 
 /** Records the observation of a Notion database's schema hash during a remote scan. */
 export const DataSourceObserved = Schema.TaggedStruct('DataSourceObserved', {
-  ...eventEnvelopeFields('RemoteObserved', 'DataSourceObserved'),
+  ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'DataSourceObserved' }),
   dataSourceId: DataSourceId,
   requestId: NotionRequestId,
   schemaHash: Hash,
@@ -123,7 +126,7 @@ export type DataSourceObserved = typeof DataSourceObserved.Type
 
 /** Records the observation of a single Notion database row (page) during a query scan, including its properties hash and trash state. */
 export const RowObserved = Schema.TaggedStruct('RowObserved', {
-  ...eventEnvelopeFields('RemoteObserved', 'RowObserved'),
+  ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'RowObserved' }),
   dataSourceId: DataSourceId,
   pageId: PageId,
   propertiesHash: Hash,
@@ -134,7 +137,7 @@ export type RowObserved = typeof RowObserved.Type
 
 /** Records that a local user intent (e.g. property edit or body change) has passed guards and been accepted into the sync pipeline. */
 export const LocalIntentAccepted = Schema.TaggedStruct('LocalIntentAccepted', {
-  ...eventEnvelopeFields('LocalIntentAccepted', 'LocalIntentAccepted'),
+  ...eventEnvelopeFields({ family: 'LocalIntentAccepted', eventType: 'LocalIntentAccepted' }),
   commandId: CommandId,
   pageId: Schema.optional(PageId),
   dataSourceId: Schema.optional(DataSourceId),
@@ -144,7 +147,7 @@ export type LocalIntentAccepted = typeof LocalIntentAccepted.Type
 
 /** Records the enqueuing of a remote write command, including its desired state hash and the list of guards that must pass before execution. */
 export const RemoteWritePlanned = Schema.TaggedStruct('RemoteWritePlanned', {
-  ...eventEnvelopeFields('CommandEnqueued', 'RemoteWritePlanned'),
+  ...eventEnvelopeFields({ family: 'CommandEnqueued', eventType: 'RemoteWritePlanned' }),
   commandId: CommandId,
   commandKey: IdempotencyKey,
   intentEventId: SyncEventId,
@@ -157,7 +160,7 @@ export type RemoteWritePlanned = typeof RemoteWritePlanned.Type
 
 /** Records each execution attempt of a remote write command, including attempt state and any blocking guard. */
 export const RemoteWriteAttempted = Schema.TaggedStruct('RemoteWriteAttempted', {
-  ...eventEnvelopeFields('CommandAttempted', 'RemoteWriteAttempted'),
+  ...eventEnvelopeFields({ family: 'CommandAttempted', eventType: 'RemoteWriteAttempted' }),
   commandId: CommandId,
   attempt: Schema.NonNegativeInt,
   attemptState: Schema.Literal('running', 'retryable', 'blocked', 'fenced', 'ambiguous'),
@@ -168,7 +171,7 @@ export type RemoteWriteAttempted = typeof RemoteWriteAttempted.Type
 
 /** Records the successful settlement of a remote write: the observed post-write hash was verified to match the desired hash. */
 export const RemoteWriteSettled = Schema.TaggedStruct('RemoteWriteSettled', {
-  ...eventEnvelopeFields('CommandSettled', 'RemoteWriteSettled'),
+  ...eventEnvelopeFields({ family: 'CommandSettled', eventType: 'RemoteWriteSettled' }),
   commandId: CommandId,
   commandTag: Schema.String,
   requestId: NotionRequestId,
@@ -180,7 +183,7 @@ export type RemoteWriteSettled = typeof RemoteWriteSettled.Type
 
 /** Records a detected three-way conflict (local change vs. remote change against the same base hash) requiring resolution before the command can proceed. */
 export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
-  ...eventEnvelopeFields('ConflictDetected', 'ConflictRaised'),
+  ...eventEnvelopeFields({ family: 'ConflictDetected', eventType: 'ConflictRaised' }),
   conflictKind: Schema.optional(
     Schema.Literal(
       'property',
@@ -202,7 +205,7 @@ export type ConflictRaised = typeof ConflictRaised.Type
 
 /** Records the resolution of a previously raised conflict, capturing the chosen resolution strategy and any follow-up command. */
 export const ConflictResolved = Schema.TaggedStruct('ConflictResolved', {
-  ...eventEnvelopeFields('ConflictResolved', 'ConflictResolved'),
+  ...eventEnvelopeFields({ family: 'ConflictResolved', eventType: 'ConflictResolved' }),
   conflictId: SyncEventId,
   pageId: PageId,
   propertyId: Schema.optional(PropertyId),
@@ -213,7 +216,7 @@ export type ConflictResolved = typeof ConflictResolved.Type
 
 /** Records that a page has been definitively classified as removed from the sync scope (trashed, moved out, or inaccessible). */
 export const TombstoneRecorded = Schema.TaggedStruct('TombstoneRecorded', {
-  ...eventEnvelopeFields('TombstoneClassified', 'TombstoneRecorded'),
+  ...eventEnvelopeFields({ family: 'TombstoneClassified', eventType: 'TombstoneRecorded' }),
   pageId: PageId,
   reason: Schema.Literal(
     'remote_trash',
@@ -230,7 +233,7 @@ export type TombstoneRecorded = typeof TombstoneRecorded.Type
 
 /** Records a page absence that is not yet fully classified; triggers a follow-up probe to determine whether a tombstone is warranted. */
 export const TombstoneCandidateObserved = Schema.TaggedStruct('TombstoneCandidateObserved', {
-  ...eventEnvelopeFields('RemoteObserved', 'TombstoneCandidateObserved'),
+  ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'TombstoneCandidateObserved' }),
   pageId: PageId,
   reason: Schema.Literal(
     'query_absence_unclassified',
@@ -243,7 +246,7 @@ export type TombstoneCandidateObserved = typeof TombstoneCandidateObserved.Type
 
 /** Records the result of checking whether a specific Notion capability is available on the connected workspace. */
 export const CapabilityPreflightChecked = Schema.TaggedStruct('CapabilityPreflightChecked', {
-  ...eventEnvelopeFields('CompatibilityChecked', 'CapabilityPreflightChecked'),
+  ...eventEnvelopeFields({ family: 'CompatibilityChecked', eventType: 'CapabilityPreflightChecked' }),
   dataSourceId: DataSourceId,
   capability: CapabilityName,
   supported: Schema.Boolean,
@@ -253,7 +256,7 @@ export type CapabilityPreflightChecked = typeof CapabilityPreflightChecked.Type
 
 /** Records a pagination checkpoint in a query scan; `complete` signals that the terminal page was reached and absence proofs are valid. */
 export const QueryScanCheckpointRecorded = Schema.TaggedStruct('QueryScanCheckpointRecorded', {
-  ...eventEnvelopeFields('QueryScanRecorded', 'QueryScanCheckpointRecorded'),
+  ...eventEnvelopeFields({ family: 'QueryScanRecorded', eventType: 'QueryScanCheckpointRecorded' }),
   dataSourceId: DataSourceId,
   queryContractHash: Hash,
   nextCursor: Schema.NullOr(QueryCursor),
@@ -266,7 +269,7 @@ export type QueryScanCheckpointRecorded = typeof QueryScanCheckpointRecorded.Typ
 export const PagePropertyCheckpointRecorded = Schema.TaggedStruct(
   'PagePropertyCheckpointRecorded',
   {
-    ...eventEnvelopeFields('QueryScanRecorded', 'PagePropertyCheckpointRecorded'),
+    ...eventEnvelopeFields({ family: 'QueryScanRecorded', eventType: 'PagePropertyCheckpointRecorded' }),
     pageId: PageId,
     propertyId: PropertyId,
     nextCursor: Schema.NullOr(QueryCursor),
@@ -278,7 +281,7 @@ export type PagePropertyCheckpointRecorded = typeof PagePropertyCheckpointRecord
 
 /** Records the claim of a workspace-relative path for a page; `claimState` tracks whether the claim is active, released, or in conflict. */
 export const PathClaimed = Schema.TaggedStruct('PathClaimed', {
-  ...eventEnvelopeFields('LocalIntentAccepted', 'PathClaimed'),
+  ...eventEnvelopeFields({ family: 'LocalIntentAccepted', eventType: 'PathClaimed' }),
   pageId: PageId,
   relativePath: Schema.NonEmptyTrimmedString,
   claimState: Schema.Literal('active', 'released', 'conflict'),
@@ -287,7 +290,7 @@ export type PathClaimed = typeof PathClaimed.Type
 
 /** Records that the user has explicitly requested to forget a row from the sync state. */
 export const RowForgotten = Schema.TaggedStruct('RowForgotten', {
-  ...eventEnvelopeFields('LocalIntentAccepted', 'RowForgotten'),
+  ...eventEnvelopeFields({ family: 'LocalIntentAccepted', eventType: 'RowForgotten' }),
   pageId: PageId,
   reason: Schema.Literal('user-forget'),
 }).annotations({ identifier: 'NotionDatasourceSync.RowForgotten' })
@@ -295,7 +298,7 @@ export type RowForgotten = typeof RowForgotten.Type
 
 /** Records that schema decode drift was detected and the sync surface was blocked from proceeding until the codec is updated. */
 export const DecodeDriftBlocked = Schema.TaggedStruct('DecodeDriftBlocked', {
-  ...eventEnvelopeFields('CompatibilityChecked', 'DecodeDriftBlocked'),
+  ...eventEnvelopeFields({ family: 'CompatibilityChecked', eventType: 'DecodeDriftBlocked' }),
   apiVersion: SupportedNotionApiVersion,
   surface: Schema.String,
   message: Schema.String,
@@ -304,7 +307,7 @@ export type DecodeDriftBlocked = typeof DecodeDriftBlocked.Type
 
 /** Records that a named guard blocked the sync engine from proceeding; provides the guard name and human-readable message for diagnostics. */
 export const GuardBlocked = Schema.TaggedStruct('GuardBlocked', {
-  ...eventEnvelopeFields('GuardBlocked', 'GuardBlocked'),
+  ...eventEnvelopeFields({ family: 'GuardBlocked', eventType: 'GuardBlocked' }),
   guard: GuardName,
   message: Schema.NonEmptyTrimmedString,
 }).annotations({ identifier: 'NotionDatasourceSync.GuardBlocked' })

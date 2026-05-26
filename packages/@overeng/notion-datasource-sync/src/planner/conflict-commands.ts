@@ -51,18 +51,21 @@ type UserActionOptions = {
   readonly now?: () => Date
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: unknown,
-): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
+const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: unknown
+}): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
 const eventIdPart = (value: string): string => value.replaceAll(':', '-').replaceAll('/', '-')
 
 const commandIdFor = (value: string): typeof CommandId.Type =>
-  decode(CommandId, `cmd:${eventIdPart(value)}`)
+  decode({ schema: CommandId, value: `cmd:${eventIdPart(value)}` })
 
 const intentEventIdFor = (value: string): typeof SyncEventId.Type =>
-  decode(SyncEventId, `intent:${eventIdPart(value)}`)
+  decode({ schema: SyncEventId, value: `intent:${eventIdPart(value)}` })
 
 const eventPayload = (value: unknown): SyncEventType['payload'] => ({
   _tag: 'VersionedJson',
@@ -177,12 +180,12 @@ const applyPlan = ({
   }
 
   for (const guard of plan.guards) {
-    const surface = guard.surface ?? pageSurfaceKey(decode(PageId, 'unknown-page'))
+    const surface = guard.surface ?? pageSurfaceKey(decode({ schema: PageId, value: 'unknown-page' }))
     const result = store.appendEventWithResult(
       makeGuardBlockedEvent({
         rootId,
         guard: guard.guard,
-        surface: decode(SurfaceKey, surface),
+        surface: decode({ schema: SurfaceKey, value: surface }),
         message: guard.message,
         now,
       }),
@@ -208,7 +211,7 @@ const makeConflictResolvedEvent = ({
   readonly followupCommand?: OutboxCommandEnvelope
   readonly now: () => Date
 }) =>
-  decode(SyncEvent, {
+  decode({ schema: SyncEvent, value: {
     _tag: 'ConflictResolved',
     ...eventBase({
       rootId,
@@ -225,17 +228,21 @@ const makeConflictResolvedEvent = ({
       now,
     }),
     conflictId: conflict.conflictId,
-    pageId: conflict.pageId ?? decode(PageId, 'unknown-page'),
+    pageId: conflict.pageId ?? decode({ schema: PageId, value: 'unknown-page' }),
     propertyId: conflict.propertyId,
     resolutionChoice: choice._tag,
     followupCommandId: followupCommand?.commandId,
-  })
+  } })
 
-const conflictById = (
-  store: NotionSyncStore,
-  rootId: SyncRootId,
-  conflictId: SyncEventId,
-): ConflictProjectionRow | undefined =>
+const conflictById = ({
+  store,
+  rootId,
+  conflictId,
+}: {
+  readonly store: NotionSyncStore
+  readonly rootId: SyncRootId
+  readonly conflictId: SyncEventId
+}): ConflictProjectionRow | undefined =>
   store
     .readConflicts(rootId)
     .find((conflict) => conflict.conflictId === conflictId && conflict.state === 'open')
@@ -261,7 +268,7 @@ const conflictResolutionPlan = ({
   readonly choice: ConflictResolutionChoice
   readonly now: () => Date
 }): PlannedUserAction => {
-  const conflict = conflictById(store, rootId, conflictId)
+  const conflict = conflictById({ store, rootId, conflictId })
   if (conflict === undefined) {
     return guardPlan({
       guard: 'CurrentSurfaceMissing',
@@ -298,7 +305,7 @@ const conflictResolutionPlan = ({
   const conflictRemoteHash = conflict.remoteHash ?? hashStoreBytes('missing-conflict-remote')
   const commandStamp = now().toISOString()
   const commandId = commandIdFor(`resolve:${conflictId}:${choice._tag}:${commandStamp}`)
-  const command = decode(PatchPagePropertiesCommand, {
+  const command = decode({ schema: PatchPagePropertiesCommand, value: {
     _tag: 'PatchPagePropertiesCommand',
     commandId,
     pageId: conflict.pageId,
@@ -306,14 +313,14 @@ const conflictResolutionPlan = ({
     propertyPatch: {
       [conflict.propertyId]: value,
     },
-  })
+  } })
   const intent: PropertyEditIntent = {
     _tag: 'property-edit',
     intentEventId: intentEventIdFor(`resolve:${conflictId}:${choice._tag}`),
-    commandKey: decode(
-      IdempotencyKey,
-      `resolve:${conflictId}:${choice._tag}:${eventIdPart(commandStamp)}`,
-    ),
+    commandKey: decode({
+      schema: IdempotencyKey,
+      value: `resolve:${conflictId}:${choice._tag}:${eventIdPart(commandStamp)}`,
+    }),
     surface: propertySurfaceKey(conflict.pageId, conflict.propertyId),
     pageId: conflict.pageId,
     propertyId: conflict.propertyId,
@@ -420,19 +427,19 @@ export const restorePageCommand = (
               commands: [
                 {
                   commandId,
-                  commandKey: decode(
-                    IdempotencyKey,
-                    `restore:${options.pageId}:${eventIdPart(row.propertiesHash)}`,
-                  ),
+                  commandKey: decode({
+                    schema: IdempotencyKey,
+                    value: `restore:${options.pageId}:${eventIdPart(row.propertiesHash)}`,
+                  }),
                   rootId: options.rootId,
                   intentEventId: intentEventIdFor(`restore:${options.pageId}`),
                   surface: pageSurfaceKey(options.pageId),
-                  command: decode(RestorePageCommand, {
+                  command: decode({ schema: RestorePageCommand, value: {
                     _tag: 'RestorePageCommand',
                     commandId,
                     pageId: options.pageId,
                     basePropertiesHash: row.propertiesHash,
-                  }),
+                  } }),
                   baseHash: row.propertiesHash,
                   desiredHash: pageLifecycleHash(options.pageId, false),
                   preflight: [

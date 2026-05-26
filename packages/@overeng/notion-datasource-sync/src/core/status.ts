@@ -30,10 +30,13 @@ export type OneShotSyncStatus = {
   }
 }
 
-const latestBinding = (
-  store: NotionSyncStore,
-  rootId: SyncRootId,
-): OneShotSyncStatus['binding'] => {
+const latestBinding = ({
+  store,
+  rootId,
+}: {
+  readonly store: NotionSyncStore
+  readonly rootId: SyncRootId
+}): OneShotSyncStatus['binding'] => {
   let binding: ReturnType<NotionSyncStore['replay']>[number] | undefined
   for (const event of store.replay(rootId)) {
     if (event._tag === 'SyncBindingRecorded') {
@@ -77,7 +80,7 @@ export const readOneShotSyncStatus = ({
 
   return {
     rootId,
-    binding: latestBinding(store, rootId),
+    binding: latestBinding({ store, rootId }),
     state,
     counts: {
       clean: state === 'clean' ? 1 : 0,
