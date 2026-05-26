@@ -1,11 +1,15 @@
 import { GuardName, type GuardName as GuardNameType } from '../core/guards.ts'
 
+/** Opaque identifier for a VRS requirement, formatted as `R<two-digit-number>`. */
 export type RequirementId = `R${number}`
 
+/** Verification level tier, from L1 (planner-only) through L7 (production). */
 export type VerificationLevel = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7'
 
+/** Unique scenario identifier; encodes the integration tier and a slug. Guard-only scenarios use the `NDS-GUARD-` prefix. */
 export type ScenarioId = `NDS-L${number}-${string}` | `NDS-GUARD-${string}` | `NDS-LIVE-${string}`
 
+/** Traceability metadata attached to a concrete or placeholder scenario: maps it to requirement ids, guard names, and integration tier bounds. */
 export type ScenarioMetadata = {
   readonly scenarioId: ScenarioId
   readonly title: string
@@ -16,6 +20,7 @@ export type ScenarioMetadata = {
   readonly file: string
 }
 
+/** One entry in the guard-to-scenario traceability matrix; links a guard name to its primary scenario and its requirement coverage. */
 export type GuardScenarioEntry = {
   readonly guard: GuardNameType
   readonly scenarioId: ScenarioId
@@ -24,6 +29,7 @@ export type GuardScenarioEntry = {
   readonly highestIntegrationLevel: VerificationLevel
 }
 
+/** A guard scenario or requirement that is intentionally not yet covered by a concrete E2E scenario; records the gap and its reason. */
 export type TraceabilityResidual =
   | {
       readonly _tag: 'placeholder-guard-scenario'
@@ -38,9 +44,11 @@ export type TraceabilityResidual =
       readonly reason: string
     }
 
+/** Identity helper that infers the narrowest literal type for a scenario metadata object; used to keep `satisfies` narrowing in the harness arrays. */
 export const scenario = <TScenario extends ScenarioMetadata>(metadata: TScenario): TScenario =>
   metadata
 
+/** Registry of all concrete E2E harness scenarios; each entry declares the scenario id, requirements it covers, guards it exercises, and the file that implements it. */
 export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L3-one-shot-sync-orchestration',
@@ -492,10 +500,12 @@ const guardScenarioIds = {
 const vrsRequirementId = (index: number): RequirementId =>
   `R${index.toString().padStart(2, '0')}` as RequirementId
 
+/** Full ordered list of VRS requirement ids from R01 to R73; used to detect unmapped requirements in coverage checks. */
 export const vrsRequirementIds = Array.from({ length: 73 }, (_, index) =>
   vrsRequirementId(index + 1),
 )
 
+/** Guard scenarios and requirements not yet promoted to concrete E2E coverage; each entry documents why the gap is intentional. */
 export const traceabilityResiduals = [
   {
     _tag: 'placeholder-guard-scenario',
@@ -744,6 +754,7 @@ const scenarioRequirementIds = ({
   return placeholderResidualByGuard.get(guard)?.requirementIds ?? []
 }
 
+/** Default guard-to-scenario matrix derived from `guardScenarioIds`; covers all known guards at L1/L2 integration level. */
 export const coreGuardScenarioEntries = (Object.keys(guardScenarioIds) as GuardNameType[]).map(
   (guard): GuardScenarioEntry => ({
     guard,
@@ -754,6 +765,7 @@ export const coreGuardScenarioEntries = (Object.keys(guardScenarioIds) as GuardN
   }),
 )
 
+/** Tagged union describing a specific hole in the scenario traceability matrix; each variant identifies a different class of gap (missing guard, placeholder reference, unmapped requirement, etc.). */
 export type ScenarioCoverageGap =
   | { readonly _tag: 'missing-guard-scenario'; readonly guard: GuardNameType }
   | { readonly _tag: 'unknown-guard-scenario'; readonly guard: string }
@@ -797,6 +809,7 @@ export type ScenarioCoverageGap =
       readonly requirementId: RequirementId
     }
 
+/** Reports guards that have no entry in the matrix (missing) or entries that reference an unknown guard name. */
 export const guardScenarioCoverageGaps = (
   entries: ReadonlyArray<GuardScenarioEntry> = coreGuardScenarioEntries,
 ): ReadonlyArray<ScenarioCoverageGap> => {
@@ -812,6 +825,7 @@ export const guardScenarioCoverageGaps = (
   return [...missing, ...unknown]
 }
 
+/** Reports guard entries whose referenced scenario id does not appear in the concrete scenario list or in the residuals placeholder list. */
 export const concreteScenarioReferenceGaps = ({
   entries = coreGuardScenarioEntries,
   scenarios = e2eHarnessScenarios,
@@ -841,6 +855,7 @@ export const concreteScenarioReferenceGaps = ({
     }))
 }
 
+/** Reports guard entries with `NDS-GUARD-` scenario ids that are not covered by a matching residual placeholder, indicating a promotion gap. */
 export const placeholderGuardScenarioReferenceGaps = ({
   entries = coreGuardScenarioEntries,
   residuals = traceabilityResiduals,
@@ -864,6 +879,7 @@ export const placeholderGuardScenarioReferenceGaps = ({
     }))
 }
 
+/** Reports guards or requirement ids from the matrix entries that are not declared in the corresponding concrete scenario's guard and requirement lists. */
 export const concreteScenarioMatrixGaps = ({
   entries = coreGuardScenarioEntries,
   scenarios = e2eHarnessScenarios,
@@ -905,6 +921,7 @@ export const concreteScenarioMatrixGaps = ({
   })
 }
 
+/** Reports scenarios declared for a given file that are missing from the set of implemented scenario ids in that file. */
 export const scenarioImplementationGaps = ({
   file,
   implementedScenarioIds,
@@ -923,6 +940,7 @@ export const scenarioImplementationGaps = ({
       file: entry.file,
     }))
 
+/** Reports requirement ids within scenarios that fall outside the valid R01–R73 range. */
 export const invalidScenarioRequirementIdGaps = (
   scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
 ): ReadonlyArray<ScenarioCoverageGap> =>
@@ -942,6 +960,7 @@ export const invalidScenarioRequirementIdGaps = (
       })),
   )
 
+/** Reports VRS requirements not covered by any scenario and residual entries that have become stale because a scenario now covers them. */
 export const requirementTraceabilityGaps = ({
   scenarios = e2eHarnessScenarios,
   residuals = traceabilityResiduals,
@@ -972,6 +991,7 @@ export const requirementTraceabilityGaps = ({
   return [...missing, ...stale]
 }
 
+/** Aggregates all gap checks (guard coverage, concrete references, placeholder references, matrix alignment, invalid ids, requirement mapping, and file implementation) into one flat result. */
 export const allScenarioTraceabilityGaps = (input: {
   readonly file: string
   readonly implementedScenarioIds: ReadonlySet<ScenarioId>
@@ -985,6 +1005,7 @@ export const allScenarioTraceabilityGaps = (input: {
   ...scenarioImplementationGaps(input),
 ]
 
+/** Asserts the full traceability matrix is complete; throws a descriptive error listing all detected gaps if any are found. Call in test suites to enforce traceability at the test boundary. */
 export const assertAllCoreGuardsHaveScenarioEntries = (input?: {
   readonly file?: string
   readonly implementedScenarioIds?: ReadonlySet<ScenarioId>
