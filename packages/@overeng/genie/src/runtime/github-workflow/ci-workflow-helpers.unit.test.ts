@@ -262,6 +262,10 @@ describe('ci workflow pnpm cache defaults', () => {
       'fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })',
     )
   })
+
+  it('uses the same Nix-provided Node runtime for default-ref policy checks', () => {
+    expect(ciWorkflowSource).toContain('nix run nixpkgs#nodejs_24 -- node')
+  })
 })
 
 describe('ci workflow merge queue helpers', () => {
