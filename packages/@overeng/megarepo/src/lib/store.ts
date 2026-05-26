@@ -259,11 +259,7 @@ const make = ({
             yield* Effect.all(
               entries.map((entry) =>
                 Effect.gen(function* () {
-                  if (
-                    entry.startsWith('.') === true ||
-                    entry === 'refs' ||
-                    entry === 'node_modules'
-                  ) {
+                  if (entry.startsWith('.') === true) {
                     return
                   }
 

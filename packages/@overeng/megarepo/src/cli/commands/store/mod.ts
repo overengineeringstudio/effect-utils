@@ -555,7 +555,17 @@ const storeGcCommand = Cli.Command.make(
                 const removeResult = yield* storeLock
                   .withWorktreeLock(worktree.path)(
                     Effect.gen(function* () {
-                      if (isPathProtected({ liveSet, path: worktree.path }) === true) {
+                      const removalLiveSet = yield* collectStoreLiveSet({
+                        store,
+                        ...(Option.isSome(root) === true
+                          ? { currentWorkspaceRoot: root.value }
+                          : {}),
+                        pruneStaleRegistry: true,
+                        refreshCurrentWorkspace: false,
+                      })
+                      if (
+                        isPathProtected({ liveSet: removalLiveSet, path: worktree.path }) === true
+                      ) {
                         return { _tag: 'skipped_live' as const }
                       }
 

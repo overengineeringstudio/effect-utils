@@ -501,6 +501,34 @@ describe('mr store ls', () => {
       Effect.scoped,
     ),
   )
+
+  it.effect(
+    'should discover repos below path segments named refs',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+        const repoPath = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir('example.com/refs/project/'),
+        )
+        yield* fs.makeDirectory(
+          EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('.bare/')),
+          { recursive: true },
+        )
+
+        const storeLayer = makeStoreLayer({ basePath: storePath })
+        const store = yield* Store.pipe(Effect.provide(storeLayer))
+
+        const repos = yield* store.listRepos()
+        expect(repos.map((repo) => repo.relativePath)).toContain('example.com/refs/project/')
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('store worktree paths', () => {
