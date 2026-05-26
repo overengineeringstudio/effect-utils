@@ -23,6 +23,7 @@ import {
   queryContractHash,
   type FakeNotionDataSourceGatewayConfig,
   type NotionGatewayClient,
+  type NotionGatewayPage,
   type QueryContract as QueryContractType,
 } from '../mod.ts'
 
@@ -785,7 +786,7 @@ describe('Notion data source gateway fake', () => {
 })
 
 describe('Notion data source gateway real adapter boundary', () => {
-  const remotePage = (id: PageId, properties: Record<string, unknown> = {}) => ({
+  const remotePage = (id: PageId, properties: Record<string, unknown> = {}): NotionGatewayPage => ({
     id,
     parent: { type: 'data_source_id', data_source_id: dataSourceId },
     properties,

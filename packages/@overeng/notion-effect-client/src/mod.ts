@@ -61,6 +61,12 @@ export type {
   UpdateDataSourceOptions,
 } from './data-sources.ts'
 export { NotionDataSources } from './data-sources.ts'
+// Schema-backed Notion wire objects surfaced by the client boundary.
+export type {
+  DatabaseSchema as NotionDatabase,
+  DataSourceSchema as NotionDataSource,
+  Page as NotionPage,
+} from '@overeng/notion-effect-schema'
 // Services
 export { NotionDatabases } from './databases.ts'
 // Error
@@ -128,6 +134,15 @@ export {
   decodeNmdFrontmatterV2,
   decodeNmdFrontmatterV2Sync,
   decodeNmdSyncStateV1,
+  makeNmdObjectRef,
+  NMD_LARGE_STORAGE_BYTES,
+  NMD_OBJECT_DIRECTORY,
+  NMD_SMALL_STORAGE_BYTES,
+  NMD_STATE_DIRECTORY,
+  NMD_SYNC_DIRECTORY,
+  nmdObjectRelativePath,
+  nmdSha256Hex,
+  nmdSyncStateRelativePath,
   NmdBodyState as NmdBodyStateSchema,
   NmdCommentUnit as NmdCommentUnitSchema,
   NmdDataSourceBinding as NmdDataSourceBindingSchema,

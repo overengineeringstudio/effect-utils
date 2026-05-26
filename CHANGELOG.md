@@ -74,6 +74,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-cli**: Gate `db dump` live fixture tests on writable fixture configuration and provision shared Notion integration fixtures before reading `TEST_IDS`, avoiding accidental live API calls with empty IDs when only `NOTION_API_TOKEN` is present.
 - **nix/oxc-config-plugin**: Refresh the pnpm dependency fixed-output hash so the devenv shell can realize the oxlint package used by `check:all`.
 - **@overeng/notion-datasource-sync**: Tighten Patch C daemon/filesystem E2E coverage so same-timestamp fake pagination, capped checkpoint persistence, sidecar-backed rebuilds, and cancellation-at-cycle-boundary assertions match the behavior they prove.
 - **@overeng/notion-datasource-sync**: Fail unsupported `migrate store`, `migrate schema`, and `repair` CLI commands before opening SQLite, and propagate live fixture cleanup failures while preserving cleanup ledger evidence.
@@ -108,6 +109,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/notion-effect-client / @overeng/notion-md**: Share canonical `.notion-md` object-store paths, sync-state paths, object refs, and storage-size thresholds from the NMD schema layer so local metadata decisions derive from one source of truth.
+- **@overeng/notion-datasource-sync**: Reuse schema-backed Notion page/data-source/query types from `@overeng/notion-effect-client` at the live adapter boundary and route live-gateway schema/page/query hashes through the same canonical hashing helper as the fake gateway.
 - **@overeng/notion-md**: Breaking CLI simplification: collapse the user-facing page workflow around `sync` and `status`; replace the old explicit `pull` / `push` entrypoints with `sync <page-id-or-url> <file.nmd>` for bootstrap and guarded `sync <file.nmd>` for reconciliation.
 - **@overeng/notion-md**: Remove legacy compatibility paths for batch `push` and local-first `page_id: null` page creation; existing Notion pages must be materialized with `sync <page-id-or-url> <target>`.
 - **@overeng/pty-effect/client**: `spawnDaemon` now delegates to `@myobie/pty.spawnDaemon` instead of duplicating the daemon spawn pipeline. The Bun-on-Node case is routed through upstream's new `launcher` option (still honors `NODE_BIN`). Eliminates a divergent in-house spawn path so consumers automatically inherit upstream improvements such as bundle-safe spawn (myobie/pty#38). Public API and `PtyDaemonSpec` schema unchanged.

@@ -3,13 +3,15 @@
  */
 
 import { Effect, Option, Stream } from 'effect'
-import { expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it } from 'vitest'
 
 import { NotionBlocks, NotionDatabases } from '@overeng/notion-effect-client'
 import {
   IntegrationTestLayer,
-  SKIP_INTEGRATION,
+  SKIP_FIXTURE_INTEGRATION,
   TEST_IDS,
+  setupIntegrationFixtures,
+  teardownIntegrationFixtures,
 } from '@overeng/notion-effect-client/test'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
@@ -20,7 +22,10 @@ import {
   encodeDumpPage,
 } from '../../dump/schema.ts'
 
-Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
+Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('db dump - content fetching', () => {
+  beforeAll(setupIntegrationFixtures, 120_000)
+  afterAll(teardownIntegrationFixtures, 60_000)
+
   Vitest.it.effect(
     'should fetch page content blocks using retrieveAllNested',
     () =>
@@ -129,7 +134,10 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - content fetching', () => {
   )
 })
 
-Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
+Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('db dump - database queries', () => {
+  beforeAll(setupIntegrationFixtures, 120_000)
+  afterAll(teardownIntegrationFixtures, 60_000)
+
   Vitest.it.effect(
     'should query database and fetch pages',
     () =>
@@ -188,7 +196,10 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
   )
 })
 
-Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - DumpPage schema', () => {
+Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('db dump - DumpPage schema', () => {
+  beforeAll(setupIntegrationFixtures, 120_000)
+  afterAll(teardownIntegrationFixtures, 60_000)
+
   Vitest.it.effect(
     'should encode and decode DumpPage with content',
     () =>

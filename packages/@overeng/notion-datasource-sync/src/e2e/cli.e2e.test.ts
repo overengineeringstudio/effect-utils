@@ -27,7 +27,7 @@ import {
   type NotionDataSourceGatewayShape,
 } from '../core/ports.ts'
 import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
-import type { NotionGatewayClient } from '../gateway/notion.ts'
+import type { NotionGatewayClient, NotionGatewayPage } from '../gateway/notion.ts'
 import { presentArtifactObservation } from '../local/workspace.ts'
 import { NotionSyncStore } from '../store/store.ts'
 import { makeConflictRaisedEvent } from '../sync/observation.ts'
@@ -112,7 +112,7 @@ const conflictEvent = (): SyncEventType =>
     now: () => new Date(fixedObservedAt),
   })
 
-const injectedNotionPage = () => ({
+const injectedNotionPage = (): NotionGatewayPage => ({
   id: testIds.pageId,
   parent: {
     type: 'data_source_id',

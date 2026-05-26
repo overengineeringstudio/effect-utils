@@ -33,6 +33,40 @@ export const RelativePath = Schema.String.pipe(
 
 export type RelativePath = typeof RelativePath.Type
 
+/** Workspace-relative directory for machine-managed Notion Markdown state. */
+export const NMD_STATE_DIRECTORY = '.notion-md'
+
+/** Workspace-relative directory for SHA-256 content-addressed NMD objects. */
+export const NMD_OBJECT_DIRECTORY = `${NMD_STATE_DIRECTORY}/objects/sha256`
+
+/** Workspace-relative directory for per-page NMD sync-state sidecars. */
+export const NMD_SYNC_DIRECTORY = `${NMD_STATE_DIRECTORY}/sync`
+
+/** Byte ceiling for metadata that is comfortably kept inline in `.nmd` frontmatter. */
+export const NMD_SMALL_STORAGE_BYTES = 8_192
+
+/** Byte ceiling after which NMD metadata must move to object storage. */
+export const NMD_LARGE_STORAGE_BYTES = 65_536
+
+const sha256DigestPrefix = 'sha256:'
+const decodeSha256Digest = Schema.decodeUnknownSync(Sha256Digest)
+const decodeRelativePath = Schema.decodeUnknownSync(RelativePath)
+const utf8ByteLength = (content: string): number => new TextEncoder().encode(content).byteLength
+
+/** Hex portion of a validated `sha256:{hex}` digest. */
+export const nmdSha256Hex = (hash: Sha256Digest | string): string =>
+  decodeSha256Digest(hash).slice(sha256DigestPrefix.length)
+
+/** Canonical relative path for a content-addressed `.notion-md` object. */
+export const nmdObjectRelativePath = (hash: Sha256Digest | string): RelativePath => {
+  const hex = nmdSha256Hex(hash)
+  return decodeRelativePath(`${NMD_OBJECT_DIRECTORY}/${hex.slice(0, 2)}/${hex.slice(2)}.json`)
+}
+
+/** Canonical relative sidecar path for machine-managed sync state. */
+export const nmdSyncStateRelativePath = (pageId: string): RelativePath =>
+  decodeRelativePath(`${NMD_SYNC_DIRECTORY}/${pageId}.json`)
+
 /** Role of a content-addressed local object referenced by `.nmd` frontmatter. */
 export const NmdObjectRole = Schema.Literal(
   'base_snapshot',
@@ -57,6 +91,24 @@ export const NmdObjectRef = Schema.TaggedStruct('object_ref', {
 })
 
 export type NmdObjectRef = typeof NmdObjectRef.Type
+
+const decodeNmdObjectRef = Schema.decodeUnknownSync(NmdObjectRef)
+
+/** Build a strict content-addressed object ref using the canonical NMD object path. */
+export const makeNmdObjectRef = (opts: {
+  readonly role: NmdObjectRole
+  readonly hash: Sha256Digest
+  readonly content: string
+  readonly mediaType?: string
+}): NmdObjectRef =>
+  decodeNmdObjectRef({
+    _tag: 'object_ref',
+    role: opts.role,
+    hash: opts.hash,
+    path: nmdObjectRelativePath(opts.hash),
+    media_type: opts.mediaType ?? 'application/json',
+    byte_length: utf8ByteLength(opts.content),
+  })
 
 /** Parent location of a synced Notion page. */
 export const NmdParentRef = Schema.Union(
@@ -470,8 +522,8 @@ export const classifyNmdFrontmatterPayload = (
   readonly bytes: number
   readonly classification: NmdFrontmatterPayloadClass
 } => {
-  const smallBytes = options?.smallBytes ?? 8_192
-  const largeBytes = options?.largeBytes ?? 65_536
+  const smallBytes = options?.smallBytes ?? NMD_SMALL_STORAGE_BYTES
+  const largeBytes = options?.largeBytes ?? NMD_LARGE_STORAGE_BYTES
   const bytes = new TextEncoder().encode(JSON.stringify(value.notion_md.storage)).byteLength
 
   if (bytes <= smallBytes) {

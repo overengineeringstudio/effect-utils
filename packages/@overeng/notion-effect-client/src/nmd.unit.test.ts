@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyNmdFrontmatterPayload,
   decodeNmdFrontmatterV1Sync,
+  makeNmdObjectRef,
+  nmdObjectRelativePath,
+  nmdSha256Hex,
+  nmdSyncStateRelativePath,
   type NmdFrontmatterV1,
 } from './nmd.ts'
 
@@ -22,7 +26,7 @@ const baseFrontmatter = {
         _tag: 'object_ref',
         role: 'base_snapshot',
         hash,
-        path: `.notion-md/objects/sha256/${hash.slice('sha256:'.length)}.json`,
+        path: nmdObjectRelativePath(hash),
         media_type: 'application/json',
         byte_length: 128,
       },
@@ -140,5 +144,31 @@ describe('NmdFrontmatterV1', () => {
     expect(small.classification).toBe('small')
     expect(small.bytes).toBeGreaterThan(0)
     expect(forcedLarge.classification).toBe('large')
+  })
+})
+
+describe('NMD local metadata paths', () => {
+  it('derives the sharded object path from a SHA-256 digest', () => {
+    expect(nmdSha256Hex(hash)).toBe('a'.repeat(64))
+    expect(nmdObjectRelativePath(hash)).toBe(
+      `.notion-md/objects/sha256/${'a'.repeat(2)}/${'a'.repeat(62)}.json`,
+    )
+  })
+
+  it('derives sidecar sync-state paths under the NMD metadata root', () => {
+    expect(nmdSyncStateRelativePath('00000000-0000-4000-8000-000000000001')).toBe(
+      '.notion-md/sync/00000000-0000-4000-8000-000000000001.json',
+    )
+  })
+
+  it('builds strict object refs with canonical paths and byte lengths', () => {
+    expect(makeNmdObjectRef({ role: 'base_snapshot', hash, content: 'hello\n' })).toEqual({
+      _tag: 'object_ref',
+      role: 'base_snapshot',
+      hash,
+      path: nmdObjectRelativePath(hash),
+      media_type: 'application/json',
+      byte_length: 6,
+    })
   })
 })
