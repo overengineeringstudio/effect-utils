@@ -69,6 +69,7 @@ type GcWorktreeDecision =
 const GC_REPO_CONCURRENCY = 1
 const GC_WORKTREE_CONCURRENCY = 1
 const GC_PROGRESS_BATCH_SIZE = 10
+const STORE_REF_TYPES = ['heads', 'tags', 'commits'] as const
 
 const collectStoreWorktrees = ({
   fs,
@@ -151,6 +152,18 @@ const collectRepoStoreWorktrees = ({
     const seenPaths = new Set<string>()
 
     const gitWorktrees = yield* Git.listWorktrees(bareRepoPath).pipe(
+      Effect.tapError((error) =>
+        Effect.gen(function* () {
+          yield* Effect.annotateCurrentSpan('store.git_worktree_list.failed', true)
+          yield* Effect.logWarning('Falling back to store layout worktree discovery').pipe(
+            Effect.annotateLogs({
+              repoPath,
+              bareRepoPath,
+              error: error instanceof Error === true ? error.message : String(error),
+            }),
+          )
+        }),
+      ),
       Effect.catchAll(() => Effect.succeed([])),
     )
 
@@ -183,38 +196,29 @@ const collectRepoStoreWorktrees = ({
       })
     }
 
-    const commitsDir = EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('refs/commits/'))
-    const commitsDirExists = yield* fs.exists(commitsDir)
-    if (commitsDirExists === true) {
-      const commitRefs = yield* fs.readDirectory(commitsDir)
-      for (const commitRef of commitRefs) {
-        if (commitRef.startsWith('.') === true) continue
+    for (const refType of STORE_REF_TYPES) {
+      const refTypePath = EffectPath.ops.join(
+        repoPath,
+        EffectPath.unsafe.relativeDir(`refs/${refType}/`),
+      )
+      const refTypeStat = yield* fs
+        .stat(refTypePath)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)))
+      if (refTypeStat?.type !== 'Directory') continue
 
-        const commitWorktreePath = EffectPath.ops.join(
-          commitsDir,
-          EffectPath.unsafe.relativeDir(`${commitRef}/`),
-        )
-        const normalizedPath = commitWorktreePath.replace(/\/+$/, '')
+      const layoutWorktrees = yield* collectStoreWorktrees({
+        fs,
+        refTypePath,
+        currentPath: refTypePath,
+        refType,
+      })
+
+      for (const worktree of layoutWorktrees) {
+        const normalizedPath = worktree.path.replace(/\/+$/, '')
         if (seenPaths.has(normalizedPath) === true) continue
 
-        const entryStat = yield* fs
-          .stat(commitWorktreePath)
-          .pipe(Effect.catchAll(() => Effect.succeed(null)))
-        if (entryStat?.type !== 'Directory') continue
-
-        const gitPath = EffectPath.ops.join(
-          commitWorktreePath,
-          EffectPath.unsafe.relativeFile('.git'),
-        )
-        const hasGitFile = yield* fs
-          .exists(gitPath)
-          .pipe(Effect.catchAll(() => Effect.succeed(false)))
-        result.push({
-          ref: commitRef,
-          refType: 'commits',
-          path: commitWorktreePath,
-          broken: hasGitFile === false,
-        })
+        seenPaths.add(normalizedPath)
+        result.push(worktree)
       }
     }
 
