@@ -63,6 +63,13 @@ export type NotionGatewayPage = Pick<
   'id' | 'parent' | 'properties' | 'last_edited_time' | 'in_trash'
 >
 
+/**
+ * Minimal Notion API surface the live datasource-sync gateway depends on.
+ *
+ * A thin contract over the upstream `notion-effect-client` so the gateway can be wired with
+ * either the real HTTP client or a stub in tests; errors are intentionally `unknown` here so
+ * the gateway translates them into typed `NotionGatewayError`s with the correct guard.
+ */
 export type NotionGatewayClient = {
   readonly retrieveDataSource: (input: {
     readonly dataSourceId: string
@@ -94,6 +101,7 @@ export type NotionGatewayClient = {
   }) => Effect.Effect<NotionGatewayDataSource, unknown>
 }
 
+/** Tagged error raised when the live gateway is asked to perform an operation it cannot map onto the underlying Notion client. */
 export class UnsupportedAdapterOperation extends Schema.TaggedError<UnsupportedAdapterOperation>()(
   'UnsupportedAdapterOperation',
   {
@@ -103,6 +111,7 @@ export class UnsupportedAdapterOperation extends Schema.TaggedError<UnsupportedA
   },
 ) {}
 
+/** Optional configuration knobs for the live Notion gateway — pin the configured API version and reported client version. */
 export type NotionDataSourceGatewayLiveOptions = {
   readonly configuredApiVersion?: string
   readonly clientVersion?: string
@@ -320,6 +329,13 @@ const propertyValueToNotion = (
   }
 }
 
+/**
+ * Convert a `CanonicalPropertyValue` patch into the Notion API's property update payload.
+ *
+ * Fails with the corresponding `NotionGatewayError` guard (e.g. `ComputedPropertyWrite`,
+ * `UnsupportedRemoteShape`) when a value cannot be expressed in the Notion property model,
+ * so the caller can reject before issuing the request.
+ */
 export const pagePropertyPatchToNotion = (
   patch: Readonly<Record<string, CanonicalPropertyValue>>,
 ): Effect.Effect<Record<string, unknown>, NotionGatewayError> =>
@@ -805,6 +821,13 @@ const pagePropertyItemsPageFromRemote = (input: {
     hasMore: input.result.hasMore,
   })
 
+/**
+ * Adapt the upstream `notion-effect-client` namespaced API to the gateway's `NotionGatewayClient` shape.
+ *
+ * Takes a single `provideClientEnv` runner that injects `NotionConfig` + `HttpClient` and returns the
+ * resulting effect with those services discharged, so callers can supply whichever transport (live HTTP,
+ * fake, fixture-recorder) they want without leaking it into the gateway type.
+ */
 export const makeNotionEffectClientGatewayClient = (
   provideClientEnv: <A, E>(
     effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
@@ -844,10 +867,20 @@ export const makeNotionEffectClientGatewayClient = (
     provideClientEnv(NotionDataSources.update({ dataSourceId, properties })),
 })
 
-export const makeNotionDataSourceGatewayFromClient = (
-  client: NotionGatewayClient,
-  options: NotionDataSourceGatewayLiveOptions = {},
-): NotionDataSourceGatewayShape => {
+/**
+ * Build a live `NotionDataSourceGateway` from a `NotionGatewayClient`.
+ *
+ * Wraps every operation in capability/preflight guards and translates the client's `unknown`
+ * errors into typed `NotionGatewayError`s with the appropriate guard (PermissionAmbiguous,
+ * StaleSurfaceBase, ReadAfterWriteMismatch, etc.).
+ */
+export const makeNotionDataSourceGatewayFromClient = ({
+  client,
+  options = {},
+}: {
+  readonly client: NotionGatewayClient
+  readonly options?: NotionDataSourceGatewayLiveOptions
+}): NotionDataSourceGatewayShape => {
   const apiContract = makeNotionApiContract({
     clientVersion: options.clientVersion ?? 'notion-effect-client:0.1.0',
     supportedCapabilities: supportedNotionEffectClientCapabilities,
@@ -1064,10 +1097,12 @@ export const makeNotionDataSourceGatewayFromClient = (
   })
 }
 
+/** The gateway capabilities the live notion-effect-client adapter does NOT yet implement — used by tests to assert preflight rejection. */
 export const unsupportedNotionEffectClientGatewayCapabilities = allGatewayCapabilities.filter(
   (capability) => supportedNotionEffectClientCapabilities.includes(capability) === false,
 )
 
+/** Preflight check that returns an `allowed` decision or a `CapabilityPreflightFailed` block when any required capability is missing from the live adapter. */
 export const guardRealAdapterCapabilities = (input: {
   readonly requiredCapabilities: ReadonlyArray<CapabilityName>
 }) => {
@@ -1084,6 +1119,7 @@ export const guardRealAdapterCapabilities = (input: {
       })
 }
 
+/** Live Effect `Layer` providing `NotionDataSourceGateway` from the upstream `notion-effect-client`; requires `NotionConfig` and `HttpClient`. */
 export const NotionDataSourceGatewayLive: Layer.Layer<
   NotionDataSourceGateway,
   never,
@@ -1101,8 +1137,8 @@ export const NotionDataSourceGatewayLive: Layer.Layer<
         Effect.provideService(HttpClient.HttpClient, httpClient),
       )
 
-    return makeNotionDataSourceGatewayFromClient(
-      makeNotionEffectClientGatewayClient(provideClientEnv),
-    )
+    return makeNotionDataSourceGatewayFromClient({
+      client: makeNotionEffectClientGatewayClient(provideClientEnv),
+    })
   }),
 )

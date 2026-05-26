@@ -887,7 +887,7 @@ describe('Notion data source gateway real adapter boundary', () => {
       updatePage: (input) =>
         Effect.sync(() => updatePageCalls.push(input)).pipe(Effect.as(pageBefore)),
     })
-    const gateway = makeNotionDataSourceGatewayFromClient(client)
+    const gateway = makeNotionDataSourceGatewayFromClient({ client })
     const pageSnapshot = await Effect.runPromise(gateway.retrievePage(targetPageId))
     const queryPages = await Effect.runPromise(
       gateway
@@ -1022,7 +1022,7 @@ describe('Notion data source gateway real adapter boundary', () => {
   })
 
   it('keeps missing adapter capabilities explicit instead of pretending unsupported endpoints exist', async () => {
-    const gateway = makeNotionDataSourceGatewayFromClient(makeClient())
+    const gateway = makeNotionDataSourceGatewayFromClient({ client: makeClient() })
 
     const preflight = await Effect.runPromise(
       gateway.preflightCapabilities({
@@ -1049,12 +1049,12 @@ describe('Notion data source gateway real adapter boundary', () => {
   it('fails closed when a schema patch has no supported operations and never reaches updateDataSource', async () => {
     const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
     const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
-    const gateway = makeNotionDataSourceGatewayFromClient(
-      makeClient({
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
         updateDataSource: (input) =>
           Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
       }),
-    )
+    })
 
     const result = await Effect.runPromiseExit(
       gateway.patchDataSourceSchema({
@@ -1077,12 +1077,12 @@ describe('Notion data source gateway real adapter boundary', () => {
   it('translates the supported schema operation subset into a single updateDataSource call', async () => {
     const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
     const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
-    const gateway = makeNotionDataSourceGatewayFromClient(
-      makeClient({
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
         updateDataSource: (input) =>
           Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
       }),
-    )
+    })
 
     const requestId = await Effect.runPromise(
       gateway.patchDataSourceSchema({
@@ -1165,12 +1165,12 @@ describe('Notion data source gateway real adapter boundary', () => {
   it('fails closed when AddSelectOptions has empty newOptions and does not call updateDataSource', async () => {
     const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
     const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
-    const gateway = makeNotionDataSourceGatewayFromClient(
-      makeClient({
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
         updateDataSource: (input) =>
           Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
       }),
-    )
+    })
 
     const result = await Effect.runPromiseExit(
       gateway.patchDataSourceSchema({
@@ -1203,12 +1203,12 @@ describe('Notion data source gateway real adapter boundary', () => {
   it('fails closed when AddSelectOptions tries to add a name that already exists', async () => {
     const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
     const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
-    const gateway = makeNotionDataSourceGatewayFromClient(
-      makeClient({
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
         updateDataSource: (input) =>
           Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
       }),
-    )
+    })
 
     const result = await Effect.runPromiseExit(
       gateway.patchDataSourceSchema({
@@ -1243,12 +1243,12 @@ describe('Notion data source gateway real adapter boundary', () => {
   it('rejects ambiguous schema patches that target the same property key twice without calling Notion', async () => {
     const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
     const remoteSchemaHash = canonicalHash(remoteDataSource.properties)
-    const gateway = makeNotionDataSourceGatewayFromClient(
-      makeClient({
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
         updateDataSource: (input) =>
           Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
       }),
-    )
+    })
 
     const result = await Effect.runPromiseExit(
       gateway.patchDataSourceSchema({
@@ -1281,12 +1281,12 @@ describe('Notion data source gateway real adapter boundary', () => {
 
   it('fails closed when the schema base hash has drifted before updateDataSource is invoked', async () => {
     const updateDataSourceCalls: Array<Parameters<NotionGatewayClient['updateDataSource']>[0]> = []
-    const gateway = makeNotionDataSourceGatewayFromClient(
-      makeClient({
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
         updateDataSource: (input) =>
           Effect.sync(() => updateDataSourceCalls.push(input)).pipe(Effect.as(remoteDataSource)),
       }),
-    )
+    })
 
     const result = await Effect.runPromiseExit(
       gateway.patchDataSourceSchema({
@@ -1313,8 +1313,8 @@ describe('Notion data source gateway real adapter boundary', () => {
   })
 
   it('preserves fail-closed Notion 403/404 permission ambiguity semantics', async () => {
-    const gateway = makeNotionDataSourceGatewayFromClient(
-      makeClient({
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
         retrieveDataSource: () =>
           Effect.fail(
             new NotionApiError({
@@ -1328,7 +1328,7 @@ describe('Notion data source gateway real adapter boundary', () => {
             }),
           ),
       }),
-    )
+    })
 
     const result = await Effect.runPromiseExit(gateway.retrieveDataSource(dataSourceId))
 
