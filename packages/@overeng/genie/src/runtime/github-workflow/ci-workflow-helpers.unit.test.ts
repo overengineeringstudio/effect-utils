@@ -266,6 +266,12 @@ describe('ci workflow pnpm cache defaults', () => {
   it('uses the same Nix-provided Node runtime for default-ref policy checks', () => {
     expect(ciWorkflowSource).toContain('nix run nixpkgs#nodejs_24 -- node')
   })
+
+  it('provides a dedicated default-ref policy job so regular jobs keep their signal', () => {
+    expect(ciWorkflowSource).toContain('export const defaultRefPolicyCheckJob')
+    expect(ciWorkflowSource).toContain('First-party default refs')
+    expect(ciWorkflowSource).toContain('defaultRefPolicyCheckStep(stepOpts)')
+  })
 })
 
 describe('ci workflow merge queue helpers', () => {
