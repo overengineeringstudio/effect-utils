@@ -222,7 +222,10 @@ describe('PtyClient client wrapper', () => {
         rows: 40,
         cols: 120,
         tags: { owner: 'forge' },
-        launcher: { command: 'node-from-test' },
+        launcher: {
+          command: 'node-from-test',
+          args: ['--preserve-symlinks', '--preserve-symlinks-main'],
+        },
       })
       expect(getSession).toHaveBeenCalledWith('unit-bun')
     } finally {
