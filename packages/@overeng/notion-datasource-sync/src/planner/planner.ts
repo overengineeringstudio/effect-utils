@@ -284,61 +284,99 @@ export type PlannerIntent =
   | QueryAbsenceIntent
   | BodyAdapterResultIntent
 
-const diagnostic = (summary: string, evidence: Record<string, string> = {}): SafeDiagnostic => ({
+const diagnostic = ({
+  summary,
+  evidence = {},
+}: {
+  readonly summary: string
+  readonly evidence?: Record<string, string>
+}): SafeDiagnostic => ({
   _tag: 'SafeDiagnostic',
   summary,
   evidence,
 })
 
-const blockDecision = (
-  guard: GuardName,
-  surface: SurfaceKey,
-  summary: string,
-  evidence: Record<string, string> = {},
-): PlanDecision => ({
+const blockDecision = ({
+  guard,
+  surface,
+  summary,
+  evidence = {},
+}: {
+  readonly guard: GuardName
+  readonly surface: SurfaceKey
+  readonly summary: string
+  readonly evidence?: Record<string, string>
+}): PlanDecision => ({
   _tag: 'BlockedByGuard',
   guard,
   surface,
-  detail: diagnostic(summary, evidence),
+  detail: diagnostic({ summary, evidence }),
 })
 
-const fromGuard = (decision: GuardDecision, surface: SurfaceKey): PlanDecision | undefined =>
-  decision._tag === 'blocked' ? blockDecision(decision.guard, surface, decision.message) : undefined
+const fromGuard = ({
+  decision,
+  surface,
+}: {
+  readonly decision: GuardDecision
+  readonly surface: SurfaceKey
+}): PlanDecision | undefined =>
+  decision._tag === 'blocked'
+    ? blockDecision({ guard: decision.guard, surface, summary: decision.message })
+    : undefined
 
-const findSchemaProperty = (
-  snapshot: PlannerProjectionSnapshot,
-  dataSourceId: DataSourceId,
-  propertyId: PropertyId,
-): SchemaPropertySurface | undefined =>
+const findSchemaProperty = ({
+  snapshot,
+  dataSourceId,
+  propertyId,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly dataSourceId: DataSourceId
+  readonly propertyId: PropertyId
+}): SchemaPropertySurface | undefined =>
   snapshot.schema.find(
     (property) => property.dataSourceId === dataSourceId && property.propertyId === propertyId,
   )
 
-const findPropertySurface = (
-  snapshot: PlannerProjectionSnapshot,
-  pageId: PageId,
-  propertyId: PropertyId,
-): PropertySurfaceSnapshot | undefined =>
+const findPropertySurface = ({
+  snapshot,
+  pageId,
+  propertyId,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly pageId: PageId
+  readonly propertyId: PropertyId
+}): PropertySurfaceSnapshot | undefined =>
   snapshot.properties.find(
     (property) => property.pageId === pageId && property.propertyId === propertyId,
   )
 
-const findBodySurface = (
-  snapshot: PlannerProjectionSnapshot,
-  pageId: PageId,
-): BodyPointerSurfaceSnapshot | undefined => snapshot.bodies.find((body) => body.pageId === pageId)
+const findBodySurface = ({
+  snapshot,
+  pageId,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly pageId: PageId
+}): BodyPointerSurfaceSnapshot | undefined => snapshot.bodies.find((body) => body.pageId === pageId)
 
-const findRowSurface = (
-  snapshot: PlannerProjectionSnapshot,
-  pageId: PageId,
-): RowSurfaceSnapshot | undefined => snapshot.rows.find((row) => row.pageId === pageId)
+const findRowSurface = ({
+  snapshot,
+  pageId,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly pageId: PageId
+}): RowSurfaceSnapshot | undefined => snapshot.rows.find((row) => row.pageId === pageId)
 
-const findQuerySurface = (
-  snapshot: PlannerProjectionSnapshot,
-  dataSourceId: DataSourceId,
-  pageId: PageId,
-  queryContractHash: Hash,
-): QueryCheckpointSurfaceSnapshot | undefined =>
+const findQuerySurface = ({
+  snapshot,
+  dataSourceId,
+  pageId,
+  queryContractHash,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly dataSourceId: DataSourceId
+  readonly pageId: PageId
+  readonly queryContractHash: Hash
+}): QueryCheckpointSurfaceSnapshot | undefined =>
   snapshot.queries.find(
     (query) =>
       query.dataSourceId === dataSourceId &&
@@ -346,12 +384,15 @@ const findQuerySurface = (
       query.queryContractHash === queryContractHash,
   )
 
-const firstBlocked = (
-  surface: SurfaceKey,
-  guards: ReadonlyArray<GuardDecision>,
-): PlanDecision | undefined => {
+const firstBlocked = ({
+  surface,
+  guards,
+}: {
+  readonly surface: SurfaceKey
+  readonly guards: ReadonlyArray<GuardDecision>
+}): PlanDecision | undefined => {
   for (const guard of guards) {
-    const blockedDecision = fromGuard(guard, surface)
+    const blockedDecision = fromGuard({ decision: guard, surface })
     if (blockedDecision !== undefined) {
       return blockedDecision
     }
@@ -389,10 +430,13 @@ const commandEnvelope = ({
   preflight,
 })
 
-const matchingRemoteConflict = (
-  intentSurface: ConflictSurface,
-  snapshot: PlannerProjectionSnapshot,
-): ConflictPayload | undefined => {
+const matchingRemoteConflict = ({
+  intentSurface,
+  snapshot,
+}: {
+  readonly intentSurface: ConflictSurface
+  readonly snapshot: PlannerProjectionSnapshot
+}): ConflictPayload | undefined => {
   for (const remoteChange of snapshot.remoteChanges) {
     const classification = classifyConflict(intentSurface, remoteChange)
     if (classification._tag === 'conflict') {
@@ -403,21 +447,32 @@ const matchingRemoteConflict = (
   return undefined
 }
 
-const planPropertyEdit = (
-  snapshot: PlannerProjectionSnapshot,
-  intent: PropertyEditIntent,
-): PlanDecision => {
-  const row = findRowSurface(snapshot, intent.pageId)
+const planPropertyEdit = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: PropertyEditIntent
+}): PlanDecision => {
+  const row = findRowSurface({ snapshot, pageId: intent.pageId })
   if (row === undefined) {
-    return blockDecision(
-      'CurrentSurfaceMissing',
-      intent.surface,
-      'Current row projection is missing; observe the row before planning a property write',
-    )
+    return blockDecision({
+      guard: 'CurrentSurfaceMissing',
+      surface: intent.surface,
+      summary: 'Current row projection is missing; observe the row before planning a property write',
+    })
   }
 
-  const schemaProperty = findSchemaProperty(snapshot, row.dataSourceId, intent.propertyId)
-  const propertySurface = findPropertySurface(snapshot, intent.pageId, intent.propertyId)
+  const schemaProperty = findSchemaProperty({
+    snapshot,
+    dataSourceId: row.dataSourceId,
+    propertyId: intent.propertyId,
+  })
+  const propertySurface = findPropertySurface({
+    snapshot,
+    pageId: intent.pageId,
+    propertyId: intent.propertyId,
+  })
 
   const baseGuards: GuardDecision[] = [
     guardApiCompatibility(snapshot.api),
@@ -425,15 +480,16 @@ const planPropertyEdit = (
   ]
 
   if (schemaProperty === undefined) {
-    return blockDecision(
-      'CurrentSurfaceMissing',
-      intent.surface,
-      'Current schema property projection is missing; observe the data source schema before planning a property write',
-      {
+    return blockDecision({
+      guard: 'CurrentSurfaceMissing',
+      surface: intent.surface,
+      summary:
+        'Current schema property projection is missing; observe the data source schema before planning a property write',
+      evidence: {
         dataSourceId: row.dataSourceId,
         propertyId: intent.propertyId,
       },
-    )
+    })
   }
 
   baseGuards.push(guardPropertyWriteClass({ writeClass: schemaProperty.writeClass }))
@@ -446,11 +502,11 @@ const planPropertyEdit = (
   )
 
   if (propertySurface === undefined) {
-    return blockDecision(
-      'CurrentSurfaceMissing',
-      intent.surface,
-      'Current property projection is missing; observe the property before planning a write',
-    )
+    return blockDecision({
+      guard: 'CurrentSurfaceMissing',
+      surface: intent.surface,
+      summary: 'Current property projection is missing; observe the property before planning a write',
+    })
   }
 
   if (propertySurface !== undefined) {
@@ -482,11 +538,11 @@ const planPropertyEdit = (
       const classification = classifyConflict(localSurface, remoteSurface)
       return classification._tag === 'conflict'
         ? { _tag: 'OpenConflict', conflict: classification.conflict }
-        : blockDecision(
-            'StaleSurfaceBase',
-            intent.surface,
-            'Local intent base hash is stale for the current surface',
-          )
+        : blockDecision({
+            guard: 'StaleSurfaceBase',
+            surface: intent.surface,
+            summary: 'Local intent base hash is stale for the current surface',
+          })
     }
     baseGuards.push(
       guardStaleSurfaceBase({
@@ -496,7 +552,7 @@ const planPropertyEdit = (
     )
   }
 
-  const blockedDecision = firstBlocked(intent.surface, baseGuards)
+  const blockedDecision = firstBlocked({ surface: intent.surface, guards: baseGuards })
   if (blockedDecision !== undefined) {
     return blockedDecision
   }
@@ -509,7 +565,7 @@ const planPropertyEdit = (
     nextHash: intent.desiredHash,
     surface: intent.surface,
   }
-  const conflict = matchingRemoteConflict(localSurface, snapshot)
+  const conflict = matchingRemoteConflict({ intentSurface: localSurface, snapshot })
   if (conflict !== undefined) {
     return { _tag: 'OpenConflict', conflict }
   }
@@ -529,33 +585,39 @@ const planPropertyEdit = (
   }
 }
 
-const planBodyEdit = (
-  snapshot: PlannerProjectionSnapshot,
-  intent: BodyEditIntent,
-): PlanDecision => {
-  const bodySurface = findBodySurface(snapshot, intent.pageId)
+const planBodyEdit = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: BodyEditIntent
+}): PlanDecision => {
+  const bodySurface = findBodySurface({ snapshot, pageId: intent.pageId })
   if (bodySurface === undefined) {
-    return blockDecision(
-      'CurrentSurfaceMissing',
-      intent.surface,
-      'Current body projection is missing; observe the body before planning a write',
-    )
+    return blockDecision({
+      guard: 'CurrentSurfaceMissing',
+      surface: intent.surface,
+      summary: 'Current body projection is missing; observe the body before planning a write',
+    })
   }
 
   const bodyGuard = bodySurface === undefined ? undefined : guardBodySafety(bodySurface.safety)
-  const blockedDecision = firstBlocked(intent.surface, [
-    guardApiCompatibility(snapshot.api),
-    guardCapabilityPreflight(snapshot.capabilities),
-    ...(bodyGuard === undefined ? [] : [bodyGuard]),
-    ...(bodySurface === undefined
-      ? []
-      : [
-          guardStaleSurfaceBase({
-            baseHash: intent.baseHash,
-            currentHash: bodySurface.currentHash,
-          }),
-        ]),
-  ])
+  const blockedDecision = firstBlocked({
+    surface: intent.surface,
+    guards: [
+      guardApiCompatibility(snapshot.api),
+      guardCapabilityPreflight(snapshot.capabilities),
+      ...(bodyGuard === undefined ? [] : [bodyGuard]),
+      ...(bodySurface === undefined
+        ? []
+        : [
+            guardStaleSurfaceBase({
+              baseHash: intent.baseHash,
+              currentHash: bodySurface.currentHash,
+            }),
+          ]),
+    ],
+  })
   if (blockedDecision !== undefined) {
     return blockedDecision
   }
@@ -568,7 +630,7 @@ const planBodyEdit = (
     lossy: false,
     surface: intent.surface,
   }
-  const conflict = matchingRemoteConflict(localSurface, snapshot)
+  const conflict = matchingRemoteConflict({ intentSurface: localSurface, snapshot })
   if (conflict !== undefined) {
     return { _tag: 'OpenConflict', conflict }
   }
@@ -588,15 +650,21 @@ const planBodyEdit = (
   }
 }
 
-const planSchemaMigration = (
-  snapshot: PlannerProjectionSnapshot,
-  intent: SchemaMigrationIntent,
-): PlanDecision => {
-  const blockedDecision = firstBlocked(intent.surface, [
-    guardApiCompatibility(snapshot.api),
-    guardCapabilityPreflight(snapshot.capabilities),
-    guardSchemaIntentSafety(intent.safety),
-  ])
+const planSchemaMigration = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: SchemaMigrationIntent
+}): PlanDecision => {
+  const blockedDecision = firstBlocked({
+    surface: intent.surface,
+    guards: [
+      guardApiCompatibility(snapshot.api),
+      guardCapabilityPreflight(snapshot.capabilities),
+      guardSchemaIntentSafety(intent.safety),
+    ],
+  })
   if (blockedDecision !== undefined) {
     return blockedDecision
   }
@@ -606,7 +674,7 @@ const planSchemaMigration = (
     affectedPropertyIds: intent.affectedPropertyIds,
     surface: intent.surface,
   }
-  const conflict = matchingRemoteConflict(localSurface, snapshot)
+  const conflict = matchingRemoteConflict({ intentSurface: localSurface, snapshot })
   if (conflict !== undefined) {
     return { _tag: 'OpenConflict', conflict }
   }
@@ -631,23 +699,26 @@ const planSchemaMigration = (
   }
 }
 
-const planLocalDelete = (
-  snapshot: PlannerProjectionSnapshot,
-  intent: LocalDeleteIntent,
-): PlanDecision => {
-  const row = findRowSurface(snapshot, intent.pageId)
-  const body = findBodySurface(snapshot, intent.pageId)
+const planLocalDelete = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: LocalDeleteIntent
+}): PlanDecision => {
+  const row = findRowSurface({ snapshot, pageId: intent.pageId })
+  const body = findBodySurface({ snapshot, pageId: intent.pageId })
   const workspace = snapshot.localWorkspace.find((surface) => surface.pageId === intent.pageId)
 
   if (
     workspace?.materializationId !== undefined &&
     body?.ownWriteMaterializationIds.includes(workspace.materializationId) === true
   ) {
-    return blockDecision(
-      'OwnMaterializationWriteSuppressed',
-      intent.surface,
-      'Local delete observation came from this sync materialization',
-    )
+    return blockDecision({
+      guard: 'OwnMaterializationWriteSuppressed',
+      surface: intent.surface,
+      summary: 'Local delete observation came from this sync materialization',
+    })
   }
 
   if (workspace?.branchLikeMassDeletion === true) {
@@ -664,8 +735,8 @@ const planLocalDelete = (
     }
   }
 
-  const blockedTombstone = fromGuard(
-    guardTombstoneSafety({
+  const blockedTombstone = fromGuard({
+    decision: guardTombstoneSafety({
       deleteVsEdit: snapshot.remoteChanges.some(
         (change) =>
           change._tag !== 'delete' && 'pageId' in change && change.pageId === intent.pageId,
@@ -676,8 +747,8 @@ const planLocalDelete = (
           tombstone.pageId === intent.pageId && tombstone.directRetrieve === 'permission-ambiguous',
       ),
     }),
-    intent.surface,
-  )
+    surface: intent.surface,
+  })
   if (blockedTombstone !== undefined) {
     return blockedTombstone
   }
@@ -702,21 +773,24 @@ const planLocalDelete = (
   }
 
   if (row === undefined) {
-    return blockDecision(
-      'CurrentSurfaceMissing',
-      intent.surface,
-      'Current row projection is missing; observe the row before planning remote trash',
-    )
+    return blockDecision({
+      guard: 'CurrentSurfaceMissing',
+      surface: intent.surface,
+      summary: 'Current row projection is missing; observe the row before planning remote trash',
+    })
   }
 
-  const blockedDecision = firstBlocked(intent.surface, [
-    guardApiCompatibility(snapshot.api),
-    guardCapabilityPreflight(snapshot.capabilities),
-    guardStaleSurfaceBase({
-      baseHash: intent.baseHash,
-      currentHash: row.propertiesHash,
-    }),
-  ])
+  const blockedDecision = firstBlocked({
+    surface: intent.surface,
+    guards: [
+      guardApiCompatibility(snapshot.api),
+      guardCapabilityPreflight(snapshot.capabilities),
+      guardStaleSurfaceBase({
+        baseHash: intent.baseHash,
+        currentHash: row.propertiesHash,
+      }),
+    ],
+  })
   if (blockedDecision !== undefined) {
     return blockedDecision
   }
@@ -736,15 +810,18 @@ const planLocalDelete = (
   }
 }
 
-const planPathClaim = (
-  snapshot: PlannerProjectionSnapshot,
-  intent: PathClaimIntent,
-): PlanDecision => {
+const planPathClaim = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: PathClaimIntent
+}): PlanDecision => {
   const existingClaim = snapshot.pathClaims.find(
     (claim) => claim.path === intent.path && claim.released === false,
   )
   const collides = existingClaim !== undefined && existingClaim.ownerPageId !== intent.pageId
-  const blockedDecision = fromGuard(guardPathClaimCollision({ collides }), intent.surface)
+  const blockedDecision = fromGuard({ decision: guardPathClaimCollision({ collides }), surface: intent.surface })
   if (blockedDecision !== undefined) {
     const localSurface: ConflictSurface = {
       _tag: 'path',
@@ -779,28 +856,31 @@ const planPathClaim = (
   }
 }
 
-const planQueryAbsence = (
-  snapshot: PlannerProjectionSnapshot,
-  intent: QueryAbsenceIntent,
-): PlanDecision => {
-  const query = findQuerySurface(
+const planQueryAbsence = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: QueryAbsenceIntent
+}): PlanDecision => {
+  const query = findQuerySurface({
     snapshot,
-    intent.dataSourceId,
-    intent.pageId,
-    intent.queryContractHash,
-  )
+    dataSourceId: intent.dataSourceId,
+    pageId: intent.pageId,
+    queryContractHash: intent.queryContractHash,
+  })
   if (query === undefined) {
-    return blockDecision(
-      'QueryAbsenceUnclassified',
-      intent.surface,
-      'No query checkpoint exists for absence classification',
-    )
+    return blockDecision({
+      guard: 'QueryAbsenceUnclassified',
+      surface: intent.surface,
+      summary: 'No query checkpoint exists for absence classification',
+    })
   }
 
-  const blockedDecision = firstBlocked(intent.surface, [
-    guardQueryCompleteness(query.completeness),
-    guardQueryAbsence(query.absence),
-  ])
+  const blockedDecision = firstBlocked({
+    surface: intent.surface,
+    guards: [guardQueryCompleteness(query.completeness), guardQueryAbsence(query.absence)],
+  })
   if (blockedDecision !== undefined) {
     return blockedDecision
   }
@@ -858,17 +938,17 @@ const planQueryAbsence = (
       }
     case 'not-run':
     case 'permission-ambiguous':
-      return blockDecision(
-        'QueryAbsenceUnclassified',
-        intent.surface,
-        'Query absence must be directly classified before recording a tombstone candidate',
-      )
+      return blockDecision({
+        guard: 'QueryAbsenceUnclassified',
+        surface: intent.surface,
+        summary: 'Query absence must be directly classified before recording a tombstone candidate',
+      })
   }
 }
 
 const planBodyAdapterResult = (intent: BodyAdapterResultIntent): PlanDecision => {
   const guard = guardBodySafety(intent.safety)
-  const blockedDecision = fromGuard(guard, intent.surface)
+  const blockedDecision = fromGuard({ decision: guard, surface: intent.surface })
   if (blockedDecision !== undefined) {
     return blockedDecision
   }
@@ -886,25 +966,29 @@ export const planIntent = (
 ): PlanDecision => {
   switch (intent._tag) {
     case 'property-edit':
-      return planPropertyEdit(snapshot, intent)
+      return planPropertyEdit({ snapshot, intent })
     case 'body-edit':
-      return planBodyEdit(snapshot, intent)
+      return planBodyEdit({ snapshot, intent })
     case 'schema-migration':
-      return planSchemaMigration(snapshot, intent)
+      return planSchemaMigration({ snapshot, intent })
     case 'local-delete':
-      return planLocalDelete(snapshot, intent)
+      return planLocalDelete({ snapshot, intent })
     case 'path-claim':
-      return planPathClaim(snapshot, intent)
+      return planPathClaim({ snapshot, intent })
     case 'query-absence':
-      return planQueryAbsence(snapshot, intent)
+      return planQueryAbsence({ snapshot, intent })
     case 'body-adapter-result':
       return planBodyAdapterResult(intent)
   }
 }
 
 /** Construct a `BlockedByGuard` `PlanDecision` directly — useful for callers outside the planner that need to synthesise a guard block (e.g. user-command paths). */
-export const blockedByGuard = (
-  guard: GuardName,
-  surface: SurfaceKey,
-  summary: string,
-): PlanDecision => blockDecision(guard, surface, summary)
+export const blockedByGuard = ({
+  guard,
+  surface,
+  summary,
+}: {
+  readonly guard: GuardName
+  readonly surface: SurfaceKey
+  readonly summary: string
+}): PlanDecision => blockDecision({ guard, surface, summary })

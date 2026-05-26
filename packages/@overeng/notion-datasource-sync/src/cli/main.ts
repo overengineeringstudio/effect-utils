@@ -252,15 +252,21 @@ const SchemaPropertyObservationJson = Schema.Struct({
 
 const capabilityNames = new Set<CapabilityName>(allGatewayCapabilities)
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: unknown,
-): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
+const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: unknown
+}): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
-const decodeJson = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: string,
-): typeof schema.Type =>
+const decodeJson = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: string
+}): typeof schema.Type =>
   Schema.decodeUnknownSync(schema)(
     Schema.decodeUnknownSync(Schema.parseJson(Schema.Unknown))(value),
   )
@@ -271,10 +277,13 @@ const withOptionalRuntimeOptions = (context: CliContext) => ({
   ...(context.leaseDurationMs === undefined ? {} : { leaseDurationMs: context.leaseDurationMs }),
 })
 
-const withOptionalCommandOptions = (
-  command: { readonly dryRun?: boolean },
-  context: CliContext,
-) => ({
+const withOptionalCommandOptions = ({
+  command,
+  context,
+}: {
+  readonly command: { readonly dryRun?: boolean }
+  readonly context: CliContext
+}) => ({
   ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
   ...(context.now === undefined ? {} : { now: context.now }),
 })
@@ -318,10 +327,13 @@ type CliCommandRuntimeError =
   | LocalStorageError
   | CliUnsupportedCommandError
 
-const runCliCommandEffect = (
-  command: CliCommand,
-  context: CliContext,
-): Effect.Effect<
+const runCliCommandEffect = ({
+  command,
+  context,
+}: {
+  readonly command: CliCommand
+  readonly context: CliContext
+}): Effect.Effect<
   CliCommandRuntimeResult,
   CliCommandRuntimeError,
   NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
@@ -337,7 +349,7 @@ const runCliCommandEffect = (
             rootId: context.rootId,
             dataSourceId: command.dataSourceId,
             workspaceRoot: command.workspaceRoot,
-            ...withOptionalCommandOptions(command, context),
+            ...withOptionalCommandOptions({ command, context }),
           }),
         }),
       ).pipe(
@@ -360,14 +372,14 @@ const runCliCommandEffect = (
       return pushOneShotSync({
         ...context,
         ...withOptionalRuntimeOptions(context),
-        ...withOptionalCommandOptions(command, context),
+        ...withOptionalCommandOptions({ command, context }),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'sync':
       return syncOneShot({
         ...context,
         ...remoteObservationContext(context),
         ...withOptionalRuntimeOptions(context),
-        ...withOptionalCommandOptions(command, context),
+        ...withOptionalCommandOptions({ command, context }),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'status':
       return Effect.sync(() =>
@@ -403,7 +415,7 @@ const runCliCommandEffect = (
             rootId: context.rootId,
             conflictId: command.conflictId,
             choice: command.choice,
-            ...withOptionalCommandOptions(command, context),
+            ...withOptionalCommandOptions({ command, context }),
           }),
         }),
       )
@@ -416,7 +428,7 @@ const runCliCommandEffect = (
             store: context.store,
             rootId: context.rootId,
             pageId: command.pageId,
-            ...withOptionalCommandOptions(command, context),
+            ...withOptionalCommandOptions({ command, context }),
           }),
         }),
       )
@@ -429,7 +441,7 @@ const runCliCommandEffect = (
             store: context.store,
             rootId: context.rootId,
             pageId: command.pageId,
-            ...withOptionalCommandOptions(command, context),
+            ...withOptionalCommandOptions({ command, context }),
           }),
         }),
       )
@@ -497,7 +509,7 @@ export const runCliCommand = Effect.fn(spanNames.cliCommand, {
           [spanAttr.maxCycles]: command._tag === 'watch' ? command.maxCycles : undefined,
         }),
       )
-      const result = yield* runCliCommandEffect(command, context)
+      const result = yield* runCliCommandEffect({ command, context })
       yield* Effect.annotateCurrentSpan({
         ...statusSpanAttributes(result.status),
         [spanAttr.result]: result.ok === true ? 'ok' : result.status.state,
@@ -558,21 +570,36 @@ const parseFlags = (argv: ReadonlyArray<string>): Map<string, string | true> => 
   return flags
 }
 
-const requiredFlag = (flags: Map<string, string | true>, name: string): string => {
+const requiredFlag = ({
+  flags,
+  name,
+}: {
+  readonly flags: Map<string, string | true>
+  readonly name: string
+}): string => {
   const value = flags.get(name)
   if (typeof value === 'string' && value.length > 0) return value
   throw new CliArgumentError({ message: `Missing required --${name}` })
 }
 
-const optionalFlag = (flags: Map<string, string | true>, name: string): string | undefined => {
+const optionalFlag = ({
+  flags,
+  name,
+}: {
+  readonly flags: Map<string, string | true>
+  readonly name: string
+}): string | undefined => {
   const value = flags.get(name)
   return typeof value === 'string' ? value : undefined
 }
 
-const positiveIntegerFlag = (
-  flags: Map<string, string | true>,
-  name: string,
-): number | undefined => {
+const positiveIntegerFlag = ({
+  flags,
+  name,
+}: {
+  readonly flags: Map<string, string | true>
+  readonly name: string
+}): number | undefined => {
   const value = flags.get(name)
   if (value === undefined) return undefined
   if (typeof value !== 'string' || value.length === 0) {
@@ -593,10 +620,13 @@ const positiveIntegerFlag = (
   })
 }
 
-const capabilityListFlag = (
-  flags: Map<string, string | true>,
-  name: string,
-): ReadonlyArray<CapabilityName> | undefined => {
+const capabilityListFlag = ({
+  flags,
+  name,
+}: {
+  readonly flags: Map<string, string | true>
+  readonly name: string
+}): ReadonlyArray<CapabilityName> | undefined => {
   const value = flags.get(name)
   if (value === undefined) return undefined
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -621,13 +651,13 @@ const capabilityListFlag = (
 }
 
 const parseChoice = (flags: Map<string, string | true>): ConflictResolutionChoice => {
-  const strategy = optionalFlag(flags, 'strategy') ?? 'keep-remote'
+  const strategy = optionalFlag({ flags, name: 'strategy' }) ?? 'keep-remote'
   switch (strategy) {
     case 'keep-remote':
       return { _tag: 'keep-remote' }
     case 'keep-local':
     case 'manual': {
-      const value = decodeJson(CanonicalPropertyValue, requiredFlag(flags, 'value-json'))
+      const value = decodeJson({ schema: CanonicalPropertyValue, value: requiredFlag({ flags, name: 'value-json' }) })
       return {
         _tag: strategy,
         value,
@@ -654,8 +684,8 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
     case 'init':
       return {
         _tag: 'init',
-        dataSourceId: decode(DataSourceId, requiredFlag(flags, 'data-source-id')),
-        workspaceRoot: decode(AbsolutePath, requiredFlag(flags, 'workspace-root')),
+        dataSourceId: decode({ schema: DataSourceId, value: requiredFlag({ flags, name: 'data-source-id' }) }),
+        workspaceRoot: decode({ schema: AbsolutePath, value: requiredFlag({ flags, name: 'workspace-root' }) }),
         dryRun: flags.has('dry-run'),
       }
     case 'pull':
@@ -667,10 +697,10 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
     case 'status':
       return { _tag: 'status' }
     case 'watch': {
-      const maxCycles = positiveIntegerFlag(flags, 'max-cycles')
+      const maxCycles = positiveIntegerFlag({ flags, name: 'max-cycles' })
       return {
         _tag: 'watch',
-        statePath: requiredFlag(flags, 'state'),
+        statePath: requiredFlag({ flags, name: 'state' }),
         ...(maxCycles === undefined ? {} : { maxCycles }),
       }
     }
@@ -679,7 +709,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
       if (subcommand === 'resolve') {
         return {
           _tag: 'conflicts-resolve',
-          conflictId: decode(SyncEventId, requiredFlag(flags, 'conflict-id')),
+          conflictId: decode({ schema: SyncEventId, value: requiredFlag({ flags, name: 'conflict-id' }) }),
           choice: parseChoice(flags),
           dryRun: flags.has('dry-run'),
         }
@@ -688,13 +718,13 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
     case 'forget':
       return {
         _tag: 'forget',
-        pageId: decode(PageId, requiredFlag(flags, 'page-id')),
+        pageId: decode({ schema: PageId, value: requiredFlag({ flags, name: 'page-id' }) }),
         dryRun: flags.has('dry-run'),
       }
     case 'restore':
       return {
         _tag: 'restore',
-        pageId: decode(PageId, requiredFlag(flags, 'page-id')),
+        pageId: decode({ schema: PageId, value: requiredFlag({ flags, name: 'page-id' }) }),
         dryRun: flags.has('dry-run'),
       }
     case 'migrate':
@@ -721,15 +751,15 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
  */
 export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
   const flags = parseFlags(argv)
-  const storePath = requiredFlag(flags, 'store')
-  const rootId = decode(SyncRootId, requiredFlag(flags, 'root-id'))
-  const dataSourceId = decode(DataSourceId, requiredFlag(flags, 'data-source-id'))
-  const workspaceRoot = decode(AbsolutePath, requiredFlag(flags, 'workspace-root'))
-  const maxExecutorSteps = positiveIntegerFlag(flags, 'max-executor-steps')
-  const requiredCapabilities = capabilityListFlag(flags, 'required-capabilities')
+  const storePath = requiredFlag({ flags, name: 'store' })
+  const rootId = decode({ schema: SyncRootId, value: requiredFlag({ flags, name: 'root-id' }) })
+  const dataSourceId = decode({ schema: DataSourceId, value: requiredFlag({ flags, name: 'data-source-id' }) })
+  const workspaceRoot = decode({ schema: AbsolutePath, value: requiredFlag({ flags, name: 'workspace-root' }) })
+  const maxExecutorSteps = positiveIntegerFlag({ flags, name: 'max-executor-steps' })
+  const requiredCapabilities = capabilityListFlag({ flags, name: 'required-capabilities' })
   const queryContract =
-    optionalFlag(flags, 'query-contract-json') === undefined
-      ? decode(QueryContract, {
+    optionalFlag({ flags, name: 'query-contract-json' }) === undefined
+      ? decode({ schema: QueryContract, value: {
           _tag: 'QueryContract',
           apiVersion: '2026-03-11',
           filter: null,
@@ -737,15 +767,15 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
           pageSize: 100,
           highWatermark: null,
           membershipScope: 'all-data-source-rows',
-        })
-      : decodeJson(QueryContract, requiredFlag(flags, 'query-contract-json'))
+        }})
+      : decodeJson({ schema: QueryContract, value: requiredFlag({ flags, name: 'query-contract-json' }) })
   const schemaProperties =
-    optionalFlag(flags, 'schema-properties-json') === undefined
+    optionalFlag({ flags, name: 'schema-properties-json' }) === undefined
       ? []
-      : (decodeJson(
-          Schema.Array(SchemaPropertyObservationJson),
-          requiredFlag(flags, 'schema-properties-json'),
-        ) as ReadonlyArray<SchemaPropertyObservation>)
+      : (decodeJson({
+          schema: Schema.Array(SchemaPropertyObservationJson),
+          value: requiredFlag({ flags, name: 'schema-properties-json' }),
+        }) as ReadonlyArray<SchemaPropertyObservation>)
   const store = openNotionSyncStore({ path: storePath })
 
   return {
@@ -800,10 +830,13 @@ const missingTokenCliGateway: NotionDataSourceGatewayShape = {
  * (token from env) > stub that returns `CapabilityPreflightFailed` on every call.
  * Body sync defaults to an unsupported stub; workspace defaults to the filesystem adapter.
  */
-export const makeCliRuntimeLayer = (
-  context: CliContext,
-  options: CliRuntimeOptions = {},
-): Layer.Layer<NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort> => {
+export const makeCliRuntimeLayer = ({
+  context,
+  options = {},
+}: {
+  readonly context: CliContext
+  readonly options?: CliRuntimeOptions
+}): Layer.Layer<NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort> => {
   const envToken = tokenFromEnv(options.env ?? process.env)
   const gatewayLayer =
     options.gateway !== undefined
@@ -850,7 +883,7 @@ export const runCliCommandWithRuntime = (
   command: CliCommand,
   context: CliContext,
   options: CliRuntimeOptions = {},
-) => runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer(context, options)))
+) => runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer({ context, options })))
 
 /**
  * Top-level CLI entry point: parses `argv`, rejects unsupported commands early, runs the command,

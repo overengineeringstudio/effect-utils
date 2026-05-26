@@ -300,10 +300,13 @@ const defaultUnsafeBodySafety: typeof BodySafetySnapshot.Type = {
   adapterMutationSurfaces: ['body'],
 }
 
-const decodePayload = <TValue>(
-  event: SyncEvent,
-  decode: (value: unknown) => TValue,
-): TValue | undefined => {
+const decodePayload = <TValue>({
+  event,
+  decode,
+}: {
+  readonly event: SyncEvent
+  readonly decode: (value: unknown) => TValue
+}): TValue | undefined => {
   try {
     return decode(event.payload.canonicalJson)
   } catch {
@@ -321,7 +324,7 @@ const parsePropertySurface = (
   return { pageId: match[1]!, propertyId: match[2]! }
 }
 
-const readString = (row: SqlRow, key: string): string => {
+const readString = ({ row, key }: { readonly row: SqlRow; readonly key: string }): string => {
   const value = row[key]
   if (typeof value === 'string') return value
   throw new LocalStoreError({
@@ -330,7 +333,13 @@ const readString = (row: SqlRow, key: string): string => {
   })
 }
 
-const readOptionalString = (row: SqlRow, key: string): string | undefined => {
+const readOptionalString = ({
+  row,
+  key,
+}: {
+  readonly row: SqlRow
+  readonly key: string
+}): string | undefined => {
   const value = row[key]
   if (value === null || value === undefined) return undefined
   if (typeof value === 'string') return value
@@ -340,7 +349,7 @@ const readOptionalString = (row: SqlRow, key: string): string | undefined => {
   })
 }
 
-const readInteger = (row: SqlRow, key: string): bigint => {
+const readInteger = ({ row, key }: { readonly row: SqlRow; readonly key: string }): bigint => {
   const value = row[key]
   if (typeof value === 'bigint') return value
   if (typeof value === 'number' && Number.isInteger(value) === true) return BigInt(value)
@@ -350,7 +359,7 @@ const readInteger = (row: SqlRow, key: string): bigint => {
   })
 }
 
-const readBoolean = (row: SqlRow, key: string): boolean => {
+const readBoolean = ({ row, key }: { readonly row: SqlRow; readonly key: string }): boolean => {
   const value = row[key]
   if (value === 0 || value === 0n) return false
   if (value === 1 || value === 1n) return true
@@ -360,18 +369,32 @@ const readBoolean = (row: SqlRow, key: string): boolean => {
   })
 }
 
-const readOutboxState = (row: SqlRow, key: string): typeof OutboxState.Type =>
-  Schema.decodeUnknownSync(OutboxState)(readString(row, key))
+const readOutboxState = ({
+  row,
+  key,
+}: {
+  readonly row: SqlRow
+  readonly key: string
+}): typeof OutboxState.Type => Schema.decodeUnknownSync(OutboxState)(readString({ row, key }))
 
-const readConflictState = (row: SqlRow, key: string): ConflictProjectionRow['state'] =>
+const readConflictState = ({
+  row,
+  key,
+}: {
+  readonly row: SqlRow
+  readonly key: string
+}): ConflictProjectionRow['state'] =>
   Schema.decodeUnknownSync(Schema.Literal('open', 'resolved', 'superseded', 'ignored'))(
-    readString(row, key),
+    readString({ row, key }),
   )
 
-const readTombstoneClassification = (
-  row: SqlRow,
-  key: string,
-): TombstoneProjectionRow['classification'] =>
+const readTombstoneClassification = ({
+  row,
+  key,
+}: {
+  readonly row: SqlRow
+  readonly key: string
+}): TombstoneProjectionRow['classification'] =>
   Schema.decodeUnknownSync(
     Schema.Literal(
       'unclassified',
@@ -381,10 +404,15 @@ const readTombstoneClassification = (
       'inaccessible',
       'unknown',
     ),
-  )(readString(row, key))
+  )(readString({ row, key }))
 
-const readCount = (row: SqlRow | undefined, key: string): number =>
-  row === undefined ? 0 : Number(readInteger(row, key))
+const readCount = ({
+  row,
+  key,
+}: {
+  readonly row: SqlRow | undefined
+  readonly key: string
+}): number => (row === undefined ? 0 : Number(readInteger({ row, key })))
 
 const stringifyJson = (value: unknown): string => JSON.stringify(value)
 
@@ -400,7 +428,7 @@ const makeEventId = (parts: ReadonlyArray<string | number>): SyncEventId =>
   decodeSyncEventId(parts.map((part) => String(part).replaceAll(':', '-')).join(':'))
 
 const decodePlanCommand = (event: SyncEvent): typeof RemoteWriteCommand.Type | undefined =>
-  decodePayload(event, decodeRemoteWritePlanPayload)?.command
+  decodePayload({ event: event, decode: decodeRemoteWritePlanPayload })?.command
 
 const assertSupportedSchemaVersion = (db: DatabaseSync): void => {
   const migrationHistoryTable = db
@@ -488,7 +516,10 @@ export class NotionSyncStore {
       journalMode: String(
         journalModeRow.journal_mode ?? journalModeRow['journal_mode = WAL'] ?? '',
       ),
-      foreignKeys: readBoolean({ enabled: foreignKeysRow.foreign_keys ?? 0 }, 'enabled'),
+      foreignKeys: readBoolean({
+        row: { enabled: foreignKeysRow.foreign_keys ?? 0 },
+        key: 'enabled',
+      }),
       busyTimeoutMs,
     }
   }
@@ -557,13 +588,13 @@ export class NotionSyncStore {
         return undefined
       }
 
-      const previousState = readOutboxState(row, 'state')
-      const attempt = Number(readInteger(row, 'attempt_count')) + 1
+      const previousState = readOutboxState({ row: row, key: 'state' })
+      const attempt = Number(readInteger({ row: row, key: 'attempt_count' })) + 1
       const attemptState = previousState === 'running' ? 'ambiguous' : 'running'
-      const commandId = readString(row, 'command_id')
-      const commandKey = decodeIdempotencyKey(readString(row, 'command_key'))
-      const surface = decodeSurfaceKey(readString(row, 'surface'))
-      const plannedEvent = decodeEventFromJson(readString(row, 'event_json'))
+      const commandId = readString({ row: row, key: 'command_id' })
+      const commandKey = decodeIdempotencyKey(readString({ row: row, key: 'command_key' }))
+      const surface = decodeSurfaceKey(readString({ row: row, key: 'surface' }))
+      const plannedEvent = decodeEventFromJson(readString({ row: row, key: 'event_json' }))
       const attemptEvent = this.#appendOutboxAttemptStateInTransaction({
         rootId: options.rootId,
         commandId: Schema.decodeUnknownSync(CommandId)(commandId),
@@ -581,17 +612,17 @@ export class NotionSyncStore {
         rootId: options.rootId,
         commandId: Schema.decodeUnknownSync(CommandId)(commandId),
         commandKey,
-        intentEventId: decodeSyncEventId(readString(row, 'intent_event_id')),
+        intentEventId: decodeSyncEventId(readString({ row: row, key: 'intent_event_id' })),
         surface,
-        commandTag: readString(row, 'command_tag'),
+        commandTag: readString({ row: row, key: 'command_tag' }),
         command: decodePlanCommand(plannedEvent),
         baseHash:
-          readOptionalString(row, 'base_hash') === undefined
+          readOptionalString({ row: row, key: 'base_hash' }) === undefined
             ? undefined
-            : decodeHash(readString(row, 'base_hash')),
-        desiredHash: decodeHash(readString(row, 'desired_hash')),
+            : decodeHash(readString({ row: row, key: 'base_hash' })),
+        desiredHash: decodeHash(readString({ row: row, key: 'desired_hash' })),
         preflight: Schema.decodeSync(Schema.parseJson(Schema.Array(GuardName)))(
-          readString(row, 'preflight_json'),
+          readString({ row: row, key: 'preflight_json' }),
         ),
         attempt,
         leaseToken: options.leaseToken,
@@ -624,9 +655,9 @@ export class NotionSyncStore {
 
     return (
       row !== undefined &&
-      readOutboxState(row, 'state') === 'running' &&
-      readOptionalString(row, 'lease_token') === leaseToken &&
-      readOptionalString(row, 'settlement_event_id') === undefined
+      readOutboxState({ row: row, key: 'state' }) === 'running' &&
+      readOptionalString({ row: row, key: 'lease_token' }) === leaseToken &&
+      readOptionalString({ row: row, key: 'settlement_event_id' }) === undefined
     )
   }
 
@@ -684,7 +715,9 @@ export class NotionSyncStore {
   }
 
   replay(rootId: SyncRootId): readonly SyncEvent[] {
-    return this.#eventRows(rootId).map((row) => decodeEventFromJson(readString(row, 'event_json')))
+    return this.#eventRows(rootId).map((row) =>
+      decodeEventFromJson(readString({ row: row, key: 'event_json' })),
+    )
   }
 
   clearProjectionTables(): void {
@@ -716,9 +749,9 @@ export class NotionSyncStore {
 
     return {
       rootId,
-      projectorVersion: readString(row, 'projector_version'),
-      highWaterSequence: readInteger(row, 'high_water_sequence'),
-      digest: decodeHash(readString(row, 'digest')),
+      projectorVersion: readString({ row: row, key: 'projector_version' }),
+      highWaterSequence: readInteger({ row: row, key: 'high_water_sequence' }),
+      digest: decodeHash(readString({ row: row, key: 'digest' })),
     }
   }
 
@@ -746,19 +779,19 @@ export class NotionSyncStore {
 
     if (row === undefined) return undefined
 
-    const nextCursor = readOptionalString(row, 'next_cursor')
-    const highWatermark = readOptionalString(row, 'high_watermark')
+    const nextCursor = readOptionalString({ row: row, key: 'next_cursor' })
+    const highWatermark = readOptionalString({ row: row, key: 'high_watermark' })
 
     return {
-      dataSourceId: decodeDataSourceId(readString(row, 'data_source_id')),
-      queryContractHash: decodeHash(readString(row, 'query_contract_hash')),
+      dataSourceId: decodeDataSourceId(readString({ row: row, key: 'data_source_id' })),
+      queryContractHash: decodeHash(readString({ row: row, key: 'query_contract_hash' })),
       nextCursor: nextCursor === undefined ? null : decodeQueryCursor(nextCursor),
-      complete: readBoolean(row, 'complete'),
-      cappedAtLimit: readBoolean(row, 'capped_at_limit'),
-      contractChanged: readBoolean(row, 'contract_changed'),
+      complete: readBoolean({ row: row, key: 'complete' }),
+      cappedAtLimit: readBoolean({ row: row, key: 'capped_at_limit' }),
+      contractChanged: readBoolean({ row: row, key: 'contract_changed' }),
       highWatermark:
         highWatermark === undefined ? null : Schema.decodeSync(Schema.DateTimeUtc)(highWatermark),
-      eventId: decodeSyncEventId(readString(row, 'event_id')),
+      eventId: decodeSyncEventId(readString({ row: row, key: 'event_id' })),
     }
   }
 
@@ -787,17 +820,17 @@ export class NotionSyncStore {
       )
       .all(rootId)
       .map((row) => ({
-        commandId: readString(row, 'command_id'),
-        commandKey: readString(row, 'command_key'),
-        intentEventId: readString(row, 'intent_event_id'),
-        surface: readOptionalString(row, 'surface'),
-        commandTag: readString(row, 'command_tag'),
-        state: readOutboxState(row, 'state'),
-        baseHash: readOptionalString(row, 'base_hash'),
-        desiredHash: readOptionalString(row, 'desired_hash'),
-        attemptCount: Number(readInteger(row, 'attempt_count')),
-        leaseToken: readOptionalString(row, 'lease_token'),
-        settlementEventId: readOptionalString(row, 'settlement_event_id'),
+        commandId: readString({ row: row, key: 'command_id' }),
+        commandKey: readString({ row: row, key: 'command_key' }),
+        intentEventId: readString({ row: row, key: 'intent_event_id' }),
+        surface: readOptionalString({ row: row, key: 'surface' }),
+        commandTag: readString({ row: row, key: 'command_tag' }),
+        state: readOutboxState({ row: row, key: 'state' }),
+        baseHash: readOptionalString({ row: row, key: 'base_hash' }),
+        desiredHash: readOptionalString({ row: row, key: 'desired_hash' }),
+        attemptCount: Number(readInteger({ row: row, key: 'attempt_count' })),
+        leaseToken: readOptionalString({ row: row, key: 'lease_token' }),
+        settlementEventId: readOptionalString({ row: row, key: 'settlement_event_id' }),
       }))
   }
 
@@ -824,7 +857,7 @@ export class NotionSyncStore {
       )
       .all(rootId)
       .map((row) => {
-        const openedEvent = decodeEventFromJson(readString(row, 'event_json'))
+        const openedEvent = decodeEventFromJson(readString({ row: row, key: 'event_json' }))
         const surface =
           openedEvent.surface === null ? undefined : decodeSurfaceKey(openedEvent.surface)
         const kind =
@@ -839,36 +872,36 @@ export class NotionSyncStore {
             : undefined
 
         return {
-          conflictId: decodeSyncEventId(readString(row, 'conflict_id')),
+          conflictId: decodeSyncEventId(readString({ row: row, key: 'conflict_id' })),
           pageId:
-            readOptionalString(row, 'page_id') === undefined
+            readOptionalString({ row: row, key: 'page_id' }) === undefined
               ? undefined
-              : decodePageId(readString(row, 'page_id')),
+              : decodePageId(readString({ row: row, key: 'page_id' })),
           propertyId:
-            readOptionalString(row, 'property_id') === undefined
+            readOptionalString({ row: row, key: 'property_id' }) === undefined
               ? undefined
-              : decodePropertyId(readString(row, 'property_id')),
+              : decodePropertyId(readString({ row: row, key: 'property_id' })),
           surface,
-          state: readConflictState(row, 'state'),
+          state: readConflictState({ row: row, key: 'state' }),
           kind,
           baseHash:
-            readOptionalString(row, 'base_hash') === undefined
+            readOptionalString({ row: row, key: 'base_hash' }) === undefined
               ? undefined
-              : decodeHash(readString(row, 'base_hash')),
+              : decodeHash(readString({ row: row, key: 'base_hash' })),
           localHash:
-            readOptionalString(row, 'local_hash') === undefined
+            readOptionalString({ row: row, key: 'local_hash' }) === undefined
               ? undefined
-              : decodeHash(readString(row, 'local_hash')),
+              : decodeHash(readString({ row: row, key: 'local_hash' })),
           remoteHash:
-            readOptionalString(row, 'remote_hash') === undefined
+            readOptionalString({ row: row, key: 'remote_hash' }) === undefined
               ? undefined
-              : decodeHash(readString(row, 'remote_hash')),
+              : decodeHash(readString({ row: row, key: 'remote_hash' })),
           message,
-          openedEventId: decodeSyncEventId(readString(row, 'opened_event_id')),
+          openedEventId: decodeSyncEventId(readString({ row: row, key: 'opened_event_id' })),
           resolutionEventId:
-            readOptionalString(row, 'resolution_event_id') === undefined
+            readOptionalString({ row: row, key: 'resolution_event_id' }) === undefined
               ? undefined
-              : decodeSyncEventId(readString(row, 'resolution_event_id')),
+              : decodeSyncEventId(readString({ row: row, key: 'resolution_event_id' })),
         }
       })
   }
@@ -883,14 +916,14 @@ export class NotionSyncStore {
       )
       .all(rootId)
       .map((row) => ({
-        blockId: readString(row, 'block_id'),
+        blockId: readString({ row: row, key: 'block_id' }),
         surface:
-          readOptionalString(row, 'surface') === undefined
+          readOptionalString({ row: row, key: 'surface' }) === undefined
             ? undefined
-            : decodeSurfaceKey(readString(row, 'surface')),
-        guard: Schema.decodeUnknownSync(GuardName)(readString(row, 'guard')),
-        message: readString(row, 'message'),
-        eventId: decodeSyncEventId(readString(row, 'event_id')),
+            : decodeSurfaceKey(readString({ row: row, key: 'surface' })),
+        guard: Schema.decodeUnknownSync(GuardName)(readString({ row: row, key: 'guard' })),
+        message: readString({ row: row, key: 'message' }),
+        eventId: decodeSyncEventId(readString({ row: row, key: 'event_id' })),
       }))
   }
 
@@ -904,10 +937,10 @@ export class NotionSyncStore {
       )
       .all(rootId)
       .map((row) => ({
-        pageId: decodePageId(readString(row, 'page_id')),
-        classification: readTombstoneClassification(row, 'classification'),
-        reason: readString(row, 'reason'),
-        eventId: decodeSyncEventId(readString(row, 'event_id')),
+        pageId: decodePageId(readString({ row: row, key: 'page_id' })),
+        classification: readTombstoneClassification({ row: row, key: 'classification' }),
+        reason: readString({ row: row, key: 'reason' }),
+        eventId: decodeSyncEventId(readString({ row: row, key: 'event_id' })),
       }))
   }
 
@@ -930,11 +963,11 @@ export class NotionSyncStore {
       )
       .all(rootId)
     const requiredCapabilities = capabilityRows.map((row) =>
-      decodeCapabilityName(readString(row, 'capability')),
+      decodeCapabilityName(readString({ row: row, key: 'capability' })),
     )
     const supportedCapabilities = capabilityRows
-      .filter((row) => readBoolean(row, 'supported'))
-      .map((row) => decodeCapabilityName(readString(row, 'capability')))
+      .filter((row) => readBoolean({ row: row, key: 'supported' }))
+      .map((row) => decodeCapabilityName(readString({ row: row, key: 'capability' })))
 
     const pendingProperties = this.#pendingPropertyIntents(rootId)
 
@@ -942,14 +975,15 @@ export class NotionSyncStore {
       rootId,
       api: {
         configuredApiVersion:
-          apiRow === undefined ? '2026-03-11' : readString(apiRow, 'api_version'),
+          apiRow === undefined ? '2026-03-11' : readString({ row: apiRow, key: 'api_version' }),
         compatibilityProof: apiRow === undefined ? 'missing' : 'present',
       },
       capabilities: {
         required: requiredCapabilities,
         supported: supportedCapabilities,
         preflight:
-          capabilityRows.length > 0 && capabilityRows.every((row) => readBoolean(row, 'supported')) === true
+          capabilityRows.length > 0 &&
+          capabilityRows.every((row) => readBoolean({ row: row, key: 'supported' })) === true
             ? 'passed'
             : 'failed',
       },
@@ -962,13 +996,13 @@ export class NotionSyncStore {
         )
         .all(rootId)
         .map((row) => ({
-          dataSourceId: decodeDataSourceId(readString(row, 'data_source_id')),
-          propertyId: decodePropertyId(readString(row, 'property_id')),
-          schemaHash: decodeHash(readString(row, 'schema_hash')),
-          configHash: decodeHash(readString(row, 'config_hash')),
+          dataSourceId: decodeDataSourceId(readString({ row: row, key: 'data_source_id' })),
+          propertyId: decodePropertyId(readString({ row: row, key: 'property_id' })),
+          schemaHash: decodeHash(readString({ row: row, key: 'schema_hash' })),
+          configHash: decodeHash(readString({ row: row, key: 'config_hash' })),
           writeClass: Schema.decodeUnknownSync(
             Schema.Literal('writable', 'computed', 'unsupported'),
-          )(readString(row, 'write_class')),
+          )(readString({ row: row, key: 'write_class' })),
         })),
       rows: this.#db
         .prepare(
@@ -979,12 +1013,12 @@ export class NotionSyncStore {
         )
         .all(rootId)
         .map((row) => ({
-          pageId: decodePageId(readString(row, 'page_id')),
-          dataSourceId: decodeDataSourceId(readString(row, 'data_source_id')),
-          propertiesHash: decodeHash(readString(row, 'properties_hash')),
-          inTrash: readBoolean(row, 'in_trash'),
-          movedOut: readBoolean(row, 'moved_out'),
-          localDeleteCandidate: readBoolean(row, 'local_delete_candidate'),
+          pageId: decodePageId(readString({ row: row, key: 'page_id' })),
+          dataSourceId: decodeDataSourceId(readString({ row: row, key: 'data_source_id' })),
+          propertiesHash: decodeHash(readString({ row: row, key: 'properties_hash' })),
+          inTrash: readBoolean({ row: row, key: 'in_trash' }),
+          movedOut: readBoolean({ row: row, key: 'moved_out' }),
+          localDeleteCandidate: readBoolean({ row: row, key: 'local_delete_candidate' }),
         })),
       properties: this.#db
         .prepare(
@@ -995,14 +1029,14 @@ export class NotionSyncStore {
         )
         .all(rootId)
         .map((row) => {
-          const pageId = decodePageId(readString(row, 'page_id'))
-          const propertyId = decodePropertyId(readString(row, 'property_id'))
+          const pageId = decodePageId(readString({ row: row, key: 'page_id' }))
+          const propertyId = decodePropertyId(readString({ row: row, key: 'property_id' }))
 
           return {
             pageId,
             propertyId,
-            baseHash: decodeHash(readString(row, 'base_hash')),
-            remoteHash: decodeHash(readString(row, 'remote_hash')),
+            baseHash: decodeHash(readString({ row: row, key: 'base_hash' })),
+            remoteHash: decodeHash(readString({ row: row, key: 'remote_hash' })),
             availability: Schema.decodeUnknownSync(
               Schema.Literal(
                 'complete',
@@ -1012,7 +1046,7 @@ export class NotionSyncStore {
                 'relation-target-inaccessible',
                 'related-data-source-unshared',
               ),
-            )(readString(row, 'availability')),
+            )(readString({ row: row, key: 'availability' })),
             pendingLocal: pendingProperties.get(`${pageId}\0${propertyId}`),
           }
         }),
@@ -1032,15 +1066,15 @@ export class NotionSyncStore {
         )
         .all(rootId)
         .map((row) => ({
-          pageId: decodePageId(readString(row, 'page_id')),
-          path: readString(row, 'path'),
-          baseHash: decodeHash(readString(row, 'base_hash')),
-          currentHash: decodeHash(readString(row, 'current_hash')),
-          sidecarIdentityProven: readBoolean(row, 'sidecar_identity_proven'),
+          pageId: decodePageId(readString({ row: row, key: 'page_id' })),
+          path: readString({ row: row, key: 'path' }),
+          baseHash: decodeHash(readString({ row: row, key: 'base_hash' })),
+          currentHash: decodeHash(readString({ row: row, key: 'current_hash' })),
+          sidecarIdentityProven: readBoolean({ row: row, key: 'sidecar_identity_proven' }),
           ownWriteMaterializationIds: Schema.decodeSync(
             Schema.parseJson(Schema.Array(Schema.String)),
-          )(readString(row, 'own_write_materialization_ids_json')),
-          safety: decodeBodySafetyFromJson(readString(row, 'safety_json')),
+          )(readString({ row: row, key: 'own_write_materialization_ids_json' })),
+          safety: decodeBodySafetyFromJson(readString({ row: row, key: 'safety_json' })),
         })),
       tombstones: this.#readTombstones(rootId),
       queries: this.#readQuerySurfaces(rootId),
@@ -1053,9 +1087,9 @@ export class NotionSyncStore {
         )
         .all(rootId)
         .map((row) => ({
-          path: readString(row, 'relative_path'),
-          ownerPageId: decodePageId(readString(row, 'page_id')),
-          released: readString(row, 'state') === 'released',
+          path: readString({ row: row, key: 'relative_path' }),
+          ownerPageId: decodePageId(readString({ row: row, key: 'page_id' })),
+          released: readString({ row: row, key: 'state' }) === 'released',
         })),
       localWorkspace: [],
       remoteChanges: [],
@@ -1083,15 +1117,15 @@ export class NotionSyncStore {
       .all(rootId)
 
     for (const row of outboxRows) {
-      const state = readOutboxState(row, 'state')
-      const leaseToken = readOptionalString(row, 'lease_token')
+      const state = readOutboxState({ row: row, key: 'state' })
+      const leaseToken = readOptionalString({ row: row, key: 'lease_token' })
       if (
         isCompactionBlockingOutboxState(state) === true ||
         (state !== 'settled' && leaseToken !== undefined)
       ) {
         blockers.push({
           guard: 'CompactionUnsafe',
-          message: `Outbox command ${readString(row, 'command_id')} is ${state}`,
+          message: `Outbox command ${readString({ row: row, key: 'command_id' })} is ${state}`,
         })
       }
     }
@@ -1109,7 +1143,7 @@ export class NotionSyncStore {
     if (openConflict !== undefined) {
       blockers.push({
         guard: 'CompactionUnsafe',
-        message: `Conflict ${readString(openConflict, 'conflict_id')} is still open`,
+        message: `Conflict ${readString({ row: openConflict, key: 'conflict_id' })} is still open`,
       })
     }
 
@@ -1126,7 +1160,7 @@ export class NotionSyncStore {
     if (unclassifiedTombstone !== undefined) {
       blockers.push({
         guard: 'CompactionUnsafe',
-        message: `Tombstone for page ${readString(unclassifiedTombstone, 'page_id')} is unclassified`,
+        message: `Tombstone for page ${readString({ row: unclassifiedTombstone, key: 'page_id' })} is unclassified`,
       })
     }
 
@@ -1153,147 +1187,155 @@ export class NotionSyncStore {
     } satisfies StoreStatusProjection['outbox']
 
     for (const row of outboxRows) {
-      outbox[readOutboxState(row, 'state')] = Number(readInteger(row, 'count'))
+      outbox[readOutboxState({ row: row, key: 'state' })] = Number(
+        readInteger({ row: row, key: 'count' }),
+      )
     }
 
     return {
       outbox,
       conflicts: {
-        open: readCount(
-          this.#db
+        open: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM conflict_projection
                WHERE root_id = ? AND state = 'open'`,
             )
             .get(rootId),
-          'count',
-        ),
+          key: 'count',
+        }),
       },
       tombstones: {
-        unclassified: readCount(
-          this.#db
+        unclassified: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM tombstone_projection
                WHERE root_id = ? AND classification = 'unclassified'`,
             )
             .get(rootId),
-          'count',
-        ),
+          key: 'count',
+        }),
       },
       guards: {
-        blocked: readCount(
-          this.#db
+        blocked: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM guard_block_projection
                WHERE root_id = ?`,
             )
             .get(rootId),
-          'count',
-        ),
+          key: 'count',
+        }),
       },
       capabilities: {
-        unsupported: readCount(
-          this.#db
+        unsupported: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM capability_projection
                WHERE root_id = ? AND supported = 0`,
             )
             .get(rootId),
-          'count',
-        ),
+          key: 'count',
+        }),
       },
       checkpoints: {
-        incompleteQueries: readCount(
-          this.#db
+        incompleteQueries: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM query_scan_checkpoint
                WHERE root_id = ? AND complete = 0`,
             )
             .get(rootId),
-          'count',
-        ),
-        cappedQueries: readCount(
-          this.#db
+          key: 'count',
+        }),
+        cappedQueries: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM query_scan_checkpoint
                WHERE root_id = ? AND capped_at_limit = 1`,
             )
             .get(rootId),
-          'count',
-        ),
-        changedQueryContracts: readCount(
-          this.#db
+          key: 'count',
+        }),
+        changedQueryContracts: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM query_scan_checkpoint
                WHERE root_id = ? AND contract_changed = 1`,
             )
             .get(rootId),
-          'count',
-        ),
-        incompleteProperties: readCount(
-          this.#db
+          key: 'count',
+        }),
+        incompleteProperties: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM page_property_checkpoint
                WHERE root_id = ? AND complete = 0`,
             )
             .get(rootId),
-          'count',
-        ),
+          key: 'count',
+        }),
       },
       projections: {
-        dataSources: readCount(
-          this.#db
+        dataSources: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM data_source_projection
                WHERE root_id = ?`,
             )
             .get(rootId),
-          'count',
-        ),
-        rows: readCount(
-          this.#db
+          key: 'count',
+        }),
+        rows: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM row_projection
                WHERE root_id = ?`,
             )
             .get(rootId),
-          'count',
-        ),
-        properties: readCount(
-          this.#db
+          key: 'count',
+        }),
+        properties: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM property_shadow_projection
                WHERE root_id = ?`,
             )
             .get(rootId),
-          'count',
-        ),
-        bodies: readCount(
-          this.#db
+          key: 'count',
+        }),
+        bodies: readCount({
+          row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM body_pointer_projection
                WHERE root_id = ?`,
             )
             .get(rootId),
-          'count',
-        ),
+          key: 'count',
+        }),
       },
     }
   }
 
-  replaceProjectionDigestForRepairTest(rootId: SyncRootId, digest: Hash): void {
+  replaceProjectionDigestForRepairTest({
+    rootId,
+    digest,
+  }: {
+    readonly rootId: SyncRootId
+    readonly digest: Hash
+  }): void {
     this.#db
       .prepare(
         `UPDATE projection_metadata
@@ -1322,7 +1364,10 @@ export class NotionSyncStore {
       .get(event.rootId, event.idempotencyKey)
 
     if (existing !== undefined) {
-      return { event: decodeEventFromJson(readString(existing, 'event_json')), inserted: false }
+      return {
+        event: decodeEventFromJson(readString({ row: existing, key: 'event_json' })),
+        inserted: false,
+      }
     }
 
     const sequence = this.#nextSequence(event.rootId)
@@ -1462,7 +1507,7 @@ export class NotionSyncStore {
       )
       .get(rootId)
 
-    return readInteger(row ?? { sequence: 0n }, 'sequence') + 1n
+    return readInteger({ row: row ?? { sequence: 0n }, key: 'sequence' }) + 1n
   }
 
   #eventRows(rootId: SyncRootId): readonly SqlRow[] {
@@ -1478,9 +1523,9 @@ export class NotionSyncStore {
 
   #projectionDigestInputs(rootId: SyncRootId): readonly ProjectionDigestInput[] {
     return this.#eventRows(rootId).map((row) => ({
-      sequence: readInteger(row, 'sequence'),
-      eventId: readString(row, 'event_id'),
-      payloadHash: readString(row, 'payload_hash'),
+      sequence: readInteger({ row: row, key: 'sequence' }),
+      eventId: readString({ row: row, key: 'event_id' }),
+      payloadHash: readString({ row: row, key: 'payload_hash' }),
     }))
   }
 
@@ -1518,12 +1563,12 @@ export class NotionSyncStore {
       .all(rootId)
 
     for (const row of rows) {
-      const surface = parsePropertySurface(readOptionalString(row, 'surface'))
+      const surface = parsePropertySurface(readOptionalString({ row: row, key: 'surface' }))
       if (surface === undefined) continue
 
       pending.set(`${surface.pageId}\0${surface.propertyId}`, {
-        intentEventId: decodeSyncEventId(readString(row, 'intent_event_id')),
-        targetHash: decodeHash(readString(row, 'desired_hash')),
+        intentEventId: decodeSyncEventId(readString({ row: row, key: 'intent_event_id' })),
+        targetHash: decodeHash(readString({ row: row, key: 'desired_hash' })),
       })
     }
 
@@ -1549,8 +1594,8 @@ export class NotionSyncStore {
       )
       .all(rootId)
       .map((row) => {
-        const pageId = readString(row, 'page_id')
-        const classification = readString(row, 'classification')
+        const pageId = readString({ row: row, key: 'page_id' })
+        const classification = readString({ row: row, key: 'classification' })
         const state =
           classification === 'unclassified'
             ? 'candidate'
@@ -1580,18 +1625,18 @@ export class NotionSyncStore {
                   'inaccessible',
                   'unknown',
                 ),
-              )(readString(row, 'direct_retrieve'))
+              )(readString({ row: row, key: 'direct_retrieve' }))
 
         return {
           pageId: decodePageId(pageId),
           dataSourceId:
             row.data_source_id === null || row.data_source_id === undefined
               ? undefined
-              : decodeDataSourceId(readString(row, 'data_source_id')),
+              : decodeDataSourceId(readString({ row: row, key: 'data_source_id' })),
           queryContractHash:
             row.query_contract_hash === null || row.query_contract_hash === undefined
               ? undefined
-              : decodeHash(readString(row, 'query_contract_hash')),
+              : decodeHash(readString({ row: row, key: 'query_contract_hash' })),
           state,
           directRetrieve,
         }
@@ -1622,29 +1667,29 @@ export class NotionSyncStore {
       )
       .all(rootId)
       .map((row) => ({
-        dataSourceId: decodeDataSourceId(readString(row, 'data_source_id')),
-        pageId: decodePageId(readString(row, 'page_id')),
-        queryContractHash: decodeHash(readString(row, 'query_contract_hash')),
+        dataSourceId: decodeDataSourceId(readString({ row: row, key: 'data_source_id' })),
+        pageId: decodePageId(readString({ row: row, key: 'page_id' })),
+        queryContractHash: decodeHash(readString({ row: row, key: 'query_contract_hash' })),
         completeness: {
           terminal:
             row.complete === null || row.complete === undefined
               ? false
-              : readBoolean(row, 'complete'),
+              : readBoolean({ row: row, key: 'complete' }),
           cappedAtLimit:
             row.capped_at_limit === null || row.capped_at_limit === undefined
               ? false
-              : readBoolean(row, 'capped_at_limit'),
+              : readBoolean({ row: row, key: 'capped_at_limit' }),
           contractChanged:
             row.contract_changed === null || row.contract_changed === undefined
               ? false
-              : readBoolean(row, 'contract_changed'),
+              : readBoolean({ row: row, key: 'contract_changed' }),
         },
         absence: {
-          classified: readBoolean(row, 'classified'),
+          classified: readBoolean({ row: row, key: 'classified' }),
           membershipScope: Schema.decodeUnknownSync(
             Schema.Literal('all-data-source-rows', 'explicit-filter'),
-          )(readString(row, 'membership_scope')),
-          filtered: readBoolean(row, 'filtered'),
+          )(readString({ row: row, key: 'membership_scope' })),
+          filtered: readBoolean({ row: row, key: 'filtered' }),
           directRetrieve: Schema.decodeUnknownSync(
             Schema.Literal(
               'not-run',
@@ -1655,7 +1700,7 @@ export class NotionSyncStore {
               'inaccessible',
               'unknown',
             ),
-          )(readString(row, 'direct_retrieve')),
+          )(readString({ row: row, key: 'direct_retrieve' })),
         },
       }))
   }
@@ -1706,14 +1751,17 @@ export class NotionSyncStore {
     }
   }
 
-  #applyQueryAbsenceEvidence(
-    event: Extract<
+  #applyQueryAbsenceEvidence({
+    event,
+    defaultClassified,
+  }: {
+    readonly event: Extract<
       SyncEvent,
       { readonly _tag: 'TombstoneCandidateObserved' | 'TombstoneRecorded' }
-    >,
-    defaultClassified: boolean,
-  ): void {
-    const payload = decodePayload(event, decodeQueryAbsenceProjectionPayload)
+    >
+    readonly defaultClassified: boolean
+  }): void {
+    const payload = decodePayload({ event: event, decode: decodeQueryAbsenceProjectionPayload })
     if (
       payload?.dataSourceId === undefined ||
       payload.queryContractHash === undefined ||
@@ -1831,7 +1879,7 @@ export class NotionSyncStore {
           )
         break
       case 'DataSourceObserved': {
-        const payload = decodePayload(event, decodeDataSourceProjectionPayload)
+        const payload = decodePayload({ event: event, decode: decodeDataSourceProjectionPayload })
         this.#db
           .prepare(
             `INSERT INTO data_source_projection (
@@ -1905,7 +1953,7 @@ export class NotionSyncStore {
         break
       }
       case 'RowObserved': {
-        const payload = decodePayload(event, decodeRowProjectionPayload)
+        const payload = decodePayload({ event: event, decode: decodeRowProjectionPayload })
         this.#db
           .prepare(
             `INSERT INTO row_projection (
@@ -1945,7 +1993,10 @@ export class NotionSyncStore {
           )
 
         if (event.bodyPointer !== undefined) {
-          const safetyPayload = decodePayload(event, decodeBodyProjectionSafetyPayload)
+          const safetyPayload = decodePayload({
+            event: event,
+            decode: decodeBodyProjectionSafetyPayload,
+          })
           const safety =
             event.bodyPointer.safety ?? safetyPayload?.safety ?? defaultUnsafeBodySafety
           const bodyHash = event.bodyPointer.bodyHash
@@ -2036,10 +2087,10 @@ export class NotionSyncStore {
 
         if (
           existing !== undefined &&
-          readOptionalString(existing, 'settlement_event_id') === undefined
+          readOptionalString({ row: existing, key: 'settlement_event_id' }) === undefined
         ) {
-          const currentAttempt = Number(readInteger(existing, 'attempt_count'))
-          const currentLeaseToken = readOptionalString(existing, 'lease_token')
+          const currentAttempt = Number(readInteger({ row: existing, key: 'attempt_count' }))
+          const currentLeaseToken = readOptionalString({ row: existing, key: 'lease_token' })
           const eventMatchesCurrentLease =
             currentLeaseToken === undefined || event.leaseToken === currentLeaseToken
 
@@ -2084,13 +2135,13 @@ export class NotionSyncStore {
 
         if (
           existing !== undefined &&
-          readOptionalString(existing, 'settlement_event_id') === undefined &&
-          readString(existing, 'command_tag') === event.commandTag &&
-          readString(existing, 'desired_hash') === event.desiredHash &&
+          readOptionalString({ row: existing, key: 'settlement_event_id' }) === undefined &&
+          readString({ row: existing, key: 'command_tag' }) === event.commandTag &&
+          readString({ row: existing, key: 'desired_hash' }) === event.desiredHash &&
           event.observedHash === event.desiredHash &&
-          readInteger(existing, 'attempt_count') > 0n &&
-          (readOutboxState(existing, 'state') === 'running' ||
-            readOutboxState(existing, 'state') === 'ambiguous')
+          readInteger({ row: existing, key: 'attempt_count' }) > 0n &&
+          (readOutboxState({ row: existing, key: 'state' }) === 'running' ||
+            readOutboxState({ row: existing, key: 'state' }) === 'ambiguous')
         ) {
           this.#db
             .prepare(
@@ -2171,7 +2222,7 @@ export class NotionSyncStore {
              updated_at = excluded.updated_at`,
           )
           .run(event.rootId, event.pageId, event.reason, event.eventId, currentIso(this.#now))
-        this.#applyQueryAbsenceEvidence(event, false)
+        this.#applyQueryAbsenceEvidence({ event, defaultClassified: false })
         break
       case 'TombstoneRecorded':
         this.#db
@@ -2199,7 +2250,7 @@ export class NotionSyncStore {
             event.eventId,
             currentIso(this.#now),
           )
-        this.#applyQueryAbsenceEvidence(event, true)
+        this.#applyQueryAbsenceEvidence({ event, defaultClassified: true })
         break
       case 'GuardBlocked':
         this.#db
@@ -2311,7 +2362,10 @@ export class NotionSyncStore {
           .run(event.eventId, currentIso(this.#now), event.rootId, event.pageId)
         break
       case 'QueryScanCheckpointRecorded': {
-        const payload = decodePayload(event, decodeQueryCheckpointProjectionPayload)
+        const payload = decodePayload({
+          event: event,
+          decode: decodeQueryCheckpointProjectionPayload,
+        })
         this.#db
           .prepare(
             `INSERT INTO query_scan_checkpoint (
@@ -2353,7 +2407,10 @@ export class NotionSyncStore {
         break
       }
       case 'PagePropertyCheckpointRecorded': {
-        const payload = decodePayload(event, decodePropertyCheckpointProjectionPayload)
+        const payload = decodePayload({
+          event: event,
+          decode: decodePropertyCheckpointProjectionPayload,
+        })
         this.#db
           .prepare(
             `INSERT INTO page_property_checkpoint (
@@ -2410,7 +2467,8 @@ export class NotionSyncStore {
               event.propertyId,
               payload?.baseHash ?? event.valueHash,
               event.valueHash,
-              payload?.availability ?? (event.complete === true ? 'complete' : 'paginated-incomplete'),
+              payload?.availability ??
+                (event.complete === true ? 'complete' : 'paginated-incomplete'),
               event.eventId,
               currentIso(this.#now),
             )
