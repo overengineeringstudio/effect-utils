@@ -660,7 +660,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       configured,
       {
         gatewayLayer: makeNotionDataSourceGatewayLayer(
-          makeNotionDataSourceGatewayFromClient(client),
+          makeNotionDataSourceGatewayFromClient({ client }),
         ),
         writeLedger: async ({ ledger }) => {
           ledgers.push(ledger)
@@ -1093,9 +1093,11 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
           ) => effect.pipe(Effect.provide(liveLayer(token))))
           const gateway = makeNotionDataSourceGatewayFromClient({
-            ...baseClient,
-            retrievePageProperty: (input) =>
-              baseClient.retrievePageProperty({ ...input, pageSize: 50 }),
+            client: {
+              ...baseClient,
+              retrievePageProperty: (input) =>
+                baseClient.retrievePageProperty({ ...input, pageSize: 50 }),
+            },
           })
           const pages = await Effect.runPromise(
             gateway

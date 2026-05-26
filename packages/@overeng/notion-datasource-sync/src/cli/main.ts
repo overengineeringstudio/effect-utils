@@ -844,7 +844,7 @@ export const makeCliRuntimeLayer = ({
       : options.gatewayClient !== undefined
         ? Layer.succeed(
             NotionDataSourceGateway,
-            makeNotionDataSourceGatewayFromClient(options.gatewayClient),
+            makeNotionDataSourceGatewayFromClient({ client: options.gatewayClient }),
           )
         : envToken === undefined
           ? Layer.succeed(NotionDataSourceGateway, missingTokenCliGateway)
