@@ -22,12 +22,9 @@ import * as Git from '../../../lib/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { classifyRef } from '../../../lib/ref.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
-import {
-  collectStoreLiveSet,
-  isPathProtected,
-  type StoreLiveSet,
-} from '../../../lib/store-liveness.ts'
+import { collectStoreLiveSet } from '../../../lib/store-liveness.ts'
 import { StoreLock } from '../../../lib/store-lock.ts'
+import { classifyStoreWorktreePolicy } from '../../../lib/store-worktree-policy.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
@@ -42,9 +39,6 @@ type CollectedWorktree = {
   path: AbsoluteDirPath
   broken: boolean
 }
-
-const isNamedRefWorktree = (worktree: CollectedWorktree): boolean =>
-  worktree.refType === 'heads' || worktree.refType === 'tags'
 
 const collectStoreWorktrees = ({
   fs,
@@ -129,21 +123,6 @@ const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ outpu
     Effect.withSpan('megarepo/store/ls', { attributes: { 'span.label': 'ls' } }),
   ),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
-
-const protectedMessage = (worktree: CollectedWorktree): string =>
-  isNamedRefWorktree(worktree) === true
-    ? `named ${worktree.refType === 'heads' ? 'branch' : 'tag'} ref`
-    : 'referenced by workspace root set'
-
-const isProtectedByGcRootSet = ({
-  liveSet,
-  worktree,
-}: {
-  liveSet: StoreLiveSet
-  worktree: CollectedWorktree
-}): boolean =>
-  isNamedRefWorktree(worktree) === true ||
-  isPathProtected({ liveSet, path: worktree.path }) === true
 
 /** Show store status and detect issues */
 const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, ({ output }) =>
@@ -267,15 +246,14 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                   }
 
                   if (
-                    isProtectedByGcRootSet({
+                    classifyStoreWorktreePolicy({
                       liveSet,
+                      mode: 'default',
                       worktree: {
-                        ref: expectedRef,
                         refType: refTypeDir,
                         path: worktreePath,
-                        broken,
                       },
-                    }) === false
+                    }).isProtected === false
                   ) {
                     issues.push({
                       type: 'orphaned',
@@ -473,8 +451,18 @@ const storeGcCommand = Cli.Command.make(
             const worktreeStatuses = yield* Effect.all(
               worktrees.map((worktree) =>
                 Effect.gen(function* () {
-                  if (all === false && isProtectedByGcRootSet({ liveSet, worktree }) === true) {
-                    return { worktree, action: 'skipped_in_use' as const, status: undefined }
+                  const policy = classifyStoreWorktreePolicy({
+                    liveSet,
+                    mode: all === true ? 'all' : 'default',
+                    worktree,
+                  })
+                  if (policy.isProtected === true) {
+                    return {
+                      worktree,
+                      action: 'skipped_in_use' as const,
+                      policy,
+                      status: undefined,
+                    }
                   }
 
                   /** Broken worktrees have no .git — skip git status, proceed directly to removal */
@@ -482,6 +470,7 @@ const storeGcCommand = Cli.Command.make(
                     return {
                       worktree,
                       action: 'check' as const,
+                      policy,
                       status: { isDirty: false, hasUnpushed: false, changesCount: 0 },
                     }
                   }
@@ -495,7 +484,7 @@ const storeGcCommand = Cli.Command.make(
                       }),
                     ),
                   )
-                  return { worktree, action: 'check' as const, status }
+                  return { worktree, action: 'check' as const, policy, status }
                 }),
               ),
               { concurrency: 8 },
@@ -511,7 +500,7 @@ const storeGcCommand = Cli.Command.make(
               message?: string
             }> = []
 
-            for (const { worktree, action, status } of worktreeStatuses) {
+            for (const { worktree, action, policy, status } of worktreeStatuses) {
               if (action === 'skipped_in_use') {
                 repoResults.push({
                   repo: repo.relativePath,
@@ -519,7 +508,7 @@ const storeGcCommand = Cli.Command.make(
                   refType: worktree.refType,
                   path: worktree.path,
                   status: 'skipped_in_use',
-                  message: protectedMessage(worktree),
+                  ...(policy.message !== undefined ? { message: policy.message } : {}),
                 })
                 continue
               }
@@ -555,11 +544,13 @@ const storeGcCommand = Cli.Command.make(
                         pruneStaleRegistry: true,
                         refreshCurrentWorkspace: false,
                       })
-                      if (
-                        all === false &&
-                        isProtectedByGcRootSet({ liveSet: removalLiveSet, worktree }) === true
-                      ) {
-                        return { _tag: 'skipped_live' as const }
+                      const removalPolicy = classifyStoreWorktreePolicy({
+                        liveSet: removalLiveSet,
+                        mode: all === true ? 'all' : 'default',
+                        worktree,
+                      })
+                      if (removalPolicy.isProtected === true) {
+                        return { _tag: 'skipped_live' as const, message: removalPolicy.message }
                       }
                       if (worktree.broken === true) {
                         /** Broken worktrees can't be removed via git — just delete the directory */
@@ -597,7 +588,9 @@ const storeGcCommand = Cli.Command.make(
                     refType: worktree.refType,
                     path: worktree.path,
                     status: 'skipped_in_use',
-                    message: protectedMessage(worktree),
+                    ...(removeResult.message !== undefined
+                      ? { message: removeResult.message }
+                      : {}),
                   })
                   continue
                 }
