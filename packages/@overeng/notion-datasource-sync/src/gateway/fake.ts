@@ -362,7 +362,7 @@ export const makeFakeNotionDataSourceGateway = (
                 requestId: nextRequestId(),
                 queryContractHash: computeQueryContractHash(input, apiContract.apiVersion),
                 rows,
-                nextCursor: hasMore ? cursorForOffset(nextOffset) : null,
+                nextCursor: hasMore === true ? cursorForOffset(nextOffset) : null,
                 hasMore,
                 cappedAtLimit: cappedAtLimit && hasMore === false,
               })
@@ -458,7 +458,7 @@ export const makeFakeNotionDataSourceGateway = (
                       pageId: input.pageId,
                       propertyId: input.propertyId,
                       items: pageItems,
-                      nextCursor: hasMore ? cursorForOffset(nextOffset) : null,
+                      nextCursor: hasMore === true ? cursorForOffset(nextOffset) : null,
                       hasMore,
                     })
 

@@ -193,7 +193,9 @@ export const guardApiCompatibility = (snapshot: ApiCompatibilitySnapshot): Guard
 
 /** Blocks sync when the decoded surface shape has drifted beyond what the current codec supports. */
 export const guardDecodeDrift = ({ supported }: { readonly supported: boolean }): GuardDecision =>
-  supported ? allowed() : blocked('DecodeDriftUnsupported', 'Unsupported decoded surface drift')
+  supported === true
+    ? allowed()
+    : blocked('DecodeDriftUnsupported', 'Unsupported decoded surface drift')
 
 /** Blocks the operation if any of the required capabilities are absent from the supported set. */
 export const guardCapabilities = ({
@@ -330,7 +332,9 @@ export const guardPathClaimCollision = ({
 }: {
   readonly collides: boolean
 }): GuardDecision =>
-  collides ? blocked('PathClaimCollision', 'Path is already claimed by another page') : allowed()
+  collides === true
+    ? blocked('PathClaimCollision', 'Path is already claimed by another page')
+    : allowed()
 
 /** Blocks checkpoint advancement if the query hit a result cap, the contract changed, or pagination is still in progress. */
 export const guardQueryCompleteness = (snapshot: QueryCompletenessSnapshot): GuardDecision => {
@@ -403,7 +407,9 @@ export const guardUnavailableRelationTarget = ({
 }: {
   readonly available: boolean
 }): GuardDecision =>
-  available ? allowed() : blocked('UnavailableRelationTarget', 'Relation target is unavailable')
+  available === true
+    ? allowed()
+    : blocked('UnavailableRelationTarget', 'Relation target is unavailable')
 
 /** Blocks writes containing a Notion-hosted file URL that has no stable durable reference, preventing broken file links. */
 export const guardExpiringFileUrl = (snapshot: FileReferenceSnapshot): GuardDecision =>

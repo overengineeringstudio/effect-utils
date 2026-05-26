@@ -232,7 +232,11 @@ export const classifyConflict = (
       : { _tag: 'independent', localSurface: local.surface, remoteSurface: remote.surface }
   }
 
-  if (local._tag === 'property' && remote._tag === 'property' && samePage(local, remote)) {
+  if (
+    local._tag === 'property' &&
+    remote._tag === 'property' &&
+    samePage(local, remote) === true
+  ) {
     return local.propertyId === remote.propertyId
       ? conflict({
           kind: 'same-property',
@@ -251,7 +255,7 @@ export const classifyConflict = (
   if (
     ((local._tag === 'property' && remote._tag === 'body') ||
       (local._tag === 'body' && remote._tag === 'property')) &&
-    samePage(local, remote)
+    samePage(local, remote) === true
   ) {
     return {
       _tag: 'mergeable',
@@ -261,7 +265,7 @@ export const classifyConflict = (
     }
   }
 
-  if (local._tag === 'body' && remote._tag === 'body' && samePage(local, remote)) {
+  if (local._tag === 'body' && remote._tag === 'body' && samePage(local, remote) === true) {
     return conflict({
       kind: 'body-body-delegated',
       local,

@@ -117,12 +117,12 @@ export const forgetPageCommand = (
     commands: [],
     guards: [],
   }
-  const applied = dryRun
+  const applied = dryRun === true
     ? emptyPlan()
     : {
         events: planned.events.flatMap((event) => {
           const result = options.store.appendEventWithResult(event)
-          return result.inserted ? [result.event] : []
+          return result.inserted === true ? [result.event] : []
         }),
         commands: [],
         guards: [],
