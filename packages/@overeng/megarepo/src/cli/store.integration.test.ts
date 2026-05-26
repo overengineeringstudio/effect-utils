@@ -14,6 +14,7 @@ import { expect } from 'vitest'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { parseSourceString, isRemoteSource } from '../lib/config.ts'
+import * as Git from '../lib/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../lib/lock.ts'
 import { refreshWorkspaceRegistry } from '../lib/store-liveness.ts'
 import { makeStoreLayer, Store } from '../lib/store.ts'
@@ -418,6 +419,17 @@ describe('mr store gc', () => {
           expect(yield* fs.exists(branchWorktreePath)).toBe(true)
           expect(yield* fs.exists(tagWorktreePath)).toBe(true)
           expect(yield* fs.exists(commitWorktreePath)).toBe(false)
+
+          const bareRepoPath = EffectPath.ops.join(
+            storePath,
+            EffectPath.unsafe.relativeDir('github.com/test-owner/default-policy-repo/.bare/'),
+          )
+          const gitWorktrees = yield* Git.listWorktrees(bareRepoPath)
+          expect(
+            gitWorktrees.some(
+              (worktree) => worktree.path === commitWorktreePath.replace(/\/$/, ''),
+            ),
+          ).toBe(false)
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,

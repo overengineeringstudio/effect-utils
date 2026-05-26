@@ -121,6 +121,10 @@ export const StoreGcState = Schema.TaggedStruct('Gc', {
   dryRun: Schema.Boolean,
   warning: Schema.optional(StoreGcWarning),
   showForceHint: Schema.Boolean,
+  processedCount: Schema.optional(Schema.Number),
+  repoCount: Schema.optional(Schema.Number),
+  completedRepoCount: Schema.optional(Schema.Number),
+  done: Schema.optional(Schema.Boolean),
 })
 
 /**
@@ -258,6 +262,10 @@ export const StoreAction = Schema.Union(
     dryRun: Schema.Boolean,
     warning: Schema.optional(StoreGcWarning),
     showForceHint: Schema.Boolean,
+    processedCount: Schema.optional(Schema.Number),
+    repoCount: Schema.optional(Schema.Number),
+    completedRepoCount: Schema.optional(Schema.Number),
+    done: Schema.optional(Schema.Boolean),
   }),
   Schema.TaggedStruct('SetAdd', {
     status: Schema.Literal('added', 'already_exists', 'created'),
@@ -329,6 +337,10 @@ export const storeReducer = ({
         dryRun: action.dryRun,
         warning: action.warning,
         showForceHint: action.showForceHint,
+        processedCount: action.processedCount,
+        repoCount: action.repoCount,
+        completedRepoCount: action.completedRepoCount,
+        done: action.done,
       }
     case 'SetAdd':
       return {

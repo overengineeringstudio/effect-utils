@@ -602,6 +602,15 @@ export interface WorktreeStatus {
 const worktreeSpanLabel = (worktreePath: string): string =>
   worktreePath.split('/').findLast((part) => part.length > 0) ?? 'worktree'
 
+const getUnpushedStatus = (worktreePath: string) =>
+  runGitCommand({
+    args: ['log', '@{upstream}..HEAD', '--oneline'],
+    cwd: worktreePath,
+  }).pipe(
+    Effect.map((out) => out.split('\n').filter((line) => line.trim() !== '').length > 0),
+    Effect.catchAll(() => Effect.succeed(false)), // No upstream or not a branch
+  )
+
 /**
  * Get the status of a worktree (dirty state, unpushed commits)
  */
@@ -617,13 +626,7 @@ export const getWorktreeStatus = (worktreePath: string) =>
     const isDirty = changes.length > 0
 
     // Check for unpushed commits (only relevant for branches)
-    const unpushedOutput = yield* runGitCommand({
-      args: ['log', '@{upstream}..HEAD', '--oneline'],
-      cwd: worktreePath,
-    }).pipe(
-      Effect.map((out) => out.split('\n').filter((line) => line.trim() !== '').length > 0),
-      Effect.catchAll(() => Effect.succeed(false)), // No upstream or not a branch
-    )
+    const unpushedOutput = yield* getUnpushedStatus(worktreePath)
 
     return {
       isDirty,
@@ -632,6 +635,48 @@ export const getWorktreeStatus = (worktreePath: string) =>
     } satisfies WorktreeStatus
   }).pipe(
     Effect.withSpan('git/worktree-status', {
+      attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+    }),
+  )
+
+/**
+ * Get GC removal status with a cheap fail-closed preflight.
+ *
+ * Full untracked-file scans are required before declaring a worktree removable,
+ * but they are expensive for large worktrees. For GC we can first check tracked
+ * changes and unpushed commits; either one already makes the worktree ineligible
+ * without walking untracked directories.
+ */
+export const getWorktreeRemovalStatus = (worktreePath: string) =>
+  Effect.gen(function* () {
+    const trackedStatusOutput = yield* runGitCommand({
+      args: ['status', '--porcelain', '--untracked-files=no'],
+      cwd: worktreePath,
+    })
+    const trackedChanges = trackedStatusOutput.split('\n').filter((line) => line.trim() !== '')
+    const hasUnpushed = yield* getUnpushedStatus(worktreePath)
+
+    if (trackedChanges.length > 0 || hasUnpushed === true) {
+      return {
+        isDirty: trackedChanges.length > 0,
+        hasUnpushed,
+        changesCount: trackedChanges.length,
+      } satisfies WorktreeStatus
+    }
+
+    const fullStatusOutput = yield* runGitCommand({
+      args: ['status', '--porcelain', '--untracked-files=all'],
+      cwd: worktreePath,
+    })
+    const changes = fullStatusOutput.split('\n').filter((line) => line.trim() !== '')
+
+    return {
+      isDirty: changes.length > 0,
+      hasUnpushed: false,
+      changesCount: changes.length,
+    } satisfies WorktreeStatus
+  }).pipe(
+    Effect.withSpan('git/worktree-removal-status', {
       attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
     }),
   )

@@ -71,6 +71,10 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
           dryRun={state.dryRun}
           warning={state.warning}
           showForceHint={state.showForceHint}
+          processedCount={state.processedCount}
+          repoCount={state.repoCount}
+          completedRepoCount={state.completedRepoCount}
+          done={state.done}
         />
       )
     case 'Add':
@@ -480,6 +484,10 @@ const StoreGcView = ({
   dryRun,
   warning,
   showForceHint,
+  processedCount,
+  repoCount,
+  completedRepoCount,
+  done,
   maxInUseToShow = 5,
 }: {
   basePath: string
@@ -487,6 +495,10 @@ const StoreGcView = ({
   dryRun: boolean
   warning?: StoreGcWarning | undefined
   showForceHint: boolean
+  processedCount?: number | undefined
+  repoCount?: number | undefined
+  completedRepoCount?: number | undefined
+  done?: boolean | undefined
   maxInUseToShow?: number
 }) => {
   const removed = results.filter((r) => r.status === 'removed')
@@ -504,6 +516,14 @@ const StoreGcView = ({
         <Text dim> path</Text>
         <Text>: {basePath}</Text>
         {dryRun && <Text dim> mode: dry run</Text>}
+        {done === false && (
+          <Text dim>
+            progress: {processedCount ?? results.length} worktrees
+            {repoCount !== undefined && completedRepoCount !== undefined
+              ? `, ${completedRepoCount}/${repoCount} repos`
+              : ''}
+          </Text>
+        )}
         <Text> </Text>
       </Box>
       {warning && <StoreGcWarningRow warning={warning} />}
