@@ -163,7 +163,7 @@ const propertyOptions = (
   }
   const options = (value as { readonly options: ReadonlyArray<unknown> }).options
 
-  return options.map((option) => {
+  const toCanonicalOption = (option: unknown) => {
     if (typeof option !== 'object' || option === null || !('name' in option)) {
       throw new Error(`live fixture ${type} option has invalid shape: ${name}`)
     }
@@ -176,7 +176,8 @@ const propertyOptions = (
       name: decode(PropertyName, String(optionRecord.name)),
       ...(color === undefined ? {} : { color }),
     }
-  })
+  }
+  return options.map(toCanonicalOption)
 }
 
 const makeLedgerRecorder = (

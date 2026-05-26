@@ -34,7 +34,7 @@ import {
   PageId,
   PagePropertyItem,
   PageSnapshot,
-  PropertyId,
+  type PropertyId,
   QueryCursor,
   RowPageSnapshot,
   type CapabilityName,

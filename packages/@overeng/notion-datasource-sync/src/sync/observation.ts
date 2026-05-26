@@ -203,8 +203,8 @@ const schemaPropertiesObservationHash = (
 ): HashType =>
   hashStoreBytes(
     JSON.stringify(
-      [...properties]
-        .sort((left, right) => left.propertyId.localeCompare(right.propertyId))
+      properties
+        .toSorted((left, right) => left.propertyId.localeCompare(right.propertyId))
         .map((property) => ({
           propertyId: property.propertyId,
           configHash: property.configHash,
