@@ -61,6 +61,8 @@ All notable changes to this project will be documented in this file.
   - Tracks workspace liveness in a store-local registry and protects both active `repos/*` symlink targets and lock-derived `refs/heads/*` / `refs/commits/*` paths.
   - Keeps named `refs/heads/*` and `refs/tags/*` worktrees by default while reclaiming clean unrooted `refs/commits/*` worktrees.
   - Removes the temporary managed/unmanaged store metadata model and the `--include-unleased` GC mode.
+  - Forces untracked-file detection during worktree status checks so user/global Git config cannot hide untracked work from GC.
+  - Skips worktrees whose git status cannot be inspected unless `--force` is passed, preserving the fail-closed deletion policy.
   - Acquires worktree locks before removal and reports deletion errors as `error` instead of `removed`.
   - Discovers store repositories by `.bare/` presence instead of assuming only `host/owner/repo` paths, traverses discovery concurrently, skips dirty checks for named refs protected by default, and adds OTel spans for GC, liveness, and repo discovery.
 - **@overeng/react-inspector**: Render the schema display name exactly once in collapsed schema-aware object previews (#684). `SchemaAwareObjectPreview` is now the single owner of the schema title (rendered in the object-description slot, italicized when sourced from a `title`/`identifier` annotation); the collapsed branch in `SchemaAwareNodeRenderer` no longer prefixes a duplicate copy. Fixes `0: Source Origin Summary Source Origin Summary {…}` → `0: Source Origin Summary {…}`.

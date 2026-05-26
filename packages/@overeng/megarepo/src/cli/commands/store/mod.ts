@@ -475,16 +475,25 @@ const storeGcCommand = Cli.Command.make(
                     }
                   }
 
-                  const status = yield* Git.getWorktreeStatus(worktree.path).pipe(
-                    Effect.catchAll(() =>
+                  const statusResult = yield* Git.getWorktreeStatus(worktree.path).pipe(
+                    Effect.map((status) => ({ _tag: 'status' as const, status })),
+                    Effect.catchAll((error) =>
                       Effect.succeed({
-                        isDirty: false,
-                        hasUnpushed: false,
-                        changesCount: 0,
+                        _tag: 'status_failed' as const,
+                        message: error instanceof Error === true ? error.message : String(error),
                       }),
                     ),
                   )
-                  return { worktree, action: 'check' as const, policy, status }
+                  if (statusResult._tag === 'status_failed') {
+                    return {
+                      worktree,
+                      action: 'status_failed' as const,
+                      policy,
+                      status: undefined,
+                      message: statusResult.message,
+                    }
+                  }
+                  return { worktree, action: 'check' as const, policy, status: statusResult.status }
                 }),
               ),
               { concurrency: 8 },
@@ -500,7 +509,7 @@ const storeGcCommand = Cli.Command.make(
               message?: string
             }> = []
 
-            for (const { worktree, action, policy, status } of worktreeStatuses) {
+            for (const { worktree, action, policy, status, message } of worktreeStatuses) {
               if (action === 'skipped_in_use') {
                 repoResults.push({
                   repo: repo.relativePath,
@@ -509,6 +518,21 @@ const storeGcCommand = Cli.Command.make(
                   path: worktree.path,
                   status: 'skipped_in_use',
                   ...(policy.message !== undefined ? { message: policy.message } : {}),
+                })
+                continue
+              }
+
+              if (action === 'status_failed' && force === false) {
+                repoResults.push({
+                  repo: repo.relativePath,
+                  ref: worktree.ref,
+                  refType: worktree.refType,
+                  path: worktree.path,
+                  status: 'skipped_dirty',
+                  message:
+                    message !== undefined
+                      ? `unable to inspect worktree status: ${message}`
+                      : 'unable to inspect worktree status',
                 })
                 continue
               }

@@ -609,7 +609,7 @@ export const getWorktreeStatus = (worktreePath: string) =>
   Effect.gen(function* () {
     // Check for uncommitted changes
     const statusOutput = yield* runGitCommand({
-      args: ['status', '--porcelain'],
+      args: ['status', '--porcelain', '--untracked-files=all'],
       cwd: worktreePath,
     })
 

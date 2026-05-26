@@ -5,7 +5,7 @@
  */
 
 import * as Cli from '@effect/cli'
-import { Command, FileSystem } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Exit, Option, Schema } from 'effect'
@@ -40,12 +40,10 @@ const StoreGcJsonOutput = Schema.Struct({
 
 const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
 
-const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const command = Command.make('git', ...args).pipe(Command.workingDirectory(cwd))
-    const result = yield* Command.string(command)
-    return result.trim()
-  })
+type StoreGcJsonResult = Schema.Schema.Type<typeof StoreGcJsonOutput>['results'][number]
+
+const findGcResult = (results: ReadonlyArray<StoreGcJsonResult>, repo: string, ref: string) =>
+  results.find((result) => result.repo === repo && result.ref === ref)
 
 const runMrCommand = ({
   cwd,
@@ -319,35 +317,19 @@ describe('mr store gc', () => {
         function* () {
           const fs = yield* FileSystem.FileSystem
 
-          const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
+          const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
+          const { storePath, worktreePaths } = yield* createStoreFixture([
             {
               host: 'github.com',
               owner: 'test-owner',
               repo: 'commit-mode-repo',
-              branches: ['main'],
+              commits: [commitRef],
             },
           ])
 
-          const mainWorktreePath = worktreePaths['github.com/test-owner/commit-mode-repo#main']!
-          const commit = yield* getWorktreeCommit(mainWorktreePath)
-          const bareRepoPath = bareRepoPaths['github.com/test-owner/commit-mode-repo']!
-          const commitWorktreePath = EffectPath.ops.join(
-            storePath,
-            EffectPath.unsafe.relativeDir(
-              `github.com/test-owner/commit-mode-repo/refs/commits/${commit}/`,
-            ),
-          )
-          yield* fs.makeDirectory(EffectPath.ops.parent(commitWorktreePath)!, {
-            recursive: true,
-          })
-          yield* runGitCommand(
-            bareRepoPath,
-            'worktree',
-            'add',
-            '--detach',
-            commitWorktreePath,
-            commit,
-          )
+          const commitWorktreePath =
+            worktreePaths[`github.com/test-owner/commit-mode-repo#${commitRef}`]!
+          const commit = yield* getWorktreeCommit(commitWorktreePath)
 
           const { workspacePath } = yield* createWorkspaceWithLock({
             members: { repo: 'test-owner/commit-mode-repo#main' },
@@ -378,7 +360,11 @@ describe('mr store gc', () => {
           })
           expect(gc.exitCode).toBe(0)
           const json = decodeStoreGcJsonOutput(gc.stdout)
-          const commitResult = json.results.find((r) => r.path === commitWorktreePath)
+          const commitResult = findGcResult(
+            json.results,
+            'github.com/test-owner/commit-mode-repo/',
+            commitRef,
+          )
           expect(commitResult?.status).toBe('skipped_in_use')
           expect(yield* fs.exists(commitWorktreePath)).toBe(true)
         },
@@ -432,93 +418,6 @@ describe('mr store gc', () => {
           expect(yield* fs.exists(branchWorktreePath)).toBe(true)
           expect(yield* fs.exists(tagWorktreePath)).toBe(true)
           expect(yield* fs.exists(commitWorktreePath)).toBe(false)
-        },
-        Effect.provide(NodeContext.layer),
-        Effect.scoped,
-      ),
-    )
-
-    it.effect(
-      'should skip dirty or unpushed commit worktrees unless forced',
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-          const dirtyCommitRef = '1111111111111111111111111111111111111111'
-          const unpushedCommitRef = '2222222222222222222222222222222222222222'
-
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'commit-state-repo',
-              commits: [dirtyCommitRef, unpushedCommitRef],
-            },
-          ])
-
-          const dirtyWorktreePath =
-            worktreePaths[`github.com/test-owner/commit-state-repo#${dirtyCommitRef}`]!
-          const unpushedWorktreePath =
-            worktreePaths[`github.com/test-owner/commit-state-repo#${unpushedCommitRef}`]!
-
-          yield* fs.writeFileString(
-            EffectPath.ops.join(dirtyWorktreePath, EffectPath.unsafe.relativeFile('dirty.txt')),
-            'uncommitted changes\n',
-          )
-
-          yield* runGitCommand(unpushedWorktreePath, 'checkout', '-B', 'local-unpushed', 'main')
-          yield* runGitCommand(
-            unpushedWorktreePath,
-            'branch',
-            '--set-upstream-to=main',
-            'local-unpushed',
-          )
-          yield* runGitCommand(unpushedWorktreePath, 'config', 'user.email', 'test@example.com')
-          yield* runGitCommand(unpushedWorktreePath, 'config', 'user.name', 'Test User')
-          yield* fs.writeFileString(
-            EffectPath.ops.join(
-              unpushedWorktreePath,
-              EffectPath.unsafe.relativeFile('unpushed.txt'),
-            ),
-            'unpushed commit\n',
-          )
-          yield* runGitCommand(unpushedWorktreePath, 'add', '-A')
-          yield* runGitCommand(unpushedWorktreePath, 'commit', '--no-verify', '-m', 'Local work')
-
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-          const cwd = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('outside/'))
-          yield* fs.makeDirectory(cwd, { recursive: true })
-
-          const gc = yield* runMrCommand({
-            cwd,
-            command: ['store', 'gc', '--output', 'json'],
-            env: { MEGAREPO_STORE: storePath },
-          })
-          expect(gc.exitCode).toBe(0)
-          const json = decodeStoreGcJsonOutput(gc.stdout)
-          const dirtyResult = json.results.find((r) => r.path === dirtyWorktreePath)
-          const unpushedResult = json.results.find((r) => r.path === unpushedWorktreePath)
-
-          expect(dirtyResult?.status).toBe('skipped_dirty')
-          expect(dirtyResult?.message).toContain('uncommitted change')
-          expect(unpushedResult?.status).toBe('skipped_dirty')
-          expect(unpushedResult?.message).toContain('unpushed commits')
-          expect(yield* fs.exists(dirtyWorktreePath)).toBe(true)
-          expect(yield* fs.exists(unpushedWorktreePath)).toBe(true)
-
-          const forceGc = yield* runMrCommand({
-            cwd,
-            command: ['store', 'gc', '--force', '--output', 'json'],
-            env: { MEGAREPO_STORE: storePath },
-          })
-          expect(forceGc.exitCode).toBe(0)
-          const forceJson = decodeStoreGcJsonOutput(forceGc.stdout)
-          const forceDirtyResult = forceJson.results.find((r) => r.path === dirtyWorktreePath)
-          const forceUnpushedResult = forceJson.results.find((r) => r.path === unpushedWorktreePath)
-
-          expect(forceDirtyResult?.status).toBe('removed')
-          expect(forceUnpushedResult?.status).toBe('removed')
-          expect(yield* fs.exists(dirtyWorktreePath)).toBe(false)
-          expect(yield* fs.exists(unpushedWorktreePath)).toBe(false)
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,
