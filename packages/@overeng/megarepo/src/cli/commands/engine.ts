@@ -38,6 +38,7 @@ import {
 } from '../../lib/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
+import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
 import type { StoreLock } from '../../lib/store-lock.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import {
@@ -454,6 +455,11 @@ export const syncMegarepo = <R = never>({
         outermostRoot,
         config,
       })
+    }
+
+    if (dryRun === false && changesWorkspace === true) {
+      const store = yield* Store
+      yield* refreshWorkspaceRegistry({ workspaceRoot: megarepoRoot, store })
     }
 
     // Handle --all flag: recursively sync nested megarepos in parallel

@@ -163,20 +163,24 @@ export const createFetchTimeline = (finalState: {
 export const exampleGcResults: StoreGcResult[] = [
   {
     repo: 'github.com/alice/core-lib',
-    ref: 'feat/old-branch',
-    path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/feat/old-branch/',
+    ref: 'a87e1b0c4d5f678901234567890123456789abcd',
+    refType: 'commits',
+    path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/commits/a87e1b0c4d5f678901234567890123456789abcd/',
     status: 'removed',
   },
   {
     repo: 'github.com/alice/core-lib',
     ref: 'main',
+    refType: 'heads',
     path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/main/',
     status: 'skipped_in_use',
+    message: 'named branch ref',
   },
   {
     repo: 'github.com/acme-org/dev-tools',
-    ref: 'dev',
-    path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/dev/',
+    ref: 'c92e1b0c4d5f678901234567890123456789abcd',
+    refType: 'commits',
+    path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/commits/c92e1b0c4d5f678901234567890123456789abcd/',
     status: 'skipped_dirty',
   },
 ]

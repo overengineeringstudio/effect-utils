@@ -250,16 +250,16 @@ const listRemoteTree = (opts: {
       { pageId: root.page.id, title: root.page.title, segments: ['index'] },
     ]
 
-    const visit = (opts: {
+    const visit = (visitOpts: {
       readonly pageId: string
       readonly parentSegments: readonly string[]
     }): Effect.Effect<void, NmdError> =>
-      gateway.listChildPages({ pageId: opts.pageId }).pipe(
+      gateway.listChildPages({ pageId: visitOpts.pageId }).pipe(
         Effect.flatMap((children) =>
           Effect.forEach(
             children,
             (child) => {
-              const segments = [...opts.parentSegments, child.title]
+              const segments = [...visitOpts.parentSegments, child.title]
               pages.push({ pageId: child.pageId, title: child.title, segments })
               return visit({ pageId: child.pageId, parentSegments: segments })
             },

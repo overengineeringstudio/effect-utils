@@ -299,7 +299,6 @@ export const pinCommand = Cli.Command.make(
                 )
               }
             }
-
             // Update the symlink
             // Ensure repos directory exists
             const reposDir = EffectPath.ops.parent(memberPath)

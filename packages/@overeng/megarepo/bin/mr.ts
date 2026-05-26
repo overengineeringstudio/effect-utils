@@ -37,7 +37,10 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-const baseLayer = Layer.mergeAll(NodeContext.layer, makeOtelCliLayer({ serviceName: 'megarepo' }))
+const baseLayer = Layer.mergeAll(
+  NodeContext.layer,
+  makeOtelCliLayer({ serviceName: 'megarepo', exportInterval: 50, shutdownTimeout: 50 }),
+)
 
 Cli.Command.run(mrCommand, {
   name: 'mr',

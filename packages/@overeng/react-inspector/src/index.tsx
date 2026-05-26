@@ -54,6 +54,7 @@ export {
   useSchemaDisplayInfo,
   type SchemaContextValue,
   type SchemaProviderProps,
+  Lineage,
 } from './schema/mod.tsx'
 
 export {

@@ -71,6 +71,14 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
           dryRun={state.dryRun}
           warning={state.warning}
           showForceHint={state.showForceHint}
+          processedCount={state.processedCount}
+          repoCount={state.repoCount}
+          completedRepoCount={state.completedRepoCount}
+          discoveredWorktreeCount={state.discoveredWorktreeCount}
+          activeWorktreeCount={state.activeWorktreeCount}
+          statusMessage={state.statusMessage}
+          done={state.done}
+          interrupted={state.interrupted}
         />
       )
     case 'Add':
@@ -105,6 +113,8 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
       )
     case 'Error':
       return <StoreErrorView error={state.error} message={state.message} source={state.source} />
+    case 'Interrupted':
+      return <Text dim>Store command interrupted</Text>
   }
 }
 
@@ -292,7 +302,7 @@ const getIssueHint = ({
     case 'orphaned':
       return {
         fix: 'mr store gc',
-        explanation: 'remove unused worktrees',
+        explanation: 'remove unrooted commit worktrees',
       }
     case 'missing_bare':
     case 'broken_worktree':
@@ -480,6 +490,14 @@ const StoreGcView = ({
   dryRun,
   warning,
   showForceHint,
+  processedCount,
+  repoCount,
+  completedRepoCount,
+  discoveredWorktreeCount,
+  activeWorktreeCount,
+  statusMessage,
+  done,
+  interrupted,
   maxInUseToShow = 5,
 }: {
   basePath: string
@@ -487,6 +505,14 @@ const StoreGcView = ({
   dryRun: boolean
   warning?: StoreGcWarning | undefined
   showForceHint: boolean
+  processedCount?: number | undefined
+  repoCount?: number | undefined
+  completedRepoCount?: number | undefined
+  discoveredWorktreeCount?: number | undefined
+  activeWorktreeCount?: number | undefined
+  statusMessage?: string | undefined
+  done?: boolean | undefined
+  interrupted?: boolean | undefined
   maxInUseToShow?: number
 }) => {
   const removed = results.filter((r) => r.status === 'removed')
@@ -504,13 +530,34 @@ const StoreGcView = ({
         <Text dim> path</Text>
         <Text>: {basePath}</Text>
         {dryRun && <Text dim> mode: dry run</Text>}
+        {(done === false || interrupted === true) && (
+          <>
+            {statusMessage !== undefined && <Text dim> status: {statusMessage}</Text>}
+            <Text dim>
+              progress: {processedCount ?? results.length} checked
+              {discoveredWorktreeCount !== undefined ? ` / ${discoveredWorktreeCount} found` : ''}
+              {activeWorktreeCount !== undefined && activeWorktreeCount > 0
+                ? `, ${activeWorktreeCount} active`
+                : ''}
+              {repoCount !== undefined && completedRepoCount !== undefined
+                ? `, ${completedRepoCount}/${repoCount} repos`
+                : ''}
+            </Text>
+          </>
+        )}
         <Text> </Text>
       </Box>
       {warning && <StoreGcWarningRow warning={warning} />}
       <Text dim>{'─'.repeat(40)}</Text>
       <Text> </Text>
       {results.length === 0 ? (
-        <Text dim>No worktrees found</Text>
+        <Text dim>
+          {interrupted === true
+            ? 'Interrupted before any worktrees completed'
+            : done === false
+              ? 'Scanning worktrees...'
+              : 'No worktrees found'}
+        </Text>
       ) : (
         <>
           {removed.map((result) => (
@@ -545,13 +592,20 @@ const StoreGcView = ({
         </>
       )}
       <Text> </Text>
-      <StoreGcSummary
-        removed={removed.length}
-        skippedDirty={skippedDirty.length}
-        skippedInUse={skippedInUse.length}
-        errors={errors.length}
-        dryRun={dryRun}
-      />
+      {interrupted === true ? (
+        <Text color="yellow">
+          Interrupted after {processedCount ?? results.length} checked
+          {discoveredWorktreeCount !== undefined ? ` / ${discoveredWorktreeCount} found` : ''}
+        </Text>
+      ) : done === false && results.length === 0 ? null : (
+        <StoreGcSummary
+          removed={removed.length}
+          skippedDirty={skippedDirty.length}
+          skippedInUse={skippedInUse.length}
+          errors={errors.length}
+          dryRun={dryRun}
+        />
+      )}
       {showForceHint && skippedDirty.length > 0 && (
         <Text dim>Use --force to remove dirty worktrees</Text>
       )}
@@ -564,7 +618,7 @@ const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
   if (warning.type === 'not_in_megarepo') {
     return (
       <Box flexDirection="column">
-        <Text dim>Not in a megarepo - all worktrees will be considered unused</Text>
+        <Text dim>Not in a megarepo - only named refs and dirty worktrees are protected</Text>
         <Text> </Text>
       </Box>
     )
@@ -575,10 +629,10 @@ const StoreGcWarningRow = ({ warning }: { warning: StoreGcWarning }) => {
       <Box flexDirection="column">
         <Box flexDirection="row">
           <Text color="yellow">{SYMBOLS.warning}</Text>
-          <Text color="yellow"> Only checking current megarepo for in-use worktrees</Text>
+          <Text color="yellow"> Using registered megarepo workspaces for liveness</Text>
         </Box>
-        <Text dim> Worktrees used by other megarepos may be removed</Text>
-        <Text dim> Run from each megarepo to preserve its worktrees, or use --dry-run first</Text>
+        <Text dim> Unregistered commit worktrees may be removed when clean</Text>
+        <Text dim> Run mr status from active megarepos to refresh their root-set records</Text>
         <Text> </Text>
       </Box>
     )
@@ -618,7 +672,7 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
       case 'skipped_dirty':
         return <Text dim> ({result.message ?? 'dirty'})</Text>
       case 'skipped_in_use':
-        return <Text dim> (in use)</Text>
+        return <Text dim> ({result.message ?? 'in use'})</Text>
       case 'error':
         return <Text color="red"> (error: {result.message})</Text>
     }
@@ -632,12 +686,12 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
       {isDim === true ? (
         <Text dim>
           {' '}
-          {result.repo}refs/{result.ref}{' '}
+          {result.repo}refs/{result.refType}/{result.ref}{' '}
         </Text>
       ) : (
         <Text>
           {' '}
-          {result.repo}refs/{result.ref}{' '}
+          {result.repo}refs/{result.refType}/{result.ref}{' '}
         </Text>
       )}
       {getStatusText()}

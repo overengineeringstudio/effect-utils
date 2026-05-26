@@ -46,8 +46,15 @@ export const withSchemaSupport = <TInspector extends FC<any>>(
     const Inspector = ObjectInspector as FC<any>
 
     if (schema !== undefined || (schemas !== undefined && schemas.length > 0)) {
+      /*
+       * Forward `data` as `rootData` so the SchemaProvider can narrow
+       * tagged unions at intermediate path segments using the runtime
+       * value. Without this, only the leaf union narrows and children
+       * under a `Schema.Union(A, B, C)` field lose their variant schema.
+       */
+      const rootData = (props as { data?: unknown }).data
       return (
-        <SchemaProvider schema={schema} schemas={schemas}>
+        <SchemaProvider schema={schema} schemas={schemas} rootData={rootData}>
           <Inspector {...props} nodeRenderer={schemaNodeRenderer} />
         </SchemaProvider>
       )
@@ -80,8 +87,9 @@ export const withSchemaContext = <TInspector extends FC<any>>(
     const inspector = <ObjectInspector {...(props as ComponentProps<TInspector>)} />
 
     if (schema !== undefined || (schemas !== undefined && schemas.length > 0)) {
+      const rootData = (props as { data?: unknown }).data
       return (
-        <SchemaProvider schema={schema} schemas={schemas}>
+        <SchemaProvider schema={schema} schemas={schemas} rootData={rootData}>
           {inspector}
         </SchemaProvider>
       )

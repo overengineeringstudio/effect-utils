@@ -3,7 +3,7 @@
  */
 
 import { it } from '@effect/vitest'
-import { Cause, Console, Effect, pipe, Schema } from 'effect'
+import { Cause, Console, Effect, Exit, pipe, Schema } from 'effect'
 import React from 'react'
 import { describe, expect, beforeEach, afterEach, test } from 'vitest'
 
@@ -360,6 +360,63 @@ describe('createTuiApp', () => {
         expect(true).toBe(true)
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('ci'))),
     )
+  })
+
+  describe('Ctrl+C interruption', () => {
+    test('dispatches Interrupted when the run fiber is interrupted', async () => {
+      const InterruptState = Schema.TaggedStruct('InterruptState', {
+        status: Schema.Literal('idle', 'running', 'interrupted'),
+      })
+      type InterruptState = typeof InterruptState.Type
+
+      const InterruptAction = Schema.Union(
+        Schema.TaggedStruct('Start', {}),
+        Schema.TaggedStruct('Interrupted', {}),
+      )
+      type InterruptAction = typeof InterruptAction.Type
+
+      const previousExitCode = process.exitCode
+      process.exitCode = undefined
+      const reducedStatuses: Array<InterruptState['status']> = []
+
+      const InterruptApp = createTuiApp<InterruptState, InterruptAction>({
+        stateSchema: InterruptState,
+        actionSchema: InterruptAction,
+        initial: { _tag: 'InterruptState', status: 'idle' },
+        reducer: ({ action }): InterruptState => {
+          const next: InterruptState = (() => {
+            switch (action._tag) {
+              case 'Start':
+                return { _tag: 'InterruptState', status: 'running' }
+              case 'Interrupted':
+                return { _tag: 'InterruptState', status: 'interrupted' }
+            }
+          })()
+          reducedStatuses.push(next.status)
+          return next
+        },
+        exitCode: (state) => (state.status === 'interrupted' ? 130 : undefined),
+      })
+
+      try {
+        const exit = await run(InterruptApp, (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Start' })
+            return yield* Effect.interrupt
+          }),
+        ).pipe(Effect.provide(testModeLayer('tty')), Effect.runPromiseExit)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit) === true) {
+          expect(Cause.isInterruptedOnly(exit.cause)).toBe(true)
+        }
+        expect(reducedStatuses).toContain('running')
+        expect(reducedStatuses).toContain('interrupted')
+        expect(process.exitCode).toBe(130)
+      } finally {
+        process.exitCode = previousExitCode
+      }
+    })
   })
 
   describe('multiple apps', () => {

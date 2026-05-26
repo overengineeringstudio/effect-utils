@@ -5,7 +5,7 @@
  */
 
 import { Command } from '@effect/platform'
-import { Chunk, Duration, Effect, Option, Schedule, Stream } from 'effect'
+import { Cause, Chunk, Duration, Effect, Option, Schedule, Stream } from 'effect'
 
 // =============================================================================
 // Git URL Parsing
@@ -96,6 +96,20 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
     )
 
     const process = yield* Command.start(cmd)
+    yield* Effect.addFinalizer((exit) =>
+      Effect.gen(function* () {
+        if (exit._tag !== 'Failure' || Cause.isInterruptedOnly(exit.cause) === false) {
+          return
+        }
+
+        const isRunning = yield* process.isRunning.pipe(
+          Effect.catchAll(() => Effect.succeed(false)),
+        )
+        if (isRunning === false) return
+
+        yield* process.kill('SIGKILL').pipe(Effect.catchAll(() => Effect.void))
+      }),
+    )
 
     // Collect stdout and stderr
     const decoder = new TextDecoder('utf-8')
@@ -599,6 +613,18 @@ export interface WorktreeStatus {
   readonly changesCount: number
 }
 
+const worktreeSpanLabel = (worktreePath: string): string =>
+  worktreePath.split('/').findLast((part) => part.length > 0) ?? 'worktree'
+
+const getUnpushedStatus = (worktreePath: string) =>
+  runGitCommand({
+    args: ['log', '@{upstream}..HEAD', '--oneline'],
+    cwd: worktreePath,
+  }).pipe(
+    Effect.map((out) => out.split('\n').filter((line) => line.trim() !== '').length > 0),
+    Effect.catchAll(() => Effect.succeed(false)), // No upstream or not a branch
+  )
+
 /**
  * Get the status of a worktree (dirty state, unpushed commits)
  */
@@ -606,7 +632,7 @@ export const getWorktreeStatus = (worktreePath: string) =>
   Effect.gen(function* () {
     // Check for uncommitted changes
     const statusOutput = yield* runGitCommand({
-      args: ['status', '--porcelain'],
+      args: ['status', '--porcelain', '--untracked-files=all'],
       cwd: worktreePath,
     })
 
@@ -614,13 +640,7 @@ export const getWorktreeStatus = (worktreePath: string) =>
     const isDirty = changes.length > 0
 
     // Check for unpushed commits (only relevant for branches)
-    const unpushedOutput = yield* runGitCommand({
-      args: ['log', '@{upstream}..HEAD', '--oneline'],
-      cwd: worktreePath,
-    }).pipe(
-      Effect.map((out) => out.split('\n').filter((line) => line.trim() !== '').length > 0),
-      Effect.catchAll(() => Effect.succeed(false)), // No upstream or not a branch
-    )
+    const unpushedOutput = yield* getUnpushedStatus(worktreePath)
 
     return {
       isDirty,
@@ -629,7 +649,52 @@ export const getWorktreeStatus = (worktreePath: string) =>
     } satisfies WorktreeStatus
   }).pipe(
     Effect.withSpan('git/worktree-status', {
-      attributes: { 'span.label': worktreePath, worktreePath },
+      attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+    }),
+  )
+
+/**
+ * Get GC removal status with a cheap fail-closed preflight.
+ *
+ * Full untracked-file scans are required before declaring a worktree removable,
+ * but they are expensive for large worktrees. For GC we can first check tracked
+ * changes and unpushed commits; either one already makes the worktree ineligible
+ * without walking untracked directories.
+ */
+export const getWorktreeRemovalStatus = (worktreePath: string) =>
+  Effect.gen(function* () {
+    const statusOutput = yield* runGitCommand({
+      args: ['status', '--porcelain', '--untracked-files=normal'],
+      cwd: worktreePath,
+    }).pipe(
+      Effect.withSpan('git/worktree-removal-status/dirty', {
+        attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+      }),
+    )
+    const changes = statusOutput.split('\n').filter((line) => line.trim() !== '')
+
+    if (changes.length > 0) {
+      return {
+        isDirty: true,
+        hasUnpushed: false,
+        changesCount: changes.length,
+      } satisfies WorktreeStatus
+    }
+
+    const hasUnpushed = yield* getUnpushedStatus(worktreePath).pipe(
+      Effect.withSpan('git/worktree-removal-status/unpushed', {
+        attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+      }),
+    )
+
+    return {
+      isDirty: false,
+      hasUnpushed,
+      changesCount: 0,
+    } satisfies WorktreeStatus
+  }).pipe(
+    Effect.withSpan('git/worktree-removal-status', {
+      attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
     }),
   )
 
