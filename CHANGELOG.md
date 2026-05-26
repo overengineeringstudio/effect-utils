@@ -73,6 +73,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **nix/oxc-config-plugin**: Refresh the pnpm dependency fixed-output hash so the devenv shell can realize the oxlint package used by `check:all`.
 - **@overeng/notion-datasource-sync**: Tighten Patch C daemon/filesystem E2E coverage so same-timestamp fake pagination, capped checkpoint persistence, sidecar-backed rebuilds, and cancellation-at-cycle-boundary assertions match the behavior they prove.
 - **@overeng/notion-datasource-sync**: Fail unsupported `migrate store`, `migrate schema`, and `repair` CLI commands before opening SQLite, and propagate live fixture cleanup failures while preserving cleanup ledger evidence.
 - **@overeng/notion-datasource-sync**: Close the CLI SQLite store through parse/runtime failures after opening, avoid opening the store for malformed JSON context flags, and default live CLI/preflight capability checks to read-only Notion sync probes while keeping strict page-property/schema capability requests fail-closed.
