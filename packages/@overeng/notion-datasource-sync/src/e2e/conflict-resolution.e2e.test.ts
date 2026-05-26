@@ -1,13 +1,20 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { PagePropertyItemPage } from '../commands.ts'
-import { AbsolutePath } from '../domain.ts'
-import { SyncEvent, SyncEventId } from '../events.ts'
-import { executeOutboxOnce } from '../executor.ts'
-import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../ports.ts'
-import { hashStoreBytes } from '../store-projections.ts'
-import { initOneShotSync, pullOneShotSync, pushOneShotSync } from '../sync.ts'
+import { PagePropertyItemPage } from '../core/commands.ts'
+import { AbsolutePath } from '../core/domain.ts'
+import { SyncEvent, SyncEventId } from '../core/events.ts'
+import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
+import {
+  forgetPageCommand,
+  listUserCommandSurface,
+  resolveConflictCommand,
+  restorePageCommand,
+  type ConflictResolutionChoice,
+} from '../planner/user-commands.ts'
+import { hashStoreBytes } from '../store/projections.ts'
+import { executeOutboxOnce } from '../sync/executor.ts'
+import { initOneShotSync, pullOneShotSync, pushOneShotSync } from '../sync/sync.ts'
 import {
   defaultQueryContract,
   decode,
@@ -21,13 +28,6 @@ import {
   propertyPatchValue,
   testIds,
 } from '../testing/harness.ts'
-import {
-  forgetPageCommand,
-  listUserCommandSurface,
-  resolveConflictCommand,
-  restorePageCommand,
-  type ConflictResolutionChoice,
-} from '../user-commands.ts'
 
 const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-conflicts')
 

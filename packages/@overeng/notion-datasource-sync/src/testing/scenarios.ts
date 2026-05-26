@@ -1,4 +1,4 @@
-import { GuardName, type GuardName as GuardNameType } from '../guards.ts'
+import { GuardName, type GuardName as GuardNameType } from '../core/guards.ts'
 
 export type RequirementId = `R${number}`
 

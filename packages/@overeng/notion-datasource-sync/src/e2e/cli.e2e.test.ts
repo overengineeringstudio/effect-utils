@@ -8,7 +8,6 @@ import { promisify } from 'node:util'
 import { Effect, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { propertySurfaceKey } from '../canonical.ts'
 import {
   CliArgumentError,
   parseCliCommand,
@@ -16,22 +15,23 @@ import {
   runCliCommandWithRuntime,
   runCliMain,
   type CliContext,
-} from '../cli.ts'
-import { PagePropertyItemPage } from '../commands.ts'
-import { AbsolutePath, BodyPointer, WorkspaceRelativePath } from '../domain.ts'
-import { SyncEventId, type SyncEvent as SyncEventType } from '../events.ts'
-import type { NotionGatewayClient } from '../gateway-notion.ts'
-import { makeGatewayError, makeNotionApiContract } from '../gateway.ts'
-import { presentArtifactObservation } from '../local-workspace.ts'
-import { makeConflictRaisedEvent } from '../observation.ts'
+} from '../cli/main.ts'
+import { propertySurfaceKey } from '../core/canonical.ts'
+import { PagePropertyItemPage } from '../core/commands.ts'
+import { AbsolutePath, BodyPointer, WorkspaceRelativePath } from '../core/domain.ts'
+import { SyncEventId, type SyncEvent as SyncEventType } from '../core/events.ts'
 import {
   LocalWorkspacePort,
   NotionDataSourceGateway,
   PageBodySyncPort,
   type NotionDataSourceGatewayShape,
-} from '../ports.ts'
-import { NotionSyncStore } from '../store.ts'
-import { initOneShotSync, pullOneShotSync } from '../sync.ts'
+} from '../core/ports.ts'
+import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
+import type { NotionGatewayClient } from '../gateway/notion.ts'
+import { presentArtifactObservation } from '../local/workspace.ts'
+import { NotionSyncStore } from '../store/store.ts'
+import { makeConflictRaisedEvent } from '../sync/observation.ts'
+import { initOneShotSync, pullOneShotSync } from '../sync/sync.ts'
 import {
   defaultQueryContract,
   decode,
@@ -47,7 +47,7 @@ import {
 
 const execFileAsync = promisify(execFile)
 const packageDir = fileURLToPath(new URL('../..', import.meta.url))
-const cliPath = join(packageDir, 'src/cli.ts')
+const cliPath = join(packageDir, 'src/cli/main.ts')
 const cliTestTimeoutMs = 10_000
 const workspaceRoot = decode(AbsolutePath, '/tmp/notion-ds-sync-cli')
 

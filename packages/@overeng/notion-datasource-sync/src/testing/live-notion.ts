@@ -13,11 +13,11 @@ import {
   NotionPages,
 } from '@overeng/notion-effect-client'
 
-import { DataSourceId, PageId, type CapabilityName } from '../domain.ts'
-import { NotionDataSourceGatewayLive } from '../gateway-notion.ts'
-import { readOnlyGatewayCapabilities } from '../gateway.ts'
-import { guardCapabilities } from '../guards.ts'
-import { NotionDataSourceGateway } from '../ports.ts'
+import { DataSourceId, PageId, type CapabilityName } from '../core/domain.ts'
+import { guardCapabilities } from '../core/guards.ts'
+import { NotionDataSourceGateway } from '../core/ports.ts'
+import { readOnlyGatewayCapabilities } from '../gateway/gateway.ts'
+import { NotionDataSourceGatewayLive } from '../gateway/notion.ts'
 
 export type LiveNotionEnv = {
   readonly enabled: boolean

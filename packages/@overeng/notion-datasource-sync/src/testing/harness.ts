@@ -9,13 +9,13 @@ import {
   bodySafetySnapshot,
   makeFakePageBodySyncPort,
   type FakeBodyPageState,
-} from '../body-adapter.ts'
+} from '../body/adapter.ts'
 import {
   bodySurfaceKey,
   pageSurfaceKey,
   propertySurfaceKey,
   querySurfaceKey,
-} from '../canonical.ts'
+} from '../core/canonical.ts'
 import {
   PatchPagePropertiesCommand,
   QueryRowsPage,
@@ -27,7 +27,7 @@ import {
   type RemoteWriteCommand,
   type QueryContract,
   type RestorePageCommand,
-} from '../commands.ts'
+} from '../core/commands.ts'
 import {
   BodyPointer,
   CommandId,
@@ -44,7 +44,7 @@ import {
   type PageSnapshot,
   type PathClaimPlan,
   type RowPageSnapshot,
-} from '../domain.ts'
+} from '../core/domain.ts'
 import {
   IdempotencyKey,
   SyncEvent,
@@ -52,15 +52,16 @@ import {
   SyncRootId,
   type SurfaceKey,
   type SyncEvent as SyncEventType,
-} from '../events.ts'
-import { makeFakeNotionDataSourceGateway } from '../gateway-fake.ts'
+} from '../core/events.ts'
 import type {
   BodySafetySnapshot,
   GuardName,
   QueryAbsenceSnapshot,
   QueryCompletenessSnapshot,
-} from '../guards.ts'
-import { defaultWorkspacePolicy, makeFakeLocalWorkspacePort } from '../local-workspace.ts'
+} from '../core/guards.ts'
+import type { NotionDataSourceGatewayShape } from '../core/ports.ts'
+import { makeFakeNotionDataSourceGateway } from '../gateway/fake.ts'
+import { defaultWorkspacePolicy, makeFakeLocalWorkspacePort } from '../local/workspace.ts'
 import type {
   BodyAdapterResultIntent,
   OutboxCommandEnvelope,
@@ -68,14 +69,13 @@ import type {
   PlannerProjectionSnapshot,
   PropertyEditIntent,
   QueryAbsenceIntent,
-} from '../planner.ts'
-import type { NotionDataSourceGatewayShape } from '../ports.ts'
-import { pageLifecycleHash } from '../store-projections.ts'
+} from '../planner/planner.ts'
+import { pageLifecycleHash } from '../store/projections.ts'
 import {
   openNotionSyncStore,
   type NotionSyncStore,
   type OpenNotionSyncStoreOptions,
-} from '../store.ts'
+} from '../store/store.ts'
 
 export const decode = <TSchema extends Schema.Schema.AnyNoContext>(
   schema: TSchema,

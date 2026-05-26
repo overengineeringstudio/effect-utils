@@ -10,7 +10,7 @@ import {
   filesystemWorkspacePageSidecarPath,
   isOwnWriteObservation,
   makeFilesystemLocalWorkspacePort,
-} from '../local-workspace.ts'
+} from '../local/workspace.ts'
 import {
   collectWorkspaceScan,
   makeTempWorkspace,

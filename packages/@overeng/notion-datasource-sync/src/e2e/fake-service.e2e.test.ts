@@ -1,24 +1,24 @@
 import { Cause, Chunk, Effect, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { pageSurfaceKey, propertySurfaceKey, schemaSurfaceKey } from '../canonical.ts'
-import { PatchDataSourceSchemaCommand, RestorePageCommand } from '../commands.ts'
-import { AbsolutePath, PropertyName } from '../domain.ts'
-import { SyncEvent } from '../events.ts'
-import { executeOutboxOnce } from '../executor.ts'
-import {
-  planIntent,
-  type OutboxCommandEnvelope,
-  type PlannerProjectionSnapshot,
-  type SchemaMigrationIntent,
-} from '../planner.ts'
+import { pageSurfaceKey, propertySurfaceKey, schemaSurfaceKey } from '../core/canonical.ts'
+import { PatchDataSourceSchemaCommand, RestorePageCommand } from '../core/commands.ts'
+import { AbsolutePath, PropertyName } from '../core/domain.ts'
+import { SyncEvent } from '../core/events.ts'
 import {
   NotionDataSourceGateway,
   PageBodySyncPort,
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
-} from '../ports.ts'
-import { hashStoreBytes, pageLifecycleHash } from '../store-projections.ts'
+} from '../core/ports.ts'
+import {
+  planIntent,
+  type OutboxCommandEnvelope,
+  type PlannerProjectionSnapshot,
+  type SchemaMigrationIntent,
+} from '../planner/planner.ts'
+import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
+import { executeOutboxOnce } from '../sync/executor.ts'
 import {
   bodyAdapterResultIntent,
   bodyLocalChangeInput,
