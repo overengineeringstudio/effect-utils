@@ -72,6 +72,10 @@ storeDir: .devenv/pnpm-store-pure-v1
 
 packageImportMethod: clone-or-copy
 
+optimisticRepeatInstall: false
+
+verifyDepsBeforeRun: false
+
 sideEffectsCache: false
 
 verifyStoreIntegrity: true
