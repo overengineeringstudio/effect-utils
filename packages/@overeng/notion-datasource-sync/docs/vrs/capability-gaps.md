@@ -4,6 +4,9 @@ This checklist records the current `@overeng/notion-datasource-sync` capability 
 
 It is a release-readiness aid, not a task plan. The sync package should keep unsupported surfaces fail-closed until they have canonical models, deterministic fake-service coverage, and live Notion evidence.
 
+Actionable follow-up work for feasible gaps is tracked in
+[GitHub issue #698](https://github.com/overengineeringstudio/effect-utils/issues/698).
+
 ## Official Docs Consulted
 
 - [Data source object](https://developers.notion.com/reference/data-source)

@@ -3,6 +3,9 @@
 This page describes the current package behavior, not every capability exposed
 by the Notion API.
 
+Follow-up work for feasible but unsupported surfaces is tracked in
+[GitHub issue #698](https://github.com/overengineeringstudio/effect-utils/issues/698).
+
 ## Supported
 
 | Surface                    | Current behavior                                                       |
