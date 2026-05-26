@@ -4,7 +4,10 @@ import { FileSystem, Path } from '@effect/platform'
 import { Context, Effect, Layer, Schema } from 'effect'
 
 import {
-  NmdObjectRefSchema,
+  makeNmdObjectRef,
+  NMD_STATE_DIRECTORY,
+  nmdObjectRelativePath,
+  nmdSyncStateRelativePath,
   NmdStorageSchema,
   NmdSyncStateV1Schema,
   Sha256DigestSchema,
@@ -61,19 +64,15 @@ const decodeSyncStateJson = Schema.decodeUnknown(
   Schema.parseJson(NmdSyncStateV1Schema),
   strictOptions,
 )
-const decodeObjectRef = Schema.decodeUnknownSync(NmdObjectRefSchema, strictOptions)
 
 /** Local metadata root next to a synced `.nmd` file. */
 export const stateRootPath = (path: string): string => {
   const baseName = path.split(/[\\/]/u).at(-1) ?? path
-  return `${path.slice(0, Math.max(0, path.length - baseName.length))}.notion-md`
+  return `${path.slice(0, Math.max(0, path.length - baseName.length))}${NMD_STATE_DIRECTORY}`
 }
 
 /** Relative path for a content-addressed object inside the local metadata root. */
-export const objectRelativePath = (hash: string): string => {
-  const hex = hash.slice('sha256:'.length)
-  return `.notion-md/objects/sha256/${hex.slice(0, 2)}/${hex.slice(2)}.json`
-}
+export const objectRelativePath = nmdObjectRelativePath
 
 /** Absolute object path for a content-addressed hash next to a synced `.nmd` file. */
 export const objectPath = (opts: { readonly path: string; readonly hash: string }): string => {
@@ -86,24 +85,8 @@ export const objectPath = (opts: { readonly path: string; readonly hash: string 
 export const syncStatePath = (opts: { readonly path: string; readonly pageId: string }): string => {
   const baseName = opts.path.split(/[\\/]/u).at(-1) ?? opts.path
   const root = opts.path.slice(0, Math.max(0, opts.path.length - baseName.length))
-  return `${root}.notion-md/sync/${opts.pageId}.json`
+  return `${root}${nmdSyncStateRelativePath(opts.pageId)}`
 }
-
-const byteLength = (content: string): number => new TextEncoder().encode(content).byteLength
-
-const makeObjectRef = (opts: {
-  readonly role: NmdObjectRole
-  readonly hash: string
-  readonly content: string
-}): NmdObjectRef =>
-  decodeObjectRef({
-    _tag: 'object_ref',
-    role: opts.role,
-    hash: opts.hash,
-    path: objectRelativePath(opts.hash),
-    media_type: 'application/json',
-    byte_length: byteLength(opts.content),
-  })
 
 /** Returns whether an object-store path is relative and cannot traverse above the `.nmd` directory. */
 export const isSafeRelativePath = (opts: {
@@ -270,7 +253,7 @@ export const NmdStateStoreLive = Layer.effect(
           }
           if (
             path.normalize(opts.object.path) !==
-            path.normalize(objectRelativePath(opts.object.hash))
+            path.normalize(nmdObjectRelativePath(opts.object.hash))
           ) {
             throw new Error('Object path must match its content hash')
           }
@@ -352,7 +335,7 @@ export const NmdStateStoreLive = Layer.effect(
           label: '.notion-md object',
         })
         yield* Effect.annotateCurrentSpan('notion_md.object.hash_prefix', hash.slice(0, 18))
-        return makeObjectRef({ role: opts.role, hash, content })
+        return makeNmdObjectRef({ role: opts.role, hash, content })
       }).pipe(
         Effect.withSpan('notion-md.state.write-object', {
           attributes: {

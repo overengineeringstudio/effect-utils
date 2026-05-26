@@ -1,4 +1,8 @@
-import type { NmdSyncStateV1 } from '@overeng/notion-effect-client'
+import {
+  NMD_LARGE_STORAGE_BYTES,
+  NMD_SMALL_STORAGE_BYTES,
+  type NmdSyncStateV1,
+} from '@overeng/notion-effect-client'
 
 /** Decision for whether `.nmd` auxiliary storage stays inline or moves to object storage. */
 export type StorageDecision =
@@ -35,9 +39,6 @@ const containsVolatileUrl = (value: unknown): boolean => {
   return false
 }
 
-const smallBytes = 8_192
-const largeBytes = 65_536
-
 /** Decide whether sidecar storage is still an appropriate self-contained payload. */
 export const decideStorage = (syncState: NmdSyncStateV1): StorageDecision => {
   const bytes = new TextEncoder().encode(JSON.stringify(syncState.storage)).byteLength
@@ -46,13 +47,13 @@ export const decideStorage = (syncState: NmdSyncStateV1): StorageDecision => {
     return { _tag: 'requires_object_store', bytes, reason: 'volatile_url' }
   }
 
-  if (bytes > largeBytes) {
+  if (bytes > NMD_LARGE_STORAGE_BYTES) {
     return { _tag: 'requires_object_store', bytes, reason: 'too_large' }
   }
 
   return {
     _tag: 'keep_self_contained',
     bytes,
-    classification: bytes <= smallBytes ? 'small' : 'large',
+    classification: bytes <= NMD_SMALL_STORAGE_BYTES ? 'small' : 'large',
   }
 }

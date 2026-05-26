@@ -38,7 +38,7 @@ const stableStringify = (value: unknown): string => {
     return stableStringify(value.toJSON())
   }
 
-  if (Array.isArray(value)) {
+  if (Array.isArray(value) === true) {
     return `[${value.map((item) => stableStringify(item)).join(',')}]`
   }
 
@@ -52,18 +52,20 @@ const stableStringify = (value: unknown): string => {
   return JSON.stringify(value)
 }
 
+/** SHA-256 hash for canonicalized datasource-sync contract and surface data. */
+export const canonicalHash = (value: unknown) => hashStoreBytes(stableStringify(value))
+
+/** Hash the query contract fields that define durable query membership identity. */
 export const queryContractHash = (input: QueryRowsInput, apiVersion: string) =>
-  hashStoreBytes(
-    stableStringify({
-      apiVersion,
-      dataSourceId: input.dataSourceId,
-      queryContract: {
-        apiVersion: input.queryContract.apiVersion,
-        filter: input.queryContract.filter,
-        highWatermark: input.queryContract.highWatermark,
-        membershipScope: input.queryContract.membershipScope,
-        pageSize: input.queryContract.pageSize,
-        sorts: input.queryContract.sorts,
-      },
-    }),
-  )
+  canonicalHash({
+    apiVersion,
+    dataSourceId: input.dataSourceId,
+    queryContract: {
+      apiVersion: input.queryContract.apiVersion,
+      filter: input.queryContract.filter,
+      highWatermark: input.queryContract.highWatermark,
+      membershipScope: input.queryContract.membershipScope,
+      pageSize: input.queryContract.pageSize,
+      sorts: input.queryContract.sorts,
+    },
+  })

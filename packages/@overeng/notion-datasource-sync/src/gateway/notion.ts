@@ -2,14 +2,19 @@ import { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Layer, Option, Schema, Stream } from 'effect'
 
 import {
+  type DatabaseFilter,
+  type DatabaseSort,
   NotionConfig,
   NotionDataSources,
   NotionDatabases,
   NotionPages,
   type NotionApiError,
+  type NotionDataSource,
+  type NotionPage,
   type PaginatedResult,
 } from '@overeng/notion-effect-client'
 
+import { canonicalHash, queryContractHash } from '../core/canonical.ts'
 import type {
   CanonicalDataSourceProperty,
   CanonicalOptionValue,
@@ -36,7 +41,6 @@ import {
 import type { NotionGatewayError } from '../core/errors.ts'
 import { blocked, guardStaleSurfaceBase, type GuardName } from '../core/guards.ts'
 import { NotionDataSourceGateway, type NotionDataSourceGatewayShape } from '../core/ports.ts'
-import { hashStoreBytes } from '../store/projections.ts'
 import {
   allGatewayCapabilities,
   makeCapabilityPreflightResult,
@@ -47,45 +51,38 @@ import {
   type GatewayOperation,
 } from './gateway.ts'
 
-type NotionDataSourceObject = {
-  readonly id: string
-  readonly properties: Record<string, unknown>
-}
+/** Schema-backed data-source projection consumed by the datasource-sync adapter. */
+export type NotionGatewayDataSource = Pick<NotionDataSource, 'id' | 'properties'>
 
-type NotionPageObject = {
-  readonly id: string
-  readonly parent?: {
-    readonly type?: string
-    readonly data_source_id?: string
-  }
-  readonly properties: Record<string, unknown>
-  readonly last_edited_time: string
-  readonly in_trash: boolean
-}
+/** Schema-backed page projection consumed by the datasource-sync adapter. */
+export type NotionGatewayPage = Pick<
+  NotionPage,
+  'id' | 'parent' | 'properties' | 'last_edited_time' | 'in_trash'
+>
 
 export type NotionGatewayClient = {
   readonly retrieveDataSource: (input: {
     readonly dataSourceId: string
-  }) => Effect.Effect<NotionDataSourceObject, unknown>
+  }) => Effect.Effect<NotionGatewayDataSource, unknown>
   readonly queryDataSource: (input: {
     readonly dataSourceId: string
     readonly pageSize: number
     readonly startCursor: string | undefined
-    readonly filter: unknown | undefined
-    readonly sorts: ReadonlyArray<unknown> | undefined
-  }) => Effect.Effect<PaginatedResult<NotionPageObject>, unknown>
+    readonly filter: DatabaseFilter | undefined
+    readonly sorts: ReadonlyArray<DatabaseSort> | undefined
+  }) => Effect.Effect<PaginatedResult<NotionGatewayPage>, unknown>
   readonly retrievePage: (input: {
     readonly pageId: string
-  }) => Effect.Effect<NotionPageObject, unknown>
+  }) => Effect.Effect<NotionGatewayPage, unknown>
   readonly updatePage: (input: {
     readonly pageId: string
     readonly properties?: Record<string, unknown>
     readonly inTrash?: boolean
-  }) => Effect.Effect<NotionPageObject, unknown>
+  }) => Effect.Effect<NotionGatewayPage, unknown>
   readonly updateDataSource: (input: {
     readonly dataSourceId: string
     readonly properties: Record<string, unknown>
-  }) => Effect.Effect<NotionDataSourceObject, unknown>
+  }) => Effect.Effect<NotionGatewayDataSource, unknown>
 }
 
 export class UnsupportedAdapterOperation extends Schema.TaggedError<UnsupportedAdapterOperation>()(
@@ -116,36 +113,6 @@ const unavailableRequestId = NotionRequestId.make('notion-client-success-request
 const decodeDateTimeUtc = Schema.decodeUnknownSync(Schema.DateTimeUtc)
 
 const observedNow = () => decodeDateTimeUtc(new Date().toISOString())
-
-const stableStringify = (value: unknown): string => {
-  if (value === undefined) {
-    return '"[undefined]"'
-  }
-
-  if (
-    value !== null &&
-    typeof value === 'object' &&
-    'toJSON' in value &&
-    typeof value.toJSON === 'function'
-  ) {
-    return stableStringify(value.toJSON())
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`
-  }
-
-  if (value !== null && typeof value === 'object') {
-    return `{${Object.entries(value)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-      .join(',')}}`
-  }
-
-  return JSON.stringify(value)
-}
-
-const canonicalHash = (value: unknown): Hash => hashStoreBytes(stableStringify(value))
 
 const notionApiErrorRequestId = (error: NotionApiError): string | undefined =>
   Option.getOrUndefined(error.requestId)
@@ -230,12 +197,10 @@ const gatewayGuardError = (input: {
     message: input.message,
   })
 
-const optionalDataSourceIdFromPage = (page: NotionPageObject): DataSourceId | undefined =>
-  page.parent?.type === 'data_source_id' && page.parent.data_source_id !== undefined
-    ? DataSourceId.make(page.parent.data_source_id)
-    : undefined
+const optionalDataSourceIdFromPage = (page: NotionGatewayPage): DataSourceId | undefined =>
+  page.parent.type === 'data_source_id' ? DataSourceId.make(page.parent.data_source_id) : undefined
 
-const dataSourceSnapshotFromRemote = (dataSource: NotionDataSourceObject) =>
+const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) =>
   DataSourceSnapshot.make({
     _tag: 'DataSourceSnapshot',
     dataSourceId: DataSourceId.make(dataSource.id),
@@ -244,7 +209,7 @@ const dataSourceSnapshotFromRemote = (dataSource: NotionDataSourceObject) =>
     schemaHash: canonicalHash(dataSource.properties),
   })
 
-const pageSnapshotFromRemote = (page: NotionPageObject) =>
+const pageSnapshotFromRemote = (page: NotionGatewayPage) =>
   PageSnapshot.make({
     _tag: 'PageSnapshot',
     pageId: PageId.make(page.id),
@@ -257,7 +222,7 @@ const pageSnapshotFromRemote = (page: NotionPageObject) =>
     inTrash: page.in_trash,
   })
 
-const rowSnapshotFromRemote = (page: NotionPageObject) =>
+const rowSnapshotFromRemote = (page: NotionGatewayPage) =>
   RowPageSnapshot.make({
     _tag: 'RowPageSnapshot',
     pageId: PageId.make(page.id),
@@ -265,22 +230,6 @@ const rowSnapshotFromRemote = (page: NotionPageObject) =>
     lastEditedTime: decodeDateTimeUtc(page.last_edited_time),
     inTrash: page.in_trash,
   })
-
-const queryContractHash = (input: QueryRowsInput, apiVersion: string): Hash =>
-  hashStoreBytes(
-    stableStringify({
-      apiVersion,
-      dataSourceId: input.dataSourceId,
-      queryContract: {
-        apiVersion: input.queryContract.apiVersion,
-        filter: input.queryContract.filter,
-        highWatermark: input.queryContract.highWatermark,
-        membershipScope: input.queryContract.membershipScope,
-        pageSize: input.queryContract.pageSize,
-        sorts: input.queryContract.sorts,
-      },
-    }),
-  )
 
 const optionValue = (option: CanonicalOptionValue) => ({
   ...(option.id === undefined ? {} : { id: option.id }),
@@ -381,7 +330,7 @@ const dataSourceSchemaPatchToNotion = (
 
 const querySortsToNotion = (
   input: QueryRowsInput,
-): Effect.Effect<ReadonlyArray<unknown> | undefined, NotionGatewayError> =>
+): Effect.Effect<ReadonlyArray<DatabaseSort> | undefined, NotionGatewayError> =>
   input.queryContract.sorts.length === 0
     ? Effect.succeed(undefined)
     : Effect.succeed(
@@ -393,7 +342,7 @@ const querySortsToNotion = (
 
 const queryFilterToNotion = (
   input: QueryRowsInput,
-): Effect.Effect<unknown | undefined, NotionGatewayError> => {
+): Effect.Effect<DatabaseFilter | undefined, NotionGatewayError> => {
   if (input.queryContract.filter === null) {
     return Effect.succeed(undefined)
   }
@@ -426,7 +375,7 @@ const guardQueryContractSupported = (
 
 const validateBasePropertiesHash = (input: {
   readonly operation: GatewayOperation
-  readonly page: NotionPageObject
+  readonly page: NotionGatewayPage
   readonly pageId: PageId
   readonly basePropertiesHash: Hash
 }) => {
@@ -448,7 +397,9 @@ const validateBasePropertiesHash = (input: {
       )
 }
 
-const paginatedResultNextCursor = (result: PaginatedResult<NotionPageObject>): QueryCursor | null =>
+const paginatedResultNextCursor = (
+  result: PaginatedResult<NotionGatewayPage>,
+): QueryCursor | null =>
   Option.match(result.nextCursor, {
     onNone: () => null,
     onSome: (cursor) => QueryCursor.make(cursor),
@@ -457,7 +408,7 @@ const paginatedResultNextCursor = (result: PaginatedResult<NotionPageObject>): Q
 const queryRowsPageFromRemote = (input: {
   readonly queryInput: QueryRowsInput
   readonly apiContract: NotionApiContractType
-  readonly result: PaginatedResult<NotionPageObject>
+  readonly result: PaginatedResult<NotionGatewayPage>
 }): typeof QueryRowsPage.Type =>
   QueryRowsPage.make({
     _tag: 'QueryRowsPage',
@@ -489,8 +440,8 @@ export const makeNotionEffectClientGatewayClient = (
         dataSourceId,
         pageSize,
         ...(startCursor === undefined ? {} : { startCursor }),
-        ...(filter === undefined ? {} : { filter: filter as Record<string, unknown> }),
-        ...(sorts === undefined ? {} : { sorts: sorts as never }),
+        ...(filter === undefined ? {} : { filter }),
+        ...(sorts === undefined ? {} : { sorts }),
       }),
     ),
   retrievePage: ({ pageId }) => provideClientEnv(NotionPages.retrieve({ pageId })),

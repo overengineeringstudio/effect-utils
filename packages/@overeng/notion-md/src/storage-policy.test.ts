@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import type { NmdStorage, NmdSyncStateV1 } from '@overeng/notion-effect-client'
+import {
+  makeNmdObjectRef,
+  type NmdStorage,
+  type NmdSyncStateV1,
+} from '@overeng/notion-effect-client'
 
 import { decideStorage } from './storage-policy.ts'
 
@@ -13,14 +17,7 @@ const syncStateWithStorage = (storage: NmdStorage): NmdSyncStateV1 => ({
   body: {
     format: 'notion-enhanced-markdown',
     hash,
-    base: {
-      _tag: 'object_ref',
-      role: 'base_snapshot',
-      hash,
-      path: `.notion-md/objects/sha256/${'a'.repeat(2)}/${'a'.repeat(62)}.json`,
-      media_type: 'application/json',
-      byte_length: 128,
-    },
+    base: makeNmdObjectRef({ role: 'base_snapshot', hash, content: 'x'.repeat(128) }),
     last_pulled_at: '2026-05-22T12:00:00.000Z',
     remote_last_edited_time: '2026-05-22T12:00:00.000Z',
     truncated: false,

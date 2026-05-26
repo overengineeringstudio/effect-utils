@@ -3,6 +3,8 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { nmdObjectRelativePath } from '@overeng/notion-effect-client'
+
 import { isSafeRelativePath } from './state-store.ts'
 
 const withPath = async <A>(fn: (path: Path.Path) => A): Promise<A> =>
@@ -14,7 +16,7 @@ describe('notion-md state store path safety', () => {
       withPath((path) =>
         isSafeRelativePath({
           path,
-          relativePath: `.notion-md/objects/sha256/${'a'.repeat(2)}/${'a'.repeat(62)}.json`,
+          relativePath: nmdObjectRelativePath(`sha256:${'a'.repeat(64)}`),
         }),
       ),
     ).resolves.toBe(true)
