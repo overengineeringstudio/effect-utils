@@ -238,16 +238,16 @@ The implementation currently supports self-contained storage and content-address
 
 Requirement trace: R01-R05, R11-R15.
 
-| Surface            | Local state                   | Pull API                   | Push API                    | Conflict unit      | Current status            |
-| ------------------ | ----------------------------- | -------------------------- | --------------------------- | ------------------ | ------------------------- |
-| Body               | `.nmd` body + `base_snapshot` | `GET /pages/{id}/markdown` | Markdown update endpoint    | canonical Markdown | implemented               |
-| Page metadata      | frontmatter page fields       | `GET /pages/{id}`          | `PATCH /pages/{id}`         | field              | lock/trash/icon/cover     |
-| Properties         | frontmatter property map      | `GET /pages/{id}`          | `PATCH /pages/{id}`         | property           | modeled writable forms    |
-| Unsupported blocks | frontmatter/object storage    | Markdown + block API       | preserve or explicit delete | block id           | guard + preserve metadata |
+| Surface            | Local state                    | Pull API                   | Push API                    | Conflict unit      | Current status            |
+| ------------------ | ------------------------------ | -------------------------- | --------------------------- | ------------------ | ------------------------- |
+| Body               | `.nmd` body + `base_snapshot`  | `GET /pages/{id}/markdown` | Markdown update endpoint    | canonical Markdown | implemented               |
+| Page metadata      | frontmatter page fields        | `GET /pages/{id}`          | `PATCH /pages/{id}`         | field              | lock/trash/icon/cover     |
+| Properties         | frontmatter property map       | `GET /pages/{id}`          | `PATCH /pages/{id}`         | property           | modeled writable forms    |
+| Unsupported blocks | frontmatter/object storage     | Markdown + block API       | preserve or explicit delete | block id           | guard + preserve metadata |
 | Data-source schema | external datasource-sync state | datasource-sync package    | datasource-sync package     | schema hash        | owned by datasource sync  |
-| Comments           | future comment payload        | comments API               | comments API                | discussion/comment | designed, not implemented |
-| Files              | future file payload           | block/file APIs            | file upload APIs            | content hash       | modeled, not implemented  |
-| Review             | Roughdraft local markup       | local only or comments API | explicit bridge only        | review id          | guard implemented         |
+| Comments           | future comment payload         | comments API               | comments API                | discussion/comment | designed, not implemented |
+| Files              | future file payload            | block/file APIs            | file upload APIs            | content hash       | modeled, not implemented  |
+| Review             | Roughdraft local markup        | local only or comments API | explicit bridge only        | review id          | guard implemented         |
 
 Body conflicts do not block property-only pushes. Property-only pushes across a concurrent remote body edit patch properties, then refresh the local `.nmd` body and base from the current remote state.
 

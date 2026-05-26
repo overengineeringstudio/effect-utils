@@ -4,15 +4,15 @@ This file records evidence used by [spec.md](./spec.md). It is non-normative; th
 
 ## Evidence Map
 
-| Evidence | Supports | Remaining proof needed |
-| --- | --- | --- |
-| E01, E10 | Data-source identity, direct page retrieval, tombstone classification, timestamp-as-wakeup | Automated live L6 regression tests for the observed trash, restore, move, and pagination behaviors |
-| E02 | SQLite event log, projection rebuild, outbox settlement, path claims | Crash-injection tests for interrupted migrations, remote-write-before-settlement, duplicate settlement, and checkpoint compaction |
-| E03 | Narrow NotionMD body adapter boundary | Live body pagination, truncation/unknown-block guards, and partial materialization cleanup |
-| E05, E07, E09 | Effect service ports, pure planner boundary, fake-service testability, conflict classification | Generated guard-to-test traceability that proves every guard has typed local coverage |
-| E06, E08 | Property-ID canonicalization and explicit schema migration guards | Live schema-write matrix for option rename/removal, type conversion impact reports, and read-after-write hash verification |
-| E11 | Local daemon model with overlap polling, leases, backpressure, and repair scans | Executed L5/L7 daemon restart, cancellation, stuck-outbox, queue pressure, and soak tests |
-| E12 | Current Notion API compatibility risks for `2026-03-11`, query completeness, markdown guards, webhooks, and Workers | Automated fake-service coverage plus live smoke re-verification under the pinned API version |
+| Evidence      | Supports                                                                                                            | Remaining proof needed                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| E01, E10      | Data-source identity, direct page retrieval, tombstone classification, timestamp-as-wakeup                          | Automated live L6 regression tests for the observed trash, restore, move, and pagination behaviors                                |
+| E02           | SQLite event log, projection rebuild, outbox settlement, path claims                                                | Crash-injection tests for interrupted migrations, remote-write-before-settlement, duplicate settlement, and checkpoint compaction |
+| E03           | Narrow NotionMD body adapter boundary                                                                               | Live body pagination, truncation/unknown-block guards, and partial materialization cleanup                                        |
+| E05, E07, E09 | Effect service ports, pure planner boundary, fake-service testability, conflict classification                      | Generated guard-to-test traceability that proves every guard has typed local coverage                                             |
+| E06, E08      | Property-ID canonicalization and explicit schema migration guards                                                   | Live schema-write matrix for option rename/removal, type conversion impact reports, and read-after-write hash verification        |
+| E11           | Local daemon model with overlap polling, leases, backpressure, and repair scans                                     | Executed L5/L7 daemon restart, cancellation, stuck-outbox, queue pressure, and soak tests                                         |
+| E12           | Current Notion API compatibility risks for `2026-03-11`, query completeness, markdown guards, webhooks, and Workers | Automated fake-service coverage plus live smoke re-verification under the pinned API version                                      |
 
 ## E01 Live Notion Data-Source Behavior
 
@@ -191,16 +191,16 @@ This file records evidence used by [spec.md](./spec.md). It is non-normative; th
 
 These are evidence gaps, not requirements. They should either become experiments before implementation depends on them, or remain blocked/unsupported states in the spec and tests.
 
-| Gap | Why it matters | Current fallback |
-| --- | --- | --- |
-| Permission-restricted live fixtures | Fake 403/404 tests cannot prove all workspace permission edge semantics | Treat ambiguous 403/404 as `PermissionAmbiguous` and fail closed |
-| Body truncation and unknown block reproduction | Body writes must block when NotionMD cannot round-trip a page safely | Fake adapter tests plus live coverage only when a reproducible fixture exists |
-| File upload and replacement semantics | Editable file support needs byte identity, expiry, and replacement proof | Observe file properties read-only; exclude signed URLs from durable identity |
-| Relation target lifecycle | Inaccessible, moved, or deleted relation targets can look like dropped values | Store target IDs plus availability state; block unsafe relation writes |
-| Live daemon soak | The daemon model is designed but not yet exercised against repeated live mutations | Keep daemon correctness gated by L5 locally and L7 manual/nightly before release |
-| SQLite migration corpus | No historical package schema exists yet, but migrations need compatibility proof once schemas ship | Start the corpus with the first implemented store version and require upgrade fixtures thereafter |
-| Notion verification lag after writes | Immediate read-after-write may occasionally observe old remote state | Executor must treat mismatched verification as unsettled, not successful |
-| API `2026-03-11` live re-verification | Earlier live observations remain useful but need pinned-version regression proof | Keep compatibility manifest blocked until fake-service coverage and live smoke pass |
-| Data-source query 10k cap | A cheap live fixture should not create 10k+ rows just to prove cap handling | Prove cap behavior in L2; reserve manual L6 for release-risk investigations |
-| Page-property pagination live fixture | Large relation/people/mention values can be cumbersome to create and clean up | Prove full pagination in L2 and add one practical representative L6 fixture |
-| Webhook signal delivery | Public docs describe unordered/stale/aggregated/at-most-once delivery, but live webhook tests need hosted callback plumbing | Test webhook inputs as fake/integration dirty hints; do not make webhooks a correctness gate |
+| Gap                                            | Why it matters                                                                                                              | Current fallback                                                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Permission-restricted live fixtures            | Fake 403/404 tests cannot prove all workspace permission edge semantics                                                     | Treat ambiguous 403/404 as `PermissionAmbiguous` and fail closed                                  |
+| Body truncation and unknown block reproduction | Body writes must block when NotionMD cannot round-trip a page safely                                                        | Fake adapter tests plus live coverage only when a reproducible fixture exists                     |
+| File upload and replacement semantics          | Editable file support needs byte identity, expiry, and replacement proof                                                    | Observe file properties read-only; exclude signed URLs from durable identity                      |
+| Relation target lifecycle                      | Inaccessible, moved, or deleted relation targets can look like dropped values                                               | Store target IDs plus availability state; block unsafe relation writes                            |
+| Live daemon soak                               | The daemon model is designed but not yet exercised against repeated live mutations                                          | Keep daemon correctness gated by L5 locally and L7 manual/nightly before release                  |
+| SQLite migration corpus                        | No historical package schema exists yet, but migrations need compatibility proof once schemas ship                          | Start the corpus with the first implemented store version and require upgrade fixtures thereafter |
+| Notion verification lag after writes           | Immediate read-after-write may occasionally observe old remote state                                                        | Executor must treat mismatched verification as unsettled, not successful                          |
+| API `2026-03-11` live re-verification          | Earlier live observations remain useful but need pinned-version regression proof                                            | Keep compatibility manifest blocked until fake-service coverage and live smoke pass               |
+| Data-source query 10k cap                      | A cheap live fixture should not create 10k+ rows just to prove cap handling                                                 | Prove cap behavior in L2; reserve manual L6 for release-risk investigations                       |
+| Page-property pagination live fixture          | Large relation/people/mention values can be cumbersome to create and clean up                                               | Prove full pagination in L2 and add one practical representative L6 fixture                       |
+| Webhook signal delivery                        | Public docs describe unordered/stale/aggregated/at-most-once delivery, but live webhook tests need hosted callback plumbing | Test webhook inputs as fake/integration dirty hints; do not make webhooks a correctness gate      |
