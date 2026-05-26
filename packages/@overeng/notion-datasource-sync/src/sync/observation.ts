@@ -198,6 +198,26 @@ const requiredObservationCapabilities = (
 const pagePropertyFailureAvailability = (error: NotionGatewayError): PropertyAvailability =>
   error.guard === 'UnsupportedRemoteShape' ? 'unsupported' : 'paginated-incomplete'
 
+const schemaPropertiesObservationHash = (
+  properties: ReadonlyArray<SchemaPropertyObservation>,
+): HashType =>
+  hashStoreBytes(
+    JSON.stringify(
+      [...properties]
+        .sort((left, right) => left.propertyId.localeCompare(right.propertyId))
+        .map((property) => ({
+          propertyId: property.propertyId,
+          configHash: property.configHash,
+          writeClass: property.writeClass,
+        })),
+    ),
+  )
+
+const rowProjectionPayloadHash = (input: {
+  readonly inTrash: boolean
+  readonly payload: unknown
+}): HashType => hashStoreBytes(JSON.stringify(input))
+
 /** Build a `SyncBindingRecorded` event that anchors a data source to its local workspace root path; idempotent via content-based event id. */
 export const makeSyncBindingRecordedEvent = (input: {
   readonly rootId: SyncRootId
@@ -582,6 +602,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
         rows: queryRows,
         complete: complete && cappedAtLimit === false,
       })
+      const schemaPropertiesHash = schemaPropertiesObservationHash(options.schemaProperties)
       events.push(
         decode({
           schema: SyncEvent,
@@ -589,10 +610,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             _tag: 'DataSourceObserved',
             ...eventBase({
               rootId: options.rootId,
-              eventId: `data-source:${eventIdPart(dataSource.dataSourceId)}:${dataSource.schemaHash}`,
+              eventId: `data-source:${eventIdPart(dataSource.dataSourceId)}:${dataSource.schemaHash}:${schemaPropertiesHash}`,
               family: 'RemoteObserved',
               eventType: 'DataSourceObserved',
-              idempotencyKey: `data-source:${dataSource.dataSourceId}:${dataSource.schemaHash}`,
+              idempotencyKey: `data-source:${dataSource.dataSourceId}:${dataSource.schemaHash}:${schemaPropertiesHash}`,
               surface: querySurfaceKey({ dataSourceId: dataSource.dataSourceId, queryContractHash: hashStoreBytes('schema') }),
               payload: { schemaProperties: options.schemaProperties },
               now,
@@ -625,6 +646,19 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           if (materializeResult !== undefined) {
             materialized.push(materializeResult)
           }
+          const rowPayload = {
+            bodyPath: path,
+            sidecarIdentityProven: materializeResult !== undefined,
+            ownWriteMaterializationIds:
+              materializeResult === undefined
+                ? []
+                : [materializeResult.ownWriteSuppressionToken],
+            safety: bodyPointer.safety,
+          }
+          const rowPayloadHash = rowProjectionPayloadHash({
+            inTrash: page.inTrash,
+            payload: rowPayload,
+          })
 
           events.push(
             decode({
@@ -633,20 +667,12 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                 _tag: 'RowObserved',
                 ...eventBase({
                   rootId: options.rootId,
-                  eventId: `row:${eventIdPart(row.pageId)}:${page.propertiesHash}:${bodyPointer.bodyHash}`,
+                  eventId: `row:${eventIdPart(row.pageId)}:${page.propertiesHash}:${bodyPointer.bodyHash}:${rowPayloadHash}`,
                   family: 'RemoteObserved',
                   eventType: 'RowObserved',
-                  idempotencyKey: `row:${row.pageId}:${page.propertiesHash}:${bodyPointer.bodyHash}`,
+                  idempotencyKey: `row:${row.pageId}:${page.propertiesHash}:${bodyPointer.bodyHash}:${rowPayloadHash}`,
                   surface: pageSurfaceKey(row.pageId),
-                  payload: {
-                    bodyPath: path,
-                    sidecarIdentityProven: materializeResult !== undefined,
-                    ownWriteMaterializationIds:
-                      materializeResult === undefined
-                        ? []
-                        : [materializeResult.ownWriteSuppressionToken],
-                    safety: bodyPointer.safety,
-                  },
+                  payload: rowPayload,
                   now,
                 }),
                 dataSourceId: page.dataSourceId ?? options.dataSourceId,
