@@ -445,7 +445,7 @@ in
   tasks."devenv:git-hooks:install".before = lib.mkForce [ ];
 
   # Repo-local pnpm store for consistent local installs (not used by Nix builds).
-  env.PNPM_STORE_DIR = "${config.devenv.root}/.pnpm-store";
+  env.PNPM_STORE_DIR = "${config.devenv.root}/.devenv/pnpm-store-pure-v1";
 
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"

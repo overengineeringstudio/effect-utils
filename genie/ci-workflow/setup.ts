@@ -820,6 +820,7 @@ export const pnpmBuilderContractStep = ({
     '  fi',
     'done',
     'for forbidden in \\',
+    "  'package-import-method=hardlink' \\",
     "  'lockfile-only' \\",
     "  'pnpm add pnpm@'; do",
     '  if grep -Fq -- "$forbidden" "$builder"; then',

@@ -143,6 +143,18 @@ export interface PnpmSettings {
    */
   packageImportMethod?: 'auto' | 'hardlink' | 'copy' | 'clone' | 'clone-or-copy'
 
+  /**
+   * Skip pnpm's optimistic repeat-install shortcut.
+   * @see https://pnpm.io/settings#optimistic-repeat-install
+   */
+  optimisticRepeatInstall?: boolean
+
+  /**
+   * Verify that installed dependencies are up to date before running scripts.
+   * @see https://pnpm.io/settings#verify-deps-before-run
+   */
+  verifyDepsBeforeRun?: boolean
+
   // ---------------------------------------------------------------------------
   // Lockfile Settings
   // https://pnpm.io/settings#lockfile-settings
@@ -709,6 +721,18 @@ export interface PnpmWorkspaceData {
   packageImportMethod?: 'auto' | 'hardlink' | 'copy' | 'clone' | 'clone-or-copy'
 
   /**
+   * Skip pnpm's optimistic repeat-install shortcut.
+   * @see https://pnpm.io/settings#optimistic-repeat-install
+   */
+  optimisticRepeatInstall?: boolean
+
+  /**
+   * Verify that installed dependencies are up to date before running scripts.
+   * @see https://pnpm.io/settings#verify-deps-before-run
+   */
+  verifyDepsBeforeRun?: boolean
+
+  /**
    * Behavior when workspace package depends on version not matched by local.
    * @see https://pnpm.io/settings#link-workspace-packages
    */
@@ -966,6 +990,14 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.packageImportMethod !== undefined) {
     result.packageImportMethod = data.packageImportMethod
+  }
+
+  if (data.optimisticRepeatInstall !== undefined) {
+    result.optimisticRepeatInstall = data.optimisticRepeatInstall
+  }
+
+  if (data.verifyDepsBeforeRun !== undefined) {
+    result.verifyDepsBeforeRun = data.verifyDepsBeforeRun
   }
 
   if (data.linkWorkspacePackages !== undefined) {
