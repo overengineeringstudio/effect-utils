@@ -85,10 +85,13 @@ const propertyKey = (propertyId: PropertyId): string => propertyId
 
 const cursorForOffset = (offset: number): QueryCursor => QueryCursor.make(`offset:${offset}`)
 
-const parseCursor = (
-  cursor: QueryCursor | null,
-  operation: 'queryRows' | 'retrievePageProperty',
-): Effect.Effect<number, NotionGatewayError> => {
+const parseCursor = ({
+  cursor,
+  operation,
+}: {
+  readonly cursor: QueryCursor | null
+  readonly operation: 'queryRows' | 'retrievePageProperty'
+}): Effect.Effect<number, NotionGatewayError> => {
   if (cursor === null) {
     return Effect.succeed(0)
   }
@@ -130,17 +133,31 @@ const fakeGatewaySpan = (input: {
   }
 }
 
-const hasPageId = (pageIds: ReadonlySet<string>, pageId: PageId): boolean =>
-  pageIds.has(pageKey(pageId))
-const hasDataSourceId = (dataSourceIds: ReadonlySet<string>, dataSourceId: DataSourceId): boolean =>
-  dataSourceIds.has(dataSourceKey(dataSourceId))
+const hasPageId = ({
+  pageIds,
+  pageId,
+}: {
+  readonly pageIds: ReadonlySet<string>
+  readonly pageId: PageId
+}): boolean => pageIds.has(pageKey(pageId))
+const hasDataSourceId = ({
+  dataSourceIds,
+  dataSourceId,
+}: {
+  readonly dataSourceIds: ReadonlySet<string>
+  readonly dataSourceId: DataSourceId
+}): boolean => dataSourceIds.has(dataSourceKey(dataSourceId))
 const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
 
-const findDataSource = (
-  dataSources: Map<string, DataSourceSnapshot>,
-  dataSourceId: DataSourceId,
-  operation: 'retrieveDataSource' | 'queryRows' | 'patchDataSourceSchema',
-): Effect.Effect<DataSourceSnapshot, NotionGatewayError> => {
+const findDataSource = ({
+  dataSources,
+  dataSourceId,
+  operation,
+}: {
+  readonly dataSources: Map<string, DataSourceSnapshot>
+  readonly dataSourceId: DataSourceId
+  readonly operation: 'retrieveDataSource' | 'queryRows' | 'patchDataSourceSchema'
+}): Effect.Effect<DataSourceSnapshot, NotionGatewayError> => {
   const snapshot = dataSources.get(dataSourceKey(dataSourceId))
 
   return snapshot === undefined
@@ -268,7 +285,7 @@ export const makeFakeNotionDataSourceGateway = (
         ),
       ),
     retrieveDataSource: (id) =>
-      hasDataSourceId(permissionAmbiguousDataSourceIds, id) === true
+      hasDataSourceId({ dataSourceIds: permissionAmbiguousDataSourceIds, dataSourceId: id }) === true
         ? Effect.fail(
             makeGatewayError({
               operation: 'retrieveDataSource',
@@ -277,7 +294,7 @@ export const makeFakeNotionDataSourceGateway = (
               message: `Data source retrieval is permission ambiguous: ${id}`,
             }),
           )
-        : findDataSource(dataSources, id, 'retrieveDataSource').pipe(
+        : findDataSource({ dataSources, dataSourceId: id, operation: 'retrieveDataSource' }).pipe(
             Effect.withSpan(
               spanNames.fakeGatewayRequest,
               fakeGatewaySpan({
@@ -289,7 +306,7 @@ export const makeFakeNotionDataSourceGateway = (
           ),
     queryRows: (input) =>
       Stream.fromEffect(
-        (hasDataSourceId(permissionAmbiguousDataSourceIds, input.dataSourceId) === true
+        (hasDataSourceId({ dataSourceIds: permissionAmbiguousDataSourceIds, dataSourceId: input.dataSourceId }) === true
           ? Effect.fail(
               makeGatewayError({
                 operation: 'queryRows',
@@ -298,7 +315,7 @@ export const makeFakeNotionDataSourceGateway = (
                 message: `Data source query is permission ambiguous: ${input.dataSourceId}`,
               }),
             )
-          : findDataSource(dataSources, input.dataSourceId, 'queryRows')
+          : findDataSource({ dataSources, dataSourceId: input.dataSourceId, operation: 'queryRows' })
         ).pipe(
           Effect.zipRight(
             validatePageSize({
@@ -307,7 +324,7 @@ export const makeFakeNotionDataSourceGateway = (
               dataSourceId: input.dataSourceId,
             }),
           ),
-          Effect.zipWith(parseCursor(input.startCursor, 'queryRows'), (pageSize, startOffset) => ({
+          Effect.zipWith(parseCursor({ cursor: input.startCursor, operation: 'queryRows' }), (pageSize, startOffset) => ({
             pageSize,
             startOffset,
           })),
@@ -377,7 +394,7 @@ export const makeFakeNotionDataSourceGateway = (
         ),
       ).pipe(Stream.flatMap((queryPages) => Stream.fromIterable(queryPages))),
     retrievePage: (id) =>
-      hasPageId(permissionAmbiguousPageIds, id) === true
+      hasPageId({ pageIds: permissionAmbiguousPageIds, pageId: id }) === true
         ? Effect.fail(
             makeGatewayError({
               operation: 'retrievePage',
@@ -399,7 +416,7 @@ export const makeFakeNotionDataSourceGateway = (
           ),
     retrievePageProperty: (input: RetrievePagePropertyInput) =>
       Stream.fromEffect(
-        (hasPageId(permissionAmbiguousPageIds, input.pageId) === true
+        (hasPageId({ pageIds: permissionAmbiguousPageIds, pageId: input.pageId }) === true
           ? Effect.fail(
               makeGatewayError({
                 operation: 'retrievePageProperty',
@@ -419,7 +436,7 @@ export const makeFakeNotionDataSourceGateway = (
             (page, pageSize) => ({ page, pageSize }),
           ),
           Effect.flatMap((page) =>
-            parseCursor(input.startCursor, 'retrievePageProperty').pipe(
+            parseCursor({ cursor: input.startCursor, operation: 'retrievePageProperty' }).pipe(
               Effect.flatMap(
                 (
                   startOffset,
@@ -490,7 +507,7 @@ export const makeFakeNotionDataSourceGateway = (
 
           const requestId = nextRequestId()
 
-          if (hasPageId(readAfterWriteMismatchPageIds, command.pageId) === false) {
+          if (hasPageId({ pageIds: readAfterWriteMismatchPageIds, pageId: command.pageId }) === false) {
             const propertiesHash = hashStoreBytes(
               `page-properties\t${command.pageId}\t${command.commandId}\t${Object.keys(
                 command.propertyPatch,
@@ -506,7 +523,7 @@ export const makeFakeNotionDataSourceGateway = (
         }),
       ),
     patchDataSourceSchema: (command: PatchDataSourceSchemaCommand) =>
-      findDataSource(dataSources, command.dataSourceId, 'patchDataSourceSchema').pipe(
+      findDataSource({ dataSources, dataSourceId: command.dataSourceId, operation: 'patchDataSourceSchema' }).pipe(
         Effect.flatMap((snapshot) => {
           if (snapshot.schemaHash !== command.baseSchemaHash) {
             return Effect.fail(
@@ -519,7 +536,35 @@ export const makeFakeNotionDataSourceGateway = (
             )
           }
 
+          if (command.operations.length === 0) {
+            return Effect.fail(
+              makeGatewayError({
+                operation: 'patchDataSourceSchema',
+                dataSourceId: command.dataSourceId,
+                guard: 'UnsupportedRemoteShape',
+                message:
+                  'Schema patch requires at least one supported operation (AddProperty, RenameProperty, or AddSelectOptions)',
+              }),
+            )
+          }
+
           const requestId = nextRequestId()
+          const operationFingerprint = command.operations
+            .map((operation) => {
+              switch (operation._tag) {
+                case 'AddProperty':
+                  return `add:${operation.name}:${operation.definition._tag}`
+                case 'RenameProperty':
+                  return `rename:${operation.propertyId}:${operation.newName}`
+                case 'AddSelectOptions':
+                  return `add-options:${operation.propertyId}:existing=${operation.existingOptions
+                    .map((option) => option.name)
+                    .join('|')}:new=${operation.newOptions
+                    .map((option) => option.name)
+                    .join('|')}`
+              }
+            })
+            .join(';')
           dataSources.set(dataSourceKey(command.dataSourceId), {
             ...snapshot,
             requestId,
@@ -528,7 +573,7 @@ export const makeFakeNotionDataSourceGateway = (
                 command.schemaPatch,
               )
                 .toSorted()
-                .join(',')}`,
+                .join(',')}\t${operationFingerprint}`,
             ),
           })
 

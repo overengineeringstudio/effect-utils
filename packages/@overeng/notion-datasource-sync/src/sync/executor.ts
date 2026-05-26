@@ -58,10 +58,13 @@ type ExecutorError = LocalStoreError | NotionGatewayError | BodySyncError
 
 const idempotencyKey = Schema.decodeUnknownSync(IdempotencyKey)
 
-const storeEffect = <TValue>(
-  operation: string,
-  f: () => TValue,
-): Effect.Effect<TValue, LocalStoreError> =>
+const storeEffect = <TValue>({
+  operation,
+  f,
+}: {
+  readonly operation: string
+  readonly f: () => TValue
+}): Effect.Effect<TValue, LocalStoreError> =>
   Effect.try({
     try: f,
     catch: (cause) =>
@@ -224,7 +227,7 @@ const recordAttemptState = ({
   readonly attemptState: 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   readonly guard: GuardName
 }) =>
-  storeEffect('append-outbox-attempt-state', () =>
+  storeEffect({ operation: 'append-outbox-attempt-state', f: () =>
     options.store.appendOutboxAttemptState({
       rootId: claimed.rootId,
       commandId: claimed.commandId,
@@ -238,7 +241,7 @@ const recordAttemptState = ({
         `${claimed.commandKey}:attempt-state:${claimed.attempt}:${attemptState}:${guard}`,
       ),
     }),
-  ).pipe(
+  }).pipe(
     Effect.as({
       _tag: 'failed' as const,
       commandId: claimed.commandId,
@@ -262,7 +265,7 @@ const settle = ({
   readonly observedHash: Hash
   readonly settlementKind: 'verified-success' | 'verified-no-op'
 }) =>
-  storeEffect('append-outbox-settlement', () =>
+  storeEffect({ operation: 'append-outbox-settlement', f: () =>
     options.store.appendOutboxSettlement({
       rootId: claimed.rootId,
       commandId: claimed.commandId,
@@ -275,7 +278,7 @@ const settle = ({
       settlementKind,
       idempotencyKey: idempotencyKey(`${claimed.commandKey}:settled`),
     }),
-  ).pipe(
+  }).pipe(
     Effect.as({
       _tag: 'settled' as const,
       commandId: claimed.commandId,
@@ -311,9 +314,9 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
           [spanAttr.leaseDurationMs]: options.leaseDurationMs,
         }),
       )
-      const claimed = yield* storeEffect('claim-next-outbox-command', () =>
+      const claimed = yield* storeEffect({ operation: 'claim-next-outbox-command', f: () =>
         options.store.claimNextOutboxCommand(options),
-      )
+      })
 
       if (claimed === undefined) {
         const result = { _tag: 'idle' as const }
@@ -409,13 +412,13 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
         return result
       }
 
-      const leaseActive = yield* storeEffect('check-outbox-lease', () =>
+      const leaseActive = yield* storeEffect({ operation: 'check-outbox-lease', f: () =>
         options.store.isOutboxLeaseActive({
           rootId: claimed.rootId,
           commandId: claimed.commandId,
           leaseToken: claimed.leaseToken,
         }),
-      )
+      })
 
       if (leaseActive === false) {
         const result = yield* recordAttemptState({

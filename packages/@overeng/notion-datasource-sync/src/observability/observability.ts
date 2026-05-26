@@ -139,7 +139,13 @@ export const statusSpanAttributes = (
     [spanAttr.outboxRunningCount]: status.counts.outbox.running,
   })
 
-const resourceAttributeValue = (input: string | undefined, key: string): string | undefined =>
+const resourceAttributeValue = ({
+  input,
+  key,
+}: {
+  readonly input: string | undefined
+  readonly key: string
+}): string | undefined =>
   input
     ?.split(',')
     .map((entry) => entry.split('='))
@@ -160,5 +166,5 @@ export const otelCorrelationSpanAttributes = (input: {
   spanAttributes({
     [spanAttr.agentIterationId]:
       input.agentRunId ??
-      resourceAttributeValue(input.resourceAttributes, spanAttr.agentIterationId),
+      resourceAttributeValue({ input: input.resourceAttributes, key: spanAttr.agentIterationId }),
   })

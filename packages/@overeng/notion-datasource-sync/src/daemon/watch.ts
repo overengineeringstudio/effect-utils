@@ -170,7 +170,15 @@ const initialState = (rootId: SyncRootId): WatchDaemonState =>
     repair: { _tag: 'none' },
   }) as WatchDaemonState
 
-const localStoreError = (operation: string, message: string, cause?: unknown) =>
+const localStoreError = ({
+  operation,
+  message,
+  cause,
+}: {
+  readonly operation: string
+  readonly message: string
+  readonly cause?: unknown
+}) =>
   new LocalStoreError({
     operation,
     message,
@@ -205,11 +213,11 @@ export const readWatchDaemonState = (input: {
       }
     },
     catch: (cause) =>
-      localStoreError(
-        'watch-daemon-read-state',
-        `Unable to read watch daemon state: ${input.statePath}`,
+      localStoreError({
+        operation: 'watch-daemon-read-state',
+        message: `Unable to read watch daemon state: ${input.statePath}`,
         cause,
-      ),
+      }),
   })
 
 /** Atomically writes the daemon state to `statePath` via a `.tmp` rename, failing with `LocalStoreError` on I/O errors. */
@@ -224,11 +232,11 @@ export const writeWatchDaemonState = (input: {
       await rename(`${input.statePath}.tmp`, input.statePath)
     },
     catch: (cause) =>
-      localStoreError(
-        'watch-daemon-write-state',
-        `Unable to write watch daemon state: ${input.statePath}`,
+      localStoreError({
+        operation: 'watch-daemon-write-state',
+        message: `Unable to write watch daemon state: ${input.statePath}`,
         cause,
-      ),
+      }),
   })
 
 const ensureNotCancelled = ({
@@ -282,17 +290,20 @@ const abortSignalEffect = ({
     })
   })
 
-const interruptOnAbort = <TValue, TError, TContext>(
-  effect: Effect.Effect<TValue, TError, TContext>,
-  input: {
-    readonly signal: AbortSignal | undefined
-    readonly rootId: SyncRootId
-    readonly cycle: number
-  },
-): Effect.Effect<TValue, TError | WatchDaemonCancelled, TContext> =>
-  input.signal === undefined
+const interruptOnAbort = <TValue, TError, TContext>({
+  effect,
+  signal,
+  rootId,
+  cycle,
+}: {
+  readonly effect: Effect.Effect<TValue, TError, TContext>
+  readonly signal: AbortSignal | undefined
+  readonly rootId: SyncRootId
+  readonly cycle: number
+}): Effect.Effect<TValue, TError | WatchDaemonCancelled, TContext> =>
+  signal === undefined
     ? effect
-    : effect.pipe(Effect.raceFirst(abortSignalEffect({ ...input, signal: input.signal })))
+    : effect.pipe(Effect.raceFirst(abortSignalEffect({ signal, rootId, cycle })))
 
 /**
  * Executes one full sync cycle under the `notion.datasource.daemon.pass` span.
@@ -356,8 +367,8 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         },
       })
 
-      const sync = yield* interruptOnAbort(
-        syncOneShot({
+      const sync = yield* interruptOnAbort({
+        effect: syncOneShot({
           store: options.store,
           rootId: options.rootId,
           dataSourceId: options.dataSourceId,
@@ -377,8 +388,10 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           leaseDurationMs: options.leaseDurationMs ?? 60_000,
           now,
         }),
-        { signal: options.signal, rootId: options.rootId, cycle },
-      ).pipe(
+        signal: options.signal,
+        rootId: options.rootId,
+        cycle,
+      }).pipe(
         Effect.tapError((cause) =>
           writeWatchDaemonState({
             statePath: options.statePath,

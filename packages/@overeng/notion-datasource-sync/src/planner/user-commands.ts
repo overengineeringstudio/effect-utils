@@ -28,10 +28,13 @@ type UserActionOptions = {
   readonly now?: () => Date
 }
 
-const decode = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: unknown,
-): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
+const decode = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: unknown
+}): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
 const eventIdPart = (value: string): string => value.replaceAll(':', '-').replaceAll('/', '-')
 
@@ -76,7 +79,7 @@ const makeRowForgottenEvent = ({
   readonly pageId: PageId
   readonly now: () => Date
 }): SyncEventType =>
-  decode(SyncEvent, {
+  decode({ schema: SyncEvent, value: {
     _tag: 'RowForgotten',
     eventId: `forget:${eventIdPart(pageId)}:${eventIdPart(now().toISOString())}`,
     rootId,
@@ -85,14 +88,14 @@ const makeRowForgottenEvent = ({
     family: 'LocalIntentAccepted',
     eventType: 'RowForgotten',
     idempotencyKey: `forget:${pageId}:${eventIdPart(now().toISOString())}`,
-    surface: decode(SurfaceKey, pageSurfaceKey(pageId)),
+    surface: decode({ schema: SurfaceKey, value: pageSurfaceKey(pageId) }),
     causedByEventIds: [],
     payloadHash: hashStoreBytes('placeholder'),
     payload: eventPayload({ pageId, reason: 'user-forget' }),
     observedAt: now().toISOString(),
     pageId,
     reason: 'user-forget',
-  })
+  } })
 
 /** Return a `UserCommandResultEnvelope` describing the current sync surface without planning or applying any changes — useful for CLI list/status commands. */
 export const listUserCommandSurface = (options: UserActionOptions) =>
