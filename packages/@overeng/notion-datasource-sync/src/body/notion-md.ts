@@ -40,6 +40,7 @@ import {
   type FilesystemWorkspaceSidecar,
 } from '../local/workspace.ts'
 
+/** Configuration for the NotionMD-backed `PageBodySyncPort`: just the upstream NotionMD gateway client. */
 export type NotionMdPageBodySyncPortInput = {
   readonly gateway: NotionMdGatewayShape
 }
@@ -83,6 +84,13 @@ const bodyPointerFromMarkdown = (input: {
   })
 }
 
+/**
+ * Build a `PageBodySyncPort` implementation backed by the NotionMD gateway.
+ *
+ * Wraps the gateway with the body-adapter contract so guards (lossy, unknown blocks,
+ * conflict surfaces) fire before any markdown reaches the sync engine. `repair` is wired
+ * but `push` falls back to the contract default until the NotionMD push surface lands.
+ */
 export const makeNotionMdPageBodySyncPort = ({
   gateway,
 }: NotionMdPageBodySyncPortInput): PageBodySyncPortShape =>
@@ -254,12 +262,21 @@ export const makeNotionMdPageBodySyncPort = ({
       ),
   })
 
+/** Configuration for `makeNotionMdMaterializingLocalWorkspacePort`: the workspace root, NotionMD gateway, and NMD state store. */
 export type NotionMdMaterializingLocalWorkspacePortInput = {
   readonly root: AbsolutePath
   readonly gateway: NotionMdGatewayShape
   readonly stateStore: NmdStateStoreShape
 }
 
+/**
+ * Build a `LocalWorkspacePort` that, on `materialize`, pulls the page through NotionMD and
+ * writes both the `.nmd` body file and a sidecar carrying the own-write suppression token.
+ *
+ * `scan` augments the filesystem scan with parsed body contents so the sync engine can hash
+ * the canonical body, not the on-disk markdown (which may include local edits the engine has
+ * not yet observed).
+ */
 export const makeNotionMdMaterializingLocalWorkspacePort = ({
   root,
   gateway,
@@ -360,9 +377,11 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
   }
 }
 
+/** Effect `Layer` providing the NotionMD-backed `PageBodySyncPort` to consumers (CLI, daemon, tests). */
 export const notionMdPageBodySyncPortLayer = (input: NotionMdPageBodySyncPortInput) =>
   Layer.succeed(PageBodySyncPort, makeNotionMdPageBodySyncPort(input))
 
+/** Effect `Layer` providing the NotionMD-materializing `LocalWorkspacePort` to consumers. */
 export const notionMdMaterializingLocalWorkspacePortLayer = (
   input: NotionMdMaterializingLocalWorkspacePortInput,
 ) => Layer.succeed(LocalWorkspacePort, makeNotionMdMaterializingLocalWorkspacePort(input))

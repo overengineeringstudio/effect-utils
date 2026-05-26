@@ -21,6 +21,7 @@ import { BodySyncError } from '../core/errors.ts'
 import { guardBodySafety, type BodyAdapterMutationSurface, type GuardName } from '../core/guards.ts'
 import { PageBodySyncPort, type PageBodySyncPortShape } from '../core/ports.ts'
 
+/** Construct a `BodySafetySnapshot` with safe defaults (no lossiness, no selection ambiguity), optionally overridden per-field. */
 export const bodySafetySnapshot = (
   overrides: Partial<BodySafetySnapshot> = {},
 ): BodySafetySnapshot => ({
@@ -34,6 +35,13 @@ export const bodySafetySnapshot = (
   ...overrides,
 })
 
+/**
+ * Tagged-union outcome of `evaluateBodyAdapterContract`.
+ *
+ * `body-only` means the adapter may proceed with a body-only mutation;
+ * `blocked` carries the guard name and message that callers turn into a
+ * body conflict or a fail-closed error.
+ */
 export type BodyAdapterContractResult =
   | {
       readonly _tag: 'body-only'
@@ -60,6 +68,7 @@ const bodyConflictReasons = new Set<GuardName>([
 const toBodyConflictReason = (guard: GuardName): BodyConflictReason =>
   bodyConflictReasons.has(guard) === true ? (guard as BodyConflictReason) : 'BodyAdapterConflict'
 
+/** Evaluate `guardBodySafety` against a `BodySafetySnapshot` and tag the outcome as `body-only` or `blocked`. */
 export const evaluateBodyAdapterContract = (
   safety: BodySafetySnapshot,
 ): BodyAdapterContractResult => {
@@ -74,6 +83,7 @@ export const evaluateBodyAdapterContract = (
       }
 }
 
+/** Seeded per-page state for the in-memory fake `PageBodySyncPort` — the current pointer, request id, safety snapshot, and optional remote-side body hash. */
 export type FakeBodyPageState = {
   readonly pageId: PageId
   readonly pointer: BodyPointer
@@ -82,6 +92,7 @@ export type FakeBodyPageState = {
   readonly remoteBodyHash?: Hash
 }
 
+/** Configuration for `makeFakePageBodySyncPort`: a list of seeded per-page states. */
 export type FakePageBodySyncPortInput = {
   readonly pages: ReadonlyArray<FakeBodyPageState>
 }
@@ -162,6 +173,14 @@ const conflictFromPointer = ({
   message,
 })
 
+/**
+ * Decorate a `PageBodySyncPort` with the body-adapter safety contract.
+ *
+ * Every mutation (observe / planLocalChange / push / repair) routes through
+ * `evaluateBodyAdapterContract` first; a `blocked` outcome short-circuits to a
+ * synthetic body conflict (planLocalChange / repair) or a fail-closed `BodySyncError`
+ * (push). Use this to wrap any concrete adapter so guards apply uniformly.
+ */
 export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySyncPortShape => ({
   observe: (input) =>
     port
@@ -229,6 +248,7 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
   },
 })
 
+/** Fail-closed `PageBodySyncPort` that errors on every operation — used as the default when no concrete body adapter is configured. */
 export const makeUnsupportedPageBodySyncPort = ({
   message = 'No NotionMD page body adapter is configured',
 }: {
@@ -245,6 +265,7 @@ export const makeUnsupportedPageBodySyncPort = ({
   }
 }
 
+/** Build an in-memory fake `PageBodySyncPort` over the given seeded page states; useful for unit tests and offline scenarios. */
 export const makeFakePageBodySyncPort = ({
   pages,
 }: FakePageBodySyncPortInput): PageBodySyncPortShape => {
@@ -365,9 +386,11 @@ export const makeFakePageBodySyncPort = ({
   })
 }
 
+/** Effect `Layer` providing the fake `PageBodySyncPort` from seeded page states; useful in tests. */
 export const fakePageBodySyncPortLayer = (input: FakePageBodySyncPortInput) =>
   Layer.succeed(PageBodySyncPort, makeFakePageBodySyncPort(input))
 
+/** Shorthand for a `BodySafetySnapshot` that asserts only the given adapter mutation surfaces; everything else defaults to "safe". */
 export const bodyOnlyMutationSurfaces = (
   mutationSurfaces: ReadonlyArray<BodyAdapterMutationSurface>,
 ) => bodySafetySnapshot({ adapterMutationSurfaces: mutationSurfaces })
