@@ -23,6 +23,44 @@
  * ```
  */
 
+import type { GitHubWorkflowArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
+import { defaultRefPolicyCheckStep, type DefaultRefPolicyCheckStepOptions } from './ci-workflow/megarepo.ts'
+import { bashShellDefaults, linuxX64Runner, standardCIEnv } from './ci-workflow/shared.ts'
+import { checkoutStep, installNixStep } from './ci-workflow/setup.ts'
+
+type GitHubWorkflowJob = GitHubWorkflowArgs['jobs'][string]
+type GitHubWorkflowStep = GitHubWorkflowJob['steps'][number]
+
+export type DefaultRefPolicyCheckJobOptions = DefaultRefPolicyCheckStepOptions & {
+  readonly name?: string
+  readonly runsOn?: GitHubWorkflowJob['runs-on']
+  readonly env?: Record<string, string>
+  readonly permissions?: GitHubWorkflowJob['permissions']
+  readonly defaults?: GitHubWorkflowJob['defaults']
+  readonly preSteps?: readonly GitHubWorkflowStep[]
+  readonly postSteps?: readonly GitHubWorkflowStep[]
+}
+
+/** Dedicated CI job for first-party default-ref policy so normal jobs keep their signal. */
+export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions = {}) => {
+  const { name, runsOn, env, permissions, defaults, preSteps, postSteps, ...stepOpts } = opts
+
+  return {
+    ...(name === undefined ? {} : { name }),
+    'runs-on': runsOn ?? linuxX64Runner,
+    permissions: permissions ?? { contents: 'read' },
+    defaults: defaults ?? bashShellDefaults,
+    env: { ...standardCIEnv, ...env },
+    steps: [
+      checkoutStep(),
+      installNixStep(),
+      ...(preSteps ?? []),
+      defaultRefPolicyCheckStep(stepOpts),
+      ...(postSteps ?? []),
+    ],
+  } satisfies GitHubWorkflowJob
+}
+
 export {
   RUNNER_PROFILES,
   bashShellDefaults,

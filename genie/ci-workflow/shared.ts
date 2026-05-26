@@ -310,7 +310,7 @@ export const workspaceLocalNixCachePath = `${workspaceLocalNixCacheRoot}/nix`
  * downstream callers while effect-utils centralizes the preferred setup step.
  */
 export const withCiPnpmState = (command: string) =>
-  `PNPM_HOME="\${PNPM_HOME:-${jobLocalPnpmHome}}" PNPM_STORE_DIR="\${PNPM_STORE_DIR:-${jobLocalPnpmStore}}" ${command}`
+  `PNPM_HOME="\${PNPM_HOME:-${jobLocalPnpmHome}}" PNPM_STORE_DIR="\${PNPM_STORE_DIR:-${jobLocalPnpmStore}}" PNPM_CONFIG_STORE_DIR="\${PNPM_CONFIG_STORE_DIR:-${jobLocalPnpmStore}}" ${command}`
 
 export const runDevenvTasksBeforeWithOptions = (
   opts: NixConfigOptions,

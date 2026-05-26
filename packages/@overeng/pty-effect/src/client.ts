@@ -254,10 +254,13 @@ const buildSpawnOpts = (spec: PtyDaemonSpec): SpawnDaemonOptions => {
   if (spec.size?.cols !== undefined) opts.cols = spec.size.cols
   if (spec.tags !== undefined && Object.keys(spec.tags).length > 0) opts.tags = { ...spec.tags }
   /* When running under Bun, route the detached daemon through Node so the
-   * PTY server can load its `node-pty` native addon. Honors `NODE_BIN` for
-   * environments where `node` isn't on PATH. */
+   * PTY server can load its `node-pty` native addon. Preserve symlinks so
+   * pnpm GVS/link projections resolve the same graph in the daemon process. */
   if (process.versions.bun !== undefined) {
-    opts.launcher = { command: process.env['NODE_BIN'] ?? 'node' }
+    opts.launcher = {
+      command: process.env['NODE_BIN'] ?? 'node',
+      args: ['--preserve-symlinks', '--preserve-symlinks-main'],
+    }
   }
   return opts
 }

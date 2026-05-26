@@ -5,7 +5,13 @@
   entry,
   packageDir,
   workspaceRoot,
+  evalWorkspaceRoot ?
+    if builtins.isAttrs workspaceRoot && workspaceRoot ? evalWorkspaceRoot then
+      workspaceRoot.evalWorkspaceRoot
+    else
+      workspaceRoot,
   workspaceSources ? { },
+  evalWorkspaceSources ? workspaceSources,
   depsBuilds,
   binaryName ? name,
   gitRev ? "unknown",
@@ -208,19 +214,44 @@ let
         }
       }
 
-      const snapshots = findTopLevelSection(lines, "snapshots");
-      if (snapshots !== undefined) {
-        for (let index = snapshots.startIndex + 1; index < snapshots.endIndex; index += 1) {
-          const snapshotMatch = lines[index].match(/^  (.+?):(.*)$/);
-          if (snapshotMatch === null) continue;
-          const key = stripYamlQuotes(snapshotMatch[1]);
+      const duplicatePatchedSectionEntries = (sectionName) => {
+        const section = findTopLevelSection(lines, sectionName);
+        if (section === undefined) return;
+        const existing = new Set();
+        for (let index = section.startIndex + 1; index < section.endIndex; index += 1) {
+          const match = lines[index].match(/^  (\S.+?):/);
+          if (match !== null) existing.add(stripYamlQuotes(match[1]));
+        }
+
+        for (let index = section.endIndex - 1; index > section.startIndex; index -= 1) {
+          const match = lines[index].match(/^  (\S.+?):(.*)$/);
+          if (match === null) continue;
+          const key = stripYamlQuotes(match[1]);
           const parsed = parsePackageNameVersion(key);
-          if (parsed === undefined) continue;
+          if (parsed === undefined || key.includes("patch_hash=")) continue;
           const entry = byNameVersion.get(parsed.name + "@" + parsed.baseVersion);
-          if (entry === undefined || key.includes("patch_hash=")) continue;
-          lines[index] = "  '" + parsed.name + "@" + parsed.baseVersion + "(patch_hash=" + entry.hash + ")" + parsed.suffix + "':" + snapshotMatch[2];
+          if (entry === undefined) continue;
+
+          const patchedKey = parsed.name + "@" + parsed.baseVersion + "(patch_hash=" + entry.hash + ")" + parsed.suffix;
+          if (existing.has(patchedKey)) continue;
+
+          let blockEnd = section.endIndex;
+          for (let cursor = index + 1; cursor < section.endIndex; cursor += 1) {
+            if (lines[cursor].match(/^  (\S.+?):/) !== null) {
+              blockEnd = cursor;
+              break;
+            }
+          }
+
+          const block = lines.slice(index, blockEnd);
+          block[0] = "  '" + patchedKey + "':" + match[2];
+          lines.splice(blockEnd, 0, ...block);
+          existing.add(patchedKey);
         }
       }
+
+      duplicatePatchedSectionEntries("packages");
+      duplicatePatchedSectionEntries("snapshots");
 
       return lines.join("\n");
     };
@@ -287,6 +318,9 @@ let
     );
   '';
 
+  isDerivationOutput =
+    sourceRoot: builtins.isAttrs sourceRoot && sourceRoot ? outPath && sourceRoot ? drvPath;
+
   coerceSourceRoot =
     sourceRoot:
     if builtins.isAttrs sourceRoot && builtins.hasAttr "outPath" sourceRoot then
@@ -297,6 +331,8 @@ let
       builtins.toPath sourceRoot;
 
   workspaceRootPath = coerceSourceRoot workspaceRoot;
+  workspaceRootIsDerivationOutput = isDerivationOutput workspaceRoot;
+  evalWorkspaceRootPath = coerceSourceRoot evalWorkspaceRoot;
 
   sourcePathFilter =
     path: type:
@@ -312,21 +348,25 @@ let
 
   normalizeSourceRoot =
     prefix: sourceRoot:
-    let
-      rawPath = coerceSourceRoot sourceRoot;
-      normalizedName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
-      sanitizedPath = builtins.path {
-        path = rawPath;
-        filter = sourcePathFilter;
-        name = normalizedName;
-      };
-    in
-    pkgs.runCommand normalizedName { inherit sanitizedPath; } ''
-      mkdir -p "$out"
-      cp -R "$sanitizedPath"/. "$out"/
-    '';
+    if isDerivationOutput sourceRoot then
+      coerceSourceRoot sourceRoot
+    else
+      let
+        rawPath = coerceSourceRoot sourceRoot;
+        normalizedName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
+        sanitizedPath = builtins.path {
+          path = rawPath;
+          filter = sourcePathFilter;
+          name = normalizedName;
+        };
+      in
+      pkgs.runCommand normalizedName { inherit sanitizedPath; } ''
+        mkdir -p "$out"
+        cp -R "$sanitizedPath"/. "$out"/
+      '';
 
   workspaceSourceRawRoots = lib.mapAttrs (_: coerceSourceRoot) workspaceSources;
+  workspaceSourceIsDerivationOutput = lib.mapAttrs (_: isDerivationOutput) workspaceSources;
   workspaceSourceRoots = lib.mapAttrs normalizeSourceRoot workspaceSources;
   workspaceSourcePrefixesByLengthAsc = lib.sort (
     left: right: lib.stringLength left < lib.stringLength right
@@ -350,6 +390,16 @@ let
       prefix = lib.findFirst matchesPrefix null workspaceSourcePrefixesByLengthDesc;
       sourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRawRoots.${prefix};
       fullSourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRoots.${prefix};
+      evalSourceRoot =
+        if prefix == null then
+          evalWorkspaceRootPath
+        else
+          evalWorkspaceSourceRawRoots.${prefix} or workspaceSourceRawRoots.${prefix};
+      sourceIsDerivationOutput =
+        if prefix == null then
+          workspaceRootIsDerivationOutput
+        else
+          workspaceSourceIsDerivationOutput.${prefix};
       sourceRelPath =
         if prefix == null then
           relPath
@@ -361,9 +411,49 @@ let
           lib.removePrefix "${prefix}/" relPath;
     in
     {
-      inherit prefix;
+      evalSourcePath =
+        if sourceRelPath == "." then evalSourceRoot else evalSourceRoot + "/${sourceRelPath}";
+      inherit prefix evalSourceRoot;
       inherit sourceRoot fullSourceRoot sourceRelPath;
+      inherit sourceIsDerivationOutput;
     };
+
+  normalizedEvalWorkspaceSources = lib.mapAttrs (
+    _: sourceRoot:
+    if builtins.isAttrs sourceRoot && sourceRoot ? evalWorkspaceRoot then
+      sourceRoot.evalWorkspaceRoot
+    else
+      sourceRoot
+  ) evalWorkspaceSources;
+  evalWorkspaceSourceRawRoots = lib.mapAttrs (_: coerceSourceRoot) normalizedEvalWorkspaceSources;
+  evalWorkspaceSourcePrefixesByLengthAsc = lib.sort (
+    left: right: lib.stringLength left < lib.stringLength right
+  ) (builtins.attrNames evalWorkspaceSourceRawRoots);
+  evalWorkspaceSourcePrefixesByLengthDesc = lib.reverseList evalWorkspaceSourcePrefixesByLengthAsc;
+
+  resolveEvalSourceFor =
+    relPath:
+    let
+      matchesPrefix =
+        candidate:
+        if candidate == "." || candidate == "" then
+          true
+        else
+          relPath == candidate || lib.hasPrefix "${candidate}/" relPath;
+      prefix = lib.findFirst matchesPrefix null evalWorkspaceSourcePrefixesByLengthDesc;
+      sourceRoot =
+        if prefix == null then evalWorkspaceRootPath else evalWorkspaceSourceRawRoots.${prefix};
+      sourceRelPath =
+        if prefix == null then
+          relPath
+        else if prefix == "." || prefix == "" then
+          relPath
+        else if relPath == prefix then
+          "."
+        else
+          lib.removePrefix "${prefix}/" relPath;
+    in
+    if sourceRelPath == "." then sourceRoot else sourceRoot + "/${sourceRelPath}";
 
   snapshotPath =
     namePrefix: path:
@@ -379,17 +469,17 @@ let
       cp "$sanitizedPath" "$out"
     '';
 
-  rawFileSourcePathFor =
+  absoluteFileSourcePathFor =
     relPath:
     let
       resolved = resolveSourceFor relPath;
+      rawPath =
+        if resolved.sourceRelPath == "." then
+          resolved.sourceRoot
+        else
+          resolved.sourceRoot + "/${resolved.sourceRelPath}";
     in
-    if resolved.sourceRelPath == "." then
-      resolved.sourceRoot
-    else
-      resolved.sourceRoot + "/${resolved.sourceRelPath}";
-
-  absoluteFileSourcePathFor = relPath: snapshotPath relPath (rawFileSourcePathFor relPath);
+    if resolved.sourceIsDerivationOutput then rawPath else snapshotPath relPath rawPath;
 
   absoluteDirectorySourcePathFor =
     relPath:
@@ -404,11 +494,11 @@ let
   # Read workspace closure dirs from the generated package.json ($genie.workspaceClosureDirs).
   # Pre-computed by genie at generation time, avoiding import-from-derivation (IFD).
   # Future alternative: NixOS/nix#15380 (builtins.wasm) could compute this natively at eval time.
-  packageJsonPath = absoluteFileSourcePathFor "${packageDir}/package.json";
+  packageJsonPath = resolveEvalSourceFor "${packageDir}/package.json";
   packageJson = builtins.fromJSON (builtins.readFile packageJsonPath);
   packageVersion = packageJson.version or "0.0.0";
 
-  rootPnpmWorkspaceYamlPath = workspaceRootPath + "/pnpm-workspace.yaml";
+  rootPnpmWorkspaceYamlPath = evalWorkspaceRootPath + "/pnpm-workspace.yaml";
   rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
 
   workspaceSuffixLines =
@@ -437,11 +527,19 @@ let
           else
             lines;
 
-      # GVS requires a global pnpm store unavailable inside Nix sandboxes
-      stripGvs =
-        lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
+      # Workspace-local store settings are for live worktrees. Nix dependency
+      # prep owns its private store path through env/.npmrc so prepared outputs
+      # cannot archive a caller's local store.
+      stripPrepLocalPnpmSettings =
+        lines:
+        builtins.filter (
+          l:
+          !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l)) && !(lib.hasPrefix "storeDir" (lib.trim l))
+        ) lines;
     in
-    stripGvs (dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml)));
+    stripPrepLocalPnpmSettings (
+      dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml))
+    );
 
   formatWorkspaceYaml =
     packageDirs: suffixLines:
@@ -478,6 +576,7 @@ let
           resolved.sourceRoot
         else
           resolved.sourceRoot + "/${resolved.sourceRelPath}";
+      evalSourcePath = resolved.evalSourcePath;
     }
   ) workspaceMembers;
   externalInstallRootItems = builtins.filter (item: item != null) (
@@ -486,9 +585,9 @@ let
       let
         prefixRootHasWorkspace =
           item.resolved.prefix != null
-          && builtins.pathExists (item.resolved.sourceRoot + "/pnpm-workspace.yaml")
-          && hasInstallRoot item.resolved.sourceRoot;
-        memberHasInstallRoot = hasInstallRoot item.sourcePath;
+          && builtins.pathExists (item.resolved.evalSourceRoot + "/pnpm-workspace.yaml")
+          && hasInstallRoot item.resolved.evalSourceRoot;
+        memberHasInstallRoot = hasInstallRoot item.evalSourcePath;
       in
       if item.resolved.prefix == null then
         null
@@ -496,6 +595,7 @@ let
         {
           installDir = item.resolved.prefix;
           installSourceRoot = item.resolved.sourceRoot;
+          evalInstallSourceRoot = item.resolved.evalSourceRoot;
           memberDir = item.dir;
           sourceRelMemberDir = item.resolved.sourceRelPath;
         }
@@ -503,6 +603,7 @@ let
         {
           installDir = item.dir;
           installSourceRoot = item.sourcePath;
+          evalInstallSourceRoot = item.evalSourcePath;
           memberDir = item.dir;
           sourceRelMemberDir = ".";
         }
@@ -518,9 +619,10 @@ let
         let
           items = builtins.filter (item: item.installDir == installDir) externalInstallRootItems;
           installSourceRoot = (builtins.head items).installSourceRoot;
-          hasWorkspaceYaml = builtins.pathExists (installSourceRoot + "/pnpm-workspace.yaml");
+          evalInstallSourceRoot = (builtins.head items).evalInstallSourceRoot;
+          hasWorkspaceYaml = builtins.pathExists (evalInstallSourceRoot + "/pnpm-workspace.yaml");
           sourcePnpmWorkspaceYaml =
-            if hasWorkspaceYaml then builtins.readFile (installSourceRoot + "/pnpm-workspace.yaml") else "";
+            if hasWorkspaceYaml then builtins.readFile (evalInstallSourceRoot + "/pnpm-workspace.yaml") else "";
         in
         {
           inherit installDir installSourceRoot;
@@ -683,12 +785,11 @@ let
   copyOptionalFileCmd =
     relPath:
     let
-      rawSrcPath = rawFileSourcePathFor relPath;
-      srcPath = snapshotPath relPath rawSrcPath;
+      evalSrcPath = resolveEvalSourceFor relPath;
     in
-    if builtins.pathExists rawSrcPath then
+    if builtins.pathExists evalSrcPath then
       ''
-        if [ -f ${lib.escapeShellArg (toString srcPath)} ]; then
+        if [ -f ${lib.escapeShellArg (toString (absoluteFileSourcePathFor relPath))} ]; then
           ${copyFileCmd relPath}
         fi
       ''
@@ -1037,7 +1138,8 @@ let
 
     Outside Nix, pnpm's Global Virtual Store (GVS) solves this by sharing a
     single physical store across all install roots. Inside the Nix sandbox GVS
-    is unavailable (no global store) so it is stripped (see stripGvs above),
+    is unavailable (no global store) so it is stripped (see
+    stripPrepLocalPnpmSettings above),
     leaving each root with its own isolated .pnpm store. This dedup step is
     the sandbox equivalent of what GVS provides at dev time.
 
@@ -1224,7 +1326,7 @@ pkgs.stdenv.mkDerivation {
     export PNPM_HOME="$HOME/.local/share/pnpm"
     export WORKSPACE_ROOT_BIN_DIR="$NIX_BUILD_TOP/workspace/node_modules/.bin"
     mkdir -p "$PNPM_HOME"
-    printf '\nmanage-package-manager-versions=false\n' >> .npmrc
+    printf 'pm-on-fail=ignore\n' >> .npmrc
     run_workspace_bin() {
       local bin_name="$1"
       shift

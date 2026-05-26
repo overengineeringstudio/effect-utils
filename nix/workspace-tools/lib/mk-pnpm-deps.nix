@@ -584,10 +584,12 @@ in
                 # even though the final archive is immutable.
                 export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
                 export STORE_PATH=$(mktemp -d "$NIX_BUILD_TOP/pnpm-store.XXXXXX")
+                export PNPM_STORE_DIR="$STORE_PATH"
+                export PNPM_CONFIG_STORE_DIR="$STORE_PATH"
+                export npm_config_store_dir="$STORE_PATH"
                 export CI=true
                 export NPM_CONFIG_PRODUCTION=false
                 export npm_config_production=false
-                export npm_config_manage_package_manager_versions=false
                 export NODE_ENV=development
                 export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
                 export PNPM_MJS=${lib.escapeShellArg "${pnpm}/libexec/pnpm/bin/pnpm.mjs"}
@@ -601,9 +603,9 @@ in
                 # workspace-only. Use env vars and .npmrc instead.
                 # Back up .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nenable-global-virtual-store=false\nmanage-package-manager-versions=false\nnode-linker=isolated\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
         if [ -f pnpm-workspace.yaml ]; then
-          ${pkgs.perl}/bin/perl -0pi -e 's/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
+          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|enableGlobalVirtualStore):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
         fi
                 # Keep prepared dependency artifacts platform-neutral. Native
                 # optional packages are owned by the Nix package/build layer so
@@ -679,6 +681,11 @@ in
 
                 ${pkgs.nodejs}/bin/node ${lib.escapeShellArg normalizePreparedTreeScript} .
 
+                if [ -e "$SOURCE_DIR/.pnpm-store" ]; then
+                  echo "workspace-prep: FATAL - workspace-local .pnpm-store leaked into prepared output" >&2
+                  exit 1
+                fi
+
                 archiveStartedAt=$(timer_now)
                 log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
                 # Self-hosted darwin runners have shown `cp -a` spuriously failing
@@ -709,8 +716,8 @@ in
                 log_prep_phase "archive" "duration=''${archiveDuration}s mode=tar-stream-tree"
                 log_prep_event "archive" "$archiveDuration" "mode=tar-stream-tree"
                 prepDuration=$(timer_elapsed "$prepStartedAt")
-                log_prep_phase "complete" "duration=''${prepDuration}s output_hash=${pnpmDepsHash}"
-                log_prep_event "complete" "$prepDuration" "output_hash=${pnpmDepsHash}"
+                log_prep_phase "complete" "duration=''${prepDuration}s declared_output_hash=${pnpmDepsHash}"
+                log_prep_event "complete" "$prepDuration" "declared_output_hash=${pnpmDepsHash}"
 
                 runHook postInstall
       '';

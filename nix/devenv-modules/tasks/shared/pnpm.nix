@@ -15,7 +15,6 @@
   taskNamePrefix ? "pnpm",
   taskSuffix ? null,
   globalCache ? true,
-  frozenInCi ? true,
   installFlags ? [ ],
   preInstall ? "",
   installAfter ? [ ],
@@ -52,9 +51,9 @@ let
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
   defaultPnpmStoreDir =
     if workspaceRoot == "." then
-      "${config.devenv.root}/.devenv/pnpm-store"
+      "${config.devenv.root}/.devenv/pnpm-store-pure-v1"
     else
-      "${config.devenv.root}/.devenv/pnpm-store/${workspaceCacheName}";
+      "${config.devenv.root}/.devenv/pnpm-store-pure-v1/${workspaceCacheName}";
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -78,6 +77,16 @@ let
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
+  pureInstallFlags = [
+    "--frozen-lockfile"
+    "--config.confirmModulesPurge=false"
+    "--config.side-effects-cache=false"
+    "--config.verify-store-integrity=true"
+    "--config.strict-store-pkg-content-check=true"
+    "--config.package-import-method=clone-or-copy"
+    "--pm-on-fail=ignore"
+  ];
+  pureInstallFlagsString = lib.concatStringsSep " " pureInstallFlags;
 
   packageNameToPath = builtins.listToAttrs (
     builtins.filter (x: x != null) (
@@ -147,26 +156,60 @@ let
     fi
   '';
   ensureLocalPnpmStoreDirFn = ''
-    if [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "''${npm_config_store_dir:-}" ]; then
-      case "$npm_config_store_dir" in
+    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-}}}"
+    if [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "$_pnpm_store_dir" ]; then
+      case "$_pnpm_store_dir" in
         */${workspaceCacheName}) ;;
-        *) export npm_config_store_dir="$npm_config_store_dir/${workspaceCacheName}" ;;
+        *) _pnpm_store_dir="$_pnpm_store_dir/${workspaceCacheName}" ;;
       esac
-      export PNPM_STORE_DIR="$npm_config_store_dir"
-    elif [ -n "''${npm_config_store_dir:-}" ]; then
-      export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-$npm_config_store_dir}"
-    elif [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "''${PNPM_STORE_DIR:-}" ]; then
-      case "$PNPM_STORE_DIR" in
-        */${workspaceCacheName}) ;;
-        *) export PNPM_STORE_DIR="$PNPM_STORE_DIR/${workspaceCacheName}" ;;
-      esac
-      export npm_config_store_dir="$PNPM_STORE_DIR"
-    elif [ -n "''${PNPM_STORE_DIR:-}" ]; then
-      export npm_config_store_dir="$PNPM_STORE_DIR"
+    elif [ -n "$_pnpm_store_dir" ]; then
+      :
     else
-      export PNPM_STORE_DIR=${lib.escapeShellArg defaultPnpmStoreDir}
-      export npm_config_store_dir="$PNPM_STORE_DIR"
+      _pnpm_store_dir=${lib.escapeShellArg defaultPnpmStoreDir}
     fi
+    export PNPM_STORE_DIR="$_pnpm_store_dir"
+    export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
+    export npm_config_store_dir="$_pnpm_store_dir"
+    unset _pnpm_store_dir
+  '';
+  ensureSharedPnpmFilesStoreFn = ''
+    ensure_shared_pnpm_files_store() {
+      if [ -n "''${CI:-}" ]; then
+        return 0
+      fi
+      if [ -z "''${npm_config_store_dir:-}" ]; then
+        echo "[pnpm] npm_config_store_dir is empty; cannot prepare split store" >&2
+        exit 1
+      fi
+
+      local store_version_dir
+      local files_path
+      local shared_files_path
+      store_version_dir="''${npm_config_store_dir}/v11"
+      files_path="$store_version_dir/files"
+      shared_files_path="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
+
+      mkdir -p "$store_version_dir" "$shared_files_path"
+
+      if [ -L "$files_path" ]; then
+        if [ "$(readlink "$files_path")" != "$shared_files_path" ]; then
+          echo "[pnpm] $files_path points at $(readlink "$files_path"), expected $shared_files_path" >&2
+          exit 1
+        fi
+        return 0
+      fi
+
+      if [ -e "$files_path" ]; then
+        if [ -d "$files_path" ] && [ -z "$(find "$files_path" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+          rmdir "$files_path"
+        else
+          echo "[pnpm] $files_path is a non-empty local files store; leaving it for the coordinated migration runbook" >&2
+          return 0
+        fi
+      fi
+
+      ln -s "$shared_files_path" "$files_path"
+    }
   '';
 
   computeWorkspaceStateHash = ''
@@ -223,16 +266,36 @@ let
   '';
 
   runPnpmInstallFn = ''
+    reject_impure_pnpm_install_args() {
+      local arg
+      for arg in "$@"; do
+        case "$arg" in
+          --no-frozen-lockfile | --frozen-lockfile=false | \
+          --fix-lockfile | --lockfile-only | --no-lockfile | \
+          --config.frozen-lockfile=false | --config.frozen-lockfile | \
+          --ignore-scripts | --config.ignore-scripts=true | --config.ignore-scripts | \
+          --config.side-effects-cache=true | --config.side-effects-cache | --side-effects-cache | \
+          --side-effects-cache-readonly | --config.side-effects-cache-readonly=true | --config.side-effects-cache-readonly | \
+          --no-verify-store-integrity | --verify-store-integrity=false | \
+          --config.verify-store-integrity=false | --config.verify-store-integrity | \
+          --strict-store-pkg-content-check=false | --no-strict-store-pkg-content-check | \
+          --config.strict-store-pkg-content-check=false | --config.strict-store-pkg-content-check | \
+          --config.manage-package-manager-versions=true | --config.manage-package-manager-versions | \
+          --pm-on-fail=* | --pm-on-fail | --config.pm-on-fail=* | --config.pm-on-fail | \
+          --config.package-import-method=* | --config.package-import-method | --package-import-method=* | --package-import-method | \
+          --config.store-dir=* | --config.store-dir | --store-dir=* | --store-dir)
+            echo "[pnpm] Refusing impure install argument: $arg" >&2
+            exit 1
+            ;;
+        esac
+      done
+    }
+
     run_pnpm_install() {
       local extra_install_args=("$@")
       local install_args
-      if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" --frozen-lockfile ${installFlagsString})
-      elif [ -n "''${CI:-}" ]; then
-        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" --no-frozen-lockfile ${installFlagsString})
-      else
-        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" ${installFlagsString})
-      fi
+      reject_impure_pnpm_install_args "''${extra_install_args[@]}" ${installFlagsString}
+      install_args=(install "''${extra_install_args[@]}" ${installFlagsString} ${pureInstallFlagsString} "--config.store-dir=$npm_config_store_dir")
 
       if [ -z "''${CI:-}" ]; then
         pnpm "''${install_args[@]}"
@@ -311,6 +374,8 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
+        ${ensureSharedPnpmFilesStoreFn}
+        ensure_shared_pnpm_files_store
         mkdir -p "${cacheRoot}"
         # This cache tracks the effective install state, not just workspace
         # manifests. The fingerprint also includes the active GVS projection
@@ -343,8 +408,6 @@ let
           echo "[pnpm] Another pnpm install sharing this store-dir may be stuck" >&2
           exit 1
         fi
-
-        export npm_config_manage_package_manager_versions=false
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
@@ -435,6 +498,8 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
+        ${ensureSharedPnpmFilesStoreFn}
+        ensure_shared_pnpm_files_store
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
 
@@ -483,8 +548,9 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
-        export npm_config_manage_package_manager_versions=false
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir"
+        ${ensureSharedPnpmFilesStoreFn}
+        ensure_shared_pnpm_files_store
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -499,6 +565,8 @@ let
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
+        ${ensureSharedPnpmFilesStoreFn}
+        ensure_shared_pnpm_files_store
 
         purge_node_modules node_modules ${nodeModulesPaths}
 
@@ -524,10 +592,21 @@ in
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"
-    export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}"
-    export npm_config_store_dir="''${npm_config_store_dir:-$PNPM_STORE_DIR}"
+    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}}}"
+    export PNPM_STORE_DIR="$_pnpm_store_dir"
+    export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
+    export npm_config_store_dir="$_pnpm_store_dir"
     export npm_config_cache="$HOME/.cache/pnpm"
-    export npm_config_manage_package_manager_versions=false
+    export npm_config_pm_on_fail=ignore
+    if [ -z "''${CI:-}" ]; then
+      _pnpm_shared_files="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
+      mkdir -p "$PNPM_STORE_DIR/v11" "$_pnpm_shared_files"
+      if [ ! -e "$PNPM_STORE_DIR/v11/files" ] && [ ! -L "$PNPM_STORE_DIR/v11/files" ]; then
+        ln -s "$_pnpm_shared_files" "$PNPM_STORE_DIR/v11/files"
+      fi
+      unset _pnpm_shared_files
+    fi
+    unset _pnpm_store_dir
   '';
 
   tasks = cliGuard.stripGuards allTasks;

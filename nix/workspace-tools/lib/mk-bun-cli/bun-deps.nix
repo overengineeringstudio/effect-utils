@@ -68,6 +68,12 @@ else
       else
         export PNPM_HOME="$PWD/pnpm-home"
         export PNPM_STORE_DIR="$PWD/pnpm-store"
+        export npm_config_store_dir="$PNPM_STORE_DIR"
+        export npm_config_pm_on_fail=ignore
+        export npm_config_side_effects_cache=false
+        export npm_config_verify_store_integrity=true
+        export npm_config_strict_store_pkg_content_check=true
+        export npm_config_package_import_method=clone-or-copy
         export NPM_CONFIG_NODE_LINKER=hoisted
       fi
 
@@ -100,7 +106,14 @@ else
               --frozen-lockfile \
               --force \
               --shamefully-hoist \
-              --ignore-scripts
+              --ignore-scripts \
+              --config.confirmModulesPurge=false \
+              --config.side-effects-cache=false \
+              --config.verify-store-integrity=true \
+              --config.strict-store-pkg-content-check=true \
+              --config.package-import-method=clone-or-copy \
+              --pm-on-fail=ignore \
+              --config.store-dir="$PNPM_STORE_DIR"
           ) 2>&1 | tee "$install_log"
         fi
         if [ "''${PIPESTATUS[0]:-0}" -ne 0 ]; then

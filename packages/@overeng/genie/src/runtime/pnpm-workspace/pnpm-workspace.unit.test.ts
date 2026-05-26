@@ -4,10 +4,15 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { packageJson } from '../mod.ts'
+import { packageJson, type GenieContext } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
 import type { WorkspacePackage } from '../package-json/mod.ts'
 import { pnpmWorkspaceYaml, projectPnpmPackageClosure } from './mod.ts'
+
+const mockGenieContext: GenieContext = {
+  location: '.',
+  cwd: '/workspace',
+}
 
 const createTempRepo = (...memberPaths: string[]) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-workspace-'))
@@ -175,6 +180,16 @@ describe('metadata-based workspace projections', () => {
       'packages/examples/basic',
       'packages/utils',
     ])
+  })
+
+  it('serializes top-level storeDir', () => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      storeDir: '.pnpm-store',
+    })
+
+    expect(workspaceFile.stringify(mockGenieContext)).toContain('storeDir: .pnpm-store')
   })
 
   it('projects workspace root workspaces from package metadata', () => {

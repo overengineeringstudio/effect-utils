@@ -9,10 +9,10 @@
 # packages/@overeng/genie/src/runtime/package-json/mod.ts.
 pkgs.pnpm.overrideAttrs (old: {
   nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.makeWrapper ];
-  version = "11.0.0-rc.5";
+  version = "11.3.0";
   src = pkgs.fetchurl {
-    url = "https://registry.npmjs.org/pnpm/-/pnpm-11.0.0-rc.5.tgz";
-    hash = "sha256-wFVi2aLJr3/sIKQMWp8051OPLOdnPDckecggz3fqJ3E=";
+    url = "https://registry.npmjs.org/pnpm/-/pnpm-11.3.0.tgz";
+    hash = "sha256-Wt4e9RzzZEH0oAkx6vkANlRonro2hJOfcNdXay37hHQ=";
   };
   postInstall = (old.postInstall or "") + ''
     chmod +x $out/libexec/pnpm/bin/pnpm.cjs
