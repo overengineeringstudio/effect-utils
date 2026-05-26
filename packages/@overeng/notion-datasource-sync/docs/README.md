@@ -2,6 +2,8 @@
 
 These docs describe how to use `@overeng/notion-datasource-sync`. The design
 source of truth lives in the package-local [VRS](./vrs/spec.md).
+Follow-up production-readiness work is tracked in
+[GitHub issue #698](https://github.com/overengineeringstudio/effect-utils/issues/698).
 
 Start here:
 
