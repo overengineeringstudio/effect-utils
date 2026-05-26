@@ -1,6 +1,11 @@
 import { Chunk, Effect, Schema, Stream } from 'effect'
 
-import { pageSurfaceKey, propertySurfaceKey, querySurfaceKey } from '../core/canonical.ts'
+import {
+  dataSourceMetadataSurfaceKey,
+  pageSurfaceKey,
+  propertySurfaceKey,
+  querySurfaceKey,
+} from '../core/canonical.ts'
 import {
   BodyPushCommand,
   type PagePropertyItemPage,
@@ -627,6 +632,29 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           },
         }),
       )
+      if (dataSource.metadataHash !== undefined) {
+        events.push(
+          decode({
+            schema: SyncEvent,
+            value: {
+              _tag: 'DataSourceMetadataObserved',
+              ...eventBase({
+                rootId: options.rootId,
+                eventId: `data-source-metadata:${eventIdPart(dataSource.dataSourceId)}:${dataSource.metadataHash}`,
+                family: 'RemoteObserved',
+                eventType: 'DataSourceMetadataObserved',
+                idempotencyKey: `data-source-metadata:${dataSource.dataSourceId}:${dataSource.metadataHash}`,
+                surface: dataSourceMetadataSurfaceKey(dataSource.dataSourceId),
+                payload: {},
+                now,
+              }),
+              dataSourceId: dataSource.dataSourceId,
+              requestId: dataSource.requestId,
+              metadataHash: dataSource.metadataHash,
+            },
+          }),
+        )
+      }
       const materialized: MaterializeResult[] = []
       let observedProperties = 0
       let incompleteProperties = 0

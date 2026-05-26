@@ -831,6 +831,53 @@ describe('Notion data source gateway fake', () => {
       guard: 'UnsupportedRemoteShape',
     })
   })
+
+  it('patches data source metadata independently from schema hash and rejects stale bases', async () => {
+    const metadataDataSource = decode(DataSourceSnapshot, {
+      _tag: 'DataSourceSnapshot',
+      dataSourceId,
+      requestId: 'request-metadata',
+      observedAt,
+      schemaHash: hash('schema-stable'),
+      metadataHash: hash('metadata-before'),
+    })
+    const gatewayConfig = config({ dataSources: [metadataDataSource] })
+    const success = await runWithGateway(
+      gatewayConfig,
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        const requestId = yield* gateway.patchDataSourceMetadata({
+          _tag: 'PatchDataSourceMetadataCommand',
+          commandId: commandId('command-metadata'),
+          dataSourceId,
+          baseMetadataHash: metadataDataSource.metadataHash,
+          metadataPatch: { descriptionPlainText: 'Updated description' },
+        })
+        const after = yield* gateway.retrieveDataSource(dataSourceId)
+        return { requestId, after }
+      }),
+    )
+    const stale = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const gateway = yield* NotionDataSourceGateway
+        return yield* gateway.patchDataSourceMetadata({
+          _tag: 'PatchDataSourceMetadataCommand',
+          commandId: commandId('command-metadata-stale'),
+          dataSourceId,
+          baseMetadataHash: hash('stale-metadata'),
+          metadataPatch: { descriptionPlainText: 'Stale description' },
+        })
+      }).pipe(Effect.provide(makeFakeNotionDataSourceGatewayLayer(gatewayConfig))),
+    )
+
+    expect(success.requestId).toMatch(/^fake-req-/)
+    expect(success.after.schemaHash).toBe(metadataDataSource.schemaHash)
+    expect(success.after.metadataHash).not.toBe(metadataDataSource.metadataHash)
+    expectGatewayFailure(stale, {
+      operation: 'patchDataSourceMetadata',
+      guard: 'StaleSurfaceBase',
+    })
+  })
 })
 
 describe('Notion data source gateway real adapter boundary', () => {
@@ -843,6 +890,12 @@ describe('Notion data source gateway real adapter boundary', () => {
   })
   const remoteDataSource = {
     id: dataSourceId,
+    title: [{ type: 'text', plain_text: 'Tasks', text: { content: 'Tasks' } }],
+    description: [
+      { type: 'text', plain_text: 'Old description', text: { content: 'Old description' } },
+    ],
+    icon: null,
+    parent: { type: 'database_id' as const, database_id: 'database-1' },
     properties: {
       title: { id: 'title', name: 'Name', type: 'title' },
     },
@@ -863,7 +916,21 @@ describe('Notion data source gateway real adapter boundary', () => {
         nextCursor: Option.none(),
         hasMore: false,
       }),
+    retrieveDatabase: () =>
+      Effect.succeed({
+        id: 'database-1',
+        title: remoteDataSource.title,
+        description: remoteDataSource.description,
+        icon: null,
+      }),
     updatePage: () => Effect.succeed(remotePage(pageId('page-1'), { title: { type: 'title' } })),
+    updateDatabase: () =>
+      Effect.succeed({
+        id: 'database-1',
+        title: remoteDataSource.title,
+        description: remoteDataSource.description,
+        icon: null,
+      }),
     updateDataSource: () => Effect.succeed(remoteDataSource),
     ...overrides,
   })
@@ -1200,6 +1267,49 @@ describe('Notion data source gateway real adapter boundary', () => {
             },
           },
         },
+      },
+    ])
+    expect(requestId).toBe('notion-client-success-request-id-unavailable')
+  })
+
+  it('translates metadata description patches into an owning database update payload', async () => {
+    const updateDatabaseCalls: Array<Parameters<NotionGatewayClient['updateDatabase']>[0]> = []
+    const baseMetadataHash = canonicalHash({
+      _tag: 'CanonicalDataSourceMetadata',
+      titlePlainText: 'Tasks',
+      descriptionPlainText: 'Old description',
+      icon: { _tag: 'none' },
+    })
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeClient({
+        updateDatabase: (input) =>
+          Effect.sync(() => updateDatabaseCalls.push(input)).pipe(
+            Effect.as({
+              id: input.databaseId,
+              title: remoteDataSource.title,
+              description: input.description ?? remoteDataSource.description,
+              icon: null,
+            }),
+          ),
+      }),
+    })
+
+    const requestId = await Effect.runPromise(
+      gateway.patchDataSourceMetadata({
+        _tag: 'PatchDataSourceMetadataCommand',
+        commandId: commandId('command-metadata-real'),
+        dataSourceId,
+        baseMetadataHash,
+        metadataPatch: {
+          descriptionPlainText: 'Synced description',
+        },
+      }),
+    )
+
+    expect(updateDatabaseCalls).toEqual([
+      {
+        databaseId: 'database-1',
+        description: [{ type: 'text', text: { content: 'Synced description' } }],
       },
     ])
     expect(requestId).toBe('notion-client-success-request-id-unavailable')

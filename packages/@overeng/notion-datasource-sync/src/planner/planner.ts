@@ -1,5 +1,6 @@
 import type {
   BodyPushCommand,
+  PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
   RemoteWriteCommand,
@@ -41,6 +42,12 @@ export type SchemaPropertySurface = {
   readonly schemaHash: Hash
   readonly configHash: Hash
   readonly writeClass: PropertyWriteClass
+}
+
+/** Planner-visible data-source metadata surface, independent from property schema. */
+export type DataSourceMetadataSurface = {
+  readonly dataSourceId: DataSourceId
+  readonly metadataHash: Hash
 }
 
 /** Observed state of a single page property used by the planner to detect conflicts and stale intents. */
@@ -119,6 +126,7 @@ export type PlannerProjectionSnapshot = {
   readonly rootId: SyncRootId
   readonly api: ApiCompatibilitySnapshot
   readonly capabilities: CapabilityPreflightSnapshot
+  readonly metadata: ReadonlyArray<DataSourceMetadataSurface>
   readonly schema: ReadonlyArray<SchemaPropertySurface>
   readonly rows: ReadonlyArray<RowSurfaceSnapshot>
   readonly properties: ReadonlyArray<PropertySurfaceSnapshot>
@@ -234,6 +242,18 @@ export type SchemaMigrationIntent = {
   readonly safety: SchemaIntentSafety
 }
 
+/** Intent to update remote data-source presentation metadata — currently title and description. */
+export type DataSourceMetadataEditIntent = {
+  readonly _tag: 'data-source-metadata-edit'
+  readonly intentEventId: SyncEventId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly dataSourceId: DataSourceId
+  readonly command: PatchDataSourceMetadataCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+}
+
 /** Intent to trash a page on the remote, triggered by a local workspace deletion; `policy` and `explicitDestructiveIntent` control whether the planner escalates to a real remote trash or treats it as a candidate. */
 export type LocalDeleteIntent = {
   readonly _tag: 'local-delete'
@@ -279,6 +299,7 @@ export type PlannerIntent =
   | PropertyEditIntent
   | BodyEditIntent
   | SchemaMigrationIntent
+  | DataSourceMetadataEditIntent
   | LocalDeleteIntent
   | PathClaimIntent
   | QueryAbsenceIntent
@@ -336,6 +357,15 @@ const findSchemaProperty = ({
   snapshot.schema.find(
     (property) => property.dataSourceId === dataSourceId && property.propertyId === propertyId,
   )
+
+const findMetadataSurface = ({
+  snapshot,
+  dataSourceId,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly dataSourceId: DataSourceId
+}): DataSourceMetadataSurface | undefined =>
+  snapshot.metadata.find((metadata) => metadata.dataSourceId === dataSourceId)
 
 const findPropertySurface = ({
   snapshot,
@@ -412,7 +442,11 @@ const commandEnvelope = ({
   readonly snapshot: PlannerProjectionSnapshot
   readonly intent: Extract<
     PlannerIntent,
-    PropertyEditIntent | BodyEditIntent | SchemaMigrationIntent | LocalDeleteIntent
+    | PropertyEditIntent
+    | BodyEditIntent
+    | SchemaMigrationIntent
+    | DataSourceMetadataEditIntent
+    | LocalDeleteIntent
   >
   readonly command: RemoteWriteCommand
   readonly baseHash: Hash
@@ -699,6 +733,53 @@ const planSchemaMigration = ({
   }
 }
 
+const planDataSourceMetadataEdit = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: DataSourceMetadataEditIntent
+}): PlanDecision => {
+  const metadata = findMetadataSurface({ snapshot, dataSourceId: intent.dataSourceId })
+  if (metadata === undefined) {
+    return blockDecision({
+      guard: 'CurrentSurfaceMissing',
+      surface: intent.surface,
+      summary:
+        'Current data-source metadata projection is missing; observe the data source before planning a metadata write',
+    })
+  }
+
+  const blockedDecision = firstBlocked({
+    surface: intent.surface,
+    guards: [
+      guardApiCompatibility(snapshot.api),
+      guardCapabilityPreflight(snapshot.capabilities),
+      guardStaleSurfaceBase({
+        baseHash: intent.baseHash,
+        currentHash: metadata.metadataHash,
+      }),
+    ],
+  })
+  if (blockedDecision !== undefined) {
+    return blockedDecision
+  }
+
+  return {
+    _tag: 'EnqueueCommands',
+    commands: [
+      commandEnvelope({
+        snapshot,
+        intent,
+        command: intent.command,
+        baseHash: intent.baseHash,
+        desiredHash: intent.desiredHash,
+        preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase'],
+      }),
+    ],
+  }
+}
+
 const planLocalDelete = ({
   snapshot,
   intent,
@@ -974,6 +1055,8 @@ export const planIntent = ({
       return planBodyEdit({ snapshot, intent })
     case 'schema-migration':
       return planSchemaMigration({ snapshot, intent })
+    case 'data-source-metadata-edit':
+      return planDataSourceMetadataEdit({ snapshot, intent })
     case 'local-delete':
       return planLocalDelete({ snapshot, intent })
     case 'path-claim':

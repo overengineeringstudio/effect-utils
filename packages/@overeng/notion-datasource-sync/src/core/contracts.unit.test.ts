@@ -283,6 +283,7 @@ describe('@overeng/notion-datasource-sync contracts', () => {
       retrievePageProperty: () => Stream.empty,
       patchPageProperties: () => Effect.succeed(requestId),
       patchDataSourceSchema: () => Effect.succeed(requestId),
+      patchDataSourceMetadata: () => Effect.succeed(requestId),
       trashPage: () => Effect.succeed(requestId),
       restorePage: () => Effect.succeed(requestId),
     }

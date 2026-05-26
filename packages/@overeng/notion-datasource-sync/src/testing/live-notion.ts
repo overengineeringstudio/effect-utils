@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { FetchHttpClient, type HttpClient } from '@effect/platform'
+import { FetchHttpClient, HttpClient } from '@effect/platform'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
 import {
-  type NotionConfig,
+  NotionConfig,
   NotionBlocks,
   NotionConfigLive,
   NotionDataSources,
@@ -17,7 +17,11 @@ import {
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
 import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
-import { CanonicalOptionValue, type QueryContract } from '../core/commands.ts'
+import {
+  CanonicalOptionValue,
+  PatchDataSourceMetadataCommand,
+  type QueryContract,
+} from '../core/commands.ts'
 import { canonicalHash } from '../core/canonical.ts'
 import {
   AbsolutePath,
@@ -31,9 +35,13 @@ import { SyncRootId } from '../core/events.ts'
 import { guardCapabilities } from '../core/guards.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
 import { readOnlyGatewayCapabilities } from '../gateway/gateway.ts'
-import { NotionDataSourceGatewayLive } from '../gateway/notion.ts'
+import {
+  makeNotionDataSourceGatewayFromClient,
+  makeNotionEffectClientGatewayClient,
+  NotionDataSourceGatewayLive,
+} from '../gateway/notion.ts'
 import { makeFilesystemLocalWorkspacePort } from '../local/workspace.ts'
-import { observeRemoteDataSource } from '../sync/observation.ts'
+import { commandIdFor, observeRemoteDataSource } from '../sync/observation.ts'
 
 /** Raw environment variables consumed by live-Notion E2E tests, parsed from `process.env` before validation. */
 export type LiveNotionEnv = {
@@ -173,6 +181,7 @@ export const defaultLivePreflightCapabilities =
 export const strictLivePreflightCapabilities = [
   'data_source_retrieve',
   'data_source_query',
+  'data_source_metadata_update',
   'page_retrieve',
   'page_property_paginate',
 ] as const satisfies ReadonlyArray<CapabilityName>
@@ -180,6 +189,7 @@ export const strictLivePreflightCapabilities = [
 const capabilityNames = new Set<CapabilityName>([
   'data_source_retrieve',
   'data_source_query',
+  'data_source_metadata_update',
   'page_retrieve',
   'page_property_paginate',
   'page_property_update',
@@ -483,6 +493,12 @@ const paragraphBlock = (content: string) => ({
   paragraph: richText(content),
 })
 
+const heading2Block = (content: string) => ({
+  object: 'block',
+  type: 'heading_2',
+  heading_2: richText(content),
+})
+
 const bulletedBlock = (content: string) => ({
   object: 'block',
   type: 'bulleted_list_item',
@@ -558,6 +574,7 @@ const isAlreadyArchivedNotionError = (cause: unknown): boolean => {
 export type LiveNotionDemoDataSourceResult = {
   readonly key: string
   readonly title: string
+  readonly description: string
   readonly domain: string
   readonly databaseId: string
   readonly dataSourceId: string
@@ -594,6 +611,7 @@ export type LiveNotionDemoShowcaseResult = {
 type DemoDataSourceSpec = {
   readonly key: string
   readonly title: string
+  readonly description: string
   readonly domain: string
   readonly rowCount: number
   readonly bodyRows: number
@@ -616,25 +634,33 @@ const staleDemoDatabaseTitlePrefixes = [
   'notion ds sync relation',
 ] as const
 
-const demoInitialMarkdown = (input: { readonly runId: string }): string =>
-  [
-    '# notion datasource sync automated demo',
-    '',
-    `Current run: ${input.runId}`,
-    '',
-    'This page is refreshed by the live demo. The inline data sources below are created from scratch for the current run, then observed through datasource-sync with the real Notion gateway and NotionMD body adapter.',
-    '',
-    '## What this run demonstrates',
-    '',
-    '- Multiple disposable Notion data sources under the configured demo page.',
-    '- Different realistic domains: projects, incidents, customers, and high-volume activity events.',
-    '- Mixed schemas across title, rich text, number, checkbox, date, select, multi-select, URL, email, and phone properties.',
-    '- Bounded high-cardinality proof with a 500-row data source observed through paginated datasource queries.',
-    '- NotionMD body observation and workspace materialization for representative row pages.',
-    '- Filtered high-watermark query contracts on each live data source.',
-    '',
-    'The final verification summary is appended below the data sources after the run completes.',
-  ].join('\n')
+const formatDemoIntroBlocks = (input: { readonly runId: string }) => [
+  {
+    object: 'block',
+    type: 'heading_1',
+    heading_1: richText('notion datasource sync automated demo'),
+  },
+  paragraphBlock(`Current run: ${input.runId}`),
+  paragraphBlock(
+    'This page is refreshed by the live demo. The inline data sources below are reused when present, topped up to the requested cardinalities, then observed through datasource-sync with the real Notion gateway and NotionMD body adapter.',
+  ),
+  heading2Block('What this run demonstrates'),
+  bulletedBlock('Multiple Notion data sources under the configured demo page.'),
+  bulletedBlock(
+    'Different realistic domains: projects, incidents, customers, and high-volume activity events.',
+  ),
+  bulletedBlock(
+    'Mixed schemas across title, rich text, number, checkbox, date, select, multi-select, URL, email, and phone properties.',
+  ),
+  bulletedBlock(
+    'Bounded high-cardinality proof with a 500-row data source observed through paginated datasource queries.',
+  ),
+  bulletedBlock('Data-source description metadata patched through the datasource-sync metadata surface.'),
+  bulletedBlock(
+    'NotionMD body observation and workspace materialization for representative row pages.',
+  ),
+  bulletedBlock('Filtered high-watermark query contracts on each live data source.'),
+]
 
 const demoRowMarkdown = (input: {
   readonly runId: string
@@ -713,6 +739,8 @@ const demoDataSourceSpecs = [
   {
     key: 'projects',
     title: 'notion datasource sync demo projects',
+    description:
+      'Portfolio project planning data source: budgets, kickoff dates, strategic flags, team tags, summaries, and row bodies.',
     domain: 'portfolio projects',
     rowCount: 12,
     bodyRows: 12,
@@ -756,6 +784,8 @@ const demoDataSourceSpecs = [
   {
     key: 'incidents',
     title: 'notion datasource sync demo incidents',
+    description:
+      'Incident operations data source: severity, open state, impact score, system tags, start dates, and notes.',
     domain: 'incident operations',
     rowCount: 30,
     bodyRows: 0,
@@ -798,6 +828,8 @@ const demoDataSourceSpecs = [
   {
     key: 'customers',
     title: 'notion datasource sync demo customers',
+    description:
+      'Customer-success data source: plan, ARR, renewal date, regions, health, and contact fields.',
     domain: 'customer success',
     rowCount: 48,
     bodyRows: 0,
@@ -841,6 +873,8 @@ const demoDataSourceSpecs = [
   {
     key: 'activity',
     title: 'notion datasource sync demo activity events',
+    description:
+      'High-cardinality activity data source: 500 generated events used to prove paginated observation and metadata sync.',
     domain: 'high-volume activity events',
     rowCount: 500,
     bodyRows: 0,
@@ -910,6 +944,7 @@ const formatDemoVerificationBlocks = (result: LiveNotionDemoShowcaseResult) => [
   bulletedBlock(
     `Bodies materialized: ${result.observation.materializedBodies.toString()}; properties observed: ${result.observation.observedProperties.toString()}; incomplete properties: ${result.observation.incompleteProperties.toString()}`,
   ),
+  bulletedBlock('Metadata proof: every demo data source has a synced description.'),
   codeBlock(
     `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID=${result.demoPageId}\nNOTION_DATASOURCE_SYNC_LIVE=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`,
   ),
@@ -922,6 +957,7 @@ const formatDemoVerificationBlocks = (result: LiveNotionDemoShowcaseResult) => [
     bulletedBlock(
       `${dataSource.title}: ${dataSource.domain}; ${dataSource.rowIds.length.toString()} rows; schema ${dataSource.schemaPropertyNames.join(', ')}; property families ${dataSource.propertyFamilies.join(', ')}; bodies ${dataSource.bodyRows.toString()}; query pages ${dataSource.observation.pages.toString()}`,
     ),
+    bulletedBlock(`Description: ${dataSource.description}`),
     bulletedBlock(`Data source ID: ${dataSource.dataSourceId}`),
   ]),
 ]
@@ -964,14 +1000,31 @@ const childDatabaseBlock = (block: unknown): DemoDatabaseBlock | undefined => {
   return { databaseId: block.id, title: childDatabase.title }
 }
 
-const cleanupPreviousDemoBlocks = ({ pageId }: { readonly pageId: string }) =>
+const currentDemoTitles: ReadonlySet<string> = new Set(demoDataSourceSpecs.map((spec) => spec.title))
+
+const cleanupDemoPageForRerun = ({ pageId }: { readonly pageId: string }) =>
   Effect.gen(function* () {
     const children = yield* collectBlocks(pageId)
+    const keptByTitle = new Set<string>()
+    const keptDatabases: DemoDatabaseBlock[] = []
+
     yield* Effect.forEach(
       children,
       (block) => {
         const database = childDatabaseBlock(block)
-        if (database === undefined) return Effect.void
+        if (database === undefined) {
+          if (isRecord(block) === true && typeof block.id === 'string') {
+            return NotionBlocks.delete({ blockId: block.id }).pipe(Effect.ignore)
+          }
+          return Effect.void
+        }
+
+        if (currentDemoTitles.has(database.title) === true && keptByTitle.has(database.title) === false) {
+          keptByTitle.add(database.title)
+          keptDatabases.push(database)
+          return Effect.void
+        }
+
         if (staleDemoDatabaseTitlePrefixes.some((prefix) => database.title.startsWith(prefix)) === true) {
           return archiveDemoDatabase(database.databaseId)
         }
@@ -979,35 +1032,32 @@ const cleanupPreviousDemoBlocks = ({ pageId }: { readonly pageId: string }) =>
       },
       { concurrency: 2 },
     )
+
+    return keptDatabases
   })
 
-const databaseIdFromNotionUrl = (url: string): string | undefined =>
-  /notion\.so\/(?:[^/\s"]*-)?([0-9a-f]{32})/iu.exec(url)?.[1]
+const collectExistingDemoDatabases = ({ pageId }: { readonly pageId: string }) =>
+  collectBlocks(pageId).pipe(
+    Effect.map((children) =>
+      children
+        .flatMap((block) => {
+          const database = childDatabaseBlock(block)
+          return database === undefined ? [] : [database]
+        })
+        .filter((database) =>
+          staleDemoDatabaseTitlePrefixes.some((prefix) => database.title.startsWith(prefix)),
+        ),
+    ),
+  )
 
-const cleanupPreviousDemoMarkdownDatabases = ({ pageId }: { readonly pageId: string }) =>
-  Effect.gen(function* () {
-    const markdown = yield* NotionPages.getMarkdown({ pageId })
-    const databaseMatches = markdown.markdown.matchAll(
-      /<database\b[^>]*\burl="(?<url>[^"]+)"[^>]*>(?<title>[^<]+)<\/database>/giu,
-    )
-    yield* Effect.forEach(
-      [...databaseMatches],
-      (match) => {
-        const title = match.groups?.title
-        const url = match.groups?.url
-        const databaseId = url === undefined ? undefined : databaseIdFromNotionUrl(url)
-        if (
-          title === undefined ||
-          databaseId === undefined ||
-          staleDemoDatabaseTitlePrefixes.some((prefix) => title.startsWith(prefix)) === false
-        ) {
-          return Effect.void
-        }
-        return archiveDemoDatabase(databaseId)
-      },
-      { concurrency: 2 },
-    )
-  })
+const existingDemoDatabaseForSpec = ({
+  existing,
+  spec,
+}: {
+  readonly existing: ReadonlyArray<DemoDatabaseBlock>
+  readonly spec: DemoDataSourceSpec
+}): DemoDatabaseBlock | undefined =>
+  existing.find((database) => database.title === spec.title || database.title.startsWith(spec.title))
 
 const resolvePropertyId = ({
   properties,
@@ -1050,6 +1100,43 @@ const nonTitlePropertiesForSpec = (spec: DemoDataSourceSpec): Record<string, unk
     ),
   )
 
+const patchDemoDataSourceMetadata = ({
+  dataSourceId,
+  runId,
+  spec,
+}: {
+  readonly dataSourceId: string
+  readonly runId: string
+  readonly spec: DemoDataSourceSpec
+}) =>
+  Effect.gen(function* () {
+    const notionConfig = yield* NotionConfig
+    const httpClient = yield* HttpClient.HttpClient
+    const provideClientEnv = <A, E>(
+      effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
+    ) =>
+      effect.pipe(
+        Effect.provideService(NotionConfig, notionConfig),
+        Effect.provideService(HttpClient.HttpClient, httpClient),
+      )
+    const gateway = makeNotionDataSourceGatewayFromClient({
+      client: makeNotionEffectClientGatewayClient(provideClientEnv),
+    })
+    const metadata = yield* gateway.retrieveDataSource(DataSourceId.make(dataSourceId))
+    if (metadata.metadataHash === undefined) {
+      throw new Error(`demo data source metadata hash unavailable for ${spec.key}`)
+    }
+    yield* gateway.patchDataSourceMetadata(
+      PatchDataSourceMetadataCommand.make({
+        _tag: 'PatchDataSourceMetadataCommand',
+        commandId: commandIdFor(`demo-metadata:${runId}:${dataSourceId}:${spec.description}`),
+        dataSourceId: DataSourceId.make(dataSourceId),
+        baseMetadataHash: metadata.metadataHash,
+        metadataPatch: { descriptionPlainText: spec.description },
+      }),
+    )
+  })
+
 const createDemoDatabase = ({
   demoPageId,
   runId,
@@ -1082,6 +1169,7 @@ const createDemoDatabase = ({
         properties: nonTitlePropertiesForSpec(spec),
         icon: { type: 'emoji', emoji: spec.icon },
       })
+      yield* patchDemoDataSourceMetadata({ dataSourceId, runId, spec })
 
       return { databaseId: database.id, dataSourceId }
     })
@@ -1099,6 +1187,7 @@ const createDemoDatabase = ({
         properties: nonTitlePropertiesForSpec(spec),
         icon: { type: 'emoji', emoji: spec.icon },
       })
+      yield* patchDemoDataSourceMetadata({ dataSourceId, runId, spec })
       return { databaseId: existing.databaseId, dataSourceId }
     }).pipe(Effect.catchAll(() => createFresh))
   })
@@ -1135,7 +1224,7 @@ const createDemoRows = ({
           ? { markdown: spec.rowMarkdown({ runId, index }) }
           : {}),
       }).pipe(Effect.map((page) => page.id)),
-    { concurrency: 2 },
+    { concurrency: 4 },
   )
 
 const ensureDemoRows = ({
@@ -1287,16 +1376,12 @@ export const runLiveNotionDemoShowcase = async ({
 
   const created = await run(
     Effect.gen(function* () {
-      yield* cleanupPreviousDemoBlocks({ pageId: demoPageId })
-      yield* cleanupPreviousDemoMarkdownDatabases({ pageId: demoPageId })
-      yield* NotionPages.updateMarkdown({
-        pageId: demoPageId,
-        type: 'replace_content',
-        new_str: demoInitialMarkdown({ runId: config.runId }),
-        allow_deleting_content: true,
+      const existing = yield* cleanupDemoPageForRerun({ pageId: demoPageId })
+      yield* NotionBlocks.append({
+        blockId: demoPageId,
+        position: { type: 'start' },
+        children: formatDemoIntroBlocks({ runId: config.runId }),
       })
-      yield* cleanupPreviousDemoBlocks({ pageId: demoPageId })
-      yield* cleanupPreviousDemoMarkdownDatabases({ pageId: demoPageId })
 
       return yield* Effect.forEach(
         demoDataSourceSpecs,
@@ -1305,6 +1390,7 @@ export const runLiveNotionDemoShowcase = async ({
             demoPageId,
             runId: config.runId,
             spec,
+            existing: existingDemoDatabaseForSpec({ existing, spec }),
           }),
         { concurrency: 1 },
       )
@@ -1369,6 +1455,7 @@ export const runLiveNotionDemoShowcase = async ({
       return {
         key: spec.key,
         title: spec.title,
+        description: spec.description,
         domain: spec.domain,
         databaseId: source.databaseId,
         dataSourceId: source.dataSourceId,

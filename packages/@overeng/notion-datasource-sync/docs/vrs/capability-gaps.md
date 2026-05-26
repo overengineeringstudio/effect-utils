@@ -59,7 +59,8 @@ Actionable follow-up work for feasible gaps is tracked in
 | Status schema updates | Unsupported even though status page values can be updated. | The update-data-source endpoint documents `status` among data-source property types that cannot be updated via API. |
 | Destructive schema migrations | Delete property, type conversion, remove/rename options, and replace option lists are fail-closed. | Omitted select/multi-select/status options can remove options; deleting/changing columns can reinterpret or hide existing row values. |
 | `place` property values | Unsupported/fail-closed. | Official docs say `place` values are not fully supported via API and return `null` for page values. |
-| Data-source icon/description/title sync | Not modeled as sync surfaces. | The client can update data-source title/icon fields, but datasource-sync only treats schema and rows as authoritative surfaces today. |
+| Data-source title/description sync | Supported as an independent metadata surface. | Metadata patches use a separate base metadata hash and do not affect schema or row convergence. |
+| Data-source writable icon sync | Deferred. | Icon observation excludes transient signed URLs from stable identity; writable icon commands need additional file/custom/external icon proof. |
 | Page icon/cover/lock metadata | Not modeled as row surfaces. | Page metadata lives outside data-source property values and needs independent conflict keys and body-adapter surface guards. |
 | Notion buttons/forms/unsupported blocks | Unsupported inside body sync unless NotionMD proves lossless preservation. | The block API returns unsupported block types for features such as unsupported UI-native blocks; body writes must not delete or reinterpret unknown content. |
 | Page body child databases/pages | Body adapter guards destructive body updates that would delete child pages/databases. | Child database/page blocks carry independent identity and cannot be treated as markdown text. |
@@ -73,7 +74,7 @@ Actionable follow-up work for feasible gaps is tracked in
 | View inventory/read model | Official View APIs list and retrieve full view objects for API version `2025-09-03` and later. | Add canonical view snapshot/hash model, linked-view parent identity, fake-service drift tests, and live view list/retrieve fixtures. |
 | View create/update/delete | Official docs expose create, update, and delete endpoints. | Keep separate from row membership; require explicit view commands, stale-base checks, and live cleanup because view deletion cannot be undone through the API. |
 | Query-through-view support | Official docs expose view query creation and pagination. | Define whether view query results are only a display/read model or can produce membership proofs; block absence classification until query IDs and cached result semantics are proven. |
-| Data-source title/description/icon sync | Official update-data-source docs include title, description, icon, parent, and trash fields. | Add `DataSourceMetadataObserved` and metadata patch commands with separate conflict surfaces; prove icon file-upload/external/custom-emoji identity. |
+| Data-source icon, parent, and trash metadata sync | Official update-data-source docs include icon, parent, and trash fields. | Extend the existing metadata surface beyond title/description only after icon file-upload/external/custom-emoji identity and parent/trash authority are proven. |
 | Database container metadata | Database title, description, icon, cover, parent, inline state, and child data-source list are database-level, not data-source schema. | Add a database gateway surface only if datasource-sync owns database container convergence; otherwise document it as out of scope. |
 | Durable files property writes | Official File Upload API supports upload, attach to files properties, reuse, and retrieval. | Model local file identity, file upload status, expiry, attachment verification, multi-part uploads for large files, redaction, cleanup, and read-after-write checks. |
 | File blocks in body sync | Official file objects can appear in blocks as images, PDFs, audio, video, and files. | NotionMD must preserve or explicitly map file blocks without losing binary identity; datasource-sync must reject body pushes that drop attached file identity. |
@@ -101,7 +102,8 @@ Actionable follow-up work for feasible gaps is tracked in
 ## Release Checklist
 
 - [ ] Treat view APIs as their own authority surface, not as implicit data-source membership.
-- [ ] Add metadata surfaces before syncing data-source title, description, icon, parent, or database container attributes.
+- [x] Add a metadata surface for data-source title/description sync.
+- [ ] Extend metadata surfaces before syncing data-source icons, parent, trash, or database container attributes.
 - [ ] Promote files from hashed observation to writable sync only after durable file-upload identity and attachment lifecycle are modeled.
 - [ ] Keep computed/generated values (`formula`, `rollup`, audit fields, `unique_id`) read-only unless Notion documents a write path.
 - [ ] Keep `place`, linked data sources, unsupported blocks, and incomplete property pagination fail-closed.

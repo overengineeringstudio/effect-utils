@@ -12,6 +12,7 @@ import {
 } from '../body/adapter.ts'
 import {
   bodySurfaceKey,
+  dataSourceMetadataSurfaceKey,
   pageSurfaceKey,
   propertySurfaceKey,
   querySurfaceKey,
@@ -23,6 +24,7 @@ import {
   type BodyLocalChangeInput,
   type CanonicalPropertyValue,
   type PagePropertyItemPage,
+  type PatchDataSourceMetadataCommand,
   type PatchDataSourceSchemaCommand,
   type RemoteWriteCommand,
   type QueryContract,
@@ -191,6 +193,7 @@ export type FakeGatewayHarness = {
   readonly ledger: FakeGatewayMutationLedger
   readonly patchedPageProperties: ReadonlyArray<PatchPagePropertiesCommand>
   readonly patchedDataSourceSchemas: ReadonlyArray<PatchDataSourceSchemaCommand>
+  readonly patchedDataSourceMetadata: ReadonlyArray<PatchDataSourceMetadataCommand>
   readonly trashedPages: ReadonlyArray<TrashPageCommand>
   readonly restoredPages: ReadonlyArray<RestorePageCommand>
 }
@@ -201,6 +204,8 @@ export type FakeGatewayMutationLedger = {
   readonly successfulPatchPageProperties: ReadonlyArray<PatchPagePropertiesCommand>
   readonly attemptedPatchDataSourceSchemas: ReadonlyArray<PatchDataSourceSchemaCommand>
   readonly successfulPatchDataSourceSchemas: ReadonlyArray<PatchDataSourceSchemaCommand>
+  readonly attemptedPatchDataSourceMetadata: ReadonlyArray<PatchDataSourceMetadataCommand>
+  readonly successfulPatchDataSourceMetadata: ReadonlyArray<PatchDataSourceMetadataCommand>
   readonly attemptedTrashPages: ReadonlyArray<TrashPageCommand>
   readonly successfulTrashPages: ReadonlyArray<TrashPageCommand>
   readonly attemptedRestorePages: ReadonlyArray<RestorePageCommand>
@@ -211,10 +216,12 @@ export type FakeGatewayMutationLedger = {
 export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewayHarness => {
   const patchedPageProperties: PatchPagePropertiesCommand[] = []
   const patchedDataSourceSchemas: PatchDataSourceSchemaCommand[] = []
+  const patchedDataSourceMetadata: PatchDataSourceMetadataCommand[] = []
   const trashedPages: TrashPageCommand[] = []
   const restoredPages: RestorePageCommand[] = []
   const attemptedPatchPageProperties: PatchPagePropertiesCommand[] = []
   const attemptedPatchDataSourceSchemas: PatchDataSourceSchemaCommand[] = []
+  const attemptedPatchDataSourceMetadata: PatchDataSourceMetadataCommand[] = []
   const attemptedTrashPages: TrashPageCommand[] = []
   const attemptedRestorePages: RestorePageCommand[] = []
   const dataSource =
@@ -225,6 +232,7 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
       requestId: testIds.requestId,
       observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
       schemaHash: hash('schema'),
+      metadataHash: hash('metadata'),
     } satisfies DataSourceSnapshot)
   const propertyPages = input.propertyPages ?? []
   const pages = (input.pages ?? [pageSnapshot()]).map((page) => ({
@@ -266,6 +274,8 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
     successfulPatchPageProperties: patchedPageProperties,
     attemptedPatchDataSourceSchemas,
     successfulPatchDataSourceSchemas: patchedDataSourceSchemas,
+    attemptedPatchDataSourceMetadata,
+    successfulPatchDataSourceMetadata: patchedDataSourceMetadata,
     attemptedTrashPages,
     successfulTrashPages: trashedPages,
     attemptedRestorePages,
@@ -276,6 +286,7 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
     ledger,
     patchedPageProperties,
     patchedDataSourceSchemas,
+    patchedDataSourceMetadata,
     trashedPages,
     restoredPages,
     gateway: {
@@ -289,6 +300,11 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
         Effect.sync(() => attemptedPatchDataSourceSchemas.push(command)).pipe(
           Effect.zipRight(baseGateway.patchDataSourceSchema(command)),
           Effect.tap(() => Effect.sync(() => patchedDataSourceSchemas.push(command))),
+        ),
+      patchDataSourceMetadata: (command) =>
+        Effect.sync(() => attemptedPatchDataSourceMetadata.push(command)).pipe(
+          Effect.zipRight(baseGateway.patchDataSourceMetadata(command)),
+          Effect.tap(() => Effect.sync(() => patchedDataSourceMetadata.push(command))),
         ),
       trashPage: (command) =>
         Effect.sync(() => attemptedTrashPages.push(command)).pipe(
@@ -423,6 +439,12 @@ export const buildPlannerSnapshot = (
     supported: ['page_property_update'],
     preflight: 'passed',
   },
+  metadata: [
+    {
+      dataSourceId: testIds.dataSourceId,
+      metadataHash: hash('metadata'),
+    },
+  ],
   schema: [
     {
       dataSourceId: testIds.dataSourceId,

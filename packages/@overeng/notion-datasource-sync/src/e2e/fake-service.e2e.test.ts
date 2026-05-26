@@ -441,10 +441,13 @@ describe('notion datasource sync fake-service E2E harness', () => {
 
     const dataSourceKey = (result: Awaited<ReturnType<typeof observeFakeRemote>>) =>
       result.events.find((event) => event._tag === 'DataSourceObserved')?.idempotencyKey
+    const metadataKey = (result: Awaited<ReturnType<typeof observeFakeRemote>>) =>
+      result.events.find((event) => event._tag === 'DataSourceMetadataObserved')?.idempotencyKey
     const rowKey = (result: Awaited<ReturnType<typeof observeFakeRemote>>) =>
       result.events.find((event) => event._tag === 'RowObserved')?.idempotencyKey
 
     expect(dataSourceKey(base)).not.toBe(dataSourceKey(reconfigured))
+    expect(metadataKey(base)).toBe(metadataKey(reconfigured))
     expect(rowKey(base)).not.toBe(rowKey(materialized))
     expect(rowKey(materialized)).not.toBe(rowKey(trashed))
   })

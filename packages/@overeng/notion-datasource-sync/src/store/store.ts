@@ -987,6 +987,7 @@ export class NotionSyncStore {
             ? 'passed'
             : 'failed',
       },
+      metadata: [],
       schema: this.#db
         .prepare(
           `SELECT data_source_id, property_id, schema_hash, config_hash, write_class
