@@ -998,13 +998,14 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
       ? (() => {
           const configPath = workspaceConfigPath(command.workspaceRoot)
           const configExists = existsSync(configPath)
-          const config = configExists
-            ? readWorkspaceCliConfig(command.workspaceRoot)
-            : makeWorkspaceCliConfig({
-                dataSourceId: command.dataSourceId,
-                workspaceRoot: command.workspaceRoot,
-                materializeBodies: flags.has('no-materialize-bodies') === false,
-              })
+          const config =
+            configExists === true
+              ? readWorkspaceCliConfig(command.workspaceRoot)
+              : makeWorkspaceCliConfig({
+                  dataSourceId: command.dataSourceId,
+                  workspaceRoot: command.workspaceRoot,
+                  materializeBodies: flags.has('no-materialize-bodies') === false,
+                })
           if (config.dataSourceId !== command.dataSourceId) {
             throw new CliArgumentError({
               message: `Workspace is already configured for data source ${config.dataSourceId}; refusing to establish ${command.dataSourceId}`,
