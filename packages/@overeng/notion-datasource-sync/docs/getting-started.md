@@ -28,6 +28,10 @@ notion-datasource-sync sync --from-notion \
   "$PWD/notion-workspace"
 ```
 
+You may also pass a Notion database URL. The CLI resolves it to the database's
+single child data source. If the database has multiple data sources, pass the
+desired data-source id explicitly.
+
 This creates `.notion-datasource-sync/config.json` and
 `.notion-datasource-sync/store.sqlite` under the workspace root, validates the
 Notion data source, records the local binding, pulls remote schema/metadata/rows,
@@ -45,6 +49,19 @@ notion-datasource-sync sync --from-notion \
   "$PWD/notion-workspace" \
   --dry-run
 ```
+
+For large existing databases, cap the no-write preview:
+
+```sh
+notion-datasource-sync sync --from-notion \
+  <database-url-or-data-source-id> \
+  "$PWD/notion-workspace" \
+  --dry-run \
+  --limit 25
+```
+
+The limit reports a capped query preview and does not perform a partial
+adoption.
 
 Use `--no-materialize-bodies` when you want schema/metadata/row adoption without
 local body files:

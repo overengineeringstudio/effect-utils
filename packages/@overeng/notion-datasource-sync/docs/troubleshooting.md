@@ -46,11 +46,19 @@ Symptom:
 Fix:
 
 ```sh
-notion-datasource-sync sync --from-notion <data-source-id-or-url> "$PWD/notion-workspace"
+notion-datasource-sync sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
 ```
 
 `sync <workspace-root>` only works after establishment has written
 `.notion-datasource-sync/config.json`.
+
+## Database URL Is Ambiguous
+
+`sync --from-notion <database-url>` resolves the database to its child data
+source only when Notion reports exactly one child data source. If the database
+has multiple data sources, rerun with the explicit data-source id. For large
+databases, start with `--dry-run --limit <rows>` to avoid an expensive full
+preview.
 
 ## Workspace Binding Mismatch
 

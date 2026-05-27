@@ -27,7 +27,8 @@ surfaces fail closed instead of being silently dropped.
 ## CLI Shape
 
 ```sh
-notion-datasource-sync sync --from-notion <data-source-id-or-url> "$PWD/notion-workspace"
+notion-datasource-sync sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
+notion-datasource-sync sync --from-notion <database-url> "$PWD/notion-workspace" --dry-run --limit 25
 notion-datasource-sync sync "$PWD/notion-workspace"
 notion-datasource-sync status "$PWD/notion-workspace"
 
@@ -41,8 +42,11 @@ The sync-first form writes `.notion-datasource-sync/config.json` under the
 workspace root, with the local SQLite store at
 `.notion-datasource-sync/store.sqlite`. First establishment is remote-to-local
 only: it validates the existing Notion data source, records the binding, pulls
-remote state, and does not scan local artifacts or push remote writes. `pull`
-and `push` stay available for advanced CI/debug workflows.
+remote state, and does not scan local artifacts or push remote writes. Database
+URLs resolve to a single child data source; ambiguous multi-source databases
+require an explicit data-source id. `--limit` gives large databases a bounded
+no-write dry-run preview, not a partial adoption. `pull` and `push` stay
+available for advanced CI/debug workflows.
 
 The live CLI reads `NOTION_API_TOKEN` and accepts `NOTION_TOKEN` as a legacy
 fallback. When a live token is configured, the CLI wires the NotionMD-backed

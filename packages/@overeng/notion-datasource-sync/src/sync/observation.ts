@@ -9,7 +9,7 @@ import {
 import {
   BodyPushCommand,
   type PagePropertyItemPage,
-  type QueryContract,
+  QueryContract,
   type QueryRowsPage,
 } from '../core/commands.ts'
 import {
@@ -63,6 +63,7 @@ export type RemoteObservationOptions = {
   readonly schemaProperties: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
+  readonly rowLimit?: number
   readonly bodyPathForPage?: (pageId: PageIdType) => WorkspaceRelativePath
   readonly startCursor?: QueryCursor | null
   readonly now?: () => Date
@@ -78,6 +79,7 @@ export type RemoteObservationResult = {
     readonly rows: number
     readonly complete: boolean
     readonly cappedAtLimit: boolean
+    readonly rowLimit: number | undefined
     readonly queryContractHash: HashType | undefined
   }
   readonly properties: {
@@ -592,6 +594,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             rows: 0,
             complete: false,
             cappedAtLimit: false,
+            rowLimit: options.rowLimit,
             queryContractHash: undefined,
           },
           properties: {
@@ -602,21 +605,46 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
       }
 
       const dataSource = yield* gateway.retrieveDataSource(options.dataSourceId)
+      const queryContract =
+        options.rowLimit === undefined
+          ? options.queryContract
+          : decode({
+              schema: QueryContract,
+              value: {
+                ...options.queryContract,
+                pageSize: Math.min(options.queryContract.pageSize, options.rowLimit),
+              },
+            })
+      const queryPageLimit =
+        options.rowLimit === undefined
+          ? undefined
+          : Math.max(1, Math.ceil(options.rowLimit / queryContract.pageSize))
       const queryPages = yield* collectStream(
-        gateway.queryRows({
-          _tag: 'QueryRowsInput',
-          dataSourceId: options.dataSourceId,
-          queryContract: options.queryContract,
-          startCursor: options.startCursor ?? null,
-        }),
+        gateway
+          .queryRows({
+            _tag: 'QueryRowsInput',
+            dataSourceId: options.dataSourceId,
+            queryContract,
+            startCursor: options.startCursor ?? null,
+          })
+          .pipe(
+            queryPageLimit === undefined
+              ? (stream) => stream
+              : Stream.take(queryPageLimit),
+          ),
       )
       const queryContractHash =
         queryPages.at(-1)?.queryContractHash ?? queryPages[0]?.queryContractHash
       const complete = queryPages.at(-1)?.hasMore === false
-      const cappedAtLimit = queryPages.some((page) => page.cappedAtLimit)
-      const queryRows = queryPages.flatMap((page: QueryRowsPage) => page.rows)
+      const queriedRows = queryPages.flatMap((page: QueryRowsPage) => page.rows)
+      const queryRows =
+        options.rowLimit === undefined ? queriedRows : queriedRows.slice(0, options.rowLimit)
+      const cappedByLimit =
+        options.rowLimit !== undefined &&
+        (queriedRows.length > queryRows.length || queryPages.at(-1)?.hasMore === true)
+      const cappedAtLimit = cappedByLimit || queryPages.some((page) => page.cappedAtLimit)
       const highWatermark = maxObservedHighWatermark({
-        initial: options.queryContract.highWatermark,
+        initial: queryContract.highWatermark,
         rows: queryRows,
         complete: complete && cappedAtLimit === false,
       })
@@ -671,9 +699,12 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
       const materialized: MaterializeResult[] = []
       let observedProperties = 0
       let incompleteProperties = 0
+      let remainingRows = queryRows.length
 
       for (const queryPage of queryPages) {
-        for (const row of queryPage.rows) {
+        if (remainingRows <= 0) break
+        for (const row of queryPage.rows.slice(0, remainingRows)) {
+          remainingRows -= 1
           const page = yield* gateway.retrievePage(row.pageId)
           const bodyPointer = yield* body.observe({ _tag: 'ObserveBodyInput', pageId: row.pageId })
           const path = (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId)
@@ -856,6 +887,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           rows: queryRows.length,
           complete: complete && cappedAtLimit === false,
           cappedAtLimit,
+          rowLimit: options.rowLimit,
           queryContractHash,
         },
         properties: {

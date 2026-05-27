@@ -3,7 +3,7 @@
 The binary is `notion-datasource-sync`.
 
 ```sh
-notion-datasource-sync sync --from-notion <data-source-id-or-url> <workspace-root> [--dry-run] [--no-materialize-bodies]
+notion-datasource-sync sync --from-notion <data-source-id-or-database-url> <workspace-root> [--dry-run] [--limit <rows>] [--no-materialize-bodies]
 notion-datasource-sync sync <workspace-root> [--dry-run]
 notion-datasource-sync status <workspace-root>
 
@@ -37,7 +37,8 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 
 | Flag                       | Meaning                                                      |
 | -------------------------- | ------------------------------------------------------------ |
-| `--from-notion`            | Existing Notion data-source id or URL to establish locally   |
+| `--from-notion`            | Existing Notion data-source id, or a database URL that resolves to one child data source |
+| `--limit`, `--max-rows`    | Dry-run-only establishment preview row cap; writes nothing and reports capped query state |
 | `--store`                  | SQLite store path                                            |
 | `--root-id`                | Local sync root partition                                    |
 | `--data-source-id`         | Notion data source id                                        |
@@ -102,7 +103,7 @@ ids, and local paths.
 
 ## Workspace Config
 
-`sync --from-notion <data-source-id-or-url> <workspace-root>` creates:
+`sync --from-notion <data-source-id-or-database-url> <workspace-root>` creates:
 
 ```text
 <workspace-root>/.notion-datasource-sync/config.json
@@ -114,3 +115,17 @@ root, Notion API version, config version, and body materialization policy.
 `sync <workspace-root>` and `status <workspace-root>` read this config. Missing
 config, a store binding for a different data source, or a workspace path mismatch
 fails closed with a setup/repair hint.
+
+When `--from-notion` receives a Notion database/container URL, the CLI retrieves
+the database and uses its single child data source. Databases with zero or
+multiple child data sources fail closed; pass the exact data-source id instead.
+
+Use a bounded no-write preview before adopting large existing databases:
+
+```sh
+notion-datasource-sync sync --from-notion <database-url> <workspace-root> --dry-run --limit 25
+```
+
+`--limit` and `--max-rows` are aliases and are intentionally dry-run-only. They
+cap the remote row preview and mark the query as capped; they do not perform a
+partial adoption.

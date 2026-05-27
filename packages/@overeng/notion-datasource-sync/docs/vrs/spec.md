@@ -766,7 +766,7 @@ Requirement trace: R48-R52, R67-R73.
 
 | Command                   | Primary flags                                                                         | Purpose                                                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `sync --from-notion`      | `<data-source-id-or-url>`, `<workspace-root>`, `--dry-run`, `--no-materialize-bodies` | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
+| `sync --from-notion`      | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies` | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
 | `sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                         | Reconcile an established workspace discovered from local config                                                     |
 | `status <workspace-root>` | `--json`, `--porcelain`                                                               | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
 | `init`                    | `--data-source-id`, `--root`, `--store`                                               | Advanced: bind a local root to a Notion data source without observing it                                            |
@@ -788,16 +788,17 @@ Workspace establishment writes `.notion-datasource-sync/config.json` and `.notio
 
 First establishment is a distinct mode:
 
-1. parse and validate the Notion data-source id or URL,
+1. parse and validate the Notion data-source id or database URL,
 2. read existing workspace config if present,
 3. fail closed on a different configured data source,
-4. validate the remote data source through the gateway,
-5. record `SyncBindingRecorded` if not already present,
-6. pull remote schema, metadata, rows, page properties, and body pointers,
-7. materialize bodies unless disabled,
-8. report status without scanning local artifacts, planning pushes, enqueuing outbox commands, or mutating Notion.
+4. resolve database URLs to their single child data source, failing closed on zero or multiple child data sources,
+5. validate the remote data source through the gateway,
+6. record `SyncBindingRecorded` if not already present,
+7. pull remote schema, metadata, rows, page properties, and body pointers,
+8. materialize bodies unless disabled,
+9. report status without scanning local artifacts, planning pushes, enqueuing outbox commands, or mutating Notion.
 
-Mutating commands support `--dry-run`. Establishment dry-run is true no-write: no config file, store events, sidecars, body files, outbox commands, or Notion mutations. Established sync dry-run suppresses event/outbox/remote writes and body materialization while using the existing store for read-only planning.
+Mutating commands support `--dry-run`. Establishment dry-run is true no-write: no config file, store events, sidecars, body files, outbox commands, or Notion mutations. `sync --from-notion --dry-run --limit <rows>` is a bounded preview for large databases: it caps remote rows observed, marks query completeness as capped, and cannot be applied as a partial adoption. Established sync dry-run suppresses event/outbox/remote writes and body materialization while using the existing store for read-only planning.
 
 Structured output uses one envelope:
 
