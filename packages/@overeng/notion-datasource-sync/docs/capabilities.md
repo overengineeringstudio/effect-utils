@@ -24,6 +24,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Local workspace paths  | Claimed deterministic row paths with collision guards                |
 | Daemon/watch           | Bounded daemon loop, lease fencing, cancellation, restart coverage   |
 | OpenTelemetry          | CLI, daemon, sync, gateway, planner, executor, and guard spans       |
+| Remote adoption        | `sync --from-notion` establishes a local workspace from an existing data source |
 
 ## Read-Only Or Guarded
 
@@ -52,6 +53,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Permissions/sharing                      | Out of scope; permission ambiguity blocks affected surfaces                           |
 | Webhooks                                 | Not required for correctness; daemon uses observation/reconciliation                  |
 | Synced pages and unsupported body blocks | Delegated to NotionMD guards and blocked when lossy                                   |
+| Local-first data-source creation         | Out of scope; create the data source in Notion first, then adopt it locally           |
 
 ## Capability Preflight
 

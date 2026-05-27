@@ -13,9 +13,9 @@ import type {
   NotionGatewayError,
 } from '../core/errors.ts'
 import {
+  NotionDataSourceGateway,
   PageBodySyncPort,
   type LocalWorkspacePort,
-  type NotionDataSourceGateway,
 } from '../core/ports.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from '../core/status.ts'
 import {
@@ -87,6 +87,9 @@ export type OneShotPushOptions = {
 export type OneShotSyncOptions = OneShotPullOptions &
   Pick<OneShotPushOptions, 'localIntents' | 'maxExecutorSteps' | 'leaseToken' | 'leaseDurationMs'>
 
+/** Options for first establishment from an existing Notion data source into a local workspace. */
+export type EstablishFromNotionOptions = OneShotPullOptions & OneShotInitOptions
+
 /** Aggregate counts produced by the planning phase of a push: how many decisions were made and how many events, commands, blocks, and conflicts resulted. */
 export type OneShotPlanSummary = {
   readonly decisions: ReadonlyArray<PlanDecision>
@@ -119,6 +122,16 @@ export type OneShotPullResult = {
 export type OneShotSyncResult = {
   readonly pull: OneShotPullResult
   readonly push: OneShotPushResult
+  readonly status: OneShotSyncStatus
+}
+
+/** Result of first establishment: remote validation, binding status, pull result, and explicit push suppression. */
+export type EstablishFromNotionResult = {
+  readonly mode: 'establish-from-notion'
+  readonly remoteValidated: boolean
+  readonly binding: OneShotSyncStatus
+  readonly pull: OneShotPullResult
+  readonly pushed: false
   readonly status: OneShotSyncStatus
 }
 
@@ -296,7 +309,7 @@ const canClassifyDisappearedRows = (options: OneShotPullOptions): boolean =>
   options.queryContract.highWatermark === null
 
 const annotateOneShotStart = (input: {
-  readonly operation: 'pull' | 'push' | 'sync'
+  readonly operation: 'pull' | 'push' | 'sync' | 'establish-from-notion'
   readonly rootId: RemoteObservationOptions['rootId']
   readonly dataSourceId?: RemoteObservationOptions['dataSourceId']
   readonly dryRun?: boolean
@@ -409,6 +422,7 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
       })
       const observation = yield* observeRemoteDataSource({
         ...options,
+        ...(options.dryRun === true ? { materializeBodies: false } : {}),
         startCursor: options.startCursor ?? resumeCursorForPull(options),
       })
       let appendedEvents = 0
@@ -441,6 +455,44 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
         [spanAttr.rowCount]: observation.query.rows,
       })
       return result
+    }),
+)
+
+/** Establish a local sync root from an existing Notion data source. This path is remote-to-local only and never scans local artifacts or executes remote writes. */
+export const establishFromNotion = Effect.fn('notion.datasource.sync.establishFromNotion')(
+  (
+    options: EstablishFromNotionOptions,
+  ): Effect.Effect<
+    EstablishFromNotionResult,
+    NotionGatewayError | BodySyncError | LocalStorageError,
+    NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
+  > =>
+    Effect.gen(function* () {
+      yield* annotateOneShotStart({
+        operation: 'establish-from-notion',
+        rootId: options.rootId,
+        dataSourceId: options.dataSourceId,
+        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+      })
+      const gateway = yield* NotionDataSourceGateway
+      yield* gateway.retrieveDataSource(options.dataSourceId)
+      const binding = initOneShotSync(options)
+      const pull = yield* pullOneShotSync(options)
+      const status = readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
+      yield* Effect.annotateCurrentSpan({
+        ...statusSpanAttributes(status),
+        [spanAttr.appendedEvents]: pull.appendedEvents,
+        [spanAttr.queryComplete]: pull.observation.query.complete,
+        [spanAttr.rowCount]: pull.observation.query.rows,
+      })
+      return {
+        mode: 'establish-from-notion',
+        remoteValidated: true,
+        binding,
+        pull,
+        pushed: false,
+        status,
+      }
     }),
 )
 

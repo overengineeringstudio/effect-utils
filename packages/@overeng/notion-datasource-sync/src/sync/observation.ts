@@ -562,10 +562,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               _tag: 'CapabilityPreflightChecked',
               ...eventBase({
                 rootId: options.rootId,
-                eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}:${observationPart}`,
+                eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}`,
                 family: 'CompatibilityChecked',
                 eventType: 'CapabilityPreflightChecked',
-                idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}:${observationPart}`,
+                idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}`,
                 surface: querySurfaceKey({
                   dataSourceId: options.dataSourceId,
                   queryContractHash: hashStoreBytes('capabilities'),

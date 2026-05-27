@@ -7,8 +7,8 @@ Follow-up production-readiness work is tracked in
 
 Start here:
 
-- [Getting Started](./getting-started.md): bind a data source, run pull/sync,
-  and inspect local state.
+- [Getting Started](./getting-started.md): establish a workspace with
+  `sync --from-notion`, run established sync, and inspect local state.
 - [CLI Reference](./cli.md): commands, flags, environment variables, and output
   shape.
 - [Sync Safety](./sync-safety.md): event log, outbox, fail-closed guards, and

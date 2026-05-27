@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CliArgumentError,
   parseCliCommand,
+  parseCliContext,
   runCliCommand,
   runCliCommandWithRuntime,
   runCliMain,
@@ -24,6 +25,7 @@ import {
   LocalWorkspacePort,
   NotionDataSourceGateway,
   PageBodySyncPort,
+  type LocalWorkspacePortShape,
   type NotionDataSourceGatewayShape,
 } from '../core/ports.ts'
 import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
@@ -444,6 +446,65 @@ describe('CLI command surface', () => {
     })
   })
 
+  it('parses sync-first establishment and established workspace forms', () => {
+    expect(
+      parseCliCommand([
+        'sync',
+        '--from-notion',
+        '0123456789abcdef0123456789abcdef',
+        '/tmp/notion-workspace',
+      ]),
+    ).toEqual({
+      _tag: 'sync-from-notion',
+      dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
+      workspaceRoot: '/tmp/notion-workspace',
+      dryRun: false,
+    })
+    expect(parseCliCommand(['sync', '/tmp/notion-workspace', '--dry-run'])).toEqual({
+      _tag: 'sync',
+      workspaceRoot: '/tmp/notion-workspace',
+      dryRun: true,
+    })
+    expect(() => parseCliCommand(['sync', '--from-notion'])).toThrow(CliArgumentError)
+    expect(() => parseCliCommand(['sync', '/tmp/a', '/tmp/b'])).toThrow(CliArgumentError)
+  })
+
+  it('discovers established workspace config for sync and suggests establishment when missing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-config-'))
+    try {
+      expect(() => parseCliContext(['sync', dir])).toThrow('Missing datasource-sync workspace config')
+      await mkdir(join(dir, '.notion-datasource-sync'), { recursive: true })
+      await writeFile(join(dir, '.notion-datasource-sync', 'store.sqlite'), '', 'utf8')
+      await writeFile(
+        join(dir, '.notion-datasource-sync', 'config.json'),
+        `${JSON.stringify(
+          {
+            version: 1,
+            rootId: 'data-source:data-source-1',
+            dataSourceId: testIds.dataSourceId,
+            storePath: join(dir, '.notion-datasource-sync', 'store.sqlite'),
+            workspaceRoot: dir,
+            notionApiVersion: '2026-03-11',
+            bodyMaterialization: 'enabled',
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      )
+      const ctx = parseCliContext(['sync', dir])
+      try {
+        expect(ctx.rootId).toBe('data-source:data-source-1')
+        expect(ctx.dataSourceId).toBe(testIds.dataSourceId)
+        expect(ctx.workspaceRoot).toBe(dir)
+      } finally {
+        ctx.store.close()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it.each([
     { command: { _tag: 'migrate-store' as const, dryRun: true }, expected: 'migrate-store' },
     { command: { _tag: 'migrate-schema' as const, dryRun: true }, expected: 'migrate-schema' },
@@ -674,6 +735,180 @@ describe('CLI command surface', () => {
     } finally {
       storeFixture.cleanup()
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('establishes from Notion as a remote-only first run and reruns idempotently', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ctx = context({ store: storeFixture.store, clock })
+    const ports = makeHarnessPorts({ bodyPages: [bodyPage()] })
+    const localWrites = {
+      scans: 0,
+      materializations: 0,
+    }
+    const workspace: LocalWorkspacePortShape = {
+      scan: (root) => {
+        localWrites.scans += 1
+        return ports.workspace.scan(root)
+      },
+      claimPath: ports.workspace.claimPath,
+      materialize: (plan) => {
+        localWrites.materializations += 1
+        return ports.workspace.materialize(plan)
+      },
+    }
+
+    try {
+      const first = await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'sync-from-notion',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot,
+          },
+          ctx,
+        ),
+        { gateway: gateway.gateway, body: ports.body, workspace },
+      )
+      const afterFirstEvents = storeFixture.store.replay(testIds.rootId).length
+      const second = await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'sync-from-notion',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot,
+          },
+          ctx,
+        ),
+        { gateway: gateway.gateway, body: ports.body, workspace },
+      )
+
+      expect(first).toMatchObject({
+        command: 'sync-from-notion',
+        result: {
+          mode: 'establish-from-notion',
+          pushed: false,
+          pull: { appendedEvents: expect.any(Number) },
+        },
+      })
+      expect(
+        (first.result as { readonly pull: { readonly appendedEvents: number } }).pull
+          .appendedEvents,
+      ).toBeGreaterThan(0)
+      expect(second.result).toMatchObject({ pushed: false, pull: { appendedEvents: 0 } })
+      expect(storeFixture.store.replay(testIds.rootId)).toHaveLength(afterFirstEvents)
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toHaveLength(0)
+      expect(localWrites.scans).toBe(0)
+      expect(localWrites.materializations).toBe(2)
+      expect(gateway.ledger.attemptedPatchPageProperties).toHaveLength(0)
+      expect(gateway.ledger.attemptedPatchDataSourceSchemas).toHaveLength(0)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('dry-runs establishment without durable events or body materialization', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ctx = context({ store: storeFixture.store, clock, materializeBodies: false })
+    const ports = makeHarnessPorts({ bodyPages: [bodyPage()] })
+    let materializations = 0
+    const workspace: LocalWorkspacePortShape = {
+      scan: ports.workspace.scan,
+      claimPath: ports.workspace.claimPath,
+      materialize: (plan) => {
+        materializations += 1
+        return ports.workspace.materialize(plan)
+      },
+    }
+
+    try {
+      const result = await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'sync-from-notion',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot,
+            dryRun: true,
+          },
+          ctx,
+        ),
+        { gateway: gateway.gateway, body: ports.body, workspace },
+      )
+
+      expect(result.result).toMatchObject({
+        pushed: false,
+        binding: { binding: undefined },
+        pull: { appendedEvents: 0 },
+      })
+      expect(storeFixture.store.replay(testIds.rootId)).toHaveLength(0)
+      expect(materializations).toBe(0)
+      expect(gateway.ledger.attemptedPatchPageProperties).toHaveLength(0)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('blocks establishment when body materialization would overwrite an unmanaged file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-establish-collision-'))
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      workspaceRoot: decode({ schema: AbsolutePath, value: dir }),
+      schemaProperties: [],
+    })
+    const expectedPath = join(dir, `page-${testIds.pageId}--${testIds.pageId}.nmd`)
+    const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
+
+    try {
+      await writeFile(expectedPath, 'local unmanaged draft', 'utf8')
+      await expect(
+        Effect.runPromise(
+          runCliCommandWithRuntime({
+            command: {
+              _tag: 'sync-from-notion',
+              dataSourceId: testIds.dataSourceId,
+              workspaceRoot: ctx.workspaceRoot,
+            },
+            context: ctx,
+            options: { gatewayClient: makeInjectedNotionClient(calls), body },
+          }),
+        ),
+      ).rejects.toThrow('Workspace path collision has no sidecar or claim identity')
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toHaveLength(0)
+    } finally {
+      storeFixture.cleanup()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails closed when a discovered workspace binding does not match the config context', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ctx = context({ store: storeFixture.store, clock })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.otherDataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await expect(
+        runWithPorts(runCliCommand({ _tag: 'sync', workspaceRoot }, ctx), {
+          gateway: gateway.gateway,
+        }),
+      ).rejects.toThrow('Workspace config/store binding mismatch')
+    } finally {
+      storeFixture.cleanup()
     }
   })
 

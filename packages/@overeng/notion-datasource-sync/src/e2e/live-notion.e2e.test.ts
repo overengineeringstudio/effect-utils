@@ -17,9 +17,13 @@ import {
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
 import {
+  AbsolutePath,
   CommandId,
   DataSourceId,
   Hash,
+  LocalWorkspacePort,
+  establishFromNotion,
+  makeFilesystemLocalWorkspacePort,
   makeNotionApiContract,
   makeNotionDataSourceGatewayFromClient,
   makeNotionDataSourceGatewayLayer,
@@ -35,7 +39,9 @@ import {
   PropertyId,
   PropertyName,
   SchemaPatchOperation,
+  SyncRootId,
   WorkspaceRelativePath,
+  openNotionSyncStore,
 } from '../mod.ts'
 import { makeFakeGatewayHarness, testIds } from '../testing/harness.ts'
 import {
@@ -131,6 +137,31 @@ const runLiveBody = <A, E>(
       ),
       Effect.provide(NotionMdGatewayLive.pipe(Layer.provide(liveLayer(env.token)))),
     ),
+  )
+}
+
+const runLiveAdoption = <A, E>(
+  env: { readonly token: string | undefined },
+  effect: Effect.Effect<
+    A,
+    E,
+    NotionDataSourceGateway | PageBodySyncPort | NotionMdGateway
+  >,
+) => {
+  if (env.token === undefined) {
+    throw new Error('live Notion adoption test requires a token after configuration validation')
+  }
+
+  const baseLayer = liveLayer(env.token)
+  const gatewayLayer = NotionDataSourceGatewayLive.pipe(Layer.provide(baseLayer))
+  const notionMdLayer = NotionMdGatewayLive.pipe(Layer.provide(baseLayer))
+  const bodyLayer = Layer.effect(
+    PageBodySyncPort,
+    NotionMdGateway.pipe(Effect.map((gateway) => makeNotionMdPageBodySyncPort({ gateway }))),
+  ).pipe(Layer.provide(notionMdLayer))
+
+  return Effect.runPromise(
+    effect.pipe(Effect.provide(Layer.mergeAll(baseLayer, gatewayLayer, notionMdLayer, bodyLayer))),
   )
 }
 
@@ -1011,6 +1042,106 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await provisioned.cleanup(recorder.current())
         }
       }, 120_000)
+
+      it('establishes an existing live data source into an empty local workspace', async () => {
+        if (processLiveConfig._tag !== 'configured') return
+
+        const env = liveNotionEnvFromProcessEnv()
+        const provisioned = await provisionLiveNotionDataSourceFixture({
+          env,
+          config: processLiveConfig,
+        })
+        const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
+        const workspaceRoot = decode(
+          AbsolutePath,
+          await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-adopt-')),
+        )
+        const rootId = decode(SyncRootId, `live-adopt:${provisioned.config.runId}`)
+        const dataSourceId = decode(DataSourceId, provisioned.config.dataSourceId)
+        const store = openNotionSyncStore({ path: join(workspaceRoot, 'store.sqlite') })
+        const queryContract = {
+          _tag: 'QueryContract' as const,
+          apiVersion: '2026-03-11' as const,
+          filter: null,
+          sorts: [],
+          pageSize: 25,
+          highWatermark: null,
+          membershipScope: 'all-data-source-rows' as const,
+        }
+        const provideWorkspace = <A, E, R>(effect: Effect.Effect<A, E, R | LocalWorkspacePort>) =>
+          effect.pipe(
+            Effect.provideService(
+              LocalWorkspacePort,
+              makeFilesystemLocalWorkspacePort({ root: workspaceRoot }),
+            ),
+          )
+
+        try {
+          const dryRun = await runLiveAdoption(
+            env,
+            provideWorkspace(
+              establishFromNotion({
+                store,
+                rootId,
+                dataSourceId,
+                workspaceRoot,
+                queryContract,
+                schemaProperties: [],
+                materializeBodies: false,
+                dryRun: true,
+              }),
+            ),
+          )
+          expect(dryRun.pushed).toBe(false)
+          expect(dryRun.pull.appendedEvents).toBe(0)
+          expect(store.replay(rootId)).toHaveLength(0)
+
+          const applied = await runLiveAdoption(
+            env,
+            provideWorkspace(
+              establishFromNotion({
+                store,
+                rootId,
+                dataSourceId,
+                workspaceRoot,
+                queryContract,
+                schemaProperties: [],
+                materializeBodies: false,
+              }),
+            ),
+          )
+          const rerun = await runLiveAdoption(
+            env,
+            provideWorkspace(
+              establishFromNotion({
+                store,
+                rootId,
+                dataSourceId,
+                workspaceRoot,
+                queryContract,
+                schemaProperties: [],
+                materializeBodies: false,
+              }),
+            ),
+          )
+
+          expect(applied.pushed).toBe(false)
+          expect(applied.pull.appendedEvents).toBeGreaterThan(0)
+          expect(rerun.pushed).toBe(false)
+          expect(rerun.pull.appendedEvents).toBe(0)
+          await recorder.record({
+            phase: 'verify',
+            objectType: 'data_source',
+            objectId: provisioned.config.dataSourceId,
+            cleanupState: 'verified',
+            purpose: 'live-sync-from-notion-adoption',
+          })
+        } finally {
+          store.close()
+          await rm(workspaceRoot, { recursive: true, force: true })
+          await provisioned.cleanup(recorder.current())
+        }
+      }, 180_000)
 
       it('pushes a NotionMD body through the datasource-sync body adapter against live Notion', async () => {
         if (processLiveConfig._tag !== 'configured') return

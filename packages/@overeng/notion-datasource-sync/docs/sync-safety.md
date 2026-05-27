@@ -19,6 +19,25 @@ surface and refuses writes when the required evidence is missing.
 SQLite projections are derived state. The event log is the local source of truth
 for accepted intent, conflicts, tombstones, command attempts, and settlements.
 
+## Establishment
+
+The normal onboarding command is:
+
+```sh
+notion-datasource-sync sync --from-notion <data-source-id-or-url> <workspace-root>
+```
+
+Establishment has a distinct execution mode. It validates the existing Notion
+data source, records the local binding, observes remote state, and materializes
+remote bodies when enabled. It does not scan local artifacts, plan local writes,
+enqueue outbox commands, execute remote writes, or rebind an already configured
+workspace to a different data source.
+
+`sync --from-notion ... --dry-run` is no-write: no config file, store events,
+sidecars, body files, outbox commands, or Notion mutations. Established
+`sync <workspace-root> --dry-run` suppresses event/outbox/remote writes and body
+materialization while still using the existing store for read-only planning.
+
 ## Fail-Closed Boundaries
 
 The package blocks instead of guessing when it sees:

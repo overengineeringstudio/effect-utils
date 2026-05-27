@@ -18,56 +18,62 @@ that should be observed. If a relation, rollup, person, or page property points
 outside the integration's permissions, sync treats that surface as incomplete or
 ambiguous.
 
-## Bind A Data Source
+## Establish A Workspace
 
-Choose a stable local root id for the binding. It is a local partition key, not a
-Notion id.
+Start from an existing Notion data source:
 
 ```sh
-notion-datasource-sync init \
-  --store .notion-datasource-sync/store.sqlite \
-  --root-id workspace-main \
-  --data-source-id 00000000000040008000000000000001 \
-  --workspace-root "$PWD/notion-workspace"
+notion-datasource-sync sync --from-notion \
+  00000000000040008000000000000001 \
+  "$PWD/notion-workspace"
 ```
 
-`init` records the local binding. It does not make schema or row writes.
+This creates `.notion-datasource-sync/config.json` and
+`.notion-datasource-sync/store.sqlite` under the workspace root, validates the
+Notion data source, records the local binding, pulls remote schema/metadata/rows,
+and materializes row body artifacts when body materialization is enabled.
 
-## Observe Remote State
+First establishment is remote-to-local only. It does not scan local files, plan
+local writes, enqueue outbox commands, or mutate Notion.
+
+Preview establishment without writing config, store events, sidecars, body
+files, or Notion state:
 
 ```sh
-notion-datasource-sync pull \
-  --store .notion-datasource-sync/store.sqlite \
-  --root-id workspace-main \
-  --data-source-id 00000000000040008000000000000001 \
-  --workspace-root "$PWD/notion-workspace"
+notion-datasource-sync sync --from-notion \
+  00000000000040008000000000000001 \
+  "$PWD/notion-workspace" \
+  --dry-run
 ```
 
-Pull observes the data source and rows through the configured query contract,
-records complete observations as events, updates projections, and materializes
-local artifacts when enabled.
-
-Use `status` or `doctor` to inspect the store without planning remote writes:
+Use `--no-materialize-bodies` when you want schema/metadata/row adoption without
+local body files:
 
 ```sh
-notion-datasource-sync status --store .notion-datasource-sync/store.sqlite --root-id workspace-main --data-source-id 00000000000040008000000000000001 --workspace-root "$PWD/notion-workspace"
-notion-datasource-sync doctor --store .notion-datasource-sync/store.sqlite --root-id workspace-main --data-source-id 00000000000040008000000000000001 --workspace-root "$PWD/notion-workspace"
+notion-datasource-sync sync --from-notion 00000000000040008000000000000001 "$PWD/notion-workspace" --no-materialize-bodies
 ```
 
 ## Reconcile Local Changes
 
 ```sh
-notion-datasource-sync sync \
-  --store .notion-datasource-sync/store.sqlite \
-  --root-id workspace-main \
-  --data-source-id 00000000000040008000000000000001 \
-  --workspace-root "$PWD/notion-workspace"
+notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
-`sync` observes remote state, scans local artifacts, accepts safe local intents,
-enqueues remote commands, executes bounded outbox steps, and verifies settlement.
-Use `--dry-run` with `push`, `sync`, conflict resolution, `forget`, and
-`restore` when you want to inspect planned local effects first.
+Established `sync` reads the workspace config, observes remote state, scans local
+artifacts, accepts safe local intents, enqueues remote commands, executes bounded
+outbox steps, and verifies settlement. Use `sync "$PWD/notion-workspace"
+--dry-run` to observe and plan without appending events, executing the outbox, or
+materializing bodies.
+
+Use `status` or `doctor` to inspect state:
+
+```sh
+notion-datasource-sync status "$PWD/notion-workspace"
+notion-datasource-sync doctor --store "$PWD/notion-workspace/.notion-datasource-sync/store.sqlite" --root-id data-source:00000000000040008000000000000001 --data-source-id 00000000000040008000000000000001 --workspace-root "$PWD/notion-workspace"
+```
+
+`pull`, `push`, and `init` remain available as advanced/CI/debug commands when a
+workflow needs explicit phase control.
 
 ## Query Contracts
 
@@ -90,7 +96,7 @@ an incomplete or incompatible query.
 
 ## Body Sync
 
-The library exposes a real NotionMD-backed `PageBodySyncPort` for callers that
-wire the body adapter explicitly. The standalone CLI defaults to an unsupported
-body adapter and fails closed on body writes unless a runtime layer injects a
-body port. Property and schema-only paths can still run without body writes.
+The live CLI wires the NotionMD-backed `PageBodySyncPort` when a Notion token is
+available. Library callers can also inject the body adapter explicitly. Without
+a token or injected body port, body sync fails closed rather than inventing a
+second body implementation.

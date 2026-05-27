@@ -29,11 +29,41 @@ Notion often returns similar failures for missing objects and objects outside th
 integration's permissions. Share the data source and relevant parent pages with
 the integration. For relation and rollup tests, also share the related source.
 
+## Workspace Config Missing
+
+Symptom:
+
+```json
+{
+  "_tag": "CliErrorEnvelope",
+  "error": {
+    "_tag": "CliArgumentError",
+    "message": "Missing datasource-sync workspace config"
+  }
+}
+```
+
+Fix:
+
+```sh
+notion-datasource-sync sync --from-notion <data-source-id-or-url> "$PWD/notion-workspace"
+```
+
+`sync <workspace-root>` only works after establishment has written
+`.notion-datasource-sync/config.json`.
+
+## Workspace Binding Mismatch
+
+If the config points at one data source but the SQLite event log is bound to a
+different data source or workspace path, `sync <workspace-root>` fails closed.
+Do not edit the store manually. Check that the workspace was not copied from
+another project; establish a fresh workspace or use explicit advanced flags to
+inspect the old store.
+
 ## Body Sync Fails In The CLI
 
-The standalone CLI defaults to an unsupported body adapter. This is intentional:
-body writes need the NotionMD adapter layer so datasource sync does not invent a
-second body-sync implementation.
+The live CLI needs a Notion token so it can wire the NotionMD adapter layer.
+Without a token or injected `PageBodySyncPort`, body sync fails closed.
 
 Library callers can inject the NotionMD-backed `PageBodySyncPort`. For CLI-only
 work, use property/schema/status flows or run tests that explicitly provide the
