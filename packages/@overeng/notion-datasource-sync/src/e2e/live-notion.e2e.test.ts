@@ -2085,7 +2085,20 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 parent: { type: 'data_source_id', data_source_id: sourceDataSourceId },
                 properties: {
                   Name: title('High cardinality relation source'),
-                  Related: { relation: relatedPages.map((page) => ({ id: page.id })) },
+                  Related: {
+                    relation: relatedPages.slice(0, 29).map((page) => ({ id: page.id })),
+                  },
+                },
+              })
+              const observedRelationTarget = relatedPages.at(29) ?? relatedPages.at(0)
+              if (observedRelationTarget === undefined) {
+                return yield* Effect.fail(new Error('relation fixture created no target pages'))
+              }
+              const observerPage = yield* NotionPages.create({
+                parent: { type: 'data_source_id', data_source_id: sourceDataSourceId },
+                properties: {
+                  Name: title('High cardinality relation observer'),
+                  Related: { relation: [{ id: observedRelationTarget.id }] },
                 },
               })
 
@@ -2097,6 +2110,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 sourceDataSourceId,
                 sourceDataSource,
                 sourcePage,
+                observerPage,
               }
             }),
           )
@@ -2149,7 +2163,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           )
 
           expect(pages.length).toBeGreaterThan(1)
-          expect(pages.reduce((count, page) => count + page.items.length, 0)).toBe(30)
+          expect(pages.reduce((count, page) => count + page.items.length, 0)).toBe(29)
           expect(pages.at(0)?.hasMore).toBe(true)
           expect(pages.at(-1)?.hasMore).toBe(false)
 
@@ -2168,7 +2182,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           if (removedRelationPageId === undefined) {
             throw new Error('live relation CDC fixture did not create enough related pages')
           }
-          const remainingRelationPageIds = fixture.relatedPages
+          const sourceInitialRelationPageIds = fixture.relatedPages
             .map((page) => page.id)
             .filter((pageId) => pageId !== removedRelationPageId)
 
@@ -2207,14 +2221,54 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               expect(relationCell.availability).toBe('complete')
               expect(JSON.parse(relationCell.value_json)).toEqual({
                 _tag: 'relation',
-                pageIds: fixture.relatedPages.map((page) => page.id),
+                pageIds: sourceInitialRelationPageIds,
               })
+            } finally {
+              db.close()
+            }
+          }
+
+          {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              const relationCell = db
+                .prepare(
+                  `SELECT availability, value_json
+                   FROM notion_cells
+                   WHERE page_id = ? AND property_id = ?`,
+                )
+                .get(sourcePageId, relationSchemaProperty.propertyId) as
+                | { readonly availability: string; readonly value_json: string }
+                | undefined
+              if (relationCell === undefined) {
+                throw new Error('live relation addition CDC did not retain relation cell')
+              }
+              expect(relationCell.availability).toBe('complete')
+              expect(JSON.parse(relationCell.value_json)).toEqual({
+                _tag: 'relation',
+                pageIds: sourceInitialRelationPageIds,
+              })
+              const observedTarget = db
+                .prepare(
+                  `SELECT target_page_id
+                   FROM notion_relation_targets
+                   WHERE data_source_id = ? AND property_id = ? AND target_page_id = ?`,
+                )
+                .get(
+                  fixture.sourceDataSourceId,
+                  relationSchemaProperty.propertyId,
+                  removedRelationPageId,
+                )
+              expect(observedTarget).toMatchObject({ target_page_id: removedRelationPageId })
               db.prepare(
                 `UPDATE notion_cells
                  SET value_json = ?
                  WHERE page_id = ? AND property_id = ?`,
               ).run(
-                JSON.stringify({ _tag: 'relation', pageIds: remainingRelationPageIds }),
+                JSON.stringify({
+                  _tag: 'relation',
+                  pageIds: [...sourceInitialRelationPageIds, removedRelationPageId],
+                }),
                 sourcePageId,
                 relationSchemaProperty.propertyId,
               )
@@ -2222,86 +2276,65 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               db.close()
             }
           }
-
           await runLiveCliCommand({
             env,
             argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],
           })
-          const pagesAfter = await Effect.runPromise(
-            gateway
-              .retrievePageProperty({
-                _tag: 'RetrievePagePropertyInput',
-                pageId: decode(PageId, sourcePageId),
-                propertyId: relatedPropertyId,
-                startCursor: null,
-              })
-              .pipe(
-                Stream.runCollect,
-                Effect.map((chunk) => Array.from(chunk)),
-              ),
-          )
-          const relatedAfter = pagesAfter
-            .flatMap((page) => page.items)
-            .map((item) => JSON.parse(item.valueJson ?? '{}') as { readonly id?: string })
-            .map((item) => item.id)
-            .filter((id): id is string => id !== undefined)
-          expect(new Set(relatedAfter)).toEqual(new Set(remainingRelationPageIds))
-          expect(relatedAfter).not.toContain(removedRelationPageId)
+          const expectedRelationIds = new Set(fixture.relatedPages.map((page) => page.id))
           for (let attempt = 0; attempt < 4; attempt += 1) {
-            const db = new DatabaseSync(replicaPath, { readOnly: true })
-            try {
-              const status = db
-                .prepare(
-                  `SELECT status, unsupported_reason
-                   FROM notion_cell_changes
-                   WHERE page_id = ? AND property_id = ?`,
+            const pagesAfterAddition = await Effect.runPromise(
+              gateway
+                .retrievePageProperty({
+                  _tag: 'RetrievePagePropertyInput',
+                  pageId: decode(PageId, sourcePageId),
+                  propertyId: relatedPropertyId,
+                  startCursor: null,
+                })
+                .pipe(
+                  Stream.runCollect,
+                  Effect.map((chunk) => Array.from(chunk)),
+                ),
+            )
+            const relatedAfterAddition = pagesAfterAddition
+              .flatMap((page) => page.items)
+              .map((item) => JSON.parse(item.valueJson ?? '{}') as { readonly id?: string })
+              .map((item) => item.id)
+              .filter((id): id is string => id !== undefined)
+            if (relatedAfterAddition.length === expectedRelationIds.size) {
+              expect(new Set(relatedAfterAddition)).toEqual(expectedRelationIds)
+              break
+            }
+            if (attempt === 3) {
+              const db = new DatabaseSync(replicaPath, { readOnly: true })
+              try {
+                const relationChanges = db
+                  .prepare(
+                    `SELECT status, unsupported_reason
+                     FROM notion_cell_changes
+                     WHERE page_id = ? AND property_id = ?
+                     ORDER BY created_at`,
+                  )
+                  .all(sourcePageId, relationSchemaProperty.propertyId)
+                throw new Error(
+                  `live relation addition did not reach Notion: ${liveDebugJson({
+                    relatedAfterAddition,
+                    relationChanges,
+                  })}`,
                 )
-                .get(sourcePageId, relationSchemaProperty.propertyId) as
-                | { readonly status: string; readonly unsupported_reason: string | null }
-                | undefined
-              if (status?.status === 'applied') {
-                expect(status).toMatchObject({ status: 'applied', unsupported_reason: null })
-                break
+              } finally {
+                db.close()
               }
-              if (attempt === 3) {
-                expect(status).toMatchObject({ status: 'applied', unsupported_reason: null })
-              }
-            } finally {
-              db.close()
             }
             await runLiveCliCommand({
               env,
               argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],
             })
           }
-          await runLiveCliCommand({
-            env,
-            argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],
-          })
-          const pagesAfterRerun = await Effect.runPromise(
-            gateway
-              .retrievePageProperty({
-                _tag: 'RetrievePagePropertyInput',
-                pageId: decode(PageId, sourcePageId),
-                propertyId: relatedPropertyId,
-                startCursor: null,
-              })
-              .pipe(
-                Stream.runCollect,
-                Effect.map((chunk) => Array.from(chunk)),
-              ),
-          )
-          const relatedAfterRerun = pagesAfterRerun
-            .flatMap((page) => page.items)
-            .map((item) => JSON.parse(item.valueJson ?? '{}') as { readonly id?: string })
-            .map((item) => item.id)
-            .filter((id): id is string => id !== undefined)
-          expect(new Set(relatedAfterRerun)).toEqual(new Set(remainingRelationPageIds))
           await recorder.record({
             phase: 'verify',
             objectId: fixture.sourcePage.id,
             objectType: 'page',
-            purpose: 'live-page-property-pagination-relation-items-and-cdc-write',
+            purpose: 'live-page-property-pagination-relation-items-add-cdc-write',
             cleanupState: 'verified',
           })
         } finally {

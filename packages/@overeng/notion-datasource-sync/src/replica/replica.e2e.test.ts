@@ -721,7 +721,7 @@ describe('user-facing SQLite replica', () => {
                 testIds.pageId,
                 testIds.propertyB,
               ),
-          ).toThrow(/may only remove/u)
+          ).toThrow(/observed accessible relation targets/u)
           completeDb
             .prepare(
               `INSERT INTO notion_cell_changes (
@@ -745,7 +745,7 @@ describe('user-facing SQLite replica', () => {
         expect(cellChangeFor(completeReplicaPath, 'relation-add')).toMatchObject({
           status: 'unsupported',
           unsupported_reason:
-            'Adding new relation targets remains fail-closed until target accessibility is modeled; safe relation writes may remove or reorder fully observed targets only.',
+            'Relation additions require each new target to have been observed through the same relation property.',
         })
         const capDb = new DatabaseSync(completeReplicaPath)
         try {
@@ -778,6 +778,124 @@ describe('user-facing SQLite replica', () => {
       } finally {
         completeStoreFixture.cleanup()
       }
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('promotes relation additions for targets observed through the same relation property', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [
+        propertyPage('Relation row'),
+        relationPropertyPage({ pageIds: ['related-1', 'related-2'] }),
+      ],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithRelation,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const desiredRelationPageIds = ['related-1', 'related-2', 'new-related']
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const cell = db
+          .prepare(
+            `SELECT observed_event_id, updated_at
+             FROM notion_cells
+             WHERE page_id = ? AND property_id = ?`,
+          )
+          .get(testIds.pageId, testIds.propertyB) as
+          | { readonly observed_event_id: string; readonly updated_at: string }
+          | undefined
+        if (cell === undefined) throw new Error('expected relation cell')
+        db.prepare(
+          `INSERT INTO notion_relation_targets (
+             data_source_id, property_id, target_page_id, observed_from_page_id,
+             observed_event_id, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(
+          testIds.dataSourceId,
+          testIds.propertyB,
+          'new-related',
+          testIds.pageId,
+          cell.observed_event_id,
+          cell.updated_at,
+        )
+        db.prepare(
+          `UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`,
+        ).run(
+          JSON.stringify({ _tag: 'relation', pageIds: desiredRelationPageIds }),
+          testIds.pageId,
+          testIds.propertyB,
+        )
+      } finally {
+        db.close()
+      }
+
+      const changes = readPendingReplicaChanges(replicaPath)
+      const intents = replicaChangesToPlannerIntents({ changes, replicaPath })
+      expect(intents).toEqual([
+        expect.objectContaining({
+          _tag: 'property-edit',
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyB,
+        }),
+      ])
+
+      const applied = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithRelation,
+          localIntents: intents,
+          maxExecutorSteps: 4,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      settleReplicaChangesAfterSync({
+        changes,
+        replicaPath,
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        decisions: applied.push.plan.decisions,
+      })
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
+      expect(gateway.ledger.successfulPatchPageProperties[0]?.propertyPatch).toEqual({
+        [testIds.propertyB]: { _tag: 'relation', pageIds: desiredRelationPageIds },
+      })
+      expect(cellChangeFor(replicaPath, changes[0]?.changeId ?? '')).toMatchObject({
+        status: 'applied',
+      })
     } finally {
       storeFixture.cleanup()
     }

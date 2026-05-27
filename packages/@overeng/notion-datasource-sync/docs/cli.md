@@ -151,6 +151,7 @@ Stable generic tables:
 | `notion_properties`           | read          | Property ID, display name, type, config, write capability                                                   |
 | `notion_rows`                 | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents                       |
 | `notion_cells`                | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents        |
+| `notion_relation_targets`     | read          | Relation target IDs observed through complete page-property pagination for guarded relation additions        |
 | `notion_bodies`               | read          | Body path, body hashes, materialization/adapter state                                                       |
 | `notion_cell_changes`         | write         | Typed CDC log for local cell edits queued for guarded sync                                                  |
 | `notion_row_changes`          | write         | Typed CDC log for local row lifecycle/create edits queued for guarded sync                                  |
@@ -256,6 +257,13 @@ for `files` properties are fail-closed until file-upload identity and attachment
 lifecycle are modeled. Direct `people` cell edits are also fail-closed until
 deterministic accessible user identities and full paginated base values are
 modeled. Notion views are a separate future read/write surface.
+
+Relation cell edits are replacement-shaped Notion writes. They are accepted only
+when the base relation value was fully paginated, the desired relation has at
+most 100 page IDs, and every added page ID appears in `notion_relation_targets`
+for the same data source and property. This lets local SQL add back or add
+already-observed accessible targets without silently dropping unknown or
+unshared pages.
 
 Direct `notion_rows.in_trash` edits also use final-state CDC semantics. For
 example, toggling `0 -> 1 -> 0` before sync cancels the pending direct archive

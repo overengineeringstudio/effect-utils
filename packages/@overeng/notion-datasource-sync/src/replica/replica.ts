@@ -323,6 +323,16 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       PRIMARY KEY (page_id, property_id)
     );
 
+    CREATE TABLE IF NOT EXISTS notion_relation_targets (
+      data_source_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      target_page_id TEXT NOT NULL,
+      observed_from_page_id TEXT NOT NULL,
+      observed_event_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (data_source_id, property_id, target_page_id)
+    );
+
     CREATE TABLE IF NOT EXISTS notion_bodies (
       page_id TEXT PRIMARY KEY,
       path TEXT NOT NULL,
@@ -691,6 +701,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     CREATE INDEX IF NOT EXISTS notion_cells_data_source_property_idx
       ON notion_cells(data_source_id, property_id);
     CREATE INDEX IF NOT EXISTS notion_cells_text_idx ON notion_cells(value_text);
+    CREATE INDEX IF NOT EXISTS notion_relation_targets_property_idx
+      ON notion_relation_targets(data_source_id, property_id, target_page_id);
     CREATE INDEX IF NOT EXISTS notion_cell_changes_pending_idx
       ON notion_cell_changes(status, data_source_id, page_id, property_id);
     CREATE INDEX IF NOT EXISTS notion_row_changes_pending_idx
@@ -787,10 +799,17 @@ const createReplicaSchema = (db: DatabaseSync): void => {
             FROM json_each(OLD.value_json, '$.pageIds') AS observed
             WHERE observed.value = desired.value
           )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM notion_relation_targets rt
+            WHERE rt.data_source_id = OLD.data_source_id
+              AND rt.property_id = OLD.property_id
+              AND rt.target_page_id = desired.value
+          )
         )
       )
     BEGIN
-      SELECT RAISE(ABORT, 'relation value_json direct edits require a complete observed base and may only remove/reorder existing targets');
+      SELECT RAISE(ABORT, 'relation value_json direct edits require a complete observed base and observed accessible relation targets');
     END;
 
     CREATE TRIGGER IF NOT EXISTS notion_cells_direct_value_update_intent
@@ -1503,6 +1522,7 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
     DELETE FROM notion_properties;
     DELETE FROM notion_rows;
     DELETE FROM notion_cells;
+    DELETE FROM notion_relation_targets;
     DELETE FROM notion_bodies;
     DELETE FROM notion_conflicts;
     DELETE FROM notion_sync_status;
@@ -2040,6 +2060,38 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readString({ row, key: 'observed_event_id' }),
             readString({ row, key: 'updated_at' }),
           )
+        if (valueJson !== undefined && property !== undefined) {
+          const propertyType = readString({ row: property, key: 'property_type' })
+          if (
+            propertyType === 'relation' &&
+            readString({ row, key: 'availability' }) === 'complete'
+          ) {
+            const parsed = JSON.parse(valueJson) as {
+              readonly _tag?: unknown
+              readonly pageIds?: unknown
+            }
+            if (parsed._tag === 'relation' && Array.isArray(parsed.pageIds) === true) {
+              for (const targetPageId of parsed.pageIds) {
+                if (typeof targetPageId !== 'string') continue
+                replicaDb
+                  .prepare(
+                    `INSERT OR IGNORE INTO notion_relation_targets (
+                       data_source_id, property_id, target_page_id, observed_from_page_id,
+                       observed_event_id, updated_at
+                     ) VALUES (?, ?, ?, ?, ?, ?)`,
+                  )
+                  .run(
+                    dataSourceId,
+                    propertyId,
+                    targetPageId,
+                    pageId,
+                    readString({ row, key: 'observed_event_id' }),
+                    readString({ row, key: 'updated_at' }),
+                  )
+              }
+            }
+          }
+        }
       }
 
       for (const row of syncDb
@@ -3918,6 +3970,7 @@ export const replicaChangesToPlannerIntents = ({
             })
             continue
           }
+          const relationPropertyId = change.propertyId
           if (value.pageIds.length > 100) {
             markChange({
               replicaPath,
@@ -3955,15 +4008,28 @@ export const replicaChangesToPlannerIntents = ({
             })
             continue
           }
-          const basePageIds = new Set(baseValue.pageIds)
-          if (value.pageIds.some((pageIdValue) => basePageIds.has(pageIdValue) === false)) {
+          const addedPageIds = value.pageIds.filter(
+            (pageIdValue) => baseValue.pageIds.includes(pageIdValue) === false,
+          )
+          const inaccessibleTarget = addedPageIds.find((pageIdValue) => {
+            const target = db
+              .prepare(
+                `SELECT 1
+                 FROM notion_relation_targets
+                 WHERE data_source_id = ? AND property_id = ? AND target_page_id = ?
+                 LIMIT 1`,
+              )
+              .get(change.dataSourceId, relationPropertyId, pageIdValue)
+            return target === undefined
+          })
+          if (inaccessibleTarget !== undefined) {
             markChange({
               replicaPath,
               dryRun,
               changeId: change.changeId,
               status: 'unsupported',
               reason:
-                'Adding new relation targets remains fail-closed until target accessibility is modeled; safe relation writes may remove or reorder fully observed targets only.',
+                'Relation additions require each new target to have been observed through the same relation property.',
             })
             continue
           }

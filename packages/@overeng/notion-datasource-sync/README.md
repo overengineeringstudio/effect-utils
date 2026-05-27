@@ -66,9 +66,12 @@ metadata CDC can patch title/description with post-write metadata hash
 verification. External URL file attachments are supported through explicit file
 staging for empty writable `files` properties. `notion_views` is a read-only
 inventory of Notion UI views and is separate from generated local SQL views.
-Public schema CDC, local file uploads/file bytes, Notion view writes, and
-destructive schema migrations remain explicit fail-closed surfaces until their
-verified post-write reconciliation is modeled.
+Relation writes may remove, reorder, or add targets only from complete
+paginated bases; added targets must already appear in the
+`notion_relation_targets` accessibility projection for the same relation
+property. Public schema CDC, local file uploads/file bytes, people writes,
+Notion view writes, and destructive schema migrations remain explicit
+fail-closed surfaces until their verified post-write reconciliation is modeled.
 
 ## CLI Shape
 
