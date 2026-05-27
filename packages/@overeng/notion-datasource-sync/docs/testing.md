@@ -4,13 +4,13 @@
 that proves the behavior, then add live tests only for Notion semantics that fake
 services cannot prove.
 
-| Layer       | Command                                                                                                                                    | Network | Purpose                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------- | ---------------------------------------- |
-| Unit        | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/core/contracts.unit.test.ts --config vitest.config.ts`       | no      | schemas, contracts, hashes, guards       |
-| Fake E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/fake-service.e2e.test.ts --config vitest.config.ts`      | no      | planner/store/outbox behavior            |
-| Body E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/body-adapter.e2e.test.ts --config vitest.config.ts`      | no      | NotionMD adapter boundary                |
-| Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`            | no      | watch loop, restart, lease, backpressure |
-| Live Notion | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`       | yes     | real Notion API semantics                |
+| Layer       | Command                                                                                                                               | Network | Purpose                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------- |
+| Unit        | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/core/contracts.unit.test.ts --config vitest.config.ts`  | no      | schemas, contracts, hashes, guards       |
+| Fake E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/fake-service.e2e.test.ts --config vitest.config.ts` | no      | planner/store/outbox behavior            |
+| Body E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/body-adapter.e2e.test.ts --config vitest.config.ts` | no      | NotionMD adapter boundary                |
+| Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`       | no      | watch loop, restart, lease, backpressure |
+| Live Notion | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`  | yes     | real Notion API semantics                |
 
 Run package TypeScript after code changes:
 
@@ -23,7 +23,7 @@ pnpm --dir packages/@overeng/notion-datasource-sync exec tsc -p tsconfig.json --
 Live tests are credential-gated:
 
 ```sh
-export NOTION_API_TOKEN="secret_..."
+export NOTION_API_TOKEN="<notion-integration-token>"
 export NOTION_DATASOURCE_SYNC_LIVE=1
 export NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID=<dedicated-scratch-parent-page-id>
 export NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID=<visible-ledger-page-id>
@@ -31,6 +31,17 @@ export NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID=<visible-ledger-page-id>
 CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
   src/e2e/live-notion.e2e.test.ts --config vitest.config.ts
 ```
+
+The repo task used by CI is:
+
+```sh
+dt test:notion-integration:notion-datasource-sync
+```
+
+That task skips when `NOTION_API_TOKEN` is absent. It uses
+`NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID` when set and otherwise falls back to
+`NOTION_TEST_PARENT_PAGE_ID`, then opts into the live suite with
+`NOTION_DATASOURCE_SYNC_LIVE=1`.
 
 The parent page must be a dedicated scratch page shared with the integration.
 Tests create isolated temporary data sources and rows under that parent, record
@@ -47,7 +58,7 @@ The durable showcase is documented in
 [`../demo/README.md`](../demo/README.md).
 
 ```sh
-export NOTION_API_TOKEN="secret_..."
+export NOTION_API_TOKEN="<notion-integration-token>"
 export NOTION_DATASOURCE_SYNC_LIVE=1
 export NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID=<demo-page-id>
 export NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID=<demo-page-id>
@@ -60,6 +71,11 @@ CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
 The demo refreshes one durable Notion page, archives stale demo data-source
 blocks, creates multiple current inline data sources with different schemas, and
 includes a 500-row activity source for high-cardinality query pagination.
+
+CI does not run the demo on ordinary PR/push runs. To include it in the Notion
+integration lane, dispatch the CI workflow manually with
+`run_datasource_sync_demo=true` and provide `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID`
+as a repository secret.
 
 ## Traceability
 

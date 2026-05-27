@@ -1,7 +1,8 @@
 # Notion integration tests
 #
-# Runs vitest with --include for *.integration.test.ts files in Notion packages.
-# Requires each package's Notion token environment variable; skips gracefully if not set.
+# Runs live Notion integration tests for packages that exercise real API semantics.
+# Requires each package's Notion token and scratch parent environment variables;
+# skips gracefully when credentials are not available.
 #
 # Provides:
 #   - test:notion-integration - Run all Notion integration tests
@@ -16,19 +17,28 @@ let
       path = "packages/@overeng/notion-effect-client";
       name = "notion-effect-client";
       tokenEnv = "NOTION_API_TOKEN";
+      kind = "integration-config";
     }
     {
       path = "packages/@overeng/notion-cli";
       name = "notion-cli";
       tokenEnv = "NOTION_API_TOKEN";
+      kind = "integration-config";
+    }
+    {
+      path = "packages/@overeng/notion-datasource-sync";
+      name = "notion-datasource-sync";
+      tokenEnv = "NOTION_API_TOKEN";
+      kind = "datasource-sync-live";
     }
     {
       path = "packages/@overeng/notion-md";
       name = "notion-md";
       tokenEnv = "NOTION_API_TOKEN";
+      kind = "integration-config";
     }
   ];
-  vitestExec = tokenEnv: ''
+  integrationVitestExec = tokenEnv: ''
     set -euo pipefail
     token_name=${lib.escapeShellArg tokenEnv}
     if [ -z "''${!token_name:-}" ]; then
@@ -38,10 +48,37 @@ let
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
     run_package_bin vitest vitest run --config vitest.integration.config.ts
   '';
+  datasourceSyncVitestExec = tokenEnv: ''
+    set -euo pipefail
+    token_name=${lib.escapeShellArg tokenEnv}
+    if [ -z "''${!token_name:-}" ]; then
+      echo "$token_name not set, skipping notion-datasource-sync live tests"
+      exit 0
+    fi
+
+    if [ -z "''${NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID:-}" ]; then
+      if [ -n "''${NOTION_TEST_PARENT_PAGE_ID:-}" ]; then
+        export NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID="$NOTION_TEST_PARENT_PAGE_ID"
+      else
+        echo "NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID or NOTION_TEST_PARENT_PAGE_ID not set, skipping notion-datasource-sync live tests"
+        exit 0
+      fi
+    fi
+
+    export NOTION_DATASOURCE_SYNC_LIVE=1
+    export NOTION_DATASOURCE_SYNC_LEDGER_PATH="''${NOTION_DATASOURCE_SYNC_LEDGER_PATH:-tmp/notion-datasource-sync-live/ci-''${GITHUB_RUN_ID:-local}-''${GITHUB_RUN_ATTEMPT:-0}.json}"
+
+    source ${lib.escapeShellArg pnpmTaskHelpersScript}
+    run_package_bin vitest vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts
+  '';
+  vitestExec = pkg:
+    if pkg.kind == "datasource-sync-live"
+    then datasourceSyncVitestExec pkg.tokenEnv
+    else integrationVitestExec pkg.tokenEnv;
   mkTestTask = pkg: {
     "test:notion-integration:${pkg.name}" = {
       description = "Run Notion integration tests for ${pkg.name}";
-      exec = trace.exec "test:notion-integration:${pkg.name}" (vitestExec pkg.tokenEnv);
+      exec = trace.exec "test:notion-integration:${pkg.name}" (vitestExec pkg);
       cwd = pkg.path;
       after = [ "pnpm:install" ];
     };

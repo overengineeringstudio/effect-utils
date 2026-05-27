@@ -640,12 +640,18 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
-    'timeout-minutes': jobTimeoutMinutes,
+    'timeout-minutes': 90,
     defaults: bashShellDefaults,
     env: {
       ...standardCIEnv,
       NOTION_API_TOKEN: '${{ secrets.NOTION_API_TOKEN }}',
       NOTION_TEST_PARENT_PAGE_ID: '${{ secrets.NOTION_TEST_PARENT_PAGE_ID }}',
+      NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID:
+        '${{ secrets.NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID || secrets.NOTION_TEST_PARENT_PAGE_ID }}',
+      NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID:
+        '${{ secrets.NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID }}',
+      NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID:
+        "${{ github.event_name == 'workflow_dispatch' && (inputs.run_datasource_sync_demo == true || inputs.run_datasource_sync_demo == 'true') && secrets.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID || '' }}",
     },
     steps: [
       ...baseSteps,
@@ -721,6 +727,13 @@ export default ciWorkflow({
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
+        run_datasource_sync_demo: {
+          description:
+            'Run the credentialed notion-datasource-sync demo showcase in the Notion integration lane. Requires NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID.',
+          required: false,
+          default: false,
+          type: 'boolean',
+        },
         debug_force_nix_diagnostics_failure: {
           description:
             'Temporary debug switch (#272): force post-validation failure to verify diagnostics artifact + summary',
