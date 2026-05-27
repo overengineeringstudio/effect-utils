@@ -106,7 +106,6 @@ const eventPayload = (value: unknown): SyncEventType['payload'] => ({
 
 const observedAt = (now: () => Date) => now().toISOString()
 
-const observationEventPart = (now: () => Date): string => eventIdPart(observedAt(now))
 const encodeDateTimeUtc = Schema.encodeSync(Schema.DateTimeUtc)
 
 const eventBase = ({
@@ -527,7 +526,6 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
   > =>
     Effect.gen(function* () {
       const now = options.now ?? (() => new Date())
-      const observationPart = observationEventPart(now)
       const gateway = yield* NotionDataSourceGateway
       const body = yield* PageBodySyncPort
       const workspace = yield* LocalWorkspacePort
@@ -559,6 +557,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             preflight.supportedCapabilities.includes(capability) === true
               ? 'supported'
               : 'unsupported'
+          const capabilityPart = `${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}`
 
           return decode({
             schema: SyncEvent,
@@ -566,10 +565,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               _tag: 'CapabilityPreflightChecked',
               ...eventBase({
                 rootId: options.rootId,
-                eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}:${observationPart}`,
+                eventId: `capability:${capabilityPart}`,
                 family: 'CompatibilityChecked',
                 eventType: 'CapabilityPreflightChecked',
-                idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}:${observationPart}`,
+                idempotencyKey: `capability:${capabilityPart}`,
                 surface: querySurfaceKey({
                   dataSourceId: options.dataSourceId,
                   queryContractHash: hashStoreBytes('capabilities'),
@@ -776,6 +775,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                   ? pagePropertyFailureAvailability(propertyPagesResult.error)
                   : 'paginated-incomplete'
               incompleteProperties += 1
+              const propertyPart = `${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed:${availability}`
               events.push(
                 decode({
                   schema: SyncEvent,
@@ -783,10 +783,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                     _tag: 'PagePropertyCheckpointRecorded',
                     ...eventBase({
                       rootId: options.rootId,
-                      eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed:${observationPart}`,
+                      eventId: `property:${propertyPart}`,
                       family: 'QueryScanRecorded',
                       eventType: 'PagePropertyCheckpointRecorded',
-                      idempotencyKey: `property:${row.pageId}:${property.propertyId}:failed:${observationPart}`,
+                      idempotencyKey: `property:${propertyPart}`,
                       surface: propertySurfaceKey({
                         pageId: row.pageId,
                         propertyId: property.propertyId,
@@ -817,6 +817,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               .flatMap((page) => page.items)
               .map((item) => item.valueJson)
               .find((value) => value !== undefined)
+            const propertyPart = `${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:${valueHash ?? `incomplete:${availability}`}`
             events.push(
               decode({
                 schema: SyncEvent,
@@ -824,10 +825,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                   _tag: 'PagePropertyCheckpointRecorded',
                   ...eventBase({
                     rootId: options.rootId,
-                    eventId: `property:${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:${valueHash ?? 'incomplete'}:${observationPart}`,
+                    eventId: `property:${propertyPart}`,
                     family: 'QueryScanRecorded',
                     eventType: 'PagePropertyCheckpointRecorded',
-                    idempotencyKey: `property:${row.pageId}:${property.propertyId}:${valueHash ?? 'incomplete'}:${observationPart}`,
+                    idempotencyKey: `property:${propertyPart}`,
                     surface: propertySurfaceKey({
                       pageId: row.pageId,
                       propertyId: property.propertyId,

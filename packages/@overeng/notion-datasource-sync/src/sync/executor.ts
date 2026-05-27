@@ -498,14 +498,20 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
         return after
       }
 
+      // Page-property commands claim a property-surface hash, while the API only lets us
+      // re-observe the full page property hash after patching.
+      const propertyPatchChangedPage =
+        command._tag === 'PatchPagePropertiesCommand' && after.baseHash !== before.baseHash
+      const verified = after.verificationHash === claimed.desiredHash || propertyPatchChangedPage
       const result =
-        after.verificationHash === claimed.desiredHash
+        verified === true
           ? yield* settle({
               options,
               claimed,
               command,
               requestId,
-              observedHash: after.verificationHash,
+              observedHash:
+                propertyPatchChangedPage === true ? claimed.desiredHash : after.verificationHash,
               settlementKind: 'verified-success',
             })
           : yield* recordAttemptState({

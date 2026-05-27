@@ -2372,7 +2372,7 @@ export const replicaChangesToPlannerIntents = ({
           pageId,
           command,
           baseHash,
-          desiredHash: hashStoreBytes(`${change.kind}:${change.pageId}`),
+          desiredHash: pageLifecycleHash({ pageId, inTrash: true }),
           explicitDestructiveIntent: true,
           policy: 'trustedRemoteTrash',
           directRetrieve: 'accessible',
