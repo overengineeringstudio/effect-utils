@@ -65,16 +65,16 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 All ordinary data edit use cases belong in the `notion.sqlite` API, but each
 class must have a typed intent and guard model before it mutates Notion.
 
-| Edit class                      | Target state                                                                                          |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Edit class                      | Target state                                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Existing row cell edits         | Supported through `notion_cells.value_json` updates or explicit `notion_cell_changes` rows with base hashes |
-| Row creation                    | In scope through explicit `notion_row_changes` rows and read-after-write proof                             |
-| Row archive/restore             | In scope through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete           |
-| Body edits                      | In scope through future NotionMD-backed `notion_body_changes` rows and body conflict guards                |
-| Data-source metadata edits      | In scope through future `notion_metadata_changes` rows with separate metadata hash                         |
+| Row creation                    | In scope through explicit `notion_row_changes` rows and read-after-write proof                              |
+| Row archive/restore             | In scope through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete            |
+| Body edits                      | In scope through future NotionMD-backed `notion_body_changes` rows and body conflict guards                 |
+| Data-source metadata edits      | In scope through future `notion_metadata_changes` rows with separate metadata hash                          |
 | Safe schema changes             | In scope through future guarded `notion_schema_changes` rows for proven additive/non-destructive operations |
-| Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                               |
-| File bytes                      | Follow-up until File Upload identity and cleanup are modeled                                          |
+| Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                     |
+| File bytes                      | Follow-up until File Upload identity and cleanup are modeled                                                |
 
 ## Capability Preflight
 
