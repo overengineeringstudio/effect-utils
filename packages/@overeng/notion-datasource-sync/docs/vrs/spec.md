@@ -302,22 +302,25 @@ workspace/
 
 The public replica has a stable generic schema and rebuildable generated views:
 
-| Table                  | Key shape                       | Purpose                                                       |
-| ---------------------- | ------------------------------- | ------------------------------------------------------------- |
-| `notion_data_sources`  | `(data_source_id)`              | Root binding plus schema/metadata hashes and observation IDs  |
-| `notion_properties`    | `(data_source_id, property_id)` | Property name, type, config hash, writable/read-only class    |
-| `notion_rows`          | `(page_id)`                     | Page identity, lifecycle flags, and row hashes                |
-| `notion_cells`         | `(page_id, property_id)`        | Lossless `value_json` plus scalar query helper columns        |
-| `notion_bodies`        | `(page_id)`                     | Body path, adapter state, base/current hashes, lossy guards   |
-| `notion_cell_changes`  | `(change_id)`                   | Typed local CDC rows for cell patches                         |
-| `notion_row_changes`   | `(change_id)`                   | Typed local CDC rows for row lifecycle/create changes         |
-| `notion_body_changes`  | `(change_id)`                   | Typed local CDC rows for body pushes                          |
-| `notion_metadata_changes` | `(change_id)`                | Typed local CDC rows for metadata patches                      |
-| `notion_schema_changes` | `(change_id)`                  | Typed local CDC rows for conservative schema operations        |
-| `notion_conflict_resolutions` | `(resolution_id)`        | Typed local CDC rows for conflict-resolution requests          |
-| `notion_local_changes` | `(change_id)`                   | Unified compatibility projection over local change rows       |
-| `notion_conflicts`     | `(conflict_id)`                 | Open/resolved conflicts projected for user inspection         |
-| `notion_sync_status`   | `(root_id)`                     | Replica counts, pending counts, and last projection timestamp |
+| Table                         | Key shape                             | Purpose                                                       |
+| ----------------------------- | ------------------------------------- | ------------------------------------------------------------- |
+| `notion_data_sources`         | `(data_source_id)`                    | Root binding plus schema/metadata hashes and observation IDs  |
+| `notion_properties`           | `(data_source_id, property_id)`       | Property name, type, config hash, writable/read-only class    |
+| `notion_rows`                 | `(page_id)`                           | Page identity, lifecycle flags, and row hashes                |
+| `notion_cells`                | `(page_id, property_id)`              | Lossless `value_json` plus scalar query helper columns        |
+| `notion_bodies`               | `(page_id)`                           | Body path, adapter state, base/current hashes, lossy guards   |
+| `notion_cell_changes`         | `(change_id)`                         | Typed local CDC rows for cell patches                         |
+| `notion_row_changes`          | `(change_id)`                         | Typed local CDC rows for row lifecycle/create changes         |
+| `notion_row_creates`          | `(change_id)`                         | Explicit row-create CDC with local idempotency and page IDs   |
+| `notion_rows_effective`       | `(page_id/local_row_id)`              | Confirmed rows plus pending local creates                     |
+| `notion_cells_effective`      | `(page_id/local_row_id, property_id)` | Confirmed cells plus pending create initial values            |
+| `notion_body_changes`         | `(change_id)`                         | Typed local CDC rows for body pushes                          |
+| `notion_metadata_changes`     | `(change_id)`                         | Typed local CDC rows for metadata patches                     |
+| `notion_schema_changes`       | `(change_id)`                         | Typed local CDC rows for conservative schema operations       |
+| `notion_conflict_resolutions` | `(resolution_id)`                     | Typed local CDC rows for conflict-resolution requests         |
+| `notion_local_changes`        | `(change_id)`                         | Unified compatibility projection over local change rows       |
+| `notion_conflicts`            | `(conflict_id)`                       | Open/resolved conflicts projected for user inspection         |
+| `notion_sync_status`          | `(root_id)`                           | Replica counts, pending counts, and last projection timestamp |
 
 Generated read views named `notion_view_<data-source-id-slug>` are derived from
 `notion_rows`, `notion_properties`, and `notion_cells`. Column names use escaped
@@ -435,14 +438,13 @@ type NotionConflictResolution = {
 
 All data edit use cases are in scope for this API. Rich schema migrations are
 the exception: schema changes must be detected and guarded. The current
-executable subset is writable cell patches, row archive/restore, body pushes
+executable subset is writable cell patches, row archive/restore, explicit row
+creates via `notion_row_creates`, body pushes
 that pass body-adapter safety and content-hash verification, and
 conflict-resolution choices routed through the store-backed command surface.
 Metadata/schema CDC rows are part of the public API shape but fail closed until
 the replica projects enough canonical current value state to compute verified
-post-write hashes. Row create is modeled but fail-closed until create-page
-idempotency, returned `page_id` reconciliation, and duplicate retry prevention
-are implemented. Database metadata writes, files, Notion views, destructive
+post-write hashes. Database metadata writes, files, Notion views, destructive
 schema changes, and unsupported conflict-resolution actions require their own
 surface proof before promotion.
 

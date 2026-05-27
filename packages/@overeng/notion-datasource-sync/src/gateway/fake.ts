@@ -2,6 +2,8 @@ import { Effect, Layer, Schema, Stream } from 'effect'
 
 import { queryContractHash as computeQueryContractHash } from '../core/canonical.ts'
 import type {
+  CreatePageCommand,
+  CreatePageResult,
   PagePropertyItemPage,
   PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
@@ -11,7 +13,9 @@ import type {
   RestorePageCommand,
   TrashPageCommand,
 } from '../core/commands.ts'
+import { CreatePageResult as CreatePageResultSchema } from '../core/commands.ts'
 import {
+  PageId,
   PageSnapshot,
   QueryCursor,
   RowPageSnapshot,
@@ -19,7 +23,6 @@ import {
   type DataSourceId,
   type DataSourceSnapshot,
   type NotionApiContract,
-  type PageId,
   type PagePropertyItem,
   type PageSnapshot as PageSnapshotType,
   type PropertyId,
@@ -160,6 +163,7 @@ const findDataSource = ({
   readonly operation:
     | 'retrieveDataSource'
     | 'queryRows'
+    | 'createPage'
     | 'patchDataSourceSchema'
     | 'patchDataSourceMetadata'
 }): Effect.Effect<DataSourceSnapshot, NotionGatewayError> => {
@@ -188,6 +192,7 @@ const findPage = ({
     | 'retrievePage'
     | 'retrievePageProperty'
     | 'patchPageProperties'
+    | 'createPage'
     | 'trashPage'
     | 'restorePage'
 }): Effect.Effect<MutablePageRecord, NotionGatewayError> => {
@@ -545,6 +550,62 @@ export const makeFakeNotionDataSourceGateway = (
           }
 
           return Effect.succeed(requestId)
+        }),
+      ),
+    createPage: (command: CreatePageCommand) =>
+      findDataSource({
+        dataSources,
+        dataSourceId: command.dataSourceId,
+        operation: 'createPage',
+      }).pipe(
+        Effect.flatMap((dataSource) => {
+          if (dataSource.schemaHash !== command.baseSchemaHash) {
+            return Effect.fail(
+              makeGatewayError({
+                operation: 'createPage',
+                dataSourceId: command.dataSourceId,
+                guard: 'StaleSurfaceBase',
+                message: `Create base does not match current data source schema: ${command.dataSourceId}`,
+              }),
+            )
+          }
+          const requestId = nextRequestId()
+          const pageId = PageId.make(`fake-created-${command.clientRequestKey}`)
+          const propertiesHash = hashStoreBytes(
+            `page-create\t${command.dataSourceId}\t${command.commandId}\t${JSON.stringify(
+              command.initialProperties,
+            )}`,
+          )
+          const lastEditedTime = Schema.decodeUnknownSync(Schema.DateTimeUtc)(
+            new Date().toISOString(),
+          )
+          pages.set(pageKey(pageId), {
+            snapshot: PageSnapshot.make({
+              _tag: 'PageSnapshot',
+              pageId,
+              requestId,
+              propertiesHash,
+              observedAt: lastEditedTime,
+              inTrash: false,
+            }),
+            row: RowPageSnapshot.make({
+              _tag: 'RowPageSnapshot',
+              pageId,
+              propertiesHash,
+              lastEditedTime,
+              inTrash: false,
+            }),
+            propertyItems: [],
+            visibleInFilteredQueries: true,
+          })
+          return Effect.succeed(
+            CreatePageResultSchema.make({
+              _tag: 'CreatePageResult',
+              requestId,
+              pageId,
+              propertiesHash,
+            }) satisfies CreatePageResult,
+          )
         }),
       ),
     patchDataSourceSchema: (command: PatchDataSourceSchemaCommand) =>

@@ -245,6 +245,24 @@ export const PatchPagePropertiesCommand = Schema.TaggedStruct('PatchPageProperti
 }).annotations({ identifier: 'NotionDatasourceSync.PatchPagePropertiesCommand' })
 export type PatchPagePropertiesCommand = typeof PatchPagePropertiesCommand.Type
 
+/** Remote write command: creates a new Notion page in a data source with initial property values. */
+export const CreatePageCommand = Schema.TaggedStruct('CreatePageCommand', {
+  commandId: CommandId,
+  dataSourceId: DataSourceId,
+  clientRequestKey: Schema.NonEmptyTrimmedString,
+  baseSchemaHash: Hash,
+  initialProperties: Schema.Record({ key: PropertyId, value: CanonicalPropertyValue }),
+}).annotations({ identifier: 'NotionDatasourceSync.CreatePageCommand' })
+export type CreatePageCommand = typeof CreatePageCommand.Type
+
+/** Result of a successful Notion page creation, carrying the server-minted page id. */
+export const CreatePageResult = Schema.TaggedStruct('CreatePageResult', {
+  requestId: NotionRequestId,
+  pageId: PageId,
+  propertiesHash: Hash,
+}).annotations({ identifier: 'NotionDatasourceSync.CreatePageResult' })
+export type CreatePageResult = typeof CreatePageResult.Type
+
 /**
  * Typed property definition for `AddProperty` schema operations.
  *
@@ -435,6 +453,7 @@ export type BodyRepairInput = typeof BodyRepairInput.Type
 
 /** Discriminated union of all commands that cause a remote write to Notion; the `_tag` selects the operation kind. */
 export const RemoteWriteCommand = Schema.Union(
+  CreatePageCommand,
   PatchPagePropertiesCommand,
   PatchDataSourceSchemaCommand,
   PatchDataSourceMetadataCommand,

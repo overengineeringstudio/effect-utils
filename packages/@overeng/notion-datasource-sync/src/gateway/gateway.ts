@@ -2,6 +2,7 @@ import { Effect, Layer, Schema, Stream } from 'effect'
 
 import type {
   RetrievePagePropertyInput,
+  CreatePageCommand,
   PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
@@ -47,6 +48,7 @@ export const allGatewayCapabilities = [
   'page_retrieve',
   'page_property_paginate',
   'page_property_update',
+  'page_create',
   'schema_update',
   'page_trash',
   'page_restore',
@@ -67,6 +69,7 @@ export type GatewayOperation =
   | 'retrievePage'
   | 'retrievePageProperty'
   | 'patchPageProperties'
+  | 'createPage'
   | 'patchDataSourceSchema'
   | 'patchDataSourceMetadata'
   | 'trashPage'
@@ -317,6 +320,24 @@ export const makeNotionDataSourceGateway = (
             operation: 'patchPageProperties',
             configuredApiVersion,
             pageId: command.pageId,
+            commandId: command.commandId,
+            commandKind: commandKind(command._tag),
+          }),
+        ),
+      ),
+    createPage: (command: CreatePageCommand) =>
+      ensureSupportedGatewayApiVersion({
+        operation: 'createPage',
+        configuredApiVersion,
+        dataSourceId: command.dataSourceId,
+      }).pipe(
+        Effect.flatMap(() => adapter.createPage(command)),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'createPage',
+            configuredApiVersion,
+            dataSourceId: command.dataSourceId,
             commandId: command.commandId,
             commandKind: commandKind(command._tag),
           }),

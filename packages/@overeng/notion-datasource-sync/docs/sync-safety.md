@@ -59,12 +59,12 @@ pushes, metadata edits, schema edits, and conflict-resolution requests. Only the
 safe subset executes today: writable scalar/page-property cell patches, row
 archive/restore, body pushes that pass body-adapter safety and content-hash
 verification, and conflict-resolution choices that can be applied through the
-store-backed conflict command path. Metadata/schema CDC rows are recorded but
+store-backed conflict command path, and explicit row creates through
+`notion_row_creates`. Row creation uses local client request keys, schema-base
+guards, and durable returned `remote_page_id` settlement; ambiguous create
+outcomes fail into reconciliation instead of blindly retrying. Metadata/schema CDC rows are recorded but
 fail closed from the public SQLite API until the replica projects enough
-canonical current value state to compute verified post-write hashes. Row
-creation is recorded but fail-closed because Notion does not offer a create-page
-idempotency key; support requires durable local reconciliation of the returned
-`page_id` before retries can be duplicate-safe. Database metadata, files, Notion views,
+canonical current value state to compute verified post-write hashes. Database metadata, files, Notion views,
 destructive schema migrations, and unsupported conflict-resolution actions
 remain explicit fail-closed boundaries unless a dedicated surface has live
 disposable proof.

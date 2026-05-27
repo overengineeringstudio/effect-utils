@@ -608,6 +608,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       },
       retrievePageProperty: () => Stream.die('retrievePageProperty should not be called'),
       patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
+      createPage: () => Effect.die('createPage should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
       patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
@@ -692,6 +693,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         return Stream.die('retrievePageProperty should not be called')
       },
       patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
+      createPage: () => Effect.die('createPage should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
       patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
@@ -782,6 +784,14 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           in_trash: false,
         })
       },
+      createPage: ({ properties }) =>
+        Effect.succeed({
+          id: 'created-page-1',
+          parent: { type: 'data_source_id', data_source_id: configured.dataSourceId },
+          properties,
+          last_edited_time: '2026-05-25T00:00:00.000Z',
+          in_trash: false,
+        }),
       updateDataSource: ({ dataSourceId }) => {
         calls.updateDataSource += 1
         return Effect.succeed({
@@ -1263,6 +1273,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-sqlite-cdc-')),
         )
         let pageId: string | undefined
+        let createdPageId: string | undefined
 
         try {
           const initialDataSource = await runLive(
@@ -1290,6 +1301,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             name: cdcPropertyName,
             type: 'rich_text',
           })
+          const titleSchemaProperty = liveSchemaProperty({
+            properties: patchedDataSource.properties,
+            name: titlePropertyName,
+            type: 'title',
+          })
+          const liveSchemaProperties = [titleSchemaProperty, cdcSchemaProperty]
           const initialTitle = `sqlite cdc initial ${provisioned.config.runId}`
           const updatedTitle = `sqlite cdc updated ${provisioned.config.runId}`
           const page = await runLive(
@@ -1323,7 +1340,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               provisioned.config.dataSourceId,
               workspaceRoot,
               '--schema-properties-json',
-              JSON.stringify([cdcSchemaProperty]),
+              JSON.stringify(liveSchemaProperties),
               '--no-materialize-bodies',
             ],
           })
@@ -1333,7 +1350,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             'sync',
             workspaceRoot,
             '--schema-properties-json',
-            JSON.stringify([cdcSchemaProperty]),
+            JSON.stringify(liveSchemaProperties),
           ]
           await runLiveCliCommand({ env, argv: syncArgv })
           const writeCellChange = () => {
@@ -1393,10 +1410,9 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                    ORDER BY created_at`,
                 )
                 .all(livePageId)
-              expect(
-                cellStatuses,
-                `cell CDC statuses: ${JSON.stringify(cellStatuses)}`,
-              ).toEqual([expect.objectContaining({ status: 'applied' })])
+              expect(cellStatuses, `cell CDC statuses: ${JSON.stringify(cellStatuses)}`).toEqual([
+                expect.objectContaining({ status: 'applied' }),
+              ])
             } finally {
               db.close()
             }
@@ -1516,6 +1532,97 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             }
           }
 
+          const createdTitle = `sqlite cdc created ${provisioned.config.runId}`
+          {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              const source = db
+                .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
+                .get(provisioned.config.dataSourceId) as { readonly schema_hash: string }
+              db.prepare(
+                `INSERT INTO notion_row_creates (
+                   change_id,
+                   data_source_id,
+                   local_row_id,
+                   client_request_key,
+                   initial_values_json,
+                   base_schema_hash
+                 ) VALUES (?, ?, ?, ?, ?, ?)`,
+              ).run(
+                `live-create-${provisioned.config.runId}`,
+                provisioned.config.dataSourceId,
+                `local-${provisioned.config.runId}`,
+                `client-${provisioned.config.runId}`,
+                JSON.stringify({
+                  [titleSchemaProperty.propertyId]: { _tag: 'title', plainText: createdTitle },
+                  [cdcSchemaProperty.propertyId]: {
+                    _tag: 'rich_text',
+                    plainText: `created note ${provisioned.config.runId}`,
+                  },
+                }),
+                source.schema_hash,
+              )
+              expect(
+                db
+                  .prepare(
+                    `SELECT sync_status
+                     FROM notion_rows_effective
+                     WHERE local_row_id = ?`,
+                  )
+                  .get(`local-${provisioned.config.runId}`),
+              ).toMatchObject({ sync_status: 'pending' })
+            } finally {
+              db.close()
+            }
+          }
+          await runLiveCliCommand({ env, argv: syncArgv })
+          {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              const createRow = db
+                .prepare(
+                  `SELECT status, remote_page_id, unsupported_reason
+                   FROM notion_row_creates
+                   WHERE change_id = ?`,
+                )
+                .get(`live-create-${provisioned.config.runId}`) as
+                | {
+                    readonly status: string
+                    readonly remote_page_id: string | null
+                    readonly unsupported_reason: string | null
+                  }
+                | undefined
+              expect(createRow).toMatchObject({ status: 'applied', unsupported_reason: null })
+              if (createRow?.remote_page_id === null || createRow?.remote_page_id === undefined) {
+                throw new Error('live public SQLite row create did not persist remote_page_id')
+              }
+              createdPageId = createRow.remote_page_id
+            } finally {
+              db.close()
+            }
+          }
+          await recorder.record({
+            phase: 'create',
+            objectId: createdPageId,
+            objectType: 'page',
+            purpose: 'live-public-sqlite-cdc-row-create',
+            cleanupState: 'created',
+          })
+          const created = await runLive(env, NotionPages.retrieve({ pageId: createdPageId }))
+          expect(livePropertyPlainText(created.properties[titlePropertyName])).toBe(createdTitle)
+          await runLiveCliCommand({ env, argv: syncArgv })
+          const createdRows = await runLive(
+            env,
+            NotionDatabases.query({
+              dataSourceId: provisioned.config.dataSourceId,
+              filter: {
+                property: titlePropertyName,
+                title: { equals: createdTitle },
+              },
+            }),
+          )
+          expect(createdRows.results).toHaveLength(1)
+
           await recorder.record({
             phase: 'verify',
             objectId: livePageId,
@@ -1524,11 +1631,21 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             cleanupState: 'verified',
           })
         } finally {
-          if (pageId !== undefined) {
+          if (createdPageId !== undefined) {
             await runLive(
               env,
-              NotionPages.update({ pageId, in_trash: true }).pipe(Effect.ignore),
+              NotionPages.update({ pageId: createdPageId, in_trash: true }).pipe(Effect.ignore),
             )
+            await recorder.record({
+              phase: 'trash',
+              objectId: createdPageId,
+              objectType: 'page',
+              purpose: 'live-public-sqlite-cdc-row-create',
+              cleanupState: 'verified-cleaned',
+            })
+          }
+          if (pageId !== undefined) {
+            await runLive(env, NotionPages.update({ pageId, in_trash: true }).pipe(Effect.ignore))
             await recorder.record({
               phase: 'trash',
               objectId: pageId,

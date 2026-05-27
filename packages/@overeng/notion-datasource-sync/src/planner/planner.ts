@@ -1,5 +1,6 @@
 import type {
   BodyPushCommand,
+  CreatePageCommand,
   PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
@@ -255,6 +256,18 @@ export type DataSourceMetadataEditIntent = {
   readonly desiredHash: Hash
 }
 
+/** Intent to create a new row/page in a data source. */
+export type RowCreateIntent = {
+  readonly _tag: 'row-create'
+  readonly intentEventId: SyncEventId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly dataSourceId: DataSourceId
+  readonly command: CreatePageCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+}
+
 /** Intent to change a page lifecycle state on the remote, triggered by a local workspace/replica lifecycle edit; `policy` and `explicitDestructiveIntent` control whether the planner escalates to a real remote write or treats it as a candidate. */
 export type LocalDeleteIntent = {
   readonly _tag: 'local-delete'
@@ -301,6 +314,7 @@ export type PlannerIntent =
   | BodyEditIntent
   | SchemaMigrationIntent
   | DataSourceMetadataEditIntent
+  | RowCreateIntent
   | LocalDeleteIntent
   | PathClaimIntent
   | QueryAbsenceIntent
@@ -447,6 +461,7 @@ const commandEnvelope = ({
     | BodyEditIntent
     | SchemaMigrationIntent
     | DataSourceMetadataEditIntent
+    | RowCreateIntent
     | LocalDeleteIntent
   >
   readonly command: RemoteWriteCommand
@@ -947,6 +962,53 @@ const planPathClaim = ({
   }
 }
 
+const planRowCreate = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: RowCreateIntent
+}): PlanDecision => {
+  const currentDataSource = snapshot.schema.find(
+    (property) => property.dataSourceId === intent.dataSourceId,
+  )
+  if (currentDataSource === undefined) {
+    return blockDecision({
+      guard: 'CurrentSurfaceMissing',
+      surface: intent.surface,
+      summary:
+        'Current data-source schema projection is missing; observe the schema before creating a row',
+    })
+  }
+
+  const blockedDecision = firstBlocked({
+    surface: intent.surface,
+    guards: [
+      guardApiCompatibility(snapshot.api),
+      guardCapabilityPreflight(snapshot.capabilities),
+      guardStaleSurfaceBase({
+        baseHash: intent.baseHash,
+        currentHash: currentDataSource.schemaHash,
+      }),
+    ],
+  })
+  if (blockedDecision !== undefined) return blockedDecision
+
+  return {
+    _tag: 'EnqueueCommands',
+    commands: [
+      commandEnvelope({
+        snapshot,
+        intent,
+        command: intent.command,
+        baseHash: intent.baseHash,
+        desiredHash: intent.desiredHash,
+        preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase'],
+      }),
+    ],
+  }
+}
+
 const planQueryAbsence = ({
   snapshot,
   intent,
@@ -1067,6 +1129,8 @@ export const planIntent = ({
       return planSchemaMigration({ snapshot, intent })
     case 'data-source-metadata-edit':
       return planDataSourceMetadataEdit({ snapshot, intent })
+    case 'row-create':
+      return planRowCreate({ snapshot, intent })
     case 'local-delete':
       return planLocalDelete({ snapshot, intent })
     case 'path-claim':

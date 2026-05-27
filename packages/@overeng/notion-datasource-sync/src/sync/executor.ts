@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 
 import type { RemoteWriteCommand } from '../core/commands.ts'
-import type { Hash, NotionRequestId } from '../core/domain.ts'
+import type { Hash, NotionRequestId, PageId } from '../core/domain.ts'
 import { LocalStoreError, NotionGatewayError, type BodySyncError } from '../core/errors.ts'
 import { IdempotencyKey } from '../core/events.ts'
 import type { GuardName } from '../core/guards.ts'
@@ -52,6 +52,12 @@ type CurrentSurface = {
   readonly baseHash: Hash
   readonly verificationHash: Hash
   readonly requestId: NotionRequestId
+}
+
+type RemoteWriteResult = {
+  readonly requestId: NotionRequestId
+  readonly createdPageId?: PageId
+  readonly createdPropertiesHash?: Hash
 }
 
 type ExecutorError = LocalStoreError | NotionGatewayError | BodySyncError
@@ -115,6 +121,8 @@ const commandBaseHash = (command: RemoteWriteCommand): Hash => {
       return command.baseMetadataHash
     case 'BodyPushCommand':
       return command.baseBodyPointer.bodyHash
+    case 'CreatePageCommand':
+      return command.baseSchemaHash
   }
 }
 
@@ -146,6 +154,15 @@ const observeCurrentSurface = (
         }
       }
       case 'PatchDataSourceSchemaCommand': {
+        const gateway = yield* NotionDataSourceGateway
+        const dataSource = yield* gateway.retrieveDataSource(command.dataSourceId)
+        return {
+          baseHash: dataSource.schemaHash,
+          verificationHash: dataSource.schemaHash,
+          requestId: dataSource.requestId,
+        }
+      }
+      case 'CreatePageCommand': {
         const gateway = yield* NotionDataSourceGateway
         const dataSource = yield* gateway.retrieveDataSource(command.dataSourceId)
         return {
@@ -195,7 +212,7 @@ const observeCurrentSurface = (
 const executeRemoteWrite = (
   command: RemoteWriteCommand,
 ): Effect.Effect<
-  NotionRequestId,
+  RemoteWriteResult,
   NotionGatewayError | BodySyncError,
   NotionDataSourceGateway | PageBodySyncPort
 > =>
@@ -203,28 +220,42 @@ const executeRemoteWrite = (
     switch (command._tag) {
       case 'PatchPagePropertiesCommand': {
         const gateway = yield* NotionDataSourceGateway
-        return yield* gateway.patchPageProperties(command)
+        const requestId = yield* gateway.patchPageProperties(command)
+        return { requestId }
+      }
+      case 'CreatePageCommand': {
+        const gateway = yield* NotionDataSourceGateway
+        const result = yield* gateway.createPage(command)
+        return {
+          requestId: result.requestId,
+          createdPageId: result.pageId,
+          createdPropertiesHash: result.propertiesHash,
+        }
       }
       case 'PatchDataSourceSchemaCommand': {
         const gateway = yield* NotionDataSourceGateway
-        return yield* gateway.patchDataSourceSchema(command)
+        const requestId = yield* gateway.patchDataSourceSchema(command)
+        return { requestId }
       }
       case 'PatchDataSourceMetadataCommand': {
         const gateway = yield* NotionDataSourceGateway
-        return yield* gateway.patchDataSourceMetadata(command)
+        const requestId = yield* gateway.patchDataSourceMetadata(command)
+        return { requestId }
       }
       case 'TrashPageCommand': {
         const gateway = yield* NotionDataSourceGateway
-        return yield* gateway.trashPage(command)
+        const requestId = yield* gateway.trashPage(command)
+        return { requestId }
       }
       case 'RestorePageCommand': {
         const gateway = yield* NotionDataSourceGateway
-        return yield* gateway.restorePage(command)
+        const requestId = yield* gateway.restorePage(command)
+        return { requestId }
       }
       case 'BodyPushCommand': {
         const body = yield* PageBodySyncPort
         const result = yield* body.push(command)
-        return result.requestId
+        return { requestId: result.requestId }
       }
     }
   }).pipe(
@@ -283,6 +314,7 @@ const settle = ({
   command,
   requestId,
   observedHash,
+  createdPageId,
   settlementKind,
 }: {
   readonly options: OutboxExecutorOptions
@@ -290,6 +322,7 @@ const settle = ({
   readonly command: RemoteWriteCommand
   readonly requestId: NotionRequestId
   readonly observedHash: Hash
+  readonly createdPageId?: PageId
   readonly settlementKind: 'verified-success' | 'verified-no-op'
 }) =>
   storeEffect({
@@ -304,6 +337,7 @@ const settle = ({
         requestId,
         desiredHash: claimed.desiredHash,
         observedHash,
+        ...(createdPageId === undefined ? {} : { createdPageId }),
         settlementKind,
         idempotencyKey: idempotencyKey(`${claimed.commandKey}:settled`),
       }),
@@ -463,7 +497,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
         return result
       }
 
-      const requestId = yield* executeRemoteWrite(command).pipe(
+      const writeResult = yield* executeRemoteWrite(command).pipe(
         Effect.catchAll((error) =>
           recordAttemptState({
             options,
@@ -477,21 +511,30 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
         ),
       )
 
-      if (typeof requestId !== 'string') {
-        yield* annotateOutboxResult(requestId)
-        return requestId
+      if ('_tag' in writeResult) {
+        yield* annotateOutboxResult(writeResult)
+        return writeResult
       }
 
-      const after = yield* observeCurrentSurface(command).pipe(
-        Effect.catchAll((error) =>
-          recordAttemptState({
-            options,
-            claimed,
-            attemptState: 'retryable',
-            guard: guardFromWriteError(error),
-          }),
-        ),
-      )
+      const after =
+        command._tag === 'CreatePageCommand' &&
+        writeResult.createdPageId !== undefined &&
+        writeResult.createdPropertiesHash !== undefined
+          ? {
+              baseHash: command.baseSchemaHash,
+              verificationHash: writeResult.createdPropertiesHash,
+              requestId: writeResult.requestId,
+            }
+          : yield* observeCurrentSurface(command).pipe(
+              Effect.catchAll((error) =>
+                recordAttemptState({
+                  options,
+                  claimed,
+                  attemptState: 'retryable',
+                  guard: guardFromWriteError(error),
+                }),
+              ),
+            )
 
       if ('_tag' in after) {
         yield* annotateOutboxResult(after)
@@ -502,16 +545,26 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
       // re-observe the full page property hash after patching.
       const propertyPatchChangedPage =
         command._tag === 'PatchPagePropertiesCommand' && after.baseHash !== before.baseHash
-      const verified = after.verificationHash === claimed.desiredHash || propertyPatchChangedPage
+      const createReturnedPage =
+        command._tag === 'CreatePageCommand' && writeResult.createdPageId !== undefined
+      const verified =
+        after.verificationHash === claimed.desiredHash ||
+        propertyPatchChangedPage ||
+        createReturnedPage
       const result =
         verified === true
           ? yield* settle({
               options,
               claimed,
               command,
-              requestId,
+              requestId: writeResult.requestId,
               observedHash:
-                propertyPatchChangedPage === true ? claimed.desiredHash : after.verificationHash,
+                propertyPatchChangedPage === true || createReturnedPage === true
+                  ? claimed.desiredHash
+                  : after.verificationHash,
+              ...(writeResult.createdPageId === undefined
+                ? {}
+                : { createdPageId: writeResult.createdPageId }),
               settlementKind: 'verified-success',
             })
           : yield* recordAttemptState({

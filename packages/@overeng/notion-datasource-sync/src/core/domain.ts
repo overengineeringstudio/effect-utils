@@ -118,6 +118,7 @@ export const CapabilityName = Schema.Literal(
   'page_retrieve',
   'page_property_paginate',
   'page_property_update',
+  'page_create',
   'schema_update',
   'page_trash',
   'page_restore',

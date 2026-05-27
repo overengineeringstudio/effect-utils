@@ -6,9 +6,9 @@ import { DatabaseSync } from 'node:sqlite'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { PagePropertyItemPage } from '../core/commands.ts'
 import { propertySurfaceKey } from '../core/canonical.ts'
-import { AbsolutePath } from '../core/domain.ts'
+import { PagePropertyItemPage } from '../core/commands.ts'
+import { AbsolutePath, Hash } from '../core/domain.ts'
 import { type SyncEvent as SyncEventType } from '../core/events.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
 import { makeConflictRaisedEvent } from '../sync/observation.ts'
@@ -135,6 +135,15 @@ const rowChangeFor = (replicaPath: string, changeId: string) => {
   const db = new DatabaseSync(replicaPath, { readOnly: true })
   try {
     return db.prepare(`SELECT * FROM notion_row_changes WHERE change_id = ?`).get(changeId)
+  } finally {
+    db.close()
+  }
+}
+
+const rowCreateFor = (replicaPath: string, changeId: string) => {
+  const db = new DatabaseSync(replicaPath, { readOnly: true })
+  try {
+    return db.prepare(`SELECT * FROM notion_row_creates WHERE change_id = ?`).get(changeId)
   } finally {
     db.close()
   }
@@ -337,15 +346,9 @@ describe('user-facing SQLite replica', () => {
 
       const after = new DatabaseSync(replicaPath, { readOnly: true })
       try {
-        expect(statusFor(replicaPath, 'change-create')).toMatchObject({
-          status: 'unsupported',
-          unsupported_reason:
-            'Row creation remains fail-closed because Notion create-page has no idempotency key; support needs durable returned page_id reconciliation before retry.',
-        })
+        expect(statusFor(replicaPath, 'change-create')).toMatchObject({ status: 'pending' })
         expect(rowChangeFor(replicaPath, 'change-create')).toMatchObject({
-          status: 'unsupported',
-          unsupported_reason:
-            'Row creation remains fail-closed because Notion create-page has no idempotency key; support needs durable returned page_id reconciliation before retry.',
+          status: 'pending',
         })
       } finally {
         after.close()
@@ -657,6 +660,385 @@ describe('user-facing SQLite replica', () => {
     }
   })
 
+  it('creates rows through the explicit public row-create CDC table with idempotent settlement', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Existing row')] })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        expect(() =>
+          db
+            .prepare(
+              `INSERT INTO notion_rows (
+               data_source_id, page_id, properties_hash, in_trash, moved_out,
+               local_delete_candidate, observed_event_id, updated_at
+             ) VALUES (?, 'local-row', ?, 0, 0, 0, 'event', ?)`,
+            )
+            .run(testIds.dataSourceId, hash('local'), new Date().toISOString()),
+        ).toThrow(/insert into notion_row_creates/)
+
+        const source = db
+          .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
+          .get(testIds.dataSourceId) as { schema_hash: string }
+        db.prepare(
+          `INSERT INTO notion_row_creates (
+             change_id,
+             data_source_id,
+             local_row_id,
+             client_request_key,
+             initial_values_json,
+             base_schema_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(
+          'create-1',
+          testIds.dataSourceId,
+          'local-create-1',
+          'client-create-1',
+          JSON.stringify({
+            [testIds.propertyA]: { _tag: 'title', plainText: 'Created through SQLite' },
+          }),
+          source.schema_hash,
+        )
+        expect(
+          db
+            .prepare(
+              `SELECT local_row_id, sync_status FROM notion_rows_effective WHERE local_row_id = ?`,
+            )
+            .get('local-create-1'),
+        ).toMatchObject({ local_row_id: 'local-create-1', sync_status: 'pending' })
+      } finally {
+        db.close()
+      }
+
+      const dryRunChanges = readPendingReplicaChanges(replicaPath)
+      const dryRunIntents = replicaChangesToPlannerIntents({
+        changes: dryRunChanges,
+        replicaPath,
+        dryRun: true,
+      })
+      expect(dryRunIntents).toHaveLength(1)
+      expect(dryRunIntents[0]).toMatchObject({ _tag: 'row-create' })
+      expect(rowCreateFor(replicaPath, 'create-1')).toMatchObject({ status: 'pending' })
+      expect(
+        storeFixture.store
+          .readOutbox(testIds.rootId)
+          .filter((row) => row.commandTag === 'CreatePage'),
+      ).toHaveLength(0)
+
+      const changes = readPendingReplicaChanges(replicaPath)
+      const intents = replicaChangesToPlannerIntents({ changes, replicaPath })
+      const result = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          localIntents: intents,
+          maxExecutorSteps: 4,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      settleReplicaChangesAfterSync({
+        changes,
+        replicaPath,
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        decisions: result.push.plan.decisions,
+      })
+      expect(result.push.plan.enqueuedCommands).toBe(1)
+      expect(rowCreateFor(replicaPath, 'create-1')).toMatchObject({
+        status: 'applied',
+        remote_page_id: 'fake-created-client-create-1',
+      })
+
+      const rerunChanges = readPendingReplicaChanges(replicaPath)
+      expect(rerunChanges).toHaveLength(0)
+      const outbox = storeFixture.store
+        .readOutbox(testIds.rootId)
+        .filter((row) => row.commandTag === 'CreatePage')
+      expect(outbox).toHaveLength(1)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('guards invalid row-create payloads, stale schema hashes, unsupported values, and remote-page reconciliation states', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Existing row')] })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const source = db
+          .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
+          .get(testIds.dataSourceId) as { schema_hash: string }
+        const insertCreate = db.prepare(
+          `INSERT INTO notion_row_creates (
+             change_id, data_source_id, local_row_id, client_request_key,
+             initial_values_json, base_schema_hash, status, remote_page_id
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        insertCreate.run(
+          'create-invalid-payload',
+          testIds.dataSourceId,
+          'local-invalid',
+          'client-invalid',
+          JSON.stringify({
+            [testIds.propertyA]: { _tag: 'title', plainText: 42 },
+          }),
+          source.schema_hash,
+          'pending',
+          null,
+        )
+        insertCreate.run(
+          'create-stale-schema',
+          testIds.dataSourceId,
+          'local-stale',
+          'client-stale',
+          JSON.stringify({
+            [testIds.propertyA]: { _tag: 'title', plainText: 'Stale schema' },
+          }),
+          hash('stale-schema'),
+          'pending',
+          null,
+        )
+        insertCreate.run(
+          'create-unsupported-files',
+          testIds.dataSourceId,
+          'local-files',
+          'client-files',
+          JSON.stringify({
+            [testIds.propertyA]: { _tag: 'title', plainText: 'Unsupported files' },
+            [testIds.propertyB]: {
+              _tag: 'computed',
+              valueHash: hash('computed'),
+            },
+          }),
+          source.schema_hash,
+          'pending',
+          null,
+        )
+        insertCreate.run(
+          'create-reconcile',
+          testIds.dataSourceId,
+          'local-reconcile',
+          'client-reconcile',
+          JSON.stringify({
+            [testIds.propertyA]: { _tag: 'title', plainText: 'Already remote' },
+          }),
+          source.schema_hash,
+          'needs_reconciliation',
+          'remote-created-page',
+        )
+      } finally {
+        db.close()
+      }
+
+      const changes = readPendingReplicaChanges(replicaPath)
+      const intents = replicaChangesToPlannerIntents({ changes, replicaPath })
+      expect(intents).toHaveLength(0)
+      expect(rowCreateFor(replicaPath, 'create-invalid-payload')).toMatchObject({
+        status: 'rejected',
+      })
+      expect(rowCreateFor(replicaPath, 'create-stale-schema')).toMatchObject({
+        status: 'conflict',
+      })
+      expect(rowCreateFor(replicaPath, 'create-unsupported-files')).toMatchObject({
+        status: 'unsupported',
+      })
+      expect(rowCreateFor(replicaPath, 'create-reconcile')).toMatchObject({
+        status: 'planned',
+        remote_page_id: 'remote-created-page',
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('marks a settled row-create command without a durable page id as needing reconciliation', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Existing row')] })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const source = db
+          .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
+          .get(testIds.dataSourceId) as { schema_hash: string }
+        db.prepare(
+          `INSERT INTO notion_row_creates (
+             change_id, data_source_id, local_row_id, client_request_key,
+             initial_values_json, base_schema_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(
+          'create-no-page-id',
+          testIds.dataSourceId,
+          'local-no-page-id',
+          'client-no-page-id',
+          JSON.stringify({
+            [testIds.propertyA]: { _tag: 'title', plainText: 'Missing page id' },
+          }),
+          source.schema_hash,
+        )
+      } finally {
+        db.close()
+      }
+
+      const changes = readPendingReplicaChanges(replicaPath)
+      const intents = replicaChangesToPlannerIntents({ changes, replicaPath })
+      const result = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          localIntents: intents,
+          maxExecutorSteps: 0,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      const decision = result.push.plan.decisions.find(
+        (candidate) => candidate._tag === 'EnqueueCommands',
+      )
+      expect(decision?._tag).toBe('EnqueueCommands')
+      if (decision?._tag !== 'EnqueueCommands') throw new Error('expected row-create command')
+      const command = decision.commands[0]
+      expect(command).toBeDefined()
+      if (command === undefined) throw new Error('expected row-create command')
+      const outbox = storeFixture.store
+        .readOutbox(testIds.rootId)
+        .find((row) => row.commandId === command.commandId)
+      expect(outbox).toBeDefined()
+      if (outbox === undefined) throw new Error('expected row-create outbox row')
+      const desiredHash = decode({ schema: Hash, value: outbox.desiredHash })
+      storeFixture.store.appendOutboxAttemptState({
+        rootId: testIds.rootId,
+        commandId: command.commandId,
+        commandKey: command.commandKey,
+        surface: command.surface,
+        attempt: 1,
+        attemptState: 'running',
+      })
+      storeFixture.store.appendOutboxSettlement({
+        rootId: testIds.rootId,
+        commandId: command.commandId,
+        commandKey: command.commandKey,
+        surface: command.surface,
+        commandTag: 'CreatePage',
+        requestId: testIds.requestId,
+        desiredHash,
+        observedHash: desiredHash,
+        settlementKind: 'verified-success',
+      })
+
+      settleReplicaChangesAfterSync({
+        changes,
+        replicaPath,
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        decisions: result.push.plan.decisions,
+      })
+
+      expect(rowCreateFor(replicaPath, 'create-no-page-id')).toMatchObject({
+        status: 'needs_reconciliation',
+        remote_page_id: null,
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('promotes typed body metadata schema and restore CDC rows into guarded planner intents', async () => {
     const clock = makeFakeClock()
     const workspaceRoot = tempWorkspace()
@@ -753,10 +1135,7 @@ describe('user-facing SQLite replica', () => {
         changes: readPendingReplicaChanges(replicaPath),
         replicaPath,
       })
-      expect(intents.map((intent) => intent._tag).toSorted()).toEqual([
-        'body-edit',
-        'local-delete',
-      ])
+      expect(intents.map((intent) => intent._tag).toSorted()).toEqual(['body-edit', 'local-delete'])
       expect(statusFor(replicaPath, 'body-row')).toMatchObject({ status: 'pending' })
       expect(statusFor(replicaPath, 'metadata-row')).toMatchObject({
         status: 'unsupported',

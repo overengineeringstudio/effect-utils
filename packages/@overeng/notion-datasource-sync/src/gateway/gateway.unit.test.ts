@@ -924,6 +924,8 @@ describe('Notion data source gateway real adapter boundary', () => {
         icon: null,
       }),
     updatePage: () => Effect.succeed(remotePage(pageId('page-1'), { title: { type: 'title' } })),
+    createPage: ({ properties }) =>
+      Effect.succeed(remotePage(pageId('created-page-1'), properties)),
     updateDatabase: () =>
       Effect.succeed({
         id: 'database-1',

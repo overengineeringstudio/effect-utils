@@ -61,7 +61,7 @@ Replica tests must prove that establishment creates `notion.sqlite`, that
 generic tables and generated views match observed Notion rows, and that local SQL
 edits create intents rather than immediate Notion writes. The focused replica
 E2E suite covers direct current-state CDC, typed body/lifecycle tables,
-metadata/schema CDC fail-closed behavior, row-create fail-closed behavior, safe
+metadata/schema CDC fail-closed behavior, row-create planning/settlement behavior, safe
 and unsafe conflict-resolution requests, dry-run no-settlement, stale bases,
 invalid payloads, and generated view escaping. Dry-run assertions must check
 that no replica rows are mutated, no

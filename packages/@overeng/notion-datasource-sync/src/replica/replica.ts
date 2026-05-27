@@ -13,13 +13,10 @@ import {
 } from '../core/canonical.ts'
 import {
   BodyPushCommand,
-  CanonicalDataSourceProperty,
   CanonicalPropertyValue,
+  CreatePageCommand,
   PatchPagePropertiesCommand,
-  PatchDataSourceMetadataCommand,
-  PatchDataSourceSchemaCommand,
   RestorePageCommand,
-  SchemaPatchOperation,
   TrashPageCommand,
 } from '../core/commands.ts'
 import {
@@ -28,7 +25,6 @@ import {
   Hash,
   PageId,
   PropertyId,
-  PropertyName,
   type AbsolutePath,
   BodyPointer,
   WorkspaceRelativePath,
@@ -80,6 +76,9 @@ export type ReplicaLocalChange = {
   readonly schemaOperationJson: string | undefined
   readonly conflictId: string | undefined
   readonly resolutionAction: string | undefined
+  readonly localRowId: string | undefined
+  readonly clientRequestKey: string | undefined
+  readonly remotePageId: string | undefined
 }
 
 type ReplicaChangeStatus =
@@ -90,6 +89,7 @@ type ReplicaChangeStatus =
   | 'conflict'
   | 'unsupported'
   | 'rejected'
+  | 'needs_reconciliation'
 
 export type ApplyReplicaConflictResolutionsOptions = {
   readonly changes: readonly ReplicaLocalChange[]
@@ -180,6 +180,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_cells_block_identity_update;
     DROP TRIGGER IF EXISTS notion_cells_block_delete;
     DROP TRIGGER IF EXISTS notion_rows_archive_restore_intent;
+    DROP TRIGGER IF EXISTS notion_rows_block_insert;
     DROP TRIGGER IF EXISTS notion_rows_block_identity_update;
     DROP TRIGGER IF EXISTS notion_rows_block_delete;
     DROP TRIGGER IF EXISTS notion_local_changes_mirror_cell_insert;
@@ -188,6 +189,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_cell_changes_mirror_local_update;
     DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_update;
+    DROP TRIGGER IF EXISTS notion_row_creates_mirror_row_change_insert;
+    DROP TRIGGER IF EXISTS notion_row_creates_mirror_row_change_update;
     DROP TRIGGER IF EXISTS notion_body_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_body_changes_mirror_local_update;
     DROP TRIGGER IF EXISTS notion_metadata_changes_mirror_local_insert;
@@ -280,7 +283,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'applied',
         'conflict',
         'unsupported',
-        'rejected'
+        'rejected',
+        'needs_reconciliation'
       )),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -301,11 +305,37 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'applied',
         'conflict',
         'unsupported',
-        'rejected'
+        'rejected',
+        'needs_reconciliation'
       )),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_row_creates (
+      change_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      local_row_id TEXT NOT NULL,
+      client_request_key TEXT NOT NULL,
+      initial_values_json TEXT NOT NULL CHECK (json_valid(initial_values_json)),
+      base_schema_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      remote_page_id TEXT,
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      UNIQUE (data_source_id, local_row_id),
+      UNIQUE (data_source_id, client_request_key)
     );
 
     CREATE TABLE IF NOT EXISTS notion_body_changes (
@@ -322,7 +352,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'applied',
         'conflict',
         'unsupported',
-        'rejected'
+        'rejected',
+        'needs_reconciliation'
       )),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -343,7 +374,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'applied',
         'conflict',
         'unsupported',
-        'rejected'
+        'rejected',
+        'needs_reconciliation'
       )),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -363,7 +395,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'applied',
         'conflict',
         'unsupported',
-        'rejected'
+        'rejected',
+        'needs_reconciliation'
       )),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -383,7 +416,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'applied',
         'conflict',
         'unsupported',
-        'rejected'
+        'rejected',
+        'needs_reconciliation'
       )),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -415,7 +449,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'applied',
         'conflict',
         'unsupported',
-        'rejected'
+        'rejected',
+        'needs_reconciliation'
       )),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -446,6 +481,105 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       updated_at TEXT NOT NULL
     );
 
+    CREATE VIEW IF NOT EXISTS notion_rows_effective AS
+      SELECT
+        data_source_id,
+        page_id,
+        NULL AS local_row_id,
+        'remote' AS origin,
+        properties_hash,
+        in_trash,
+        moved_out,
+        local_delete_candidate,
+        'applied' AS sync_status,
+        observed_event_id,
+        observed_at,
+        updated_at
+      FROM notion_rows
+      UNION ALL
+      SELECT
+        data_source_id,
+        remote_page_id AS page_id,
+        local_row_id,
+        'local_create' AS origin,
+        NULL AS properties_hash,
+        0 AS in_trash,
+        0 AS moved_out,
+        0 AS local_delete_candidate,
+        status AS sync_status,
+        NULL AS observed_event_id,
+        NULL AS observed_at,
+        updated_at
+      FROM notion_row_creates
+      WHERE status IN ('pending', 'queued', 'planned', 'needs_reconciliation')
+        OR (remote_page_id IS NOT NULL AND status != 'applied');
+
+    CREATE VIEW IF NOT EXISTS notion_cells_effective AS
+      SELECT
+        data_source_id,
+        page_id,
+        NULL AS local_row_id,
+        'remote' AS origin,
+        property_id,
+        property_name,
+        property_type,
+        value_json,
+        value_text,
+        value_number,
+        value_boolean,
+        base_hash,
+        remote_hash,
+        availability,
+        write_class,
+        'applied' AS sync_status,
+        observed_event_id,
+        updated_at
+      FROM notion_cells
+      UNION ALL
+      SELECT
+        c.data_source_id,
+        c.remote_page_id AS page_id,
+        c.local_row_id,
+        'local_create' AS origin,
+        p.property_id,
+        p.property_name,
+        p.property_type,
+        json_extract(values_by_property.value, '$') AS value_json,
+        CASE json_extract(values_by_property.value, '$._tag')
+          WHEN 'title' THEN json_extract(values_by_property.value, '$.plainText')
+          WHEN 'rich_text' THEN json_extract(values_by_property.value, '$.plainText')
+          WHEN 'select' THEN json_extract(values_by_property.value, '$.option.name')
+          WHEN 'status' THEN json_extract(values_by_property.value, '$.option.name')
+          WHEN 'email' THEN json_extract(values_by_property.value, '$.value')
+          WHEN 'url' THEN json_extract(values_by_property.value, '$.value')
+          WHEN 'phone_number' THEN json_extract(values_by_property.value, '$.value')
+          ELSE NULL
+        END AS value_text,
+        CASE
+          WHEN json_extract(values_by_property.value, '$._tag') = 'number'
+          THEN json_extract(values_by_property.value, '$.value')
+          ELSE NULL
+        END AS value_number,
+        CASE
+          WHEN json_extract(values_by_property.value, '$._tag') = 'checkbox'
+          THEN CASE WHEN json_extract(values_by_property.value, '$.checked') THEN 1 ELSE 0 END
+          ELSE NULL
+        END AS value_boolean,
+        c.base_schema_hash AS base_hash,
+        c.base_schema_hash AS remote_hash,
+        'local-create' AS availability,
+        p.write_class,
+        c.status AS sync_status,
+        NULL AS observed_event_id,
+        c.updated_at
+      FROM notion_row_creates c
+      JOIN json_each(c.initial_values_json) AS values_by_property
+      JOIN notion_properties p
+        ON p.data_source_id = c.data_source_id
+       AND p.property_id = values_by_property.key
+      WHERE c.status IN ('pending', 'queued', 'planned', 'needs_reconciliation')
+        OR (c.remote_page_id IS NOT NULL AND c.status != 'applied');
+
     CREATE INDEX IF NOT EXISTS notion_cells_data_source_property_idx
       ON notion_cells(data_source_id, property_id);
     CREATE INDEX IF NOT EXISTS notion_cells_text_idx ON notion_cells(value_text);
@@ -453,6 +587,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       ON notion_cell_changes(status, data_source_id, page_id, property_id);
     CREATE INDEX IF NOT EXISTS notion_row_changes_pending_idx
       ON notion_row_changes(status, data_source_id, page_id);
+    CREATE INDEX IF NOT EXISTS notion_row_creates_pending_idx
+      ON notion_row_creates(status, data_source_id, client_request_key);
     CREATE INDEX IF NOT EXISTS notion_body_changes_pending_idx
       ON notion_body_changes(status, page_id);
     CREATE INDEX IF NOT EXISTS notion_metadata_changes_pending_idx
@@ -634,6 +770,13 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       SELECT RAISE(ABORT, 'notion_rows identity/hash columns are read-only; edit in_trash to queue an archive/restore intent');
     END;
 
+    CREATE TRIGGER IF NOT EXISTS notion_rows_block_insert
+    BEFORE INSERT ON notion_rows
+    FOR EACH ROW
+    BEGIN
+      SELECT RAISE(ABORT, 'notion_rows is observed remote state; insert into notion_row_creates to create a Notion row');
+    END;
+
     CREATE TRIGGER IF NOT EXISTS notion_rows_block_delete
     BEFORE DELETE ON notion_rows
     FOR EACH ROW
@@ -725,6 +868,50 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         page_id = NEW.page_id,
         value_json = NEW.value_json,
         base_hash = NEW.base_hash,
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.change_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_row_creates_mirror_row_change_insert
+    AFTER INSERT ON notion_row_creates
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_row_changes (
+        change_id,
+        kind,
+        data_source_id,
+        page_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        'row_create',
+        NEW.data_source_id,
+        NEW.remote_page_id,
+        NEW.initial_values_json,
+        NEW.base_schema_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_row_creates_mirror_row_change_update
+    AFTER UPDATE ON notion_row_creates
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_row_changes
+      SET
+        page_id = NEW.remote_page_id,
+        value_json = NEW.initial_values_json,
+        base_hash = NEW.base_schema_hash,
         status = NEW.status,
         unsupported_reason = NEW.unsupported_reason,
         updated_at = NEW.updated_at
@@ -1077,6 +1264,7 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_cells_block_identity_update;
     DROP TRIGGER IF EXISTS notion_cells_block_delete;
     DROP TRIGGER IF EXISTS notion_rows_archive_restore_intent;
+    DROP TRIGGER IF EXISTS notion_rows_block_insert;
     DROP TRIGGER IF EXISTS notion_rows_block_identity_update;
     DROP TRIGGER IF EXISTS notion_rows_block_delete;
     DROP TRIGGER IF EXISTS notion_local_changes_mirror_cell_insert;
@@ -1507,6 +1695,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
              (
                (SELECT count(*) FROM notion_cell_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_row_changes WHERE status IN ('pending', 'queued')) +
+               (SELECT count(*) FROM notion_row_creates WHERE status IN ('pending', 'queued', 'planned', 'needs_reconciliation')) +
                (SELECT count(*) FROM notion_body_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_metadata_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_schema_changes WHERE status IN ('pending', 'queued')) +
@@ -1570,6 +1759,9 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
              schema_operation_json,
              conflict_id,
              resolution_action,
+             local_row_id,
+             client_request_key,
+             remote_page_id,
              created_at
            FROM (
              SELECT
@@ -1590,9 +1782,37 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS schema_operation_json,
                NULL AS conflict_id,
                NULL AS resolution_action,
+               NULL AS local_row_id,
+               NULL AS client_request_key,
+               NULL AS remote_page_id,
                created_at
              FROM notion_cell_changes
              WHERE status IN ('pending', 'queued')
+             UNION ALL
+             SELECT
+               change_id,
+               'row_create' AS kind,
+               data_source_id,
+               remote_page_id AS page_id,
+               NULL AS property_id,
+               initial_values_json AS value_json,
+               base_schema_hash AS base_hash,
+               status,
+               NULL AS body_path,
+               NULL AS local_body_hash,
+               NULL AS local_body_content,
+               NULL AS metadata_resource_type,
+               NULL AS title_plain_text,
+               NULL AS description_plain_text,
+               NULL AS schema_operation_json,
+               NULL AS conflict_id,
+               NULL AS resolution_action,
+               local_row_id,
+               client_request_key,
+               remote_page_id,
+               created_at
+             FROM notion_row_creates
+             WHERE status IN ('pending', 'queued', 'planned', 'needs_reconciliation')
              UNION ALL
              SELECT
                change_id,
@@ -1612,9 +1832,12 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS schema_operation_json,
                NULL AS conflict_id,
                NULL AS resolution_action,
+               NULL AS local_row_id,
+               NULL AS client_request_key,
+               NULL AS remote_page_id,
                created_at
              FROM notion_row_changes
-             WHERE status IN ('pending', 'queued')
+             WHERE status IN ('pending', 'queued') AND kind != 'row_create'
              UNION ALL
              SELECT
                change_id,
@@ -1634,6 +1857,9 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS schema_operation_json,
                NULL AS conflict_id,
                NULL AS resolution_action,
+               NULL AS local_row_id,
+               NULL AS client_request_key,
+               NULL AS remote_page_id,
                created_at
              FROM notion_body_changes
              WHERE status IN ('pending', 'queued')
@@ -1656,6 +1882,9 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS schema_operation_json,
                NULL AS conflict_id,
                NULL AS resolution_action,
+               NULL AS local_row_id,
+               NULL AS client_request_key,
+               NULL AS remote_page_id,
                created_at
              FROM notion_metadata_changes
              WHERE status IN ('pending', 'queued')
@@ -1678,6 +1907,9 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                operation_json AS schema_operation_json,
                NULL AS conflict_id,
                NULL AS resolution_action,
+               NULL AS local_row_id,
+               NULL AS client_request_key,
+               NULL AS remote_page_id,
                created_at
              FROM notion_schema_changes
              WHERE status IN ('pending', 'queued')
@@ -1700,6 +1932,9 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS schema_operation_json,
                conflict_id,
                action AS resolution_action,
+               NULL AS local_row_id,
+               NULL AS client_request_key,
+               NULL AS remote_page_id,
                created_at
              FROM notion_conflict_resolutions
              WHERE status IN ('pending', 'queued')
@@ -1736,6 +1971,9 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
       schemaOperationJson: readOptionalString({ row, key: 'schema_operation_json' }),
       conflictId: readOptionalString({ row, key: 'conflict_id' }),
       resolutionAction: readOptionalString({ row, key: 'resolution_action' }),
+      localRowId: readOptionalString({ row, key: 'local_row_id' }),
+      clientRequestKey: readOptionalString({ row, key: 'client_request_key' }),
+      remotePageId: readOptionalString({ row, key: 'remote_page_id' }),
     }))
   } finally {
     db.close()
@@ -1769,6 +2007,11 @@ export const markReplicaChangeStatus = ({
     ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
     db.prepare(
       `UPDATE notion_row_changes
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_row_creates
        SET status = ?, unsupported_reason = ?, updated_at = ?
        WHERE change_id = ?`,
     ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
@@ -1878,9 +2121,9 @@ export const applyReplicaConflictResolutions = ({
         dryRun,
         changeId: change.changeId,
         status:
-          choice.startsWith('retry_after_refresh') ||
-          choice.startsWith('Unsupported') ||
-          choice.startsWith('choose_local/manual_value')
+          choice.startsWith('retry_after_refresh') === true ||
+          choice.startsWith('Unsupported') === true ||
+          choice.startsWith('choose_local/manual_value') === true
             ? 'unsupported'
             : 'rejected',
         reason: choice,
@@ -1947,6 +2190,12 @@ const surfaceForReplicaChange = (change: ReplicaLocalChange): string | undefined
       propertyId: decode({ schema: PropertyId, value: `replica:${change.changeId}` }),
     })
   }
+  if (change.kind === 'row_create' && change.dataSourceId.length > 0) {
+    return schemaSurfaceKey({
+      dataSourceId: decode({ schema: DataSourceId, value: change.dataSourceId }),
+      propertyId: decode({ schema: PropertyId, value: `replica-create:${change.changeId}` }),
+    })
+  }
   return undefined
 }
 
@@ -1991,6 +2240,22 @@ const settlementStatusForOutboxState = (
   }
 }
 
+const createdPageIdForCommand = ({
+  store,
+  rootId,
+  commandId,
+}: {
+  readonly store: NotionSyncStore
+  readonly rootId: SyncRootId
+  readonly commandId: string
+}): string | undefined => {
+  const events = store
+    .replay(rootId)
+    .filter((event) => event._tag === 'RemoteWriteSettled' && event.commandId === commandId)
+  const event = events.at(-1)
+  return event?._tag === 'RemoteWriteSettled' ? event.createdPageId : undefined
+}
+
 /** Settle public replica CDC statuses from planner decisions and durable outbox state. */
 export const settleReplicaChangesAfterSync = ({
   changes,
@@ -2005,7 +2270,7 @@ export const settleReplicaChangesAfterSync = ({
     store.readOutbox(rootId).map((row) => [row.commandId, row] as const),
   )
   for (const change of changes) {
-    if (change.kind === 'conflict_resolution' || change.kind === 'row_create') continue
+    if (change.kind === 'conflict_resolution') continue
     const decision = decisionForReplicaChange({ change, decisions })
     if (decision === undefined) continue
     if (decision._tag === 'OpenConflict') {
@@ -2036,6 +2301,35 @@ export const settleReplicaChangesAfterSync = ({
     if (command === undefined) continue
     const outbox = outboxByCommandId.get(command.commandId)
     if (outbox === undefined) continue
+    if (change.kind === 'row_create' && outbox.state === 'settled') {
+      const createdPageId = createdPageIdForCommand({
+        store,
+        rootId,
+        commandId: command.commandId,
+      })
+      if (createdPageId === undefined) {
+        markChange({
+          replicaPath,
+          changeId: change.changeId,
+          status: 'needs_reconciliation',
+          reason:
+            'Create command settled without a durable created page id; manual reconciliation is required before retry.',
+        })
+        continue
+      }
+      const db = new DatabaseSync(replicaPath)
+      try {
+        createReplicaSchema(db)
+        db.prepare(
+          `UPDATE notion_row_creates
+           SET remote_page_id = ?, status = 'applied', unsupported_reason = NULL, updated_at = ?
+           WHERE change_id = ?`,
+        ).run(createdPageId, new Date().toISOString(), change.changeId)
+      } finally {
+        db.close()
+      }
+      continue
+    }
     markChange({
       replicaPath,
       changeId: change.changeId,
@@ -2066,13 +2360,152 @@ export const replicaChangesToPlannerIntents = ({
     const intents: PlannerIntent[] = []
     for (const change of changes) {
       if (change.kind === 'row_create') {
-        markChange({
-          replicaPath,
-          dryRun,
-          changeId: change.changeId,
-          status: 'unsupported',
-          reason:
-            'Row creation remains fail-closed because Notion create-page has no idempotency key; support needs durable returned page_id reconciliation before retry.',
+        if (change.remotePageId !== undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'planned',
+            reason: 'Row create already has a remote_page_id and is waiting for observation.',
+          })
+          continue
+        }
+        if (
+          change.valueJson === undefined ||
+          change.baseHash === undefined ||
+          change.clientRequestKey === undefined ||
+          change.localRowId === undefined
+        ) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason:
+              'row_create requires initial_values_json, base_schema_hash, local_row_id, and client_request_key.',
+          })
+          continue
+        }
+        let dataSourceId: DataSourceId
+        let baseSchemaHash: Hash
+        let initialProperties: Record<PropertyId, typeof CanonicalPropertyValue.Type>
+        try {
+          dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
+          baseSchemaHash = decode({ schema: Hash, value: change.baseHash })
+          const parsed = JSON.parse(change.valueJson) as Record<string, unknown>
+          initialProperties = Object.fromEntries(
+            Object.entries(parsed).map(([propertyId, value]) => [
+              decode({ schema: PropertyId, value: propertyId }),
+              Schema.decodeUnknownSync(CanonicalPropertyValue)(value),
+            ]),
+          ) as Record<PropertyId, typeof CanonicalPropertyValue.Type>
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'row_create initial_values_json must map property ids to canonical values.',
+          })
+          continue
+        }
+        const dataSource = db
+          .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
+          .get(change.dataSourceId) as SqlRow | undefined
+        if (dataSource === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'row_create targets a data source that is not present in the replica.',
+          })
+          continue
+        }
+        if (change.baseHash !== readString({ row: dataSource, key: 'schema_hash' })) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'conflict',
+            reason: 'row_create has a stale base_schema_hash.',
+          })
+          continue
+        }
+        const properties = db
+          .prepare(
+            `SELECT property_id, property_type, write_class
+             FROM notion_properties
+             WHERE data_source_id = ?`,
+          )
+          .all(change.dataSourceId) as SqlRow[]
+        const propertyById = new Map(
+          properties.map((property) => [
+            readString({ row: property, key: 'property_id' }),
+            property,
+          ]),
+        )
+        const hasTitle = properties.some(
+          (property) =>
+            readString({ row: property, key: 'property_type' }) === 'title' &&
+            initialProperties[readString({ row: property, key: 'property_id' }) as PropertyId]
+              ?._tag === 'title',
+        )
+        if (hasTitle === false) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'row_create requires an initial title property value.',
+          })
+          continue
+        }
+        const unsupported = Object.entries(initialProperties).find(([propertyId, value]) => {
+          const property = propertyById.get(propertyId)
+          if (property === undefined) return true
+          if (readString({ row: property, key: 'write_class' }) !== 'writable') return true
+          const propertyType = readString({ row: property, key: 'property_type' })
+          return (
+            ['relation', 'people', 'files'].includes(propertyType) ||
+            ['relation', 'people', 'files', 'computed', 'empty'].includes(value._tag)
+          )
+        })
+        if (unsupported !== undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason:
+              'row_create supports only writable scalar/select/status initial values; relation, people, files, empty, and computed values remain fail-closed.',
+          })
+          continue
+        }
+        const desiredHash = hashStoreBytes(change.valueJson)
+        const commandId = decode({ schema: CommandId, value: `replica:${change.changeId}` })
+        intents.push({
+          _tag: 'row-create',
+          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
+          commandKey: decode({
+            schema: IdempotencyKey,
+            value: `replica:create:${change.dataSourceId}:${change.clientRequestKey}`,
+          }),
+          surface: schemaSurfaceKey({
+            dataSourceId,
+            propertyId: decode({ schema: PropertyId, value: `replica-create:${change.changeId}` }),
+          }),
+          dataSourceId,
+          command: CreatePageCommand.make({
+            _tag: 'CreatePageCommand',
+            commandId,
+            dataSourceId,
+            clientRequestKey: change.clientRequestKey,
+            baseSchemaHash,
+            initialProperties,
+          }),
+          baseHash: baseSchemaHash,
+          desiredHash,
         })
         continue
       }
@@ -2228,7 +2661,9 @@ export const replicaChangesToPlannerIntents = ({
             nextBodyHash: localBodyHash,
             ...(change.bodyPath === undefined
               ? {}
-              : { localBodyPath: decode({ schema: WorkspaceRelativePath, value: change.bodyPath }) }),
+              : {
+                  localBodyPath: decode({ schema: WorkspaceRelativePath, value: change.bodyPath }),
+                }),
             ...(change.localBodyContent === undefined
               ? {}
               : { localBodyContent: change.localBodyContent }),
@@ -2432,7 +2867,11 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        if (['relation', 'people', 'files'].includes(readString({ row: cell, key: 'property_type' }))) {
+        if (
+          ['relation', 'people', 'files'].includes(
+            readString({ row: cell, key: 'property_type' }),
+          ) === true
+        ) {
           markChange({
             replicaPath,
             dryRun,
