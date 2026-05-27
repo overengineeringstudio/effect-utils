@@ -625,6 +625,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       createPage: () => Effect.die('createPage should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
       patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
+      patchDatabaseMetadata: () => Effect.die('patchDatabaseMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
       restorePage: () => Effect.die('restorePage should not be called'),
     }
@@ -710,6 +711,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       createPage: () => Effect.die('createPage should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
       patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
+      patchDatabaseMetadata: () => Effect.die('patchDatabaseMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
       restorePage: () => Effect.die('restorePage should not be called'),
     }
@@ -1546,50 +1548,55 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             }
           }
 
-          const metadataTitle = `sqlite cdc metadata ${provisioned.config.runId}`
-          const metadataDescription = `metadata description ${provisioned.config.runId}`
+          const databaseTitle = `sqlite cdc database ${provisioned.config.runId}`
+          const databaseDescription = `database description ${provisioned.config.runId}`
+          let liveDatabaseId: string | undefined
           {
             const db = new DatabaseSync(replicaPath)
             try {
-              const source = db
+              const database = db
                 .prepare(
-                  `SELECT metadata_hash, title_plain_text, description_plain_text
-                   FROM notion_data_sources
+                  `SELECT database_id, metadata_hash
+                   FROM notion_databases
                    WHERE data_source_id = ?`,
                 )
                 .get(provisioned.config.dataSourceId) as
                 | {
+                    readonly database_id: string
                     readonly metadata_hash: string
-                    readonly title_plain_text: string | null
-                    readonly description_plain_text: string | null
                   }
                 | undefined
-              if (source === undefined) {
-                throw new Error('live metadata CDC test did not project the data source')
+              if (database === undefined) {
+                throw new Error('live database metadata CDC test did not project the database')
               }
+              liveDatabaseId = database.database_id
               db.prepare(
                 `INSERT INTO notion_metadata_changes (
-                   change_id, data_source_id, resource_type, title_plain_text,
+                   change_id, data_source_id, database_id, resource_type, title_plain_text,
                    description_plain_text, base_hash
-                 ) VALUES (?, ?, 'data_source', ?, ?, ?)`,
+                 ) VALUES (?, ?, ?, 'database', ?, ?, ?)`,
               ).run(
-                `live-metadata-${provisioned.config.runId}`,
+                `live-database-metadata-${provisioned.config.runId}`,
                 provisioned.config.dataSourceId,
-                metadataTitle,
-                metadataDescription,
-                source.metadata_hash,
+                database.database_id,
+                databaseTitle,
+                databaseDescription,
+                database.metadata_hash,
               )
             } finally {
               db.close()
             }
           }
           await runLiveCliCommand({ env, argv: syncArgv })
-          const metadataAfter = await runLive(
+          if (liveDatabaseId === undefined) {
+            throw new Error('live database metadata CDC test did not capture database id')
+          }
+          const databaseAfter = await runLive(
             env,
-            NotionDataSources.retrieve({ dataSourceId: provisioned.config.dataSourceId }),
+            NotionDatabases.retrieve({ databaseId: liveDatabaseId }),
           )
-          expect(liveRichTextPlainText(metadataAfter.title)).toBe(metadataTitle)
-          expect(liveRichTextPlainText(metadataAfter.description)).toBe(metadataDescription)
+          expect(liveRichTextPlainText(databaseAfter.title)).toBe(databaseTitle)
+          expect(liveRichTextPlainText(databaseAfter.description)).toBe(databaseDescription)
           {
             const db = new DatabaseSync(replicaPath, { readOnly: true })
             try {
@@ -1600,7 +1607,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                      FROM notion_metadata_changes
                      WHERE change_id = ?`,
                   )
-                  .get(`live-metadata-${provisioned.config.runId}`),
+                  .get(`live-database-metadata-${provisioned.config.runId}`),
               ).toMatchObject({ status: 'applied', unsupported_reason: null })
             } finally {
               db.close()

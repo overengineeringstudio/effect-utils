@@ -791,6 +791,7 @@ describe('CLI command surface', () => {
       createPage: () => Effect.die('createPage should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
       patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
+      patchDatabaseMetadata: () => Effect.die('patchDatabaseMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
       restorePage: () => Effect.die('restorePage should not be called'),
     }

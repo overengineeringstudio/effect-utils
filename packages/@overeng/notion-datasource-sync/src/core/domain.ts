@@ -20,6 +20,13 @@ export const DataSourceId = Schema.NonEmptyTrimmedString.pipe(
 )
 export type DataSourceId = typeof DataSourceId.Type
 
+/** Branded Notion database/container ID; distinct from a v2 data-source ID. */
+export const DatabaseId = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('NotionDatasourceSync.DatabaseId'),
+  Schema.annotations({ identifier: 'NotionDatasourceSync.DatabaseId' }),
+)
+export type DatabaseId = typeof DatabaseId.Type
+
 /** Branded Notion page ID, used throughout sync events, commands, and projections. */
 export const PageId = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('NotionDatasourceSync.PageId'),
@@ -152,6 +159,7 @@ export type CapabilityPreflightResult = typeof CapabilityPreflightResult.Type
 /** Point-in-time observation of a Notion database: captures request metadata plus independent schema and metadata hashes. */
 export const DataSourceSnapshot = Schema.TaggedStruct('DataSourceSnapshot', {
   dataSourceId: DataSourceId,
+  parentDatabaseId: Schema.optional(DatabaseId),
   requestId: NotionRequestId,
   observedAt: Schema.DateTimeUtc,
   schemaHash: Hash,

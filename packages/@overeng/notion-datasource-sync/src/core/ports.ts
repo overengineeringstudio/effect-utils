@@ -11,6 +11,7 @@ import type {
   CreatePageResult,
   ObserveBodyInput,
   PatchDataSourceMetadataCommand,
+  PatchDatabaseMetadataCommand,
   RetrievePagePropertyInput,
   PagePropertyItemPage,
   PatchDataSourceSchemaCommand,
@@ -70,6 +71,9 @@ export type NotionDataSourceGatewayShape = {
   ) => Effect.Effect<NotionRequestId, NotionGatewayError>
   readonly patchDataSourceMetadata: (
     command: PatchDataSourceMetadataCommand,
+  ) => Effect.Effect<NotionRequestId, NotionGatewayError>
+  readonly patchDatabaseMetadata: (
+    command: PatchDatabaseMetadataCommand,
   ) => Effect.Effect<NotionRequestId, NotionGatewayError>
   readonly trashPage: (
     command: TrashPageCommand,

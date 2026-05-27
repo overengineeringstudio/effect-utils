@@ -12,6 +12,7 @@ import type {
   CreatePageCommand,
   CreatePageResult,
   PagePropertyItemPage,
+  PatchDatabaseMetadataCommand,
   PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
@@ -172,6 +173,7 @@ const findDataSource = ({
     | 'createPage'
     | 'patchDataSourceSchema'
     | 'patchDataSourceMetadata'
+    | 'patchDatabaseMetadata'
 }): Effect.Effect<DataSourceSnapshot, NotionGatewayError> => {
   const snapshot = dataSources.get(dataSourceKey(dataSourceId))
 
@@ -699,6 +701,68 @@ export const makeFakeNotionDataSourceGateway = (
                 dataSourceId: command.dataSourceId,
                 guard: 'StaleSurfaceBase',
                 message: `Metadata patch base does not match current data source metadata: ${command.dataSourceId}`,
+              }),
+            )
+          }
+
+          const requestId = nextRequestId()
+          const currentMetadata =
+            snapshot.metadataJson === undefined
+              ? ({
+                  _tag: 'CanonicalDataSourceMetadata',
+                  titlePlainText: snapshot.metadataTitlePlainText ?? '',
+                  descriptionPlainText: snapshot.metadataDescriptionPlainText ?? '',
+                  icon: { _tag: 'none' },
+                } satisfies typeof CanonicalDataSourceMetadata.Type)
+              : Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
+                  snapshot.metadataJson,
+                )
+          const nextMetadata: typeof CanonicalDataSourceMetadata.Type = {
+            ...currentMetadata,
+            ...(command.metadataPatch.titlePlainText === undefined
+              ? {}
+              : { titlePlainText: command.metadataPatch.titlePlainText }),
+            ...(command.metadataPatch.descriptionPlainText === undefined
+              ? {}
+              : { descriptionPlainText: command.metadataPatch.descriptionPlainText }),
+          }
+          dataSources.set(dataSourceKey(command.dataSourceId), {
+            ...snapshot,
+            requestId,
+            metadataHash: dataSourceMetadataHash(nextMetadata),
+            metadataJson: JSON.stringify(nextMetadata),
+            metadataTitlePlainText: nextMetadata.titlePlainText,
+            metadataDescriptionPlainText: nextMetadata.descriptionPlainText,
+          })
+
+          return Effect.succeed(requestId)
+        }),
+      ),
+    patchDatabaseMetadata: (command: PatchDatabaseMetadataCommand) =>
+      findDataSource({
+        dataSources,
+        dataSourceId: command.dataSourceId,
+        operation: 'patchDatabaseMetadata',
+      }).pipe(
+        Effect.flatMap((snapshot) => {
+          if (snapshot.metadataHash === undefined) {
+            return Effect.fail(
+              makeGatewayError({
+                operation: 'patchDatabaseMetadata',
+                dataSourceId: command.dataSourceId,
+                guard: 'CurrentSurfaceMissing',
+                message: `Database metadata projection is missing for data source: ${command.dataSourceId}`,
+              }),
+            )
+          }
+
+          if (snapshot.metadataHash !== command.baseMetadataHash) {
+            return Effect.fail(
+              makeGatewayError({
+                operation: 'patchDatabaseMetadata',
+                dataSourceId: command.dataSourceId,
+                guard: 'StaleSurfaceBase',
+                message: `Database metadata patch base does not match current metadata: ${command.databaseId}`,
               }),
             )
           }

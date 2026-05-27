@@ -8,6 +8,7 @@ import {
   BodySafetySnapshot,
   CapabilityName,
   CommandId,
+  DatabaseId,
   DataSourceId,
   Hash,
   type NotionRequestId,
@@ -259,6 +260,7 @@ const decodeBodySafetyFromJson = Schema.decodeSync(Schema.parseJson(BodySafetySn
 const encodeBodySafety = Schema.encodeSync(BodySafetySnapshot)
 const decodeCapabilityName = Schema.decodeUnknownSync(CapabilityName)
 const decodeDataSourceId = Schema.decodeSync(DataSourceId)
+const decodeDatabaseId = Schema.decodeSync(DatabaseId)
 const decodeHash = Schema.decodeSync(Hash)
 const decodeIdempotencyKey = Schema.decodeUnknownSync(IdempotencyKey)
 const decodePageId = Schema.decodeSync(PageId)
@@ -1013,6 +1015,39 @@ export class NotionSyncStore {
       ).map(([dataSourceId, metadataHash]) => ({
         dataSourceId: decodeDataSourceId(dataSourceId),
         metadataHash: decodeHash(metadataHash),
+      })),
+      databaseMetadata: Array.from(
+        this.#db
+          .prepare(
+            `SELECT event_json
+             FROM sync_event
+             WHERE root_id = ? AND event_type = 'DataSourceMetadataObserved'
+             ORDER BY sequence`,
+          )
+          .all(rootId)
+          .reduce((accumulator, row) => {
+            const event = JSON.parse(readString({ row: row, key: 'event_json' })) as {
+              readonly dataSourceId?: unknown
+              readonly parentDatabaseId?: unknown
+              readonly metadataHash?: unknown
+            }
+            if (
+              typeof event.dataSourceId === 'string' &&
+              typeof event.parentDatabaseId === 'string' &&
+              typeof event.metadataHash === 'string'
+            ) {
+              accumulator.set(event.parentDatabaseId, {
+                dataSourceId: event.dataSourceId,
+                metadataHash: event.metadataHash,
+              })
+            }
+            return accumulator
+          }, new Map<string, { readonly dataSourceId: string; readonly metadataHash: string }>())
+          .entries(),
+      ).map(([databaseId, metadata]) => ({
+        databaseId: decodeDatabaseId(databaseId),
+        dataSourceId: decodeDataSourceId(metadata.dataSourceId),
+        metadataHash: decodeHash(metadata.metadataHash),
       })),
       schema: this.#db
         .prepare(

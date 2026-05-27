@@ -3,6 +3,7 @@ import { Schema } from 'effect'
 import {
   BodyPointer,
   CommandId,
+  DatabaseId,
   DataSourceId,
   Hash,
   NotionPageSize,
@@ -359,6 +360,22 @@ export const PatchDataSourceMetadataCommand = Schema.TaggedStruct(
 ).annotations({ identifier: 'NotionDatasourceSync.PatchDataSourceMetadataCommand' })
 export type PatchDataSourceMetadataCommand = typeof PatchDataSourceMetadataCommand.Type
 
+/** Remote write command: patches database/container metadata, verified through the owning data source metadata projection. */
+export const PatchDatabaseMetadataCommand = Schema.TaggedStruct(
+  'PatchDatabaseMetadataCommand',
+  {
+    commandId: CommandId,
+    databaseId: DatabaseId,
+    dataSourceId: DataSourceId,
+    baseMetadataHash: Hash,
+    metadataPatch: Schema.Struct({
+      titlePlainText: Schema.optional(Schema.String),
+      descriptionPlainText: Schema.optional(Schema.String),
+    }),
+  },
+).annotations({ identifier: 'NotionDatasourceSync.PatchDatabaseMetadataCommand' })
+export type PatchDatabaseMetadataCommand = typeof PatchDatabaseMetadataCommand.Type
+
 /** Remote write command: moves a Notion page to the trash, gated on the base properties hash. */
 export const TrashPageCommand = Schema.TaggedStruct('TrashPageCommand', {
   commandId: CommandId,
@@ -457,6 +474,7 @@ export const RemoteWriteCommand = Schema.Union(
   PatchPagePropertiesCommand,
   PatchDataSourceSchemaCommand,
   PatchDataSourceMetadataCommand,
+  PatchDatabaseMetadataCommand,
   TrashPageCommand,
   RestorePageCommand,
   BodyPushCommand,

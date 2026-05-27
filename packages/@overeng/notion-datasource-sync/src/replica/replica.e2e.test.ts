@@ -1210,7 +1210,7 @@ describe('user-facing SQLite replica', () => {
     }
   })
 
-  it('promotes typed body metadata schema and restore CDC rows into guarded planner intents', async () => {
+  it('promotes typed body metadata database metadata schema and restore CDC rows into guarded planner intents', async () => {
     const clock = makeFakeClock()
     const workspaceRoot = tempWorkspace()
     const replicaPath = defaultReplicaPath(workspaceRoot)
@@ -1259,6 +1259,14 @@ describe('user-facing SQLite replica', () => {
           readonly schema_hash: string
           readonly metadata_hash: string
         }
+        const database = db
+          .prepare(
+            `SELECT database_id, metadata_hash FROM notion_databases WHERE data_source_id = ?`,
+          )
+          .get(testIds.dataSourceId) as {
+          readonly database_id: string
+          readonly metadata_hash: string
+        }
 
         db.prepare(`UPDATE notion_rows SET in_trash = 0 WHERE page_id = ?`).run(testIds.pageId)
         db.prepare(
@@ -1275,14 +1283,16 @@ describe('user-facing SQLite replica', () => {
         )
         db.prepare(
           `INSERT INTO notion_metadata_changes (
-             change_id, data_source_id, resource_type, title_plain_text, description_plain_text, base_hash
-           ) VALUES (?, ?, 'data_source', ?, ?, ?)`,
+             change_id, data_source_id, database_id, resource_type, title_plain_text,
+             description_plain_text, base_hash
+           ) VALUES (?, ?, ?, 'database', ?, ?, ?)`,
         ).run(
-          'metadata-row',
+          'database-metadata-row',
           testIds.dataSourceId,
-          'Typed CDC title',
-          'Typed CDC description',
-          dataSource.metadata_hash,
+          database.database_id,
+          'Typed database title',
+          'Typed database description',
+          database.metadata_hash,
         )
         db.prepare(
           `INSERT INTO notion_schema_changes (
@@ -1308,11 +1318,11 @@ describe('user-facing SQLite replica', () => {
       })
       expect(intents.map((intent) => intent._tag).toSorted()).toEqual([
         'body-edit',
-        'data-source-metadata-edit',
+        'database-metadata-edit',
         'local-delete',
       ])
       expect(statusFor(replicaPath, 'body-row')).toMatchObject({ status: 'pending' })
-      expect(statusFor(replicaPath, 'metadata-row')).toMatchObject({ status: 'pending' })
+      expect(statusFor(replicaPath, 'database-metadata-row')).toMatchObject({ status: 'pending' })
       expect(statusFor(replicaPath, 'schema-row')).toMatchObject({
         status: 'unsupported',
         unsupported_reason:
@@ -1336,6 +1346,7 @@ describe('user-facing SQLite replica', () => {
       expect(dryRun.push.plan.enqueuedCommands).toBe(0)
       expect(gateway.ledger.successfulRestorePages).toHaveLength(0)
       expect(gateway.ledger.successfulPatchDataSourceMetadata).toHaveLength(0)
+      expect(gateway.ledger.successfulPatchDatabaseMetadata).toHaveLength(0)
       expect(gateway.ledger.successfulPatchDataSourceSchemas).toHaveLength(0)
 
       const applied = await runWithPorts(
@@ -1354,7 +1365,8 @@ describe('user-facing SQLite replica', () => {
       )
       expect(applied.push.plan.enqueuedCommands).toBe(3)
       expect(gateway.ledger.successfulRestorePages).toHaveLength(1)
-      expect(gateway.ledger.successfulPatchDataSourceMetadata).toHaveLength(1)
+      expect(gateway.ledger.successfulPatchDataSourceMetadata).toHaveLength(0)
+      expect(gateway.ledger.successfulPatchDatabaseMetadata).toHaveLength(1)
       expect(gateway.ledger.successfulPatchDataSourceSchemas).toHaveLength(0)
       settleReplicaChangesAfterSync({
         changes: readPendingReplicaChanges(replicaPath),
@@ -1364,7 +1376,7 @@ describe('user-facing SQLite replica', () => {
         decisions: applied.push.plan.decisions,
       })
       expect(statusFor(replicaPath, 'body-row')).toMatchObject({ status: 'applied' })
-      expect(statusFor(replicaPath, 'metadata-row')).toMatchObject({ status: 'applied' })
+      expect(statusFor(replicaPath, 'database-metadata-row')).toMatchObject({ status: 'applied' })
       expect(statusFor(replicaPath, 'schema-row')).toMatchObject({ status: 'unsupported' })
     } finally {
       storeFixture.cleanup()
@@ -1411,7 +1423,7 @@ describe('user-facing SQLite replica', () => {
              change_id, data_source_id, resource_type, description_plain_text, base_hash
            ) VALUES (?, ?, 'database', ?, ?)`,
         ).run(
-          'database-metadata',
+          'database-metadata-missing-id',
           testIds.dataSourceId,
           'Unsupported database metadata',
           hash('database-metadata-base'),
@@ -1434,10 +1446,9 @@ describe('user-facing SQLite replica', () => {
         replicaPath,
       })
       expect(intents).toHaveLength(0)
-      expect(statusFor(replicaPath, 'database-metadata')).toMatchObject({
-        status: 'unsupported',
-        unsupported_reason:
-          'Database metadata CDC needs a separate database authority projection and remains fail-closed.',
+      expect(statusFor(replicaPath, 'database-metadata-missing-id')).toMatchObject({
+        status: 'rejected',
+        unsupported_reason: 'database metadata_patch requires database_id.',
       })
       expect(statusFor(replicaPath, 'manual-conflict')).toMatchObject({
         status: 'unsupported',

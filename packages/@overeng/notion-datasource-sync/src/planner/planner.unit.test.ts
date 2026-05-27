@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BodyPushCommand,
   CommandId,
+  DatabaseId,
   DataSourceId,
   Hash,
   IdempotencyKey,
@@ -17,6 +18,7 @@ import {
   SyncRootId,
   bodySurfaceKey,
   dataSourceMetadataSurfaceKey,
+  databaseMetadataSurfaceKey,
   classifyConflict,
   guardApiCompatibility,
   guardBodyAdapterBoundary,
@@ -53,6 +55,7 @@ const rootId = decode(SyncRootId, 'root-1')
 const intentEventId = decode(SyncEventId, 'intent-1')
 const commandKey = decode(IdempotencyKey, 'intent:cmd-1')
 const dataSourceId = decode(DataSourceId, 'data-source-1')
+const databaseId = decode(DatabaseId, 'database-1')
 const otherDataSourceId = decode(DataSourceId, 'data-source-2')
 const pageId = decode(PageId, 'page-1')
 const otherPageId = decode(PageId, 'page-2')
@@ -113,6 +116,7 @@ const snapshot = (
     preflight: 'passed',
   },
   metadata: [{ dataSourceId, metadataHash: hash('e') }],
+  databaseMetadata: [{ databaseId, dataSourceId, metadataHash: hash('e') }],
   schema: [
     {
       dataSourceId,
@@ -538,6 +542,7 @@ describe('notion datasource planner', () => {
     const decision = planIntent({
       snapshot: snapshot({
         metadata: [{ dataSourceId, metadataHash: hash('d') }],
+        databaseMetadata: [{ databaseId, dataSourceId, metadataHash: hash('d') }],
       }),
       intent: {
         _tag: 'data-source-metadata-edit',

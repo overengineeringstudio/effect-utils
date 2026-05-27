@@ -1363,6 +1363,7 @@ const missingTokenCliGateway: NotionDataSourceGatewayShape = {
   patchDataSourceSchema: () => Effect.fail(cliGatewayConfigurationError('patchDataSourceSchema')),
   patchDataSourceMetadata: () =>
     Effect.fail(cliGatewayConfigurationError('patchDataSourceMetadata')),
+  patchDatabaseMetadata: () => Effect.fail(cliGatewayConfigurationError('patchDatabaseMetadata')),
   trashPage: () => Effect.fail(cliGatewayConfigurationError('trashPage')),
   restorePage: () => Effect.fail(cliGatewayConfigurationError('restorePage')),
 }

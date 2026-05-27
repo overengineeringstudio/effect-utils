@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 
 import { hashStoreBytes } from '../store/projections.ts'
 import type { CanonicalDataSourceMetadata, QueryRowsInput } from './commands.ts'
-import type { DataSourceId, PageId, PropertyId } from './domain.ts'
+import type { DatabaseId, DataSourceId, PageId, PropertyId } from './domain.ts'
 import { SurfaceKey } from './events.ts'
 
 /** Decode an arbitrary string into a branded `SurfaceKey` — throws on malformed input. */
@@ -35,6 +35,10 @@ export const schemaSurfaceKey = ({
 /** Surface key for data-source metadata such as title and description. */
 export const dataSourceMetadataSurfaceKey = (dataSourceId: DataSourceId): SurfaceKey =>
   surfaceKey(`data-source:${dataSourceId}:metadata`)
+
+/** Surface key for database/container metadata such as title and description. */
+export const databaseMetadataSurfaceKey = (databaseId: DatabaseId): SurfaceKey =>
+  surfaceKey(`database:${databaseId}:metadata`)
 
 /** Surface key for a local file path (`path:<path>`); used in path-claim conflict detection. */
 export const pathSurfaceKey = (path: string): SurfaceKey => surfaceKey(`path:${path}`)

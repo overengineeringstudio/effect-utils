@@ -5,6 +5,7 @@ import {
   BodyPointer,
   CapabilityName,
   CommandId,
+  DatabaseId,
   DataSourceId,
   Hash,
   NotionApiContract,
@@ -128,6 +129,7 @@ export type DataSourceObserved = typeof DataSourceObserved.Type
 export const DataSourceMetadataObserved = Schema.TaggedStruct('DataSourceMetadataObserved', {
   ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'DataSourceMetadataObserved' }),
   dataSourceId: DataSourceId,
+  parentDatabaseId: Schema.optional(DatabaseId),
   requestId: NotionRequestId,
   metadataHash: Hash,
   metadataJson: Schema.optional(Schema.String),

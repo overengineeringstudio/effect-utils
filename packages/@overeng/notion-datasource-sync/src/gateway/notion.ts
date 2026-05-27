@@ -21,6 +21,7 @@ import type {
   CanonicalOptionValue,
   CanonicalPropertyValue,
   CreatePageCommand,
+  PatchDatabaseMetadataCommand,
   PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
@@ -32,6 +33,7 @@ import type {
 import { CreatePageResult } from '../core/commands.ts'
 import { PagePropertyItemPage, QueryRowsPage } from '../core/commands.ts'
 import {
+  DatabaseId,
   DataSourceId,
   DataSourceSnapshot,
   NotionRequestId,
@@ -343,6 +345,9 @@ const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) => {
   return DataSourceSnapshot.make({
     _tag: 'DataSourceSnapshot',
     dataSourceId: DataSourceId.make(dataSource.id),
+    ...(dataSource.parent?.database_id === undefined
+      ? {}
+      : { parentDatabaseId: DatabaseId.make(dataSource.parent.database_id) }),
     requestId: unavailableRequestId,
     observedAt: observedNow(),
     schemaHash: canonicalHash(dataSource.properties),
@@ -1301,6 +1306,52 @@ export const makeNotionDataSourceGatewayFromClient = ({
               }),
             ),
           ),
+        ),
+      ),
+    patchDatabaseMetadata: (command: PatchDatabaseMetadataCommand) =>
+      client.retrieveDataSource({ dataSourceId: command.dataSourceId }).pipe(
+        Effect.mapError(
+          mapClientError({
+            operation: 'patchDatabaseMetadata',
+            dataSourceId: command.dataSourceId,
+          }),
+        ),
+        Effect.tap((dataSource) => {
+          const currentHash = dataSourceMetadataHash(
+            canonicalDataSourceMetadataFromRemote(dataSource),
+          )
+          const decision = guardStaleSurfaceBase({
+            baseHash: command.baseMetadataHash,
+            currentHash,
+          })
+          return decision._tag === 'allowed'
+            ? Effect.void
+            : Effect.fail(
+                gatewayGuardError({
+                  operation: 'patchDatabaseMetadata',
+                  dataSourceId: command.dataSourceId,
+                  guard: decision.guard,
+                  message: decision.message,
+                }),
+              )
+        }),
+        Effect.flatMap(() =>
+          client.updateDatabase({
+            databaseId: command.databaseId,
+            ...(command.metadataPatch.titlePlainText === undefined
+              ? {}
+              : { title: richTextWrite(command.metadataPatch.titlePlainText) }),
+            ...(command.metadataPatch.descriptionPlainText === undefined
+              ? {}
+              : { description: richTextWrite(command.metadataPatch.descriptionPlainText) }),
+          }),
+        ),
+        Effect.as(unavailableRequestId),
+        Effect.mapError(
+          mapClientError({
+            operation: 'patchDatabaseMetadata',
+            dataSourceId: command.dataSourceId,
+          }),
         ),
       ),
     trashPage: (command: TrashPageCommand) =>
