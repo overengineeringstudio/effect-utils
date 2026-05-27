@@ -705,6 +705,7 @@ export default ciWorkflow({
     // validation branches should fail one authority job, not obscure
     // lint/typecheck/test signal.
     'default-ref-policy': defaultRefPolicyCheckJob({
+      // LiveStore intentionally uses dev as its trunk branch.
       defaultRefs: { 'livestorejs/livestore': 'dev' },
     }),
     ...jobs,

@@ -339,6 +339,8 @@ let
     let
       name = baseNameOf path;
     in
+    # Keep caller-local pnpm/devenv/git state out of FOD source identity; the
+    # builder recreates the tiny mutable install state from checked-in inputs.
     !(builtins.elem name [
       ".devenv"
       ".git"
@@ -838,6 +840,8 @@ let
     if builtins.pathExists evalSrcPath then
       if builtins.baseNameOf relPath == ".npmrc" then
         let
+          # Local .npmrc may point at a developer-specific pure store path.
+          # Strip those knobs so deps FODs remain portable across worktrees.
           npmrcFile = pkgs.writeText "npmrc" (
             builtins.concatStringsSep "\n" (
               stripPrepLocalNpmrcSettings (lib.splitString "\n" (builtins.readFile evalSrcPath))

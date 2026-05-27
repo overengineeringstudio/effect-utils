@@ -87,6 +87,8 @@ let
 
       stripPrepLocalPnpmSettings =
         lines:
+        # The FOD must not inherit caller-local GVS/store paths; its private
+        # install root is part of the reproducible derivation boundary.
         builtins.filter (
           l:
           !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l)) && !(lib.hasPrefix "storeDir" (lib.trim l))
