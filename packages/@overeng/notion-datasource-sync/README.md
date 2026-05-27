@@ -27,23 +27,26 @@ surfaces fail closed instead of being silently dropped.
 ## CLI Shape
 
 ```sh
-notion-datasource-sync init \
-  --store .notion-datasource-sync/store.sqlite \
-  --root-id workspace-main \
-  --data-source-id <data-source-id> \
-  --workspace-root "$PWD/notion-workspace"
+notion-datasource-sync sync --from-notion <data-source-id-or-url> "$PWD/notion-workspace"
+notion-datasource-sync sync "$PWD/notion-workspace"
+notion-datasource-sync status "$PWD/notion-workspace"
 
 notion-datasource-sync pull --store ... --root-id ... --data-source-id ... --workspace-root ...
 notion-datasource-sync push --store ... --root-id ... --data-source-id ... --workspace-root ...
-notion-datasource-sync sync --store ... --root-id ... --data-source-id ... --workspace-root ...
-notion-datasource-sync status --store ... --root-id ... --data-source-id ... --workspace-root ...
 notion-datasource-sync watch --state .notion-datasource-sync/watch.json --store ... --root-id ... --data-source-id ... --workspace-root ...
 notion-datasource-sync doctor --store ... --root-id ... --data-source-id ... --workspace-root ...
 ```
 
+The sync-first form writes `.notion-datasource-sync/config.json` under the
+workspace root, with the local SQLite store at
+`.notion-datasource-sync/store.sqlite`. First establishment is remote-to-local
+only: it validates the existing Notion data source, records the binding, pulls
+remote state, and does not scan local artifacts or push remote writes. `pull`
+and `push` stay available for advanced CI/debug workflows.
+
 The live CLI reads `NOTION_API_TOKEN` and accepts `NOTION_TOKEN` as a legacy
-fallback. The default CLI body adapter is intentionally fail-closed unless a
-`PageBodySyncPort` is injected by library code.
+fallback. When a live token is configured, the CLI wires the NotionMD-backed
+body adapter; without a token or injected body port, body sync fails closed.
 
 ## Safety Model
 

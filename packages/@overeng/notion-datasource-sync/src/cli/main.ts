@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { FetchHttpClient } from '@effect/platform'
@@ -7,9 +9,11 @@ import { NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
 import { NotionConfigLive } from '@overeng/notion-effect-client'
+import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { makeUnsupportedPageBodySyncPort } from '../body/adapter.ts'
+import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
 import { CanonicalPropertyValue, QueryContract } from '../core/commands.ts'
 import {
   AbsolutePath,
@@ -17,6 +21,7 @@ import {
   Hash,
   PageId,
   PropertyId,
+  SupportedNotionApiVersion,
   type CapabilityName,
 } from '../core/domain.ts'
 import type {
@@ -76,10 +81,12 @@ import {
 } from '../store/store.ts'
 import { type SchemaPropertyObservation } from '../sync/observation.ts'
 import {
+  establishFromNotion,
   initOneShotSync,
   pullOneShotSync,
   pushOneShotSync,
   syncOneShot,
+  type EstablishFromNotionResult,
   type OneShotPullResult,
   type OneShotPushResult,
   type OneShotSyncResult,
@@ -109,8 +116,18 @@ export type CliCommand =
     }
   | { readonly _tag: 'pull' }
   | { readonly _tag: 'push'; readonly dryRun?: boolean }
-  | { readonly _tag: 'sync'; readonly dryRun?: boolean }
-  | { readonly _tag: 'status' }
+  | {
+      readonly _tag: 'sync'
+      readonly workspaceRoot?: typeof AbsolutePath.Type
+      readonly dryRun?: boolean
+    }
+  | {
+      readonly _tag: 'sync-from-notion'
+      readonly dataSourceId: typeof DataSourceId.Type
+      readonly workspaceRoot: typeof AbsolutePath.Type
+      readonly dryRun?: boolean
+    }
+  | { readonly _tag: 'status'; readonly workspaceRoot?: typeof AbsolutePath.Type }
   | {
       readonly _tag: 'watch'
       readonly statePath: string
@@ -177,6 +194,96 @@ export type CliRuntimeOptions = {
   readonly gatewayClient?: NotionGatewayClient
   readonly body?: PageBodySyncPortShape
   readonly workspace?: LocalWorkspacePortShape
+}
+
+const workspaceMetadataDirectoryName = '.notion-datasource-sync'
+const workspaceConfigFileName = 'config.json'
+const workspaceStoreFileName = 'store.sqlite'
+const workspaceConfigVersion = 1
+
+const WorkspaceCliConfig = Schema.Struct({
+  version: Schema.Literal(1),
+  rootId: SyncRootId,
+  dataSourceId: DataSourceId,
+  storePath: AbsolutePath,
+  workspaceRoot: AbsolutePath,
+  notionApiVersion: SupportedNotionApiVersion,
+  bodyMaterialization: Schema.Literal('enabled', 'disabled'),
+})
+type WorkspaceCliConfig = typeof WorkspaceCliConfig.Type
+
+const normalizeAbsolutePath = (value: string): typeof AbsolutePath.Type =>
+  decode({ schema: AbsolutePath, value: isAbsolute(value) === true ? value : resolve(value) })
+
+const workspaceMetadataDirectory = (workspaceRoot: typeof AbsolutePath.Type): string =>
+  join(workspaceRoot, workspaceMetadataDirectoryName)
+
+const workspaceConfigPath = (workspaceRoot: typeof AbsolutePath.Type): string =>
+  join(workspaceMetadataDirectory(workspaceRoot), workspaceConfigFileName)
+
+const defaultStorePath = (workspaceRoot: typeof AbsolutePath.Type): typeof AbsolutePath.Type =>
+  decode({
+    schema: AbsolutePath,
+    value: join(workspaceMetadataDirectory(workspaceRoot), workspaceStoreFileName),
+  })
+
+const rootIdForDataSource = (dataSourceId: typeof DataSourceId.Type): SyncRootIdType =>
+  decode({ schema: SyncRootId, value: `data-source:${dataSourceId}` })
+
+const readWorkspaceCliConfig = (workspaceRoot: typeof AbsolutePath.Type): WorkspaceCliConfig => {
+  const path = workspaceConfigPath(workspaceRoot)
+  if (existsSync(path) === false) {
+    throw new CliArgumentError({
+      message: `Missing datasource-sync workspace config at ${path}; establish it with: notion-datasource-sync sync --from-notion <data-source-id-or-url> ${workspaceRoot}`,
+    })
+  }
+  return decode({ schema: WorkspaceCliConfig, value: JSON.parse(readFileSync(path, 'utf8')) })
+}
+
+const writeWorkspaceCliConfig = (config: WorkspaceCliConfig): void => {
+  const path = workspaceConfigPath(config.workspaceRoot)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
+}
+
+const makeWorkspaceCliConfig = ({
+  dataSourceId,
+  workspaceRoot,
+  materializeBodies,
+}: {
+  readonly dataSourceId: typeof DataSourceId.Type
+  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly materializeBodies?: boolean
+}): WorkspaceCliConfig =>
+  decode({
+    schema: WorkspaceCliConfig,
+    value: {
+      version: workspaceConfigVersion,
+      rootId: rootIdForDataSource(dataSourceId),
+      dataSourceId,
+      storePath: defaultStorePath(workspaceRoot),
+      workspaceRoot,
+      notionApiVersion: '2026-03-11',
+      bodyMaterialization: materializeBodies === false ? 'disabled' : 'enabled',
+    },
+  })
+
+const parseNotionDataSourceRef = (value: string): typeof DataSourceId.Type => {
+  const compact = value.replaceAll('-', '')
+  const direct = /^[0-9a-f]{32}$/iu.test(compact) === true ? compact : undefined
+  const fromUrl = direct ?? value.match(/[0-9a-f]{32}/iu)?.[0]
+  const parsed = fromUrl ?? value
+  const normalized =
+    /^[0-9a-f]{32}$/iu.test(parsed) === true
+      ? [
+          parsed.slice(0, 8),
+          parsed.slice(8, 12),
+          parsed.slice(12, 16),
+          parsed.slice(16, 20),
+          parsed.slice(20),
+        ].join('-')
+      : parsed
+  return decode({ schema: DataSourceId, value: normalized })
 }
 
 /** Aggregated health check result from the `doctor` command: sync status, compaction decision, and user-action surface. */
@@ -312,6 +419,7 @@ const envelope = <TResult>({
 
 type CliCommandRuntimeResult = CliResultEnvelope<
   | OneShotSyncStatus
+  | EstablishFromNotionResult
   | OneShotPullResult
   | OneShotPushResult
   | OneShotSyncResult
@@ -325,6 +433,7 @@ type CliCommandRuntimeError =
   | NotionGatewayError
   | BodySyncError
   | LocalStorageError
+  | CliArgumentError
   | CliUnsupportedCommandError
 
 const runCliCommandEffect = ({
@@ -368,6 +477,28 @@ const runCliCommandEffect = ({
       return pullOneShotSync({ ...context, ...remoteObservationContext(context) }).pipe(
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
+    case 'sync-from-notion':
+      return establishFromNotion({
+        ...context,
+        ...remoteObservationContext(context),
+        dataSourceId: command.dataSourceId,
+        workspaceRoot: command.workspaceRoot,
+        ...withOptionalCommandOptions({ command, context }),
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (command.dryRun === true) return
+            writeWorkspaceCliConfig(
+              makeWorkspaceCliConfig({
+                dataSourceId: command.dataSourceId,
+                workspaceRoot: command.workspaceRoot,
+                materializeBodies: context.materializeBodies !== false,
+              }),
+            )
+          }),
+        ),
+        Effect.map((result) => envelope({ command: command._tag, context, result })),
+      )
     case 'push':
       return pushOneShotSync({
         ...context,
@@ -375,6 +506,29 @@ const runCliCommandEffect = ({
         ...withOptionalCommandOptions({ command, context }),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'sync':
+      if (command.workspaceRoot !== undefined) {
+        const binding = readOneShotSyncStatus({
+          store: context.store,
+          rootId: context.rootId,
+        }).binding
+        if (binding === undefined) {
+          return Effect.fail(
+            new CliArgumentError({
+              message: `Workspace ${command.workspaceRoot} has no recorded binding; establish it with sync --from-notion before running sync <workspace-root>`,
+            }),
+          )
+        }
+        if (
+          binding.dataSourceId !== context.dataSourceId ||
+          binding.workspaceRoot !== context.workspaceRoot
+        ) {
+          return Effect.fail(
+            new CliArgumentError({
+              message: `Workspace config/store binding mismatch for ${command.workspaceRoot}; refusing to sync`,
+            }),
+          )
+        }
+      }
       return syncOneShot({
         ...context,
         ...remoteObservationContext(context),
@@ -382,6 +536,23 @@ const runCliCommandEffect = ({
         ...withOptionalCommandOptions({ command, context }),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'status':
+      if (command.workspaceRoot !== undefined) {
+        const binding = readOneShotSyncStatus({
+          store: context.store,
+          rootId: context.rootId,
+        }).binding
+        if (
+          binding !== undefined &&
+          (binding.dataSourceId !== context.dataSourceId ||
+            binding.workspaceRoot !== context.workspaceRoot)
+        ) {
+          return Effect.fail(
+            new CliArgumentError({
+              message: `Workspace config/store binding mismatch for ${command.workspaceRoot}; refusing to read status`,
+            }),
+          )
+        }
+      }
       return Effect.sync(() =>
         envelope({
           command: command._tag,
@@ -570,6 +741,20 @@ const parseFlags = (argv: ReadonlyArray<string>): Map<string, string | true> => 
   return flags
 }
 
+const parsePositionals = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const positionals: string[] = []
+  for (let index = 0; index < argv.length; index += 1) {
+    const item = argv[index]
+    if (item?.startsWith('--') === true) {
+      const next = argv[index + 1]
+      if (next !== undefined && next.startsWith('--') === false) index += 1
+      continue
+    }
+    if (item !== undefined) positionals.push(item)
+  }
+  return positionals
+}
+
 const requiredFlag = ({
   flags,
   name,
@@ -681,7 +866,7 @@ const parseChoice = (flags: Map<string, string | true>): ConflictResolutionChoic
  */
 export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   const flags = parseFlags(argv)
-  const words = argv.filter((item) => item.startsWith('--') === false)
+  const words = parsePositionals(argv)
   const [command, subcommand] = words
   switch (command) {
     case 'init':
@@ -701,10 +886,51 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
       return { _tag: 'pull' }
     case 'push':
       return { _tag: 'push', dryRun: flags.has('dry-run') }
-    case 'sync':
-      return { _tag: 'sync', dryRun: flags.has('dry-run') }
+    case 'sync': {
+      const fromNotion = optionalFlag({ flags, name: 'from-notion' })
+      if (flags.has('from-notion') === true) {
+        if (fromNotion === undefined) {
+          throw new CliArgumentError({ message: 'Missing value for --from-notion' })
+        }
+        const workspace = words[1]
+        if (workspace === undefined) {
+          throw new CliArgumentError({
+            message: 'sync --from-notion requires a workspace root positional argument',
+          })
+        }
+        if (words.length > 2) {
+          throw new CliArgumentError({
+            message: 'sync --from-notion accepts exactly one workspace root positional argument',
+          })
+        }
+        return {
+          _tag: 'sync-from-notion',
+          dataSourceId: parseNotionDataSourceRef(fromNotion),
+          workspaceRoot: normalizeAbsolutePath(workspace),
+          dryRun: flags.has('dry-run'),
+        }
+      }
+      if (words.length > 2) {
+        throw new CliArgumentError({
+          message: 'sync accepts at most one workspace root positional argument',
+        })
+      }
+      return {
+        _tag: 'sync',
+        ...(words[1] === undefined ? {} : { workspaceRoot: normalizeAbsolutePath(words[1]) }),
+        dryRun: flags.has('dry-run'),
+      }
+    }
     case 'status':
-      return { _tag: 'status' }
+      if (words.length > 2) {
+        throw new CliArgumentError({
+          message: 'status accepts at most one workspace root positional argument',
+        })
+      }
+      return {
+        _tag: 'status',
+        ...(words[1] === undefined ? {} : { workspaceRoot: normalizeAbsolutePath(words[1]) }),
+      }
     case 'watch': {
       const maxCycles = positiveIntegerFlag({ flags, name: 'max-cycles' })
       return {
@@ -763,18 +989,76 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
  */
 export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
   const flags = parseFlags(argv)
-  const storePath = requiredFlag({ flags, name: 'store' })
-  const rootId = decode({ schema: SyncRootId, value: requiredFlag({ flags, name: 'root-id' }) })
-  const dataSourceId = decode({
-    schema: DataSourceId,
-    value: requiredFlag({ flags, name: 'data-source-id' }),
-  })
-  const workspaceRoot = decode({
-    schema: AbsolutePath,
-    value: requiredFlag({ flags, name: 'workspace-root' }),
-  })
+  const command = parseCliCommand(argv)
+  const commandDryRun = 'dryRun' in command && command.dryRun === true
   const maxExecutorSteps = positiveIntegerFlag({ flags, name: 'max-executor-steps' })
   const requiredCapabilities = capabilityListFlag({ flags, name: 'required-capabilities' })
+  const discovered =
+    command._tag === 'sync-from-notion'
+      ? (() => {
+          const configPath = workspaceConfigPath(command.workspaceRoot)
+          const configExists = existsSync(configPath)
+          const config = configExists
+            ? readWorkspaceCliConfig(command.workspaceRoot)
+            : makeWorkspaceCliConfig({
+                dataSourceId: command.dataSourceId,
+                workspaceRoot: command.workspaceRoot,
+                materializeBodies: flags.has('no-materialize-bodies') === false,
+              })
+          if (config.dataSourceId !== command.dataSourceId) {
+            throw new CliArgumentError({
+              message: `Workspace is already configured for data source ${config.dataSourceId}; refusing to establish ${command.dataSourceId}`,
+            })
+          }
+          if (
+            configExists === true &&
+            commandDryRun !== true &&
+            existsSync(config.storePath) === false
+          ) {
+            throw new CliArgumentError({
+              message: `Workspace config points to missing store ${config.storePath}; refusing to reinitialize implicitly`,
+            })
+          }
+          return {
+            storePath: commandDryRun === true ? ':memory:' : config.storePath,
+            rootId: config.rootId,
+            dataSourceId: config.dataSourceId,
+            workspaceRoot: config.workspaceRoot,
+          }
+        })()
+      : (command._tag === 'sync' || command._tag === 'status') &&
+          command.workspaceRoot !== undefined
+        ? (() => {
+            const config = readWorkspaceCliConfig(command.workspaceRoot)
+            if (existsSync(config.storePath) === false) {
+              throw new CliArgumentError({
+                message: `Workspace config points to missing store ${config.storePath}; run sync --from-notion to establish a new workspace or repair the missing store explicitly`,
+              })
+            }
+            return {
+              storePath: config.storePath,
+              rootId: config.rootId,
+              dataSourceId: config.dataSourceId,
+              workspaceRoot: config.workspaceRoot,
+            }
+          })()
+        : (() => {
+            return {
+              storePath: requiredFlag({ flags, name: 'store' }),
+              rootId: decode({
+                schema: SyncRootId,
+                value: requiredFlag({ flags, name: 'root-id' }),
+              }),
+              dataSourceId: decode({
+                schema: DataSourceId,
+                value: requiredFlag({ flags, name: 'data-source-id' }),
+              }),
+              workspaceRoot: decode({
+                schema: AbsolutePath,
+                value: requiredFlag({ flags, name: 'workspace-root' }),
+              }),
+            }
+          })()
   const queryContract =
     optionalFlag({ flags, name: 'query-contract-json' }) === undefined
       ? decode({
@@ -800,17 +1084,22 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
           schema: Schema.Array(SchemaPropertyObservationJson),
           value: requiredFlag({ flags, name: 'schema-properties-json' }),
         }) as ReadonlyArray<SchemaPropertyObservation>)
-  const store = openNotionSyncStore({ path: storePath })
+  if (discovered.storePath !== ':memory:') {
+    mkdirSync(dirname(discovered.storePath), { recursive: true })
+  }
+  const store = openNotionSyncStore({ path: discovered.storePath })
 
   return {
     store,
-    rootId,
-    dataSourceId,
-    workspaceRoot,
+    rootId: discovered.rootId,
+    dataSourceId: discovered.dataSourceId,
+    workspaceRoot: discovered.workspaceRoot,
     queryContract,
     schemaProperties,
     ...(requiredCapabilities === undefined ? {} : { requiredCapabilities }),
-    ...(flags.has('no-materialize-bodies') === false ? {} : { materializeBodies: false }),
+    ...(flags.has('no-materialize-bodies') === false && commandDryRun !== true
+      ? {}
+      : { materializeBodies: false }),
     ...(maxExecutorSteps === undefined ? {} : { maxExecutorSteps }),
   }
 }
@@ -864,6 +1153,18 @@ export const makeCliRuntimeLayer = ({
   readonly options?: CliRuntimeOptions
 }): Layer.Layer<NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort> => {
   const envToken = tokenFromEnv(options.env ?? process.env)
+  const liveBaseLayer =
+    envToken === undefined
+      ? undefined
+      : Layer.mergeAll(
+          NotionConfigLive({
+            authToken: Redacted.make(envToken),
+            retryEnabled: true,
+            maxRetries: 2,
+            retryBaseDelay: 500,
+          }),
+          FetchHttpClient.layer,
+        )
   const gatewayLayer =
     options.gateway !== undefined
       ? Layer.succeed(NotionDataSourceGateway, options.gateway)
@@ -872,32 +1173,31 @@ export const makeCliRuntimeLayer = ({
             NotionDataSourceGateway,
             makeNotionDataSourceGatewayFromClient({ client: options.gatewayClient }),
           )
-        : envToken === undefined
+        : liveBaseLayer === undefined
           ? Layer.succeed(NotionDataSourceGateway, missingTokenCliGateway)
-          : NotionDataSourceGatewayLive.pipe(
-              Layer.provide(
-                Layer.mergeAll(
-                  NotionConfigLive({
-                    authToken: Redacted.make(envToken),
-                    retryEnabled: true,
-                    maxRetries: 2,
-                    retryBaseDelay: 500,
-                  }),
-                  FetchHttpClient.layer,
-                ),
-              ),
-            )
+          : NotionDataSourceGatewayLive.pipe(Layer.provide(liveBaseLayer))
+
+  const bodyLayer =
+    options.body !== undefined
+      ? Layer.succeed(PageBodySyncPort, options.body)
+      : liveBaseLayer === undefined
+        ? Layer.succeed(
+            PageBodySyncPort,
+            makeUnsupportedPageBodySyncPort({
+              message:
+                'No NotionMD PageBodySyncPort is configured for the CLI; body sync is fail-closed until the NotionMD adapter is injected.',
+            }),
+          )
+        : Layer.effect(
+            PageBodySyncPort,
+            NotionMdGateway.pipe(
+              Effect.map((gateway) => makeNotionMdPageBodySyncPort({ gateway })),
+            ),
+          ).pipe(Layer.provide(NotionMdGatewayLive.pipe(Layer.provide(liveBaseLayer))))
 
   return Layer.mergeAll(
     gatewayLayer,
-    Layer.succeed(
-      PageBodySyncPort,
-      options.body ??
-        makeUnsupportedPageBodySyncPort({
-          message:
-            'No NotionMD PageBodySyncPort is configured for the CLI; body sync is fail-closed until the NotionMD adapter is injected.',
-        }),
-    ),
+    bodyLayer,
     options.workspace === undefined
       ? filesystemLocalWorkspacePortLayer({ root: context.workspaceRoot })
       : Layer.succeed(LocalWorkspacePort, options.workspace),

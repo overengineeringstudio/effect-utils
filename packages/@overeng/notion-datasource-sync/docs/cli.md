@@ -3,6 +3,10 @@
 The binary is `notion-datasource-sync`.
 
 ```sh
+notion-datasource-sync sync --from-notion <data-source-id-or-url> <workspace-root> [--dry-run] [--no-materialize-bodies]
+notion-datasource-sync sync <workspace-root> [--dry-run]
+notion-datasource-sync status <workspace-root>
+
 notion-datasource-sync init --store <sqlite> --root-id <root> --data-source-id <id> --workspace-root <dir> [--dry-run]
 notion-datasource-sync pull --store <sqlite> --root-id <root> --data-source-id <id> --workspace-root <dir>
 notion-datasource-sync push --store <sqlite> --root-id <root> --data-source-id <id> --workspace-root <dir> [--dry-run]
@@ -33,6 +37,7 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 
 | Flag                       | Meaning                                                      |
 | -------------------------- | ------------------------------------------------------------ |
+| `--from-notion`            | Existing Notion data-source id or URL to establish locally   |
 | `--store`                  | SQLite store path                                            |
 | `--root-id`                | Local sync root partition                                    |
 | `--data-source-id`         | Notion data source id                                        |
@@ -47,11 +52,13 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 
 | Command             | Effect                                                               |
 | ------------------- | -------------------------------------------------------------------- |
-| `init`              | Records the local root/data-source/workspace binding                 |
-| `pull`              | Observes Notion and materializes local state where configured        |
-| `push`              | Scans local artifacts, plans writes, and executes the outbox         |
-| `sync`              | Runs pull, local scan/planning, outbox execution, and verification   |
-| `status`            | Reads the local projections                                          |
+| `sync --from-notion` | Establishes a workspace from an existing Notion data source; remote-to-local only |
+| `sync <workspace>`  | Reconciles an established workspace using local config discovery     |
+| `status <workspace>` | Reads projections for an established workspace                       |
+| `init`              | Advanced: records only the local root/data-source/workspace binding  |
+| `pull`              | Advanced: observes Notion and materializes local state where configured |
+| `push`              | Advanced: scans local artifacts, plans writes, and executes the outbox |
+| `sync --store ...`  | Advanced: runs pull, local scan/planning, outbox execution, and verification |
 | `watch`             | Repeats sync cycles with daemon state and optional max-cycle bound   |
 | `conflicts list`    | Prints conflicts, guards, tombstones, and pending outbox actions     |
 | `conflicts resolve` | Resolves a conflict by event, optionally planning follow-up commands |
@@ -92,3 +99,18 @@ Errors print a JSON envelope to stderr:
 
 Treat command output as operational data. It can include page ids, data-source
 ids, and local paths.
+
+## Workspace Config
+
+`sync --from-notion <data-source-id-or-url> <workspace-root>` creates:
+
+```text
+<workspace-root>/.notion-datasource-sync/config.json
+<workspace-root>/.notion-datasource-sync/store.sqlite
+```
+
+The config records the local root id, data-source id, store path, workspace
+root, Notion API version, config version, and body materialization policy.
+`sync <workspace-root>` and `status <workspace-root>` read this config. Missing
+config, a store binding for a different data source, or a workspace path mismatch
+fails closed with a setup/repair hint.

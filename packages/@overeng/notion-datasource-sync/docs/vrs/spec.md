@@ -766,11 +766,14 @@ Requirement trace: R48-R52, R67-R73.
 
 | Command             | Primary flags                                 | Purpose                                                                                                             |
 | ------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `init`              | `--data-source-id`, `--root`, `--store`       | Bind a local root to a Notion data source, verify API/capabilities, and create the SQLite store                     |
-| `pull`              | `--since`, `--full-scan`, `--dry-run`         | Observe remote schema/rows/body pointers and materialize local projections                                          |
+| `sync --from-notion` | `<data-source-id-or-url>`, `<workspace-root>`, `--dry-run`, `--no-materialize-bodies` | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
+| `sync <workspace-root>` | `--dry-run`, `--max-attempts`              | Reconcile an established workspace discovered from local config                                                     |
+| `status <workspace-root>` | `--json`, `--porcelain`                 | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
+| `init`              | `--data-source-id`, `--root`, `--store`       | Advanced: bind a local root to a Notion data source without observing it                                            |
+| `pull`              | `--since`, `--full-scan`, `--dry-run`         | Advanced: observe remote schema/rows/body pointers and materialize local projections                                |
 | `status`            | `--json`, `--porcelain`                       | Show local edits, remote drift, conflicts, tombstones, outbox state                                                 |
 | `push`              | `--dry-run`, `--conflict-policy`              | Plan and apply local intents to Notion with guards                                                                  |
-| `sync`              | `--dry-run`, `--max-attempts`                 | Pull, plan, push, settle, and refresh                                                                               |
+| `sync`              | `--dry-run`, `--max-attempts`                 | Advanced: pull, plan, push, settle, and refresh from explicit flags                                                 |
 | `watch`             | `--mode`, `--foreground`, `--json-events`     | Run the local daemon                                                                                                |
 | `conflicts list`    | `--json`                                      | List open conflicts                                                                                                 |
 | `conflicts resolve` | `--strategy`, `--manual-value`                | Append conflict resolution events and follow-up commands                                                            |
@@ -781,7 +784,20 @@ Requirement trace: R48-R52, R67-R73.
 | `forget`            | `--page-id`, `--path`, `--dry-run`            | Remove local tracking without remote mutation                                                                       |
 | `restore`           | `--page-id`, `--dry-run`                      | Restore trashed/moved state when supported and verified                                                             |
 
-Mutating commands support `--dry-run`. Dry-run performs reads and planning but does not append `LocalIntentAccepted`, `CommandEnqueued`, or settlement events.
+Workspace establishment writes `.notion-datasource-sync/config.json` and `.notion-datasource-sync/store.sqlite` under the workspace root. The config is not authoritative sync state; it discovers `rootId`, `dataSourceId`, `storePath`, `workspaceRoot`, Notion API version, config version, and body materialization policy. The SQLite event log remains authoritative. If config and store binding disagree, established commands fail closed.
+
+First establishment is a distinct mode:
+
+1. parse and validate the Notion data-source id or URL,
+2. read existing workspace config if present,
+3. fail closed on a different configured data source,
+4. validate the remote data source through the gateway,
+5. record `SyncBindingRecorded` if not already present,
+6. pull remote schema, metadata, rows, page properties, and body pointers,
+7. materialize bodies unless disabled,
+8. report status without scanning local artifacts, planning pushes, enqueuing outbox commands, or mutating Notion.
+
+Mutating commands support `--dry-run`. Establishment dry-run is true no-write: no config file, store events, sidecars, body files, outbox commands, or Notion mutations. Established sync dry-run suppresses event/outbox/remote writes and body materialization while using the existing store for read-only planning.
 
 Structured output uses one envelope:
 
@@ -814,6 +830,7 @@ All spans use safe, low-cardinality names, concise `span.label` values, and an a
 | `notion.datasource.cli`                    | span.label, command, process.role, root_id, data_source_id, dry_run, max_cycles, status.state, result                                                                           |
 | `notion.datasource.sync.init`              | span.label, process.role, operation, root_id, data_source_id, dry_run                                                                                                           |
 | `notion.datasource.sync.pull`              | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, query_page_count, row_count, event_count, appended_events, status.state                  |
+| `notion.datasource.sync.establishFromNotion` | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, row_count, appended_events, status.state                                               |
 | `notion.datasource.sync.push`              | span.label, process.role, operation, root_id, dry_run, max_executor_steps, lease_duration_ms, local_observation_count, enqueued_commands, executor_steps, status.state          |
 | `notion.datasource.sync.one-shot`          | span.label, process.role, operation, root_id, data_source_id, max_executor_steps, lease_duration_ms, query_complete, row_count, enqueued_commands, executor_steps, status.state |
 | `notion.datasource.observation.remote`     | span.label, process.role, operation                                                                                                                                             |
