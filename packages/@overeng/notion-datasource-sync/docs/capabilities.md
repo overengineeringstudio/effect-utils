@@ -69,7 +69,7 @@ class must have a typed intent and guard model before it mutates Notion.
 | Edit class                      | Target state                                                                                                |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Existing row cell edits         | Supported through `notion_cells.value_json` updates or explicit `notion_cell_changes` rows with base hashes |
-| Row creation                    | Modeled through explicit `notion_row_changes` rows; execution remains blocked until page-id reconciliation  |
+| Row creation                    | Modeled through explicit `notion_row_changes` rows; execution remains blocked until returned `page_id` reconciliation can make retries duplicate-safe |
 | Row archive/restore             | Supported through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete           |
 | Body edits                      | Supported through NotionMD-backed `notion_body_changes` rows and body conflict guards                       |
 | Data-source metadata edits      | Dedicated metadata command path exists; public SQLite CDC remains blocked until post-write hash proof       |

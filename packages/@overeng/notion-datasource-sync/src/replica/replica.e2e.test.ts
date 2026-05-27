@@ -340,12 +340,12 @@ describe('user-facing SQLite replica', () => {
         expect(statusFor(replicaPath, 'change-create')).toMatchObject({
           status: 'unsupported',
           unsupported_reason:
-            'Row creation needs a create-page gateway command before it can sync safely.',
+            'Row creation remains fail-closed because Notion create-page has no idempotency key; support needs durable returned page_id reconciliation before retry.',
         })
         expect(rowChangeFor(replicaPath, 'change-create')).toMatchObject({
           status: 'unsupported',
           unsupported_reason:
-            'Row creation needs a create-page gateway command before it can sync safely.',
+            'Row creation remains fail-closed because Notion create-page has no idempotency key; support needs durable returned page_id reconciliation before retry.',
         })
       } finally {
         after.close()

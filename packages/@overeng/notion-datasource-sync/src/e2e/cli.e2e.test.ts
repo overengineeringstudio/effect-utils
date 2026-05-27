@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
@@ -33,6 +34,7 @@ import {
 import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
 import type { NotionGatewayClient, NotionGatewayPage } from '../gateway/notion.ts'
 import { presentArtifactObservation } from '../local/workspace.ts'
+import { defaultReplicaPath, projectReplicaFromSyncStore } from '../replica/replica.ts'
 import { NotionSyncStore } from '../store/store.ts'
 import { makeConflictRaisedEvent } from '../sync/observation.ts'
 import { initOneShotSync, pullOneShotSync } from '../sync/sync.ts'
@@ -1344,6 +1346,94 @@ describe('CLI command surface', () => {
       expect(gateway.ledger.attemptedRestorePages).toHaveLength(0)
     } finally {
       storeFixture.cleanup()
+    }
+  })
+
+  it('settles public SQLite CDC changes through the CLI sync wiring', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-replica-cdc-'))
+    const workspace = decode({ schema: AbsolutePath, value: dir })
+    const replicaPath = defaultReplicaPath(workspace)
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      pages: [pageSnapshot({ inTrash: true })],
+      propertyPages: [propertyPage(hash('properties-a'))],
+    })
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      workspaceRoot: workspace,
+      maxExecutorSteps: 4,
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot: workspace,
+        now: clock.now,
+      })
+      await runWithPorts(pullOneShotSync({ ...ctx, store: storeFixture.store }), {
+        gateway: gateway.gateway,
+      })
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        db.prepare(`UPDATE notion_rows SET in_trash = 0 WHERE page_id = ?`).run(testIds.pageId)
+        expect(
+          db
+            .prepare(`SELECT kind, status FROM notion_row_changes WHERE page_id = ?`)
+            .get(testIds.pageId),
+        ).toMatchObject({ kind: 'row_restore', status: 'pending' })
+      } finally {
+        db.close()
+      }
+
+      const result = await runWithPorts(
+        runCliCommand({ _tag: 'sync', workspaceRoot: workspace }, ctx),
+        {
+          gateway: gateway.gateway,
+        },
+      )
+
+      expect(result).toMatchObject({
+        _tag: 'CliResultEnvelope',
+        command: 'sync',
+      })
+      expect(gateway.ledger.successfulRestorePages).toHaveLength(1)
+
+      const after = new DatabaseSync(replicaPath, { readOnly: true })
+      try {
+        expect(
+          after
+            .prepare(
+              `SELECT status, unsupported_reason
+               FROM notion_row_changes
+               WHERE page_id = ? AND kind = 'row_restore'`,
+            )
+            .get(testIds.pageId),
+        ).toMatchObject({ status: 'applied', unsupported_reason: null })
+        expect(
+          after
+            .prepare(
+              `SELECT status, unsupported_reason
+               FROM notion_local_changes
+               WHERE kind = 'row_restore' AND page_id = ?`,
+            )
+            .get(testIds.pageId),
+        ).toMatchObject({ status: 'applied', unsupported_reason: null })
+      } finally {
+        after.close()
+      }
+    } finally {
+      storeFixture.cleanup()
+      await rm(dir, { recursive: true, force: true })
     }
   })
 
