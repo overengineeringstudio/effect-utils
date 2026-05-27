@@ -10,8 +10,15 @@ Use `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID=36cf141b18dc803b98ebd21f2a243453` when 
 NOTION_DATASOURCE_SYNC_LIVE=1 \
 NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID=36cf141b18dc803b98ebd21f2a243453 \
 NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID=36cf141b18dc803b98ebd21f2a243453 \
-pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
+CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
   src/e2e/live-notion.e2e.test.ts --config vitest.config.ts
+```
+
+The same showcase runs through the repo task when
+`NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID` is set:
+
+```sh
+dt test:notion-integration:notion-datasource-sync
 ```
 
 The showcase refreshes the demo page, ensures four current inline data sources,
