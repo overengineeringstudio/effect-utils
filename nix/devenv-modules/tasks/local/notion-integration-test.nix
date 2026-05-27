@@ -71,10 +71,12 @@ let
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
     run_package_bin vitest vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts
   '';
-  vitestExec = pkg:
-    if pkg.kind == "datasource-sync-live"
-    then datasourceSyncVitestExec pkg.tokenEnv
-    else integrationVitestExec pkg.tokenEnv;
+  vitestExec =
+    pkg:
+    if pkg.kind == "datasource-sync-live" then
+      datasourceSyncVitestExec pkg.tokenEnv
+    else
+      integrationVitestExec pkg.tokenEnv;
   mkTestTask = pkg: {
     "test:notion-integration:${pkg.name}" = {
       description = "Run Notion integration tests for ${pkg.name}";
