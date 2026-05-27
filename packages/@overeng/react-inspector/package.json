@@ -42,6 +42,14 @@
     "vitest": "3.2.4"
   },
   "peerDependencies": {
+    "@effect/cluster": "^0.58.2",
+    "@effect/experimental": "^0.60.0",
+    "@effect/opentelemetry": "^0.63.0",
+    "@effect/platform": "^0.96.1",
+    "@effect/platform-node": "^0.106.0",
+    "@effect/rpc": "^0.75.1",
+    "@effect/workflow": "^0.18.0",
+    "@playwright/test": "^1.59.1",
     "effect": "^3.21.2",
     "react": "^19.2.3"
   },

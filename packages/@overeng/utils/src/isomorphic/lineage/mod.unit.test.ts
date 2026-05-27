@@ -18,7 +18,7 @@ import {
   mirror,
   projection,
   sourceOfTruth,
-} from './lineage.ts'
+} from './mod.ts'
 
 describe('Lineage annotations: round-trip', () => {
   it('sourceOfTruth', () => {
@@ -27,7 +27,7 @@ describe('Lineage annotations: round-trip', () => {
   })
 
   it('derivedFrom (bare field names + default Pure)', () => {
-    const s = Schema.Number.pipe(derivedFrom(['subtotal', 'tax']))
+    const s = Schema.Number.pipe(derivedFrom({ from: ['subtotal', 'tax'] }))
     expect(getLineage(s)).toEqual({
       _tag: 'Derived',
       from: [
@@ -40,11 +40,11 @@ describe('Lineage annotations: round-trip', () => {
 
   it('derivedFrom (explicit DerivationKind + pure flag)', () => {
     const s = Schema.Number.pipe(
-      derivedFrom(
-        [{ _tag: 'Field', path: '$.items' }],
-        { _tag: 'Aggregation', op: 'sum' },
-        { pure: true },
-      ),
+      derivedFrom({
+        from: [{ _tag: 'Field', path: '$.items' }],
+        how: { _tag: 'Aggregation', op: 'sum' },
+        pure: true,
+      }),
     )
     const got = getLineage(s)
     expect(got).toEqual({
@@ -56,22 +56,22 @@ describe('Lineage annotations: round-trip', () => {
   })
 
   it('projection / cache / mirror / external / computed', () => {
-    expect(getLineage(Schema.Number.pipe(projection('total', { stalenessMs: 5000 })))).toEqual({
+    expect(getLineage(Schema.Number.pipe(projection({ of: 'total', stalenessMs: 5000 })))).toEqual({
       _tag: 'Projection',
       of: { _tag: 'Field', path: '$.total' },
       stalenessMs: 5000,
     })
-    expect(getLineage(Schema.Number.pipe(cache('total', { ttlMs: 1000 })))).toEqual({
+    expect(getLineage(Schema.Number.pipe(cache({ of: 'total', ttlMs: 1000 })))).toEqual({
       _tag: 'Cache',
       of: { _tag: 'Field', path: '$.total' },
       ttlMs: 1000,
     })
-    expect(getLineage(Schema.String.pipe(mirror('id', { system: 'stripe' })))).toEqual({
+    expect(getLineage(Schema.String.pipe(mirror({ of: 'id', system: 'stripe' })))).toEqual({
       _tag: 'Mirror',
       of: { _tag: 'Field', path: '$.id' },
       system: 'stripe',
     })
-    expect(getLineage(Schema.String.pipe(external('stripe', 'cus_123')))).toEqual({
+    expect(getLineage(Schema.String.pipe(external({ system: 'stripe', ref: 'cus_123' })))).toEqual({
       _tag: 'External',
       system: 'stripe',
       ref: 'cus_123',
@@ -89,7 +89,7 @@ describe('Lineage annotations: round-trip', () => {
     const f = Schema.Number.pipe(freshness({ capturedAt: 'event-time', maxAgeMs: 60000 }))
     expect(getFreshness(f)).toEqual({ capturedAt: 'event-time', maxAgeMs: 60000 })
 
-    const r = Schema.String.pipe(foreignKey('Order', 'id'))
+    const r = Schema.String.pipe(foreignKey({ targetSchema: 'Order', targetField: 'id' }))
     expect(getReference(r)).toEqual({
       _tag: 'ForeignKey',
       targetSchema: 'Order',
