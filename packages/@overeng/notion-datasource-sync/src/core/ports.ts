@@ -37,6 +37,8 @@ import type {
   PathClaimPlan,
   PathClaimResult,
   BodyPointer,
+  DatabaseId,
+  DataSourceViewSnapshot,
 } from './domain.ts'
 import type {
   BodySyncError,
@@ -60,6 +62,10 @@ export type NotionDataSourceGatewayShape = {
   readonly retrievePageProperty: (
     input: RetrievePagePropertyInput,
   ) => Stream.Stream<PagePropertyItemPage, NotionGatewayError>
+  readonly listDataSourceViews?: (input: {
+    readonly databaseId: DatabaseId
+    readonly dataSourceId: DataSourceId
+  }) => Stream.Stream<DataSourceViewSnapshot, NotionGatewayError>
   readonly patchPageProperties: (
     command: PatchPagePropertiesCommand,
   ) => Effect.Effect<NotionRequestId, NotionGatewayError>

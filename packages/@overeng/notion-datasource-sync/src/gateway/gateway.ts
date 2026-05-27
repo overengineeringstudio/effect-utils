@@ -69,6 +69,7 @@ export type GatewayOperation =
   | 'queryRows'
   | 'retrievePage'
   | 'retrievePageProperty'
+  | 'listDataSourceViews'
   | 'patchPageProperties'
   | 'createPage'
   | 'patchDataSourceSchema'
@@ -309,6 +310,28 @@ export const makeNotionDataSourceGateway = (
           }),
         ),
       ),
+    ...(adapter.listDataSourceViews === undefined
+      ? {}
+      : {
+          listDataSourceViews: (input) =>
+            Stream.fromEffect(
+              ensureSupportedGatewayApiVersion({
+                operation: 'listDataSourceViews',
+                configuredApiVersion,
+                dataSourceId: input.dataSourceId,
+              }),
+            ).pipe(
+              Stream.flatMap(() => adapter.listDataSourceViews!(input)),
+              Stream.withSpan(
+                spanNames.gatewayRequest,
+                gatewayRequestSpan({
+                  operation: 'listDataSourceViews',
+                  configuredApiVersion,
+                  dataSourceId: input.dataSourceId,
+                }),
+              ),
+            ),
+        }),
     patchPageProperties: (command: PatchPagePropertiesCommand) =>
       ensureSupportedGatewayApiVersion({
         operation: 'patchPageProperties',

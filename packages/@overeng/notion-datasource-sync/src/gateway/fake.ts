@@ -25,6 +25,7 @@ import {
   PageId,
   PageSnapshot,
   QueryCursor,
+  DataSourceViewSnapshot,
   RowPageSnapshot,
   type CapabilityName,
   type DataSourceId,
@@ -75,6 +76,7 @@ export type FakeNotionDataSourceGatewayConfig = {
   readonly supportedCapabilities?: ReadonlyArray<CapabilityName>
   readonly dataSources: ReadonlyArray<DataSourceSnapshot>
   readonly pages: ReadonlyArray<FakeNotionPageRecord>
+  readonly views?: ReadonlyArray<DataSourceViewSnapshot>
   readonly queryResultCap?: number
   readonly queryPageLimit?: number
   readonly pagePropertyPageSize?: number
@@ -274,6 +276,7 @@ export const makeFakeNotionDataSourceGateway = (
       },
     ]),
   )
+  const views = config.views ?? []
   const permissionAmbiguousPageIds = new Set(
     (config.permissionAmbiguousPageIds ?? []).map((pageId) => pageKey(pageId)),
   )
@@ -527,6 +530,22 @@ export const makeFakeNotionDataSourceGateway = (
           ),
         ),
       ).pipe(Stream.flatMap((propertyPages) => Stream.fromIterable(propertyPages))),
+    listDataSourceViews: (input) =>
+      Stream.fromIterable(
+        views.filter(
+          (view) =>
+            view.databaseId === input.databaseId && view.dataSourceId === input.dataSourceId,
+        ),
+      ).pipe(
+        Stream.withSpan(
+          spanNames.fakeGatewayRequest,
+          fakeGatewaySpan({
+            operation: 'listDataSourceViews',
+            apiVersion: apiContract.apiVersion,
+            dataSourceId: input.dataSourceId,
+          }),
+        ),
+      ),
     patchPageProperties: (command: PatchPagePropertiesCommand) =>
       findPage({ pages, pageId: command.pageId, operation: 'patchPageProperties' }).pipe(
         Effect.flatMap((page) => {

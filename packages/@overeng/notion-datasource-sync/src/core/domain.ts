@@ -41,6 +41,13 @@ export const PropertyId = Schema.NonEmptyTrimmedString.pipe(
 )
 export type PropertyId = typeof PropertyId.Type
 
+/** Branded Notion view ID, distinct from local generated SQLite projection views. */
+export const ViewId = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('NotionDatasourceSync.ViewId'),
+  Schema.annotations({ identifier: 'NotionDatasourceSync.ViewId' }),
+)
+export type ViewId = typeof ViewId.Type
+
 /** Branded human-readable Notion property name (mutable; distinct from the stable PropertyId). */
 export const PropertyName = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('NotionDatasourceSync.PropertyName'),
@@ -122,6 +129,7 @@ export const CapabilityName = Schema.Literal(
   'data_source_retrieve',
   'data_source_query',
   'data_source_metadata_update',
+  'view_list',
   'page_retrieve',
   'page_property_paginate',
   'page_property_update',
@@ -169,6 +177,20 @@ export const DataSourceSnapshot = Schema.TaggedStruct('DataSourceSnapshot', {
   metadataDescriptionPlainText: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceSnapshot' })
 export type DataSourceSnapshot = typeof DataSourceSnapshot.Type
+
+/** Point-in-time observation of a Notion UI view attached to a database/data source. */
+export const DataSourceViewSnapshot = Schema.TaggedStruct('DataSourceViewSnapshot', {
+  viewId: ViewId,
+  databaseId: DatabaseId,
+  dataSourceId: DataSourceId,
+  requestId: NotionRequestId,
+  observedAt: Schema.DateTimeUtc,
+  name: Schema.String,
+  viewType: Schema.NonEmptyTrimmedString,
+  viewHash: Hash,
+  viewJson: Schema.String,
+}).annotations({ identifier: 'NotionDatasourceSync.DataSourceViewSnapshot' })
+export type DataSourceViewSnapshot = typeof DataSourceViewSnapshot.Type
 
 /** Point-in-time observation of a Notion page: captures properties hash, trash state, and request metadata. */
 export const PageSnapshot = Schema.TaggedStruct('PageSnapshot', {

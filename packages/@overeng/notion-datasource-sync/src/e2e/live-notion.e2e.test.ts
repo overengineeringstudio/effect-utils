@@ -14,6 +14,7 @@ import {
   NotionDataSources,
   NotionDatabases,
   NotionPages,
+  NotionViews,
 } from '@overeng/notion-effect-client'
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
@@ -76,6 +77,7 @@ const implementedLiveScenarioIds = new Set<ScenarioId>([
   'NDS-LIVE-skeleton-gated-cleanup-ledger',
   'NDS-LIVE-bounded-fixture-soak',
   'NDS-LIVE-public-sqlite-cdc-write',
+  'NDS-LIVE-notion-view-inventory-read',
 ])
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(
@@ -1378,6 +1380,88 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             JSON.stringify(liveSchemaProperties),
           ]
           await runLiveCliCommand({ env, argv: syncArgv })
+          const projectedDatabaseId = (() => {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              const row = db
+                .prepare(`SELECT database_id FROM notion_databases WHERE data_source_id = ?`)
+                .get(provisioned.config.dataSourceId) as
+                | { readonly database_id: string }
+                | undefined
+              if (row === undefined) {
+                throw new Error('live view inventory test did not project database metadata')
+              }
+              return row.database_id
+            } finally {
+              db.close()
+            }
+          })()
+          const liveViewsBefore = await runLive(
+            env,
+            NotionViews.list({
+              databaseId: projectedDatabaseId,
+              dataSourceId: provisioned.config.dataSourceId,
+              pageSize: 100,
+            }),
+          )
+          const projectedViewsBefore = (() => {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              return db
+                .prepare(
+                  `SELECT view_id, view_name, view_type, view_hash
+                   FROM notion_views
+                   WHERE data_source_id = ?
+                   ORDER BY view_id`,
+                )
+                .all(provisioned.config.dataSourceId)
+            } finally {
+              db.close()
+            }
+          })()
+          expect(projectedViewsBefore.length).toBe(liveViewsBefore.results.length)
+          if (liveViewsBefore.results.length > 0) {
+            expect(projectedViewsBefore).toEqual(
+              expect.arrayContaining(
+                liveViewsBefore.results.map((view) =>
+                  expect.objectContaining({
+                    view_id: view.id,
+                    view_name: view.name ?? '',
+                    view_type: view.type ?? 'unknown',
+                  }),
+                ),
+              ),
+            )
+          }
+          await runLiveCliCommand({ env, argv: syncArgv })
+          const projectedViewsAfter = (() => {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              return db
+                .prepare(
+                  `SELECT view_id, view_hash
+                   FROM notion_views
+                   WHERE data_source_id = ?
+                   ORDER BY view_id`,
+                )
+                .all(provisioned.config.dataSourceId)
+            } finally {
+              db.close()
+            }
+          })()
+          expect(projectedViewsAfter).toEqual(
+            projectedViewsBefore.map((view) => ({
+              view_id: (view as { readonly view_id: string }).view_id,
+              view_hash: (view as { readonly view_hash: string }).view_hash,
+            })),
+          )
+          await recorder.record({
+            phase: 'verify',
+            objectId: provisioned.config.dataSourceId,
+            objectType: 'data_source',
+            purpose: 'live-notion-view-inventory-read',
+            cleanupState: 'verified',
+          })
           const writeCellChange = () => {
             const db = new DatabaseSync(replicaPath)
             try {

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { propertySurfaceKey } from '../core/canonical.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
-import { AbsolutePath, Hash } from '../core/domain.ts'
+import { AbsolutePath, DataSourceViewSnapshot, Hash } from '../core/domain.ts'
 import { type SyncEvent as SyncEventType } from '../core/events.ts'
 import {
   LocalWorkspacePort,
@@ -126,6 +126,32 @@ const schemaProperties = [
   },
 ]
 
+const viewSnapshot = () =>
+  decode({
+    schema: DataSourceViewSnapshot,
+    value: {
+      _tag: 'DataSourceViewSnapshot',
+      viewId: 'view-alpha',
+      databaseId: testIds.databaseId,
+      dataSourceId: testIds.dataSourceId,
+      requestId: testIds.requestId,
+      observedAt: '2026-01-01T00:00:00.000Z',
+      name: 'Work queue',
+      viewType: 'table',
+      viewHash: hash('view-alpha'),
+      viewJson: JSON.stringify({
+        id: 'view-alpha',
+        databaseId: testIds.databaseId,
+        dataSourceId: testIds.dataSourceId,
+        name: 'Work queue',
+        type: 'table',
+        filter: null,
+        sorts: [],
+        configuration: {},
+      }),
+    },
+  })
+
 const schemaPropertiesWithFiles = [
   ...schemaProperties,
   {
@@ -195,7 +221,10 @@ describe('user-facing SQLite replica', () => {
     const workspaceRoot = tempWorkspace()
     const replicaPath = defaultReplicaPath(workspaceRoot)
     const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
-    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [propertyPage('Initial task')],
+      views: [viewSnapshot()],
+    })
 
     try {
       initOneShotSync({
@@ -238,6 +267,19 @@ describe('user-facing SQLite replica', () => {
           `)
         expect(db.prepare(`SELECT value_text FROM notion_cells`).get()).toMatchObject({
           value_text: 'Initial task',
+        })
+        expect(
+          db
+            .prepare(
+              `SELECT view_name, view_type, view_hash
+               FROM notion_views
+               WHERE data_source_id = ?`,
+            )
+            .get(testIds.dataSourceId),
+        ).toMatchObject({
+          view_name: 'Work queue',
+          view_type: 'table',
+          view_hash: hash('view-alpha'),
         })
         expect(db.prepare(`SELECT "Task name" FROM notion_view_data_source_1`).get()).toMatchObject(
           { 'Task name': 'Initial task' },

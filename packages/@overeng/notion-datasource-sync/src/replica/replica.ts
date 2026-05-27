@@ -277,6 +277,19 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       PRIMARY KEY (data_source_id, property_id)
     );
 
+    CREATE TABLE IF NOT EXISTS notion_views (
+      view_id TEXT PRIMARY KEY,
+      database_id TEXT NOT NULL,
+      data_source_id TEXT NOT NULL,
+      root_id TEXT NOT NULL,
+      view_name TEXT NOT NULL,
+      view_type TEXT NOT NULL,
+      view_hash TEXT NOT NULL,
+      view_json TEXT NOT NULL,
+      observed_event_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS notion_rows (
       data_source_id TEXT NOT NULL,
       page_id TEXT PRIMARY KEY,
@@ -1446,6 +1459,7 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
 
     DELETE FROM notion_data_sources;
     DELETE FROM notion_databases;
+    DELETE FROM notion_views;
     DELETE FROM notion_properties;
     DELETE FROM notion_rows;
     DELETE FROM notion_cells;
@@ -1760,6 +1774,67 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readString({ row, key: 'write_class' }),
             readString({ row, key: 'observed_event_id' }),
             readString({ row, key: 'updated_at' }),
+          )
+      }
+
+      for (const row of syncDb
+        .prepare(
+          `SELECT event_json, observed_at
+           FROM sync_event
+           WHERE root_id = ? AND event_type = 'DataSourceViewObserved'
+           ORDER BY sequence`,
+        )
+        .all(options.rootId) as SqlRow[]) {
+        const event = JSON.parse(readString({ row, key: 'event_json' })) as {
+          readonly dataSourceId?: unknown
+          readonly databaseId?: unknown
+          readonly viewId?: unknown
+          readonly viewName?: unknown
+          readonly viewType?: unknown
+          readonly viewHash?: unknown
+          readonly viewJson?: unknown
+          readonly eventId?: unknown
+        }
+        if (
+          typeof event.dataSourceId !== 'string' ||
+          typeof event.databaseId !== 'string' ||
+          typeof event.viewId !== 'string' ||
+          typeof event.viewName !== 'string' ||
+          typeof event.viewType !== 'string' ||
+          typeof event.viewHash !== 'string' ||
+          typeof event.viewJson !== 'string' ||
+          typeof event.eventId !== 'string'
+        ) {
+          continue
+        }
+        replicaDb
+          .prepare(
+            `INSERT INTO notion_views (
+               view_id, database_id, data_source_id, root_id, view_name, view_type, view_hash,
+               view_json, observed_event_id, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(view_id) DO UPDATE SET
+               database_id = excluded.database_id,
+               data_source_id = excluded.data_source_id,
+               root_id = excluded.root_id,
+               view_name = excluded.view_name,
+               view_type = excluded.view_type,
+               view_hash = excluded.view_hash,
+               view_json = excluded.view_json,
+               observed_event_id = excluded.observed_event_id,
+               updated_at = excluded.updated_at`,
+          )
+          .run(
+            event.viewId,
+            event.databaseId,
+            event.dataSourceId,
+            options.rootId,
+            event.viewName,
+            event.viewType,
+            event.viewHash,
+            event.viewJson,
+            event.eventId,
+            readOptionalString({ row, key: 'observed_at' }) ?? now,
           )
       }
 

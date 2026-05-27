@@ -8,6 +8,7 @@ import {
   NotionDataSources,
   NotionDatabases,
   NotionPages,
+  NotionViews,
   type NotionApiError,
   type NotionPage,
   type NotionPagePropertyItem,
@@ -36,6 +37,7 @@ import {
   DatabaseId,
   DataSourceId,
   DataSourceSnapshot,
+  DataSourceViewSnapshot,
   NotionRequestId,
   PageId,
   PagePropertyItem,
@@ -46,6 +48,7 @@ import {
   type CapabilityName,
   type Hash,
   type NotionApiContract as NotionApiContractType,
+  ViewId,
 } from '../core/domain.ts'
 import type { NotionGatewayError } from '../core/errors.ts'
 import { blocked, guardStaleSurfaceBase, type GuardName } from '../core/guards.ts'
@@ -120,6 +123,10 @@ export type NotionGatewayClient = {
   readonly retrieveDatabase: (input: {
     readonly databaseId: string
   }) => Effect.Effect<NotionGatewayDatabase, unknown>
+  readonly listViews?: (input: {
+    readonly databaseId: string
+    readonly dataSourceId: string
+  }) => Stream.Stream<unknown, unknown>
   readonly updatePage: (input: {
     readonly pageId: string
     readonly properties?: Record<string, unknown>
@@ -379,6 +386,48 @@ const rowSnapshotFromRemote = (page: NotionGatewayPage) =>
     lastEditedTime: decodeDateTimeUtc(page.last_edited_time),
     inTrash: page.in_trash,
   })
+
+const dataSourceViewSnapshotFromRemote = ({
+  view,
+  databaseId: fallbackDatabaseId,
+  dataSourceId: fallbackDataSourceId,
+}: {
+  readonly view: unknown
+  readonly databaseId: string
+  readonly dataSourceId: string
+}) => {
+  const record = view as Record<string, unknown>
+  const databaseId =
+    typeof record.parent === 'object' &&
+    record.parent !== null &&
+    'database_id' in record.parent &&
+    typeof record.parent.database_id === 'string'
+      ? record.parent.database_id
+      : fallbackDatabaseId
+  const canonical = {
+    id: String(record.id ?? ''),
+    databaseId,
+    dataSourceId: String(record.data_source_id ?? fallbackDataSourceId),
+    name: String(record.name ?? ''),
+    type: String(record.type ?? 'unknown'),
+    filter: record.filter ?? null,
+    sorts: record.sorts ?? null,
+    quickFilters: record.quick_filters ?? null,
+    configuration: record.configuration ?? null,
+  }
+  return DataSourceViewSnapshot.make({
+    _tag: 'DataSourceViewSnapshot',
+    viewId: ViewId.make(canonical.id),
+    databaseId: DatabaseId.make(databaseId),
+    dataSourceId: DataSourceId.make(canonical.dataSourceId),
+    requestId: unavailableRequestId,
+    observedAt: observedNow(),
+    name: canonical.name,
+    viewType: canonical.type,
+    viewHash: canonicalHash(canonical),
+    viewJson: JSON.stringify(canonical),
+  })
+}
 
 const optionValue = (option: CanonicalOptionValue) => ({
   ...(option.id === undefined ? {} : { id: option.id }),
@@ -1006,6 +1055,30 @@ export const makeNotionEffectClientGatewayClient = (
       }),
     ),
   retrieveDatabase: ({ databaseId }) => provideClientEnv(NotionDatabases.retrieve({ databaseId })),
+  listViews: ({ databaseId, dataSourceId }) =>
+    Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
+      Option.match(maybeNextCursor, {
+        onNone: () => Effect.succeed(Option.none()),
+        onSome: (cursor) =>
+          provideClientEnv(
+            NotionViews.list({
+              databaseId,
+              dataSourceId,
+              pageSize: 100,
+              ...(Option.isSome(cursor) ? { startCursor: cursor.value } : {}),
+            }),
+          ).pipe(
+            Effect.map((page) =>
+              Option.some([
+                Chunk.fromIterable(page.results as ReadonlyArray<unknown>),
+                page.hasMore && Option.isSome(page.nextCursor)
+                  ? Option.some(Option.some(page.nextCursor.value))
+                  : Option.none(),
+              ] as const),
+            ),
+          ),
+      }),
+    ),
   updatePage: ({ pageId, properties, inTrash }) =>
     provideClientEnv(
       NotionPages.update({
@@ -1164,6 +1237,26 @@ export const makeNotionDataSourceGatewayFromClient = ({
               ),
         }),
       ),
+    ...(client.listViews === undefined
+      ? {}
+      : {
+          listDataSourceViews: (input) =>
+            client.listViews!(input).pipe(
+              Stream.map((view) =>
+                dataSourceViewSnapshotFromRemote({
+                  view,
+                  databaseId: input.databaseId,
+                  dataSourceId: input.dataSourceId,
+                }),
+              ),
+              Stream.mapError(
+                mapClientError({
+                  operation: 'listDataSourceViews',
+                  dataSourceId: input.dataSourceId,
+                }),
+              ),
+            ),
+        }),
     patchPageProperties: (command: PatchPagePropertiesCommand) =>
       client.retrievePage({ pageId: command.pageId }).pipe(
         Effect.mapError(

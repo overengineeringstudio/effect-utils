@@ -306,6 +306,7 @@ The public replica has a stable generic schema and rebuildable generated views:
 | ----------------------------- | ------------------------------------- | ------------------------------------------------------------- |
 | `notion_data_sources`         | `(data_source_id)`                    | Root binding plus schema/metadata hashes and observation IDs  |
 | `notion_databases`            | `(database_id)`                       | Owning database/container metadata and authority identity      |
+| `notion_views`                | `(view_id)`                           | Read-only Notion UI view inventory, separate from SQL views    |
 | `notion_properties`           | `(data_source_id, property_id)`       | Property name, type, config hash, writable/read-only class    |
 | `notion_rows`                 | `(page_id)`                           | Page identity, lifecycle flags, and row hashes                |
 | `notion_cells`                | `(page_id, property_id)`              | Lossless `value_json` plus scalar query helper columns        |

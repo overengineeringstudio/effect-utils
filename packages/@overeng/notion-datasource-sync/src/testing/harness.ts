@@ -42,6 +42,7 @@ import {
   type BodyPointer as BodyPointerType,
   type CapabilityName,
   type DataSourceSnapshot,
+  type DataSourceViewSnapshot,
   type Hash as HashType,
   type LocalArtifactObservation,
   type PageSnapshot,
@@ -182,6 +183,7 @@ export type FakeGatewayInput = {
   readonly dataSource?: DataSourceSnapshot
   readonly pages?: ReadonlyArray<PageSnapshot>
   readonly propertyPages?: ReadonlyArray<PagePropertyItemPage>
+  readonly views?: ReadonlyArray<DataSourceViewSnapshot>
   readonly queryResultCap?: number
   readonly queryPageLimit?: number
   readonly pagePropertyPageSize?: number
@@ -285,6 +287,7 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
       : { permissionAmbiguousPageIds: input.permissionAmbiguousPageIds }),
     dataSources: [dataSource],
     pages,
+    ...(input.views === undefined ? {} : { views: input.views }),
   })
   const ledger = {
     attemptedPatchPageProperties,
