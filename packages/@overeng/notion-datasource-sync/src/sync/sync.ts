@@ -459,7 +459,7 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
 )
 
 /** Establish a local sync root from an existing Notion data source. This path is remote-to-local only and never scans local artifacts or executes remote writes. */
-export const establishFromNotion = Effect.fn('notion.datasource.sync.establishFromNotion')(
+export const establishFromNotion = Effect.fn(spanNames.syncEstablishFromNotion)(
   (
     options: EstablishFromNotionOptions,
   ): Effect.Effect<

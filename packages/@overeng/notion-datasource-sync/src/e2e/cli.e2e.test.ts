@@ -512,7 +512,12 @@ describe('CLI command surface', () => {
   })
 
   it('resolves a Notion database URL to a single child data source before opening context', async () => {
-    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0, retrieveDatabase: 0 }
+    const calls = {
+      retrieveDataSource: 0,
+      queryDataSource: 0,
+      retrievePage: 0,
+      retrieveDatabase: 0,
+    }
     const command = parseCliCommand([
       'sync',
       '--from-notion',
@@ -562,7 +567,9 @@ describe('CLI command surface', () => {
     ])
 
     await expect(
-      Effect.runPromise(resolveCliCommandNotionRefs({ command, options: { gatewayClient: client } })),
+      Effect.runPromise(
+        resolveCliCommandNotionRefs({ command, options: { gatewayClient: client } }),
+      ),
     ).rejects.toThrow('multiple child data sources')
   })
 
@@ -587,7 +594,7 @@ describe('CLI command surface', () => {
   it('discovers established workspace config for sync and suggests establishment when missing', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-config-'))
     try {
-      expect(() => parseCliContext(['sync', dir])).toThrow(
+      expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(
         'Missing datasource-sync workspace config',
       )
       await mkdir(join(dir, '.notion-datasource-sync'), { recursive: true })
@@ -609,7 +616,7 @@ describe('CLI command surface', () => {
         )}\n`,
         'utf8',
       )
-      const ctx = parseCliContext(['sync', dir])
+      const ctx = parseCliContext({ argv: ['sync', dir] })
       try {
         expect(ctx.rootId).toBe('data-source:data-source-1')
         expect(ctx.dataSourceId).toBe(testIds.dataSourceId)

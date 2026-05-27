@@ -234,6 +234,7 @@ const defaultStorePath = (workspaceRoot: typeof AbsolutePath.Type): typeof Absol
 const rootIdForDataSource = (dataSourceId: typeof DataSourceId.Type): SyncRootIdType =>
   decode({ schema: SyncRootId, value: `data-source:${dataSourceId}` })
 
+/** Tagged reference to a Notion entity used as the adoption source — either a Notion data source or a Notion database that owns one. */
 export type NotionRemoteRef =
   | { readonly _tag: 'data-source'; readonly dataSourceId: typeof DataSourceId.Type }
   | { readonly _tag: 'database'; readonly databaseId: string }
@@ -411,9 +412,8 @@ const withOptionalCommandOptions = ({
   ...(context.now === undefined ? {} : { now: context.now }),
 })
 
-const withOptionalObservationLimit = (context: CliContext) => ({
-  ...(context.rowLimit === undefined ? {} : { rowLimit: context.rowLimit }),
-})
+const withOptionalObservationLimit = (context: CliContext): { readonly rowLimit?: number } =>
+  context.rowLimit === undefined ? {} : { rowLimit: context.rowLimit }
 
 const envelope = <TResult>({
   command,
@@ -714,10 +714,12 @@ export const runCliCommand = Effect.fn(spanNames.cliCommand, {
     }),
 )
 
-/** Serializes a `CliResultEnvelope` to a pretty-printed JSON string with a trailing newline for stdout. */
+// JSON.stringify replacer must be (key, value) — fixed external API.
+// oxlint-disable-next-line overeng/named-args
 const cliJsonReplacer = (_key: string, value: unknown): unknown =>
   typeof value === 'bigint' ? value.toString() : value
 
+/** Serialize a `CliResultEnvelope` to a pretty-printed JSON string with a trailing newline for stdout — BigInt values are stringified for JSON safety. */
 export const renderCliResultJson = (result: CliResultEnvelope): string =>
   `${JSON.stringify(result, cliJsonReplacer, 2)}\n`
 
@@ -1036,10 +1038,13 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
  * Throws `CliArgumentError` for missing or invalid flags; the caller is responsible
  * for closing `context.store` when the command completes.
  */
-export const parseCliContext = (
-  argv: ReadonlyArray<string>,
-  resolvedCommand?: CliCommand,
-): CliContext => {
+export const parseCliContext = ({
+  argv,
+  resolvedCommand,
+}: {
+  readonly argv: ReadonlyArray<string>
+  readonly resolvedCommand?: CliCommand
+}): CliContext => {
   const flags = parseFlags(argv)
   const command = resolvedCommand ?? parseCliCommand(argv)
   const commandDryRun = 'dryRun' in command && command.dryRun === true
@@ -1235,6 +1240,7 @@ const resolveDatabaseDataSourceId = ({
     }),
   )
 
+/** Resolve any `database`-tagged Notion remote refs on a CLI command into concrete `data-source` refs by querying the gateway — passes other commands through unchanged. */
 export const resolveCliCommandNotionRefs = ({
   command,
   options = {},
@@ -1385,7 +1391,7 @@ export const runCliMain = ({
 
     const resolvedCommand = yield* resolveCliCommandNotionRefs({ command, options })
     const context = yield* Effect.try({
-      try: () => parseCliContext(argv, resolvedCommand),
+      try: () => parseCliContext({ argv, resolvedCommand }),
       catch: (cause) => cause,
     })
     yield* runCliCommandWithRuntime({ command: resolvedCommand, context, options }).pipe(
