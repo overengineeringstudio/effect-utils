@@ -75,9 +75,11 @@ class must have a typed intent and guard model before it mutates Notion.
 | Data-source metadata edits      | Supported through public metadata CDC for title/description, with owning-database patching and data-source metadata hash verification             |
 | Database metadata edits         | Supported for title/description through `notion_databases` plus `notion_metadata_changes(resource_type='database')`                             |
 | External URL file attachments   | Supported through `notion_file_assets` plus `notion_file_changes` for empty writable `files` properties                                           |
+| Notion UI view inventory        | Supported as read-only `notion_views`; view query results are not row-membership authority and local generated SQL views are separate             |
 | Safe schema changes             | Dedicated schema command path exists; public SQLite CDC remains blocked until post-write hash proof                                               |
 | Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                                                           |
 | File bytes/local uploads        | Follow-up until File Upload identity, retry, read-after-write, and cleanup are modeled                                                            |
+| Notion UI view writes           | Follow-up typed view CDC; create/update/delete stay blocked until stale-base, cleanup, and cache semantics are proven                             |
 
 ## Capability Preflight
 

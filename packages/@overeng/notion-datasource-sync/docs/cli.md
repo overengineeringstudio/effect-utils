@@ -147,6 +147,7 @@ Stable generic tables:
 | ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
 | `notion_data_sources`         | read          | Data-source metadata, schema/metadata hashes, binding summary                                               |
 | `notion_databases`            | read          | Owning database/container metadata projected separately from data-source schema authority                   |
+| `notion_views`                | read          | Notion UI view inventory for the owning database/data source; not local generated SQL views                 |
 | `notion_properties`           | read          | Property ID, display name, type, config, write capability                                                   |
 | `notion_rows`                 | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents                       |
 | `notion_cells`                | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents        |
@@ -168,8 +169,10 @@ Stable generic tables:
 
 Generated `notion_view_<data-source-slug>` views are read-only convenience views
 for querying adopted data sources with escaped property-name columns. They are
-derived from the generic tables and can be rebuilt when Notion schema names
-change.
+local SQLite projections and are distinct from Notion UI views in
+`notion_views`; Notion view query results are never used as row membership or
+deletion authority. Generated SQL views are derived from the generic tables and
+can be rebuilt when Notion schema names change.
 
 Example reads:
 

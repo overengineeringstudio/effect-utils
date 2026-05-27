@@ -101,6 +101,7 @@ The stable generic tables are:
 | `notion_row_changes`                               | Typed local CDC rows for row lifecycle/create edits            |
 | `notion_row_creates`                               | Explicit local row creation requests with returned page IDs    |
 | `notion_rows_effective` / `notion_cells_effective` | Confirmed remote state plus pending local creates              |
+| `notion_views`                                     | Read-only Notion UI view inventory                             |
 | `notion_local_changes`                             | Compatibility projection over local write intents              |
 | `notion_conflicts`                                 | Open/resolved conflicts projected for users                    |
 | `notion_sync_status`                               | Last sync, checkpoints, pending work, guard state              |
@@ -109,6 +110,8 @@ Generated read views provide ergonomic SQL for each adopted data source. Their
 names currently use the data-source id slug, such as
 `notion_view_data_source_1`. They are read-only; write to `notion_cells` /
 `notion_rows` current-state columns or to typed mutation tables instead.
+These generated SQL views are local projections and are distinct from Notion UI
+views in `notion_views`.
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
@@ -168,7 +171,7 @@ can be attached to empty writable `files` properties through
 `notion_file_assets` plus `notion_file_changes`; local uploads and replacing or
 deleting existing file arrays remain guarded. Row creation is supported through `notion_row_creates`; direct
 `INSERT INTO notion_rows` is blocked because `notion_rows` is observed remote
-state. Notion views, destructive schema changes, and unsupported conflict-resolution actions remain fail-closed
+state. Notion view writes, destructive schema changes, and unsupported conflict-resolution actions remain fail-closed
 until their dedicated proof is in place. Computed or unsupported properties
 remain visible but read-only.
 

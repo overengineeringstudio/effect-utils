@@ -14,6 +14,7 @@ import {
   PropertyId,
   QueryCursor,
   SupportedNotionApiVersion,
+  ViewId,
 } from './domain.ts'
 import { GuardName } from './guards.ts'
 
@@ -137,6 +138,21 @@ export const DataSourceMetadataObserved = Schema.TaggedStruct('DataSourceMetadat
   descriptionPlainText: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceMetadataObserved' })
 export type DataSourceMetadataObserved = typeof DataSourceMetadataObserved.Type
+
+/** Records the observation of one Notion UI view. View query results are not row-membership authority. */
+export const DataSourceViewObserved = Schema.TaggedStruct('DataSourceViewObserved', {
+  ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'DataSourceViewObserved' }),
+  dataSourceId: DataSourceId,
+  databaseId: DatabaseId,
+  viewId: ViewId,
+  requestId: NotionRequestId,
+  viewName: Schema.String,
+  viewType: Schema.NonEmptyTrimmedString,
+  viewHash: Hash,
+  viewJson: Schema.String,
+}).annotations({ identifier: 'NotionDatasourceSync.DataSourceViewObserved' })
+export type DataSourceViewObserved = typeof DataSourceViewObserved.Type
+
 
 /** Records the observation of a single Notion database row (page) during a query scan, including its properties hash and trash state. */
 export const RowObserved = Schema.TaggedStruct('RowObserved', {
@@ -340,6 +356,7 @@ export const SyncEvent = Schema.Union(
   ApiContractObserved,
   DataSourceObserved,
   DataSourceMetadataObserved,
+  DataSourceViewObserved,
   RowObserved,
   LocalIntentAccepted,
   RemoteWritePlanned,

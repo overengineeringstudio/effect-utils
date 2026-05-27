@@ -703,6 +703,50 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           }),
         )
       }
+      if (dataSource.parentDatabaseId !== undefined && gateway.listDataSourceViews !== undefined) {
+        const views = yield* collectStream(
+          gateway.listDataSourceViews({
+            databaseId: dataSource.parentDatabaseId,
+            dataSourceId: dataSource.dataSourceId,
+          }),
+        ).pipe(
+          Effect.match({
+            onFailure: () => [] as const,
+            onSuccess: (snapshots) => snapshots,
+          }),
+        )
+        for (const view of views) {
+          events.push(
+            decode({
+              schema: SyncEvent,
+              value: {
+                _tag: 'DataSourceViewObserved',
+                ...eventBase({
+                  rootId: options.rootId,
+                  eventId: `view:${eventIdPart(view.viewId)}:${view.viewHash}`,
+                  family: 'RemoteObserved',
+                  eventType: 'DataSourceViewObserved',
+                  idempotencyKey: `view:${view.viewId}:${view.viewHash}`,
+                  surface: querySurfaceKey({
+                    dataSourceId: view.dataSourceId,
+                    queryContractHash: hashStoreBytes('views'),
+                  }),
+                  payload: { viewJson: view.viewJson },
+                  now,
+                }),
+                dataSourceId: view.dataSourceId,
+                databaseId: view.databaseId,
+                viewId: view.viewId,
+                requestId: view.requestId,
+                viewName: view.name,
+                viewType: view.viewType,
+                viewHash: view.viewHash,
+                viewJson: view.viewJson,
+              },
+            }),
+          )
+        }
+      }
       const materialized: MaterializeResult[] = []
       let observedProperties = 0
       let incompleteProperties = 0
