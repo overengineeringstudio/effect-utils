@@ -177,7 +177,8 @@ rewriting local values or applying broad migrations.
 | Title, rich text, number, checkbox          | Writable through `notion_cells.value_json` updates or explicit `cell_patch` intents when base hash matches |
 | Date, select, multi-select, status value    | Writable when option/status value semantics are fully observed and supported                               |
 | URL, email, phone                           | Writable through scalar cell intents with canonical Notion-shaped JSON                                     |
-| Relation, people                            | Guarded; requires complete page-property pagination and accessible targets                                 |
+| Relation                                    | Writable only for removal/reorder of fully paginated existing targets; adding new targets remains guarded until target accessibility is modeled |
+| People                                      | Guarded; requires complete page-property pagination plus deterministic accessible user identities          |
 | Files                                       | External URL attach is supported through explicit staging for empty files properties; uploads/replacement remain guarded |
 | Formula, rollup, audit fields, unique ID    | Read-only computed values; local write intents are rejected                                                |
 | `place`, unsupported or decode-drift values | Read-only/guarded until the API surface has a lossless model                                               |

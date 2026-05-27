@@ -1,7 +1,7 @@
-import { Effect, Schema } from 'effect'
+import { Chunk, Effect, Schema, Stream } from 'effect'
 
-import type { RemoteWriteCommand } from '../core/commands.ts'
-import type { Hash, NotionRequestId, PageId } from '../core/domain.ts'
+import type { PatchPagePropertiesCommand, RemoteWriteCommand } from '../core/commands.ts'
+import { PropertyId, type Hash, type NotionRequestId, type PageId } from '../core/domain.ts'
 import { LocalStoreError, NotionGatewayError, type BodySyncError } from '../core/errors.ts'
 import { IdempotencyKey } from '../core/events.ts'
 import type { GuardName } from '../core/guards.ts'
@@ -15,7 +15,7 @@ import {
   spanLabel,
   spanNames,
 } from '../observability/observability.ts'
-import { pageLifecycleHash } from '../store/projections.ts'
+import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import {
   type ClaimedOutboxCommand,
   type NotionSyncStore,
@@ -58,6 +58,40 @@ type RemoteWriteResult = {
   readonly requestId: NotionRequestId
   readonly createdPageId?: PageId
   readonly createdPropertiesHash?: Hash
+}
+
+const relationPatchVerificationHash = (
+  command: PatchPagePropertiesCommand,
+): Effect.Effect<Hash | undefined, NotionGatewayError, NotionDataSourceGateway> => {
+  const entries = Object.entries(command.propertyPatch)
+  const [propertyId, value] = entries[0] ?? []
+  if (entries.length !== 1 || propertyId === undefined || value?._tag !== 'relation') {
+    return Effect.succeed(undefined)
+  }
+
+  return Effect.gen(function* () {
+    const gateway = yield* NotionDataSourceGateway
+    const pages = yield* gateway
+      .retrievePageProperty({
+        _tag: 'RetrievePagePropertyInput',
+        pageId: command.pageId,
+        propertyId: Schema.decodeUnknownSync(PropertyId)(propertyId),
+        startCursor: null,
+      })
+      .pipe(Stream.runCollect, Effect.map(Chunk.toReadonlyArray))
+    const terminal = pages.at(-1)
+    if (terminal === undefined || terminal.hasMore === true) return undefined
+    const pageIds = pages
+      .flatMap((page) => page.items)
+      .map((item) => {
+        if (item.valueJson === undefined) return undefined
+        const decoded = JSON.parse(item.valueJson) as { readonly id?: unknown }
+        return typeof decoded.id === 'string' ? decoded.id : undefined
+      })
+      .filter((pageId): pageId is string => pageId !== undefined)
+      .toSorted()
+    return hashStoreBytes(JSON.stringify({ _tag: 'relation', pageIds }))
+  })
 }
 
 type ExecutorError = LocalStoreError | NotionGatewayError | BodySyncError
@@ -573,10 +607,28 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
       // re-observe the full page property hash after patching.
       const propertyPatchChangedPage =
         command._tag === 'PatchPagePropertiesCommand' && after.baseHash !== before.baseHash
+      const relationPatchHash =
+        command._tag === 'PatchPagePropertiesCommand'
+          ? yield* relationPatchVerificationHash(command).pipe(
+              Effect.catchAll((error) =>
+                recordAttemptState({
+                  options,
+                  claimed,
+                  attemptState: 'retryable',
+                  guard: guardFromWriteError(error),
+                }),
+              ),
+            )
+          : undefined
+      if (typeof relationPatchHash === 'object' && '_tag' in relationPatchHash) {
+        yield* annotateOutboxResult(relationPatchHash)
+        return relationPatchHash
+      }
       const createReturnedPage =
         command._tag === 'CreatePageCommand' && writeResult.createdPageId !== undefined
       const verified =
         after.verificationHash === claimed.desiredHash ||
+        relationPatchHash === claimed.desiredHash ||
         propertyPatchChangedPage ||
         createReturnedPage
       const result =

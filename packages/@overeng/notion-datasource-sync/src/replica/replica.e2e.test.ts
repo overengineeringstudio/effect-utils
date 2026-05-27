@@ -116,12 +116,51 @@ const filesPropertyPage = () =>
     },
   })
 
+const relationPropertyPage = ({
+  pageIds,
+  complete = true,
+}: {
+  readonly pageIds: readonly string[]
+  readonly complete?: boolean
+}) =>
+  decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId: testIds.pageId,
+      propertyId: testIds.propertyB,
+      items: pageIds.map((pageId, index) => ({
+        _tag: 'PagePropertyItem',
+        pageId: testIds.pageId,
+        propertyId: testIds.propertyB,
+        itemHash: hash(`relation-item-${pageId}-${index}`),
+        valueHash: hash(`relation-value-${pageId}-${index}`),
+        valueJson: JSON.stringify({ id: pageId }),
+      })),
+      nextCursor: complete === true ? null : 'cursor-next',
+      hasMore: complete !== true,
+    },
+  })
+
 const schemaProperties = [
   {
     propertyId: testIds.propertyA,
     name: 'Task name',
     type: 'title',
     configHash: hash('config-a'),
+    writeClass: 'writable' as const,
+  },
+]
+
+const schemaPropertiesWithRelation = [
+  ...schemaProperties,
+  {
+    propertyId: testIds.propertyB,
+    name: 'Related',
+    type: 'relation',
+    configHash: hash('config-relation'),
     writeClass: 'writable' as const,
   },
 ]
@@ -434,6 +473,299 @@ describe('user-facing SQLite replica', () => {
         })
       } finally {
         after.close()
+      }
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('promotes relation removals only from complete paginated base values', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const baseRelationPageIds = Array.from({ length: 30 }, (_, index) => `related-${index}`)
+    const desiredRelationPageIds = baseRelationPageIds.slice(0, 29)
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [
+        propertyPage('Relation row'),
+        relationPropertyPage({ pageIds: baseRelationPageIds }),
+      ],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithRelation,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        expect(
+          db
+            .prepare(
+              `SELECT availability, value_json
+               FROM notion_cells
+               WHERE page_id = ? AND property_id = ?`,
+            )
+            .get(testIds.pageId, testIds.propertyB),
+        ).toMatchObject({
+          availability: 'complete',
+          value_json: JSON.stringify({ _tag: 'relation', pageIds: baseRelationPageIds }),
+        })
+        db.prepare(
+          `UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`,
+        ).run(
+          JSON.stringify({ _tag: 'relation', pageIds: desiredRelationPageIds }),
+          testIds.pageId,
+          testIds.propertyB,
+        )
+      } finally {
+        db.close()
+      }
+
+      const changes = readPendingReplicaChanges(replicaPath)
+      const intents = replicaChangesToPlannerIntents({ changes, replicaPath })
+      expect(intents).toEqual([
+        expect.objectContaining({
+          _tag: 'property-edit',
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyB,
+        }),
+      ])
+
+      const applied = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithRelation,
+          localIntents: intents,
+          maxExecutorSteps: 4,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      settleReplicaChangesAfterSync({
+        changes,
+        replicaPath,
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        decisions: applied.push.plan.decisions,
+      })
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
+      expect(gateway.ledger.successfulPatchPageProperties[0]?.propertyPatch).toEqual({
+        [testIds.propertyB]: { _tag: 'relation', pageIds: desiredRelationPageIds },
+      })
+      expect(cellChangeFor(replicaPath, changes[0]?.changeId ?? '')).toMatchObject({
+        status: 'applied',
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('keeps unsafe relation additions and incomplete bases fail-closed', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [
+        propertyPage('Relation row'),
+        relationPropertyPage({ pageIds: ['related-1', 'related-2'], complete: false }),
+      ],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithRelation,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        db.prepare(
+          `UPDATE notion_cells
+           SET availability = 'paginated-incomplete'
+           WHERE page_id = ? AND property_id = ?`,
+        ).run(testIds.pageId, testIds.propertyB)
+        expect(() =>
+          db.prepare(
+            `UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`,
+          ).run(
+            JSON.stringify({ _tag: 'relation', pageIds: ['related-1'] }),
+            testIds.pageId,
+            testIds.propertyB,
+          ),
+        ).toThrow(/complete observed base/u)
+        db.prepare(
+          `INSERT INTO notion_cell_changes (
+             change_id, data_source_id, page_id, property_id, value_json
+           ) VALUES (?, ?, ?, ?, ?)`,
+        ).run(
+          'relation-incomplete',
+          testIds.dataSourceId,
+          testIds.pageId,
+          testIds.propertyB,
+          JSON.stringify({ _tag: 'relation', pageIds: ['related-1'] }),
+        )
+      } finally {
+        db.close()
+      }
+
+      let changes = readPendingReplicaChanges(replicaPath)
+      expect(replicaChangesToPlannerIntents({ changes, replicaPath })).toHaveLength(0)
+      expect(cellChangeFor(replicaPath, changes[0]?.changeId ?? '')).toMatchObject({
+        status: 'unsupported',
+        unsupported_reason:
+          'Relation writes require a complete paginated base value before replacement-shaped writes are safe.',
+      })
+
+      const completeWorkspace = tempWorkspace()
+      const completeReplicaPath = defaultReplicaPath(completeWorkspace)
+      const completeStoreFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+      const completeGateway = makeFakeGatewayHarness({
+        propertyPages: [
+          propertyPage('Relation row'),
+          relationPropertyPage({ pageIds: ['related-1', 'related-2'] }),
+        ],
+      })
+      try {
+        initOneShotSync({
+          store: completeStoreFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot: completeWorkspace,
+          now: clock.now,
+        })
+        await runWithPorts(
+          pullOneShotSync({
+            store: completeStoreFixture.store,
+            rootId: testIds.rootId,
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot: completeWorkspace,
+            queryContract: defaultQueryContract(),
+            schemaProperties: schemaPropertiesWithRelation,
+            now: clock.now,
+          }),
+          { gateway: completeGateway.gateway },
+        )
+        projectReplicaFromSyncStore({
+          syncStorePath: completeStoreFixture.path,
+          replicaPath: completeReplicaPath,
+          rootId: testIds.rootId,
+        })
+        const completeDb = new DatabaseSync(completeReplicaPath)
+        try {
+          expect(() =>
+            completeDb
+              .prepare(
+                `UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`,
+              )
+              .run(
+                JSON.stringify({ _tag: 'relation', pageIds: ['related-1', 'new-related'] }),
+                testIds.pageId,
+                testIds.propertyB,
+              ),
+          ).toThrow(/may only remove/u)
+          completeDb
+            .prepare(
+              `INSERT INTO notion_cell_changes (
+                 change_id, data_source_id, page_id, property_id, value_json
+               ) VALUES (?, ?, ?, ?, ?)`,
+            )
+            .run(
+              'relation-add',
+              testIds.dataSourceId,
+              testIds.pageId,
+              testIds.propertyB,
+              JSON.stringify({ _tag: 'relation', pageIds: ['related-1', 'new-related'] }),
+            )
+        } finally {
+          completeDb.close()
+        }
+        changes = readPendingReplicaChanges(completeReplicaPath)
+        expect(
+          replicaChangesToPlannerIntents({ changes, replicaPath: completeReplicaPath }),
+        ).toHaveLength(0)
+        expect(cellChangeFor(completeReplicaPath, 'relation-add')).toMatchObject({
+          status: 'unsupported',
+          unsupported_reason:
+            'Adding new relation targets remains fail-closed until target accessibility is modeled; safe relation writes may remove or reorder fully observed targets only.',
+        })
+        const capDb = new DatabaseSync(completeReplicaPath)
+        try {
+          capDb
+            .prepare(
+              `INSERT INTO notion_cell_changes (
+                 change_id, data_source_id, page_id, property_id, value_json
+               ) VALUES (?, ?, ?, ?, ?)`,
+            )
+            .run(
+              'relation-cap',
+              testIds.dataSourceId,
+              testIds.pageId,
+              testIds.propertyB,
+              JSON.stringify({
+                _tag: 'relation',
+                pageIds: Array.from({ length: 101 }, (_, index) => `related-${index}`),
+              }),
+            )
+        } finally {
+          capDb.close()
+        }
+        changes = readPendingReplicaChanges(completeReplicaPath)
+        expect(replicaChangesToPlannerIntents({ changes, replicaPath: completeReplicaPath }))
+          .toHaveLength(0)
+        expect(cellChangeFor(completeReplicaPath, 'relation-cap')).toMatchObject({
+          status: 'unsupported',
+          unsupported_reason: 'Relation writes are capped at 100 related pages by the Notion API.',
+        })
+      } finally {
+        completeStoreFixture.cleanup()
       }
     } finally {
       storeFixture.cleanup()

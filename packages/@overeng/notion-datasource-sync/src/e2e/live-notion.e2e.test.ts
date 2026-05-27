@@ -2033,6 +2033,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           processLiveConfig,
           emptyLiveFixtureLedger(processLiveConfig),
         )
+        const workspaceRoot = decode(
+          AbsolutePath,
+          await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-relation-cdc-')),
+        )
         let targetDatabaseId: string | undefined
         let sourceDatabaseId: string | undefined
 
@@ -2051,7 +2055,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 targetDatabaseId = targetDatabase.id
               })
               const relatedPages = yield* Effect.forEach(
-                Array.from({ length: 100 }, (_, index) => index),
+                Array.from({ length: 30 }, (_, index) => index),
                 (index) =>
                   NotionPages.create({
                     parent: { type: 'data_source_id', data_source_id: targetDataSourceId },
@@ -2087,7 +2091,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
               return {
                 targetDatabase,
+                targetDataSourceId,
+                relatedPages,
                 sourceDatabase,
+                sourceDataSourceId,
                 sourceDataSource,
                 sourcePage,
               }
@@ -2124,7 +2131,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             client: {
               ...baseClient,
               retrievePageProperty: (input) =>
-                baseClient.retrievePageProperty({ ...input, pageSize: 50 }),
+                baseClient.retrievePageProperty({ ...input, pageSize: 15 }),
             },
           })
           const pages = await Effect.runPromise(
@@ -2142,17 +2149,163 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           )
 
           expect(pages.length).toBeGreaterThan(1)
-          expect(pages.reduce((count, page) => count + page.items.length, 0)).toBe(100)
+          expect(pages.reduce((count, page) => count + page.items.length, 0)).toBe(30)
           expect(pages.at(0)?.hasMore).toBe(true)
           expect(pages.at(-1)?.hasMore).toBe(false)
+
+          const titleSchemaProperty = liveSchemaProperty({
+            properties: fixture.sourceDataSource.properties,
+            name: 'Name',
+            type: 'title',
+          })
+          const relationSchemaProperty = liveSchemaProperty({
+            properties: fixture.sourceDataSource.properties,
+            name: 'Related',
+            type: 'relation',
+          })
+          const sourcePageId = fixture.sourcePage.id
+          const removedRelationPageId = fixture.relatedPages[29]?.id
+          if (removedRelationPageId === undefined) {
+            throw new Error('live relation CDC fixture did not create enough related pages')
+          }
+          const remainingRelationPageIds = fixture.relatedPages
+            .map((page) => page.id)
+            .filter((pageId) => pageId !== removedRelationPageId)
+
+          const schemaPropertiesJson = JSON.stringify([
+            titleSchemaProperty,
+            relationSchemaProperty,
+          ])
+          await runLiveCliCommand({
+            env,
+            argv: [
+              'sync',
+              '--from-notion',
+              fixture.sourceDataSourceId,
+              workspaceRoot,
+              '--schema-properties-json',
+              schemaPropertiesJson,
+              '--no-materialize-bodies',
+            ],
+          })
+          const replicaPath = defaultReplicaPath(workspaceRoot)
+          {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              const relationCell = db
+                .prepare(
+                  `SELECT availability, value_json
+                   FROM notion_cells
+                   WHERE page_id = ? AND property_id = ?`,
+                )
+                .get(sourcePageId, relationSchemaProperty.propertyId) as
+                | { readonly availability: string; readonly value_json: string }
+                | undefined
+              if (relationCell === undefined) {
+                throw new Error('live relation CDC did not project relation cell')
+              }
+              expect(relationCell.availability).toBe('complete')
+              expect(JSON.parse(relationCell.value_json)).toEqual({
+                _tag: 'relation',
+                pageIds: fixture.relatedPages.map((page) => page.id),
+              })
+              db.prepare(
+                `UPDATE notion_cells
+                 SET value_json = ?
+                 WHERE page_id = ? AND property_id = ?`,
+              ).run(
+                JSON.stringify({ _tag: 'relation', pageIds: remainingRelationPageIds }),
+                sourcePageId,
+                relationSchemaProperty.propertyId,
+              )
+            } finally {
+              db.close()
+            }
+          }
+
+          await runLiveCliCommand({
+            env,
+            argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],
+          })
+          const pagesAfter = await Effect.runPromise(
+            gateway
+              .retrievePageProperty({
+                _tag: 'RetrievePagePropertyInput',
+                pageId: decode(PageId, sourcePageId),
+                propertyId: relatedPropertyId,
+                startCursor: null,
+              })
+              .pipe(
+                Stream.runCollect,
+                Effect.map((chunk) => Array.from(chunk)),
+              ),
+          )
+          const relatedAfter = pagesAfter
+            .flatMap((page) => page.items)
+            .map((item) => JSON.parse(item.valueJson ?? '{}') as { readonly id?: string })
+            .map((item) => item.id)
+            .filter((id): id is string => id !== undefined)
+          expect(new Set(relatedAfter)).toEqual(new Set(remainingRelationPageIds))
+          expect(relatedAfter).not.toContain(removedRelationPageId)
+          for (let attempt = 0; attempt < 4; attempt += 1) {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              const status = db
+                .prepare(
+                  `SELECT status, unsupported_reason
+                   FROM notion_cell_changes
+                   WHERE page_id = ? AND property_id = ?`,
+                )
+                .get(sourcePageId, relationSchemaProperty.propertyId) as
+                | { readonly status: string; readonly unsupported_reason: string | null }
+                | undefined
+              if (status?.status === 'applied') {
+                expect(status).toMatchObject({ status: 'applied', unsupported_reason: null })
+                break
+              }
+              if (attempt === 3) {
+                expect(status).toMatchObject({ status: 'applied', unsupported_reason: null })
+              }
+            } finally {
+              db.close()
+            }
+            await runLiveCliCommand({
+              env,
+              argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],
+            })
+          }
+          await runLiveCliCommand({
+            env,
+            argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],
+          })
+          const pagesAfterRerun = await Effect.runPromise(
+            gateway
+              .retrievePageProperty({
+                _tag: 'RetrievePagePropertyInput',
+                pageId: decode(PageId, sourcePageId),
+                propertyId: relatedPropertyId,
+                startCursor: null,
+              })
+              .pipe(
+                Stream.runCollect,
+                Effect.map((chunk) => Array.from(chunk)),
+              ),
+          )
+          const relatedAfterRerun = pagesAfterRerun
+            .flatMap((page) => page.items)
+            .map((item) => JSON.parse(item.valueJson ?? '{}') as { readonly id?: string })
+            .map((item) => item.id)
+            .filter((id): id is string => id !== undefined)
+          expect(new Set(relatedAfterRerun)).toEqual(new Set(remainingRelationPageIds))
           await recorder.record({
             phase: 'verify',
             objectId: fixture.sourcePage.id,
             objectType: 'page',
-            purpose: 'live-page-property-pagination-relation-items',
+            purpose: 'live-page-property-pagination-relation-items-and-cdc-write',
             cleanupState: 'verified',
           })
         } finally {
+          await rm(workspaceRoot, { recursive: true, force: true })
           if (sourceDatabaseId !== undefined) {
             await archiveDatabaseBestEffort(env, sourceDatabaseId)
             await recorder.record({
