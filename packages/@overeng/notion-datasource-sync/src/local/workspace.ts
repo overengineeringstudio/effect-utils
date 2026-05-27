@@ -93,7 +93,13 @@ const pathEscapesRoot = (message: string): WorkspacePathDecision => ({
 
 const generatedTitleSlugMaxLength = 120
 
-const normalizeForPolicy = ({ value, policy }: { readonly value: string; readonly policy: PathPolicy }): string => {
+const normalizeForPolicy = ({
+  value,
+  policy,
+}: {
+  readonly value: string
+  readonly policy: PathPolicy
+}): string => {
   const unicodeNormalized = policy.unicodeNormalization === 'NFC' ? value.normalize('NFC') : value
   return policy.caseFold === true ? unicodeNormalized.toLocaleLowerCase('en-US') : unicodeNormalized
 }
@@ -352,7 +358,13 @@ const localStoreError = ({
     ...(cause === undefined ? {} : { cause }),
   })
 
-const canonicalRoot = async ({ root, operation }: { readonly root: AbsolutePath; readonly operation: string }): Promise<string> => {
+const canonicalRoot = async ({
+  root,
+  operation,
+}: {
+  readonly root: AbsolutePath
+  readonly operation: string
+}): Promise<string> => {
   if (isAbsolute(root) === false) {
     throw localStoreError({ operation, message: 'Workspace root must be absolute' })
   }
@@ -461,14 +473,26 @@ const readJsonFile = async <TSchema extends Schema.Schema.AnyNoContext>({
   }
 }
 
-const writeJsonFile = async ({ path, value }: { readonly path: string; readonly value: unknown }): Promise<void> => {
+const writeJsonFile = async ({
+  path,
+  value,
+}: {
+  readonly path: string
+  readonly value: unknown
+}): Promise<void> => {
   await mkdir(dirname(path), { recursive: true })
   const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
   await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
   await rename(temporaryPath, path)
 }
 
-const writeTextFileAtomic = async ({ path, content }: { readonly path: string; readonly content: string }): Promise<void> => {
+const writeTextFileAtomic = async ({
+  path,
+  content,
+}: {
+  readonly path: string
+  readonly content: string
+}): Promise<void> => {
   await mkdir(dirname(path), { recursive: true })
   const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
   try {

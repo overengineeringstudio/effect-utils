@@ -255,7 +255,10 @@ export type TombstoneCandidateObserved = typeof TombstoneCandidateObserved.Type
 
 /** Records the result of checking whether a specific Notion capability is available on the connected workspace. */
 export const CapabilityPreflightChecked = Schema.TaggedStruct('CapabilityPreflightChecked', {
-  ...eventEnvelopeFields({ family: 'CompatibilityChecked', eventType: 'CapabilityPreflightChecked' }),
+  ...eventEnvelopeFields({
+    family: 'CompatibilityChecked',
+    eventType: 'CapabilityPreflightChecked',
+  }),
   dataSourceId: DataSourceId,
   capability: CapabilityName,
   supported: Schema.Boolean,
@@ -278,7 +281,10 @@ export type QueryScanCheckpointRecorded = typeof QueryScanCheckpointRecorded.Typ
 export const PagePropertyCheckpointRecorded = Schema.TaggedStruct(
   'PagePropertyCheckpointRecorded',
   {
-    ...eventEnvelopeFields({ family: 'QueryScanRecorded', eventType: 'PagePropertyCheckpointRecorded' }),
+    ...eventEnvelopeFields({
+      family: 'QueryScanRecorded',
+      eventType: 'PagePropertyCheckpointRecorded',
+    }),
     pageId: PageId,
     propertyId: PropertyId,
     nextCursor: Schema.NullOr(QueryCursor),

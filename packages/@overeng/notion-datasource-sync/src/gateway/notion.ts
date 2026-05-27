@@ -14,11 +14,7 @@ import {
   type PaginatedResult,
 } from '@overeng/notion-effect-client'
 
-import {
-  canonicalHash,
-  dataSourceMetadataHash,
-  queryContractHash,
-} from '../core/canonical.ts'
+import { canonicalHash, dataSourceMetadataHash, queryContractHash } from '../core/canonical.ts'
 import type {
   CanonicalDataSourceIcon,
   CanonicalDataSourceMetadata,
@@ -318,6 +314,7 @@ const canonicalIconFromRemote = (
   }
 }
 
+/** Project a remote Notion data source into the canonical metadata surface (title, description, icon) used for sync planning. */
 export const canonicalDataSourceMetadataFromRemote = (
   dataSource: NotionGatewayDataSource,
 ): CanonicalDataSourceMetadata => ({
@@ -567,10 +564,7 @@ const buildAddSelectOptionsPayload = (
   }
 
   const combined = [...operation.existingOptions, ...operation.newOptions].map(optionValue)
-  return Effect.succeed([
-    operation.propertyId,
-    { [operation.propertyType]: { options: combined } },
-  ])
+  return Effect.succeed([operation.propertyId, { [operation.propertyType]: { options: combined } }])
 }
 
 const schemaOperationToProperty = (
@@ -689,7 +683,8 @@ const propertyValueFilterOperand = (input: {
           })
         : unsupportedQueryFilter({
             input: input.queryInput,
-            message: 'Multi-select filters require exactly one option for the supported canonical subset',
+            message:
+              'Multi-select filters require exactly one option for the supported canonical subset',
           })
     case 'status':
       return Effect.succeed({ propertyType: 'status', operand: optionName(input.value.option) })
@@ -698,14 +693,16 @@ const propertyValueFilterOperand = (input: {
         ? Effect.succeed({ propertyType: 'relation', operand: input.value.pageIds[0] ?? null })
         : unsupportedQueryFilter({
             input: input.queryInput,
-            message: 'Relation filters require exactly one page ID for the supported canonical subset',
+            message:
+              'Relation filters require exactly one page ID for the supported canonical subset',
           })
     case 'people':
       return input.value.userIds.length === 1
         ? Effect.succeed({ propertyType: 'people', operand: input.value.userIds[0] ?? null })
         : unsupportedQueryFilter({
             input: input.queryInput,
-            message: 'People filters require exactly one user ID for the supported canonical subset',
+            message:
+              'People filters require exactly one user ID for the supported canonical subset',
           })
     case 'email':
       return Effect.succeed({ propertyType: 'email', operand: input.value.value })
@@ -927,7 +924,9 @@ const pagePropertyItemsPageFromRemote = (input: {
       }),
     ),
     listMetadataHash:
-      input.result.propertyItem === undefined ? undefined : canonicalHash(input.result.propertyItem),
+      input.result.propertyItem === undefined
+        ? undefined
+        : canonicalHash(input.result.propertyItem),
     nextCursor: Option.match(input.result.nextCursor, {
       onNone: () => null,
       onSome: (cursor) => QueryCursor.make(cursor),
@@ -1171,17 +1170,15 @@ export const makeNotionDataSourceGatewayFromClient = ({
         }),
         Effect.zipRight(dataSourceOperationsToNotion(command.operations)),
         Effect.flatMap((properties) =>
-          client
-            .updateDataSource({ dataSourceId: command.dataSourceId, properties })
-            .pipe(
-              Effect.as(unavailableRequestId),
-              Effect.mapError(
-                mapClientError({
-                  operation: 'patchDataSourceSchema',
-                  dataSourceId: command.dataSourceId,
-                }),
-              ),
+          client.updateDataSource({ dataSourceId: command.dataSourceId, properties }).pipe(
+            Effect.as(unavailableRequestId),
+            Effect.mapError(
+              mapClientError({
+                operation: 'patchDataSourceSchema',
+                dataSourceId: command.dataSourceId,
+              }),
             ),
+          ),
         ),
       ),
     patchDataSourceMetadata: (command: PatchDataSourceMetadataCommand) =>
@@ -1193,7 +1190,9 @@ export const makeNotionDataSourceGatewayFromClient = ({
           }),
         ),
         Effect.tap((dataSource) => {
-          const currentHash = dataSourceMetadataHash(canonicalDataSourceMetadataFromRemote(dataSource))
+          const currentHash = dataSourceMetadataHash(
+            canonicalDataSourceMetadataFromRemote(dataSource),
+          )
           const decision = guardStaleSurfaceBase({
             baseHash: command.baseMetadataHash,
             currentHash,

@@ -1053,18 +1053,21 @@ describe('Notion sync SQLite store', () => {
       })
 
       expect(
-        planIntent({ snapshot: snapshot, intent: {
-          _tag: 'property-edit',
-          intentEventId,
-          commandKey,
-          surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyId }),
-          pageId,
-          propertyId,
-          command,
-          baseHash: hash('8'),
-          desiredHash: hash('a'),
-          expectedPropertyConfigHash: hash('c'),
-        } }),
+        planIntent({
+          snapshot: snapshot,
+          intent: {
+            _tag: 'property-edit',
+            intentEventId,
+            commandKey,
+            surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyId }),
+            pageId,
+            propertyId,
+            command,
+            baseHash: hash('8'),
+            desiredHash: hash('a'),
+            expectedPropertyConfigHash: hash('c'),
+          },
+        }),
       ).toMatchObject({
         _tag: 'BlockedByGuard',
         guard: 'CurrentSurfaceMissing',

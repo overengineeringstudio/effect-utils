@@ -74,24 +74,27 @@ const propertyPage = ({
   readonly pageId?: PageIdType
   readonly itemHash?: HashType
 } = {}) =>
-  decode({ schema: PagePropertyItemPage, value: {
-    _tag: 'PagePropertyItemPage',
-    apiVersion: '2026-03-11',
-    requestId: testIds.requestId,
-    pageId,
-    propertyId: testIds.propertyA,
-    items: [
-      {
-        _tag: 'PagePropertyItem',
-        pageId,
-        propertyId: testIds.propertyA,
-        itemHash,
-        valueHash: itemHash,
-      },
-    ],
-    nextCursor: null,
-    hasMore: false,
-  } })
+  decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId,
+      propertyId: testIds.propertyA,
+      items: [
+        {
+          _tag: 'PagePropertyItem',
+          pageId,
+          propertyId: testIds.propertyA,
+          itemHash,
+          valueHash: itemHash,
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
 
 const bodyPage = ({
   pageId = testIds.pageId,
@@ -102,12 +105,15 @@ const bodyPage = ({
 } = {}) =>
   fakeBodyPage({
     pageId,
-    pointer: decode({ schema: BodyPointer, value: {
-      _tag: 'BodyPointer',
-      pageId,
-      bodyHash,
-      observedAt: fixedObservedAt,
-    } }),
+    pointer: decode({
+      schema: BodyPointer,
+      value: {
+        _tag: 'BodyPointer',
+        pageId,
+        bodyHash,
+        observedAt: fixedObservedAt,
+      },
+    }),
   })
 
 const localBodyChange = ({
@@ -274,7 +280,7 @@ const makeDaemonRecordingTracer = (): {
   return {
     spans,
     tracer: Tracer.make({
-      span: (name, parent, context, links, startTime, kind, options) => {
+      span: (name, parent, spanContext, links, startTime, kind, options) => {
         const attributes = new Map<string, unknown>(Object.entries(options?.attributes ?? {}))
         const recorded: RecordedDaemonSpan = {
           name,
@@ -289,7 +295,7 @@ const makeDaemonRecordingTracer = (): {
           spanId: `daemon-soak-span-${spans.length.toString()}`,
           traceId: 'trace-daemon-soak-e2e',
           parent,
-          context,
+          context: spanContext,
           status: { _tag: 'Started', startTime },
           attributes,
           links,

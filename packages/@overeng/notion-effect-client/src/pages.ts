@@ -32,6 +32,7 @@ export interface RetrievePageOptionsBase {
   readonly pageId: string
 }
 
+/** Inputs for retrieving a single page property — `startCursor`/`pageSize` paginate list-shaped properties. */
 export interface RetrievePagePropertyOptions {
   readonly pageId: string
   readonly propertyId: string
@@ -39,6 +40,7 @@ export interface RetrievePagePropertyOptions {
   readonly pageSize?: number
 }
 
+/** Result of retrieving a page property — paginated items plus an optional `propertyItem` for non-paginated single-value responses. */
 export interface RetrievePagePropertyResult extends PaginatedResult<PagePropertyItem> {
   readonly propertyItem?: unknown
 }
@@ -234,6 +236,7 @@ export function retrieve<TProperties, I, R>(
   )
 }
 
+/** Retrieve a single page property by id — handles both single-value and paginated list-shaped property responses (`GET /v1/pages/{page_id}/properties/{property_id}`). */
 export const retrieveProperty = Effect.fn('NotionPages.retrieveProperty')(function* (
   opts: RetrievePagePropertyOptions,
 ) {

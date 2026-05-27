@@ -189,9 +189,7 @@ const makeLedgerRecorder = (
   let ledger = initialLedger
   const writeLedger = makeLiveFixtureLedgerWriter({ env, config })
 
-  const record = async (
-    entry: Parameters<typeof ledgerEntry>[0],
-  ): Promise<LiveFixtureLedger> => {
+  const record = async (entry: Parameters<typeof ledgerEntry>[0]): Promise<LiveFixtureLedger> => {
     ledger = { ...ledger, entries: [...ledger.entries, ledgerEntry(entry)] }
     await writeLedger({ path: config.ledgerPath, ledger })
     return ledger
@@ -351,10 +349,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
     expect(config).toMatchObject({
       _tag: 'invalid-config',
-      invalid: [
-        'NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID',
-        'NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID',
-      ],
+      invalid: ['NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID', 'NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID'],
     })
   })
 
@@ -477,8 +472,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       retrievePageProperty: () => Stream.die('retrievePageProperty should not be called'),
       patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
-      patchDataSourceMetadata: () =>
-        Effect.die('patchDataSourceMetadata should not be called'),
+      patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
       restorePage: () => Effect.die('restorePage should not be called'),
     }
@@ -562,8 +556,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       },
       patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
-      patchDataSourceMetadata: () =>
-        Effect.die('patchDataSourceMetadata should not be called'),
+      patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
       restorePage: () => Effect.die('restorePage should not be called'),
     }
@@ -771,7 +764,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
         const env = liveNotionEnvFromProcessEnv()
         const fixtureConfig = { ...processLiveConfig, dataSourceId: undefined }
-        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: fixtureConfig })
+        const provisioned = await provisionLiveNotionDataSourceFixture({
+          env,
+          config: fixtureConfig,
+        })
         let ledger = provisioned.ledger
 
         try {
@@ -811,7 +807,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         if (processLiveConfig._tag !== 'configured') return
 
         const env = liveNotionEnvFromProcessEnv()
-        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: processLiveConfig })
+        const provisioned = await provisionLiveNotionDataSourceFixture({
+          env,
+          config: processLiveConfig,
+        })
         const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
 
         try {
@@ -856,8 +855,14 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               const added = yield* NotionDataSources.retrieve({
                 dataSourceId: provisioned.config.dataSourceId,
               })
-              const notesPropertyId = decode(PropertyId, propertyIdByName(added.properties, 'Notes'))
-              const stagePropertyId = decode(PropertyId, propertyIdByName(added.properties, 'Stage'))
+              const notesPropertyId = decode(
+                PropertyId,
+                propertyIdByName(added.properties, 'Notes'),
+              )
+              const stagePropertyId = decode(
+                PropertyId,
+                propertyIdByName(added.properties, 'Stage'),
+              )
               const labelsPropertyId = decode(
                 PropertyId,
                 propertyIdByName(added.properties, 'Labels'),
@@ -950,7 +955,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         if (processLiveConfig._tag !== 'configured') return
 
         const env = liveNotionEnvFromProcessEnv()
-        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: processLiveConfig })
+        const provisioned = await provisionLiveNotionDataSourceFixture({
+          env,
+          config: processLiveConfig,
+        })
         const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
         const description = `datasource-sync metadata description ${provisioned.config.runId}`
 
@@ -1040,17 +1048,15 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               const body = yield* PageBodySyncPort
               const id = decode(PageId, page.id)
               const observed = yield* body.observe({ _tag: 'ObserveBodyInput', pageId: id })
-              yield* body.push(
-                {
-                  _tag: 'BodyPushCommand',
-                  commandId: decode(CommandId, `${processLiveConfig.runId}:body:push`),
-                  pageId: id,
-                  baseBodyPointer: observed,
-                  nextBodyHash: sha256Hash(nextBody),
-                  localBodyPath: decode(WorkspaceRelativePath, `${page.id}.nmd`),
-                  localBodyContent: nextBody,
-                },
-              )
+              yield* body.push({
+                _tag: 'BodyPushCommand',
+                commandId: decode(CommandId, `${processLiveConfig.runId}:body:push`),
+                pageId: id,
+                baseBodyPointer: observed,
+                nextBodyHash: sha256Hash(nextBody),
+                localBodyPath: decode(WorkspaceRelativePath, `${page.id}.nmd`),
+                localBodyContent: nextBody,
+              })
             }),
           )
 
@@ -1176,9 +1182,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             throw new Error('live page-property pagination test requires a token')
           }
           const token = env.token
-          const baseClient = makeNotionEffectClientGatewayClient(<A, E>(
-            effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
-          ) => effect.pipe(Effect.provide(liveLayer(token))))
+          const baseClient = makeNotionEffectClientGatewayClient(
+            <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>) =>
+              effect.pipe(Effect.provide(liveLayer(token))),
+          )
           const gateway = makeNotionDataSourceGatewayFromClient({
             client: {
               ...baseClient,
@@ -1194,7 +1201,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 propertyId: relatedPropertyId,
                 startCursor: null,
               })
-              .pipe(Stream.runCollect, Effect.map((chunk) => Array.from(chunk))),
+              .pipe(
+                Stream.runCollect,
+                Effect.map((chunk) => Array.from(chunk)),
+              ),
           )
 
           expect(pages.length).toBeGreaterThan(1)
@@ -1236,7 +1246,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         if (processLiveConfig._tag !== 'configured') return
 
         const env = liveNotionEnvFromProcessEnv()
-        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: processLiveConfig })
+        const provisioned = await provisionLiveNotionDataSourceFixture({
+          env,
+          config: processLiveConfig,
+        })
         const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
 
         try {
@@ -1302,7 +1315,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                   },
                   startCursor: null,
                 })
-                .pipe(Stream.runCollect, Effect.map((chunk) => Array.from(chunk)))
+                .pipe(
+                  Stream.runCollect,
+                  Effect.map((chunk) => Array.from(chunk)),
+                )
             }),
           )
 
@@ -1325,7 +1341,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
         const env = liveNotionEnvFromProcessEnv()
         const fixtureConfig = { ...processLiveConfig, dataSourceId: undefined }
-        const provisioned = await provisionLiveNotionDataSourceFixture({ env, config: fixtureConfig })
+        const provisioned = await provisionLiveNotionDataSourceFixture({
+          env,
+          config: fixtureConfig,
+        })
         let ledger = provisioned.ledger
 
         try {
@@ -1762,106 +1781,138 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     },
   )
 
-  describe.skipIf(processLiveConfig._tag !== 'configured' || processLiveConfig.demoPageId === undefined)(
-    'credentialed automated demo showcase',
-    () => {
-      it('refreshes the visible demo page with a datasource-sync showcase', async () => {
-        if (processLiveConfig._tag !== 'configured' || processLiveConfig.demoPageId === undefined) {
-          return
-        }
+  describe.skipIf(
+    processLiveConfig._tag !== 'configured' || processLiveConfig.demoPageId === undefined,
+  )('credentialed automated demo showcase', () => {
+    it('refreshes the visible demo page with a datasource-sync showcase', async () => {
+      if (processLiveConfig._tag !== 'configured' || processLiveConfig.demoPageId === undefined) {
+        return
+      }
 
-        const env = liveNotionEnvFromProcessEnv()
-        const result = await runLiveNotionDemoShowcase({ env, config: processLiveConfig })
+      const env = liveNotionEnvFromProcessEnv()
+      const result = await runLiveNotionDemoShowcase({ env, config: processLiveConfig })
 
-        expect(result.demoPageId).toBe(processLiveConfig.demoPageId)
-        expect(result.dataSources.map((dataSource) => dataSource.key)).toEqual([
-          'projects',
-          'incidents',
-          'customers',
-          'activity',
-        ])
-        expect(result.dataSources.map((dataSource) => dataSource.rowIds.length)).toEqual([
-          12,
-          30,
-          48,
-          500,
-        ])
-        expect(result.dataSources.find((dataSource) => dataSource.key === 'activity')?.observation.pages)
-          .toBeGreaterThanOrEqual(10)
-        expect(result.observation.pages).toBeGreaterThanOrEqual(20)
-        expect(result.observation.rows).toBeGreaterThanOrEqual(700)
-        expect(result.observation.materializedBodies).toBe(12)
-        expect(result.observation.observedProperties).toBe(90)
-        expect(result.observation.incompleteProperties).toBe(0)
+      expect(result.demoPageId).toBe(processLiveConfig.demoPageId)
+      expect(result.dataSources.map((dataSource) => dataSource.key)).toEqual([
+        'projects',
+        'incidents',
+        'customers',
+        'activity',
+      ])
+      expect(result.dataSources.map((dataSource) => dataSource.rowIds.length)).toEqual([
+        12, 30, 48, 500,
+      ])
+      expect(
+        result.dataSources.find((dataSource) => dataSource.key === 'activity')?.observation.pages,
+      ).toBeGreaterThanOrEqual(10)
+      expect(result.observation.pages).toBeGreaterThanOrEqual(20)
+      expect(result.observation.rows).toBeGreaterThanOrEqual(700)
+      expect(result.observation.materializedBodies).toBe(12)
+      expect(result.observation.observedProperties).toBe(90)
+      expect(result.observation.incompleteProperties).toBe(0)
 
-        const markdown = await runLive(
-          env,
-          NotionPages.getMarkdown({ pageId: processLiveConfig.demoPageId }),
-        )
-        expect(markdown.markdown).toContain('notion datasource sync automated demo')
-        expect(markdown.markdown).toContain('Verification summary')
-        expect(markdown.markdown).toContain('Data source matrix')
-        expect(markdown.markdown).toContain('notion datasource sync demo projects')
-        expect(markdown.markdown).toContain('notion datasource sync demo incidents')
-        expect(markdown.markdown).toContain('notion datasource sync demo customers')
-        expect(markdown.markdown).toContain('notion datasource sync demo activity events')
-        expect(markdown.markdown).toContain('500 rows')
-        expect(markdown.markdown).toContain('Metadata proof')
-        expect(markdown.markdown).toContain(result.runId)
-        for (const dataSource of result.dataSources) {
-          expect(markdown.markdown).toContain(dataSource.dataSourceId)
-          expect(markdown.markdown).toContain(dataSource.description)
-        }
-        expect(markdown.markdown).not.toContain(env.token ?? 'token-not-configured')
-        expect(markdown.markdown).not.toContain('NOTION_API_TOKEN')
-        expect(markdown.markdown).not.toContain('op://')
+      const markdown = await runLive(
+        env,
+        NotionPages.getMarkdown({ pageId: processLiveConfig.demoPageId }),
+      )
+      expect(markdown.markdown).toContain('notion datasource sync automated demo')
+      expect(markdown.markdown).toContain('Verification summary')
+      expect(markdown.markdown).toContain('Data source matrix')
+      expect(markdown.markdown).toContain('notion datasource sync demo projects')
+      expect(markdown.markdown).toContain('notion datasource sync demo incidents')
+      expect(markdown.markdown).toContain('notion datasource sync demo customers')
+      expect(markdown.markdown).toContain('notion datasource sync demo activity events')
+      expect(markdown.markdown).toContain('500 rows')
+      expect(markdown.markdown).toContain('Metadata proof')
+      expect(markdown.markdown).toContain(result.runId)
+      for (const dataSource of result.dataSources) {
+        expect(markdown.markdown).toContain(dataSource.dataSourceId)
+        expect(markdown.markdown).toContain(dataSource.description)
+      }
+      expect(markdown.markdown).not.toContain(env.token ?? 'token-not-configured')
+      expect(markdown.markdown).not.toContain('NOTION_API_TOKEN')
+      expect(markdown.markdown).not.toContain('op://')
 
-        const remoteCounts = await Promise.all(
-          result.dataSources.map(async (dataSource) => {
-            const remote = await runLive(
-              env,
-              NotionDataSources.retrieve({ dataSourceId: dataSource.dataSourceId }),
-            )
-            const rowCount = await runLive(
-              env,
-              NotionDatabases.queryStream({
-                dataSourceId: dataSource.dataSourceId,
-                pageSize: 100,
-              }).pipe(Stream.runCollect, Effect.map(Chunk.size)),
-            )
-            return {
-              title: remote.title?.map((part) => part.plain_text ?? '').join('') ?? '',
-              description: remote.description?.map((part) => part.plain_text ?? '').join('') ?? '',
-              propertyNames: Object.keys(remote.properties),
-              rowCount,
-            }
-          }),
-        )
-        expect(remoteCounts.map((remote) => remote.rowCount)).toEqual([12, 30, 48, 500])
-        expect(remoteCounts.map((remote) => remote.title)).toEqual([
-          'notion datasource sync demo projects',
-          'notion datasource sync demo incidents',
-          'notion datasource sync demo customers',
-          'notion datasource sync demo activity events',
-        ])
-        expect(remoteCounts.map((remote) => remote.description)).toEqual(
-          result.dataSources.map((dataSource) => dataSource.description),
-        )
-        expect(remoteCounts[0]?.propertyNames).toEqual(
-          expect.arrayContaining(['Name', 'State', 'Budget', 'Strategic', 'Kickoff', 'Teams', 'Summary', 'Brief']),
-        )
-        expect(remoteCounts[1]?.propertyNames).toEqual(
-          expect.arrayContaining(['Name', 'Severity', 'Open', 'Started', 'Impact', 'Systems', 'Notes']),
-        )
-        expect(remoteCounts[2]?.propertyNames).toEqual(
-          expect.arrayContaining(['Name', 'Plan', 'ARR', 'Renewal', 'Contacted', 'Regions', 'Health', 'Email', 'Phone']),
-        )
-        expect(remoteCounts[3]?.propertyNames).toEqual(
-          expect.arrayContaining(['Name', 'Segment', 'Sequence', 'Automated', 'EventDate', 'Labels', 'Payload']),
-        )
-      }, 1_200_000)
-    },
-  )
+      const remoteCounts = await Promise.all(
+        result.dataSources.map(async (dataSource) => {
+          const remote = await runLive(
+            env,
+            NotionDataSources.retrieve({ dataSourceId: dataSource.dataSourceId }),
+          )
+          const rowCount = await runLive(
+            env,
+            NotionDatabases.queryStream({
+              dataSourceId: dataSource.dataSourceId,
+              pageSize: 100,
+            }).pipe(Stream.runCollect, Effect.map(Chunk.size)),
+          )
+          return {
+            title: remote.title?.map((part) => part.plain_text ?? '').join('') ?? '',
+            description: remote.description?.map((part) => part.plain_text ?? '').join('') ?? '',
+            propertyNames: Object.keys(remote.properties),
+            rowCount,
+          }
+        }),
+      )
+      expect(remoteCounts.map((remote) => remote.rowCount)).toEqual([12, 30, 48, 500])
+      expect(remoteCounts.map((remote) => remote.title)).toEqual([
+        'notion datasource sync demo projects',
+        'notion datasource sync demo incidents',
+        'notion datasource sync demo customers',
+        'notion datasource sync demo activity events',
+      ])
+      expect(remoteCounts.map((remote) => remote.description)).toEqual(
+        result.dataSources.map((dataSource) => dataSource.description),
+      )
+      expect(remoteCounts[0]?.propertyNames).toEqual(
+        expect.arrayContaining([
+          'Name',
+          'State',
+          'Budget',
+          'Strategic',
+          'Kickoff',
+          'Teams',
+          'Summary',
+          'Brief',
+        ]),
+      )
+      expect(remoteCounts[1]?.propertyNames).toEqual(
+        expect.arrayContaining([
+          'Name',
+          'Severity',
+          'Open',
+          'Started',
+          'Impact',
+          'Systems',
+          'Notes',
+        ]),
+      )
+      expect(remoteCounts[2]?.propertyNames).toEqual(
+        expect.arrayContaining([
+          'Name',
+          'Plan',
+          'ARR',
+          'Renewal',
+          'Contacted',
+          'Regions',
+          'Health',
+          'Email',
+          'Phone',
+        ]),
+      )
+      expect(remoteCounts[3]?.propertyNames).toEqual(
+        expect.arrayContaining([
+          'Name',
+          'Segment',
+          'Sequence',
+          'Automated',
+          'EventDate',
+          'Labels',
+          'Payload',
+        ]),
+      )
+    }, 1_200_000)
+  })
 
   it('defines a sanitized cleanup ledger shape without exposing secrets', () => {
     const configured =

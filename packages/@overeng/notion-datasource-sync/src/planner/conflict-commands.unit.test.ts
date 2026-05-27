@@ -31,29 +31,32 @@ const conflictEvent = (): SyncEventType =>
   })
 
 const rowObserved = () =>
-  decode({ schema: SyncEvent, value: {
-    _tag: 'RowObserved',
-    eventId: 'row-observed',
-    rootId: testIds.rootId,
-    sequence: '0',
-    codecVersion: 'v1',
-    family: 'RemoteObserved',
-    eventType: 'RowObserved',
-    idempotencyKey: 'row-observed',
-    surface: `page:${testIds.pageId}`,
-    causedByEventIds: [],
-    payloadHash: hash('payload'),
-    payload: {
-      _tag: 'VersionedJson',
+  decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'RowObserved',
+      eventId: 'row-observed',
+      rootId: testIds.rootId,
+      sequence: '0',
       codecVersion: 'v1',
-      canonicalJson: JSON.stringify({ bodyPath: 'page-1.nmd', sidecarIdentityProven: true }),
+      family: 'RemoteObserved',
+      eventType: 'RowObserved',
+      idempotencyKey: 'row-observed',
+      surface: `page:${testIds.pageId}`,
+      causedByEventIds: [],
+      payloadHash: hash('payload'),
+      payload: {
+        _tag: 'VersionedJson',
+        codecVersion: 'v1',
+        canonicalJson: JSON.stringify({ bodyPath: 'page-1.nmd', sidecarIdentityProven: true }),
+      },
+      observedAt: '2026-05-25T00:00:00.000Z',
+      dataSourceId: testIds.dataSourceId,
+      pageId: testIds.pageId,
+      propertiesHash: hash('properties-a'),
+      inTrash: false,
     },
-    observedAt: '2026-05-25T00:00:00.000Z',
-    dataSourceId: testIds.dataSourceId,
-    pageId: testIds.pageId,
-    propertiesHash: hash('properties-a'),
-    inTrash: false,
-  } })
+  })
 
 describe('conflict and user command surface', () => {
   it('lists open conflicts in a stable result envelope', () => {
@@ -125,17 +128,20 @@ describe('conflict and user command surface', () => {
 
     try {
       storeFixture.store.appendEvent(rowObserved())
-      appendPlannedCommand({ store: storeFixture.store, command: {
-        commandId: testIds.commandId,
-        commandKey: testIds.commandKey,
-        rootId: testIds.rootId,
-        intentEventId: testIds.intentEventId,
-        surface: propertySurfaceKey({ pageId: testIds.pageId, propertyId: testIds.propertyA }),
-        command: propertyEditIntent().command,
-        baseHash: hash('properties-a'),
-        desiredHash: hash('properties-next'),
-        preflight: ['StaleSurfaceBase'],
-      } })
+      appendPlannedCommand({
+        store: storeFixture.store,
+        command: {
+          commandId: testIds.commandId,
+          commandKey: testIds.commandKey,
+          rootId: testIds.rootId,
+          intentEventId: testIds.intentEventId,
+          surface: propertySurfaceKey({ pageId: testIds.pageId, propertyId: testIds.propertyA }),
+          command: propertyEditIntent().command,
+          baseHash: hash('properties-a'),
+          desiredHash: hash('properties-next'),
+          preflight: ['StaleSurfaceBase'],
+        },
+      })
       expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toHaveLength(1)
       expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([{ state: 'queued' }])
 

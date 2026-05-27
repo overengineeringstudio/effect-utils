@@ -68,33 +68,39 @@ const expectSqliteStoreFilesAbsent = async (storePath: string) => {
 }
 
 const propertyPage = (valueHash = hash('property-a-base')) =>
-  decode({ schema: PagePropertyItemPage, value: {
-    _tag: 'PagePropertyItemPage',
-    apiVersion: '2026-03-11',
-    requestId: testIds.requestId,
-    pageId: testIds.pageId,
-    propertyId: testIds.propertyA,
-    items: [
-      {
-        _tag: 'PagePropertyItem',
-        pageId: testIds.pageId,
-        propertyId: testIds.propertyA,
-        itemHash: valueHash,
-        valueHash,
-      },
-    ],
-    nextCursor: null,
-    hasMore: false,
-  } })
+  decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId: testIds.pageId,
+      propertyId: testIds.propertyA,
+      items: [
+        {
+          _tag: 'PagePropertyItem',
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyA,
+          itemHash: valueHash,
+          valueHash,
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
 
 const bodyPage = (bodyHash = hash('body-a'), remoteBodyHash = bodyHash) =>
   fakeBodyPage({
-    pointer: decode({ schema: BodyPointer, value: {
-      _tag: 'BodyPointer',
-      pageId: testIds.pageId,
-      bodyHash,
-      observedAt: fixedObservedAt,
-    } }),
+    pointer: decode({
+      schema: BodyPointer,
+      value: {
+        _tag: 'BodyPointer',
+        pageId: testIds.pageId,
+        bodyHash,
+        observedAt: fixedObservedAt,
+      },
+    }),
     remoteBodyHash,
   })
 
@@ -538,19 +544,21 @@ describe('CLI command surface', () => {
     try {
       await expect(
         Effect.runPromise(
-          runCliMain({ argv: [
-            'status',
-            '--store',
-            storePath,
-            '--root-id',
-            testIds.rootId,
-            '--data-source-id',
-            testIds.dataSourceId,
-            '--workspace-root',
-            workspaceRoot,
-            '--query-contract-json',
-            '{',
-          ] }),
+          runCliMain({
+            argv: [
+              'status',
+              '--store',
+              storePath,
+              '--root-id',
+              testIds.rootId,
+              '--data-source-id',
+              testIds.dataSourceId,
+              '--workspace-root',
+              workspaceRoot,
+              '--query-contract-json',
+              '{',
+            ],
+          }),
         ),
       ).rejects.toThrow()
 
@@ -636,7 +644,11 @@ describe('CLI command surface', () => {
     try {
       await Effect.runPromise(
         runCliCommandWithRuntime({
-          command: { _tag: 'init', dataSourceId: testIds.dataSourceId, workspaceRoot: ctx.workspaceRoot },
+          command: {
+            _tag: 'init',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot: ctx.workspaceRoot,
+          },
           context: ctx,
           options: { gatewayClient: makeInjectedNotionClient(calls), body },
         }),
@@ -681,7 +693,11 @@ describe('CLI command surface', () => {
     try {
       await Effect.runPromise(
         runCliCommandWithRuntime({
-          command: { _tag: 'init', dataSourceId: testIds.dataSourceId, workspaceRoot: ctx.workspaceRoot },
+          command: {
+            _tag: 'init',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot: ctx.workspaceRoot,
+          },
           context: ctx,
           options: { gatewayClient: makeInjectedNotionClient(calls), body },
         }),

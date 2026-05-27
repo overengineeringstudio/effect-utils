@@ -493,7 +493,8 @@ const planPropertyEdit = ({
     return blockDecision({
       guard: 'CurrentSurfaceMissing',
       surface: intent.surface,
-      summary: 'Current row projection is missing; observe the row before planning a property write',
+      summary:
+        'Current row projection is missing; observe the row before planning a property write',
     })
   }
 
@@ -539,7 +540,8 @@ const planPropertyEdit = ({
     return blockDecision({
       guard: 'CurrentSurfaceMissing',
       surface: intent.surface,
-      summary: 'Current property projection is missing; observe the property before planning a write',
+      summary:
+        'Current property projection is missing; observe the property before planning a write',
     })
   }
 
@@ -902,7 +904,10 @@ const planPathClaim = ({
     (claim) => claim.path === intent.path && claim.released === false,
   )
   const collides = existingClaim !== undefined && existingClaim.ownerPageId !== intent.pageId
-  const blockedDecision = fromGuard({ decision: guardPathClaimCollision({ collides }), surface: intent.surface })
+  const blockedDecision = fromGuard({
+    decision: guardPathClaimCollision({ collides }),
+    surface: intent.surface,
+  })
   if (blockedDecision !== undefined) {
     const localSurface: ConflictSurface = {
       _tag: 'path',

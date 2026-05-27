@@ -21,43 +21,43 @@ unsupported. They fail before doing work.
 
 ## Environment
 
-| Variable            | Required | Meaning                                      |
-| ------------------- | -------- | -------------------------------------------- |
-| `NOTION_API_TOKEN`  | live CLI | Notion integration token                     |
-| `NOTION_TOKEN`      | fallback | Legacy token fallback                        |
-| `OTEL_*` variables  | optional | OpenTelemetry resource/correlation settings  |
+| Variable           | Required | Meaning                                     |
+| ------------------ | -------- | ------------------------------------------- |
+| `NOTION_API_TOKEN` | live CLI | Notion integration token                    |
+| `NOTION_TOKEN`     | fallback | Legacy token fallback                       |
+| `OTEL_*` variables | optional | OpenTelemetry resource/correlation settings |
 
 Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 
 ## Shared Flags
 
-| Flag                       | Meaning                                                                  |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `--store`                  | SQLite store path                                                        |
-| `--root-id`                | Local sync root partition                                                |
-| `--data-source-id`         | Notion data source id                                                    |
-| `--workspace-root`         | Local workspace root                                                     |
-| `--query-contract-json`    | Explicit query contract JSON                                             |
-| `--schema-properties-json` | Schema-property observations for write planning                          |
-| `--required-capabilities`  | Comma-separated capability preflight list                                |
-| `--max-executor-steps`     | Bound outbox execution in `push`, `sync`, and `watch`                    |
-| `--no-materialize-bodies`  | Observe properties/schema without local body materialization             |
+| Flag                       | Meaning                                                      |
+| -------------------------- | ------------------------------------------------------------ |
+| `--store`                  | SQLite store path                                            |
+| `--root-id`                | Local sync root partition                                    |
+| `--data-source-id`         | Notion data source id                                        |
+| `--workspace-root`         | Local workspace root                                         |
+| `--query-contract-json`    | Explicit query contract JSON                                 |
+| `--schema-properties-json` | Schema-property observations for write planning              |
+| `--required-capabilities`  | Comma-separated capability preflight list                    |
+| `--max-executor-steps`     | Bound outbox execution in `push`, `sync`, and `watch`        |
+| `--no-materialize-bodies`  | Observe properties/schema without local body materialization |
 
 ## Commands
 
-| Command             | Effect                                                                 |
-| ------------------- | ---------------------------------------------------------------------- |
-| `init`              | Records the local root/data-source/workspace binding                   |
-| `pull`              | Observes Notion and materializes local state where configured          |
-| `push`              | Scans local artifacts, plans writes, and executes the outbox           |
-| `sync`              | Runs pull, local scan/planning, outbox execution, and verification      |
-| `status`            | Reads the local projections                                            |
-| `watch`             | Repeats sync cycles with daemon state and optional max-cycle bound      |
-| `conflicts list`    | Prints conflicts, guards, tombstones, and pending outbox actions       |
-| `conflicts resolve` | Resolves a conflict by event, optionally planning follow-up commands    |
-| `forget`            | Removes local tracking for a page after explicit user intent           |
-| `restore`           | Plans restore of a tracked trashed page                                |
-| `doctor`            | Aggregates status, compaction readiness, and user-action surfaces       |
+| Command             | Effect                                                               |
+| ------------------- | -------------------------------------------------------------------- |
+| `init`              | Records the local root/data-source/workspace binding                 |
+| `pull`              | Observes Notion and materializes local state where configured        |
+| `push`              | Scans local artifacts, plans writes, and executes the outbox         |
+| `sync`              | Runs pull, local scan/planning, outbox execution, and verification   |
+| `status`            | Reads the local projections                                          |
+| `watch`             | Repeats sync cycles with daemon state and optional max-cycle bound   |
+| `conflicts list`    | Prints conflicts, guards, tombstones, and pending outbox actions     |
+| `conflicts resolve` | Resolves a conflict by event, optionally planning follow-up commands |
+| `forget`            | Removes local tracking for a page after explicit user intent         |
+| `restore`           | Plans restore of a tracked trashed page                              |
+| `doctor`            | Aggregates status, compaction readiness, and user-action surfaces    |
 
 ## Output
 

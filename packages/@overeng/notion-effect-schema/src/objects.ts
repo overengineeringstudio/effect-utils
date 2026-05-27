@@ -302,6 +302,7 @@ export const Page = Schema.Struct({
 
 export type Page = typeof Page.Type
 
+/** Single property item returned by `GET /v1/pages/{page_id}/properties/{property_id}` — schema mirrors the Notion API page-property item object. */
 export const PagePropertyItem = Schema.extend(
   Schema.Struct({
     object: Schema.Literal('property_item'),
@@ -315,6 +316,7 @@ export const PagePropertyItem = Schema.extend(
 })
 export type PagePropertyItem = typeof PagePropertyItem.Type
 
+/** Paginated list response for page-property retrieval — wraps multiple `PagePropertyItem` entries returned by Notion. */
 export const PagePropertyItemList = Schema.Struct({
   object: Schema.Literal('list'),
   type: Schema.Literal('property_item'),
@@ -328,11 +330,14 @@ export const PagePropertyItemList = Schema.Struct({
 })
 export type PagePropertyItemList = typeof PagePropertyItemList.Type
 
-export const PagePropertyItemResponse = Schema.Union(PagePropertyItem, PagePropertyItemList)
-  .annotations({
-    identifier: 'Notion.PagePropertyItemResponse',
-    [docsPath]: 'retrieve-a-page-property',
-  })
+/** Tagged union covering both shapes the page-property endpoint can return — a single `PagePropertyItem` or a paginated `PagePropertyItemList`. */
+export const PagePropertyItemResponse = Schema.Union(
+  PagePropertyItem,
+  PagePropertyItemList,
+).annotations({
+  identifier: 'Notion.PagePropertyItemResponse',
+  [docsPath]: 'retrieve-a-page-property',
+})
 export type PagePropertyItemResponse = typeof PagePropertyItemResponse.Type
 
 // -----------------------------------------------------------------------------

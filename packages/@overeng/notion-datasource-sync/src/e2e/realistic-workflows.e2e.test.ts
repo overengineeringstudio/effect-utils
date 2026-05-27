@@ -81,24 +81,27 @@ const propertyPage = ({
   readonly propertyId?: PropertyIdType
   readonly valueHash?: HashType
 } = {}) =>
-  decode({ schema: PagePropertyItemPage, value: {
-    _tag: 'PagePropertyItemPage',
-    apiVersion: '2026-03-11',
-    requestId: testIds.requestId,
-    pageId,
-    propertyId,
-    items: [
-      {
-        _tag: 'PagePropertyItem',
-        pageId,
-        propertyId,
-        itemHash: valueHash,
-        valueHash,
-      },
-    ],
-    nextCursor: null,
-    hasMore: false,
-  } })
+  decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId,
+      propertyId,
+      items: [
+        {
+          _tag: 'PagePropertyItem',
+          pageId,
+          propertyId,
+          itemHash: valueHash,
+          valueHash,
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
 
 const propertyPages = ({
   propertyA = hash('property-a-base'),
@@ -191,15 +194,18 @@ const writeFileString = (path: string, content: string) =>
   )
 
 const propertyCommand = (basePropertiesHash: HashType) =>
-  decode({ schema: PatchPagePropertiesCommand, value: {
-    _tag: 'PatchPagePropertiesCommand',
-    commandId: testIds.commandId,
-    pageId: testIds.pageId,
-    basePropertiesHash,
-    propertyPatch: {
-      [testIds.propertyA]: propertyPatchValue('Local edit'),
+  decode({
+    schema: PatchPagePropertiesCommand,
+    value: {
+      _tag: 'PatchPagePropertiesCommand',
+      commandId: testIds.commandId,
+      pageId: testIds.pageId,
+      basePropertiesHash,
+      propertyPatch: {
+        [testIds.propertyA]: propertyPatchValue('Local edit'),
+      },
     },
-  } })
+  })
 
 describe('realistic offline workflow E2E matrix', () => {
   it('keeps realistic workflow scenario metadata implemented', () => {
@@ -625,12 +631,15 @@ describe('realistic offline workflow E2E matrix', () => {
           _tag: 'MaterializePlan',
           pageId,
           path,
-          bodyPointer: decode({ schema: BodyPointer, value: {
-            _tag: 'BodyPointer',
-            pageId,
-            bodyHash: hash('body-a'),
-            observedAt: fixedObservedAt,
-          } }),
+          bodyPointer: decode({
+            schema: BodyPointer,
+            value: {
+              _tag: 'BodyPointer',
+              pageId,
+              bodyHash: hash('body-a'),
+              observedAt: fixedObservedAt,
+            },
+          }),
         }),
       )
       await removeFile(join(fixture.root, path))
@@ -648,12 +657,15 @@ describe('realistic offline workflow E2E matrix', () => {
             _tag: 'MaterializePlan',
             pageId,
             path,
-            bodyPointer: decode({ schema: BodyPointer, value: {
-              _tag: 'BodyPointer',
-              pageId,
-              bodyHash: hash('body-b'),
-              observedAt: fixedObservedAt,
-            } }),
+            bodyPointer: decode({
+              schema: BodyPointer,
+              value: {
+                _tag: 'BodyPointer',
+                pageId,
+                bodyHash: hash('body-b'),
+                observedAt: fixedObservedAt,
+              },
+            }),
           }),
         ),
       ).resolves.toMatchObject({ _tag: 'MaterializeResult', pageId, bodyHash: hash('body-b') })

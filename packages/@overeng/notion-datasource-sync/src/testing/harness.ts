@@ -12,7 +12,6 @@ import {
 } from '../body/adapter.ts'
 import {
   bodySurfaceKey,
-  dataSourceMetadataSurfaceKey,
   pageSurfaceKey,
   propertySurfaceKey,
   querySurfaceKey,
@@ -356,12 +355,15 @@ export const makeStoreFixture = (
 
 /** Build a decoded `BodyPointer` fixture pointing to `testIds.pageId` — defaults to `hash('body-a')` for the body hash. */
 export const bodyPointer = (bodyHash: HashType = hash('body-a')): BodyPointerType =>
-  decode({ schema: BodyPointer, value: {
-    _tag: 'BodyPointer',
-    pageId: testIds.pageId,
-    bodyHash,
-    observedAt: fixedObservedAt,
-  } })
+  decode({
+    schema: BodyPointer,
+    value: {
+      _tag: 'BodyPointer',
+      pageId: testIds.pageId,
+      bodyHash,
+      observedAt: fixedObservedAt,
+    },
+  })
 
 /** Build a default `RowPageSnapshot` fixture — accepts partial overrides to vary only the fields under test. */
 export const rowSnapshot = (overrides: Partial<RowPageSnapshot> = {}): RowPageSnapshot => ({
@@ -397,22 +399,25 @@ export const queryRowsPage = ({
   readonly nextCursor: QueryRowsPage['nextCursor']
   readonly cappedAtLimit: boolean
 }): QueryRowsPage =>
-  decode({ schema: QueryRowsPage, value: {
-    _tag: 'QueryRowsPage',
-    apiVersion: '2026-03-11',
-    requestId: testIds.requestId,
-    queryContractHash: hash('query-contract'),
-    rows: rows.map((row) => ({
-      _tag: 'QueriedRow',
-      pageId: row.pageId,
-      propertiesHash: row.propertiesHash,
-      lastEditedTime: fixedObservedAt,
-      inTrash: row.inTrash,
-    })),
-    nextCursor,
-    hasMore,
-    cappedAtLimit,
-  } })
+  decode({
+    schema: QueryRowsPage,
+    value: {
+      _tag: 'QueryRowsPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      queryContractHash: hash('query-contract'),
+      rows: rows.map((row) => ({
+        _tag: 'QueriedRow',
+        pageId: row.pageId,
+        propertiesHash: row.propertiesHash,
+        lastEditedTime: fixedObservedAt,
+        inTrash: row.inTrash,
+      })),
+      nextCursor,
+      hasMore,
+      cappedAtLimit,
+    },
+  })
 
 /** Build a baseline `QueryContract` with no filters, no sorts, a page size of 100, and `all-data-source-rows` membership scope. */
 export const defaultQueryContract = (): QueryContract => ({
@@ -518,15 +523,18 @@ export const propertyPatchValue = (plainText = 'Updated'): CanonicalPropertyValu
 export const propertyEditIntent = (
   overrides: Partial<PropertyEditIntent> = {},
 ): PropertyEditIntent => {
-  const command = decode({ schema: PatchPagePropertiesCommand, value: {
-    _tag: 'PatchPagePropertiesCommand',
-    commandId: testIds.commandId,
-    pageId: testIds.pageId,
-    basePropertiesHash: hash('properties-a'),
-    propertyPatch: {
-      [testIds.propertyA]: propertyPatchValue(),
+  const command = decode({
+    schema: PatchPagePropertiesCommand,
+    value: {
+      _tag: 'PatchPagePropertiesCommand',
+      commandId: testIds.commandId,
+      pageId: testIds.pageId,
+      basePropertiesHash: hash('properties-a'),
+      propertyPatch: {
+        [testIds.propertyA]: propertyPatchValue(),
+      },
     },
-  } })
+  })
 
   return {
     _tag: 'property-edit',
@@ -548,7 +556,10 @@ export const queryAbsenceIntent = (
   overrides: Partial<QueryAbsenceIntent> = {},
 ): QueryAbsenceIntent => ({
   _tag: 'query-absence',
-  surface: querySurfaceKey({ dataSourceId: testIds.dataSourceId, queryContractHash: hash('query-contract') }),
+  surface: querySurfaceKey({
+    dataSourceId: testIds.dataSourceId,
+    queryContractHash: hash('query-contract'),
+  }),
   dataSourceId: testIds.dataSourceId,
   pageId: testIds.pageId,
   queryContractHash: hash('query-contract'),
@@ -582,12 +593,15 @@ export const bodyAdapterResultIntent = (safety: BodySafetySnapshot): BodyAdapter
 export const localDeleteIntent = (
   overrides: Partial<LocalDeleteIntent> = {},
 ): LocalDeleteIntent => {
-  const command = decode({ schema: TrashPageCommand, value: {
-    _tag: 'TrashPageCommand',
-    commandId: testIds.commandId,
-    pageId: testIds.pageId,
-    basePropertiesHash: hash('properties-a'),
-  } })
+  const command = decode({
+    schema: TrashPageCommand,
+    value: {
+      _tag: 'TrashPageCommand',
+      commandId: testIds.commandId,
+      pageId: testIds.pageId,
+      basePropertiesHash: hash('properties-a'),
+    },
+  })
 
   return {
     _tag: 'local-delete',
@@ -685,24 +699,27 @@ export const remoteWritePlannedEvent = (input: {
   readonly desiredHash: HashType
   readonly preflight: ReadonlyArray<GuardName>
 }): SyncEventType =>
-  decode({ schema: SyncEvent, value: {
-    _tag: 'RemoteWritePlanned',
-    ...eventBase({
-      eventId: input.eventId,
-      family: 'CommandEnqueued',
-      eventType: 'RemoteWritePlanned',
-      idempotencyKey: input.commandKey,
-      surface: input.surface,
-      canonicalJson: JSON.stringify({ command: input.command }),
-    }),
-    commandId: input.commandId,
-    commandKey: input.commandKey,
-    intentEventId: input.intentEventId,
-    commandTag: input.commandTag,
-    ...(input.baseHash === undefined ? {} : { baseHash: input.baseHash }),
-    desiredHash: input.desiredHash,
-    preflight: input.preflight,
-  } })
+  decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'RemoteWritePlanned',
+      ...eventBase({
+        eventId: input.eventId,
+        family: 'CommandEnqueued',
+        eventType: 'RemoteWritePlanned',
+        idempotencyKey: input.commandKey,
+        surface: input.surface,
+        canonicalJson: JSON.stringify({ command: input.command }),
+      }),
+      commandId: input.commandId,
+      commandKey: input.commandKey,
+      intentEventId: input.intentEventId,
+      commandTag: input.commandTag,
+      ...(input.baseHash === undefined ? {} : { baseHash: input.baseHash }),
+      desiredHash: input.desiredHash,
+      preflight: input.preflight,
+    },
+  })
 
 /** Build a decoded `RemoteWriteAttempted` `SyncEvent` fixture — simulates an in-flight or retryable outbox attempt for recovery tests. */
 export const remoteWriteAttemptedEvent = (input: {
@@ -713,21 +730,24 @@ export const remoteWriteAttemptedEvent = (input: {
   readonly attemptState?: 'running' | 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   readonly leaseToken?: string
 }): SyncEventType =>
-  decode({ schema: SyncEvent, value: {
-    _tag: 'RemoteWriteAttempted',
-    ...eventBase({
-      eventId: input.eventId,
-      family: 'CommandAttempted',
-      eventType: 'RemoteWriteAttempted',
-      idempotencyKey: input.idempotencyKey,
-      surface: pageSurfaceKey(testIds.pageId),
-      canonicalJson: `{"attempt":"${input.eventId}"}`,
-    }),
-    commandId: input.commandId,
-    attempt: input.attempt ?? 1,
-    attemptState: input.attemptState ?? 'running',
-    leaseToken: input.leaseToken ?? 'lease-1',
-  } })
+  decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'RemoteWriteAttempted',
+      ...eventBase({
+        eventId: input.eventId,
+        family: 'CommandAttempted',
+        eventType: 'RemoteWriteAttempted',
+        idempotencyKey: input.idempotencyKey,
+        surface: pageSurfaceKey(testIds.pageId),
+        canonicalJson: `{"attempt":"${input.eventId}"}`,
+      }),
+      commandId: input.commandId,
+      attempt: input.attempt ?? 1,
+      attemptState: input.attemptState ?? 'running',
+      leaseToken: input.leaseToken ?? 'lease-1',
+    },
+  })
 
 /** Build a decoded `RemoteWriteSettled` `SyncEvent` fixture — used in settlement verification tests to assert that the executor records the correct `observedHash`. */
 export const remoteWriteSettledEvent = (input: {
@@ -738,23 +758,26 @@ export const remoteWriteSettledEvent = (input: {
   readonly desiredHash: HashType
   readonly observedHash: HashType
 }): SyncEventType =>
-  decode({ schema: SyncEvent, value: {
-    _tag: 'RemoteWriteSettled',
-    ...eventBase({
-      eventId: input.eventId,
-      family: 'CommandSettled',
-      eventType: 'RemoteWriteSettled',
-      idempotencyKey: input.idempotencyKey,
-      surface: pageSurfaceKey(testIds.pageId),
-      canonicalJson: `{"settled":"${input.eventId}"}`,
-    }),
-    commandId: input.commandId,
-    commandTag: input.commandTag,
-    requestId: testIds.requestId,
-    desiredHash: input.desiredHash,
-    observedHash: input.observedHash,
-    settlementKind: 'verified-success',
-  } })
+  decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'RemoteWriteSettled',
+      ...eventBase({
+        eventId: input.eventId,
+        family: 'CommandSettled',
+        eventType: 'RemoteWriteSettled',
+        idempotencyKey: input.idempotencyKey,
+        surface: pageSurfaceKey(testIds.pageId),
+        canonicalJson: `{"settled":"${input.eventId}"}`,
+      }),
+      commandId: input.commandId,
+      commandTag: input.commandTag,
+      requestId: testIds.requestId,
+      desiredHash: input.desiredHash,
+      observedHash: input.observedHash,
+      settlementKind: 'verified-success',
+    },
+  })
 
 /** Append a `RemoteWritePlanned` event to the store for a given outbox envelope — shorthand for pre-populating the outbox in executor tests. */
 export const appendPlannedCommand = ({

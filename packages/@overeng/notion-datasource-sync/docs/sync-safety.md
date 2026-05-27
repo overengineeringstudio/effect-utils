@@ -5,16 +5,16 @@ surface and refuses writes when the required evidence is missing.
 
 ## Authority
 
-| Surface                       | Source of truth while syncing            | Write rule                                           |
-| ----------------------------- | ---------------------------------------- | ---------------------------------------------------- |
-| Current remote schema         | Fresh Notion observation                 | Re-read before schema-affecting writes               |
-| Current row properties        | Fresh Notion row/property observation    | Re-read and hash before property patches             |
-| Row page body                 | `PageBodySyncPort` / NotionMD            | Delegate body conflict and destructive-body guards   |
-| Local accepted intent         | SQLite event log                         | Commit event before remote effect                    |
-| Pending remote effects        | SQLite outbox                            | Execute outside SQL transaction, verify settlement   |
-| Local file paths              | Workspace path claims                    | Never overwrite another page's claimed path          |
-| Query membership              | Query contract plus complete pagination  | Never infer absence from incomplete/incompatible scan |
-| Lifecycle and tombstones      | Direct row/page classification           | No remote trash from accidental local disappearance  |
+| Surface                  | Source of truth while syncing           | Write rule                                            |
+| ------------------------ | --------------------------------------- | ----------------------------------------------------- |
+| Current remote schema    | Fresh Notion observation                | Re-read before schema-affecting writes                |
+| Current row properties   | Fresh Notion row/property observation   | Re-read and hash before property patches              |
+| Row page body            | `PageBodySyncPort` / NotionMD           | Delegate body conflict and destructive-body guards    |
+| Local accepted intent    | SQLite event log                        | Commit event before remote effect                     |
+| Pending remote effects   | SQLite outbox                           | Execute outside SQL transaction, verify settlement    |
+| Local file paths         | Workspace path claims                   | Never overwrite another page's claimed path           |
+| Query membership         | Query contract plus complete pagination | Never infer absence from incomplete/incompatible scan |
+| Lifecycle and tombstones | Direct row/page classification          | No remote trash from accidental local disappearance   |
 
 SQLite projections are derived state. The event log is the local source of truth
 for accepted intent, conflicts, tombstones, command attempts, and settlements.

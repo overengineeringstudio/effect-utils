@@ -79,23 +79,26 @@ const makeRowForgottenEvent = ({
   readonly pageId: PageId
   readonly now: () => Date
 }): SyncEventType =>
-  decode({ schema: SyncEvent, value: {
-    _tag: 'RowForgotten',
-    eventId: `forget:${eventIdPart(pageId)}:${eventIdPart(now().toISOString())}`,
-    rootId,
-    sequence: '0',
-    codecVersion: 'v1',
-    family: 'LocalIntentAccepted',
-    eventType: 'RowForgotten',
-    idempotencyKey: `forget:${pageId}:${eventIdPart(now().toISOString())}`,
-    surface: decode({ schema: SurfaceKey, value: pageSurfaceKey(pageId) }),
-    causedByEventIds: [],
-    payloadHash: hashStoreBytes('placeholder'),
-    payload: eventPayload({ pageId, reason: 'user-forget' }),
-    observedAt: now().toISOString(),
-    pageId,
-    reason: 'user-forget',
-  } })
+  decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'RowForgotten',
+      eventId: `forget:${eventIdPart(pageId)}:${eventIdPart(now().toISOString())}`,
+      rootId,
+      sequence: '0',
+      codecVersion: 'v1',
+      family: 'LocalIntentAccepted',
+      eventType: 'RowForgotten',
+      idempotencyKey: `forget:${pageId}:${eventIdPart(now().toISOString())}`,
+      surface: decode({ schema: SurfaceKey, value: pageSurfaceKey(pageId) }),
+      causedByEventIds: [],
+      payloadHash: hashStoreBytes('placeholder'),
+      payload: eventPayload({ pageId, reason: 'user-forget' }),
+      observedAt: now().toISOString(),
+      pageId,
+      reason: 'user-forget',
+    },
+  })
 
 /** Return a `UserCommandResultEnvelope` describing the current sync surface without planning or applying any changes — useful for CLI list/status commands. */
 export const listUserCommandSurface = (options: UserActionOptions) =>
@@ -120,16 +123,17 @@ export const forgetPageCommand = (
     commands: [],
     guards: [],
   }
-  const applied = dryRun === true
-    ? emptyPlan()
-    : {
-        events: planned.events.flatMap((event) => {
-          const result = options.store.appendEventWithResult(event)
-          return result.inserted === true ? [result.event] : []
-        }),
-        commands: [],
-        guards: [],
-      }
+  const applied =
+    dryRun === true
+      ? emptyPlan()
+      : {
+          events: planned.events.flatMap((event) => {
+            const result = options.store.appendEventWithResult(event)
+            return result.inserted === true ? [result.event] : []
+          }),
+          commands: [],
+          guards: [],
+        }
 
   return resultEnvelope({
     ...options,

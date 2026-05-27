@@ -186,7 +186,9 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
     port
       .observe(input)
       .pipe(
-        Effect.map((pointer) => pointerWithSafety({ pointer, safety: pointer.safety ?? bodySafetySnapshot() })),
+        Effect.map((pointer) =>
+          pointerWithSafety({ pointer, safety: pointer.safety ?? bodySafetySnapshot() }),
+        ),
       ),
   planLocalChange: (input) => {
     const safety = input.baseBodyPointer.safety ?? bodySafetySnapshot()
@@ -286,7 +288,9 @@ export const makeFakePageBodySyncPort = ({
   return withBodyAdapterContract({
     observe: (input: ObserveBodyInput) =>
       findPage({ pages: byPageId, operation: 'observe', pageId: input.pageId }).pipe(
-        Effect.map((page) => pointerWithSafety({ pointer: page.pointer, safety: safetyForPage(page) })),
+        Effect.map((page) =>
+          pointerWithSafety({ pointer: page.pointer, safety: safetyForPage(page) }),
+        ),
       ),
     planLocalChange: (input: BodyLocalChangeInput) =>
       findPage({ pages: byPageId, operation: 'planLocalChange', pageId: input.pageId }).pipe(

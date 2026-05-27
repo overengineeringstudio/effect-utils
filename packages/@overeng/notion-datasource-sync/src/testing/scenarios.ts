@@ -198,7 +198,8 @@ export const e2eHarnessScenarios = [
   }),
   scenario({
     scenarioId: 'NDS-L3-property-data-type-matrix',
-    title: 'property data-type matrix declares writable computed relation file and rollup scenarios',
+    title:
+      'property data-type matrix declares writable computed relation file and rollup scenarios',
     requirementIds: ['R16', 'R18', 'R19', 'R20', 'R24', 'R71'],
     guards: [
       'ComputedPropertyWrite',
@@ -899,15 +900,16 @@ export const concreteScenarioMatrixGaps = ({
       return []
     }
 
-    const guardGaps = scenarioEntry.guards.includes(entry.guard) === true
-      ? []
-      : [
-          {
-            _tag: 'unmapped-concrete-guard' as const,
-            guard: entry.guard,
-            scenarioId: entry.scenarioId,
-          },
-        ]
+    const guardGaps =
+      scenarioEntry.guards.includes(entry.guard) === true
+        ? []
+        : [
+            {
+              _tag: 'unmapped-concrete-guard' as const,
+              guard: entry.guard,
+              scenarioId: entry.scenarioId,
+            },
+          ]
     const requirementGaps = entry.requirementIds
       .filter((requirementId) => scenarioEntry.requirementIds.includes(requirementId) === false)
       .map((requirementId) => ({

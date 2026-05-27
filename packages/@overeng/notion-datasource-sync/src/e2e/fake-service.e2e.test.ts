@@ -108,7 +108,10 @@ const expectedPatchHash = () =>
   hashStoreBytes(`page-properties\t${testIds.pageId}\t${testIds.commandId}\t${testIds.propertyA}`)
 
 const plannedPropertyCommand = () => {
-  const decision = planIntent({ snapshot: buildPlannerSnapshot(), intent: propertyEditIntent({ desiredHash: expectedPatchHash() }), })
+  const decision = planIntent({
+    snapshot: buildPlannerSnapshot(),
+    intent: propertyEditIntent({ desiredHash: expectedPatchHash() }),
+  })
   expect(decision._tag).toBe('EnqueueCommands')
   if (decision._tag !== 'EnqueueCommands') return undefined
 
@@ -116,12 +119,15 @@ const plannedPropertyCommand = () => {
 }
 
 const plannedRestoreCommand = (): OutboxCommandEnvelope => {
-  const command = decode({ schema: RestorePageCommand, value: {
-    _tag: 'RestorePageCommand',
-    commandId: testIds.commandId,
-    pageId: testIds.pageId,
-    basePropertiesHash: hash('properties-a'),
-  } })
+  const command = decode({
+    schema: RestorePageCommand,
+    value: {
+      _tag: 'RestorePageCommand',
+      commandId: testIds.commandId,
+      pageId: testIds.pageId,
+      basePropertiesHash: hash('properties-a'),
+    },
+  })
 
   return {
     commandId: testIds.commandId,
@@ -139,27 +145,33 @@ const plannedRestoreCommand = (): OutboxCommandEnvelope => {
 const schemaMigrationIntent = (
   overrides: Partial<SchemaMigrationIntent> = {},
 ): SchemaMigrationIntent => {
-  const command = decode({ schema: PatchDataSourceSchemaCommand, value: {
-    _tag: 'PatchDataSourceSchemaCommand',
-    commandId: testIds.commandId,
-    dataSourceId: testIds.dataSourceId,
-    baseSchemaHash: hash('schema'),
-    schemaPatch: {
-      [testIds.propertyA]: {
-        _tag: 'CanonicalDataSourceProperty',
-        propertyId: testIds.propertyA,
-        name: decode({ schema: PropertyName, value: 'Name' }),
-        type: 'title',
-        configHash: hash('config-a-next'),
+  const command = decode({
+    schema: PatchDataSourceSchemaCommand,
+    value: {
+      _tag: 'PatchDataSourceSchemaCommand',
+      commandId: testIds.commandId,
+      dataSourceId: testIds.dataSourceId,
+      baseSchemaHash: hash('schema'),
+      schemaPatch: {
+        [testIds.propertyA]: {
+          _tag: 'CanonicalDataSourceProperty',
+          propertyId: testIds.propertyA,
+          name: decode({ schema: PropertyName, value: 'Name' }),
+          type: 'title',
+          configHash: hash('config-a-next'),
+        },
       },
     },
-  } })
+  })
 
   return {
     _tag: 'schema-migration',
     intentEventId: testIds.intentEventId,
     commandKey: testIds.commandKey,
-    surface: schemaSurfaceKey({ dataSourceId: testIds.dataSourceId, propertyId: testIds.propertyA }),
+    surface: schemaSurfaceKey({
+      dataSourceId: testIds.dataSourceId,
+      propertyId: testIds.propertyA,
+    }),
     dataSourceId: testIds.dataSourceId,
     affectedPropertyIds: [testIds.propertyA],
     command,
@@ -212,28 +224,31 @@ const observeFakeRemote = async ({
 }
 
 const legacyRunningAttemptedEvent = () =>
-  decode({ schema: SyncEvent, value: {
-    _tag: 'RemoteWriteAttempted',
-    eventId: 'event-legacy-running-without-lease',
-    rootId: testIds.rootId,
-    sequence: '0',
-    codecVersion: 'v1',
-    family: 'CommandAttempted',
-    eventType: 'RemoteWriteAttempted',
-    idempotencyKey: 'attempt:cmd-1:1:legacy-running',
-    surface: pageSurfaceKey(testIds.pageId),
-    causedByEventIds: [],
-    payloadHash: hash('legacy-running'),
-    payload: {
-      _tag: 'VersionedJson',
+  decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'RemoteWriteAttempted',
+      eventId: 'event-legacy-running-without-lease',
+      rootId: testIds.rootId,
+      sequence: '0',
       codecVersion: 'v1',
-      canonicalJson: '{"attempt":"event-legacy-running-without-lease"}',
+      family: 'CommandAttempted',
+      eventType: 'RemoteWriteAttempted',
+      idempotencyKey: 'attempt:cmd-1:1:legacy-running',
+      surface: pageSurfaceKey(testIds.pageId),
+      causedByEventIds: [],
+      payloadHash: hash('legacy-running'),
+      payload: {
+        _tag: 'VersionedJson',
+        codecVersion: 'v1',
+        canonicalJson: '{"attempt":"event-legacy-running-without-lease"}',
+      },
+      observedAt: '2026-05-25T00:00:00.000Z',
+      commandId: testIds.commandId,
+      attempt: 1,
+      attemptState: 'running',
     },
-    observedAt: '2026-05-25T00:00:00.000Z',
-    commandId: testIds.commandId,
-    attempt: 1,
-    attemptState: 'running',
-  } })
+  })
 
 const runExecutor = ({
   gateway,
@@ -407,7 +422,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
         ports.body.observe({ _tag: 'ObserveBodyInput', pageId: testIds.pageId }),
       )
       const localObservations = await collectStream(
-        ports.workspace.scan(decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-fixture' })),
+        ports.workspace.scan(
+          decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync-fixture' }),
+        ),
       )
 
       expect({
@@ -477,7 +494,8 @@ describe('notion datasource sync fake-service E2E harness', () => {
   })
 
   it('opens a same-property conflict instead of enqueueing a stale write', () => {
-    const decision = planIntent({ snapshot: buildPlannerSnapshot({
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot({
         properties: [
           {
             pageId: testIds.pageId,
@@ -488,7 +506,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
             pendingLocal: undefined,
           },
         ],
-      }), intent: propertyEditIntent(), })
+      }),
+      intent: propertyEditIntent(),
+    })
 
     expect(decision).toMatchObject({
       _tag: 'OpenConflict',
@@ -517,7 +537,8 @@ describe('notion datasource sync fake-service E2E harness', () => {
   })
 
   it('blocks absence classification when the query cap is reached', () => {
-    const decision = planIntent({ snapshot: buildPlannerSnapshot({
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot({
         queries: [
           querySurface({
             completeness: { terminal: false, cappedAtLimit: true, contractChanged: false },
@@ -529,7 +550,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
             },
           }),
         ],
-      }), intent: queryAbsenceIntent(), })
+      }),
+      intent: queryAbsenceIntent(),
+    })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -538,7 +561,8 @@ describe('notion datasource sync fake-service E2E harness', () => {
   })
 
   it('keeps filtered absence from becoming tombstone proof', () => {
-    const decision = planIntent({ snapshot: buildPlannerSnapshot({
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot({
         queries: [
           querySurface({
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
@@ -550,7 +574,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
             },
           }),
         ],
-      }), intent: queryAbsenceIntent(), })
+      }),
+      intent: queryAbsenceIntent(),
+    })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -559,7 +585,8 @@ describe('notion datasource sync fake-service E2E harness', () => {
   })
 
   it('allows explicit-filter absence to stay scoped without tombstoning accessible pages', () => {
-    const decision = planIntent({ snapshot: buildPlannerSnapshot({
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot({
         queries: [
           querySurface({
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
@@ -571,13 +598,16 @@ describe('notion datasource sync fake-service E2E harness', () => {
             },
           }),
         ],
-      }), intent: queryAbsenceIntent(), })
+      }),
+      intent: queryAbsenceIntent(),
+    })
 
     expect(decision).toEqual({ _tag: 'AppendEvents', events: [] })
   })
 
   it('keeps incomplete query scans from producing tombstones', () => {
-    const decision = planIntent({ snapshot: buildPlannerSnapshot({
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot({
         queries: [
           querySurface({
             completeness: { terminal: false, cappedAtLimit: false, contractChanged: false },
@@ -589,7 +619,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
             },
           }),
         ],
-      }), intent: queryAbsenceIntent(), })
+      }),
+      intent: queryAbsenceIntent(),
+    })
 
     expect(decision).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -615,7 +647,8 @@ describe('notion datasource sync fake-service E2E harness', () => {
     const directResult = await Effect.runPromiseExit(
       gatewayHarness.gateway.retrievePage(testIds.pageId),
     )
-    const decision = planIntent({ snapshot: buildPlannerSnapshot({
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot({
         queries: [
           querySurface({
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
@@ -627,7 +660,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
             },
           }),
         ],
-      }), intent: queryAbsenceIntent(), })
+      }),
+      intent: queryAbsenceIntent(),
+    })
 
     expectGatewayFailure(queryResult, { operation: 'queryRows', guard: 'PermissionAmbiguous' })
     expectGatewayFailure(directResult, { operation: 'retrievePage', guard: 'PermissionAmbiguous' })
@@ -639,7 +674,8 @@ describe('notion datasource sync fake-service E2E harness', () => {
   })
 
   it('records directly classified remote trash as a tombstone event', () => {
-    const decision = planIntent({ snapshot: buildPlannerSnapshot({
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot({
         queries: [
           querySurface({
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
@@ -651,7 +687,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
             },
           }),
         ],
-      }), intent: queryAbsenceIntent(), })
+      }),
+      intent: queryAbsenceIntent(),
+    })
 
     expect(decision).toEqual({
       _tag: 'AppendEvents',
@@ -667,7 +705,8 @@ describe('notion datasource sync fake-service E2E harness', () => {
   })
 
   it('keeps moved-out and restored membership distinct from remote trash', () => {
-    const movedOut = planIntent({ snapshot: buildPlannerSnapshot({
+    const movedOut = planIntent({
+      snapshot: buildPlannerSnapshot({
         queries: [
           querySurface({
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
@@ -679,8 +718,11 @@ describe('notion datasource sync fake-service E2E harness', () => {
             },
           }),
         ],
-      }), intent: queryAbsenceIntent(), })
-    const restored = planIntent({ snapshot: buildPlannerSnapshot({
+      }),
+      intent: queryAbsenceIntent(),
+    })
+    const restored = planIntent({
+      snapshot: buildPlannerSnapshot({
         queries: [
           querySurface({
             completeness: { terminal: true, cappedAtLimit: false, contractChanged: false },
@@ -692,9 +734,12 @@ describe('notion datasource sync fake-service E2E harness', () => {
             },
           }),
         ],
-      }), intent: queryAbsenceIntent(), })
+      }),
+      intent: queryAbsenceIntent(),
+    })
     const deleteSnapshot = buildPlannerSnapshot()
-    const deleteDecision = planIntent({ snapshot: buildPlannerSnapshot({
+    const deleteDecision = planIntent({
+      snapshot: buildPlannerSnapshot({
         rows: deleteSnapshot.rows.map((row) => ({
           pageId: row.pageId,
           dataSourceId: row.dataSourceId,
@@ -703,7 +748,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
           movedOut: true,
           localDeleteCandidate: row.localDeleteCandidate,
         })),
-      }), intent: localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }), })
+      }),
+      intent: localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }),
+    })
 
     expect(movedOut).toMatchObject({
       _tag: 'AppendEvents',
@@ -728,7 +775,10 @@ describe('notion datasource sync fake-service E2E harness', () => {
       ],
     })
     const bodyPlan = await Effect.runPromise(ports.body.planLocalChange(bodyLocalChangeInput()))
-    const decision = planIntent({ snapshot: buildPlannerSnapshot(), intent: bodyAdapterResultIntent(bodySafety({ adapterMutationSurfaces: ['body', 'schema'] })), })
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot(),
+      intent: bodyAdapterResultIntent(bodySafety({ adapterMutationSurfaces: ['body', 'schema'] })),
+    })
     const storeFixture = makeStoreFixture({ mode: 'memory' })
 
     try {
@@ -767,20 +817,26 @@ describe('notion datasource sync fake-service E2E harness', () => {
 
   it('blocks destructive schema changes before remote schema writes are enqueued', () => {
     const gatewayHarness = makeFakeGatewayHarness()
-    const destructive = planIntent({ snapshot: buildPlannerSnapshot(), intent: schemaMigrationIntent({
+    const destructive = planIntent({
+      snapshot: buildPlannerSnapshot(),
+      intent: schemaMigrationIntent({
         safety: {
           affectsLocalIntent: false,
           destructiveMigrationRequired: true,
           optionDeletionLosesValues: false,
         },
-      }), })
-    const optionDeletion = planIntent({ snapshot: buildPlannerSnapshot(), intent: schemaMigrationIntent({
+      }),
+    })
+    const optionDeletion = planIntent({
+      snapshot: buildPlannerSnapshot(),
+      intent: schemaMigrationIntent({
         safety: {
           affectsLocalIntent: false,
           destructiveMigrationRequired: false,
           optionDeletionLosesValues: true,
         },
-      }), })
+      }),
+    })
 
     expect(destructive).toMatchObject({
       _tag: 'BlockedByGuard',
@@ -805,7 +861,8 @@ describe('notion datasource sync fake-service E2E harness', () => {
         requiredCapabilities: ['page_property_paginate'],
       }),
     )
-    const decision = planIntent({ snapshot: buildPlannerSnapshot({
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot({
         properties: [
           {
             pageId: testIds.pageId,
@@ -816,7 +873,9 @@ describe('notion datasource sync fake-service E2E harness', () => {
             pendingLocal: undefined,
           },
         ],
-      }), intent: propertyEditIntent(), })
+      }),
+      intent: propertyEditIntent(),
+    })
 
     expect(preflight.missingCapabilities).toEqual(['page_property_paginate'])
     expect(decision).toMatchObject({
@@ -841,7 +900,10 @@ describe('notion datasource sync fake-service E2E harness', () => {
   })
 
   it('executes trusted local delete as one settled remote trash write', async () => {
-    const decision = planIntent({ snapshot: buildPlannerSnapshot(), intent: localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }), })
+    const decision = planIntent({
+      snapshot: buildPlannerSnapshot(),
+      intent: localDeleteIntent({ explicitDestructiveIntent: true, policy: 'trustedRemoteTrash' }),
+    })
     expect(decision._tag).toBe('EnqueueCommands')
     if (decision._tag !== 'EnqueueCommands') return
 

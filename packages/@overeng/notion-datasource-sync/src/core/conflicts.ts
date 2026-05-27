@@ -273,7 +273,11 @@ export const classifyConflict = ({
     }
   }
 
-  if (local._tag === 'body' && remote._tag === 'body' && samePage({ left: local, right: remote }) === true) {
+  if (
+    local._tag === 'body' &&
+    remote._tag === 'body' &&
+    samePage({ left: local, right: remote }) === true
+  ) {
     return conflict({
       kind: 'body-body-delegated',
       local,

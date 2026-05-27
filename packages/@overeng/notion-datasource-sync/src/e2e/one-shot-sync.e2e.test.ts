@@ -42,34 +42,40 @@ const schemaProperties = [
 ]
 
 const propertyPage = (valueHash = hash('property-a-base')) =>
-  decode({ schema: PagePropertyItemPage, value: {
-    _tag: 'PagePropertyItemPage',
-    apiVersion: '2026-03-11',
-    requestId: testIds.requestId,
-    pageId: testIds.pageId,
-    propertyId: testIds.propertyA,
-    items: [
-      {
-        _tag: 'PagePropertyItem',
-        pageId: testIds.pageId,
-        propertyId: testIds.propertyA,
-        itemHash: valueHash,
-        valueHash,
-      },
-    ],
-    nextCursor: null,
-    hasMore: false,
-  } })
+  decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId: testIds.pageId,
+      propertyId: testIds.propertyA,
+      items: [
+        {
+          _tag: 'PagePropertyItem',
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyA,
+          itemHash: valueHash,
+          valueHash,
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
 
 const bodyPageFor = (pageId: typeof testIds.pageId, bodyHash = hash(`body-${pageId}`)) =>
   fakeBodyPage({
     pageId,
-    pointer: decode({ schema: BodyPointer, value: {
-      _tag: 'BodyPointer',
-      pageId,
-      bodyHash,
-      observedAt: fixedObservedAt,
-    } }),
+    pointer: decode({
+      schema: BodyPointer,
+      value: {
+        _tag: 'BodyPointer',
+        pageId,
+        bodyHash,
+        observedAt: fixedObservedAt,
+      },
+    }),
   })
 
 const runWithPorts = <TValue, TError>(
@@ -237,13 +243,16 @@ describe('one-shot sync orchestration', () => {
         { gateway: gatewayHarness.gateway },
       )
 
-      const command = decode({ schema: PatchPagePropertiesCommand, value: {
-        _tag: 'PatchPagePropertiesCommand',
-        commandId: testIds.commandId,
-        pageId: testIds.pageId,
-        basePropertiesHash: hash('properties-a'),
-        propertyPatch: { [testIds.propertyA]: propertyPatchValue('Local edit') },
-      } })
+      const command = decode({
+        schema: PatchPagePropertiesCommand,
+        value: {
+          _tag: 'PatchPagePropertiesCommand',
+          commandId: testIds.commandId,
+          pageId: testIds.pageId,
+          basePropertiesHash: hash('properties-a'),
+          propertyPatch: { [testIds.propertyA]: propertyPatchValue('Local edit') },
+        },
+      })
       const push = await runWithPorts(
         pushOneShotSync({
           store: storeFixture.store,

@@ -21,7 +21,12 @@ import {
 } from '../body/notion-md.ts'
 import { bodySurfaceKey } from '../core/canonical.ts'
 import type { BodyPushCommand as BodyPushCommandType } from '../core/commands.ts'
-import { AbsolutePath, Hash, WorkspaceRelativePath, type BodySafetySnapshot } from '../core/domain.ts'
+import {
+  AbsolutePath,
+  Hash,
+  WorkspaceRelativePath,
+  type BodySafetySnapshot,
+} from '../core/domain.ts'
 import { BodySyncError } from '../core/errors.ts'
 import { RowObserved } from '../core/events.ts'
 import {
@@ -168,41 +173,44 @@ const appendObservedBodyProjection = (
   safety: BodySafetySnapshot,
 ) => {
   store.appendEvent(
-    decode({ schema: RowObserved, value: {
-      _tag: 'RowObserved',
-      eventId: `body-adapter-row-observed:${hash(JSON.stringify(safety))}`,
-      rootId: testIds.rootId,
-      sequence: '0',
-      codecVersion: 'v1',
-      family: 'RemoteObserved',
-      eventType: 'RowObserved',
-      idempotencyKey: `body-adapter-row-observed:${hash(JSON.stringify(safety))}`,
-      surface: bodySurfaceKey(testIds.pageId),
-      causedByEventIds: [],
-      payloadHash: hash('body-adapter-row-observed'),
-      payload: {
-        _tag: 'VersionedJson',
+    decode({
+      schema: RowObserved,
+      value: {
+        _tag: 'RowObserved',
+        eventId: `body-adapter-row-observed:${hash(JSON.stringify(safety))}`,
+        rootId: testIds.rootId,
+        sequence: '0',
         codecVersion: 'v1',
-        canonicalJson: JSON.stringify({
-          bodyPath,
-          safety,
-          sidecarIdentityProven: true,
-          ownWriteMaterializationIds: [],
-        }),
-      },
-      observedAt: '2026-05-25T00:00:00.000Z',
-      dataSourceId: testIds.dataSourceId,
-      pageId: testIds.pageId,
-      propertiesHash: hash('properties-a'),
-      bodyPointer: {
-        _tag: 'BodyPointer',
-        pageId: testIds.pageId,
-        bodyHash: hash('body-a'),
+        family: 'RemoteObserved',
+        eventType: 'RowObserved',
+        idempotencyKey: `body-adapter-row-observed:${hash(JSON.stringify(safety))}`,
+        surface: bodySurfaceKey(testIds.pageId),
+        causedByEventIds: [],
+        payloadHash: hash('body-adapter-row-observed'),
+        payload: {
+          _tag: 'VersionedJson',
+          codecVersion: 'v1',
+          canonicalJson: JSON.stringify({
+            bodyPath,
+            safety,
+            sidecarIdentityProven: true,
+            ownWriteMaterializationIds: [],
+          }),
+        },
         observedAt: '2026-05-25T00:00:00.000Z',
-        safety,
+        dataSourceId: testIds.dataSourceId,
+        pageId: testIds.pageId,
+        propertiesHash: hash('properties-a'),
+        bodyPointer: {
+          _tag: 'BodyPointer',
+          pageId: testIds.pageId,
+          bodyHash: hash('body-a'),
+          observedAt: '2026-05-25T00:00:00.000Z',
+          safety,
+        },
+        inTrash: false,
       },
-      inTrash: false,
-    } }),
+    }),
   )
 }
 
@@ -385,17 +393,20 @@ describe('body adapter E2E boundary', () => {
     }
 
     try {
-      appendPlannedCommand({ store: storeFixture.store, command: {
-        rootId: testIds.rootId,
-        commandId: testIds.commandId,
-        commandKey: testIds.commandKey,
-        intentEventId: testIds.intentEventId,
-        surface: bodySurfaceKey(testIds.pageId),
-        command,
-        baseHash: baseBodyPointer.bodyHash,
-        desiredHash: hash('body-next'),
-        preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'BodyAdapterConflict'],
-      } })
+      appendPlannedCommand({
+        store: storeFixture.store,
+        command: {
+          rootId: testIds.rootId,
+          commandId: testIds.commandId,
+          commandKey: testIds.commandKey,
+          intentEventId: testIds.intentEventId,
+          surface: bodySurfaceKey(testIds.pageId),
+          command,
+          baseHash: baseBodyPointer.bodyHash,
+          desiredHash: hash('body-next'),
+          preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'BodyAdapterConflict'],
+        },
+      })
 
       await expect(
         Effect.runPromise(
@@ -448,16 +459,14 @@ describe('body adapter E2E boundary', () => {
             opts.command._tag === 'replace_content'
               ? opts.command.markdown
               : opts.command.contentUpdates.reduce(
-                  (markdown, update) =>
-                    markdown.replaceAll(update.oldStr, update.newStr),
+                  (markdown, update) => markdown.replaceAll(update.oldStr, update.newStr),
                   remoteMarkdown,
                 )
           return pullPageResult(remoteMarkdown)
         }),
       updatePageProperties: () =>
         Effect.die('updatePageProperties should not be called by this test'),
-      updatePageMetadata: () =>
-        Effect.die('updatePageMetadata should not be called by this test'),
+      updatePageMetadata: () => Effect.die('updatePageMetadata should not be called by this test'),
       listChildPages: () => Effect.succeed([]),
     }
 
