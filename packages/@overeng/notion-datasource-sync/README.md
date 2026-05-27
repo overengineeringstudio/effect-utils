@@ -43,6 +43,7 @@ log, projections, outbox, conflicts, checkpoints, hashes, and migrations.
 Editing the internal store is unsupported.
 
 `notion.sqlite` exposes stable public tables such as `notion_data_sources`,
+`notion_databases`,
 `notion_properties`, `notion_rows`, `notion_cells`, `notion_bodies`,
 `notion_cell_changes`, `notion_row_changes`, `notion_row_creates`,
 `notion_rows_effective`, `notion_cells_effective`, `notion_body_changes`,
@@ -59,10 +60,9 @@ pass. After non-dry-run sync, typed CDC rows are settled from actual planner and
 outbox state instead of from conversion alone. Row creation uses explicit
 `notion_row_creates` rows with local client request keys and returned
 `remote_page_id` settlement; direct inserts into `notion_rows` are blocked
-because that table is confirmed remote-observed state. Data-source metadata CDC
-can patch title/description through the existing owning-database metadata path
-and verifies the resulting data-source metadata hash. Public schema CDC,
-database metadata as a separate authority, file bytes, Notion views, and
+because that table is confirmed remote-observed state. Data-source and database
+metadata CDC can patch title/description with post-write metadata hash
+verification. Public schema CDC, file bytes, Notion views, and
 destructive schema migrations remain explicit fail-closed surfaces until their
 verified post-write reconciliation is modeled.
 

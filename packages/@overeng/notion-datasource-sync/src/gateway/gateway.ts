@@ -3,6 +3,7 @@ import { Effect, Layer, Schema, Stream } from 'effect'
 import type {
   RetrievePagePropertyInput,
   CreatePageCommand,
+  PatchDatabaseMetadataCommand,
   PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
@@ -72,6 +73,7 @@ export type GatewayOperation =
   | 'createPage'
   | 'patchDataSourceSchema'
   | 'patchDataSourceMetadata'
+  | 'patchDatabaseMetadata'
   | 'trashPage'
   | 'restorePage'
 
@@ -372,6 +374,24 @@ export const makeNotionDataSourceGateway = (
           spanNames.gatewayRequest,
           gatewayRequestSpan({
             operation: 'patchDataSourceMetadata',
+            configuredApiVersion,
+            dataSourceId: command.dataSourceId,
+            commandId: command.commandId,
+            commandKind: commandKind(command._tag),
+          }),
+        ),
+      ),
+    patchDatabaseMetadata: (command: PatchDatabaseMetadataCommand) =>
+      ensureSupportedGatewayApiVersion({
+        operation: 'patchDatabaseMetadata',
+        configuredApiVersion,
+        dataSourceId: command.dataSourceId,
+      }).pipe(
+        Effect.flatMap(() => adapter.patchDatabaseMetadata(command)),
+        Effect.withSpan(
+          spanNames.gatewayRequest,
+          gatewayRequestSpan({
+            operation: 'patchDatabaseMetadata',
             configuredApiVersion,
             dataSourceId: command.dataSourceId,
             commandId: command.commandId,

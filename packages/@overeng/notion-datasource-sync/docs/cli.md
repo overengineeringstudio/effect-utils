@@ -146,6 +146,7 @@ Stable generic tables:
 | Table                         | Access        | Purpose                                                                                                     |
 | ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
 | `notion_data_sources`         | read          | Data-source metadata, schema/metadata hashes, binding summary                                               |
+| `notion_databases`            | read          | Owning database/container metadata projected separately from data-source schema authority                   |
 | `notion_properties`           | read          | Property ID, display name, type, config, write capability                                                   |
 | `notion_rows`                 | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents                       |
 | `notion_cells`                | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents        |
@@ -156,7 +157,7 @@ Stable generic tables:
 | `notion_rows_effective`       | read          | Confirmed rows plus pending local creates for local desired-state inspection                                |
 | `notion_cells_effective`      | read          | Confirmed cells plus initial values for pending local creates                                               |
 | `notion_body_changes`         | write         | Typed CDC log for body pushes using body path/base hash semantics                                           |
-| `notion_metadata_changes`     | write         | Typed CDC log for data-source title/description metadata edits with post-write hash settlement              |
+| `notion_metadata_changes`     | write         | Typed CDC log for data-source and database title/description metadata edits with post-write hash settlement |
 | `notion_schema_changes`       | write         | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation   |
 | `notion_conflict_resolutions` | write         | Typed CDC requests for user conflict-resolution actions                                                     |
 | `notion_local_changes`        | compatibility | Unified local-change projection for inspection and older explicit inserts                                   |

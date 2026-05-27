@@ -160,12 +160,12 @@ lifecycle/create requests, body edits through the NotionMD boundary, metadata
 edits, schema edits, and conflict-resolution requests. The executable subset is
 intentionally narrower: writable scalar/page-property cells, row archive/restore,
 body pushes that pass body safety and content-hash verification, and
-store-backed conflict-resolution choices. Metadata/schema CDC rows are visible
-for review but fail closed from SQLite until verified post-write reconciliation
-is modeled. Row creation is supported through `notion_row_creates`; direct
+store-backed conflict-resolution choices. Data-source and database
+title/description metadata CDC rows execute with verified post-write metadata
+hash reconciliation; schema CDC rows are visible for review but fail closed from
+SQLite until verified post-write reconciliation is modeled. Row creation is supported through `notion_row_creates`; direct
 `INSERT INTO notion_rows` is blocked because `notion_rows` is observed remote
-state. Database metadata, files, Notion views, destructive
-schema changes, and unsupported conflict-resolution actions remain fail-closed
+state. Files, Notion views, destructive schema changes, and unsupported conflict-resolution actions remain fail-closed
 until their dedicated proof is in place. Computed or unsupported properties
 remain visible but read-only.
 

@@ -291,6 +291,7 @@ describe('@overeng/notion-datasource-sync contracts', () => {
         }),
       patchDataSourceSchema: () => Effect.succeed(requestId),
       patchDataSourceMetadata: () => Effect.succeed(requestId),
+      patchDatabaseMetadata: () => Effect.succeed(requestId),
       trashPage: () => Effect.succeed(requestId),
       restorePage: () => Effect.succeed(requestId),
     }

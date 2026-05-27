@@ -23,6 +23,7 @@ import {
   type BodyLocalChangeInput,
   type CanonicalPropertyValue,
   type PagePropertyItemPage,
+  type PatchDatabaseMetadataCommand,
   type PatchDataSourceMetadataCommand,
   type PatchDataSourceSchemaCommand,
   type RemoteWriteCommand,
@@ -32,6 +33,7 @@ import {
 import {
   BodyPointer,
   CommandId,
+  DatabaseId,
   DataSourceId,
   Hash,
   NotionRequestId,
@@ -95,6 +97,7 @@ export const hash = (value: string): HashType =>
 export type TestIds = {
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceId
+  readonly databaseId: DatabaseId
   readonly otherDataSourceId: DataSourceId
   readonly pageId: PageId
   readonly otherPageId: PageId
@@ -110,6 +113,7 @@ export type TestIds = {
 export const testIds: TestIds = {
   rootId: decode({ schema: SyncRootId, value: 'root-1' }),
   dataSourceId: decode({ schema: DataSourceId, value: 'data-source-1' }),
+  databaseId: decode({ schema: DatabaseId, value: 'database-1' }),
   otherDataSourceId: decode({ schema: DataSourceId, value: 'data-source-2' }),
   pageId: decode({ schema: PageId, value: 'page-1' }),
   otherPageId: decode({ schema: PageId, value: 'page-2' }),
@@ -193,6 +197,7 @@ export type FakeGatewayHarness = {
   readonly patchedPageProperties: ReadonlyArray<PatchPagePropertiesCommand>
   readonly patchedDataSourceSchemas: ReadonlyArray<PatchDataSourceSchemaCommand>
   readonly patchedDataSourceMetadata: ReadonlyArray<PatchDataSourceMetadataCommand>
+  readonly patchedDatabaseMetadata: ReadonlyArray<PatchDatabaseMetadataCommand>
   readonly trashedPages: ReadonlyArray<TrashPageCommand>
   readonly restoredPages: ReadonlyArray<RestorePageCommand>
 }
@@ -205,6 +210,8 @@ export type FakeGatewayMutationLedger = {
   readonly successfulPatchDataSourceSchemas: ReadonlyArray<PatchDataSourceSchemaCommand>
   readonly attemptedPatchDataSourceMetadata: ReadonlyArray<PatchDataSourceMetadataCommand>
   readonly successfulPatchDataSourceMetadata: ReadonlyArray<PatchDataSourceMetadataCommand>
+  readonly attemptedPatchDatabaseMetadata: ReadonlyArray<PatchDatabaseMetadataCommand>
+  readonly successfulPatchDatabaseMetadata: ReadonlyArray<PatchDatabaseMetadataCommand>
   readonly attemptedTrashPages: ReadonlyArray<TrashPageCommand>
   readonly successfulTrashPages: ReadonlyArray<TrashPageCommand>
   readonly attemptedRestorePages: ReadonlyArray<RestorePageCommand>
@@ -216,11 +223,13 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
   const patchedPageProperties: PatchPagePropertiesCommand[] = []
   const patchedDataSourceSchemas: PatchDataSourceSchemaCommand[] = []
   const patchedDataSourceMetadata: PatchDataSourceMetadataCommand[] = []
+  const patchedDatabaseMetadata: PatchDatabaseMetadataCommand[] = []
   const trashedPages: TrashPageCommand[] = []
   const restoredPages: RestorePageCommand[] = []
   const attemptedPatchPageProperties: PatchPagePropertiesCommand[] = []
   const attemptedPatchDataSourceSchemas: PatchDataSourceSchemaCommand[] = []
   const attemptedPatchDataSourceMetadata: PatchDataSourceMetadataCommand[] = []
+  const attemptedPatchDatabaseMetadata: PatchDatabaseMetadataCommand[] = []
   const attemptedTrashPages: TrashPageCommand[] = []
   const attemptedRestorePages: RestorePageCommand[] = []
   const dataSource =
@@ -228,6 +237,7 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
     ({
       _tag: 'DataSourceSnapshot',
       dataSourceId: testIds.dataSourceId,
+      parentDatabaseId: testIds.databaseId,
       requestId: testIds.requestId,
       observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
       schemaHash: hash('schema'),
@@ -283,6 +293,8 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
     successfulPatchDataSourceSchemas: patchedDataSourceSchemas,
     attemptedPatchDataSourceMetadata,
     successfulPatchDataSourceMetadata: patchedDataSourceMetadata,
+    attemptedPatchDatabaseMetadata,
+    successfulPatchDatabaseMetadata: patchedDatabaseMetadata,
     attemptedTrashPages,
     successfulTrashPages: trashedPages,
     attemptedRestorePages,
@@ -294,6 +306,7 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
     patchedPageProperties,
     patchedDataSourceSchemas,
     patchedDataSourceMetadata,
+    patchedDatabaseMetadata,
     trashedPages,
     restoredPages,
     gateway: {
@@ -312,6 +325,11 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
         Effect.sync(() => attemptedPatchDataSourceMetadata.push(command)).pipe(
           Effect.zipRight(baseGateway.patchDataSourceMetadata(command)),
           Effect.tap(() => Effect.sync(() => patchedDataSourceMetadata.push(command))),
+        ),
+      patchDatabaseMetadata: (command) =>
+        Effect.sync(() => attemptedPatchDatabaseMetadata.push(command)).pipe(
+          Effect.zipRight(baseGateway.patchDatabaseMetadata(command)),
+          Effect.tap(() => Effect.sync(() => patchedDatabaseMetadata.push(command))),
         ),
       trashPage: (command) =>
         Effect.sync(() => attemptedTrashPages.push(command)).pipe(
@@ -452,8 +470,15 @@ export const buildPlannerSnapshot = (
     supported: ['page_property_update'],
     preflight: 'passed',
   },
-      metadata: [
+  metadata: [
     {
+      dataSourceId: testIds.dataSourceId,
+      metadataHash: hash('metadata'),
+    },
+  ],
+  databaseMetadata: [
+    {
+      databaseId: testIds.databaseId,
       dataSourceId: testIds.dataSourceId,
       metadataHash: hash('metadata'),
     },

@@ -1,6 +1,7 @@
 import type {
   BodyPushCommand,
   CreatePageCommand,
+  PatchDatabaseMetadataCommand,
   PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
@@ -10,7 +11,7 @@ import type {
 } from '../core/commands.ts'
 import type { ConflictPayload } from '../core/conflicts.ts'
 import { classifyConflict, type ConflictSurface } from '../core/conflicts.ts'
-import type { CommandId, DataSourceId, Hash, PageId, PropertyId } from '../core/domain.ts'
+import type { CommandId, DatabaseId, DataSourceId, Hash, PageId, PropertyId } from '../core/domain.ts'
 import type { IdempotencyKey, SurfaceKey, SyncEventId, SyncRootId } from '../core/events.ts'
 import {
   guardApiCompatibility,
@@ -48,6 +49,13 @@ export type SchemaPropertySurface = {
 
 /** Planner-visible data-source metadata surface, independent from property schema. */
 export type DataSourceMetadataSurface = {
+  readonly dataSourceId: DataSourceId
+  readonly metadataHash: Hash
+}
+
+/** Planner-visible database/container metadata surface, verified through an owning data source. */
+export type DatabaseMetadataSurface = {
+  readonly databaseId: DatabaseId
   readonly dataSourceId: DataSourceId
   readonly metadataHash: Hash
 }
@@ -129,6 +137,7 @@ export type PlannerProjectionSnapshot = {
   readonly api: ApiCompatibilitySnapshot
   readonly capabilities: CapabilityPreflightSnapshot
   readonly metadata: ReadonlyArray<DataSourceMetadataSurface>
+  readonly databaseMetadata: ReadonlyArray<DatabaseMetadataSurface>
   readonly schema: ReadonlyArray<SchemaPropertySurface>
   readonly rows: ReadonlyArray<RowSurfaceSnapshot>
   readonly properties: ReadonlyArray<PropertySurfaceSnapshot>
@@ -256,6 +265,19 @@ export type DataSourceMetadataEditIntent = {
   readonly desiredHash: Hash
 }
 
+/** Intent to update remote database/container metadata through the public SQLite database authority surface. */
+export type DatabaseMetadataEditIntent = {
+  readonly _tag: 'database-metadata-edit'
+  readonly intentEventId: SyncEventId
+  readonly commandKey: IdempotencyKey
+  readonly surface: SurfaceKey
+  readonly databaseId: DatabaseId
+  readonly dataSourceId: DataSourceId
+  readonly command: PatchDatabaseMetadataCommand
+  readonly baseHash: Hash
+  readonly desiredHash: Hash
+}
+
 /** Intent to create a new row/page in a data source. */
 export type RowCreateIntent = {
   readonly _tag: 'row-create'
@@ -314,6 +336,7 @@ export type PlannerIntent =
   | BodyEditIntent
   | SchemaMigrationIntent
   | DataSourceMetadataEditIntent
+  | DatabaseMetadataEditIntent
   | RowCreateIntent
   | LocalDeleteIntent
   | PathClaimIntent
@@ -381,6 +404,15 @@ const findMetadataSurface = ({
   readonly dataSourceId: DataSourceId
 }): DataSourceMetadataSurface | undefined =>
   snapshot.metadata.find((metadata) => metadata.dataSourceId === dataSourceId)
+
+const findDatabaseMetadataSurface = ({
+  snapshot,
+  databaseId,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly databaseId: DatabaseId
+}): DatabaseMetadataSurface | undefined =>
+  snapshot.databaseMetadata.find((metadata) => metadata.databaseId === databaseId)
 
 const findPropertySurface = ({
   snapshot,
@@ -461,6 +493,7 @@ const commandEnvelope = ({
     | BodyEditIntent
     | SchemaMigrationIntent
     | DataSourceMetadataEditIntent
+    | DatabaseMetadataEditIntent
     | RowCreateIntent
     | LocalDeleteIntent
   >
@@ -765,6 +798,53 @@ const planDataSourceMetadataEdit = ({
       surface: intent.surface,
       summary:
         'Current data-source metadata projection is missing; observe the data source before planning a metadata write',
+    })
+  }
+
+  const blockedDecision = firstBlocked({
+    surface: intent.surface,
+    guards: [
+      guardApiCompatibility(snapshot.api),
+      guardCapabilityPreflight(snapshot.capabilities),
+      guardStaleSurfaceBase({
+        baseHash: intent.baseHash,
+        currentHash: metadata.metadataHash,
+      }),
+    ],
+  })
+  if (blockedDecision !== undefined) {
+    return blockedDecision
+  }
+
+  return {
+    _tag: 'EnqueueCommands',
+    commands: [
+      commandEnvelope({
+        snapshot,
+        intent,
+        command: intent.command,
+        baseHash: intent.baseHash,
+        desiredHash: intent.desiredHash,
+        preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase'],
+      }),
+    ],
+  }
+}
+
+const planDatabaseMetadataEdit = ({
+  snapshot,
+  intent,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly intent: DatabaseMetadataEditIntent
+}): PlanDecision => {
+  const metadata = findDatabaseMetadataSurface({ snapshot, databaseId: intent.databaseId })
+  if (metadata === undefined) {
+    return blockDecision({
+      guard: 'CurrentSurfaceMissing',
+      surface: intent.surface,
+      summary:
+        'Current database metadata projection is missing; observe the owning database before planning a metadata write',
     })
   }
 
@@ -1129,6 +1209,8 @@ export const planIntent = ({
       return planSchemaMigration({ snapshot, intent })
     case 'data-source-metadata-edit':
       return planDataSourceMetadataEdit({ snapshot, intent })
+    case 'database-metadata-edit':
+      return planDatabaseMetadataEdit({ snapshot, intent })
     case 'row-create':
       return planRowCreate({ snapshot, intent })
     case 'local-delete':

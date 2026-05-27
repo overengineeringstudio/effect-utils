@@ -6,6 +6,7 @@ import { Schema } from 'effect'
 
 import {
   bodySurfaceKey,
+  databaseMetadataSurfaceKey,
   dataSourceMetadataSurfaceKey,
   dataSourceMetadataHash,
   pageSurfaceKey,
@@ -17,6 +18,7 @@ import {
   CanonicalDataSourceMetadata,
   CanonicalPropertyValue,
   CreatePageCommand,
+  PatchDatabaseMetadataCommand,
   PatchDataSourceMetadataCommand,
   PatchPagePropertiesCommand,
   RestorePageCommand,
@@ -24,6 +26,7 @@ import {
 } from '../core/commands.ts'
 import {
   CommandId,
+  DatabaseId,
   DataSourceId,
   Hash,
   PageId,
@@ -74,6 +77,7 @@ export type ReplicaLocalChange = {
   readonly localBodyHash: string | undefined
   readonly localBodyContent: string | undefined
   readonly metadataResourceType: string | undefined
+  readonly databaseId: string | undefined
   readonly titlePlainText: string | undefined
   readonly descriptionPlainText: string | undefined
   readonly schemaOperationJson: string | undefined
@@ -228,9 +232,23 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     CREATE TABLE IF NOT EXISTS notion_data_sources (
       data_source_id TEXT PRIMARY KEY,
       root_id TEXT NOT NULL,
+      parent_database_id TEXT,
       schema_hash TEXT NOT NULL,
       metadata_hash TEXT,
       metadata_json TEXT,
+      title_plain_text TEXT,
+      description_plain_text TEXT,
+      observed_event_id TEXT NOT NULL,
+      observed_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_databases (
+      database_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      root_id TEXT NOT NULL,
+      metadata_hash TEXT NOT NULL,
+      metadata_json TEXT NOT NULL,
       title_plain_text TEXT,
       description_plain_text TEXT,
       observed_event_id TEXT NOT NULL,
@@ -387,6 +405,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     CREATE TABLE IF NOT EXISTS notion_metadata_changes (
       change_id TEXT PRIMARY KEY,
       data_source_id TEXT NOT NULL,
+      database_id TEXT,
       resource_type TEXT NOT NULL DEFAULT 'data_source' CHECK (resource_type IN ('data_source', 'database')),
       title_plain_text TEXT,
       description_plain_text TEXT,
@@ -1193,6 +1212,12 @@ const createReplicaSchema = (db: DatabaseSync): void => {
   ensureReplicaColumn({
     db,
     table: 'notion_data_sources',
+    column: 'parent_database_id',
+    definition: 'TEXT',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_data_sources',
     column: 'metadata_json',
     definition: 'TEXT',
   })
@@ -1206,6 +1231,12 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     db,
     table: 'notion_data_sources',
     column: 'description_plain_text',
+    definition: 'TEXT',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_metadata_changes',
+    column: 'database_id',
     definition: 'TEXT',
   })
 
@@ -1316,6 +1347,7 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_insert;
 
     DELETE FROM notion_data_sources;
+    DELETE FROM notion_databases;
     DELETE FROM notion_properties;
     DELETE FROM notion_rows;
     DELETE FROM notion_cells;
@@ -1515,6 +1547,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         string,
         {
           readonly hash: string
+          readonly parentDatabaseId: string | undefined
           readonly metadataJson: string | undefined
           readonly titlePlainText: string | undefined
           readonly descriptionPlainText: string | undefined
@@ -1523,6 +1556,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
       for (const row of metadataRows) {
         const event = JSON.parse(readString({ row, key: 'event_json' })) as {
           readonly dataSourceId?: unknown
+          readonly parentDatabaseId?: unknown
           readonly metadataHash?: unknown
           readonly metadataJson?: unknown
           readonly titlePlainText?: unknown
@@ -1531,6 +1565,8 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         if (typeof event.dataSourceId === 'string' && typeof event.metadataHash === 'string') {
           metadata.set(event.dataSourceId, {
             hash: event.metadataHash,
+            parentDatabaseId:
+              typeof event.parentDatabaseId === 'string' ? event.parentDatabaseId : undefined,
             metadataJson:
               typeof event.metadataJson === 'string' ? event.metadataJson : undefined,
             titlePlainText:
@@ -1557,8 +1593,8 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
           .prepare(
             `INSERT INTO notion_data_sources (
                data_source_id, root_id, schema_hash, metadata_hash, metadata_json, title_plain_text,
-               description_plain_text, observed_event_id, observed_at, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               description_plain_text, parent_database_id, observed_event_id, observed_at, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             dataSourceId,
@@ -1568,10 +1604,35 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             metadataRow?.metadataJson ?? null,
             metadataRow?.titlePlainText ?? null,
             metadataRow?.descriptionPlainText ?? null,
+            metadataRow?.parentDatabaseId ?? null,
             readString({ row, key: 'observed_event_id' }),
             readOptionalString({ row, key: 'observed_at' }) ?? null,
             readString({ row, key: 'updated_at' }),
           )
+        if (
+          metadataRow?.parentDatabaseId !== undefined &&
+          metadataRow.metadataJson !== undefined
+        ) {
+          replicaDb
+            .prepare(
+              `INSERT OR REPLACE INTO notion_databases (
+                 database_id, data_source_id, root_id, metadata_hash, metadata_json,
+                 title_plain_text, description_plain_text, observed_event_id, observed_at, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              metadataRow.parentDatabaseId,
+              dataSourceId,
+              options.rootId,
+              metadataRow.hash,
+              metadataRow.metadataJson,
+              metadataRow.titlePlainText ?? null,
+              metadataRow.descriptionPlainText ?? null,
+              readString({ row, key: 'observed_event_id' }),
+              readOptionalString({ row, key: 'observed_at' }) ?? null,
+              readString({ row, key: 'updated_at' }),
+            )
+        }
       }
 
       for (const row of syncDb
@@ -1823,6 +1884,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
              local_body_hash,
              local_body_content,
              metadata_resource_type,
+             database_id,
              title_plain_text,
              description_plain_text,
              schema_operation_json,
@@ -1846,6 +1908,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS local_body_hash,
                NULL AS local_body_content,
                NULL AS metadata_resource_type,
+               NULL AS database_id,
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
@@ -1871,6 +1934,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS local_body_hash,
                NULL AS local_body_content,
                NULL AS metadata_resource_type,
+               NULL AS database_id,
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
@@ -1896,6 +1960,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS local_body_hash,
                NULL AS local_body_content,
                NULL AS metadata_resource_type,
+               NULL AS database_id,
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
@@ -1921,6 +1986,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                local_body_hash,
                local_body_content,
                NULL AS metadata_resource_type,
+               NULL AS database_id,
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
@@ -1946,6 +2012,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS local_body_hash,
                NULL AS local_body_content,
                resource_type AS metadata_resource_type,
+               database_id,
                title_plain_text,
                description_plain_text,
                NULL AS schema_operation_json,
@@ -1971,6 +2038,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS local_body_hash,
                NULL AS local_body_content,
                NULL AS metadata_resource_type,
+               NULL AS database_id,
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                operation_json AS schema_operation_json,
@@ -1996,6 +2064,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS local_body_hash,
                NULL AS local_body_content,
                NULL AS metadata_resource_type,
+               NULL AS database_id,
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
@@ -2035,6 +2104,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
       localBodyHash: readOptionalString({ row, key: 'local_body_hash' }),
       localBodyContent: readOptionalString({ row, key: 'local_body_content' }),
       metadataResourceType: readOptionalString({ row, key: 'metadata_resource_type' }),
+      databaseId: readOptionalString({ row, key: 'database_id' }),
       titlePlainText: readOptionalString({ row, key: 'title_plain_text' }),
       descriptionPlainText: readOptionalString({ row, key: 'description_plain_text' }),
       schemaOperationJson: readOptionalString({ row, key: 'schema_operation_json' }),
@@ -2249,6 +2319,11 @@ const surfaceForReplicaChange = (change: ReplicaLocalChange): string | undefined
     return bodySurfaceKey(decode({ schema: PageId, value: change.pageId }))
   }
   if (change.kind === 'metadata_patch' && change.dataSourceId.length > 0) {
+    if (change.metadataResourceType === 'database' && change.databaseId !== undefined) {
+      return databaseMetadataSurfaceKey(
+        decode({ schema: DatabaseId, value: change.databaseId }),
+      )
+    }
     return dataSourceMetadataSurfaceKey(
       decode({ schema: DataSourceId, value: change.dataSourceId }),
     )
@@ -2600,6 +2675,117 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       if (change.kind === 'metadata_patch') {
+        if (change.metadataResourceType === 'database') {
+          if (change.baseHash === undefined) {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'rejected',
+              reason: 'database metadata_patch requires base_hash.',
+            })
+            continue
+          }
+          if (change.databaseId === undefined) {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'rejected',
+              reason: 'database metadata_patch requires database_id.',
+            })
+            continue
+          }
+          const database = db
+            .prepare(
+              `SELECT data_source_id, metadata_hash, metadata_json
+               FROM notion_databases
+               WHERE database_id = ?`,
+            )
+            .get(change.databaseId) as SqlRow | undefined
+          if (database === undefined) {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'rejected',
+              reason: 'database metadata_patch targets a database that is not present in the replica.',
+            })
+            continue
+          }
+          const metadataHash = readString({ row: database, key: 'metadata_hash' })
+          const metadataJson = readString({ row: database, key: 'metadata_json' })
+          const dataSourceIdString = readString({ row: database, key: 'data_source_id' })
+          if (metadataHash !== change.baseHash) {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'conflict',
+              reason: 'database metadata_patch has a stale base_hash.',
+            })
+            continue
+          }
+          let databaseId: DatabaseId
+          let dataSourceId: DataSourceId
+          let baseMetadataHash: Hash
+          let currentMetadata: CanonicalDataSourceMetadata
+          try {
+            databaseId = decode({ schema: DatabaseId, value: change.databaseId })
+            dataSourceId = decode({ schema: DataSourceId, value: dataSourceIdString })
+            baseMetadataHash = decode({ schema: Hash, value: change.baseHash })
+            currentMetadata = Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
+              metadataJson,
+            )
+          } catch {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'rejected',
+              reason:
+                'database metadata_patch contains invalid database_id, data_source_id, base_hash, or metadata_json.',
+            })
+            continue
+          }
+          const nextMetadata: CanonicalDataSourceMetadata = {
+            ...currentMetadata,
+            ...(change.titlePlainText === undefined
+              ? {}
+              : { titlePlainText: change.titlePlainText }),
+            ...(change.descriptionPlainText === undefined
+              ? {}
+              : { descriptionPlainText: change.descriptionPlainText }),
+          }
+          const desiredHash = dataSourceMetadataHash(nextMetadata)
+          const commandId = decode({ schema: CommandId, value: `replica:${change.changeId}` })
+          intents.push({
+            _tag: 'database-metadata-edit',
+            intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
+            commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
+            surface: databaseMetadataSurfaceKey(databaseId),
+            databaseId,
+            dataSourceId,
+            command: PatchDatabaseMetadataCommand.make({
+              _tag: 'PatchDatabaseMetadataCommand',
+              commandId,
+              databaseId,
+              dataSourceId,
+              baseMetadataHash,
+              metadataPatch: {
+                ...(change.titlePlainText === undefined
+                  ? {}
+                  : { titlePlainText: change.titlePlainText }),
+                ...(change.descriptionPlainText === undefined
+                  ? {}
+                  : { descriptionPlainText: change.descriptionPlainText }),
+              },
+            }),
+            baseHash: baseMetadataHash,
+            desiredHash,
+          })
+          continue
+        }
         if (change.metadataResourceType !== 'data_source') {
           markChange({
             replicaPath,
