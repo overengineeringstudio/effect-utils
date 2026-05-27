@@ -54,8 +54,11 @@ same cell or row lifecycle target supersede earlier pending direct changes.
 `notion_local_changes` mirrors typed rows as a compatibility projection. `sync`
 validates those typed changes, performs a dry-run/reviewable plan when
 requested, and applies supported writes to Notion only after base-hash guards
-pass. Row creation, file bytes, Notion views, data-source descriptions, and
-destructive schema migrations remain explicit fail-closed surfaces.
+pass. After non-dry-run sync, typed CDC rows are settled from actual planner and
+outbox state instead of from conversion alone. Row creation, public
+metadata/schema CDC, database metadata, file bytes, Notion views, and
+destructive schema migrations remain explicit fail-closed surfaces until their
+verified post-write reconciliation is modeled.
 
 ## CLI Shape
 

@@ -436,12 +436,14 @@ type NotionConflictResolution = {
 All data edit use cases are in scope for this API. Rich schema migrations are
 the exception: schema changes must be detected and guarded. The current
 executable subset is writable cell patches, row archive/restore, body pushes
-that pass body-adapter safety, data-source title metadata, and conservative
-data-source schema add/rename/select-option operations. Row create is modeled
-but fail-closed until create-page idempotency, returned `page_id`
-reconciliation, and duplicate retry prevention are implemented. Data-source
-description writes, database metadata writes, files, Notion views, destructive
-schema changes, and manual conflict-resolution execution require their own
+that pass body-adapter safety and content-hash verification, and
+conflict-resolution choices routed through the store-backed command surface.
+Metadata/schema CDC rows are part of the public API shape but fail closed until
+the replica projects enough canonical current value state to compute verified
+post-write hashes. Row create is modeled but fail-closed until create-page
+idempotency, returned `page_id` reconciliation, and duplicate retry prevention
+are implemented. Database metadata writes, files, Notion views, destructive
+schema changes, and unsupported conflict-resolution actions require their own
 surface proof before promotion.
 
 Intent lifecycle:

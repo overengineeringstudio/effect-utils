@@ -57,14 +57,17 @@ from later scans merely because it was converted to planner input.
 The shipped typed CDC tables cover cells, row lifecycle/create requests, body
 pushes, metadata edits, schema edits, and conflict-resolution requests. Only the
 safe subset executes today: writable scalar/page-property cell patches, row
-archive/restore, body pushes that pass body-adapter safety, data-source title
-metadata, and conservative data-source schema add/rename/select-option
-operations. Row creation is recorded but fail-closed because Notion does not
-offer a create-page idempotency key; support requires local reconciliation of
-the returned `page_id` before retries can be safe. Data-source descriptions,
-files, Notion views, destructive schema migrations, and manual conflict
-resolutions remain explicit fail-closed boundaries unless a dedicated surface
-has live disposable proof.
+archive/restore, body pushes that pass body-adapter safety and content-hash
+verification, and conflict-resolution choices that can be applied through the
+store-backed conflict command path. Metadata/schema CDC rows are recorded but
+fail closed from the public SQLite API until the replica projects enough
+canonical current value state to compute verified post-write hashes. Row
+creation is recorded but fail-closed because Notion does not offer a create-page
+idempotency key; support requires local reconciliation of the returned
+`page_id` before retries can be safe. Database metadata, files, Notion views,
+destructive schema migrations, and unsupported conflict-resolution actions
+remain explicit fail-closed boundaries unless a dedicated surface has live
+disposable proof.
 
 ## Establishment
 
