@@ -237,6 +237,20 @@ const livePropertyPlainText = (property: unknown): string => {
     .join('')
 }
 
+const liveRichTextPlainText = (items: unknown): string =>
+  Array.isArray(items) === true
+    ? items
+        .map((item) =>
+          typeof item === 'object' &&
+          item !== null &&
+          'plain_text' in item &&
+          typeof item.plain_text === 'string'
+            ? item.plain_text
+            : '',
+        )
+        .join('')
+    : ''
+
 const liveDebugJson = (value: unknown): string =>
   JSON.stringify(value, (_key, entry: unknown) =>
     typeof entry === 'bigint' ? entry.toString() : entry,
@@ -1527,6 +1541,67 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                   expect.objectContaining({ kind: 'row_restore', status: 'applied' }),
                 ]),
               )
+            } finally {
+              db.close()
+            }
+          }
+
+          const metadataTitle = `sqlite cdc metadata ${provisioned.config.runId}`
+          const metadataDescription = `metadata description ${provisioned.config.runId}`
+          {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              const source = db
+                .prepare(
+                  `SELECT metadata_hash, title_plain_text, description_plain_text
+                   FROM notion_data_sources
+                   WHERE data_source_id = ?`,
+                )
+                .get(provisioned.config.dataSourceId) as
+                | {
+                    readonly metadata_hash: string
+                    readonly title_plain_text: string | null
+                    readonly description_plain_text: string | null
+                  }
+                | undefined
+              if (source === undefined) {
+                throw new Error('live metadata CDC test did not project the data source')
+              }
+              db.prepare(
+                `INSERT INTO notion_metadata_changes (
+                   change_id, data_source_id, resource_type, title_plain_text,
+                   description_plain_text, base_hash
+                 ) VALUES (?, ?, 'data_source', ?, ?, ?)`,
+              ).run(
+                `live-metadata-${provisioned.config.runId}`,
+                provisioned.config.dataSourceId,
+                metadataTitle,
+                metadataDescription,
+                source.metadata_hash,
+              )
+            } finally {
+              db.close()
+            }
+          }
+          await runLiveCliCommand({ env, argv: syncArgv })
+          const metadataAfter = await runLive(
+            env,
+            NotionDataSources.retrieve({ dataSourceId: provisioned.config.dataSourceId }),
+          )
+          expect(liveRichTextPlainText(metadataAfter.title)).toBe(metadataTitle)
+          expect(liveRichTextPlainText(metadataAfter.description)).toBe(metadataDescription)
+          {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              expect(
+                db
+                  .prepare(
+                    `SELECT status, unsupported_reason
+                     FROM notion_metadata_changes
+                     WHERE change_id = ?`,
+                  )
+                  .get(`live-metadata-${provisioned.config.runId}`),
+              ).toMatchObject({ status: 'applied', unsupported_reason: null })
             } finally {
               db.close()
             }

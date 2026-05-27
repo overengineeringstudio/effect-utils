@@ -58,16 +58,20 @@ The shipped typed CDC tables cover cells, row lifecycle/create requests, body
 pushes, metadata edits, schema edits, and conflict-resolution requests. Only the
 safe subset executes today: writable scalar/page-property cell patches, row
 archive/restore, body pushes that pass body-adapter safety and content-hash
-verification, and conflict-resolution choices that can be applied through the
-store-backed conflict command path, and explicit row creates through
+verification, data-source title/description metadata patches verified by
+post-write metadata hashes, conflict-resolution choices that can be applied
+through the store-backed conflict command path, and explicit row creates through
 `notion_row_creates`. Row creation uses local client request keys, schema-base
 guards, and durable returned `remote_page_id` settlement; ambiguous create
-outcomes fail into reconciliation instead of blindly retrying. Metadata/schema CDC rows are recorded but
-fail closed from the public SQLite API until the replica projects enough
-canonical current value state to compute verified post-write hashes. Database metadata, files, Notion views,
-destructive schema migrations, and unsupported conflict-resolution actions
-remain explicit fail-closed boundaries unless a dedicated surface has live
-disposable proof.
+outcomes fail into reconciliation instead of blindly retrying. Data-source
+metadata CDC is container-backed: the live adapter patches the owning database
+title/description and accepts success only when a subsequent data-source
+retrieval has the expected canonical metadata hash. Public schema CDC rows are
+recorded but fail closed from the public SQLite API until expected post-schema
+hash reconciliation is modeled. Database metadata as a separate authority,
+files, Notion views, destructive schema migrations, and unsupported
+conflict-resolution actions remain explicit fail-closed boundaries unless a
+dedicated surface has live disposable proof.
 
 ## Establishment
 

@@ -156,7 +156,7 @@ Stable generic tables:
 | `notion_rows_effective`       | read          | Confirmed rows plus pending local creates for local desired-state inspection                                |
 | `notion_cells_effective`      | read          | Confirmed cells plus initial values for pending local creates                                               |
 | `notion_body_changes`         | write         | Typed CDC log for body pushes using body path/base hash semantics                                           |
-| `notion_metadata_changes`     | write         | Typed CDC log for metadata edit requests; execution currently fail-closed pending post-write reconciliation |
+| `notion_metadata_changes`     | write         | Typed CDC log for data-source title/description metadata edits with post-write hash settlement              |
 | `notion_schema_changes`       | write         | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation   |
 | `notion_conflict_resolutions` | write         | Typed CDC requests for user conflict-resolution actions                                                     |
 | `notion_local_changes`        | compatibility | Unified local-change projection for inspection and older explicit inserts                                   |

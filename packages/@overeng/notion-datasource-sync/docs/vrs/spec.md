@@ -439,14 +439,17 @@ type NotionConflictResolution = {
 All data edit use cases are in scope for this API. Rich schema migrations are
 the exception: schema changes must be detected and guarded. The current
 executable subset is writable cell patches, row archive/restore, explicit row
-creates via `notion_row_creates`, body pushes
-that pass body-adapter safety and content-hash verification, and
-conflict-resolution choices routed through the store-backed command surface.
-Metadata/schema CDC rows are part of the public API shape but fail closed until
-the replica projects enough canonical current value state to compute verified
-post-write hashes. Database metadata writes, files, Notion views, destructive
-schema changes, and unsupported conflict-resolution actions require their own
-surface proof before promotion.
+creates via `notion_row_creates`, body pushes that pass body-adapter safety and
+content-hash verification, data-source title/description metadata edits
+verified by post-write metadata hashes, and conflict-resolution choices routed
+through the store-backed command surface. Data-source metadata CDC is precise
+about authority: the live adapter patches the owning database metadata because
+the public data-source update shape does not expose top-level description, then
+verifies the resulting data-source metadata hash. Public schema CDC rows are
+part of the public API shape but fail closed until expected post-schema hashes
+are modeled. Database metadata as its own authority, files, Notion views,
+destructive schema changes, and unsupported conflict-resolution actions require
+their own surface proof before promotion.
 
 Intent lifecycle:
 

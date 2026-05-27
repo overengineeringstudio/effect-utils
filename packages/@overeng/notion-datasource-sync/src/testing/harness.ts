@@ -232,6 +232,14 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
       observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
       schemaHash: hash('schema'),
       metadataHash: hash('metadata'),
+      metadataJson: JSON.stringify({
+        _tag: 'CanonicalDataSourceMetadata',
+        titlePlainText: 'Harness data source',
+        descriptionPlainText: 'Harness data-source description',
+        icon: { _tag: 'none' },
+      }),
+      metadataTitlePlainText: 'Harness data source',
+      metadataDescriptionPlainText: 'Harness data-source description',
     } satisfies DataSourceSnapshot)
   const propertyPages = input.propertyPages ?? []
   const pages = (input.pages ?? [pageSnapshot()]).map((page) => ({
@@ -444,7 +452,7 @@ export const buildPlannerSnapshot = (
     supported: ['page_property_update'],
     preflight: 'passed',
   },
-  metadata: [
+      metadata: [
     {
       dataSourceId: testIds.dataSourceId,
       metadataHash: hash('metadata'),

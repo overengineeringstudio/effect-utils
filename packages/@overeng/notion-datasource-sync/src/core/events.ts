@@ -130,6 +130,9 @@ export const DataSourceMetadataObserved = Schema.TaggedStruct('DataSourceMetadat
   dataSourceId: DataSourceId,
   requestId: NotionRequestId,
   metadataHash: Hash,
+  metadataJson: Schema.optional(Schema.String),
+  titlePlainText: Schema.optional(Schema.String),
+  descriptionPlainText: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceMetadataObserved' })
 export type DataSourceMetadataObserved = typeof DataSourceMetadataObserved.Type
 

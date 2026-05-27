@@ -7,14 +7,17 @@ import { Schema } from 'effect'
 import {
   bodySurfaceKey,
   dataSourceMetadataSurfaceKey,
+  dataSourceMetadataHash,
   pageSurfaceKey,
   propertySurfaceKey,
   schemaSurfaceKey,
 } from '../core/canonical.ts'
 import {
   BodyPushCommand,
+  CanonicalDataSourceMetadata,
   CanonicalPropertyValue,
   CreatePageCommand,
+  PatchDataSourceMetadataCommand,
   PatchPagePropertiesCommand,
   RestorePageCommand,
   TrashPageCommand,
@@ -127,6 +130,24 @@ const readOptionalString = ({
   return value
 }
 
+const ensureReplicaColumn = ({
+  db,
+  table,
+  column,
+  definition,
+}: {
+  readonly db: DatabaseSync
+  readonly table: string
+  readonly column: string
+  readonly definition: string
+}): void => {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as SqlRow[]
+  const exists = columns.some((row) => readString({ row, key: 'name' }) === column)
+  if (exists === false) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  }
+}
+
 const readNumber = ({ row, key }: { readonly row: SqlRow; readonly key: string }): number => {
   const value = row[key]
   if (typeof value !== 'number') throw new Error(`Expected SQLite column ${key} to be a number`)
@@ -209,6 +230,9 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       root_id TEXT NOT NULL,
       schema_hash TEXT NOT NULL,
       metadata_hash TEXT,
+      metadata_json TEXT,
+      title_plain_text TEXT,
+      description_plain_text TEXT,
       observed_event_id TEXT NOT NULL,
       observed_at TEXT,
       updated_at TEXT NOT NULL
@@ -1166,6 +1190,25 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     END;
   `)
 
+  ensureReplicaColumn({
+    db,
+    table: 'notion_data_sources',
+    column: 'metadata_json',
+    definition: 'TEXT',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_data_sources',
+    column: 'title_plain_text',
+    definition: 'TEXT',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_data_sources',
+    column: 'description_plain_text',
+    definition: 'TEXT',
+  })
+
   if (needsLocalChangesStatusMigration === true) {
     db.exec(`
       INSERT OR IGNORE INTO notion_local_changes (
@@ -1468,14 +1511,35 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
            ORDER BY sequence`,
         )
         .all(options.rootId) as SqlRow[]
-      const metadata = new Map<string, string>()
+      const metadata = new Map<
+        string,
+        {
+          readonly hash: string
+          readonly metadataJson: string | undefined
+          readonly titlePlainText: string | undefined
+          readonly descriptionPlainText: string | undefined
+        }
+      >()
       for (const row of metadataRows) {
         const event = JSON.parse(readString({ row, key: 'event_json' })) as {
           readonly dataSourceId?: unknown
           readonly metadataHash?: unknown
+          readonly metadataJson?: unknown
+          readonly titlePlainText?: unknown
+          readonly descriptionPlainText?: unknown
         }
         if (typeof event.dataSourceId === 'string' && typeof event.metadataHash === 'string') {
-          metadata.set(event.dataSourceId, event.metadataHash)
+          metadata.set(event.dataSourceId, {
+            hash: event.metadataHash,
+            metadataJson:
+              typeof event.metadataJson === 'string' ? event.metadataJson : undefined,
+            titlePlainText:
+              typeof event.titlePlainText === 'string' ? event.titlePlainText : undefined,
+            descriptionPlainText:
+              typeof event.descriptionPlainText === 'string'
+                ? event.descriptionPlainText
+                : undefined,
+          })
         }
       }
 
@@ -1488,17 +1552,22 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         )
         .all(options.rootId) as SqlRow[]) {
         const dataSourceId = readString({ row, key: 'data_source_id' })
+        const metadataRow = metadata.get(dataSourceId)
         replicaDb
           .prepare(
             `INSERT INTO notion_data_sources (
-               data_source_id, root_id, schema_hash, metadata_hash, observed_event_id, observed_at, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+               data_source_id, root_id, schema_hash, metadata_hash, metadata_json, title_plain_text,
+               description_plain_text, observed_event_id, observed_at, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             dataSourceId,
             options.rootId,
             readString({ row, key: 'schema_hash' }),
-            metadata.get(dataSourceId) ?? null,
+            metadataRow?.hash ?? null,
+            metadataRow?.metadataJson ?? null,
+            metadataRow?.titlePlainText ?? null,
+            metadataRow?.descriptionPlainText ?? null,
             readString({ row, key: 'observed_event_id' }),
             readOptionalString({ row, key: 'observed_at' }) ?? null,
             readString({ row, key: 'updated_at' }),
@@ -2531,13 +2600,119 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       if (change.kind === 'metadata_patch') {
-        markChange({
-          replicaPath,
-          dryRun,
-          changeId: change.changeId,
-          status: 'unsupported',
-          reason:
-            'Public metadata CDC needs full metadata value projection to compute a verified post-write hash; use the dedicated metadata command path until that projection exists.',
+        if (change.metadataResourceType !== 'data_source') {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason:
+              'Database metadata CDC needs a separate database authority projection and remains fail-closed.',
+          })
+          continue
+        }
+        if (change.baseHash === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'metadata_patch requires base_hash.',
+          })
+          continue
+        }
+        const dataSource = db
+          .prepare(
+            `SELECT metadata_hash, metadata_json
+             FROM notion_data_sources
+             WHERE data_source_id = ?`,
+          )
+          .get(change.dataSourceId) as SqlRow | undefined
+        if (dataSource === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'metadata_patch targets a data source that is not present in the replica.',
+          })
+          continue
+        }
+        const metadataHash = readOptionalString({ row: dataSource, key: 'metadata_hash' })
+        const metadataJson = readOptionalString({ row: dataSource, key: 'metadata_json' })
+        if (metadataHash === undefined || metadataJson === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason:
+              'metadata_patch requires canonical metadata projection before post-write hash reconciliation can be computed.',
+          })
+          continue
+        }
+        if (metadataHash !== change.baseHash) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'conflict',
+            reason: 'metadata_patch has a stale base_hash.',
+          })
+          continue
+        }
+        let dataSourceId: DataSourceId
+        let baseMetadataHash: Hash
+        let currentMetadata: CanonicalDataSourceMetadata
+        try {
+          dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
+          baseMetadataHash = decode({ schema: Hash, value: change.baseHash })
+          currentMetadata = Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
+            metadataJson,
+          )
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'metadata_patch contains invalid data_source_id, base_hash, or metadata_json.',
+          })
+          continue
+        }
+        const nextMetadata: CanonicalDataSourceMetadata = {
+          ...currentMetadata,
+          ...(change.titlePlainText === undefined
+            ? {}
+            : { titlePlainText: change.titlePlainText }),
+          ...(change.descriptionPlainText === undefined
+            ? {}
+            : { descriptionPlainText: change.descriptionPlainText }),
+        }
+        const desiredHash = dataSourceMetadataHash(nextMetadata)
+        const commandId = decode({ schema: CommandId, value: `replica:${change.changeId}` })
+        intents.push({
+          _tag: 'data-source-metadata-edit',
+          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
+          commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
+          surface: dataSourceMetadataSurfaceKey(dataSourceId),
+          dataSourceId,
+          command: PatchDataSourceMetadataCommand.make({
+            _tag: 'PatchDataSourceMetadataCommand',
+            commandId,
+            dataSourceId,
+            baseMetadataHash,
+            metadataPatch: {
+              ...(change.titlePlainText === undefined
+                ? {}
+                : { titlePlainText: change.titlePlainText }),
+              ...(change.descriptionPlainText === undefined
+                ? {}
+                : { descriptionPlainText: change.descriptionPlainText }),
+            },
+          }),
+          baseHash: baseMetadataHash,
+          desiredHash,
         })
         continue
       }
