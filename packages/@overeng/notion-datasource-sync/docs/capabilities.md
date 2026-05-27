@@ -57,7 +57,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Webhooks                                 | Not required for correctness; daemon uses observation/reconciliation                  |
 | Synced pages and unsupported body blocks | Delegated to NotionMD guards and blocked when lossy                                   |
 | Local-first data-source creation         | Out of scope; create the data source in Notion first, then adopt it locally           |
-| Direct updates to generated SQL views    | Deferred; V1 writes use explicit `notion_local_changes` intents                       |
+| Direct updates to generated SQL views    | Deferred; V1 writes use guarded `notion_cells`/`notion_rows` updates or explicit intents |
 | Broad schema migrations from SQL edits   | Deferred; schema drift is detected and guarded, rich migration workflows are follow-up |
 
 ## Public Replica Write Coverage
