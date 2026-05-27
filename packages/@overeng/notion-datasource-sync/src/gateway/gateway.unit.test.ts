@@ -1232,11 +1232,19 @@ describe('Notion data source gateway real adapter boundary', () => {
             propertyId: propertyId('priority'),
             propertyType: 'multi_select',
             existingOptions: [
-              { _tag: 'CanonicalOptionValue', id: propertyId('opt-high'), name: decode(PropertyName, 'High') },
+              {
+                _tag: 'CanonicalOptionValue',
+                id: propertyId('opt-high'),
+                name: decode(PropertyName, 'High'),
+              },
               { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'Low') },
             ],
             newOptions: [
-              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'Medium'), color: 'yellow' },
+              {
+                _tag: 'CanonicalOptionValue',
+                name: decode(PropertyName, 'Medium'),
+                color: 'yellow',
+              },
             ],
           },
         ],
@@ -1251,10 +1259,7 @@ describe('Notion data source gateway real adapter boundary', () => {
           [propertyId('title')]: { name: 'Task' },
           Stage: {
             select: {
-              options: [
-                { name: 'Todo' },
-                { name: 'Doing', color: 'blue' },
-              ],
+              options: [{ name: 'Todo' }, { name: 'Doing', color: 'blue' }],
             },
           },
           [propertyId('priority')]: {
@@ -1337,9 +1342,7 @@ describe('Notion data source gateway real adapter boundary', () => {
             _tag: 'AddSelectOptions',
             propertyId: propertyId('priority'),
             propertyType: 'select',
-            existingOptions: [
-              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') },
-            ],
+            existingOptions: [{ _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') }],
             newOptions: [],
           },
         ],
@@ -1375,12 +1378,8 @@ describe('Notion data source gateway real adapter boundary', () => {
             _tag: 'AddSelectOptions',
             propertyId: propertyId('priority'),
             propertyType: 'select',
-            existingOptions: [
-              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') },
-            ],
-            newOptions: [
-              { _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') },
-            ],
+            existingOptions: [{ _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') }],
+            newOptions: [{ _tag: 'CanonicalOptionValue', name: decode(PropertyName, 'High') }],
           },
         ],
       }),

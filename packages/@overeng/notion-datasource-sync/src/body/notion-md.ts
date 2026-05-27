@@ -29,16 +29,16 @@ import {
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
 import {
-  bodySafetySnapshot,
-  evaluateBodyAdapterContract,
-  withBodyAdapterContract,
-} from './adapter.ts'
-import {
   filesystemWorkspacePageSidecarPath,
   makeFilesystemLocalWorkspacePort,
   ownWriteSuppressionToken,
   type FilesystemWorkspaceSidecar,
 } from '../local/workspace.ts'
+import {
+  bodySafetySnapshot,
+  evaluateBodyAdapterContract,
+  withBodyAdapterContract,
+} from './adapter.ts'
 
 /** Configuration for the NotionMD-backed `PageBodySyncPort`: just the upstream NotionMD gateway client. */
 export type NotionMdPageBodySyncPortInput = {
@@ -228,16 +228,15 @@ export const makeNotionMdPageBodySyncPort = ({
           bodyPointer,
         }
       }).pipe(
-        Effect.mapError(
-          (cause) =>
-            cause instanceof BodySyncError
-              ? cause
-              : new BodySyncError({
-                  operation: 'push',
-                  pageId: command.pageId,
-                  message: 'Failed to push NotionMD page body',
-                  cause,
-                }),
+        Effect.mapError((cause) =>
+          cause instanceof BodySyncError
+            ? cause
+            : new BodySyncError({
+                operation: 'push',
+                pageId: command.pageId,
+                message: 'Failed to push NotionMD page body',
+                cause,
+              }),
         ),
       ),
     repair: (input: BodyRepairInput) =>

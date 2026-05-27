@@ -130,8 +130,7 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: unknown
 }): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
-const fallbackHash = (_value: string) =>
-  decode({ schema: Hash, value: `sha256:${'0'.repeat(64)}` })
+const fallbackHash = (_value: string) => decode({ schema: Hash, value: `sha256:${'0'.repeat(64)}` })
 
 const pageIdFromSurface = (surface: string): typeof PageId.Type => {
   const match = /^page:([^:]+)/.exec(surface)
@@ -181,7 +180,10 @@ const appendDecision = ({
       let enqueuedCommands = 0
       for (const command of decision.commands) {
         if (dryRun === true) continue
-        if (store.appendEventWithResult(makeRemoteWritePlannedEvent({ command, now })).inserted === true) {
+        if (
+          store.appendEventWithResult(makeRemoteWritePlannedEvent({ command, now })).inserted ===
+          true
+        ) {
           enqueuedCommands += 1
         }
       }
@@ -492,7 +494,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
             appendDecision({
               store: options.store,
               rootId: options.rootId,
-              decision: planIntent({ snapshot, intent: localDeleteIntentFromObservation(observation) }),
+              decision: planIntent({
+                snapshot,
+                intent: localDeleteIntentFromObservation(observation),
+              }),
               pageId: observation.pageId,
               now,
               ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
@@ -557,7 +562,9 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           pageId: bodyPlan.pageId,
           baseBodyPointer: bodyPlan.baseBodyPointer,
           localBodyHash: bodyPlan.nextBodyHash,
-          ...(bodyPlan.localBodyPath === undefined ? {} : { localBodyPath: bodyPlan.localBodyPath }),
+          ...(bodyPlan.localBodyPath === undefined
+            ? {}
+            : { localBodyPath: bodyPlan.localBodyPath }),
           ...(bodyPlan.localBodyContent === undefined
             ? {}
             : { localBodyContent: bodyPlan.localBodyContent }),
@@ -576,7 +583,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           appendDecision({
             store: options.store,
             rootId: options.rootId,
-            decision: planIntent({ snapshot: options.store.readPlannerProjectionSnapshot(options.rootId), intent }),
+            decision: planIntent({
+              snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
+              intent,
+            }),
             pageId: observation.pageId,
             now,
             ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),

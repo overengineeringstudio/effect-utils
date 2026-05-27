@@ -38,8 +38,7 @@ export const pageLifecycleHash = ({
 }: {
   readonly pageId: PageId
   readonly inTrash: boolean
-}): Hash =>
-  hashStoreBytes(`page-lifecycle\t${pageId}\t${inTrash === true ? 'in-trash' : 'active'}`)
+}): Hash => hashStoreBytes(`page-lifecycle\t${pageId}\t${inTrash === true ? 'in-trash' : 'active'}`)
 
 /** Compute a deterministic digest over a contiguous run of events, used to verify that a stored projection is still current. */
 export const computeProjectionDigest = (events: ReadonlyArray<ProjectionDigestInput>): Hash => {

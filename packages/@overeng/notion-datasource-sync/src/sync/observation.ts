@@ -245,7 +245,10 @@ export const makeSyncBindingRecordedEvent = (input: {
         family: 'SyncRootBound',
         eventType: 'SyncBindingRecorded',
         idempotencyKey: `binding:${input.dataSourceId}:${hashStoreBytes(input.workspaceRoot)}`,
-        surface: querySurfaceKey({ dataSourceId: input.dataSourceId, queryContractHash: hashStoreBytes(input.workspaceRoot) }),
+        surface: querySurfaceKey({
+          dataSourceId: input.dataSourceId,
+          queryContractHash: hashStoreBytes(input.workspaceRoot),
+        }),
         payload: {
           dataSourceId: input.dataSourceId,
           workspaceRootHash: hashStoreBytes(input.workspaceRoot),
@@ -429,7 +432,10 @@ export const makeQueryAbsenceCandidateEvent = (input: {
         family: 'RemoteObserved',
         eventType: 'TombstoneCandidateObserved',
         idempotencyKey: `absence:${input.dataSourceId}:${input.pageId}:${input.queryContractHash}`,
-        surface: querySurfaceKey({ dataSourceId: input.dataSourceId, queryContractHash: input.queryContractHash }),
+        surface: querySurfaceKey({
+          dataSourceId: input.dataSourceId,
+          queryContractHash: input.queryContractHash,
+        }),
         payload: {
           dataSourceId: input.dataSourceId,
           pageId: input.pageId,
@@ -545,9 +551,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           },
         }),
         ...requiredCapabilities.map((capability) => {
-          const capabilityState = preflight.supportedCapabilities.includes(capability) === true
-            ? 'supported'
-            : 'unsupported'
+          const capabilityState =
+            preflight.supportedCapabilities.includes(capability) === true
+              ? 'supported'
+              : 'unsupported'
 
           return decode({
             schema: SyncEvent,
@@ -559,7 +566,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                 family: 'CompatibilityChecked',
                 eventType: 'CapabilityPreflightChecked',
                 idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}:${observationPart}`,
-                surface: querySurfaceKey({ dataSourceId: options.dataSourceId, queryContractHash: hashStoreBytes('capabilities') }),
+                surface: querySurfaceKey({
+                  dataSourceId: options.dataSourceId,
+                  queryContractHash: hashStoreBytes('capabilities'),
+                }),
                 payload: { capability },
                 now,
               }),
@@ -622,7 +632,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               family: 'RemoteObserved',
               eventType: 'DataSourceObserved',
               idempotencyKey: `data-source:${dataSource.dataSourceId}:${dataSource.schemaHash}:${schemaPropertiesHash}`,
-              surface: querySurfaceKey({ dataSourceId: dataSource.dataSourceId, queryContractHash: hashStoreBytes('schema') }),
+              surface: querySurfaceKey({
+                dataSourceId: dataSource.dataSourceId,
+                queryContractHash: hashStoreBytes('schema'),
+              }),
               payload: { schemaProperties: options.schemaProperties },
               now,
             }),
@@ -681,9 +694,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             bodyPath: path,
             sidecarIdentityProven: materializeResult !== undefined,
             ownWriteMaterializationIds:
-              materializeResult === undefined
-                ? []
-                : [materializeResult.ownWriteSuppressionToken],
+              materializeResult === undefined ? [] : [materializeResult.ownWriteSuppressionToken],
             safety: bodyPointer.safety,
           }
           const rowPayloadHash = rowProjectionPayloadHash({
@@ -747,7 +758,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                       family: 'QueryScanRecorded',
                       eventType: 'PagePropertyCheckpointRecorded',
                       idempotencyKey: `property:${row.pageId}:${property.propertyId}:failed:${observationPart}`,
-                      surface: propertySurfaceKey({ pageId: row.pageId, propertyId: property.propertyId }),
+                      surface: propertySurfaceKey({
+                        pageId: row.pageId,
+                        propertyId: property.propertyId,
+                      }),
                       payload: { availability },
                       now,
                     }),
@@ -781,7 +795,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                     family: 'QueryScanRecorded',
                     eventType: 'PagePropertyCheckpointRecorded',
                     idempotencyKey: `property:${row.pageId}:${property.propertyId}:${valueHash ?? 'incomplete'}:${observationPart}`,
-                    surface: propertySurfaceKey({ pageId: row.pageId, propertyId: property.propertyId }),
+                    surface: propertySurfaceKey({
+                      pageId: row.pageId,
+                      propertyId: property.propertyId,
+                    }),
                     payload: { availability, baseHash: valueHash },
                     now,
                   }),

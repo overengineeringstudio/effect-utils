@@ -67,11 +67,13 @@ const fakePort = (safety: BodySafetySnapshot) =>
 const nmdPageId = decode(PageId, '11111111-1111-4111-8111-111111111111')
 const nmdPath = decode(WorkspaceRelativePath, 'adapter-page.nmd')
 
-const pullPageResult = (input: {
-  readonly markdown?: string
-  readonly truncated?: boolean
-  readonly unknownBlockIds?: readonly string[]
-} = {}): PullPageResult => ({
+const pullPageResult = (
+  input: {
+    readonly markdown?: string
+    readonly truncated?: boolean
+    readonly unknownBlockIds?: readonly string[]
+  } = {},
+): PullPageResult => ({
   page: {
     id: nmdPageId,
     title: 'Adapter page',
@@ -117,7 +119,8 @@ const fakeNotionMdGateway = (
   updateMarkdown:
     input.updateMarkdown ??
     (() => Effect.die('updateMarkdown should not be called by these tests')),
-  updatePageProperties: () => Effect.die('updatePageProperties should not be called by these tests'),
+  updatePageProperties: () =>
+    Effect.die('updatePageProperties should not be called by these tests'),
   updatePageMetadata: () => Effect.die('updatePageMetadata should not be called by these tests'),
   listChildPages: () => Effect.succeed([]),
 })
@@ -680,7 +683,9 @@ describe('body adapter contract', () => {
             _tag: 'BodyPushCommand',
             commandId: commandId('cmd-notion-md-push-gap'),
             pageId: nmdPageId,
-            baseBodyPointer: bodyPointerFromTestMarkdown('# Adapter page\n\nHello from NotionMD.\n'),
+            baseBodyPointer: bodyPointerFromTestMarkdown(
+              '# Adapter page\n\nHello from NotionMD.\n',
+            ),
             nextBodyHash: hash('b'),
           }),
         ),

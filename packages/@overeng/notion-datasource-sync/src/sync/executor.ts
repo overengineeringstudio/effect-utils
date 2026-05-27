@@ -252,20 +252,22 @@ const recordAttemptState = ({
   readonly attemptState: 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   readonly guard: GuardName
 }) =>
-  storeEffect({ operation: 'append-outbox-attempt-state', f: () =>
-    options.store.appendOutboxAttemptState({
-      rootId: claimed.rootId,
-      commandId: claimed.commandId,
-      commandKey: claimed.commandKey,
-      surface: claimed.surface,
-      attempt: claimed.attempt,
-      attemptState,
-      leaseToken: claimed.leaseToken,
-      guard,
-      idempotencyKey: idempotencyKey(
-        `${claimed.commandKey}:attempt-state:${claimed.attempt}:${attemptState}:${guard}`,
-      ),
-    }),
+  storeEffect({
+    operation: 'append-outbox-attempt-state',
+    f: () =>
+      options.store.appendOutboxAttemptState({
+        rootId: claimed.rootId,
+        commandId: claimed.commandId,
+        commandKey: claimed.commandKey,
+        surface: claimed.surface,
+        attempt: claimed.attempt,
+        attemptState,
+        leaseToken: claimed.leaseToken,
+        guard,
+        idempotencyKey: idempotencyKey(
+          `${claimed.commandKey}:attempt-state:${claimed.attempt}:${attemptState}:${guard}`,
+        ),
+      }),
   }).pipe(
     Effect.as({
       _tag: 'failed' as const,
@@ -290,19 +292,21 @@ const settle = ({
   readonly observedHash: Hash
   readonly settlementKind: 'verified-success' | 'verified-no-op'
 }) =>
-  storeEffect({ operation: 'append-outbox-settlement', f: () =>
-    options.store.appendOutboxSettlement({
-      rootId: claimed.rootId,
-      commandId: claimed.commandId,
-      commandKey: claimed.commandKey,
-      surface: claimed.surface,
-      commandTag: commandTag(command),
-      requestId,
-      desiredHash: claimed.desiredHash,
-      observedHash,
-      settlementKind,
-      idempotencyKey: idempotencyKey(`${claimed.commandKey}:settled`),
-    }),
+  storeEffect({
+    operation: 'append-outbox-settlement',
+    f: () =>
+      options.store.appendOutboxSettlement({
+        rootId: claimed.rootId,
+        commandId: claimed.commandId,
+        commandKey: claimed.commandKey,
+        surface: claimed.surface,
+        commandTag: commandTag(command),
+        requestId,
+        desiredHash: claimed.desiredHash,
+        observedHash,
+        settlementKind,
+        idempotencyKey: idempotencyKey(`${claimed.commandKey}:settled`),
+      }),
   }).pipe(
     Effect.as({
       _tag: 'settled' as const,
@@ -339,8 +343,9 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
           [spanAttr.leaseDurationMs]: options.leaseDurationMs,
         }),
       )
-      const claimed = yield* storeEffect({ operation: 'claim-next-outbox-command', f: () =>
-        options.store.claimNextOutboxCommand(options),
+      const claimed = yield* storeEffect({
+        operation: 'claim-next-outbox-command',
+        f: () => options.store.claimNextOutboxCommand(options),
       })
 
       if (claimed === undefined) {
@@ -437,12 +442,14 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
         return result
       }
 
-      const leaseActive = yield* storeEffect({ operation: 'check-outbox-lease', f: () =>
-        options.store.isOutboxLeaseActive({
-          rootId: claimed.rootId,
-          commandId: claimed.commandId,
-          leaseToken: claimed.leaseToken,
-        }),
+      const leaseActive = yield* storeEffect({
+        operation: 'check-outbox-lease',
+        f: () =>
+          options.store.isOutboxLeaseActive({
+            rootId: claimed.rootId,
+            commandId: claimed.commandId,
+            leaseToken: claimed.leaseToken,
+          }),
       })
 
       if (leaseActive === false) {

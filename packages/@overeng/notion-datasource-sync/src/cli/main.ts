@@ -657,7 +657,10 @@ const parseChoice = (flags: Map<string, string | true>): ConflictResolutionChoic
       return { _tag: 'keep-remote' }
     case 'keep-local':
     case 'manual': {
-      const value = decodeJson({ schema: CanonicalPropertyValue, value: requiredFlag({ flags, name: 'value-json' }) })
+      const value = decodeJson({
+        schema: CanonicalPropertyValue,
+        value: requiredFlag({ flags, name: 'value-json' }),
+      })
       return {
         _tag: strategy,
         value,
@@ -684,8 +687,14 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
     case 'init':
       return {
         _tag: 'init',
-        dataSourceId: decode({ schema: DataSourceId, value: requiredFlag({ flags, name: 'data-source-id' }) }),
-        workspaceRoot: decode({ schema: AbsolutePath, value: requiredFlag({ flags, name: 'workspace-root' }) }),
+        dataSourceId: decode({
+          schema: DataSourceId,
+          value: requiredFlag({ flags, name: 'data-source-id' }),
+        }),
+        workspaceRoot: decode({
+          schema: AbsolutePath,
+          value: requiredFlag({ flags, name: 'workspace-root' }),
+        }),
         dryRun: flags.has('dry-run'),
       }
     case 'pull':
@@ -709,7 +718,10 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
       if (subcommand === 'resolve') {
         return {
           _tag: 'conflicts-resolve',
-          conflictId: decode({ schema: SyncEventId, value: requiredFlag({ flags, name: 'conflict-id' }) }),
+          conflictId: decode({
+            schema: SyncEventId,
+            value: requiredFlag({ flags, name: 'conflict-id' }),
+          }),
           choice: parseChoice(flags),
           dryRun: flags.has('dry-run'),
         }
@@ -753,22 +765,34 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
   const flags = parseFlags(argv)
   const storePath = requiredFlag({ flags, name: 'store' })
   const rootId = decode({ schema: SyncRootId, value: requiredFlag({ flags, name: 'root-id' }) })
-  const dataSourceId = decode({ schema: DataSourceId, value: requiredFlag({ flags, name: 'data-source-id' }) })
-  const workspaceRoot = decode({ schema: AbsolutePath, value: requiredFlag({ flags, name: 'workspace-root' }) })
+  const dataSourceId = decode({
+    schema: DataSourceId,
+    value: requiredFlag({ flags, name: 'data-source-id' }),
+  })
+  const workspaceRoot = decode({
+    schema: AbsolutePath,
+    value: requiredFlag({ flags, name: 'workspace-root' }),
+  })
   const maxExecutorSteps = positiveIntegerFlag({ flags, name: 'max-executor-steps' })
   const requiredCapabilities = capabilityListFlag({ flags, name: 'required-capabilities' })
   const queryContract =
     optionalFlag({ flags, name: 'query-contract-json' }) === undefined
-      ? decode({ schema: QueryContract, value: {
-          _tag: 'QueryContract',
-          apiVersion: '2026-03-11',
-          filter: null,
-          sorts: [],
-          pageSize: 100,
-          highWatermark: null,
-          membershipScope: 'all-data-source-rows',
-        }})
-      : decodeJson({ schema: QueryContract, value: requiredFlag({ flags, name: 'query-contract-json' }) })
+      ? decode({
+          schema: QueryContract,
+          value: {
+            _tag: 'QueryContract',
+            apiVersion: '2026-03-11',
+            filter: null,
+            sorts: [],
+            pageSize: 100,
+            highWatermark: null,
+            membershipScope: 'all-data-source-rows',
+          },
+        })
+      : decodeJson({
+          schema: QueryContract,
+          value: requiredFlag({ flags, name: 'query-contract-json' }),
+        })
   const schemaProperties =
     optionalFlag({ flags, name: 'schema-properties-json' }) === undefined
       ? []
@@ -889,7 +913,8 @@ export const runCliCommandWithRuntime = ({
   readonly command: CliCommand
   readonly context: CliContext
   readonly options?: CliRuntimeOptions
-}) => runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer({ context, options })))
+}) =>
+  runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer({ context, options })))
 
 /**
  * Top-level CLI entry point: parses `argv`, rejects unsupported commands early, runs the command,

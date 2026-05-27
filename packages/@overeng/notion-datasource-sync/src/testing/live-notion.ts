@@ -17,12 +17,12 @@ import {
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
 import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
+import { canonicalHash } from '../core/canonical.ts'
 import {
   CanonicalOptionValue,
   PatchDataSourceMetadataCommand,
   type QueryContract,
 } from '../core/commands.ts'
-import { canonicalHash } from '../core/canonical.ts'
 import {
   AbsolutePath,
   DataSourceId,
@@ -473,7 +473,7 @@ export const makeLiveFixtureLedgerWriter = (input: {
         type: 'replace_content',
         new_str: markdown,
         allow_deleting_content: true,
-      }).pipe(Effect.provide(makeNotionLiveLayer(input.env.token))),
+      }).pipe(Effect.provide(makeNotionLiveLayer({ token: input.env.token }))),
     )
   }
 }
@@ -533,7 +533,9 @@ const propertyPlainText = (property: unknown): string => {
   if (Array.isArray(titleValue) === false) return ''
 
   return titleValue
-    .map((item) => (isRecord(item) === true && typeof item.plain_text === 'string' ? item.plain_text : ''))
+    .map((item) =>
+      isRecord(item) === true && typeof item.plain_text === 'string' ? item.plain_text : '',
+    )
     .join('')
 }
 
@@ -548,7 +550,9 @@ const resolveTitlePropertyName = (properties: Record<string, unknown>): string =
   }
 
   const [fallbackName, property] = titleEntry
-  return isRecord(property) === true && typeof property.name === 'string' ? property.name : fallbackName
+  return isRecord(property) === true && typeof property.name === 'string'
+    ? property.name
+    : fallbackName
 }
 
 const isAlreadyArchivedNotionError = (cause: unknown): boolean => {
@@ -622,7 +626,10 @@ type DemoDataSourceSpec = {
   readonly filterOptionName: string
   readonly schemaPropertyNames: ReadonlyArray<string>
   readonly properties: Record<string, unknown>
-  readonly rowProperties: (input: { readonly runId: string; readonly index: number }) => Record<string, unknown>
+  readonly rowProperties: (input: {
+    readonly runId: string
+    readonly index: number
+  }) => Record<string, unknown>
   readonly rowMarkdown: (input: { readonly runId: string; readonly index: number }) => string
 }
 
@@ -655,7 +662,9 @@ const formatDemoIntroBlocks = (input: { readonly runId: string }) => [
   bulletedBlock(
     'Bounded high-cardinality proof with a 500-row data source observed through paginated datasource queries.',
   ),
-  bulletedBlock('Data-source description metadata patched through the datasource-sync metadata surface.'),
+  bulletedBlock(
+    'Data-source description metadata patched through the datasource-sync metadata surface.',
+  ),
   bulletedBlock(
     'NotionMD body observation and workspace materialization for representative row pages.',
   ),
@@ -730,7 +739,9 @@ const demoActivityProperties = (input: { readonly runId: string; readonly index:
     Sequence: { number: input.index },
     Automated: checkbox(true),
     EventDate: date(`2026-08-${String((input.index % 28) + 1).padStart(2, '0')}`),
-    Labels: multiSelect(input.index % 10 === 0 ? ['high-cardinality', 'checkpoint'] : ['high-cardinality']),
+    Labels: multiSelect(
+      input.index % 10 === 0 ? ['high-cardinality', 'checkpoint'] : ['high-cardinality'],
+    ),
     Payload: richText(`Synthetic activity payload ${input.index.toString()}.`),
   }
 }
@@ -934,8 +945,9 @@ const formatDemoVerificationBlocks = (result: LiveNotionDemoShowcaseResult) => [
     `High-cardinality proof: ${
       result.dataSources.find((dataSource) => dataSource.rowIds.length >= 500)?.title ?? 'missing'
     } has ${
-      result.dataSources.find((dataSource) => dataSource.rowIds.length >= 500)?.rowIds.length.toString() ??
-      '0'
+      result.dataSources
+        .find((dataSource) => dataSource.rowIds.length >= 500)
+        ?.rowIds.length.toString() ?? '0'
     } rows`,
   ),
   bulletedBlock(
@@ -986,7 +998,11 @@ type DemoDatabaseBlock = {
 }
 
 const childDatabaseBlock = (block: unknown): DemoDatabaseBlock | undefined => {
-  if (isRecord(block) === false || block.type !== 'child_database' || typeof block.id !== 'string') {
+  if (
+    isRecord(block) === false ||
+    block.type !== 'child_database' ||
+    typeof block.id !== 'string'
+  ) {
     return undefined
   }
   const childDatabase = block.child_database
@@ -1000,7 +1016,9 @@ const childDatabaseBlock = (block: unknown): DemoDatabaseBlock | undefined => {
   return { databaseId: block.id, title: childDatabase.title }
 }
 
-const currentDemoTitles: ReadonlySet<string> = new Set(demoDataSourceSpecs.map((spec) => spec.title))
+const currentDemoTitles: ReadonlySet<string> = new Set(
+  demoDataSourceSpecs.map((spec) => spec.title),
+)
 
 const cleanupDemoPageForRerun = ({ pageId }: { readonly pageId: string }) =>
   Effect.gen(function* () {
@@ -1019,13 +1037,19 @@ const cleanupDemoPageForRerun = ({ pageId }: { readonly pageId: string }) =>
           return Effect.void
         }
 
-        if (currentDemoTitles.has(database.title) === true && keptByTitle.has(database.title) === false) {
+        if (
+          currentDemoTitles.has(database.title) === true &&
+          keptByTitle.has(database.title) === false
+        ) {
           keptByTitle.add(database.title)
           keptDatabases.push(database)
           return Effect.void
         }
 
-        if (staleDemoDatabaseTitlePrefixes.some((prefix) => database.title.startsWith(prefix)) === true) {
+        if (
+          staleDemoDatabaseTitlePrefixes.some((prefix) => database.title.startsWith(prefix)) ===
+          true
+        ) {
           return archiveDemoDatabase(database.databaseId)
         }
         return Effect.void
@@ -1036,20 +1060,6 @@ const cleanupDemoPageForRerun = ({ pageId }: { readonly pageId: string }) =>
     return keptDatabases
   })
 
-const collectExistingDemoDatabases = ({ pageId }: { readonly pageId: string }) =>
-  collectBlocks(pageId).pipe(
-    Effect.map((children) =>
-      children
-        .flatMap((block) => {
-          const database = childDatabaseBlock(block)
-          return database === undefined ? [] : [database]
-        })
-        .filter((database) =>
-          staleDemoDatabaseTitlePrefixes.some((prefix) => database.title.startsWith(prefix)),
-        ),
-    ),
-  )
-
 const existingDemoDatabaseForSpec = ({
   existing,
   spec,
@@ -1057,7 +1067,9 @@ const existingDemoDatabaseForSpec = ({
   readonly existing: ReadonlyArray<DemoDatabaseBlock>
   readonly spec: DemoDataSourceSpec
 }): DemoDatabaseBlock | undefined =>
-  existing.find((database) => database.title === spec.title || database.title.startsWith(spec.title))
+  existing.find(
+    (database) => database.title === spec.title || database.title.startsWith(spec.title),
+  )
 
 const resolvePropertyId = ({
   properties,
@@ -1084,8 +1096,8 @@ const propertyFamilies = (properties: Record<string, unknown>): ReadonlyArray<st
     .sort()
 
 const titlePropertyNameForSpec = (spec: DemoDataSourceSpec): string => {
-  const titleEntry = Object.entries(spec.properties).find(([, definition]) =>
-    isRecord(definition) === true && 'title' in definition,
+  const titleEntry = Object.entries(spec.properties).find(
+    ([, definition]) => isRecord(definition) === true && 'title' in definition,
   )
   if (titleEntry === undefined) {
     throw new Error(`demo data source spec ${spec.key} does not define a title property`)
@@ -1220,9 +1232,7 @@ const createDemoRows = ({
       NotionPages.create({
         parent: { type: 'data_source_id', data_source_id: dataSourceId },
         properties: spec.rowProperties({ runId, index }),
-        ...(index <= spec.bodyRows
-          ? { markdown: spec.rowMarkdown({ runId, index }) }
-          : {}),
+        ...(index <= spec.bodyRows ? { markdown: spec.rowMarkdown({ runId, index }) } : {}),
       }).pipe(Effect.map((page) => page.id)),
     { concurrency: 4 },
   )
@@ -1241,13 +1251,12 @@ const ensureDemoRows = ({
     if (existingRowIds.length >= spec.rowCount) {
       return existingRowIds.slice(0, spec.rowCount)
     }
-    const createdRowIds =
-      yield* createDemoRows({
-        dataSourceId,
-        runId,
-        spec,
-        startIndex: existingRowIds.length + 1,
-      })
+    const createdRowIds = yield* createDemoRows({
+      dataSourceId,
+      runId,
+      spec,
+      startIndex: existingRowIds.length + 1,
+    })
     return [...existingRowIds, ...createdRowIds]
   })
 
@@ -1370,7 +1379,7 @@ export const runLiveNotionDemoShowcase = async ({
   }
   const demoPageId = config.demoPageId
 
-  const layer = makeNotionLiveLayer(env.token, { maxRetries: 8, retryBaseDelay: 1_000 })
+  const layer = makeNotionLiveLayer({ token: env.token, maxRetries: 8, retryBaseDelay: 1_000 })
   const run = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>) =>
     Effect.runPromise(effect.pipe(Effect.provide(layer)))
 
@@ -1505,19 +1514,21 @@ export const runLiveNotionDemoShowcase = async ({
   }
 }
 
-const makeNotionLiveLayer = (
-  token: string,
-  options: {
-    readonly maxRetries?: number
-    readonly retryBaseDelay?: number
-  } = {},
-) =>
+const makeNotionLiveLayer = ({
+  token,
+  maxRetries,
+  retryBaseDelay,
+}: {
+  readonly token: string
+  readonly maxRetries?: number
+  readonly retryBaseDelay?: number
+}) =>
   Layer.mergeAll(
     NotionConfigLive({
       authToken: Redacted.make(token),
       retryEnabled: true,
-      maxRetries: options.maxRetries ?? 2,
-      retryBaseDelay: options.retryBaseDelay ?? 500,
+      maxRetries: maxRetries ?? 2,
+      retryBaseDelay: retryBaseDelay ?? 500,
     }),
     FetchHttpClient.layer,
   )
@@ -1534,7 +1545,7 @@ export const makeLiveNotionFixtureLifecycleClient = ({
     throw new Error('live Notion fixture lifecycle requires a token after configuration validation')
   }
 
-  const layer = makeNotionLiveLayer(env.token)
+  const layer = makeNotionLiveLayer({ token: env.token })
   const run = <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>) =>
     Effect.runPromise(effect.pipe(Effect.provide(layer)))
 
@@ -1670,7 +1681,7 @@ export const provisionLiveNotionDataSourceFixture = async ({
   }
 
   const writeLedger = options.writeLedger ?? makeLiveFixtureLedgerWriter({ env, config })
-  const layer = makeNotionLiveLayer(env.token)
+  const layer = makeNotionLiveLayer({ token: env.token })
   let ledger = options.initialLedger ?? emptyLiveFixtureLedger(config)
 
   const persist = async () => {

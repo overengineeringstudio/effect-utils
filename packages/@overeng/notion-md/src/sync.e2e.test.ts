@@ -384,8 +384,8 @@ const parseFile = async (path: string) => {
  */
 const readSyncStateFile = async (path: string): Promise<NmdSyncStateV1> => {
   const parsed = await parseFile(path)
-  const pageId = parsed.frontmatter.notion_md.page_id
-  const sidecarPath = syncStatePath({ path, pageId })
+  const parsedPageId = parsed.frontmatter.notion_md.page_id
+  const sidecarPath = syncStatePath({ path, pageId: parsedPageId })
   return JSON.parse(await readFile(sidecarPath, 'utf8')) as NmdSyncStateV1
 }
 

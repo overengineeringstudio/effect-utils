@@ -131,10 +131,7 @@ const expectSpan = (
   return span!
 }
 
-const expectSpanAttributes = (
-  span: RecordedSpan,
-  attributes: Record<string, unknown>,
-): void => {
+const expectSpanAttributes = (span: RecordedSpan, attributes: Record<string, unknown>): void => {
   expect(span.attributes).toMatchObject(attributes)
 }
 

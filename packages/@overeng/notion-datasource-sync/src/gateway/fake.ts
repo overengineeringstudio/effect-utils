@@ -294,7 +294,8 @@ export const makeFakeNotionDataSourceGateway = (
         ),
       ),
     retrieveDataSource: (id) =>
-      hasDataSourceId({ dataSourceIds: permissionAmbiguousDataSourceIds, dataSourceId: id }) === true
+      hasDataSourceId({ dataSourceIds: permissionAmbiguousDataSourceIds, dataSourceId: id }) ===
+      true
         ? Effect.fail(
             makeGatewayError({
               operation: 'retrieveDataSource',
@@ -315,7 +316,10 @@ export const makeFakeNotionDataSourceGateway = (
           ),
     queryRows: (input) =>
       Stream.fromEffect(
-        (hasDataSourceId({ dataSourceIds: permissionAmbiguousDataSourceIds, dataSourceId: input.dataSourceId }) === true
+        (hasDataSourceId({
+          dataSourceIds: permissionAmbiguousDataSourceIds,
+          dataSourceId: input.dataSourceId,
+        }) === true
           ? Effect.fail(
               makeGatewayError({
                 operation: 'queryRows',
@@ -324,7 +328,11 @@ export const makeFakeNotionDataSourceGateway = (
                 message: `Data source query is permission ambiguous: ${input.dataSourceId}`,
               }),
             )
-          : findDataSource({ dataSources, dataSourceId: input.dataSourceId, operation: 'queryRows' })
+          : findDataSource({
+              dataSources,
+              dataSourceId: input.dataSourceId,
+              operation: 'queryRows',
+            })
         ).pipe(
           Effect.zipRight(
             validatePageSize({
@@ -333,10 +341,13 @@ export const makeFakeNotionDataSourceGateway = (
               dataSourceId: input.dataSourceId,
             }),
           ),
-          Effect.zipWith(parseCursor({ cursor: input.startCursor, operation: 'queryRows' }), (pageSize, startOffset) => ({
-            pageSize,
-            startOffset,
-          })),
+          Effect.zipWith(
+            parseCursor({ cursor: input.startCursor, operation: 'queryRows' }),
+            (pageSize, startOffset) => ({
+              pageSize,
+              startOffset,
+            }),
+          ),
           Effect.map(({ pageSize, startOffset }): ReadonlyArray<QueryRowsPage> => {
             const highWatermark =
               input.queryContract.highWatermark === null
@@ -519,7 +530,9 @@ export const makeFakeNotionDataSourceGateway = (
 
           const requestId = nextRequestId()
 
-          if (hasPageId({ pageIds: readAfterWriteMismatchPageIds, pageId: command.pageId }) === false) {
+          if (
+            hasPageId({ pageIds: readAfterWriteMismatchPageIds, pageId: command.pageId }) === false
+          ) {
             const propertiesHash = hashStoreBytes(
               `page-properties\t${command.pageId}\t${command.commandId}\t${Object.keys(
                 command.propertyPatch,
@@ -535,7 +548,11 @@ export const makeFakeNotionDataSourceGateway = (
         }),
       ),
     patchDataSourceSchema: (command: PatchDataSourceSchemaCommand) =>
-      findDataSource({ dataSources, dataSourceId: command.dataSourceId, operation: 'patchDataSourceSchema' }).pipe(
+      findDataSource({
+        dataSources,
+        dataSourceId: command.dataSourceId,
+        operation: 'patchDataSourceSchema',
+      }).pipe(
         Effect.flatMap((snapshot) => {
           if (snapshot.schemaHash !== command.baseSchemaHash) {
             return Effect.fail(
@@ -571,9 +588,7 @@ export const makeFakeNotionDataSourceGateway = (
                 case 'AddSelectOptions':
                   return `add-options:${operation.propertyId}:existing=${operation.existingOptions
                     .map((option) => option.name)
-                    .join('|')}:new=${operation.newOptions
-                    .map((option) => option.name)
-                    .join('|')}`
+                    .join('|')}:new=${operation.newOptions.map((option) => option.name).join('|')}`
               }
             })
             .join(';')

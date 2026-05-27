@@ -173,14 +173,17 @@ const applyPlan = ({
   }
 
   for (const command of plan.commands) {
-    const result = store.appendEventWithResult(makeRemoteWritePlannedEvent({ command: command, now: now }))
+    const result = store.appendEventWithResult(
+      makeRemoteWritePlannedEvent({ command: command, now: now }),
+    )
     if (result.inserted === true) {
       appliedCommands.push(command)
     }
   }
 
   for (const guard of plan.guards) {
-    const surface = guard.surface ?? pageSurfaceKey(decode({ schema: PageId, value: 'unknown-page' }))
+    const surface =
+      guard.surface ?? pageSurfaceKey(decode({ schema: PageId, value: 'unknown-page' }))
     const result = store.appendEventWithResult(
       makeGuardBlockedEvent({
         rootId,
@@ -211,28 +214,31 @@ const makeConflictResolvedEvent = ({
   readonly followupCommand?: OutboxCommandEnvelope
   readonly now: () => Date
 }) =>
-  decode({ schema: SyncEvent, value: {
-    _tag: 'ConflictResolved',
-    ...eventBase({
-      rootId,
-      eventId: `conflict-resolved:${eventIdPart(conflict.conflictId)}:${choice._tag}`,
-      family: 'ConflictResolved',
-      eventType: 'ConflictResolved',
-      idempotencyKey: `conflict-resolved:${conflict.conflictId}:${choice._tag}`,
-      ...(conflict.surface === undefined ? {} : { surface: conflict.surface }),
-      causedByEventIds: [conflict.conflictId],
-      payload: {
-        choice: choice._tag,
-        followupCommandId: followupCommand?.commandId,
-      },
-      now,
-    }),
-    conflictId: conflict.conflictId,
-    pageId: conflict.pageId ?? decode({ schema: PageId, value: 'unknown-page' }),
-    propertyId: conflict.propertyId,
-    resolutionChoice: choice._tag,
-    followupCommandId: followupCommand?.commandId,
-  } })
+  decode({
+    schema: SyncEvent,
+    value: {
+      _tag: 'ConflictResolved',
+      ...eventBase({
+        rootId,
+        eventId: `conflict-resolved:${eventIdPart(conflict.conflictId)}:${choice._tag}`,
+        family: 'ConflictResolved',
+        eventType: 'ConflictResolved',
+        idempotencyKey: `conflict-resolved:${conflict.conflictId}:${choice._tag}`,
+        ...(conflict.surface === undefined ? {} : { surface: conflict.surface }),
+        causedByEventIds: [conflict.conflictId],
+        payload: {
+          choice: choice._tag,
+          followupCommandId: followupCommand?.commandId,
+        },
+        now,
+      }),
+      conflictId: conflict.conflictId,
+      pageId: conflict.pageId ?? decode({ schema: PageId, value: 'unknown-page' }),
+      propertyId: conflict.propertyId,
+      resolutionChoice: choice._tag,
+      followupCommandId: followupCommand?.commandId,
+    },
+  })
 
 const conflictById = ({
   store,
@@ -305,15 +311,19 @@ const conflictResolutionPlan = ({
   const conflictRemoteHash = conflict.remoteHash ?? hashStoreBytes('missing-conflict-remote')
   const commandStamp = now().toISOString()
   const commandId = commandIdFor(`resolve:${conflictId}:${choice._tag}:${commandStamp}`)
-  const command = decode({ schema: PatchPagePropertiesCommand, value: {
-    _tag: 'PatchPagePropertiesCommand',
-    commandId,
-    pageId: conflict.pageId,
-    basePropertiesHash: row?.propertiesHash ?? conflict.remoteHash ?? hashStoreBytes('missing-row'),
-    propertyPatch: {
-      [conflict.propertyId]: value,
+  const command = decode({
+    schema: PatchPagePropertiesCommand,
+    value: {
+      _tag: 'PatchPagePropertiesCommand',
+      commandId,
+      pageId: conflict.pageId,
+      basePropertiesHash:
+        row?.propertiesHash ?? conflict.remoteHash ?? hashStoreBytes('missing-row'),
+      propertyPatch: {
+        [conflict.propertyId]: value,
+      },
     },
-  } })
+  })
   const intent: PropertyEditIntent = {
     _tag: 'property-edit',
     intentEventId: intentEventIdFor(`resolve:${conflictId}:${choice._tag}`),
@@ -434,12 +444,15 @@ export const restorePageCommand = (
                   rootId: options.rootId,
                   intentEventId: intentEventIdFor(`restore:${options.pageId}`),
                   surface: pageSurfaceKey(options.pageId),
-                  command: decode({ schema: RestorePageCommand, value: {
-                    _tag: 'RestorePageCommand',
-                    commandId,
-                    pageId: options.pageId,
-                    basePropertiesHash: row.propertiesHash,
-                  } }),
+                  command: decode({
+                    schema: RestorePageCommand,
+                    value: {
+                      _tag: 'RestorePageCommand',
+                      commandId,
+                      pageId: options.pageId,
+                      basePropertiesHash: row.propertiesHash,
+                    },
+                  }),
                   baseHash: row.propertiesHash,
                   desiredHash: pageLifecycleHash({ pageId: options.pageId, inTrash: false }),
                   preflight: [

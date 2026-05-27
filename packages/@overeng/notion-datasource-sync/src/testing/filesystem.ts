@@ -47,7 +47,10 @@ export const testBodyPointer = ({
 
 /** Create a temporary OS directory scoped to a single test run — returns the root path and a `cleanup()` helper that deletes it recursively. */
 export const makeTempWorkspace = async () => {
-  const root = decode({ schema: AbsolutePath, value: await mkdtemp(join(tmpdir(), 'notion-ds-sync-workspace-')) })
+  const root = decode({
+    schema: AbsolutePath,
+    value: await mkdtemp(join(tmpdir(), 'notion-ds-sync-workspace-')),
+  })
 
   return {
     root,

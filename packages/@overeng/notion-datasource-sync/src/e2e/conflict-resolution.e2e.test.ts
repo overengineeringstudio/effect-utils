@@ -40,24 +40,27 @@ const schemaProperties = [
 ]
 
 const propertyPage = (valueHash = hash('property-a-base')) =>
-  decode({ schema: PagePropertyItemPage, value: {
-    _tag: 'PagePropertyItemPage',
-    apiVersion: '2026-03-11',
-    requestId: testIds.requestId,
-    pageId: testIds.pageId,
-    propertyId: testIds.propertyA,
-    items: [
-      {
-        _tag: 'PagePropertyItem',
-        pageId: testIds.pageId,
-        propertyId: testIds.propertyA,
-        itemHash: valueHash,
-        valueHash,
-      },
-    ],
-    nextCursor: null,
-    hasMore: false,
-  } })
+  decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId: testIds.pageId,
+      propertyId: testIds.propertyA,
+      items: [
+        {
+          _tag: 'PagePropertyItem',
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyA,
+          itemHash: valueHash,
+          valueHash,
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
 
 const runWithPorts = <TValue, TError>(
   effect: Effect.Effect<
@@ -395,27 +398,30 @@ describe('conflict resolution user command E2E', () => {
         { gateway: gatewayHarness.gateway },
       )
       storeFixture.store.appendEvent(
-        decode({ schema: SyncEvent, value: {
-          _tag: 'TombstoneRecorded',
-          eventId: 'tombstone-remote-trash',
-          rootId: testIds.rootId,
-          sequence: '0',
-          codecVersion: 'v1',
-          family: 'TombstoneClassified',
-          eventType: 'TombstoneRecorded',
-          idempotencyKey: 'tombstone-remote-trash',
-          surface: `page:${testIds.pageId}`,
-          causedByEventIds: [],
-          payloadHash: hash('tombstone'),
-          payload: {
-            _tag: 'VersionedJson',
+        decode({
+          schema: SyncEvent,
+          value: {
+            _tag: 'TombstoneRecorded',
+            eventId: 'tombstone-remote-trash',
+            rootId: testIds.rootId,
+            sequence: '0',
             codecVersion: 'v1',
-            canonicalJson: '{}',
+            family: 'TombstoneClassified',
+            eventType: 'TombstoneRecorded',
+            idempotencyKey: 'tombstone-remote-trash',
+            surface: `page:${testIds.pageId}`,
+            causedByEventIds: [],
+            payloadHash: hash('tombstone'),
+            payload: {
+              _tag: 'VersionedJson',
+              codecVersion: 'v1',
+              canonicalJson: '{}',
+            },
+            observedAt: clock.now().toISOString(),
+            pageId: testIds.pageId,
+            reason: 'remote_trash',
           },
-          observedAt: clock.now().toISOString(),
-          pageId: testIds.pageId,
-          reason: 'remote_trash',
-        } }),
+        }),
       )
 
       const result = restorePageCommand({
