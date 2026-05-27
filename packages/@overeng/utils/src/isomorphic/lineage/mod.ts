@@ -105,9 +105,13 @@ export type Reference = typeof Reference.Type
  * Annotation symbols
  * -------------------------------------------------------------------------- */
 
+/** Annotation symbol for the `Lineage` annotation. */
 export const LineageAnnotationId = Symbol.for('effect/annotation/Lineage')
+/** Annotation symbol for the `Authority` annotation. */
 export const AuthorityAnnotationId = Symbol.for('effect/annotation/Authority')
+/** Annotation symbol for the `Freshness` annotation. */
 export const FreshnessAnnotationId = Symbol.for('effect/annotation/Freshness')
+/** Annotation symbol for the `Reference` annotation. */
 export const ReferenceAnnotationId = Symbol.for('effect/annotation/Reference')
 
 /* --------------------------------------------------------------------------
@@ -156,11 +160,12 @@ const unwrapAst = (ast: SchemaAST.AST): SchemaAST.AST => {
  * schema decoder; a corrupt or unrecognized value yields `undefined` rather
  * than throwing — the inspector must never crash on bad annotations.
  */
-const readAnnotation = <A>(
-  schema: Schema.Schema.AnyNoContext,
-  id: symbol,
-  decoder: Schema.Schema<A>,
-): A | undefined => {
+const readAnnotation = <A>(args: {
+  schema: Schema.Schema.AnyNoContext
+  id: symbol
+  decoder: Schema.Schema<A>
+}): A | undefined => {
+  const { schema, id, decoder } = args
   const decode = Schema.decodeUnknownOption(decoder)
   const raw = schema.ast.annotations[id]
   if (raw !== undefined) {
@@ -178,23 +183,27 @@ const readAnnotation = <A>(
   return undefined
 }
 
+/** Read the `Lineage` annotation from a schema, if present. */
 export const getLineage = (schema: Schema.Schema.AnyNoContext): Lineage | undefined =>
-  readAnnotation(schema, LineageAnnotationId, Lineage)
+  readAnnotation({ schema, id: LineageAnnotationId, decoder: Lineage })
 
+/** Read the `Authority` annotation from a schema, if present. */
 export const getAuthority = (schema: Schema.Schema.AnyNoContext): Authority | undefined =>
-  readAnnotation(schema, AuthorityAnnotationId, Authority)
+  readAnnotation({ schema, id: AuthorityAnnotationId, decoder: Authority })
 
+/** Read the `Freshness` annotation from a schema, if present. */
 export const getFreshness = (schema: Schema.Schema.AnyNoContext): Freshness | undefined =>
-  readAnnotation(schema, FreshnessAnnotationId, Freshness)
+  readAnnotation({ schema, id: FreshnessAnnotationId, decoder: Freshness })
 
+/** Read the `Reference` annotation from a schema, if present. */
 export const getReference = (schema: Schema.Schema.AnyNoContext): Reference | undefined =>
-  readAnnotation(schema, ReferenceAnnotationId, Reference)
+  readAnnotation({ schema, id: ReferenceAnnotationId, decoder: Reference })
 
 /* --------------------------------------------------------------------------
  * Ergonomic constructors
  *
  * Each returns a `Schema -> Schema` function suitable for `.pipe(...)`, e.g.
- *   Schema.Number.pipe(derivedFrom(['subtotal', 'tax']))
+ *   Schema.Number.pipe(derivedFrom({ from: ['subtotal', 'tax'] }))
  * -------------------------------------------------------------------------- */
 
 const fieldRef = (path: string): LineageRef => ({
@@ -224,56 +233,81 @@ const coerceDerivationKind = (
 }
 
 const annotate =
-  <V>(id: symbol, value: V) =>
+  <V>(args: { id: symbol; value: V }) =>
   <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
-    schema.annotations({ [id]: value }) as S
+    schema.annotations({ [args.id]: args.value }) as S
 
 const lineageAnnotation =
   (value: Lineage) =>
   <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
-    annotate(LineageAnnotationId, value)(schema)
+    annotate({ id: LineageAnnotationId, value })(schema)
 
+/** Mark a field as the authoritative source of truth. */
 export const sourceOfTruth = (opts?: { owner?: string; system?: string }) =>
   lineageAnnotation({ _tag: 'SourceOfTruth', ...opts })
 
-export const derivedFrom = (
-  from: ReadonlyArray<string | LineageRef>,
-  how?: DerivationKind | DerivationKind['_tag'],
-  opts?: { pure?: boolean },
-) =>
+/** Mark a field as derived from one or more upstream fields. */
+export const derivedFrom = (args: {
+  from: ReadonlyArray<string | LineageRef>
+  how?: DerivationKind | DerivationKind['_tag']
+  pure?: boolean
+}) =>
   lineageAnnotation({
     _tag: 'Derived',
-    from: from.map(coerceRef),
-    how: coerceDerivationKind(how),
-    ...opts,
+    from: args.from.map(coerceRef),
+    how: coerceDerivationKind(args.how),
+    ...(args.pure !== undefined ? { pure: args.pure } : {}),
   })
 
-export const projection = (of: string | LineageRef, opts?: { stalenessMs?: number }) =>
-  lineageAnnotation({ _tag: 'Projection', of: coerceRef(of), ...opts })
+/** Mark a field as a (possibly stale) projection of another field. */
+export const projection = (args: { of: string | LineageRef; stalenessMs?: number }) =>
+  lineageAnnotation({
+    _tag: 'Projection',
+    of: coerceRef(args.of),
+    ...(args.stalenessMs !== undefined ? { stalenessMs: args.stalenessMs } : {}),
+  })
 
-export const cache = (of: string | LineageRef, opts?: { ttlMs?: number }) =>
-  lineageAnnotation({ _tag: 'Cache', of: coerceRef(of), ...opts })
+/** Mark a field as a cached copy of another field, with optional TTL. */
+export const cache = (args: { of: string | LineageRef; ttlMs?: number }) =>
+  lineageAnnotation({
+    _tag: 'Cache',
+    of: coerceRef(args.of),
+    ...(args.ttlMs !== undefined ? { ttlMs: args.ttlMs } : {}),
+  })
 
-export const mirror = (of: string | LineageRef, opts?: { system?: string }) =>
-  lineageAnnotation({ _tag: 'Mirror', of: coerceRef(of), ...opts })
+/** Mark a field as a mirror of another field, optionally from a foreign system. */
+export const mirror = (args: { of: string | LineageRef; system?: string }) =>
+  lineageAnnotation({
+    _tag: 'Mirror',
+    of: coerceRef(args.of),
+    ...(args.system !== undefined ? { system: args.system } : {}),
+  })
 
-export const external = (system: string, ref?: string) =>
+/** Mark a field as an external reference (e.g. an opaque foreign-system id). */
+export const external = (args: { system: string; ref?: string }) =>
   lineageAnnotation(
-    ref !== undefined ? { _tag: 'External', system, ref } : { _tag: 'External', system },
+    args.ref !== undefined
+      ? { _tag: 'External', system: args.system, ref: args.ref }
+      : { _tag: 'External', system: args.system },
   )
 
+/** Mark a field as computed at read time (not persisted). */
 export const computed = (opts?: { fn?: string; description?: string }) =>
   lineageAnnotation({ _tag: 'Computed', ...opts })
 
-export const authority = (a: Authority) => annotate(AuthorityAnnotationId, a)
-export const freshness = (f: Freshness) => annotate(FreshnessAnnotationId, f)
-export const foreignKey = (targetSchema: string, targetField?: string) =>
-  annotate(
-    ReferenceAnnotationId,
-    targetField !== undefined
-      ? { _tag: 'ForeignKey', targetSchema, targetField }
-      : { _tag: 'ForeignKey', targetSchema },
-  )
+/** Attach an `Authority` annotation describing readers/writers. */
+export const authority = (a: Authority) => annotate({ id: AuthorityAnnotationId, value: a })
+/** Attach a `Freshness` annotation describing temporal capture semantics. */
+export const freshness = (f: Freshness) => annotate({ id: FreshnessAnnotationId, value: f })
+/** Attach a `ForeignKey` reference annotation pointing at another schema. */
+export const foreignKey = (args: { targetSchema: string; targetField?: string }) =>
+  annotate({
+    id: ReferenceAnnotationId,
+    value:
+      args.targetField !== undefined
+        ? { _tag: 'ForeignKey', targetSchema: args.targetSchema, targetField: args.targetField }
+        : { _tag: 'ForeignKey', targetSchema: args.targetSchema },
+  })
 
 /* --------------------------------------------------------------------------
  * Display-ready bundle
@@ -317,69 +351,86 @@ const derivationToString = (how: DerivationKind): string => {
   }
 }
 
+type Detail = { label: string; value: string }
+
+const withDetails = (args: {
+  base: Omit<LineageDisplay, 'details'>
+  details: ReadonlyArray<Detail>
+}): LineageDisplay =>
+  args.details.length > 0 ? { ...args.base, details: args.details } : args.base
+
+/** Build a pre-rendered display bundle for a `Lineage` value. */
 export const getLineageDisplay = (lineage: Lineage): LineageDisplay => {
   switch (lineage._tag) {
     case 'SourceOfTruth': {
-      const parts: { label: string; value: string }[] = []
+      const parts: Detail[] = []
       if (lineage.owner !== undefined) parts.push({ label: 'owner', value: lineage.owner })
       if (lineage.system !== undefined) parts.push({ label: 'system', value: lineage.system })
-      return {
-        badge: '⇆',
-        badgeTitle: 'Source of truth',
-        kindLabel: 'Source of truth',
-        summary:
-          lineage.system !== undefined ? `Owned by ${lineage.system}` : 'Authoritative value',
-        details: parts.length > 0 ? parts : undefined,
-      }
+      return withDetails({
+        base: {
+          badge: '⇆',
+          badgeTitle: 'Source of truth',
+          kindLabel: 'Source of truth',
+          summary:
+            lineage.system !== undefined ? `Owned by ${lineage.system}` : 'Authoritative value',
+        },
+        details: parts,
+      })
     }
     case 'Derived': {
       const fromList = lineage.from.map(refToString).join(', ')
       const how = derivationToString(lineage.how)
-      return {
-        badge: 'ƒ',
-        badgeTitle: `Derived from ${fromList}`,
-        kindLabel: 'Derived',
-        summary: `${how} of ${fromList}`,
-        details: lineage.pure === true ? [{ label: 'pure', value: 'true' }] : undefined,
-      }
+      return withDetails({
+        base: {
+          badge: 'ƒ',
+          badgeTitle: `Derived from ${fromList}`,
+          kindLabel: 'Derived',
+          summary: `${how} of ${fromList}`,
+        },
+        details: lineage.pure === true ? [{ label: 'pure', value: 'true' }] : [],
+      })
     }
     case 'Projection': {
       const of = refToString(lineage.of)
-      return {
-        badge: '≈',
-        badgeTitle: `Projection of ${of}`,
-        kindLabel: 'Projection',
-        summary: `Projection of ${of}`,
+      return withDetails({
+        base: {
+          badge: '≈',
+          badgeTitle: `Projection of ${of}`,
+          kindLabel: 'Projection',
+          summary: `Projection of ${of}`,
+        },
         details:
           lineage.stalenessMs !== undefined
             ? [{ label: 'staleness', value: `${lineage.stalenessMs}ms` }]
-            : undefined,
-      }
+            : [],
+      })
     }
     case 'Cache': {
       const of = refToString(lineage.of)
-      return {
-        badge: '☷',
-        badgeTitle: `Cache of ${of}`,
-        kindLabel: 'Cache',
-        summary: `Cached value of ${of}`,
-        details:
-          lineage.ttlMs !== undefined ? [{ label: 'ttl', value: `${lineage.ttlMs}ms` }] : undefined,
-      }
+      return withDetails({
+        base: {
+          badge: '☷',
+          badgeTitle: `Cache of ${of}`,
+          kindLabel: 'Cache',
+          summary: `Cached value of ${of}`,
+        },
+        details: lineage.ttlMs !== undefined ? [{ label: 'ttl', value: `${lineage.ttlMs}ms` }] : [],
+      })
     }
     case 'Mirror': {
       const of = refToString(lineage.of)
-      return {
-        badge: '↻',
-        badgeTitle: `Mirror of ${of}`,
-        kindLabel: 'Mirror',
-        summary:
-          lineage.system !== undefined
-            ? `Mirror of ${of} from ${lineage.system}`
-            : `Mirror of ${of}`,
-        details:
-          lineage.system !== undefined ? [{ label: 'system', value: lineage.system }] : undefined,
-      }
+      return withDetails({
+        base: {
+          badge: '↻',
+          badgeTitle: `Mirror of ${of}`,
+          kindLabel: 'Mirror',
+          summary:
+            lineage.system !== undefined
+              ? `Mirror of ${of} from ${lineage.system}`
+              : `Mirror of ${of}`,
+        },
+        details: lineage.system !== undefined ? [{ label: 'system', value: lineage.system }] : [],
+      })
     }
     case 'External': {
       return {
@@ -394,13 +445,15 @@ export const getLineageDisplay = (lineage: Lineage): LineageDisplay => {
       }
     }
     case 'Computed': {
-      return {
-        badge: '⊙',
-        badgeTitle: 'Computed (not persisted)',
-        kindLabel: 'Computed',
-        summary: lineage.description ?? lineage.fn ?? 'Computed at read time',
-        details: lineage.fn !== undefined ? [{ label: 'fn', value: lineage.fn }] : undefined,
-      }
+      return withDetails({
+        base: {
+          badge: '⊙',
+          badgeTitle: 'Computed (not persisted)',
+          kindLabel: 'Computed',
+          summary: lineage.description ?? lineage.fn ?? 'Computed at read time',
+        },
+        details: lineage.fn !== undefined ? [{ label: 'fn', value: lineage.fn }] : [],
+      })
     }
   }
 }

@@ -10,6 +10,9 @@ export {
 /** In-memory backing for distributed semaphore (useful for tests) */
 export * as InMemoryBacking from './in-memory-backing.ts'
 
+/** Schema annotations for tracking data lineage (authority, freshness, references) */
+export * as Lineage from './lineage/mod.ts'
+
 /** Debug utilities for tracing scope and finalizer lifecycle */
 export * from './ScopeDebugger.ts'
 

@@ -1,16 +1,6 @@
 import type { Schema as S, SchemaAST } from 'effect'
 
-import {
-  type Authority,
-  type Freshness,
-  type LineageDisplay,
-  type Reference,
-  getAuthority,
-  getFreshness,
-  getLineage,
-  getLineageDisplay,
-  getReference,
-} from './lineage.ts'
+import { Lineage } from '@overeng/utils'
 
 /** Symbols used by Effect Schema for annotations */
 const IdentifierAnnotationId = Symbol.for('effect/annotation/Identifier')
@@ -87,10 +77,10 @@ export interface SchemaInfo {
  * @see https://github.com/overengineeringstudio/effect-utils/issues/687
  */
 export interface LineageBundle {
-  display: LineageDisplay
-  authority?: Authority
-  freshness?: Freshness
-  reference?: Reference
+  display: Lineage.LineageDisplay
+  authority?: Lineage.Authority
+  freshness?: Lineage.Freshness
+  reference?: Lineage.Reference
 }
 
 const isNullishAst = (ast: SchemaAST.AST): boolean => {
@@ -759,20 +749,20 @@ export const getSchemaInfo = (schema: S.Schema.AnyNoContext): SchemaInfo => {
    * lineage to the refinement wrapper, and unwrapping would lose it. The
    * helpers themselves try raw-then-unwrapped so either layer wins.
    */
-  const lineageValue = getLineage(schema)
+  const lineageValue = Lineage.getLineage(schema)
   const lineage: LineageBundle | undefined =
     lineageValue !== undefined
       ? {
-          display: getLineageDisplay(lineageValue),
-          authority: getAuthority(schema),
-          freshness: getFreshness(schema),
-          reference: getReference(schema),
+          display: Lineage.getLineageDisplay(lineageValue),
+          authority: Lineage.getAuthority(schema),
+          freshness: Lineage.getFreshness(schema),
+          reference: Lineage.getReference(schema),
         }
       : (() => {
           /* No primary Lineage but companion annotations may still exist. */
-          const authority = getAuthority(schema)
-          const freshness = getFreshness(schema)
-          const reference = getReference(schema)
+          const authority = Lineage.getAuthority(schema)
+          const freshness = Lineage.getFreshness(schema)
+          const reference = Lineage.getReference(schema)
           if (authority === undefined && freshness === undefined && reference === undefined) {
             return undefined
           }

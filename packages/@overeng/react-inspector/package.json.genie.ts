@@ -36,6 +36,7 @@ const workspaceDeps = catalog.compose({
     },
   },
   peerDependencies: {
+    workspace: [utilsPkg],
     external: catalog.pick(...peerDepNames),
   },
 })

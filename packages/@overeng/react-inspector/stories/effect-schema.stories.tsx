@@ -964,16 +964,18 @@ export const RuntimeTaggedUnionNarrowing = {
 const OrderTotalsSchema = Schema.Struct({
   subtotal: Schema.Number.pipe(Lineage.sourceOfTruth({ owner: 'orders' })),
   tax: Schema.Number.pipe(Lineage.sourceOfTruth()),
-  total: Schema.Number.pipe(Lineage.derivedFrom(['subtotal', 'tax'], 'Pure', { pure: true })),
+  total: Schema.Number.pipe(
+    Lineage.derivedFrom({ from: ['subtotal', 'tax'], how: 'Pure', pure: true }),
+  ),
   displayTotal: Schema.String.pipe(Lineage.computed({ fn: 'formatMoney(total)' })),
-  cachedFxRate: Schema.Number.pipe(Lineage.cache('fxRate', { ttlMs: 60_000 })),
-  mirroredStripeId: Schema.String.pipe(Lineage.mirror('id', { system: 'stripe' })),
-  legacyOrderRef: Schema.String.pipe(Lineage.external('legacy-erp', 'order-id')),
-  lastSyncedSnapshot: Schema.Number.pipe(Lineage.projection('total', { stalenessMs: 30_000 })),
+  cachedFxRate: Schema.Number.pipe(Lineage.cache({ of: 'fxRate', ttlMs: 60_000 })),
+  mirroredStripeId: Schema.String.pipe(Lineage.mirror({ of: 'id', system: 'stripe' })),
+  legacyOrderRef: Schema.String.pipe(Lineage.external({ system: 'legacy-erp', ref: 'order-id' })),
+  lastSyncedSnapshot: Schema.Number.pipe(Lineage.projection({ of: 'total', stalenessMs: 30_000 })),
   customerId: Schema.String.pipe(
     Lineage.authority({ writers: ['orders-svc'], readers: ['*'] }),
     Lineage.freshness({ capturedAt: 'event-time', maxAgeMs: 5_000 }),
-    Lineage.foreignKey('Customer', 'id'),
+    Lineage.foreignKey({ targetSchema: 'Customer', targetField: 'id' }),
   ),
 }).annotations({
   identifier: 'OrderTotals',

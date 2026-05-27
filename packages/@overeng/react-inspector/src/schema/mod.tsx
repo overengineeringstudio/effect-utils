@@ -37,6 +37,4 @@ export { SchemaAwareObjectValue } from './SchemaAwareObjectValue.tsx'
 export { SchemaAwareObjectPreview } from './SchemaAwareObjectPreview.tsx'
 export { SchemaTooltip, type SchemaTooltipProps } from './SchemaTooltip.tsx'
 
-import * as Lineage from './lineage.ts'
-
-export { Lineage }
+export { Lineage } from '@overeng/utils'
