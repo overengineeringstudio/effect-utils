@@ -34,9 +34,9 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | -------------------------------- | -------------------------------------------------------------------------------------------- |
 | Formula, rollup, created/edited  | Observed as computed; writes are rejected                                                    |
 | Relation and rollup dependencies | Require shared related data sources/pages; otherwise incomplete/ambiguous                    |
-| Files property                   | Metadata can be represented; upload/download byte lifecycle is unsupported                   |
+| Files property                   | External URL attach uses explicit staging; direct cell edits and upload/download bytes are fail-closed |
 | Relation writes                  | Supported for removal/reorder of fully paginated existing targets; adding new targets remains guarded until target accessibility is modeled |
-| People writes                    | Blocked until deterministic accessible user identities and full paginated base values are proven |
+| People writes                    | Direct cell edits fail closed before visible mutation until deterministic accessible user identities and full paginated base values are proven |
 | Notion-hosted signed URLs        | Excluded from stable hashes and diagnostics                                                  |
 | Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts                       |
 | Data-source icon metadata        | Observed as stable identity when possible; writable icon sync is deferred                    |
@@ -77,6 +77,7 @@ class must have a typed intent and guard model before it mutates Notion.
 | Database metadata edits         | Supported for title/description through `notion_databases` plus `notion_metadata_changes(resource_type='database')`                             |
 | External URL file attachments   | Supported through `notion_file_assets` plus `notion_file_changes` for empty writable `files` properties                                           |
 | Notion UI view inventory        | Supported as read-only `notion_views`; view query results are not row-membership authority and local generated SQL views are separate             |
+| People/file direct cell edits   | Fail closed before visible replica mutation; people requires deterministic user identity proof, files require explicit staging/upload lifecycle   |
 | Safe schema changes             | Dedicated schema command path exists; public SQLite CDC remains blocked until post-write hash proof                                               |
 | Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                                                           |
 | File bytes/local uploads        | Follow-up until File Upload identity, retry, read-after-write, and cleanup are modeled                                                            |

@@ -208,6 +208,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_cells_direct_value_update_intent;
     DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_update;
     DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_shape;
+    DROP TRIGGER IF EXISTS notion_cells_guard_direct_complex_update;
     DROP TRIGGER IF EXISTS notion_cells_guard_direct_relation_update;
     DROP TRIGGER IF EXISTS notion_cells_block_identity_update;
     DROP TRIGGER IF EXISTS notion_cells_block_delete;
@@ -753,6 +754,19 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       END = 1
     BEGIN
       SELECT RAISE(ABORT, 'notion_cells.value_json must be canonical Notion property value JSON');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_cells_guard_direct_complex_update
+    BEFORE UPDATE OF value_json ON notion_cells
+    FOR EACH ROW
+    WHEN NEW.value_json IS NOT OLD.value_json
+      AND json_valid(NEW.value_json)
+      AND (
+        OLD.property_type IN ('people', 'files')
+        OR json_extract(NEW.value_json, '$._tag') IN ('people', 'files')
+      )
+    BEGIN
+      SELECT RAISE(ABORT, 'people and files current-state edits require typed CDC staging; direct notion_cells.value_json updates are fail-closed');
     END;
 
     CREATE TRIGGER IF NOT EXISTS notion_cells_guard_direct_relation_update
@@ -1470,6 +1484,7 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
   db.exec(`
     DROP TRIGGER IF EXISTS notion_cells_direct_value_update_intent;
     DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_update;
+    DROP TRIGGER IF EXISTS notion_cells_guard_direct_complex_update;
     DROP TRIGGER IF EXISTS notion_cells_block_identity_update;
     DROP TRIGGER IF EXISTS notion_cells_block_delete;
     DROP TRIGGER IF EXISTS notion_rows_archive_restore_intent;

@@ -457,9 +457,12 @@ part of the public API shape but fail closed until expected post-schema hashes
 are modeled. External URL file attachments are supported through explicit
 `notion_file_assets` staging and `notion_file_changes` for empty writable
 `files` properties; local uploads, signed Notion URLs, replacement, deletion,
-and preserving existing file arrays require file-upload lifecycle proof before
-promotion. Notion views, destructive schema changes, and unsupported
-conflict-resolution actions require their own surface proof before promotion.
+preserving existing file arrays, and direct current-state `files` cell edits
+require file-upload lifecycle proof before promotion. Direct `people` cell edits
+also fail closed before visible mutation until deterministic user identity
+projection and full page-property pagination are modeled. Notion views,
+destructive schema changes, and unsupported conflict-resolution actions require
+their own surface proof before promotion.
 
 Intent lifecycle:
 
@@ -822,7 +825,8 @@ This section names the intentional unsupported surfaces for the current implemen
 | Computed/generated properties | Observation and canonical hashing when complete                                                           | writes to formula, rollup, created/last edited metadata, created by, last edited by, unique ID, verification, and other generated values                |
 | Page-property pagination      | Cursor-backed property item retrieval for completing supported value hashes                               | incomplete streams, unshared relation targets, unsupported rollup semantics, or capability-missing page-property reads                                  |
 | Relation writes               | Removal/reorder of targets already present in a complete paginated relation base                          | adding new relation targets, incomplete bases, inaccessible targets, and relation arrays over Notion's 100-item write cap                               |
-| Files                         | External URL attach through explicit staging for empty writable `files` properties; canonical references exclude expiring signed URLs from durable identity | file byte upload, replacement, deletion, preserving existing file arrays, and signed URL identity                                                       |
+| Files                         | External URL attach through explicit staging for empty writable `files` properties; canonical references exclude expiring signed URLs from durable identity | direct cell edits, file byte upload, replacement, deletion, preserving existing file arrays, and signed URL identity                                    |
+| People                        | Observation and canonical hashes when complete                                                           | direct cell edits until deterministic accessible user identities and full paginated bases are modeled                                                   |
 | Body sync                     | NotionMD observation, materialization, repair, local body-content planning, and guarded body push         | truncated markdown, unknown block ambiguity, synced-page unsupported writes, child-page/database deletion without explicit approval, hash-only commands |
 | Page metadata and lifecycle   | Explicit row property, trash, restore, and body surfaces only                                             | title/icon/cover/lock/parent/status mutation through the body adapter or any implicit metadata mutation inferred from body sync                         |
 | Query membership              | Complete query checkpoints scoped by filter, sort, page size, API version, high-watermark, and membership | 10k cap exhaustion, changed query contracts, partial scans, filtered absence reused as delete proof                                                     |
