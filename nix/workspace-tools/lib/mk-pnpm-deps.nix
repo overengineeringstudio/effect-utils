@@ -263,7 +263,18 @@ let
     relinkLocalVirtualPackages(workspaceRoot);
 
     const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-      const realDirPath = fs.realpathSync(dirPath);
+      let realDirPath;
+      try {
+        realDirPath = fs.realpathSync(dirPath);
+      } catch (error) {
+        // pnpm's virtual store may contain package-edge symlinks that are not
+        // materialized in a narrowed FOD projection. Those are dependency
+        // edges, not directories that can contain .bin scripts.
+        if (error && error.code === "ENOENT") {
+          return;
+        }
+        throw error;
+      }
       if (visitedRealPaths.has(realDirPath)) {
         return;
       }
@@ -330,7 +341,17 @@ let
     };
 
     const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-      const realDirPath = fs.realpathSync(dirPath);
+      let realDirPath;
+      try {
+        realDirPath = fs.realpathSync(dirPath);
+      } catch (error) {
+        // Prepared workspace restores can see the same narrowed pnpm graph as
+        // the FOD builder. Dangling package-edge symlinks are not script dirs.
+        if (error && error.code === "ENOENT") {
+          return;
+        }
+        throw error;
+      }
       if (visitedRealPaths.has(realDirPath)) {
         return;
       }
