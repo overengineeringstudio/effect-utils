@@ -318,6 +318,8 @@ The public replica has a stable generic schema and rebuildable generated views:
 | `notion_body_changes`         | `(change_id)`                         | Typed local CDC rows for body pushes                          |
 | `notion_metadata_changes`     | `(change_id)`                         | Typed local CDC rows for metadata patches                     |
 | `notion_schema_changes`       | `(change_id)`                         | Typed local CDC rows for conservative schema operations       |
+| `notion_file_assets`          | `(asset_id)`                          | Explicit file staging records                                 |
+| `notion_file_changes`         | `(change_id)`                         | Typed local CDC rows for file attachment requests             |
 | `notion_conflict_resolutions` | `(resolution_id)`                     | Typed local CDC rows for conflict-resolution requests         |
 | `notion_local_changes`        | `(change_id)`                         | Unified compatibility projection over local change rows       |
 | `notion_conflicts`            | `(conflict_id)`                       | Open/resolved conflicts projected for user inspection         |
@@ -451,8 +453,12 @@ the database/container authority separately through `notion_databases` and
 requires `database_id` plus the owning data source metadata hash for
 read-after-write settlement. Public schema CDC rows are
 part of the public API shape but fail closed until expected post-schema hashes
-are modeled. Files, Notion views, destructive schema changes, and unsupported conflict-resolution actions require
-their own surface proof before promotion.
+are modeled. External URL file attachments are supported through explicit
+`notion_file_assets` staging and `notion_file_changes` for empty writable
+`files` properties; local uploads, signed Notion URLs, replacement, deletion,
+and preserving existing file arrays require file-upload lifecycle proof before
+promotion. Notion views, destructive schema changes, and unsupported
+conflict-resolution actions require their own surface proof before promotion.
 
 Intent lifecycle:
 
@@ -814,7 +820,7 @@ This section names the intentional unsupported surfaces for the current implemen
 | Schema updates                | Add property, rename property, and additive select/multi-select options with matching base schema hash    | property deletion, type conversion, status updates, status option changes, option removal/rename/replacement, property order changes                    |
 | Computed/generated properties | Observation and canonical hashing when complete                                                           | writes to formula, rollup, created/last edited metadata, created by, last edited by, unique ID, verification, and other generated values                |
 | Page-property pagination      | Cursor-backed property item retrieval for completing supported value hashes                               | incomplete streams, unshared relation targets, unsupported rollup semantics, or capability-missing page-property reads                                  |
-| Files                         | Read-only canonical references that exclude expiring signed URLs from durable identity                    | file byte upload, replacement, deletion, and signed URL identity                                                                                        |
+| Files                         | External URL attach through explicit staging for empty writable `files` properties; canonical references exclude expiring signed URLs from durable identity | file byte upload, replacement, deletion, preserving existing file arrays, and signed URL identity                                                       |
 | Body sync                     | NotionMD observation, materialization, repair, local body-content planning, and guarded body push         | truncated markdown, unknown block ambiguity, synced-page unsupported writes, child-page/database deletion without explicit approval, hash-only commands |
 | Page metadata and lifecycle   | Explicit row property, trash, restore, and body surfaces only                                             | title/icon/cover/lock/parent/status mutation through the body adapter or any implicit metadata mutation inferred from body sync                         |
 | Query membership              | Complete query checkpoints scoped by filter, sort, page size, API version, high-watermark, and membership | 10k cap exhaustion, changed query contracts, partial scans, filtered absence reused as delete proof                                                     |

@@ -92,12 +92,47 @@ const propertyPage = (plainText: string, propertyId = testIds.propertyA) =>
     },
   })
 
+const filesPropertyPage = () =>
+  decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId: testIds.pageId,
+      propertyId: testIds.propertyB,
+      items: [
+        {
+          _tag: 'PagePropertyItem',
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyB,
+          itemHash: hash('item-empty-files'),
+          valueHash: hash('property-b-base'),
+          valueJson: JSON.stringify({ _tag: 'files', files: [] }),
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
+
 const schemaProperties = [
   {
     propertyId: testIds.propertyA,
     name: 'Task name',
     type: 'title',
     configHash: hash('config-a'),
+    writeClass: 'writable' as const,
+  },
+]
+
+const schemaPropertiesWithFiles = [
+  ...schemaProperties,
+  {
+    propertyId: testIds.propertyB,
+    name: 'Attachments',
+    type: 'files',
+    configHash: hash('config-b'),
     writeClass: 'writable' as const,
   },
 ]
@@ -1383,6 +1418,234 @@ describe('user-facing SQLite replica', () => {
     }
   })
 
+  it('promotes external URL file attachment CDC through typed staging tables', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [propertyPage('File row'), filesPropertyPage()],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithFiles,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const externalUrl = 'https://example.com/datasource-sync-fixture.txt'
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const cell = db
+          .prepare(`SELECT base_hash FROM notion_cells WHERE page_id = ? AND property_id = ?`)
+          .get(testIds.pageId, testIds.propertyB) as { readonly base_hash: string }
+        db.prepare(
+          `INSERT INTO notion_file_assets (
+             asset_id, source_type, name, external_url
+           ) VALUES (?, 'external_url', ?, ?)`,
+        ).run('asset-external-1', 'fixture.txt', externalUrl)
+        db.prepare(
+          `INSERT INTO notion_file_changes (
+             change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
+           ) VALUES (?, ?, 'attach_external_url', ?, ?, ?, ?)`,
+        ).run(
+          'file-attach-1',
+          'asset-external-1',
+          testIds.dataSourceId,
+          testIds.pageId,
+          testIds.propertyB,
+          cell.base_hash,
+        )
+      } finally {
+        db.close()
+      }
+
+      const changes = readPendingReplicaChanges(replicaPath)
+      const intents = replicaChangesToPlannerIntents({ changes, replicaPath })
+      expect(intents.map((intent) => intent._tag)).toEqual(['property-edit'])
+      expect(intents[0]).toMatchObject({
+        _tag: 'property-edit',
+        propertyId: testIds.propertyB,
+        command: {
+          propertyPatch: {
+            [testIds.propertyB]: {
+              _tag: 'files',
+              files: [
+                expect.objectContaining({
+                  name: 'fixture.txt',
+                  externalUrl,
+                }),
+              ],
+            },
+          },
+        },
+      })
+
+      const dryRun = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithFiles,
+          localIntents: intents,
+          dryRun: true,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      expect(dryRun.push.plan.enqueuedCommands).toBe(0)
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(0)
+      expect(statusFor(replicaPath, 'file-attach-1')).toMatchObject({ status: 'pending' })
+
+      const applied = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithFiles,
+          localIntents: intents,
+          maxExecutorSteps: 4,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      expect(applied.push.plan.enqueuedCommands).toBe(1)
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
+      settleReplicaChangesAfterSync({
+        changes: readPendingReplicaChanges(replicaPath),
+        replicaPath,
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        decisions: applied.push.plan.decisions,
+      })
+      expect(statusFor(replicaPath, 'file-attach-1')).toMatchObject({
+        status: 'applied',
+        unsupported_reason: null,
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('fails closed for external URL file attachments against non-empty file cells', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [propertyPage('File row'), filesPropertyPage()],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: schemaPropertiesWithFiles,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const cell = db
+          .prepare(`SELECT base_hash FROM notion_cells WHERE page_id = ? AND property_id = ?`)
+          .get(testIds.pageId, testIds.propertyB) as { readonly base_hash: string }
+        db.prepare(
+          `UPDATE notion_cells
+           SET value_json = ?
+           WHERE page_id = ? AND property_id = ?`,
+        ).run(
+          JSON.stringify({
+            _tag: 'files',
+            files: [
+              {
+                _tag: 'CanonicalFileValue',
+                name: 'existing.txt',
+                identityHash: hash('existing-file'),
+              },
+            ],
+          }),
+          testIds.pageId,
+          testIds.propertyB,
+        )
+        db.prepare(
+          `INSERT INTO notion_file_assets (
+             asset_id, source_type, name, external_url
+           ) VALUES (?, 'external_url', ?, ?)`,
+        ).run('asset-external-raw', 'fixture.txt', 'https://example.com/fixture.txt')
+        db.prepare(
+          `INSERT INTO notion_file_changes (
+             change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
+           ) VALUES (?, ?, 'attach_external_url', ?, ?, ?, ?)`,
+        ).run(
+          'file-attach-raw',
+          'asset-external-raw',
+          testIds.dataSourceId,
+          testIds.pageId,
+          testIds.propertyB,
+          cell.base_hash,
+        )
+      } finally {
+        db.close()
+      }
+
+      const intents = replicaChangesToPlannerIntents({
+        changes: readPendingReplicaChanges(replicaPath),
+        replicaPath,
+      })
+      expect(intents).toEqual([])
+      expect(statusFor(replicaPath, 'file-attach-raw')).toMatchObject({
+        status: 'unsupported',
+        unsupported_reason:
+          'External file attach is supported only for empty files properties until durable preservation of existing file identities is modeled.',
+      })
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(0)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('keeps unsafe public CDC surfaces fail-closed with explicit statuses', async () => {
     const clock = makeFakeClock()
     const workspaceRoot = tempWorkspace()
@@ -1418,6 +1681,9 @@ describe('user-facing SQLite replica', () => {
 
       const db = new DatabaseSync(replicaPath)
       try {
+        const fileCell = db
+          .prepare(`SELECT base_hash FROM notion_cells WHERE page_id = ? AND property_id = ?`)
+          .get(testIds.pageId, testIds.propertyA) as { readonly base_hash: string }
         db.prepare(
           `INSERT INTO notion_metadata_changes (
              change_id, data_source_id, resource_type, description_plain_text, base_hash
@@ -1437,6 +1703,23 @@ describe('user-facing SQLite replica', () => {
           'conflict-1',
           JSON.stringify({ _tag: 'title', plainText: 'Manual' }),
         )
+        db.prepare(
+          `INSERT INTO notion_file_assets (
+             asset_id, source_type, name, content_hash, status
+           ) VALUES (?, 'local_upload', ?, ?, 'pending_upload')`,
+        ).run('local-upload-asset', 'local.txt', hash('local-file'))
+        db.prepare(
+          `INSERT INTO notion_file_changes (
+             change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
+           ) VALUES (?, ?, 'attach_upload', ?, ?, ?, ?)`,
+        ).run(
+          'local-upload-file-change',
+          'local-upload-asset',
+          testIds.dataSourceId,
+          testIds.pageId,
+          testIds.propertyA,
+          fileCell.base_hash,
+        )
       } finally {
         db.close()
       }
@@ -1454,6 +1737,11 @@ describe('user-facing SQLite replica', () => {
         status: 'unsupported',
         unsupported_reason:
           'Conflict resolution CDC requires store-backed execution; sync <workspace> handles it before planner-intent conversion.',
+      })
+      expect(statusFor(replicaPath, 'local-upload-file-change')).toMatchObject({
+        status: 'unsupported',
+        unsupported_reason:
+          'Only external URL file attachments are supported; local uploads need upload-id/status/retry modeling.',
       })
     } finally {
       storeFixture.cleanup()

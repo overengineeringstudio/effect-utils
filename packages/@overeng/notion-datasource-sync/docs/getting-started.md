@@ -163,9 +163,12 @@ body pushes that pass body safety and content-hash verification, and
 store-backed conflict-resolution choices. Data-source and database
 title/description metadata CDC rows execute with verified post-write metadata
 hash reconciliation; schema CDC rows are visible for review but fail closed from
-SQLite until verified post-write reconciliation is modeled. Row creation is supported through `notion_row_creates`; direct
+SQLite until verified post-write reconciliation is modeled. External URL files
+can be attached to empty writable `files` properties through
+`notion_file_assets` plus `notion_file_changes`; local uploads and replacing or
+deleting existing file arrays remain guarded. Row creation is supported through `notion_row_creates`; direct
 `INSERT INTO notion_rows` is blocked because `notion_rows` is observed remote
-state. Files, Notion views, destructive schema changes, and unsupported conflict-resolution actions remain fail-closed
+state. Notion views, destructive schema changes, and unsupported conflict-resolution actions remain fail-closed
 until their dedicated proof is in place. Computed or unsupported properties
 remain visible but read-only.
 

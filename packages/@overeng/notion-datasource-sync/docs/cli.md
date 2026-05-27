@@ -159,6 +159,8 @@ Stable generic tables:
 | `notion_body_changes`         | write         | Typed CDC log for body pushes using body path/base hash semantics                                           |
 | `notion_metadata_changes`     | write         | Typed CDC log for data-source and database title/description metadata edits with post-write hash settlement |
 | `notion_schema_changes`       | write         | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation   |
+| `notion_file_assets`          | write         | Explicit file staging records; external URLs are supported, local uploads remain fail-closed                |
+| `notion_file_changes`         | write         | Typed CDC log for attaching staged external URL files to empty `files` properties                           |
 | `notion_conflict_resolutions` | write         | Typed CDC requests for user conflict-resolution actions                                                     |
 | `notion_local_changes`        | compatibility | Unified local-change projection for inspection and older explicit inserts                                   |
 | `notion_conflicts`            | read          | User-visible conflict records and resolution state                                                          |
@@ -221,7 +223,7 @@ notion-datasource-sync sync "$PWD/notion-workspace"
 
 Supported typed public mutation tables today are `notion_cell_changes`,
 `notion_row_changes`, `notion_body_changes`, `notion_metadata_changes`,
-`notion_schema_changes`, and `notion_conflict_resolutions`. Row creation uses
+`notion_file_changes`, and `notion_conflict_resolutions`. Row creation uses
 `notion_row_creates`, not `INSERT INTO notion_rows`; the create path requires a
 stable `client_request_key`, `local_row_id`, initial canonical property values,
 and `base_schema_hash`, then settles the returned Notion `remote_page_id` after
@@ -234,14 +236,21 @@ Body changes use `notion_body_changes` with `page_id`, `body_path`,
 `local_body_hash`, optional `local_body_content`, and `base_hash`; unsafe body
 states such as unknown/truncated/synced content remain blocked by the body
 adapter safety guards, and inline `local_body_content` must hash to
-`local_body_hash` before any remote body write can be planned. Metadata/schema
-change tables are present as typed public CDC surfaces, but they currently
-fail closed from SQLite because the replica does not yet project enough
-canonical metadata/schema value state to compute verified post-write hashes.
-Use the dedicated metadata/schema command paths and live fixtures for those
-surfaces until that reconciliation exists. Conflict-resolution rows execute
-only through the store-backed conflict command path for safe choices. Files and
-Notion views are separate future CDC surfaces.
+`local_body_hash` before any remote body write can be planned. Data-source and
+database title/description metadata rows execute with post-write hash
+settlement. Public schema CDC rows are present but fail closed until
+post-schema hash reconciliation is modeled. Conflict-resolution rows execute
+only through the store-backed conflict command path for safe choices.
+
+External URL file attachments use two explicit tables. Insert one
+`notion_file_assets(source_type='external_url', name, external_url)` row, then
+insert a `notion_file_changes(action='attach_external_url', page_id,
+property_id, base_hash)` row targeting an empty writable `files` property. The
+sync converts that into a guarded page-property patch and settles the CDC row
+after read-after-write. Local uploads, signed Notion-hosted URLs, replacement,
+deletion, and preserving existing files are fail-closed until file-upload
+identity and attachment lifecycle are modeled. Notion views are a separate
+future read/write surface.
 
 Direct `notion_rows.in_trash` edits also use final-state CDC semantics. For
 example, toggling `0 -> 1 -> 0` before sync cancels the pending direct archive

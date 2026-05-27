@@ -66,6 +66,7 @@ export type ReplicaLocalChange = {
     | 'body_patch'
     | 'metadata_patch'
     | 'schema_patch'
+    | 'file_attach'
     | 'conflict_resolution'
   readonly dataSourceId: string
   readonly pageId: string | undefined
@@ -81,6 +82,10 @@ export type ReplicaLocalChange = {
   readonly titlePlainText: string | undefined
   readonly descriptionPlainText: string | undefined
   readonly schemaOperationJson: string | undefined
+  readonly fileAssetId: string | undefined
+  readonly fileAction: string | undefined
+  readonly fileName: string | undefined
+  readonly fileExternalUrl: string | undefined
   readonly conflictId: string | undefined
   readonly resolutionAction: string | undefined
   readonly localRowId: string | undefined
@@ -193,6 +198,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       !localChangesSchema.sql.includes("'body_patch'") ||
       !localChangesSchema.sql.includes("'metadata_patch'") ||
       !localChangesSchema.sql.includes("'schema_patch'") ||
+      !localChangesSchema.sql.includes("'file_attach'") ||
       !localChangesSchema.sql.includes("'conflict_resolution'"))
   if (needsLocalChangesStatusMigration === true) {
     db.exec(`ALTER TABLE notion_local_changes RENAME TO notion_local_changes_legacy;`)
@@ -222,6 +228,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_metadata_changes_mirror_local_update;
     DROP TRIGGER IF EXISTS notion_schema_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_schema_changes_mirror_local_update;
+    DROP TRIGGER IF EXISTS notion_file_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_file_changes_mirror_local_update;
     DROP TRIGGER IF EXISTS notion_conflict_resolutions_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_conflict_resolutions_mirror_local_update;
 
@@ -447,6 +455,47 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       CHECK (json_valid(operation_json))
     );
 
+    CREATE TABLE IF NOT EXISTS notion_file_assets (
+      asset_id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL CHECK (source_type IN ('external_url', 'local_upload')),
+      name TEXT NOT NULL,
+      external_url TEXT,
+      content_hash TEXT,
+      notion_file_upload_id TEXT,
+      upload_status TEXT,
+      status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'pending_upload', 'uploaded', 'expired', 'failed', 'unsupported')),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (
+        (source_type = 'external_url' AND external_url IS NOT NULL AND notion_file_upload_id IS NULL)
+        OR source_type = 'local_upload'
+      )
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_file_changes (
+      change_id TEXT PRIMARY KEY,
+      asset_id TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('attach_external_url', 'attach_upload')),
+      data_source_id TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      base_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
     CREATE TABLE IF NOT EXISTS notion_conflict_resolutions (
       resolution_id TEXT PRIMARY KEY,
       conflict_id TEXT NOT NULL,
@@ -478,6 +527,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'body_patch',
         'metadata_patch',
         'schema_patch',
+        'file_attach',
         'conflict_resolution'
       )),
       data_source_id TEXT NOT NULL,
@@ -638,6 +688,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       ON notion_metadata_changes(status, data_source_id);
     CREATE INDEX IF NOT EXISTS notion_schema_changes_pending_idx
       ON notion_schema_changes(status, data_source_id);
+    CREATE INDEX IF NOT EXISTS notion_file_changes_pending_idx
+      ON notion_file_changes(status, data_source_id, page_id, property_id);
     CREATE INDEX IF NOT EXISTS notion_conflict_resolutions_pending_idx
       ON notion_conflict_resolutions(status, conflict_id);
     CREATE INDEX IF NOT EXISTS notion_local_changes_pending_idx
@@ -1102,6 +1154,51 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       WHERE change_id = NEW.change_id;
     END;
 
+    CREATE TRIGGER IF NOT EXISTS notion_file_changes_mirror_local_insert
+    AFTER INSERT ON notion_file_changes
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        page_id,
+        property_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        'file_attach',
+        NEW.data_source_id,
+        NEW.page_id,
+        NEW.property_id,
+        json_object('asset_id', NEW.asset_id, 'action', NEW.action),
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_file_changes_mirror_local_update
+    AFTER UPDATE ON notion_file_changes
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_local_changes
+      SET
+        value_json = json_object('asset_id', NEW.asset_id, 'action', NEW.action),
+        base_hash = NEW.base_hash,
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.change_id;
+    END;
+
     CREATE TRIGGER IF NOT EXISTS notion_conflict_resolutions_mirror_local_insert
     AFTER INSERT ON notion_conflict_resolutions
     FOR EACH ROW
@@ -1345,6 +1442,7 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_local_changes_mirror_row_insert;
     DROP TRIGGER IF EXISTS notion_cell_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_file_changes_mirror_local_insert;
 
     DELETE FROM notion_data_sources;
     DELETE FROM notion_databases;
@@ -1829,6 +1927,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
                (SELECT count(*) FROM notion_body_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_metadata_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_schema_changes WHERE status IN ('pending', 'queued')) +
+               (SELECT count(*) FROM notion_file_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_conflict_resolutions WHERE status IN ('pending', 'queued'))
              ) AS pending_local_changes`,
         )
@@ -1888,6 +1987,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
              title_plain_text,
              description_plain_text,
              schema_operation_json,
+             file_asset_id,
+             file_action,
+             file_name,
+             file_external_url,
              conflict_id,
              resolution_action,
              local_row_id,
@@ -1912,6 +2015,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
+               NULL AS file_asset_id,
+               NULL AS file_action,
+               NULL AS file_name,
+               NULL AS file_external_url,
                NULL AS conflict_id,
                NULL AS resolution_action,
                NULL AS local_row_id,
@@ -1938,6 +2045,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
+               NULL AS file_asset_id,
+               NULL AS file_action,
+               NULL AS file_name,
+               NULL AS file_external_url,
                NULL AS conflict_id,
                NULL AS resolution_action,
                local_row_id,
@@ -1964,6 +2075,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
+               NULL AS file_asset_id,
+               NULL AS file_action,
+               NULL AS file_name,
+               NULL AS file_external_url,
                NULL AS conflict_id,
                NULL AS resolution_action,
                NULL AS local_row_id,
@@ -1990,6 +2105,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
+               NULL AS file_asset_id,
+               NULL AS file_action,
+               NULL AS file_name,
+               NULL AS file_external_url,
                NULL AS conflict_id,
                NULL AS resolution_action,
                NULL AS local_row_id,
@@ -2016,6 +2135,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                title_plain_text,
                description_plain_text,
                NULL AS schema_operation_json,
+               NULL AS file_asset_id,
+               NULL AS file_action,
+               NULL AS file_name,
+               NULL AS file_external_url,
                NULL AS conflict_id,
                NULL AS resolution_action,
                NULL AS local_row_id,
@@ -2042,6 +2165,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                operation_json AS schema_operation_json,
+               NULL AS file_asset_id,
+               NULL AS file_action,
+               NULL AS file_name,
+               NULL AS file_external_url,
                NULL AS conflict_id,
                NULL AS resolution_action,
                NULL AS local_row_id,
@@ -2050,6 +2177,37 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                created_at
              FROM notion_schema_changes
              WHERE status IN ('pending', 'queued')
+             UNION ALL
+             SELECT
+               fc.change_id,
+               'file_attach' AS kind,
+               fc.data_source_id,
+               fc.page_id,
+               fc.property_id,
+               NULL AS value_json,
+               fc.base_hash,
+               fc.status,
+               NULL AS body_path,
+               NULL AS local_body_hash,
+               NULL AS local_body_content,
+               NULL AS metadata_resource_type,
+               NULL AS database_id,
+               NULL AS title_plain_text,
+               NULL AS description_plain_text,
+               NULL AS schema_operation_json,
+               fc.asset_id AS file_asset_id,
+               fc.action AS file_action,
+               fa.name AS file_name,
+               fa.external_url AS file_external_url,
+               NULL AS conflict_id,
+               NULL AS resolution_action,
+               NULL AS local_row_id,
+               NULL AS client_request_key,
+               NULL AS remote_page_id,
+               fc.created_at
+             FROM notion_file_changes fc
+             JOIN notion_file_assets fa ON fa.asset_id = fc.asset_id
+             WHERE fc.status IN ('pending', 'queued')
              UNION ALL
              SELECT
                resolution_id AS change_id,
@@ -2068,6 +2226,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                NULL AS title_plain_text,
                NULL AS description_plain_text,
                NULL AS schema_operation_json,
+               NULL AS file_asset_id,
+               NULL AS file_action,
+               NULL AS file_name,
+               NULL AS file_external_url,
                conflict_id,
                action AS resolution_action,
                NULL AS local_row_id,
@@ -2091,6 +2253,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
           'body_patch',
           'metadata_patch',
           'schema_patch',
+          'file_attach',
           'conflict_resolution',
         ),
       )(readString({ row, key: 'kind' })),
@@ -2108,6 +2271,10 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
       titlePlainText: readOptionalString({ row, key: 'title_plain_text' }),
       descriptionPlainText: readOptionalString({ row, key: 'description_plain_text' }),
       schemaOperationJson: readOptionalString({ row, key: 'schema_operation_json' }),
+      fileAssetId: readOptionalString({ row, key: 'file_asset_id' }),
+      fileAction: readOptionalString({ row, key: 'file_action' }),
+      fileName: readOptionalString({ row, key: 'file_name' }),
+      fileExternalUrl: readOptionalString({ row, key: 'file_external_url' }),
       conflictId: readOptionalString({ row, key: 'conflict_id' }),
       resolutionAction: readOptionalString({ row, key: 'resolution_action' }),
       localRowId: readOptionalString({ row, key: 'local_row_id' }),
@@ -2166,6 +2333,11 @@ export const markReplicaChangeStatus = ({
     ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
     db.prepare(
       `UPDATE notion_schema_changes
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_file_changes
        SET status = ?, unsupported_reason = ?, updated_at = ?
        WHERE change_id = ?`,
     ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
@@ -2332,6 +2504,16 @@ const surfaceForReplicaChange = (change: ReplicaLocalChange): string | undefined
     return schemaSurfaceKey({
       dataSourceId: decode({ schema: DataSourceId, value: change.dataSourceId }),
       propertyId: decode({ schema: PropertyId, value: `replica:${change.changeId}` }),
+    })
+  }
+  if (
+    change.kind === 'file_attach' &&
+    change.pageId !== undefined &&
+    change.propertyId !== undefined
+  ) {
+    return propertySurfaceKey({
+      pageId: decode({ schema: PageId, value: change.pageId }),
+      propertyId: decode({ schema: PropertyId, value: change.propertyId }),
     })
   }
   if (change.kind === 'row_create' && change.dataSourceId.length > 0) {
@@ -3041,6 +3223,196 @@ export const replicaChangesToPlannerIntents = ({
           }),
           baseHash,
           desiredHash: localBodyHash,
+        })
+        continue
+      }
+      if (change.kind === 'file_attach') {
+        if (
+          change.pageId === undefined ||
+          change.propertyId === undefined ||
+          change.baseHash === undefined ||
+          change.fileAssetId === undefined ||
+          change.fileAction === undefined
+        ) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason:
+              'file_attach requires page_id, property_id, asset_id, action, and base_hash.',
+          })
+          continue
+        }
+        if (change.fileAction !== 'attach_external_url') {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason:
+              'Only external URL file attachments are supported; local uploads need upload-id/status/retry modeling.',
+          })
+          continue
+        }
+        if (change.fileName === undefined || change.fileExternalUrl === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'attach_external_url requires a file asset name and external_url.',
+          })
+          continue
+        }
+        let pageId: PageId
+        let propertyId: PropertyId
+        let baseHash: Hash
+        try {
+          pageId = decode({ schema: PageId, value: change.pageId })
+          propertyId = decode({ schema: PropertyId, value: change.propertyId })
+          decode({ schema: DataSourceId, value: change.dataSourceId })
+          baseHash = decode({ schema: Hash, value: change.baseHash })
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'Invalid data_source_id, page_id, property_id, or base_hash in file_attach.',
+          })
+          continue
+        }
+        const cell = db
+          .prepare(
+            `SELECT c.value_json, c.base_hash, c.remote_hash, r.properties_hash,
+                    p.config_hash, p.write_class, p.property_type
+             FROM notion_cells c
+             JOIN notion_rows r ON r.page_id = c.page_id
+             JOIN notion_properties p
+               ON p.data_source_id = c.data_source_id AND p.property_id = c.property_id
+             WHERE c.page_id = ? AND c.property_id = ?`,
+          )
+          .get(change.pageId, change.propertyId) as SqlRow | undefined
+        if (cell === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'file_attach targets a cell that is not present in the replica.',
+          })
+          continue
+        }
+        if (
+          readString({ row: cell, key: 'property_type' }) !== 'files' ||
+          readString({ row: cell, key: 'write_class' }) !== 'writable'
+        ) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason: 'file_attach targets must be writable files properties.',
+          })
+          continue
+        }
+        if (change.baseHash !== readString({ row: cell, key: 'base_hash' })) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'conflict',
+            reason: 'file_attach has a stale base_hash.',
+          })
+          continue
+        }
+        const currentValueJson = readOptionalString({ row: cell, key: 'value_json' })
+        let currentValue: typeof CanonicalPropertyValue.Type
+        if (
+          currentValueJson === undefined ||
+          currentValueJson === 'null' ||
+          currentValueJson === '[]'
+        ) {
+          currentValue = { _tag: 'files', files: [] }
+        } else {
+          try {
+            currentValue = decode({
+              schema: Schema.parseJson(CanonicalPropertyValue),
+              value: currentValueJson,
+            })
+          } catch {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'unsupported',
+              reason:
+                'External file attach requires an empty canonical files cell; raw file payload preservation is not modeled.',
+            })
+            continue
+          }
+        }
+        if (currentValue._tag !== 'files' || currentValue.files.length > 0) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason:
+              'External file attach is supported only for empty files properties until durable preservation of existing file identities is modeled.',
+          })
+          continue
+        }
+        if (/^https:\/\//u.test(change.fileExternalUrl) === false) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'External file attachments require an https:// external_url.',
+          })
+          continue
+        }
+        const value: typeof CanonicalPropertyValue.Type = {
+          _tag: 'files',
+          files: [
+            {
+              _tag: 'CanonicalFileValue',
+              name: change.fileName,
+              identityHash: decode({
+                schema: Hash,
+                value: hashStoreBytes(`external-file\t${change.fileName}\t${change.fileExternalUrl}`),
+              }),
+              externalUrl: change.fileExternalUrl,
+            },
+          ],
+        }
+        const valueJson = JSON.stringify(value)
+        const commandId = decode({ schema: CommandId, value: `replica:${change.changeId}` })
+        intents.push({
+          _tag: 'property-edit',
+          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
+          commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
+          surface: propertySurfaceKey({ pageId, propertyId }),
+          pageId,
+          propertyId,
+          command: PatchPagePropertiesCommand.make({
+            _tag: 'PatchPagePropertiesCommand',
+            commandId,
+            pageId,
+            basePropertiesHash: decode({
+              schema: Hash,
+              value: readString({ row: cell, key: 'properties_hash' }),
+            }),
+            propertyPatch: { [propertyId]: value },
+          }),
+          baseHash,
+          desiredHash: hashStoreBytes(valueJson),
+          expectedPropertyConfigHash: decode({
+            schema: Hash,
+            value: readString({ row: cell, key: 'config_hash' }),
+          }),
         })
         continue
       }

@@ -438,8 +438,24 @@ const propertyValueToNotion = (
       return Effect.succeed({ url: value.value })
     case 'phone_number':
       return Effect.succeed({ phone_number: value.value })
-    case 'empty':
     case 'files':
+      return value.files.length > 0 && value.files.every((file) => file.externalUrl !== undefined)
+        ? Effect.succeed({
+            files: value.files.map((file) => ({
+              type: 'external',
+              name: file.name,
+              external: { url: file.externalUrl },
+            })),
+          })
+        : Effect.fail(
+            unsupportedOperation({
+              operation: 'patchPageProperties',
+              capability: 'page_property_update',
+              message:
+                'Files property writes require explicit external URL or modeled file_upload identity for every file',
+            }),
+          )
+    case 'empty':
       return Effect.fail(
         unsupportedOperation({
           operation: 'patchPageProperties',

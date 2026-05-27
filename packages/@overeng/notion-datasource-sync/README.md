@@ -47,7 +47,8 @@ Editing the internal store is unsupported.
 `notion_properties`, `notion_rows`, `notion_cells`, `notion_bodies`,
 `notion_cell_changes`, `notion_row_changes`, `notion_row_creates`,
 `notion_rows_effective`, `notion_cells_effective`, `notion_body_changes`,
-`notion_metadata_changes`, `notion_schema_changes`,
+`notion_metadata_changes`, `notion_schema_changes`, `notion_file_assets`,
+`notion_file_changes`,
 `notion_conflict_resolutions`, `notion_local_changes`, `notion_conflicts`, and
 `notion_sync_status`, plus generated read views for
 adopted data sources. Local data edits are inserted as guarded typed CDC rows;
@@ -62,9 +63,11 @@ outbox state instead of from conversion alone. Row creation uses explicit
 `remote_page_id` settlement; direct inserts into `notion_rows` are blocked
 because that table is confirmed remote-observed state. Data-source and database
 metadata CDC can patch title/description with post-write metadata hash
-verification. Public schema CDC, file bytes, Notion views, and
-destructive schema migrations remain explicit fail-closed surfaces until their
-verified post-write reconciliation is modeled.
+verification. External URL file attachments are supported through explicit file
+staging for empty writable `files` properties. Public schema CDC, local file
+uploads/file bytes, Notion views, and destructive schema migrations remain
+explicit fail-closed surfaces until their verified post-write reconciliation is
+modeled.
 
 ## CLI Shape
 
