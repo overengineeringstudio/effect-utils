@@ -1306,13 +1306,13 @@ describe('user-facing SQLite replica', () => {
         changes: readPendingReplicaChanges(replicaPath),
         replicaPath,
       })
-      expect(intents.map((intent) => intent._tag).toSorted()).toEqual(['body-edit', 'local-delete'])
+      expect(intents.map((intent) => intent._tag).toSorted()).toEqual([
+        'body-edit',
+        'data-source-metadata-edit',
+        'local-delete',
+      ])
       expect(statusFor(replicaPath, 'body-row')).toMatchObject({ status: 'pending' })
-      expect(statusFor(replicaPath, 'metadata-row')).toMatchObject({
-        status: 'unsupported',
-        unsupported_reason:
-          'Public metadata CDC needs full metadata value projection to compute a verified post-write hash; use the dedicated metadata command path until that projection exists.',
-      })
+      expect(statusFor(replicaPath, 'metadata-row')).toMatchObject({ status: 'pending' })
       expect(statusFor(replicaPath, 'schema-row')).toMatchObject({
         status: 'unsupported',
         unsupported_reason:
@@ -1352,9 +1352,9 @@ describe('user-facing SQLite replica', () => {
         }),
         { gateway: gateway.gateway },
       )
-      expect(applied.push.plan.enqueuedCommands).toBe(2)
+      expect(applied.push.plan.enqueuedCommands).toBe(3)
       expect(gateway.ledger.successfulRestorePages).toHaveLength(1)
-      expect(gateway.ledger.successfulPatchDataSourceMetadata).toHaveLength(0)
+      expect(gateway.ledger.successfulPatchDataSourceMetadata).toHaveLength(1)
       expect(gateway.ledger.successfulPatchDataSourceSchemas).toHaveLength(0)
       settleReplicaChangesAfterSync({
         changes: readPendingReplicaChanges(replicaPath),
@@ -1364,7 +1364,7 @@ describe('user-facing SQLite replica', () => {
         decisions: applied.push.plan.decisions,
       })
       expect(statusFor(replicaPath, 'body-row')).toMatchObject({ status: 'applied' })
-      expect(statusFor(replicaPath, 'metadata-row')).toMatchObject({ status: 'unsupported' })
+      expect(statusFor(replicaPath, 'metadata-row')).toMatchObject({ status: 'applied' })
       expect(statusFor(replicaPath, 'schema-row')).toMatchObject({ status: 'unsupported' })
     } finally {
       storeFixture.cleanup()
@@ -1437,7 +1437,7 @@ describe('user-facing SQLite replica', () => {
       expect(statusFor(replicaPath, 'database-metadata')).toMatchObject({
         status: 'unsupported',
         unsupported_reason:
-          'Public metadata CDC needs full metadata value projection to compute a verified post-write hash; use the dedicated metadata command path until that projection exists.',
+          'Database metadata CDC needs a separate database authority projection and remains fail-closed.',
       })
       expect(statusFor(replicaPath, 'manual-conflict')).toMatchObject({
         status: 'unsupported',
@@ -1606,9 +1606,8 @@ describe('user-facing SQLite replica', () => {
         unsupported_reason: 'body_patch local_body_content does not match local_body_hash.',
       })
       expect(statusFor(replicaPath, 'metadata-stale')).toMatchObject({
-        status: 'unsupported',
-        unsupported_reason:
-          'Public metadata CDC needs full metadata value projection to compute a verified post-write hash; use the dedicated metadata command path until that projection exists.',
+        status: 'conflict',
+        unsupported_reason: 'metadata_patch has a stale base_hash.',
       })
       expect(statusFor(replicaPath, 'schema-stale')).toMatchObject({
         status: 'unsupported',

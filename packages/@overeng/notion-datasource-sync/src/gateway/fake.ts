@@ -1,6 +1,13 @@
 import { Effect, Layer, Schema, Stream } from 'effect'
 
-import { queryContractHash as computeQueryContractHash } from '../core/canonical.ts'
+import {
+  dataSourceMetadataHash,
+  queryContractHash as computeQueryContractHash,
+} from '../core/canonical.ts'
+import {
+  CanonicalDataSourceMetadata,
+  CreatePageResult as CreatePageResultSchema,
+} from '../core/commands.ts'
 import type {
   CreatePageCommand,
   CreatePageResult,
@@ -13,7 +20,6 @@ import type {
   RestorePageCommand,
   TrashPageCommand,
 } from '../core/commands.ts'
-import { CreatePageResult as CreatePageResultSchema } from '../core/commands.ts'
 import {
   PageId,
   PageSnapshot,
@@ -698,14 +704,33 @@ export const makeFakeNotionDataSourceGateway = (
           }
 
           const requestId = nextRequestId()
+          const currentMetadata =
+            snapshot.metadataJson === undefined
+              ? ({
+                  _tag: 'CanonicalDataSourceMetadata',
+                  titlePlainText: snapshot.metadataTitlePlainText ?? '',
+                  descriptionPlainText: snapshot.metadataDescriptionPlainText ?? '',
+                  icon: { _tag: 'none' },
+                } satisfies typeof CanonicalDataSourceMetadata.Type)
+              : Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
+                  snapshot.metadataJson,
+                )
+          const nextMetadata: typeof CanonicalDataSourceMetadata.Type = {
+            ...currentMetadata,
+            ...(command.metadataPatch.titlePlainText === undefined
+              ? {}
+              : { titlePlainText: command.metadataPatch.titlePlainText }),
+            ...(command.metadataPatch.descriptionPlainText === undefined
+              ? {}
+              : { descriptionPlainText: command.metadataPatch.descriptionPlainText }),
+          }
           dataSources.set(dataSourceKey(command.dataSourceId), {
             ...snapshot,
             requestId,
-            metadataHash: hashStoreBytes(
-              `data-source-metadata\t${command.dataSourceId}\t${command.commandId}\t${JSON.stringify(
-                command.metadataPatch,
-              )}`,
-            ),
+            metadataHash: dataSourceMetadataHash(nextMetadata),
+            metadataJson: JSON.stringify(nextMetadata),
+            metadataTitlePlainText: nextMetadata.titlePlainText,
+            metadataDescriptionPlainText: nextMetadata.descriptionPlainText,
           })
 
           return Effect.succeed(requestId)

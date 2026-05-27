@@ -156,6 +156,9 @@ export const DataSourceSnapshot = Schema.TaggedStruct('DataSourceSnapshot', {
   observedAt: Schema.DateTimeUtc,
   schemaHash: Hash,
   metadataHash: Schema.optional(Hash),
+  metadataJson: Schema.optional(Schema.String),
+  metadataTitlePlainText: Schema.optional(Schema.String),
+  metadataDescriptionPlainText: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceSnapshot' })
 export type DataSourceSnapshot = typeof DataSourceSnapshot.Type
 

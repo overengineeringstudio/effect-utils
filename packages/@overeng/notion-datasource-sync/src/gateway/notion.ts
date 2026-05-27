@@ -338,15 +338,20 @@ const richTextWrite = (plainText: string): ReadonlyArray<unknown> => [
   { type: 'text', text: { content: plainText } },
 ]
 
-const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) =>
-  DataSourceSnapshot.make({
+const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) => {
+  const metadata = canonicalDataSourceMetadataFromRemote(dataSource)
+  return DataSourceSnapshot.make({
     _tag: 'DataSourceSnapshot',
     dataSourceId: DataSourceId.make(dataSource.id),
     requestId: unavailableRequestId,
     observedAt: observedNow(),
     schemaHash: canonicalHash(dataSource.properties),
-    metadataHash: dataSourceMetadataHash(canonicalDataSourceMetadataFromRemote(dataSource)),
+    metadataHash: dataSourceMetadataHash(metadata),
+    metadataJson: JSON.stringify(metadata),
+    metadataTitlePlainText: metadata.titlePlainText,
+    metadataDescriptionPlainText: metadata.descriptionPlainText,
   })
+}
 
 const pageSnapshotFromRemote = (page: NotionGatewayPage) =>
   PageSnapshot.make({

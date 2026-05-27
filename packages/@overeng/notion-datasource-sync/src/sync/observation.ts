@@ -689,6 +689,13 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               dataSourceId: dataSource.dataSourceId,
               requestId: dataSource.requestId,
               metadataHash: dataSource.metadataHash,
+              ...(dataSource.metadataJson === undefined ? {} : { metadataJson: dataSource.metadataJson }),
+              ...(dataSource.metadataTitlePlainText === undefined
+                ? {}
+                : { titlePlainText: dataSource.metadataTitlePlainText }),
+              ...(dataSource.metadataDescriptionPlainText === undefined
+                ? {}
+                : { descriptionPlainText: dataSource.metadataDescriptionPlainText }),
             },
           }),
         )

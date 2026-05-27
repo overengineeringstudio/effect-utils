@@ -72,7 +72,8 @@ class must have a typed intent and guard model before it mutates Notion.
 | Row creation                    | Supported through explicit `notion_row_creates` rows with local client request keys, base schema guards, and returned `remote_page_id` settlement |
 | Row archive/restore             | Supported through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete                                                 |
 | Body edits                      | Supported through NotionMD-backed `notion_body_changes` rows and body conflict guards                                                             |
-| Data-source metadata edits      | Dedicated metadata command path exists; public SQLite CDC remains blocked until post-write hash proof                                             |
+| Data-source metadata edits      | Supported through public metadata CDC for title/description, with owning-database patching and data-source metadata hash verification             |
+| Database metadata edits         | Separate follow-up authority surface; database title/description writes are not inferred from data-source CDC                                    |
 | Safe schema changes             | Dedicated schema command path exists; public SQLite CDC remains blocked until post-write hash proof                                               |
 | Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                                                           |
 | File bytes                      | Follow-up until File Upload identity and cleanup are modeled                                                                                      |
