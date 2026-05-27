@@ -193,6 +193,11 @@ const makeInjectedNotionClient = (calls: {
       ...injectedNotionPage(),
       ...(input.inTrash === undefined ? {} : { in_trash: input.inTrash }),
     }),
+  createPage: (input) =>
+    Effect.succeed({
+      ...injectedNotionPage(),
+      id: `created-${Object.keys(input.properties).join('-')}`,
+    }),
   updateDataSource: () =>
     Effect.succeed({
       id: testIds.dataSourceId,
@@ -783,6 +788,7 @@ describe('CLI command surface', () => {
       retrievePage: () => Effect.die('retrievePage should not be called'),
       retrievePageProperty: () => Stream.die('retrievePageProperty should not be called'),
       patchPageProperties: () => Effect.die('patchPageProperties should not be called'),
+      createPage: () => Effect.die('createPage should not be called'),
       patchDataSourceSchema: () => Effect.die('patchDataSourceSchema should not be called'),
       patchDataSourceMetadata: () => Effect.die('patchDataSourceMetadata should not be called'),
       trashPage: () => Effect.die('trashPage should not be called'),
@@ -1365,6 +1371,15 @@ describe('CLI command surface', () => {
       clock,
       workspaceRoot: workspace,
       maxExecutorSteps: 4,
+      schemaProperties: [
+        {
+          propertyId: testIds.propertyA,
+          name: 'Name',
+          type: 'title',
+          configHash: hash('config-a'),
+          writeClass: 'writable' as const,
+        },
+      ],
     })
 
     try {
@@ -1392,6 +1407,24 @@ describe('CLI command surface', () => {
             .prepare(`SELECT kind, status FROM notion_row_changes WHERE page_id = ?`)
             .get(testIds.pageId),
         ).toMatchObject({ kind: 'row_restore', status: 'pending' })
+        const source = db
+          .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
+          .get(testIds.dataSourceId) as { schema_hash: string }
+        db.prepare(
+          `INSERT INTO notion_row_creates (
+             change_id, data_source_id, local_row_id, client_request_key,
+             initial_values_json, base_schema_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(
+          'cli-create-1',
+          testIds.dataSourceId,
+          'cli-local-create-1',
+          'cli-client-create-1',
+          JSON.stringify({
+            [testIds.propertyA]: { _tag: 'title', plainText: 'CLI-created row' },
+          }),
+          source.schema_hash,
+        )
       } finally {
         db.close()
       }
@@ -1429,6 +1462,19 @@ describe('CLI command surface', () => {
             )
             .get(testIds.pageId),
         ).toMatchObject({ status: 'applied', unsupported_reason: null })
+        expect(
+          after
+            .prepare(
+              `SELECT status, remote_page_id, unsupported_reason
+               FROM notion_row_creates
+               WHERE change_id = 'cli-create-1'`,
+            )
+            .get(),
+        ).toMatchObject({
+          status: 'applied',
+          remote_page_id: 'fake-created-cli-client-create-1',
+          unsupported_reason: null,
+        })
       } finally {
         after.close()
       }

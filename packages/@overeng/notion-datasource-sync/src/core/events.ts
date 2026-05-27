@@ -186,6 +186,7 @@ export const RemoteWriteSettled = Schema.TaggedStruct('RemoteWriteSettled', {
   requestId: NotionRequestId,
   desiredHash: Hash,
   observedHash: Hash,
+  createdPageId: Schema.optional(PageId),
   settlementKind: Schema.Literal('verified-success', 'verified-no-op'),
 }).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteSettled' })
 export type RemoteWriteSettled = typeof RemoteWriteSettled.Type

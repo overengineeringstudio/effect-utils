@@ -143,22 +143,25 @@ Read and write the local replica through `<workspace-root>/notion.sqlite`.
 
 Stable generic tables:
 
-| Table                  | Access        | Purpose                                                                                              |
-| ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------- |
-| `notion_data_sources`  | read          | Data-source metadata, schema/metadata hashes, binding summary                                        |
-| `notion_properties`    | read          | Property ID, display name, type, config, write capability                                            |
-| `notion_rows`          | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents                |
-| `notion_cells`         | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents |
-| `notion_bodies`        | read          | Body path, body hashes, materialization/adapter state                                                |
-| `notion_cell_changes`  | write         | Typed CDC log for local cell edits queued for guarded sync                                           |
-| `notion_row_changes`   | write         | Typed CDC log for local row lifecycle/create edits queued for guarded sync                           |
-| `notion_body_changes`  | write         | Typed CDC log for body pushes using body path/base hash semantics                                    |
-| `notion_metadata_changes` | write      | Typed CDC log for metadata edit requests; execution currently fail-closed pending post-write reconciliation |
-| `notion_schema_changes` | write        | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation |
-| `notion_conflict_resolutions` | write  | Typed CDC requests for user conflict-resolution actions                                              |
-| `notion_local_changes` | compatibility | Unified local-change projection for inspection and older explicit inserts                            |
-| `notion_conflicts`     | read          | User-visible conflict records and resolution state                                                   |
-| `notion_sync_status`   | read          | Last sync, pending work, checkpoints, guards                                                         |
+| Table                         | Access        | Purpose                                                                                                     |
+| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `notion_data_sources`         | read          | Data-source metadata, schema/metadata hashes, binding summary                                               |
+| `notion_properties`           | read          | Property ID, display name, type, config, write capability                                                   |
+| `notion_rows`                 | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents                       |
+| `notion_cells`                | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents        |
+| `notion_bodies`               | read          | Body path, body hashes, materialization/adapter state                                                       |
+| `notion_cell_changes`         | write         | Typed CDC log for local cell edits queued for guarded sync                                                  |
+| `notion_row_changes`          | write         | Typed CDC log for local row lifecycle/create edits queued for guarded sync                                  |
+| `notion_row_creates`          | write         | Explicit row-create CDC with local idempotency keys and returned Notion `remote_page_id` settlement         |
+| `notion_rows_effective`       | read          | Confirmed rows plus pending local creates for local desired-state inspection                                |
+| `notion_cells_effective`      | read          | Confirmed cells plus initial values for pending local creates                                               |
+| `notion_body_changes`         | write         | Typed CDC log for body pushes using body path/base hash semantics                                           |
+| `notion_metadata_changes`     | write         | Typed CDC log for metadata edit requests; execution currently fail-closed pending post-write reconciliation |
+| `notion_schema_changes`       | write         | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation   |
+| `notion_conflict_resolutions` | write         | Typed CDC requests for user conflict-resolution actions                                                     |
+| `notion_local_changes`        | compatibility | Unified local-change projection for inspection and older explicit inserts                                   |
+| `notion_conflicts`            | read          | User-visible conflict records and resolution state                                                          |
+| `notion_sync_status`          | read          | Last sync, pending work, checkpoints, guards                                                                |
 
 Generated `notion_view_<data-source-slug>` views are read-only convenience views
 for querying adopted data sources with escaped property-name columns. They are
@@ -217,12 +220,13 @@ notion-datasource-sync sync "$PWD/notion-workspace"
 
 Supported typed public mutation tables today are `notion_cell_changes`,
 `notion_row_changes`, `notion_body_changes`, `notion_metadata_changes`,
-`notion_schema_changes`, and `notion_conflict_resolutions`.
-`notion_row_changes.kind` supports `row_archive`, `row_restore`, and
-`row_create`; archive and restore can execute through the guarded page lifecycle
-command path, while row creation remains fail-closed until create-page
-idempotency and returned `page_id` reconciliation can make retries
-duplicate-safe. Destructive edits are never inferred from
+`notion_schema_changes`, and `notion_conflict_resolutions`. Row creation uses
+`notion_row_creates`, not `INSERT INTO notion_rows`; the create path requires a
+stable `client_request_key`, `local_row_id`, initial canonical property values,
+and `base_schema_hash`, then settles the returned Notion `remote_page_id` after
+the guarded create-page command succeeds. `notion_row_changes.kind` supports
+`row_archive`, `row_restore`, and compatibility `row_create` rows, but new row
+creation should use `notion_row_creates`. Destructive edits are never inferred from
 `delete from notion_rows` or from missing local files.
 
 Body changes use `notion_body_changes` with `page_id`, `body_path`,

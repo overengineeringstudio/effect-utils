@@ -200,6 +200,7 @@ export type OutboxSettlementInput = {
   readonly requestId: NotionRequestId
   readonly desiredHash: typeof Hash.Type
   readonly observedHash: typeof Hash.Type
+  readonly createdPageId?: typeof PageId.Type
   readonly settlementKind: 'verified-success' | 'verified-no-op'
   readonly idempotencyKey?: IdempotencyKey
 }
@@ -695,6 +696,7 @@ export class NotionSyncStore {
               settlementKind: input.settlementKind,
               desiredHash: input.desiredHash,
               observedHash: input.observedHash,
+              ...(input.createdPageId === undefined ? {} : { createdPageId: input.createdPageId }),
             }),
           ),
           observedAt: currentIso(this.#now),
@@ -703,6 +705,7 @@ export class NotionSyncStore {
           requestId: input.requestId,
           desiredHash: input.desiredHash,
           observedHash: input.observedHash,
+          ...(input.createdPageId === undefined ? {} : { createdPageId: input.createdPageId }),
           settlementKind: input.settlementKind,
         }),
       )
@@ -1001,10 +1004,7 @@ export class NotionSyncStore {
               readonly dataSourceId?: unknown
               readonly metadataHash?: unknown
             }
-            if (
-              typeof event.dataSourceId === 'string' &&
-              typeof event.metadataHash === 'string'
-            ) {
+            if (typeof event.dataSourceId === 'string' && typeof event.metadataHash === 'string') {
               accumulator.set(event.dataSourceId, event.metadataHash)
             }
             return accumulator

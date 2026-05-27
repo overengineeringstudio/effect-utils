@@ -7,6 +7,8 @@ import type {
   BodyPushCommand,
   BodyPushResult,
   BodyRepairInput,
+  CreatePageCommand,
+  CreatePageResult,
   ObserveBodyInput,
   PatchDataSourceMetadataCommand,
   RetrievePagePropertyInput,
@@ -60,6 +62,9 @@ export type NotionDataSourceGatewayShape = {
   readonly patchPageProperties: (
     command: PatchPagePropertiesCommand,
   ) => Effect.Effect<NotionRequestId, NotionGatewayError>
+  readonly createPage: (
+    command: CreatePageCommand,
+  ) => Effect.Effect<CreatePageResult, NotionGatewayError>
   readonly patchDataSourceSchema: (
     command: PatchDataSourceSchemaCommand,
   ) => Effect.Effect<NotionRequestId, NotionGatewayError>

@@ -587,7 +587,8 @@ const runCliCommandEffect = ({
       }
       return Effect.sync(() => {
         const replicaPath = defaultReplicaPath(context.workspaceRoot)
-        if (existsSync(replicaPath) === false) return { changes: [] as const, intents: [] as const, replicaPath }
+        if (existsSync(replicaPath) === false)
+          return { changes: [] as const, intents: [] as const, replicaPath }
         const changes = readPendingReplicaChanges(replicaPath)
         applyReplicaConflictResolutions({
           changes,
@@ -1358,6 +1359,7 @@ const missingTokenCliGateway: NotionDataSourceGatewayShape = {
   retrievePage: () => Effect.fail(cliGatewayConfigurationError('retrievePage')),
   retrievePageProperty: () => Stream.fail(cliGatewayConfigurationError('retrievePageProperty')),
   patchPageProperties: () => Effect.fail(cliGatewayConfigurationError('patchPageProperties')),
+  createPage: () => Effect.fail(cliGatewayConfigurationError('createPage')),
   patchDataSourceSchema: () => Effect.fail(cliGatewayConfigurationError('patchDataSourceSchema')),
   patchDataSourceMetadata: () =>
     Effect.fail(cliGatewayConfigurationError('patchDataSourceMetadata')),

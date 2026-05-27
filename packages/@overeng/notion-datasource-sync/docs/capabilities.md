@@ -46,7 +46,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 
 | Notion surface                           | Current policy                                                                           |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Data-source views                        | Not synced; view CDC is a separate surface, not schema                                  |
+| Data-source views                        | Not synced; view CDC is a separate surface, not schema                                   |
 | Database metadata                        | Deferred until database-id projection and disposable live CDC proof are modeled          |
 | Data-source writable icons               | Deferred until file/custom/external icon identity has complete proof                     |
 | Database/data-source presentation        | Layout, grouping, sorts, filters, hidden properties, and view settings are not synced    |
@@ -66,16 +66,16 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 All ordinary data edit use cases belong in the `notion.sqlite` API, but each
 class must have a typed intent and guard model before it mutates Notion.
 
-| Edit class                      | Target state                                                                                                |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Existing row cell edits         | Supported through `notion_cells.value_json` updates or explicit `notion_cell_changes` rows with base hashes |
-| Row creation                    | Modeled through explicit `notion_row_changes` rows; execution remains blocked until returned `page_id` reconciliation can make retries duplicate-safe |
-| Row archive/restore             | Supported through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete           |
-| Body edits                      | Supported through NotionMD-backed `notion_body_changes` rows and body conflict guards                       |
-| Data-source metadata edits      | Dedicated metadata command path exists; public SQLite CDC remains blocked until post-write hash proof       |
-| Safe schema changes             | Dedicated schema command path exists; public SQLite CDC remains blocked until post-write hash proof         |
-| Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                     |
-| File bytes                      | Follow-up until File Upload identity and cleanup are modeled                                                |
+| Edit class                      | Target state                                                                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Existing row cell edits         | Supported through `notion_cells.value_json` updates or explicit `notion_cell_changes` rows with base hashes                                       |
+| Row creation                    | Supported through explicit `notion_row_creates` rows with local client request keys, base schema guards, and returned `remote_page_id` settlement |
+| Row archive/restore             | Supported through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete                                                 |
+| Body edits                      | Supported through NotionMD-backed `notion_body_changes` rows and body conflict guards                                                             |
+| Data-source metadata edits      | Dedicated metadata command path exists; public SQLite CDC remains blocked until post-write hash proof                                             |
+| Safe schema changes             | Dedicated schema command path exists; public SQLite CDC remains blocked until post-write hash proof                                               |
+| Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                                                           |
+| File bytes                      | Follow-up until File Upload identity and cleanup are modeled                                                                                      |
 
 ## Capability Preflight
 

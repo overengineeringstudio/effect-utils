@@ -20,6 +20,7 @@ import type {
   CanonicalDataSourceMetadata,
   CanonicalOptionValue,
   CanonicalPropertyValue,
+  CreatePageCommand,
   PatchDataSourceMetadataCommand,
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
@@ -28,6 +29,7 @@ import type {
   SchemaPatchOperation,
   TrashPageCommand,
 } from '../core/commands.ts'
+import { CreatePageResult } from '../core/commands.ts'
 import { PagePropertyItemPage, QueryRowsPage } from '../core/commands.ts'
 import {
   DataSourceId,
@@ -121,6 +123,10 @@ export type NotionGatewayClient = {
     readonly properties?: Record<string, unknown>
     readonly inTrash?: boolean
   }) => Effect.Effect<NotionGatewayPage, unknown>
+  readonly createPage: (input: {
+    readonly dataSourceId: string
+    readonly properties: Record<string, unknown>
+  }) => Effect.Effect<NotionGatewayPage, unknown>
   readonly updateDatabase: (input: {
     readonly databaseId: string
     readonly title?: readonly unknown[]
@@ -156,6 +162,7 @@ const supportedNotionEffectClientCapabilities: ReadonlyArray<CapabilityName> = [
   'page_retrieve',
   'page_property_paginate',
   'page_property_update',
+  'page_create',
   'page_trash',
   'page_restore',
   'schema_update',
@@ -981,6 +988,13 @@ export const makeNotionEffectClientGatewayClient = (
         ...(inTrash === undefined ? {} : { in_trash: inTrash }),
       }),
     ),
+  createPage: ({ dataSourceId, properties }) =>
+    provideClientEnv(
+      NotionPages.create({
+        parent: { type: 'data_source_id', data_source_id: dataSourceId },
+        properties,
+      }),
+    ),
   updateDatabase: ({ databaseId, title, description }) =>
     provideClientEnv(
       NotionDatabases.update({
@@ -1143,6 +1157,45 @@ export const makeNotionDataSourceGatewayFromClient = ({
             Effect.map(() => unavailableRequestId),
             Effect.mapError(
               mapClientError({ operation: 'patchPageProperties', pageId: command.pageId }),
+            ),
+          ),
+        ),
+      ),
+    createPage: (command: CreatePageCommand) =>
+      client.retrieveDataSource({ dataSourceId: command.dataSourceId }).pipe(
+        Effect.mapError(
+          mapClientError({ operation: 'createPage', dataSourceId: command.dataSourceId }),
+        ),
+        Effect.tap((dataSource) => {
+          const currentHash = canonicalHash(dataSource.properties)
+          const decision = guardStaleSurfaceBase({
+            baseHash: command.baseSchemaHash,
+            currentHash,
+          })
+          return decision._tag === 'allowed'
+            ? Effect.void
+            : Effect.fail(
+                gatewayGuardError({
+                  operation: 'createPage',
+                  dataSourceId: command.dataSourceId,
+                  guard: decision.guard,
+                  message: decision.message,
+                }),
+              )
+        }),
+        Effect.zipRight(pagePropertyPatchToNotion(command.initialProperties)),
+        Effect.flatMap((properties) =>
+          client.createPage({ dataSourceId: command.dataSourceId, properties }).pipe(
+            Effect.map((page) =>
+              CreatePageResult.make({
+                _tag: 'CreatePageResult',
+                requestId: unavailableRequestId,
+                pageId: PageId.make(page.id),
+                propertiesHash: canonicalHash(page.properties),
+              }),
+            ),
+            Effect.mapError(
+              mapClientError({ operation: 'createPage', dataSourceId: command.dataSourceId }),
             ),
           ),
         ),

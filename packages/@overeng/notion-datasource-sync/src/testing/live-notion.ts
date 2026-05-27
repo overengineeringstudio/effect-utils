@@ -184,6 +184,7 @@ export const strictLivePreflightCapabilities = [
   'data_source_metadata_update',
   'page_retrieve',
   'page_property_paginate',
+  'page_create',
 ] as const satisfies ReadonlyArray<CapabilityName>
 
 const capabilityNames = new Set<CapabilityName>([
@@ -193,6 +194,7 @@ const capabilityNames = new Set<CapabilityName>([
   'page_retrieve',
   'page_property_paginate',
   'page_property_update',
+  'page_create',
   'schema_update',
   'page_trash',
   'page_restore',

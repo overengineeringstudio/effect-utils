@@ -90,18 +90,20 @@ sqlite3 "$PWD/notion-workspace/notion.sqlite" \
 
 The stable generic tables are:
 
-| Table                  | Purpose                                                        |
-| ---------------------- | -------------------------------------------------------------- |
-| `notion_data_sources`  | Adopted data-source identity, title, description, icon, hashes |
-| `notion_properties`    | Property IDs, names, types, configs, writable/read-only policy |
-| `notion_rows`          | Page row identity, lifecycle, parent/source, row hashes        |
-| `notion_cells`         | Lossless property values plus scalar helper columns            |
-| `notion_bodies`        | Body materialization paths, hashes, and adapter state          |
-| `notion_cell_changes`  | Typed local CDC rows for cell edits waiting for review/apply   |
-| `notion_row_changes`   | Typed local CDC rows for row lifecycle/create edits            |
-| `notion_local_changes` | Compatibility projection over local write intents              |
-| `notion_conflicts`     | Open/resolved conflicts projected for users                    |
-| `notion_sync_status`   | Last sync, checkpoints, pending work, guard state              |
+| Table                                              | Purpose                                                        |
+| -------------------------------------------------- | -------------------------------------------------------------- |
+| `notion_data_sources`                              | Adopted data-source identity, title, description, icon, hashes |
+| `notion_properties`                                | Property IDs, names, types, configs, writable/read-only policy |
+| `notion_rows`                                      | Page row identity, lifecycle, parent/source, row hashes        |
+| `notion_cells`                                     | Lossless property values plus scalar helper columns            |
+| `notion_bodies`                                    | Body materialization paths, hashes, and adapter state          |
+| `notion_cell_changes`                              | Typed local CDC rows for cell edits waiting for review/apply   |
+| `notion_row_changes`                               | Typed local CDC rows for row lifecycle/create edits            |
+| `notion_row_creates`                               | Explicit local row creation requests with returned page IDs    |
+| `notion_rows_effective` / `notion_cells_effective` | Confirmed remote state plus pending local creates              |
+| `notion_local_changes`                             | Compatibility projection over local write intents              |
+| `notion_conflicts`                                 | Open/resolved conflicts projected for users                    |
+| `notion_sync_status`                               | Last sync, checkpoints, pending work, guard state              |
 
 Generated read views provide ergonomic SQL for each adopted data source. Their
 names currently use the data-source id slug, such as
@@ -160,7 +162,9 @@ intentionally narrower: writable scalar/page-property cells, row archive/restore
 body pushes that pass body safety and content-hash verification, and
 store-backed conflict-resolution choices. Metadata/schema CDC rows are visible
 for review but fail closed from SQLite until verified post-write reconciliation
-is modeled. Row creation, database metadata, files, Notion views, destructive
+is modeled. Row creation is supported through `notion_row_creates`; direct
+`INSERT INTO notion_rows` is blocked because `notion_rows` is observed remote
+state. Database metadata, files, Notion views, destructive
 schema changes, and unsupported conflict-resolution actions remain fail-closed
 until their dedicated proof is in place. Computed or unsupported properties
 remain visible but read-only.
