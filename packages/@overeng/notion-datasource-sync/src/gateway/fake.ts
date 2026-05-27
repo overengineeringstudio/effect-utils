@@ -23,6 +23,7 @@ import type {
 } from '../core/commands.ts'
 import {
   PageId,
+  PagePropertyItem,
   PageSnapshot,
   QueryCursor,
   DataSourceViewSnapshot,
@@ -31,9 +32,8 @@ import {
   type DataSourceId,
   type DataSourceSnapshot,
   type NotionApiContract,
-  type PagePropertyItem,
   type PageSnapshot as PageSnapshotType,
-  type PropertyId,
+  PropertyId,
   type RowPageSnapshot as RowPageSnapshotType,
 } from '../core/domain.ts'
 import type { NotionGatewayError } from '../core/errors.ts'
@@ -574,6 +574,33 @@ export const makeFakeNotionDataSourceGateway = (
             )
             page.snapshot = PageSnapshot.make({ ...page.snapshot, propertiesHash, requestId })
             page.row = RowPageSnapshot.make({ ...page.row, propertiesHash })
+            for (const [propertyId, value] of Object.entries(command.propertyPatch)) {
+              if (value._tag !== 'relation') continue
+              const decodedPropertyId = Schema.decodeUnknownSync(PropertyId)(propertyId)
+              const mutablePropertyItems = page.propertyItems as Array<
+                (typeof page.propertyItems)[number]
+              >
+              const existingIndex = page.propertyItems.findIndex(
+                (property) => propertyKey(property.propertyId) === propertyId,
+              )
+              const relationItems = {
+                propertyId: decodedPropertyId,
+                items: value.pageIds.map((relatedPageId, index) =>
+                  PagePropertyItem.make({
+                    _tag: 'PagePropertyItem',
+                    pageId: command.pageId,
+                    propertyId: decodedPropertyId,
+                    itemHash: hashStoreBytes(
+                      `relation-item\t${command.pageId}\t${propertyId}\t${relatedPageId}\t${index}`,
+                    ),
+                    valueHash: hashStoreBytes(`relation-value\t${relatedPageId}`),
+                    valueJson: JSON.stringify({ id: relatedPageId }),
+                  }),
+                ),
+              }
+              if (existingIndex === -1) mutablePropertyItems.push(relationItems)
+              else mutablePropertyItems[existingIndex] = relationItems
+            }
           }
 
           return Effect.succeed(requestId)

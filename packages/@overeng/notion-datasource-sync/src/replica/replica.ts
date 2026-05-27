@@ -208,6 +208,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_cells_direct_value_update_intent;
     DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_update;
     DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_shape;
+    DROP TRIGGER IF EXISTS notion_cells_guard_direct_relation_update;
     DROP TRIGGER IF EXISTS notion_cells_block_identity_update;
     DROP TRIGGER IF EXISTS notion_cells_block_delete;
     DROP TRIGGER IF EXISTS notion_rows_archive_restore_intent;
@@ -752,6 +753,30 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       END = 1
     BEGIN
       SELECT RAISE(ABORT, 'notion_cells.value_json must be canonical Notion property value JSON');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_cells_guard_direct_relation_update
+    BEFORE UPDATE OF value_json ON notion_cells
+    FOR EACH ROW
+    WHEN NEW.value_json IS NOT OLD.value_json
+      AND OLD.property_type = 'relation'
+      AND json_extract(NEW.value_json, '$._tag') = 'relation'
+      AND (
+        OLD.availability != 'complete'
+        OR json_extract(OLD.value_json, '$._tag') != 'relation'
+        OR json_array_length(NEW.value_json, '$.pageIds') > 100
+        OR EXISTS (
+          SELECT 1
+          FROM json_each(NEW.value_json, '$.pageIds') AS desired
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM json_each(OLD.value_json, '$.pageIds') AS observed
+            WHERE observed.value = desired.value
+          )
+        )
+      )
+    BEGIN
+      SELECT RAISE(ABORT, 'relation value_json direct edits require a complete observed base and may only remove/reorder existing targets');
     END;
 
     CREATE TRIGGER IF NOT EXISTS notion_cells_direct_value_update_intent
@@ -1590,6 +1615,79 @@ const scalarColumns = (valueJson: string | undefined) => {
   }
 }
 
+const relationValueSetEquals = (leftJson: string, rightJson: string): boolean => {
+  try {
+    const left = JSON.parse(leftJson) as { readonly _tag?: unknown; readonly pageIds?: unknown }
+    const right = JSON.parse(rightJson) as { readonly _tag?: unknown; readonly pageIds?: unknown }
+    if (left._tag !== 'relation' || right._tag !== 'relation') return false
+    if (Array.isArray(left.pageIds) === false || Array.isArray(right.pageIds) === false)
+      return false
+    return (
+      JSON.stringify([...left.pageIds].toSorted()) === JSON.stringify([...right.pageIds].toSorted())
+    )
+  } catch {
+    return false
+  }
+}
+
+const cellValueMatches = ({
+  observedJson,
+  desiredJson,
+}: {
+  readonly observedJson: string | undefined
+  readonly desiredJson: string
+}): boolean =>
+  observedJson === desiredJson ||
+  (observedJson !== undefined && relationValueSetEquals(observedJson, desiredJson) === true)
+
+const settleAppliedCellChangesFromProjection = ({
+  replicaDb,
+  now,
+}: {
+  readonly replicaDb: DatabaseSync
+  readonly now: string
+}): void => {
+  const changes = replicaDb
+    .prepare(
+      `SELECT change_id, page_id, property_id, value_json
+       FROM notion_cell_changes
+       WHERE status IN ('pending', 'queued', 'planned')`,
+    )
+    .all() as SqlRow[]
+  for (const change of changes) {
+    const cell = replicaDb
+      .prepare(`SELECT value_json FROM notion_cells WHERE page_id = ? AND property_id = ?`)
+      .get(
+        readString({ row: change, key: 'page_id' }),
+        readString({ row: change, key: 'property_id' }),
+      ) as SqlRow | undefined
+    if (
+      cellValueMatches({
+        observedJson:
+          cell === undefined ? undefined : readOptionalString({ row: cell, key: 'value_json' }),
+        desiredJson: readString({ row: change, key: 'value_json' }),
+      }) === false
+    )
+      continue
+
+    const changeId = readString({ row: change, key: 'change_id' })
+    replicaDb
+      .prepare(
+        `UPDATE notion_cell_changes
+         SET status = 'applied', unsupported_reason = NULL, updated_at = ?
+         WHERE change_id = ?`,
+      )
+      .run(now, changeId)
+    replicaDb
+      .prepare(
+        `UPDATE notion_local_changes
+         SET status = 'applied', unsupported_reason = NULL, updated_at = ?
+         WHERE change_id = ?`,
+      )
+      .run(now, changeId)
+  }
+}
+
 const rebuildGeneratedViews = (db: DatabaseSync): void => {
   const existing = db
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'view' AND name LIKE 'notion_view_%'`)
@@ -1986,6 +2084,8 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readString({ row, key: 'updated_at' }),
           )
       }
+
+      settleAppliedCellChangesFromProjection({ replicaDb, now })
 
       const counts = replicaDb
         .prepare(
@@ -2673,7 +2773,61 @@ export const settleReplicaChangesAfterSync = ({
   for (const change of changes) {
     if (change.kind === 'conflict_resolution') continue
     const decision = decisionForReplicaChange({ change, decisions })
-    if (decision === undefined) continue
+    if (decision === undefined) {
+      const outbox = outboxByCommandId.get(`replica:${change.changeId}`)
+      if (outbox === undefined) continue
+      if (change.kind === 'row_create' && outbox.state === 'ambiguous') {
+        markChange({
+          replicaPath,
+          changeId: change.changeId,
+          status: 'needs_reconciliation',
+          reason:
+            'Create command has an ambiguous remote outcome after an expired running attempt; manual reconciliation is required before retry.',
+        })
+        continue
+      }
+      if (change.kind === 'row_create' && outbox.state === 'settled') {
+        const createdPageId = createdPageIdForCommand({
+          store,
+          rootId,
+          commandId: outbox.commandId,
+        })
+        if (createdPageId === undefined) {
+          markChange({
+            replicaPath,
+            changeId: change.changeId,
+            status: 'needs_reconciliation',
+            reason:
+              'Create command settled without a durable created page id; manual reconciliation is required before retry.',
+          })
+          continue
+        }
+        const db = new DatabaseSync(replicaPath)
+        try {
+          createReplicaSchema(db)
+          db.prepare(
+            `UPDATE notion_row_creates
+             SET remote_page_id = ?, status = 'applied', unsupported_reason = NULL, updated_at = ?
+             WHERE change_id = ?`,
+          ).run(createdPageId, new Date().toISOString(), change.changeId)
+        } finally {
+          db.close()
+        }
+        continue
+      }
+      markChange({
+        replicaPath,
+        changeId: change.changeId,
+        status: settlementStatusForOutboxState(outbox.state),
+        ...(outbox.state === 'blocked' || outbox.state === 'fenced'
+          ? {
+              reason:
+                'Remote write was blocked during executor preflight; inspect sync status and outbox diagnostics.',
+            }
+          : {}),
+      })
+      continue
+    }
     if (decision._tag === 'OpenConflict') {
       markChange({
         replicaPath,
@@ -3658,8 +3812,10 @@ export const replicaChangesToPlannerIntents = ({
         }
         const cell = db
           .prepare(
-            `SELECT c.base_hash, p.config_hash, p.write_class, p.property_type
+            `SELECT c.base_hash, c.value_json, c.availability, r.properties_hash,
+                    p.config_hash, p.write_class, p.property_type
              FROM notion_cells c
+             JOIN notion_rows r ON r.page_id = c.page_id
              JOIN notion_properties p
                ON p.data_source_id = c.data_source_id AND p.property_id = c.property_id
              WHERE c.page_id = ? AND c.property_id = ?`,
@@ -3685,18 +3841,15 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        if (
-          ['relation', 'people', 'files'].includes(
-            readString({ row: cell, key: 'property_type' }),
-          ) === true
-        ) {
+        const propertyType = readString({ row: cell, key: 'property_type' })
+        if (['people', 'files'].includes(propertyType) === true) {
           markChange({
             replicaPath,
             dryRun,
             changeId: change.changeId,
             status: 'unsupported',
             reason:
-              'Relation, people, and file writes require full paginated base/staging proof before replica sync can apply them safely.',
+              'People and file writes require full paginated base/staging proof before replica sync can apply them safely.',
           })
           continue
         }
@@ -3728,11 +3881,100 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
+        if (propertyType === 'relation') {
+          if (readString({ row: cell, key: 'availability' }) !== 'complete') {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'unsupported',
+              reason:
+                'Relation writes require a complete paginated base value before replacement-shaped writes are safe.',
+            })
+            continue
+          }
+          if (value._tag !== 'relation') {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'rejected',
+              reason: 'Relation property patches require canonical relation value_json.',
+            })
+            continue
+          }
+          if (value.pageIds.length > 100) {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'unsupported',
+              reason: 'Relation writes are capped at 100 related pages by the Notion API.',
+            })
+            continue
+          }
+          let baseValue: typeof CanonicalPropertyValue.Type
+          try {
+            baseValue = Schema.decodeUnknownSync(Schema.parseJson(CanonicalPropertyValue))(
+              readString({ row: cell, key: 'value_json' }),
+            )
+          } catch {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'unsupported',
+              reason:
+                'Relation writes require a canonical observed relation base value from page-property pagination.',
+            })
+            continue
+          }
+          if (baseValue._tag !== 'relation') {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'unsupported',
+              reason:
+                'Relation writes require a canonical observed relation base value from page-property pagination.',
+            })
+            continue
+          }
+          const basePageIds = new Set(baseValue.pageIds)
+          if (value.pageIds.some((pageIdValue) => basePageIds.has(pageIdValue) === false)) {
+            markChange({
+              replicaPath,
+              dryRun,
+              changeId: change.changeId,
+              status: 'unsupported',
+              reason:
+                'Adding new relation targets remains fail-closed until target accessibility is modeled; safe relation writes may remove or reorder fully observed targets only.',
+            })
+            continue
+          }
+        } else if (value._tag === 'relation') {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'Relation value_json can only patch relation properties.',
+          })
+          continue
+        }
         const baseHash = decode({
           schema: Hash,
           value: change.baseHash ?? readString({ row: cell, key: 'base_hash' }),
         })
-        const desiredHash = hashStoreBytes(change.valueJson)
+        const desiredHash =
+          value._tag === 'relation'
+            ? hashStoreBytes(
+                JSON.stringify({
+                  _tag: 'relation',
+                  pageIds: value.pageIds.toSorted(),
+                }),
+              )
+            : hashStoreBytes(change.valueJson)
         const commandId = decode({ schema: CommandId, value: `replica:${change.changeId}` })
         intents.push({
           _tag: 'property-edit',

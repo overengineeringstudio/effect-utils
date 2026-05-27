@@ -191,6 +191,29 @@ const propertyValueHash = (pages: ReadonlyArray<PagePropertyItemPage>): HashType
 const propertyAvailability = (pages: ReadonlyArray<PagePropertyItemPage>): PropertyAvailability =>
   pages.at(-1)?.hasMore === false ? 'complete' : 'paginated-incomplete'
 
+const paginatedPropertyValueJson = ({
+  propertyType,
+  propertyPages,
+}: {
+  readonly propertyType: string
+  readonly propertyPages: ReadonlyArray<PagePropertyItemPage>
+}): string | undefined => {
+  if (propertyType === 'relation') {
+    const pageIds: string[] = []
+    for (const item of propertyPages.flatMap((page) => page.items)) {
+      if (item.valueJson === undefined) continue
+      const value = JSON.parse(item.valueJson) as { readonly id?: unknown }
+      if (typeof value.id === 'string') pageIds.push(value.id)
+    }
+    return JSON.stringify({ _tag: 'relation', pageIds })
+  }
+
+  return propertyPages
+    .flatMap((page) => page.items)
+    .map((item) => item.valueJson)
+    .find((value) => value !== undefined)
+}
+
 const uniqueCapabilities = (
   capabilities: ReadonlyArray<CapabilityName>,
 ): ReadonlyArray<CapabilityName> => [...new Set(capabilities)]
@@ -867,10 +890,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               incompleteProperties += 1
             }
 
-            const valueJson = propertyPages
-              .flatMap((page) => page.items)
-              .map((item) => item.valueJson)
-              .find((value) => value !== undefined)
+            const valueJson = paginatedPropertyValueJson({
+              propertyType: property.type ?? 'unknown',
+              propertyPages,
+            })
             const propertyPart = `${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:${valueHash ?? `incomplete:${availability}`}`
             events.push(
               decode({

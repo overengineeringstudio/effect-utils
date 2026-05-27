@@ -35,7 +35,8 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Formula, rollup, created/edited  | Observed as computed; writes are rejected                                                    |
 | Relation and rollup dependencies | Require shared related data sources/pages; otherwise incomplete/ambiguous                    |
 | Files property                   | Metadata can be represented; upload/download byte lifecycle is unsupported                   |
-| People/relation writes           | Blocked until full paginated base values are proven; Notion writes are replacement-shaped    |
+| Relation writes                  | Supported for removal/reorder of fully paginated existing targets; adding new targets remains guarded until target accessibility is modeled |
+| People writes                    | Blocked until deterministic accessible user identities and full paginated base values are proven |
 | Notion-hosted signed URLs        | Excluded from stable hashes and diagnostics                                                  |
 | Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts                       |
 | Data-source icon metadata        | Observed as stable identity when possible; writable icon sync is deferred                    |
