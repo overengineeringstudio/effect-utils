@@ -288,6 +288,14 @@ export const commonPnpmPolicySettings = {
       '@effect/rpc': '>=0.73.0',
     },
   },
+  /**
+   * Materialize workspace deps as pnpm-injected package snapshots instead of
+   * plain source symlinks. This is required for the pure Nix/FOD package
+   * closure model: a package-local dependency build must hash every workspace
+   * package it consumes as dependency input, not accidentally reach outside the
+   * staged closure through a live symlink.
+   */
+  injectWorkspacePackages: true as const,
   enableGlobalVirtualStore: true as const,
   storeDir: '.devenv/pnpm-store-pure-v1',
   packageImportMethod: 'clone-or-copy' as const,
