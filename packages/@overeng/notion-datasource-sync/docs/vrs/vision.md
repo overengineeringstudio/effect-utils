@@ -8,7 +8,7 @@
 
 **Problem 3:** Notion does not expose a durable ordered change stream for local-first sync. Webhooks, workers, timestamps, and queries are useful signals, but correctness still requires reconciliation against current remote state.
 
-**Problem 4:** Agents and humans need an inspectable local control plane for row state, sync intent, conflicts, tombstones, retries, migrations, and audit history. Hidden client state makes recovery and review too fragile.
+**Problem 4:** Agents and humans need a local SQLite replica that is usable as a data API, not only hidden client state. They need to query rows and cells locally, queue edits locally, review planned sync effects, and recover from conflicts without treating sync internals as the user database.
 
 **Problem 5:** The existing Notion libraries in `effect-utils` solve adjacent layers, but the data-source sync concern needs a standalone primitive that composes with them instead of becoming a built-in Notion Markdown feature.
 
@@ -16,9 +16,10 @@
 
 ## The Vision
 
-- Datasource sync is a standalone primitive for synchronizing Notion data sources with a local durable control plane.
+- Datasource sync is a standalone primitive for synchronizing Notion data sources with a user-facing local SQLite replica and a durable internal control plane.
+- `notion.sqlite` is the local data API. Users and tools read current data and write guarded intents there, analogous to how `@overeng/notion-md` users read and write `.nmd` files.
 - The primitive composes with `@overeng/notion-md` for page-body materialization, while keeping page bodies and data-source rows as distinct sync surfaces.
-- Local state is auditable and replayable. Sync decisions are explainable, reproducible, guarded, and repairable.
+- Local state is auditable and replayable. The internal control store records history and recovery state; the public replica is rebuildable from it. Sync decisions are explainable, reproducible, guarded, and repairable.
 - Notion remains authoritative for current remote facts after observation. Local state is authoritative for local intent, conflict records, outbox lifecycle, tombstones, path claims, and migration history.
 - Every unsafe condition has a typed guard. Unknown, lossy, stale, ambiguous, or unsupported state blocks automatic writes instead of falling back to last-writer-wins behavior.
 - Continuous sync uses the same correctness model as one-shot commands, so background operation cannot bypass guards.
@@ -34,14 +35,15 @@
 - It is not a replacement for Notion permissions, ownership, or workspace policy.
 - It is not dependent on Notion Workers, webhooks, or any hosted callback path for correctness.
 - It is not a generic relational database replicator for arbitrary SQL schemas.
+- It is not a promise that every table inside `.notion-datasource-sync/store.sqlite` is public API.
 
 ## Success Criteria
 
-1. A user can bind a Notion data source to a local workspace, pull schema and rows, edit supported local row properties and page bodies, and push changes without mixing body metadata into data-source state.
+1. A user can bind a Notion data source to a local workspace, inspect schema and rows through `notion.sqlite`, edit supported local data through SQLite intents and page-body files, and push changes without mixing body metadata into data-source state.
 2. Local control-plane state can be replayed to rebuild derived sync state deterministically.
 3. A normal sync refuses stale, ambiguous, lossy, or unsupported writes and reports the exact guard that blocked the operation.
 4. Disjoint local and remote edits merge automatically at the smallest safe sync surface; same-surface edits become durable conflicts with explicit resolution commands.
-5. Schema add, rename, delete, type conversion, and select-option changes are handled through property-ID-aware planning and explicit migration guards.
+5. Schema changes are detected and guarded through property-ID-aware planning. Safe additive schema edits can be explicit intents; destructive or rich schema migrations require follow-up migration workflows with impact reports.
 6. Trash, restore, move-out, move-back, permission loss, and query absence are classified by direct retrieval before any destructive decision.
 7. Continuous local sync can run for long periods, recover after interruption, honor rate limits, avoid concurrent writers, and repair missed changes.
 8. `@overeng/notion-md` can be used as a page-body adapter without depending on datasource-sync internals.

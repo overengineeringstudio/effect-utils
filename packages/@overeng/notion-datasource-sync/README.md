@@ -1,11 +1,12 @@
 # @overeng/notion-datasource-sync
 
-Local-first sync engine for Notion data sources.
+Local-first SQLite replica for Notion data sources.
 
-It binds one Notion data source to a local workspace, observes schema, rows,
-row properties, lifecycle state, and row page bodies, then plans guarded writes
-through an event log and outbox. Page bodies are delegated to the public
-`@overeng/notion-md` adapter boundary.
+It binds one Notion data source to a local workspace, creates a user-facing
+`notion.sqlite` replica, observes schema, rows, row properties, lifecycle state,
+and row page bodies, then applies local SQLite write intents through guarded CLI
+sync. Page bodies are delegated to the public `@overeng/notion-md` adapter
+boundary.
 
 ## Docs
 
@@ -19,10 +20,35 @@ through an event log and outbox. Page bodies are delegated to the public
 
 ## Status
 
-The package is still pre-release. The core sync model, planner, SQLite store,
-fake gateway, live gateway, filesystem workspace, NotionMD body boundary, CLI
-surface, daemon loop, and E2E harness exist. Unsupported or unproven Notion
-surfaces fail closed instead of being silently dropped.
+The package is still pre-release. The core sync model, planner, internal SQLite
+control store, fake gateway, live gateway, filesystem workspace, NotionMD body
+boundary, CLI surface, daemon loop, and E2E harness exist. The public
+`notion.sqlite` replica/API is the intended user surface and is being layered on
+top of the control store. Unsupported or unproven Notion surfaces fail closed
+instead of being silently dropped.
+
+## Local Files
+
+```text
+<workspace-root>/
+  notion.sqlite
+  .notion-datasource-sync/
+    config.json
+    store.sqlite
+```
+
+Use `notion.sqlite` for local reads and data edits. Treat
+`.notion-datasource-sync/store.sqlite` as internal sync-control state: event
+log, projections, outbox, conflicts, checkpoints, hashes, and migrations.
+Editing the internal store is unsupported.
+
+`notion.sqlite` exposes stable public tables such as `notion_data_sources`,
+`notion_properties`, `notion_rows`, `notion_cells`, `notion_bodies`,
+`notion_local_changes`, `notion_conflicts`, and `notion_sync_status`, plus
+generated read views for adopted data sources. Local data edits are inserted as
+guarded intents in `notion_local_changes`; `sync` validates those intents,
+performs a dry-run/reviewable plan when requested, and applies supported writes
+to Notion only after base-hash guards pass.
 
 ## CLI Shape
 
@@ -38,15 +64,15 @@ notion-datasource-sync watch --state .notion-datasource-sync/watch.json --store 
 notion-datasource-sync doctor --store ... --root-id ... --data-source-id ... --workspace-root ...
 ```
 
-The sync-first form writes `.notion-datasource-sync/config.json` under the
-workspace root, with the local SQLite store at
-`.notion-datasource-sync/store.sqlite`. First establishment is remote-to-local
-only: it validates the existing Notion data source, records the binding, pulls
-remote state, and does not scan local artifacts or push remote writes. Database
-URLs resolve to a single child data source; ambiguous multi-source databases
-require an explicit data-source id. `--limit` gives large databases a bounded
-no-write dry-run preview, not a partial adoption. `pull` and `push` stay
-available for advanced CI/debug workflows.
+The sync-first form writes `.notion-datasource-sync/config.json`, the internal
+control store, and the user-facing `notion.sqlite` replica under the workspace
+root. First establishment is remote-to-local only: it validates the existing
+Notion data source, records the binding, pulls remote state into the internal
+store, projects it into `notion.sqlite`, and does not scan local write intents
+or push remote writes. Database URLs resolve to a single child data source;
+ambiguous multi-source databases require an explicit data-source id. `--limit`
+gives large databases a bounded no-write dry-run preview, not a partial
+adoption. `pull` and `push` stay available for advanced CI/debug workflows.
 
 The live CLI reads `NOTION_API_TOKEN` and accepts `NOTION_TOKEN` as a legacy
 fallback. When a live token is configured, the CLI wires the NotionMD-backed
@@ -55,8 +81,12 @@ body adapter; without a token or injected body port, body sync fails closed.
 ## Safety Model
 
 - Remote state is observed before unsafe writes.
-- Local intent is committed to SQLite before remote effects.
+- User edits are written to `notion.sqlite` intent tables before remote effects.
+- Accepted local intent is committed to the internal event log before remote
+  effects.
 - Remote effects execute from the outbox and settle only after verification.
+- `notion.sqlite` is rebuildable from the internal store and is never the only
+  copy of accepted intent/conflict state.
 - Query cursors, high-watermarks, and page-property pagination are part of the
   observation contract.
 - Body, schema, data-source metadata, properties, lifecycle, path claims, and conflict state are

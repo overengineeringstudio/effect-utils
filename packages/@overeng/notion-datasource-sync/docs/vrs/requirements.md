@@ -11,9 +11,10 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **A03 Body adapter:** `@overeng/notion-md` owns `.nmd` page-body materialization and guarded body pushes.
 - **A04 Effect runtime:** Implementation uses Effect services, Effect Schema, typed errors, scoped resources, and Effect CLI conventions.
 - **A05 Local daemon scope:** Initial watch mode is a local daemon. Hosted webhooks and Notion Workers may feed the same reconciliation queues later but are not required for correctness.
-- **A06 SQLite control plane:** Local sync state uses SQLite as the durable event log, outbox, projection, conflict, tombstone, lease, checkpoint, and migration store.
+- **A06 SQLite control plane:** Internal sync-control state uses SQLite as the durable event log, outbox, projection, conflict, tombstone, lease, checkpoint, and migration store.
 - **A07 Live verification:** Claims about Notion behavior require representative live E2E tests in an isolated temporary Notion workspace.
 - **A08 Notion drift:** Notion API behavior, connection capabilities, and workspace permissions may differ by API version, workspace, and integration configuration.
+- **A09 Local replica:** The user-facing local data API is a separate SQLite replica file, not the internal sync-control store.
 
 ## Acceptable Tradeoffs
 
@@ -24,6 +25,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **T05 Typed unsupported states:** Unsupported Notion features may be preserved, blocked, or surfaced as conflicts before they become first-class editable local shapes.
 - **T06 Live test cost:** Live E2E tests may be slower and require secrets because mocks cannot prove Notion API edge semantics.
 - **T07 Version conservatism:** The system may require an explicit compatibility update before accepting changed Notion API shapes or newly available capabilities.
+- **T08 Intent-first writes:** The user-facing SQLite API may require explicit write-intent rows before writable SQL views exist, because every local edit needs reviewable guards, dry-run behavior, and conflict detection.
 
 ## Requirements
 
@@ -138,3 +140,14 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **R71 Pagination completeness:** Remote data-source queries must page until Notion reports completion; partial pages, cursor failures, or interrupted scans must not advance completeness checkpoints or classify absence.
 - **R72 Query contract:** Remote scans must record the filter, sort, cursor, page-size, and high-watermark contract used for observation so changed query shape cannot be treated as the same membership proof.
 - **R73 Filtered absence:** Filtered queries and views must not imply deletion or movement for rows outside the filter unless the binding explicitly scopes sync membership to that filter and direct retrieval confirms lifecycle state.
+
+### Must Expose A Local SQLite Replica API
+
+- **R74 Public replica file:** Each established workspace must expose `notion.sqlite` as the stable user-facing local replica/API.
+- **R75 Internal store boundary:** `.notion-datasource-sync/store.sqlite` must remain internal sync-control state and must not be documented or required as the user's local Notion database.
+- **R76 Rebuildable replica:** `notion.sqlite` must be rebuildable from the internal sync-control store without losing accepted intents, conflicts, or settlement state.
+- **R77 Generic read model:** The replica must expose stable generic tables for data sources, properties, rows, cells, bodies, local changes, conflicts, and sync status.
+- **R78 Ergonomic views:** The replica may expose generated read views per data source, but those views must be derived from the generic model and tolerate property rename/collision cases.
+- **R79 Writable intents:** Local data edits must enter the system as explicit, durable write intents with target identity, base hashes, desired value, actor/source, and conflict policy.
+- **R80 Intent safety:** Local SQL writes must not call Notion directly; CLI sync must plan, dry-run, enqueue, execute, verify, and settle intents through the guarded outbox model.
+- **R81 Public schema versioning:** The replica API schema must be versioned separately from the internal store schema and generated view definitions.

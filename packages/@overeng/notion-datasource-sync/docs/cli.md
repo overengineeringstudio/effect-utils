@@ -6,6 +6,7 @@ The binary is `notion-datasource-sync`.
 notion-datasource-sync sync --from-notion <data-source-id-or-database-url> <workspace-root> [--dry-run] [--limit <rows>] [--no-materialize-bodies]
 notion-datasource-sync sync <workspace-root> [--dry-run]
 notion-datasource-sync status <workspace-root>
+sqlite3 <workspace-root>/notion.sqlite
 
 notion-datasource-sync init --store <sqlite> --root-id <root> --data-source-id <id> --workspace-root <dir> [--dry-run]
 notion-datasource-sync pull --store <sqlite> --root-id <root> --data-source-id <id> --workspace-root <dir>
@@ -106,15 +107,21 @@ ids, and local paths.
 `sync --from-notion <data-source-id-or-database-url> <workspace-root>` creates:
 
 ```text
+<workspace-root>/notion.sqlite
 <workspace-root>/.notion-datasource-sync/config.json
 <workspace-root>/.notion-datasource-sync/store.sqlite
 ```
 
-The config records the local root id, data-source id, store path, workspace
-root, Notion API version, config version, and body materialization policy.
-`sync <workspace-root>` and `status <workspace-root>` read this config. Missing
-config, a store binding for a different data source, or a workspace path mismatch
-fails closed with a setup/repair hint.
+`notion.sqlite` is the public local replica/API. The config records the local
+root id, data-source id, internal store path, replica path, workspace root,
+Notion API version, config version, and body materialization policy. `sync
+<workspace-root>` and `status <workspace-root>` read this config. Missing config,
+a store binding for a different data source, a replica generated from the wrong
+binding, or a workspace path mismatch fails closed with a setup/repair hint.
+
+`.notion-datasource-sync/store.sqlite` is internal sync-control state. Its event
+log, projections, outbox, conflicts, checkpoints, and migrations are not the
+user-facing data API.
 
 When `--from-notion` receives a Notion database/container URL, the CLI retrieves
 the database and uses its single child data source. Databases with zero or
@@ -129,3 +136,60 @@ notion-datasource-sync sync --from-notion <database-url> <workspace-root> --dry-
 `--limit` and `--max-rows` are aliases and are intentionally dry-run-only. They
 cap the remote row preview and mark the query as capped; they do not perform a
 partial adoption.
+
+## Public SQLite API
+
+Read and write the local replica through `<workspace-root>/notion.sqlite`.
+
+Stable generic tables:
+
+| Table                  | Access | Purpose                                                        |
+| ---------------------- | ------ | -------------------------------------------------------------- |
+| `notion_data_sources`  | read   | Data-source metadata, schema/metadata hashes, binding summary  |
+| `notion_properties`    | read   | Property ID, display name, type, config, write capability      |
+| `notion_rows`          | read   | Row/page identity, lifecycle, parent, row hashes               |
+| `notion_cells`         | read   | Lossless property values plus scalar query helper columns      |
+| `notion_bodies`        | read   | Body path, body hashes, materialization/adapter state          |
+| `notion_local_changes` | write  | Local data edit intents queued for guarded sync                |
+| `notion_conflicts`     | read   | User-visible conflict records and resolution state             |
+| `notion_sync_status`   | read   | Last sync, pending work, checkpoints, guards                   |
+
+Generated `*_current` views are read-only convenience views for querying adopted
+data sources with property-name columns. They are derived from the generic
+tables and can be rebuilt when Notion schema names change.
+
+Example reads:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  "select row_id, title, in_trash from notion_rows limit 10;"
+
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  'select "Name", "Status" from tasks_current limit 10;'
+```
+
+Example local edit intent:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" <<'SQL'
+insert into notion_local_changes
+  (kind, data_source_id, row_id, property_id, value_json, base_row_hash)
+values
+  (
+    'patch_cell',
+    '00000000-0000-4000-8000-000000000001',
+    '11111111-1111-4111-8111-111111111111',
+    'status-property-id',
+    '{"type":"status","status":{"name":"Done"}}',
+    'sha256-current-row-base'
+  );
+SQL
+
+notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
+notion-datasource-sync sync "$PWD/notion-workspace"
+```
+
+Destructive edits are never inferred from `delete from notion_rows` or from
+missing local files. Archive, restore, row creation, body edits, metadata edits,
+and schema-affecting edits must be explicit intent kinds so dry-run can show
+exact planned Notion mutations before they execute.

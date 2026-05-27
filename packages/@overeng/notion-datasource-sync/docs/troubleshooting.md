@@ -52,6 +52,22 @@ notion-datasource-sync sync --from-notion <data-source-id-or-database-url> "$PWD
 `sync <workspace-root>` only works after establishment has written
 `.notion-datasource-sync/config.json`.
 
+## Which SQLite File Should I Open?
+
+Open the user-facing replica:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite"
+```
+
+Do not use `.notion-datasource-sync/store.sqlite` as the local Notion database.
+That file is the internal sync-control store for events, projections, outbox,
+conflicts, checkpoints, and migrations.
+
+If `notion.sqlite` is missing but the internal store exists, run `sync
+<workspace-root>` or the repair flow once available. The replica is rebuildable
+from the internal store; user tools should not patch internal projection tables.
+
 ## Database URL Is Ambiguous
 
 `sync --from-notion <database-url>` resolves the database to its child data
@@ -67,6 +83,30 @@ different data source or workspace path, `sync <workspace-root>` fails closed.
 Do not edit the store manually. Check that the workspace was not copied from
 another project; establish a fresh workspace or use explicit advanced flags to
 inspect the old store.
+
+## Local Edit Does Not Reach Notion
+
+Local data edits must be represented as rows in `notion_local_changes` inside
+`notion.sqlite`. Updating generated read views or deleting current-state rows is
+not the initial writable API.
+
+Check pending intents:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  "select change_id, kind, row_id, property_id, state from notion_local_changes;"
+```
+
+Then run:
+
+```sh
+notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
+notion-datasource-sync sync "$PWD/notion-workspace"
+```
+
+If the dry-run reports a stale base, read-only property, unsupported property
+type, incomplete relation/rollup, or schema drift, the intent is guarded instead
+of applied.
 
 ## Body Sync Fails In The CLI
 
@@ -112,6 +152,24 @@ operations:
 
 Property deletion, type conversion, option removal/rename, status schema edits,
 and automatic broad convergence are intentionally blocked.
+
+Schema drift is still observed. Pending local row/cell intents that depend on a
+changed property config are guarded or converted into conflicts. Rich schema
+migration workflows are tracked as follow-up work rather than inferred from
+ordinary local SQL edits.
+
+## Conflict Appears In The Replica
+
+Inspect conflicts in `notion.sqlite`:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  "select conflict_id, kind, row_id, property_id, state from notion_conflicts;"
+```
+
+Use `conflicts list` and `conflicts resolve` to act on them. Do not update
+`notion_conflicts` or internal conflict projection rows directly; resolution
+must append explicit events so replay and audit stay correct.
 
 ## Outbox Command Is Ambiguous
 
