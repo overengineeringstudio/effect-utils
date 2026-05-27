@@ -24,15 +24,19 @@ import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 
 type SqlRow = Record<string, unknown>
 
+/** Default file name for the on-disk SQLite replica inside a workspace. */
 export const replicaFileName = 'notion.sqlite'
+/** Schema version stored in the replica's `PRAGMA user_version`. */
 export const replicaSchemaVersion = 1
 
+/** Inputs for projecting the sync store into a user-facing SQLite replica. */
 export type ProjectReplicaOptions = {
   readonly syncStorePath: string
   readonly replicaPath: string
   readonly rootId: SyncRootId
 }
 
+/** Local replica change row representing a pending CDC entry awaiting planning. */
 export type ReplicaLocalChange = {
   readonly changeId: string
   readonly kind: 'cell_patch' | 'row_archive' | 'row_restore' | 'row_create'
@@ -98,6 +102,7 @@ const slugForView = (value: string): string => {
   return slug.length === 0 ? 'data_source' : slug
 }
 
+/** Default path for the replica file inside a workspace root. */
 export const defaultReplicaPath = (workspaceRoot: AbsolutePath): string =>
   join(workspaceRoot, replicaFileName)
 
@@ -108,7 +113,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
   const needsLocalChangesStatusMigration =
     typeof localChangesSchema?.sql === 'string' &&
     (!localChangesSchema.sql.includes("'rejected'") || !localChangesSchema.sql.includes("'queued'"))
-  if (needsLocalChangesStatusMigration) {
+  if (needsLocalChangesStatusMigration === true) {
     db.exec(`ALTER TABLE notion_local_changes RENAME TO notion_local_changes_legacy;`)
   }
 
@@ -531,7 +536,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     END;
   `)
 
-  if (needsLocalChangesStatusMigration) {
+  if (needsLocalChangesStatusMigration === true) {
     db.exec(`
       INSERT OR IGNORE INTO notion_local_changes (
         change_id,
@@ -651,10 +656,13 @@ const parsePayload = (payloadJson: string): unknown => {
   return typeof decoded.canonicalJson === 'string' ? JSON.parse(decoded.canonicalJson) : {}
 }
 
-const latestDataSourcePayloads = (
-  syncDb: DatabaseSync,
-  rootId: SyncRootId,
-): Map<string, Record<string, unknown>> => {
+const latestDataSourcePayloads = ({
+  syncDb,
+  rootId,
+}: {
+  readonly syncDb: DatabaseSync
+  readonly rootId: SyncRootId
+}): Map<string, Record<string, unknown>> => {
   const rows = syncDb
     .prepare(
       `SELECT payload_json
@@ -679,7 +687,13 @@ const latestDataSourcePayloads = (
   return result
 }
 
-const latestPropertyValueJson = (syncDb: DatabaseSync, rootId: SyncRootId): Map<string, string> => {
+const latestPropertyValueJson = ({
+  syncDb,
+  rootId,
+}: {
+  readonly syncDb: DatabaseSync
+  readonly rootId: SyncRootId
+}): Map<string, string> => {
   const rows = syncDb
     .prepare(
       `SELECT event_json, payload_json
@@ -802,14 +816,15 @@ const rebuildGeneratedViews = (db: DatabaseSync): void => {
   }
 }
 
+/** Project the sync store's authoritative events into a user-facing SQLite replica. */
 export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): void => {
   mkdirSync(dirname(options.replicaPath), { recursive: true })
   const syncDb = new DatabaseSync(options.syncStorePath, { readOnly: true })
   const replicaDb = new DatabaseSync(options.replicaPath)
   try {
     createReplicaSchema(replicaDb)
-    const schemaPayloads = latestDataSourcePayloads(syncDb, options.rootId)
-    const valueJsonByCell = latestPropertyValueJson(syncDb, options.rootId)
+    const schemaPayloads = latestDataSourcePayloads({ syncDb, rootId: options.rootId })
+    const valueJsonByCell = latestPropertyValueJson({ syncDb, rootId: options.rootId })
     replicaDb.exec('BEGIN IMMEDIATE')
     try {
       clearProjectedReplicaTables(replicaDb)
@@ -1082,6 +1097,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
   }
 }
 
+/** Read the queue of pending local changes captured by the replica's CDC triggers. */
 export const readPendingReplicaChanges = (replicaPath: string): readonly ReplicaLocalChange[] => {
   const db = new DatabaseSync(replicaPath)
   try {
@@ -1137,6 +1153,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
   }
 }
 
+/** Mark a replica change as planned, applied, rejected, or otherwise progressed. */
 export const markReplicaChangeStatus = ({
   replicaPath,
   changeId,
@@ -1193,6 +1210,7 @@ const markChange = ({
   })
 }
 
+/** Translate pending replica changes into planner intents the sync executor can consume. */
 export const replicaChangesToPlannerIntents = ({
   changes,
   replicaPath,
