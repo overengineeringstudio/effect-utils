@@ -101,7 +101,28 @@ chmod +x "$fetch_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "fetch-fixture" "$fetch_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/fetch-attempt")" "truncated tarball retry count"
 
-echo "Test 4: does not retry when literal signature strings appear outside Nix error context"
+echo "Test 4: retries missing pretty flake source subpath failures"
+pretty_source_fixture="$test_dir/pretty-source-fixture.sh"
+cat > "$pretty_source_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/pretty-source-attempt"
+attempt=1
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+if [ "\$attempt" -eq 1 ]; then
+  echo 2 > "\$attempt_file"
+  echo "error: path '«github:cachix/devenv/ea3d94a»/xtask' does not exist" >&2
+  exit 1
+fi
+echo "pretty source recovered"
+EOF
+chmod +x "$pretty_source_fixture"
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "pretty-source-fixture" "$pretty_source_fixture" >/dev/null
+assert_eq "2" "$(cat "$test_dir/pretty-source-attempt")" "pretty flake source retry count"
+
+echo "Test 5: does not retry when literal signature strings appear outside Nix error context"
 false_positive_fixture="$test_dir/false-positive-fixture.sh"
 cat > "$false_positive_fixture" <<'EOF'
 #!/usr/bin/env bash
@@ -117,7 +138,7 @@ exit_code=$?
 set -e
 assert_exit_code 9 "$exit_code" "non-error-context strings do not trigger retries"
 
-echo "Test 5: preserves the original exit code when no retry signature is present"
+echo "Test 6: preserves the original exit code when no retry signature is present"
 non_retry_fixture="$test_dir/non-retry-fixture.sh"
 cat > "$non_retry_fixture" <<'EOF'
 #!/usr/bin/env bash
