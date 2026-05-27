@@ -900,6 +900,7 @@ describe('CLI command surface', () => {
         { gateway: gateway.gateway, body: ports.body, workspace },
       )
       const afterFirstEvents = storeFixture.store.replay(testIds.rootId).length
+      clock.advanceMillis(1_000)
       const second = await runWithPorts(
         runCliCommand(
           {

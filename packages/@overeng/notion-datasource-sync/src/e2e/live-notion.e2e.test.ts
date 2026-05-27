@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { Chunk, Effect, Layer, Option, Redacted, Schema, Stream } from 'effect'
@@ -18,8 +19,10 @@ import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
 import {
   AbsolutePath,
+  canonicalHash,
   CommandId,
   DataSourceId,
+  defaultReplicaPath,
   Hash,
   LocalWorkspacePort,
   establishFromNotion,
@@ -36,9 +39,13 @@ import {
   PageBodySyncPort,
   PageId,
   PatchDataSourceMetadataCommand,
+  parseCliCommand,
+  parseCliContext,
   PropertyId,
   PropertyName,
+  runCliCommandWithRuntime,
   SchemaPatchOperation,
+  type SchemaPropertyObservation,
   SyncRootId,
   WorkspaceRelativePath,
   openNotionSyncStore,
@@ -68,6 +75,7 @@ const processLiveConfig = liveNotionConfigFromEnv(liveNotionEnvFromProcessEnv())
 const implementedLiveScenarioIds = new Set<ScenarioId>([
   'NDS-LIVE-skeleton-gated-cleanup-ledger',
   'NDS-LIVE-bounded-fixture-soak',
+  'NDS-LIVE-public-sqlite-cdc-write',
 ])
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(
@@ -208,6 +216,52 @@ const propertyOptions = (
   return options.map(toCanonicalOption)
 }
 
+const livePropertyPlainText = (property: unknown): string => {
+  if (typeof property !== 'object' || property === null) return ''
+  const textItems =
+    'title' in property
+      ? (property as { readonly title?: unknown }).title
+      : 'rich_text' in property
+        ? (property as { readonly rich_text?: unknown }).rich_text
+        : undefined
+  if (Array.isArray(textItems) === false) return ''
+  return textItems
+    .map((item) =>
+      typeof item === 'object' &&
+      item !== null &&
+      'plain_text' in item &&
+      typeof item.plain_text === 'string'
+        ? item.plain_text
+        : '',
+    )
+    .join('')
+}
+
+const liveDebugJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, entry: unknown) =>
+    typeof entry === 'bigint' ? entry.toString() : entry,
+  )
+
+const liveTitlePropertyName = (properties: Record<string, unknown>): string => {
+  const entry = Object.entries(properties).find(([, property]) => {
+    if (typeof property !== 'object' || property === null) return false
+    return (
+      ('type' in property && property.type === 'title') ||
+      Object.prototype.hasOwnProperty.call(property, 'title')
+    )
+  })
+  if (entry === undefined) {
+    throw new Error('live fixture data source does not expose a title property')
+  }
+  const [fallbackName, property] = entry
+  return typeof property === 'object' &&
+    property !== null &&
+    'name' in property &&
+    typeof property.name === 'string'
+    ? property.name
+    : fallbackName
+}
+
 const makeLedgerRecorder = (
   env: ReturnType<typeof liveNotionEnvFromProcessEnv>,
   config: Extract<ReturnType<typeof liveNotionConfigFromEnv>, { readonly _tag: 'configured' }>,
@@ -242,6 +296,62 @@ const archiveDatabaseBestEffort = (
       ),
     ),
   )
+
+const liveSchemaProperty = ({
+  properties,
+  name,
+  type,
+}: {
+  readonly properties: Record<string, unknown>
+  readonly name: string
+  readonly type: string
+}): SchemaPropertyObservation => {
+  const property = properties[name]
+  if (typeof property !== 'object' || property === null || !('id' in property)) {
+    throw new Error(`live fixture property ${name} has no id`)
+  }
+  const propertyId = (property as { readonly id: unknown }).id
+  if (typeof propertyId !== 'string') {
+    throw new Error(`live fixture property ${name} id is not a string`)
+  }
+  return {
+    propertyId: decode(PropertyId, propertyId),
+    name,
+    type,
+    configHash: canonicalHash(property),
+    writeClass: 'writable',
+  }
+}
+
+const runLiveCliCommand = async ({
+  argv,
+  env,
+}: {
+  readonly argv: ReadonlyArray<string>
+  readonly env: ReturnType<typeof liveNotionEnvFromProcessEnv>
+}) => {
+  const cliCommand = parseCliCommand(argv)
+  const command = parseCliContext({ argv, resolvedCommand: cliCommand })
+  if (env.token === undefined) {
+    throw new Error('live CLI test requires a token after configuration validation')
+  }
+  try {
+    return await Effect.runPromise(
+      runCliCommandWithRuntime({
+        command: cliCommand,
+        context: command,
+        options: {
+          env:
+            env.tokenSource === 'NOTION_TOKEN'
+              ? { NOTION_TOKEN: env.token }
+              : { NOTION_API_TOKEN: env.token },
+        },
+      }),
+    )
+  } finally {
+    command.store.close()
+  }
+}
 
 describe('notion datasource sync live Notion E2E skeleton', () => {
   it('has a declared live scenario implementation', () => {
@@ -1138,6 +1248,299 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await provisioned.cleanup(recorder.current())
         }
       }, 180_000)
+
+      it('applies public SQLite CDC cell and row lifecycle changes against live Notion', async () => {
+        if (processLiveConfig._tag !== 'configured') return
+
+        const env = liveNotionEnvFromProcessEnv()
+        const provisioned = await provisionLiveNotionDataSourceFixture({
+          env,
+          config: processLiveConfig,
+        })
+        const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
+        const workspaceRoot = decode(
+          AbsolutePath,
+          await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-sqlite-cdc-')),
+        )
+        let pageId: string | undefined
+
+        try {
+          const initialDataSource = await runLive(
+            env,
+            NotionDataSources.retrieve({ dataSourceId: provisioned.config.dataSourceId }),
+          )
+          const titlePropertyName = liveTitlePropertyName(initialDataSource.properties)
+          const cdcPropertyName = 'CDC Note'
+          const patchedDataSource = await runLive(
+            env,
+            NotionDataSources.update({
+              dataSourceId: provisioned.config.dataSourceId,
+              properties: { [cdcPropertyName]: { rich_text: {} } },
+            }),
+          )
+          await recorder.record({
+            phase: 'mutate',
+            objectId: provisioned.config.dataSourceId,
+            objectType: 'data_source',
+            purpose: 'live-public-sqlite-cdc-schema-fixture',
+            cleanupState: 'mutated',
+          })
+          const cdcSchemaProperty = liveSchemaProperty({
+            properties: patchedDataSource.properties,
+            name: cdcPropertyName,
+            type: 'rich_text',
+          })
+          const initialTitle = `sqlite cdc initial ${provisioned.config.runId}`
+          const updatedTitle = `sqlite cdc updated ${provisioned.config.runId}`
+          const page = await runLive(
+            env,
+            NotionPages.create({
+              parent: {
+                type: 'data_source_id',
+                data_source_id: provisioned.config.dataSourceId,
+              },
+              properties: {
+                [titlePropertyName]: title(initialTitle),
+                [cdcPropertyName]: { rich_text: [text(initialTitle)] },
+              },
+            }),
+          )
+          pageId = page.id
+          const livePageId = page.id
+          await recorder.record({
+            phase: 'create',
+            objectId: livePageId,
+            objectType: 'page',
+            purpose: 'live-public-sqlite-cdc-row',
+            cleanupState: 'created',
+          })
+
+          await runLiveCliCommand({
+            env,
+            argv: [
+              'sync',
+              '--from-notion',
+              provisioned.config.dataSourceId,
+              workspaceRoot,
+              '--schema-properties-json',
+              JSON.stringify([cdcSchemaProperty]),
+              '--no-materialize-bodies',
+            ],
+          })
+
+          const replicaPath = defaultReplicaPath(workspaceRoot)
+          const syncArgv = [
+            'sync',
+            workspaceRoot,
+            '--schema-properties-json',
+            JSON.stringify([cdcSchemaProperty]),
+          ]
+          await runLiveCliCommand({ env, argv: syncArgv })
+          const writeCellChange = () => {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              const cell = db
+                .prepare(
+                  `SELECT property_id, value_text
+                   FROM notion_cells
+                   WHERE page_id = ? AND property_name = ?`,
+                )
+                .get(livePageId, cdcPropertyName) as
+                | { readonly property_id: string; readonly value_text: string }
+                | undefined
+              if (cell === undefined) {
+                throw new Error('live public SQLite CDC test did not project the CDC cell')
+              }
+              expect(cell.property_id).toBe(cdcSchemaProperty.propertyId)
+              db.prepare(
+                `UPDATE notion_cells
+                 SET value_json = ?
+                 WHERE page_id = ? AND property_id = ?`,
+              ).run(
+                JSON.stringify({ _tag: 'rich_text', plainText: updatedTitle }),
+                livePageId,
+                cell.property_id,
+              )
+              expect(
+                db
+                  .prepare(
+                    `SELECT status, value_json
+                     FROM notion_cell_changes
+                     WHERE page_id = ? AND property_id = ?`,
+                  )
+                  .get(livePageId, cell.property_id),
+              ).toMatchObject({
+                status: 'pending',
+                value_json: JSON.stringify({ _tag: 'rich_text', plainText: updatedTitle }),
+              })
+            } finally {
+              db.close()
+            }
+          }
+          writeCellChange()
+
+          await runLiveCliCommand({ env, argv: syncArgv })
+          const afterCell = await runLive(env, NotionPages.retrieve({ pageId: livePageId }))
+          expect(livePropertyPlainText(afterCell.properties[cdcPropertyName])).toBe(updatedTitle)
+          {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              const cellStatuses = db
+                .prepare(
+                  `SELECT status, unsupported_reason
+                   FROM notion_cell_changes
+                   WHERE page_id = ?
+                   ORDER BY created_at`,
+                )
+                .all(livePageId)
+              expect(
+                cellStatuses,
+                `cell CDC statuses: ${JSON.stringify(cellStatuses)}`,
+              ).toEqual([expect.objectContaining({ status: 'applied' })])
+            } finally {
+              db.close()
+            }
+          }
+          await runLiveCliCommand({ env, argv: syncArgv })
+
+          {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              db.prepare(`UPDATE notion_rows SET in_trash = 1 WHERE page_id = ?`).run(livePageId)
+              expect(
+                db
+                  .prepare(
+                    `SELECT kind, status
+                     FROM notion_row_changes
+                     WHERE page_id = ? AND kind = 'row_archive'`,
+                  )
+                  .get(livePageId),
+              ).toMatchObject({ kind: 'row_archive', status: 'pending' })
+            } finally {
+              db.close()
+            }
+          }
+          await runLiveCliCommand({ env, argv: syncArgv })
+          const archived = await runLive(env, NotionPages.retrieve({ pageId: livePageId }))
+          expect(archived.in_trash).toBe(true)
+          await recorder.record({
+            phase: 'mutate',
+            objectId: livePageId,
+            objectType: 'page',
+            purpose: 'live-public-sqlite-cdc-archive',
+            cleanupState: 'trashed',
+          })
+
+          {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              const row = db
+                .prepare(`SELECT properties_hash FROM notion_rows WHERE page_id = ?`)
+                .get(livePageId) as { readonly properties_hash: string } | undefined
+              if (row === undefined) {
+                throw new Error('live public SQLite CDC test did not retain row projection')
+              }
+              db.prepare(`UPDATE notion_rows SET in_trash = 0 WHERE page_id = ?`).run(livePageId)
+              db.prepare(
+                `INSERT INTO notion_row_changes (
+                   change_id, kind, data_source_id, page_id, base_hash
+                 )
+                 SELECT ?, 'row_restore', ?, ?, ?
+                 WHERE NOT EXISTS (
+                   SELECT 1 FROM notion_row_changes
+                   WHERE page_id = ? AND kind = 'row_restore' AND status IN ('pending', 'queued')
+                 )`,
+              ).run(
+                `live-restore-${provisioned.config.runId}`,
+                provisioned.config.dataSourceId,
+                livePageId,
+                row.properties_hash,
+                livePageId,
+              )
+              expect(
+                db
+                  .prepare(
+                    `SELECT kind, status
+                     FROM notion_row_changes
+                     WHERE page_id = ? AND kind = 'row_restore'`,
+                  )
+                  .get(livePageId),
+              ).toMatchObject({ kind: 'row_restore', status: 'pending' })
+            } finally {
+              db.close()
+            }
+          }
+          const restoreSync = await runLiveCliCommand({ env, argv: syncArgv })
+          const restored = await runLive(env, NotionPages.retrieve({ pageId: livePageId }))
+          if (restored.in_trash !== false) {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              const rowChanges = db
+                .prepare(
+                  `SELECT kind, status, unsupported_reason
+                   FROM notion_row_changes
+                   WHERE page_id = ?
+                   ORDER BY created_at`,
+                )
+                .all(livePageId)
+              throw new Error(
+                `live public SQLite CDC restore did not update Notion: ${liveDebugJson({
+                  rowChanges,
+                  restoreSync,
+                })}`,
+              )
+            } finally {
+              db.close()
+            }
+          }
+          {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              expect(
+                db
+                  .prepare(
+                    `SELECT kind, status
+                     FROM notion_row_changes
+                     WHERE page_id = ?
+                     ORDER BY created_at`,
+                  )
+                  .all(livePageId),
+              ).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({ kind: 'row_archive', status: 'applied' }),
+                  expect.objectContaining({ kind: 'row_restore', status: 'applied' }),
+                ]),
+              )
+            } finally {
+              db.close()
+            }
+          }
+
+          await recorder.record({
+            phase: 'verify',
+            objectId: livePageId,
+            objectType: 'page',
+            purpose: 'live-public-sqlite-cdc-write',
+            cleanupState: 'verified',
+          })
+        } finally {
+          if (pageId !== undefined) {
+            await runLive(
+              env,
+              NotionPages.update({ pageId, in_trash: true }).pipe(Effect.ignore),
+            )
+            await recorder.record({
+              phase: 'trash',
+              objectId: pageId,
+              objectType: 'page',
+              purpose: 'live-public-sqlite-cdc-row',
+              cleanupState: 'verified-cleaned',
+            })
+          }
+          await rm(workspaceRoot, { recursive: true, force: true })
+          await provisioned.cleanup(recorder.current())
+        }
+      }, 240_000)
 
       it('pushes a NotionMD body through the datasource-sync body adapter against live Notion', async () => {
         if (processLiveConfig._tag !== 'configured') return

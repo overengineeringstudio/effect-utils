@@ -445,6 +445,16 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L6',
     file: 'src/e2e/live-notion.e2e.test.ts',
   }),
+  scenario({
+    scenarioId: 'NDS-LIVE-public-sqlite-cdc-write',
+    title:
+      'live Notion public SQLite CDC applies cell and row lifecycle edits against isolated fixtures',
+    requirementIds: ['R52', 'R65', 'R67', 'R68', 'R69', 'R70', 'R74', 'R78'],
+    guards: ['CapabilityPreflightFailed', 'RawPayloadRetentionUnsafe'],
+    lowestPlannerLevel: 'L6',
+    highestIntegrationLevel: 'L6',
+    file: 'src/e2e/live-notion.e2e.test.ts',
+  }),
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {

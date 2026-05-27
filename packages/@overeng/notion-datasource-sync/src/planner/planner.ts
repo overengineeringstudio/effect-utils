@@ -819,22 +819,25 @@ const planLocalDelete = ({
     }
   }
 
-  const blockedTombstone = fromGuard({
-    decision: guardTombstoneSafety({
-      deleteVsEdit: snapshot.remoteChanges.some(
-        (change) =>
-          change._tag !== 'delete' && 'pageId' in change && change.pageId === intent.pageId,
-      ),
-      moveOutNotDelete: row?.movedOut === true,
-      permissionAmbiguous: snapshot.tombstones.some(
-        (tombstone) =>
-          tombstone.pageId === intent.pageId && tombstone.directRetrieve === 'permission-ambiguous',
-      ),
-    }),
-    surface: intent.surface,
-  })
-  if (blockedTombstone !== undefined) {
-    return blockedTombstone
+  if (intent.command._tag === 'TrashPageCommand') {
+    const blockedTombstone = fromGuard({
+      decision: guardTombstoneSafety({
+        deleteVsEdit: snapshot.remoteChanges.some(
+          (change) =>
+            change._tag !== 'delete' && 'pageId' in change && change.pageId === intent.pageId,
+        ),
+        moveOutNotDelete: row?.movedOut === true,
+        permissionAmbiguous: snapshot.tombstones.some(
+          (tombstone) =>
+            tombstone.pageId === intent.pageId &&
+            tombstone.directRetrieve === 'permission-ambiguous',
+        ),
+      }),
+      surface: intent.surface,
+    })
+    if (blockedTombstone !== undefined) {
+      return blockedTombstone
+    }
   }
 
   if (

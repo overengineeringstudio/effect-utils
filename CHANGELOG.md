@@ -57,6 +57,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync**: Make live remote adoption reruns idempotent for unchanged capability/property observations, settle public SQLite page-property CDC writes against live Notion, and use lifecycle hashes for row archive/restore CDC so direct `notion.sqlite` row edits do not replay stale archive intents.
 - **@overeng/notion-datasource-sync**: Move public `notion.sqlite` write capture to typed CDC tables for cell and row changes while preserving guarded direct SQLite edits and the compatibility local-change view.
 - **@overeng/notion-datasource-sync**: Extend the public SQLite CDC surface with typed body, metadata, schema, and conflict-resolution tables; promote row restore, guarded body pushes, and store-backed safe conflict-resolution choices into the guarded planner/outbox path; settle public CDC status from planner/outbox outcomes including the CLI `sync <workspace>` wiring path; validate body content hashes before planning remote writes; and keep row create, public metadata/schema CDC, database metadata, files, views, and destructive schema migrations fail-closed until verified post-write reconciliation is modeled.
 - **@overeng/notion-datasource-sync**: Harden typed CDC correctness so repeated direct SQLite edits coalesce to the latest effective desired state, row lifecycle toggles cannot replay stale archive intents, queued changes remain visible to later scans, and invalid direct cell payloads fail before visible replica mutation.
