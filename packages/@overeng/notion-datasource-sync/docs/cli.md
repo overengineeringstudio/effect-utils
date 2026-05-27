@@ -147,8 +147,8 @@ Stable generic tables:
 | ---------------------- | ------ | -------------------------------------------------------------- |
 | `notion_data_sources`  | read   | Data-source metadata, schema/metadata hashes, binding summary  |
 | `notion_properties`    | read   | Property ID, display name, type, config, write capability      |
-| `notion_rows`          | read   | Row/page identity, lifecycle, parent, row hashes               |
-| `notion_cells`         | read   | Lossless property values plus scalar query helper columns      |
+| `notion_rows`          | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents |
+| `notion_cells`         | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents |
 | `notion_bodies`        | read   | Body path, body hashes, materialization/adapter state          |
 | `notion_local_changes` | write  | Local data edit intents queued for guarded sync                |
 | `notion_conflicts`     | read   | User-visible conflict records and resolution state             |
@@ -180,9 +180,11 @@ where page_id = '11111111-1111-4111-8111-111111111111'
 SQL
 ```
 
-That update keeps scalar helper columns and generated read views coherent with
+That update is accepted only when the cell's `write_class` is `writable`. On
+success it keeps scalar helper columns and generated read views coherent with
 the local desired value, and queues a guarded `cell_patch` row in
-`notion_local_changes`.
+`notion_local_changes`. Computed/system cells fail before visible replica state
+changes.
 
 Equivalent explicit local edit intent:
 
@@ -205,7 +207,8 @@ notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
 notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
-Destructive edits are never inferred from `delete from notion_rows` or from
-missing local files. Archive, restore, row creation, body edits, metadata edits,
-and schema-affecting edits must be explicit intent kinds so dry-run can show
-exact planned Notion mutations before they execute.
+Supported explicit intent kinds are `cell_patch`, `row_archive`, `row_restore`,
+and `row_create`. Destructive edits are never inferred from `delete from
+notion_rows` or from missing local files. Body edits, metadata edits, and
+schema-affecting edits require dedicated supported flows before sync can show
+exact planned Notion mutations and execute them.

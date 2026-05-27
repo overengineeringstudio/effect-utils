@@ -368,32 +368,12 @@ type NotionLocalChange =
       readonly pageId: PageId
       readonly baseHash: Hash | undefined
     }
-  | {
-      readonly kind: 'patch_metadata'
-      readonly dataSourceId: DataSourceId
-      readonly metadataJson: VersionedJson
-      readonly baseMetadataHash: Hash
-    }
-  | {
-      readonly kind: 'patch_body'
-      readonly dataSourceId: DataSourceId
-      readonly rowId: PageId
-      readonly bodyPath: RelativePath
-      readonly baseBodyHash: Hash
-    }
-  | {
-      readonly kind: 'patch_schema'
-      readonly dataSourceId: DataSourceId
-      readonly schemaPatchJson: VersionedJson
-      readonly baseSchemaHash: Hash
-      readonly migrationPlanId: string | null
-    }
 ```
 
 All data edit use cases are in scope for this API. Rich schema migrations are
-the exception: schema changes must be detected, guarded, and represented as
-schema intents where the safe subset is proven, but destructive/type-changing
-migration workflows require impact reports and explicit follow-up commands.
+the exception: schema changes must be detected and guarded. Metadata, body, and
+schema edit intents require dedicated table support before they are part of the
+public SQLite contract.
 
 Intent lifecycle:
 
@@ -401,18 +381,22 @@ Intent lifecycle:
 stateDiagram-v2
   [*] --> Pending: insert into notion_local_changes
   [*] --> Pending: supported direct table update
-  Pending --> Planned: converted to planner intent
+  Pending --> Queued: locally validated and handed to planner input
   Pending --> Unsupported: known unsupported write class
   Pending --> Rejected: malformed payload / missing target
   Pending --> Conflict: stale base detected before planning
+  Queued --> Planned: planner enqueues remote command
+  Queued --> Conflict: planner detects remote/schema/body drift
   Planned --> Applied: remote write verified
-  Planned --> Conflict: planner detects remote/schema/body drift
+  Planned --> Conflict: executor detects remote/schema/body drift
   Conflict --> Applied: explicit resolution command
 ```
 
-The current replica table stores lifecycle as `pending`, `planned`, `applied`,
-`conflict`, `unsupported`, or `rejected`. Unsupported, stale, and malformed
-local changes must not be promoted to `planned`.
+The current replica table stores lifecycle as `pending`, `queued`, `planned`,
+`applied`, `conflict`, `unsupported`, or `rejected`. Conversion from the public
+replica to planner input may mark a supported local change `queued`; it must not
+mark a change `planned` until the planner/outbox result is reflected. Unsupported,
+stale, and malformed local changes must not be promoted to `queued` or `planned`.
 
 Dry-run is true no-write for the public replica and internal store. It may read
 `notion.sqlite` intents and current internal projections, but it must not settle
@@ -1049,7 +1033,7 @@ Replica E2E must prove:
 
 - establishment creates `notion.sqlite` and projects observed rows/cells/schema/metadata,
 - generic tables and generated views agree for sampled rows,
-- local SQL insert into `notion_local_changes` produces a planned command in dry-run,
+- local SQL insert into `notion_local_changes` produces a planned command in dry-run without settling the public change,
 - normal sync applies supported intents to disposable fake/live remotes and settles after read-after-write,
 - stale base hashes become conflicts rather than overwrites,
 - schema drift affecting a pending intent is guarded before apply,
@@ -1062,4 +1046,4 @@ Replica E2E must prove:
 - **DQ2 Workers:** Notion Workers syncs are optional Notion-hosted external-source projections. Current Worker syncs create and manage Worker-owned databases and do not replace arbitrary existing datasource sync, local filesystem reconciliation, SQLite authority, or outbox settlement.
 - **DQ3 Package split staging:** The conceptual `notion-domain` and `notion-sync-core` layers may initially live inside `@overeng/notion-datasource-sync` if APIs remain separated and extractable.
 - **DQ4 File upload support:** Observed Notion file URLs are temporary references. Editable file-byte sync may use durable File Upload API IDs only after additional live E2E proof for upload, expiry, and replacement behavior.
-- **DQ5 Writable generated views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against generated `*_current` views may later be implemented with triggers that insert the same `notion_local_changes` rows. The initial public API uses explicit intent inserts so write semantics stay visible and testable.
+- **DQ5 Writable generated views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against generated `notion_view_*` views may later be implemented with triggers that insert the same `notion_local_changes` rows. The current public API supports guarded writes through `notion_cells.value_json`, `notion_rows.in_trash`, and explicit intent inserts so write semantics stay visible and testable.

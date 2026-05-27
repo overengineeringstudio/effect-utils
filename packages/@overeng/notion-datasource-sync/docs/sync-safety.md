@@ -37,7 +37,7 @@ The public replica has two kinds of surfaces:
 
 | Surface                        | Write policy                                                                 |
 | ------------------------------ | ---------------------------------------------------------------------------- |
-| Generic current-state tables   | Read-only projections of observed Notion state                                |
+| Generic current-state tables   | Guarded current-state edits for supported cells/row lifecycle; unsafe columns are read-only |
 | Generated `notion_view_*` views | Read-only ergonomic views over current rows/cells                            |
 | `notion_local_changes` intents | Writable queue for local data edits, with base hashes and conflict policy     |
 | `notion_conflicts`             | Read-only conflict view; resolve through CLI commands                         |
@@ -45,8 +45,8 @@ The public replica has two kinds of surfaces:
 Every write intent must name the target surface, current base hash, desired
 Notion-shaped value, and conflict policy. `sync --dry-run` validates these
 intents and shows planned commands without mutating Notion or settling the
-intents. Normal `sync` converts supported intents into internal events/outbox
-commands, performs Notion writes only after preflight reads pass, then re-reads
+intents. Normal `sync` converts locally valid public changes to queued planner
+input, performs Notion writes only after preflight reads pass, then re-reads
 and projects the result back into `notion.sqlite`.
 
 ## Establishment

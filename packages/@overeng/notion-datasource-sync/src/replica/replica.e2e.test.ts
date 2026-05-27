@@ -248,7 +248,7 @@ describe('user-facing SQLite replica', () => {
         pageId: testIds.pageId,
         propertyId: testIds.propertyA,
       })
-      expect(statusFor(replicaPath, changes[0]?.changeId ?? '')).toMatchObject({ status: 'planned' })
+      expect(statusFor(replicaPath, changes[0]?.changeId ?? '')).toMatchObject({ status: 'queued' })
 
       const after = new DatabaseSync(replicaPath, { readOnly: true })
       try {
@@ -259,6 +259,97 @@ describe('user-facing SQLite replica', () => {
         })
       } finally {
         after.close()
+      }
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('rejects direct current-state updates to non-writable cells before visible mutation', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [
+        propertyPage('Editable task', testIds.propertyA),
+        propertyPage('Computed value', testIds.propertyB),
+      ],
+    })
+    const mixedSchemaProperties = [
+      ...schemaProperties,
+      {
+        propertyId: testIds.propertyB,
+        name: 'Computed score',
+        type: 'formula',
+        configHash: hash('config-b'),
+        writeClass: 'computed' as const,
+      },
+    ]
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: mixedSchemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const before = db
+          .prepare(
+            `SELECT value_json, value_text FROM notion_cells WHERE page_id = ? AND property_id = ?`,
+          )
+          .get(testIds.pageId, testIds.propertyB)
+
+        expect(() =>
+          db
+            .prepare(`UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`)
+            .run(
+              JSON.stringify({ _tag: 'title', plainText: 'Should not land' }),
+              testIds.pageId,
+              testIds.propertyB,
+            ),
+        ).toThrow(/writable only for writable Notion properties/u)
+
+        expect(
+          db
+            .prepare(
+              `SELECT value_json, value_text FROM notion_cells WHERE page_id = ? AND property_id = ?`,
+            )
+            .get(testIds.pageId, testIds.propertyB),
+        ).toEqual(before)
+        expect(
+          db
+            .prepare(
+              `SELECT "Computed score" FROM notion_view_data_source_1 WHERE page_id = ?`,
+            )
+            .get(testIds.pageId),
+        ).toMatchObject({ 'Computed score': 'Computed value' })
+        expect(db.prepare(`SELECT count(*) AS count FROM notion_local_changes`).get()).toMatchObject({
+          count: 0,
+        })
+      } finally {
+        db.close()
       }
     } finally {
       storeFixture.cleanup()
@@ -404,6 +495,18 @@ describe('user-facing SQLite replica', () => {
         )
         db.prepare(
           `INSERT INTO notion_local_changes (
+             change_id, kind, data_source_id, page_id, property_id, value_json, base_hash
+           ) VALUES (?, 'cell_patch', ?, ?, ?, ?, ?)`,
+        ).run(
+          'stale-base',
+          testIds.dataSourceId,
+          testIds.pageId,
+          testIds.propertyA,
+          JSON.stringify({ _tag: 'title', plainText: 'Stale' }),
+          hash('stale-base'),
+        )
+        db.prepare(
+          `INSERT INTO notion_local_changes (
              change_id, kind, data_source_id, page_id, base_hash
            ) VALUES (?, 'row_restore', ?, ?, ?)`,
         ).run('restore-unsupported', testIds.dataSourceId, testIds.pageId, hash('restore-base'))
@@ -420,6 +523,10 @@ describe('user-facing SQLite replica', () => {
       expect(statusFor(replicaPath, 'invalid-json')).toMatchObject({
         status: 'rejected',
         unsupported_reason: 'value_json is not valid canonical Notion property value JSON.',
+      })
+      expect(statusFor(replicaPath, 'stale-base')).toMatchObject({
+        status: 'conflict',
+        unsupported_reason: 'Local cell patch has a stale base_hash.',
       })
       expect(statusFor(replicaPath, 'restore-unsupported')).toMatchObject({
         status: 'unsupported',

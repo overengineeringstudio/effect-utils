@@ -37,7 +37,7 @@ export type ReplicaLocalChange = {
   readonly status: string
 }
 
-type ReplicaChangeStatus = 'pending' | 'planned' | 'applied' | 'conflict' | 'unsupported' | 'rejected'
+type ReplicaChangeStatus = 'pending' | 'queued' | 'planned' | 'applied' | 'conflict' | 'unsupported' | 'rejected'
 
 const readString = ({ row, key }: { readonly row: SqlRow; readonly key: string }): string => {
   const value = row[key]
@@ -92,7 +92,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'notion_local_changes'`)
     .get() as SqlRow | undefined
   const needsLocalChangesStatusMigration =
-    typeof localChangesSchema?.sql === 'string' && !localChangesSchema.sql.includes("'rejected'")
+    typeof localChangesSchema?.sql === 'string' &&
+    (!localChangesSchema.sql.includes("'rejected'") || !localChangesSchema.sql.includes("'queued'"))
   if (needsLocalChangesStatusMigration) {
     db.exec(`ALTER TABLE notion_local_changes RENAME TO notion_local_changes_legacy;`)
   }
@@ -177,6 +178,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       base_hash TEXT,
       status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
         'pending',
+        'queued',
         'planned',
         'applied',
         'conflict',
@@ -217,6 +219,14 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     CREATE INDEX IF NOT EXISTS notion_cells_text_idx ON notion_cells(value_text);
     CREATE INDEX IF NOT EXISTS notion_local_changes_pending_idx
       ON notion_local_changes(status, data_source_id, page_id);
+
+    CREATE TRIGGER IF NOT EXISTS notion_cells_guard_direct_value_update
+    BEFORE UPDATE OF value_json ON notion_cells
+    FOR EACH ROW
+    WHEN NEW.value_json IS NOT OLD.value_json AND OLD.write_class != 'writable'
+    BEGIN
+      SELECT RAISE(ABORT, 'notion_cells.value_json is writable only for writable Notion properties');
+    END;
 
     CREATE TRIGGER IF NOT EXISTS notion_cells_direct_value_update_intent
     AFTER UPDATE OF value_json ON notion_cells
@@ -366,6 +376,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
 const clearProjectedReplicaTables = (db: DatabaseSync): void => {
   db.exec(`
     DROP TRIGGER IF EXISTS notion_cells_direct_value_update_intent;
+    DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_update;
     DROP TRIGGER IF EXISTS notion_cells_block_identity_update;
     DROP TRIGGER IF EXISTS notion_cells_block_delete;
     DROP TRIGGER IF EXISTS notion_rows_archive_restore_intent;
@@ -995,7 +1006,7 @@ export const replicaChangesToPlannerIntents = ({
           policy: 'trustedRemoteTrash',
           directRetrieve: 'accessible',
         })
-        markChange({ replicaPath, dryRun, changeId: change.changeId, status: 'planned' })
+        markChange({ replicaPath, dryRun, changeId: change.changeId, status: 'queued' })
         continue
       }
       if (change.kind === 'cell_patch') {
@@ -1106,7 +1117,7 @@ export const replicaChangesToPlannerIntents = ({
             value: readString({ row: cell, key: 'config_hash' }),
           }),
         })
-        markChange({ replicaPath, dryRun, changeId: change.changeId, status: 'planned' })
+        markChange({ replicaPath, dryRun, changeId: change.changeId, status: 'queued' })
       }
     }
     return intents
