@@ -221,8 +221,9 @@ Supported typed public mutation tables today are `notion_cell_changes`,
 `notion_row_changes.kind` supports `row_archive`, `row_restore`, and
 `row_create`; archive and restore can execute through the guarded page lifecycle
 command path, while row creation remains fail-closed until create-page
-idempotency and remote page-id reconciliation are implemented. Destructive edits
-are never inferred from `delete from notion_rows` or from missing local files.
+idempotency and returned `page_id` reconciliation can make retries
+duplicate-safe. Destructive edits are never inferred from
+`delete from notion_rows` or from missing local files.
 
 Body changes use `notion_body_changes` with `page_id`, `body_path`,
 `local_body_hash`, optional `local_body_content`, and `base_hash`; unsafe body

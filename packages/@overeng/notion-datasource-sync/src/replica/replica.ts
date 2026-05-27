@@ -2071,7 +2071,8 @@ export const replicaChangesToPlannerIntents = ({
           dryRun,
           changeId: change.changeId,
           status: 'unsupported',
-          reason: 'Row creation needs a create-page gateway command before it can sync safely.',
+          reason:
+            'Row creation remains fail-closed because Notion create-page has no idempotency key; support needs durable returned page_id reconciliation before retry.',
         })
         continue
       }
