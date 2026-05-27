@@ -10,7 +10,12 @@ import { propertySurfaceKey } from '../core/canonical.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
 import { AbsolutePath, Hash } from '../core/domain.ts'
 import { type SyncEvent as SyncEventType } from '../core/events.ts'
-import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
+import {
+  LocalWorkspacePort,
+  NotionDataSourceGateway,
+  PageBodySyncPort,
+  type NotionDataSourceGatewayShape,
+} from '../core/ports.ts'
 import { makeConflictRaisedEvent } from '../sync/observation.ts'
 import { initOneShotSync, pullOneShotSync, syncOneShot } from '../sync/sync.ts'
 import {
@@ -52,7 +57,7 @@ const runWithPorts = <TValue, TError>(
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   >,
   input: {
-    readonly gateway: ReturnType<typeof makeFakeGatewayHarness>['gateway']
+    readonly gateway: NotionDataSourceGatewayShape
   },
 ) =>
   Effect.runPromise(
@@ -789,6 +794,172 @@ describe('user-facing SQLite replica', () => {
         .readOutbox(testIds.rootId)
         .filter((row) => row.commandTag === 'CreatePage')
       expect(outbox).toHaveLength(1)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('surfaces expired running row-create commands as reconciliation-required without retrying create', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Existing row')] })
+    const createPageCalls: string[] = []
+    const countingGateway: NotionDataSourceGatewayShape = {
+      ...gateway.gateway,
+      createPage: (command) =>
+        Effect.sync(() => {
+          createPageCalls.push(command.commandId)
+        }).pipe(Effect.zipRight(gateway.gateway.createPage(command))),
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: countingGateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const source = db
+          .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
+          .get(testIds.dataSourceId) as { schema_hash: string }
+        db.prepare(
+          `INSERT INTO notion_row_creates (
+             change_id,
+             data_source_id,
+             local_row_id,
+             client_request_key,
+             initial_values_json,
+             base_schema_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(
+          'create-ambiguous',
+          testIds.dataSourceId,
+          'local-create-ambiguous',
+          'client-create-ambiguous',
+          JSON.stringify({
+            [testIds.propertyA]: { _tag: 'title', plainText: 'Ambiguous create' },
+          }),
+          source.schema_hash,
+        )
+      } finally {
+        db.close()
+      }
+
+      const changes = readPendingReplicaChanges(replicaPath)
+      const intents = replicaChangesToPlannerIntents({ changes, replicaPath })
+      const enqueueResult = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          localIntents: intents,
+          maxExecutorSteps: 0,
+          now: clock.now,
+        }),
+        { gateway: countingGateway },
+      )
+      settleReplicaChangesAfterSync({
+        changes,
+        replicaPath,
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        decisions: enqueueResult.push.plan.decisions,
+      })
+      expect(rowCreateFor(replicaPath, 'create-ambiguous')).toMatchObject({ status: 'planned' })
+
+      const outbox = storeFixture.store
+        .readOutbox(testIds.rootId)
+        .find((row) => row.commandId === 'replica:create-ambiguous')
+      expect(outbox).toBeDefined()
+      if (outbox === undefined) throw new Error('expected row-create outbox row')
+
+      const running = storeFixture.store.claimNextOutboxCommand({
+        rootId: testIds.rootId,
+        leaseToken: 'lease-create-1',
+        leaseDurationMs: 60_000,
+      })
+      expect(running).toMatchObject({
+        commandId: 'replica:create-ambiguous',
+        attemptState: 'running',
+      })
+      expect(createPageCalls).toHaveLength(0)
+
+      clock.advanceMillis(1)
+      const rerunChanges = readPendingReplicaChanges(replicaPath)
+      const rerunIntents = replicaChangesToPlannerIntents({
+        changes: rerunChanges,
+        replicaPath,
+      })
+      const rerun = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          localIntents: rerunIntents,
+          maxExecutorSteps: 1,
+          leaseToken: 'lease-create-2',
+          leaseDurationMs: 0,
+          now: clock.now,
+        }),
+        { gateway: countingGateway },
+      )
+      settleReplicaChangesAfterSync({
+        changes: rerunChanges,
+        replicaPath,
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        decisions: rerun.push.plan.decisions,
+      })
+
+      expect(createPageCalls).toHaveLength(0)
+      expect(rerun.push.executor.results).toMatchObject([
+        {
+          _tag: 'failed',
+          commandId: 'replica:create-ambiguous',
+          attemptState: 'ambiguous',
+        },
+      ])
+      expect(
+        storeFixture.store
+          .readOutbox(testIds.rootId)
+          .find((row) => row.commandId === 'replica:create-ambiguous'),
+      ).toMatchObject({ state: 'ambiguous' })
+      expect(rowCreateFor(replicaPath, 'create-ambiguous')).toMatchObject({
+        status: 'needs_reconciliation',
+        remote_page_id: null,
+      })
+      expect(statusFor(replicaPath, 'create-ambiguous')).toMatchObject({
+        status: 'needs_reconciliation',
+      })
     } finally {
       storeFixture.cleanup()
     }

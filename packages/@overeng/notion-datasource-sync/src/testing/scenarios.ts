@@ -952,7 +952,7 @@ export const scenarioImplementationGaps = ({
       file: entry.file,
     }))
 
-/** Reports requirement ids within scenarios that fall outside the valid R01–R73 range. */
+/** Reports requirement ids within scenarios that fall outside the valid R01–R81 range. */
 export const invalidScenarioRequirementIdGaps = (
   scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
 ): ReadonlyArray<ScenarioCoverageGap> =>
@@ -963,7 +963,7 @@ export const invalidScenarioRequirementIdGaps = (
         if (match?.[1] === undefined) return true
 
         const requirementNumber = Number.parseInt(match[1], 10)
-        return requirementNumber < 1 || requirementNumber > 73
+        return requirementNumber < 1 || requirementNumber > 81
       })
       .map((requirementId) => ({
         _tag: 'invalid-scenario-requirement-id',
