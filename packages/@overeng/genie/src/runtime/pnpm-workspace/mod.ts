@@ -114,9 +114,13 @@ export interface PnpmSettings {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
-   * Hard-link all local workspace dependencies instead of symlinking them.
-   * This lets package-local dependency projections stay complete when a
-   * workspace package is consumed from another workspace member.
+   * Hard-link local workspace dependencies as injected package snapshots
+   * instead of resolving them as plain live symlinks.
+   *
+   * This is a packaging-purity control for Nix/FOD package closures: when a
+   * package is built from a reduced package-local workspace, every consumed
+   * workspace package must be represented in the dependency graph and lockfile
+   * instead of being reached through an unstaged source path.
    *
    * @see https://pnpm.io/settings#inject-workspace-packages
    */
@@ -709,9 +713,13 @@ export interface PnpmWorkspaceData {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
-   * Hard-link all local workspace dependencies instead of symlinking them.
-   * This lets package-local dependency projections stay complete when a
-   * workspace package is consumed from another workspace member.
+   * Hard-link local workspace dependencies as injected package snapshots
+   * instead of resolving them as plain live symlinks.
+   *
+   * This is a packaging-purity control for Nix/FOD package closures: when a
+   * package is built from a reduced package-local workspace, every consumed
+   * workspace package must be represented in the dependency graph and lockfile
+   * instead of being reached through an unstaged source path.
    *
    * @see https://pnpm.io/settings#inject-workspace-packages
    */
