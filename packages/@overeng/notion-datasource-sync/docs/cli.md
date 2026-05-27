@@ -186,7 +186,9 @@ That update is accepted only when the cell's `write_class` is `writable`. On
 success it keeps scalar helper columns and generated read views coherent with
 the local desired value, and queues a guarded `cell_patch` row in
 `notion_cell_changes`. The compatibility `notion_local_changes` surface mirrors
-that typed row. Computed/system cells fail before visible replica state changes.
+that typed row. Repeated direct edits to the same cell before sync coalesce to
+one effective pending typed row with the latest desired value. Invalid canonical
+value JSON and computed/system cells fail before visible replica state changes.
 
 Equivalent explicit local edit intent:
 
@@ -217,3 +219,7 @@ their remote command path is promoted. Destructive edits are never inferred from
 edits, schema-affecting edits, and conflict-resolution writes require dedicated
 typed tables before sync can show exact planned Notion mutations and execute
 them.
+
+Direct `notion_rows.in_trash` edits also use final-state CDC semantics. For
+example, toggling `0 -> 1 -> 0` before sync cancels the pending direct archive
+instead of replaying an intermediate trash command against Notion.

@@ -47,9 +47,12 @@ The public replica has two kinds of surfaces:
 Every write intent must name the target surface, current base hash, desired
 Notion-shaped value, and conflict policy. `sync --dry-run` validates these
 intents and shows planned commands without mutating Notion or settling the
-intents. Normal `sync` converts locally valid public changes to queued planner
+intents. Direct current-state edits are final-state CDC: repeated edits to the
+same cell or row lifecycle target supersede earlier pending direct changes.
+Normal `sync` reads pending or previously queued public changes as planner
 input, performs Notion writes only after preflight reads pass, then re-reads
-and projects the result back into `notion.sqlite`.
+and projects the result back into `notion.sqlite`. A public change is not hidden
+from later scans merely because it was converted to planner input.
 
 ## Establishment
 

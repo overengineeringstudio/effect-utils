@@ -120,6 +120,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
   db.exec(`
     DROP TRIGGER IF EXISTS notion_cells_direct_value_update_intent;
     DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_update;
+    DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_shape;
     DROP TRIGGER IF EXISTS notion_cells_block_identity_update;
     DROP TRIGGER IF EXISTS notion_cells_block_delete;
     DROP TRIGGER IF EXISTS notion_rows_archive_restore_intent;
@@ -129,6 +130,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_local_changes_mirror_row_insert;
     DROP TRIGGER IF EXISTS notion_cell_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_cell_changes_mirror_local_update;
+    DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_update;
 
     PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
@@ -305,6 +308,44 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       SELECT RAISE(ABORT, 'notion_cells.value_json is writable only for writable Notion properties');
     END;
 
+    CREATE TRIGGER IF NOT EXISTS notion_cells_guard_direct_value_shape
+    BEFORE UPDATE OF value_json ON notion_cells
+    FOR EACH ROW
+    WHEN NEW.value_json IS NOT OLD.value_json
+      AND CASE
+        WHEN NEW.value_json IS NULL THEN 1
+        WHEN json_valid(NEW.value_json) = 0 THEN 1
+        WHEN json_extract(NEW.value_json, '$._tag') = 'empty' THEN 0
+        WHEN json_extract(NEW.value_json, '$._tag') IN ('title', 'rich_text')
+          THEN CASE WHEN json_type(NEW.value_json, '$.plainText') = 'text' THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') = 'number'
+          THEN CASE WHEN json_type(NEW.value_json, '$.value') IN ('integer', 'real') THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') = 'checkbox'
+          THEN CASE WHEN json_type(NEW.value_json, '$.checked') IN ('true', 'false') THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') = 'date'
+          THEN CASE WHEN json_type(NEW.value_json, '$.start') = 'text'
+            AND (json_type(NEW.value_json, '$.end') IS NULL OR json_type(NEW.value_json, '$.end') IN ('text', 'null'))
+            THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') IN ('select', 'status')
+          THEN CASE WHEN json_type(NEW.value_json, '$.option') = 'null'
+            OR (json_type(NEW.value_json, '$.option') = 'object' AND json_type(NEW.value_json, '$.option.name') = 'text')
+            THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') = 'multi_select'
+          THEN CASE WHEN json_type(NEW.value_json, '$.options') = 'array' THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') = 'relation'
+          THEN CASE WHEN json_type(NEW.value_json, '$.pageIds') = 'array' THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') = 'people'
+          THEN CASE WHEN json_type(NEW.value_json, '$.userIds') = 'array' THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') = 'files'
+          THEN CASE WHEN json_type(NEW.value_json, '$.files') = 'array' THEN 0 ELSE 1 END
+        WHEN json_extract(NEW.value_json, '$._tag') IN ('email', 'url', 'phone_number')
+          THEN CASE WHEN json_type(NEW.value_json, '$.value') IN ('text', 'null') THEN 0 ELSE 1 END
+        ELSE 1
+      END = 1
+    BEGIN
+      SELECT RAISE(ABORT, 'notion_cells.value_json must be canonical Notion property value JSON');
+    END;
+
     CREATE TRIGGER IF NOT EXISTS notion_cells_direct_value_update_intent
     AFTER UPDATE OF value_json ON notion_cells
     FOR EACH ROW
@@ -348,6 +389,17 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE page_id = OLD.page_id AND property_id = OLD.property_id;
 
+      UPDATE notion_cell_changes
+      SET
+        value_json = NEW.value_json,
+        base_hash = OLD.base_hash,
+        status = 'pending',
+        unsupported_reason = NULL,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE page_id = OLD.page_id
+        AND property_id = OLD.property_id
+        AND status IN ('pending', 'queued');
+
       INSERT INTO notion_cell_changes (
         change_id,
         data_source_id,
@@ -355,14 +407,15 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         property_id,
         value_json,
         base_hash
-      ) VALUES (
+      )
+      SELECT
         'cell:' || OLD.page_id || ':' || OLD.property_id || ':' || lower(hex(randomblob(8))),
         OLD.data_source_id,
         OLD.page_id,
         OLD.property_id,
         NEW.value_json,
         OLD.base_hash
-      );
+      WHERE changes() = 0;
 
     END;
 
@@ -385,19 +438,28 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     FOR EACH ROW
     WHEN NEW.in_trash IS NOT OLD.in_trash
     BEGIN
+      UPDATE notion_row_changes
+      SET
+        status = 'rejected',
+        unsupported_reason = 'Superseded by later direct row lifecycle edit.',
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE page_id = OLD.page_id
+        AND status IN ('pending', 'queued');
+
       INSERT INTO notion_row_changes (
         change_id,
         kind,
         data_source_id,
         page_id,
         base_hash
-      ) VALUES (
+      )
+      SELECT
         'row:' || OLD.page_id || ':' || CASE WHEN NEW.in_trash = 1 THEN 'archive' ELSE 'restore' END || ':' || lower(hex(randomblob(8))),
         CASE WHEN NEW.in_trash = 1 THEN 'row_archive' ELSE 'row_restore' END,
         OLD.data_source_id,
         OLD.page_id,
         OLD.properties_hash
-      );
+      WHERE changes() = 0;
 
     END;
 
@@ -446,6 +508,20 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       );
     END;
 
+    CREATE TRIGGER IF NOT EXISTS notion_cell_changes_mirror_local_update
+    AFTER UPDATE ON notion_cell_changes
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_local_changes
+      SET
+        value_json = NEW.value_json,
+        base_hash = NEW.base_hash,
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.change_id;
+    END;
+
     CREATE TRIGGER IF NOT EXISTS notion_row_changes_mirror_local_insert
     AFTER INSERT ON notion_row_changes
     FOR EACH ROW
@@ -473,6 +549,22 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         NEW.created_at,
         NEW.updated_at
       );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_row_changes_mirror_local_update
+    AFTER UPDATE ON notion_row_changes
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_local_changes
+      SET
+        kind = NEW.kind,
+        page_id = NEW.page_id,
+        value_json = NEW.value_json,
+        base_hash = NEW.base_hash,
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.change_id;
     END;
 
     CREATE TRIGGER IF NOT EXISTS notion_local_changes_mirror_cell_insert
@@ -1062,8 +1154,8 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
              (SELECT count(*) FROM notion_bodies) AS bodies,
              (SELECT count(*) FROM notion_conflicts WHERE state = 'open') AS conflicts_open,
              (
-               (SELECT count(*) FROM notion_cell_changes WHERE status = 'pending') +
-               (SELECT count(*) FROM notion_row_changes WHERE status = 'pending')
+               (SELECT count(*) FROM notion_cell_changes WHERE status IN ('pending', 'queued')) +
+               (SELECT count(*) FROM notion_row_changes WHERE status IN ('pending', 'queued'))
              ) AS pending_local_changes`,
         )
         .get() as SqlRow
@@ -1118,7 +1210,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                status,
                created_at
              FROM notion_cell_changes
-             WHERE status = 'pending'
+             WHERE status IN ('pending', 'queued')
              UNION ALL
              SELECT
                change_id,
@@ -1131,7 +1223,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                status,
                created_at
              FROM notion_row_changes
-             WHERE status = 'pending'
+             WHERE status IN ('pending', 'queued')
            )
            ORDER BY created_at, change_id`,
         )
@@ -1274,6 +1366,16 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       if (change.kind === 'row_restore') {
+        if (readNumber({ row, key: 'in_trash' }) !== 0) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'conflict',
+            reason: 'Local row restore no longer matches the current desired row state.',
+          })
+          continue
+        }
         markChange({
           replicaPath,
           dryRun,
@@ -1285,6 +1387,16 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       if (change.kind === 'row_archive') {
+        if (readNumber({ row, key: 'in_trash' }) !== 1) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'Local row archive was superseded by the current desired row state.',
+          })
+          continue
+        }
         if (
           change.baseHash !== undefined &&
           change.baseHash !== readString({ row, key: 'properties_hash' })
@@ -1324,7 +1436,6 @@ export const replicaChangesToPlannerIntents = ({
           policy: 'trustedRemoteTrash',
           directRetrieve: 'accessible',
         })
-        markChange({ replicaPath, dryRun, changeId: change.changeId, status: 'queued' })
         continue
       }
       if (change.kind === 'cell_patch') {
@@ -1438,7 +1549,6 @@ export const replicaChangesToPlannerIntents = ({
             value: readString({ row: cell, key: 'config_hash' }),
           }),
         })
-        markChange({ replicaPath, dryRun, changeId: change.changeId, status: 'queued' })
       }
     }
     return intents
