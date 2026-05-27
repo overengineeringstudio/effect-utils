@@ -43,6 +43,7 @@ export type CanonicalOptionValue = typeof CanonicalOptionValue.Type
 export const CanonicalFileValue = Schema.TaggedStruct('CanonicalFileValue', {
   name: Schema.NonEmptyTrimmedString,
   identityHash: Hash,
+  externalUrl: Schema.optional(Schema.NonEmptyTrimmedString),
 }).annotations({ identifier: 'NotionDatasourceSync.CanonicalFileValue' })
 export type CanonicalFileValue = typeof CanonicalFileValue.Type
 

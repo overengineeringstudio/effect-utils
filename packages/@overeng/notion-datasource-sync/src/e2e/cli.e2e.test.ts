@@ -97,6 +97,30 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
     },
   })
 
+const filesPropertyPage = () =>
+  decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId: testIds.pageId,
+      propertyId: testIds.propertyB,
+      items: [
+        {
+          _tag: 'PagePropertyItem',
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyB,
+          itemHash: hash('item-empty-files'),
+          valueHash: hash('property-b-base'),
+          valueJson: JSON.stringify({ _tag: 'files', files: [] }),
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
+
 const bodyPage = (bodyHash = hash('body-a'), remoteBodyHash = bodyHash) =>
   fakeBodyPage({
     pointer: decode({
@@ -1365,19 +1389,26 @@ describe('CLI command surface', () => {
     const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
     const gateway = makeFakeGatewayHarness({
       pages: [pageSnapshot({ inTrash: true })],
-      propertyPages: [propertyPage(hash('properties-a'))],
+      propertyPages: [propertyPage(hash('properties-a')), filesPropertyPage()],
     })
     const ctx = context({
       store: storeFixture.store,
       clock,
       workspaceRoot: workspace,
-      maxExecutorSteps: 4,
+      maxExecutorSteps: 8,
       schemaProperties: [
         {
           propertyId: testIds.propertyA,
           name: 'Name',
           type: 'title',
           configHash: hash('config-a'),
+          writeClass: 'writable' as const,
+        },
+        {
+          propertyId: testIds.propertyB,
+          name: 'Attachment',
+          type: 'files',
+          configHash: hash('config-b'),
           writeClass: 'writable' as const,
         },
       ],
@@ -1402,12 +1433,6 @@ describe('CLI command surface', () => {
 
       const db = new DatabaseSync(replicaPath)
       try {
-        db.prepare(`UPDATE notion_rows SET in_trash = 0 WHERE page_id = ?`).run(testIds.pageId)
-        expect(
-          db
-            .prepare(`SELECT kind, status FROM notion_row_changes WHERE page_id = ?`)
-            .get(testIds.pageId),
-        ).toMatchObject({ kind: 'row_restore', status: 'pending' })
         const source = db
           .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
           .get(testIds.dataSourceId) as { schema_hash: string }
@@ -1426,6 +1451,26 @@ describe('CLI command surface', () => {
           }),
           source.schema_hash,
         )
+        const fileCell = db
+          .prepare(`SELECT base_hash FROM notion_cells WHERE page_id = ? AND property_id = ?`)
+          .get(testIds.pageId, testIds.propertyB) as { readonly base_hash: string }
+        db.prepare(
+          `INSERT INTO notion_file_assets (
+             asset_id, source_type, name, external_url
+           ) VALUES (?, 'external_url', ?, ?)`,
+        ).run('cli-external-file', 'cli-fixture.txt', 'https://example.com/cli-fixture.txt')
+        db.prepare(
+          `INSERT INTO notion_file_changes (
+             change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
+           ) VALUES (?, ?, 'attach_external_url', ?, ?, ?, ?)`,
+        ).run(
+          'cli-file-attach-1',
+          'cli-external-file',
+          testIds.dataSourceId,
+          testIds.pageId,
+          testIds.propertyB,
+          fileCell.base_hash,
+        )
       } finally {
         db.close()
       }
@@ -1441,28 +1486,10 @@ describe('CLI command surface', () => {
         _tag: 'CliResultEnvelope',
         command: 'sync',
       })
-      expect(gateway.ledger.successfulRestorePages).toHaveLength(1)
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
 
       const after = new DatabaseSync(replicaPath, { readOnly: true })
       try {
-        expect(
-          after
-            .prepare(
-              `SELECT status, unsupported_reason
-               FROM notion_row_changes
-               WHERE page_id = ? AND kind = 'row_restore'`,
-            )
-            .get(testIds.pageId),
-        ).toMatchObject({ status: 'applied', unsupported_reason: null })
-        expect(
-          after
-            .prepare(
-              `SELECT status, unsupported_reason
-               FROM notion_local_changes
-               WHERE kind = 'row_restore' AND page_id = ?`,
-            )
-            .get(testIds.pageId),
-        ).toMatchObject({ status: 'applied', unsupported_reason: null })
         expect(
           after
             .prepare(
@@ -1474,8 +1501,26 @@ describe('CLI command surface', () => {
         ).toMatchObject({
           status: 'applied',
           remote_page_id: 'fake-created-cli-client-create-1',
-          unsupported_reason: null,
+            unsupported_reason: null,
         })
+        expect(
+          after
+            .prepare(
+              `SELECT status, unsupported_reason
+               FROM notion_file_changes
+               WHERE change_id = 'cli-file-attach-1'`,
+            )
+            .get(),
+        ).toMatchObject({ status: 'applied', unsupported_reason: null })
+        expect(
+          after
+            .prepare(
+              `SELECT status, unsupported_reason
+               FROM notion_local_changes
+               WHERE kind = 'file_attach' AND change_id = 'cli-file-attach-1'`,
+            )
+            .get(),
+        ).toMatchObject({ status: 'applied', unsupported_reason: null })
       } finally {
         after.close()
       }

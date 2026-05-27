@@ -74,9 +74,10 @@ class must have a typed intent and guard model before it mutates Notion.
 | Body edits                      | Supported through NotionMD-backed `notion_body_changes` rows and body conflict guards                                                             |
 | Data-source metadata edits      | Supported through public metadata CDC for title/description, with owning-database patching and data-source metadata hash verification             |
 | Database metadata edits         | Supported for title/description through `notion_databases` plus `notion_metadata_changes(resource_type='database')`                             |
+| External URL file attachments   | Supported through `notion_file_assets` plus `notion_file_changes` for empty writable `files` properties                                           |
 | Safe schema changes             | Dedicated schema command path exists; public SQLite CDC remains blocked until post-write hash proof                                               |
 | Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                                                           |
-| File bytes                      | Follow-up until File Upload identity and cleanup are modeled                                                                                      |
+| File bytes/local uploads        | Follow-up until File Upload identity, retry, read-after-write, and cleanup are modeled                                                            |
 
 ## Capability Preflight
 

@@ -178,7 +178,7 @@ rewriting local values or applying broad migrations.
 | Date, select, multi-select, status value    | Writable when option/status value semantics are fully observed and supported                               |
 | URL, email, phone                           | Writable through scalar cell intents with canonical Notion-shaped JSON                                     |
 | Relation, people                            | Guarded; requires complete page-property pagination and accessible targets                                 |
-| Files                                       | Read-only until durable File Upload identity and attachment lifecycle exist                                |
+| Files                                       | External URL attach is supported through explicit staging for empty files properties; uploads/replacement remain guarded |
 | Formula, rollup, audit fields, unique ID    | Read-only computed values; local write intents are rejected                                                |
 | `place`, unsupported or decode-drift values | Read-only/guarded until the API surface has a lossless model                                               |
 | Schema/property configuration               | Guarded schema intents; destructive migrations are explicit follow-up work                                 |

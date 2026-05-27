@@ -1298,11 +1298,15 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           )
           const titlePropertyName = liveTitlePropertyName(initialDataSource.properties)
           const cdcPropertyName = 'CDC Note'
+          const filePropertyName = 'CDC File'
           const patchedDataSource = await runLive(
             env,
             NotionDataSources.update({
               dataSourceId: provisioned.config.dataSourceId,
-              properties: { [cdcPropertyName]: { rich_text: {} } },
+              properties: {
+                [cdcPropertyName]: { rich_text: {} },
+                [filePropertyName]: { files: {} },
+              },
             }),
           )
           await recorder.record({
@@ -1322,7 +1326,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             name: titlePropertyName,
             type: 'title',
           })
-          const liveSchemaProperties = [titleSchemaProperty, cdcSchemaProperty]
+          const fileSchemaProperty = liveSchemaProperty({
+            properties: patchedDataSource.properties,
+            name: filePropertyName,
+            type: 'files',
+          })
+          const liveSchemaProperties = [titleSchemaProperty, cdcSchemaProperty, fileSchemaProperty]
           const initialTitle = `sqlite cdc initial ${provisioned.config.runId}`
           const updatedTitle = `sqlite cdc updated ${provisioned.config.runId}`
           const page = await runLive(
@@ -1429,6 +1438,118 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               expect(cellStatuses, `cell CDC statuses: ${JSON.stringify(cellStatuses)}`).toEqual([
                 expect.objectContaining({ status: 'applied' }),
               ])
+            } finally {
+              db.close()
+            }
+          }
+          await runLiveCliCommand({ env, argv: syncArgv })
+
+          const fileExternalUrl = 'https://www.notion.so/images/favicon.ico'
+          {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              const fileCell = db
+                .prepare(
+                  `SELECT base_hash
+                   FROM notion_cells
+                   WHERE page_id = ? AND property_id = ?`,
+                )
+                .get(livePageId, fileSchemaProperty.propertyId) as
+                | { readonly base_hash: string }
+                | undefined
+              if (fileCell === undefined) {
+                throw new Error('live public SQLite file CDC test did not project files cell')
+              }
+              db.prepare(
+                `INSERT INTO notion_file_assets (
+                   asset_id, source_type, name, external_url
+                 ) VALUES (?, 'external_url', ?, ?)`,
+              ).run(
+                `live-file-asset-${provisioned.config.runId}`,
+                'live-file.ico',
+                fileExternalUrl,
+              )
+              db.prepare(
+                `INSERT INTO notion_file_changes (
+                   change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
+                 ) VALUES (?, ?, 'attach_external_url', ?, ?, ?, ?)`,
+              ).run(
+                `live-file-attach-${provisioned.config.runId}`,
+                `live-file-asset-${provisioned.config.runId}`,
+                provisioned.config.dataSourceId,
+                livePageId,
+                fileSchemaProperty.propertyId,
+                fileCell.base_hash,
+              )
+            } finally {
+              db.close()
+            }
+          }
+          await runLiveCliCommand({ env, argv: syncArgv })
+          let fileProperty: unknown
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            const afterFileAttach = await runLive(env, NotionPages.retrieve({ pageId: livePageId }))
+            fileProperty = afterFileAttach.properties[filePropertyName]
+            if (
+              typeof fileProperty === 'object' &&
+              fileProperty !== null &&
+              'files' in fileProperty &&
+              Array.isArray((fileProperty as { readonly files?: unknown }).files) === true &&
+              (fileProperty as { readonly files: ReadonlyArray<unknown> }).files.length > 0
+            ) {
+              break
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1_000))
+          }
+          if (
+            typeof fileProperty !== 'object' ||
+            fileProperty === null ||
+            !('files' in fileProperty) ||
+            Array.isArray((fileProperty as { readonly files?: unknown }).files) === false
+          ) {
+            throw new Error('live public SQLite file CDC did not return files property')
+          }
+          const files = (fileProperty as { readonly files: ReadonlyArray<unknown> }).files
+          if (files.length === 0) {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              const status = db
+                .prepare(
+                  `SELECT status, unsupported_reason
+                   FROM notion_file_changes
+                   WHERE change_id = ?`,
+                )
+                .get(`live-file-attach-${provisioned.config.runId}`)
+              throw new Error(
+                `live public SQLite file CDC left remote files empty: ${liveDebugJson({
+                  status,
+                })}`,
+              )
+            } finally {
+              db.close()
+            }
+          }
+          expect(files).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                name: 'live-file.ico',
+                type: 'external',
+                external: expect.objectContaining({ url: fileExternalUrl }),
+              }),
+            ]),
+          )
+          {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              expect(
+                db
+                  .prepare(
+                    `SELECT status, unsupported_reason
+                     FROM notion_file_changes
+                     WHERE change_id = ?`,
+                  )
+                  .get(`live-file-attach-${provisioned.config.runId}`),
+              ).toMatchObject({ status: 'applied', unsupported_reason: null })
             } finally {
               db.close()
             }
