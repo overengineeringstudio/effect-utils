@@ -88,14 +88,15 @@ inspect the old store.
 
 Local cell edits can update `notion_cells.value_json`; the replica updates
 helper columns/generated views and queues a `cell_patch` row in
-`notion_local_changes`. Generated read views remain read-only, and deleting
-current-state rows is not a writable API.
+`notion_cell_changes`. `notion_local_changes` mirrors typed change rows for
+inspection. Generated read views remain read-only, and deleting current-state
+rows is not a writable API.
 
 Check pending intents:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select change_id, kind, page_id, property_id, status, unsupported_reason from notion_local_changes;"
+  "select change_id, page_id, property_id, status, unsupported_reason from notion_cell_changes;"
 ```
 
 Then run:

@@ -4,14 +4,21 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
 
+import { pageSurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
 import {
   CanonicalPropertyValue,
   PatchPagePropertiesCommand,
   TrashPageCommand,
 } from '../core/commands.ts'
-import { CommandId, DataSourceId, Hash, PageId, PropertyId, type AbsolutePath } from '../core/domain.ts'
+import {
+  CommandId,
+  DataSourceId,
+  Hash,
+  PageId,
+  PropertyId,
+  type AbsolutePath,
+} from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
-import { pageSurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
 import type { PlannerIntent } from '../planner/planner.ts'
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 
@@ -37,7 +44,14 @@ export type ReplicaLocalChange = {
   readonly status: string
 }
 
-type ReplicaChangeStatus = 'pending' | 'queued' | 'planned' | 'applied' | 'conflict' | 'unsupported' | 'rejected'
+type ReplicaChangeStatus =
+  | 'pending'
+  | 'queued'
+  | 'planned'
+  | 'applied'
+  | 'conflict'
+  | 'unsupported'
+  | 'rejected'
 
 const readString = ({ row, key }: { readonly row: SqlRow; readonly key: string }): string => {
   const value = row[key]
@@ -99,6 +113,18 @@ const createReplicaSchema = (db: DatabaseSync): void => {
   }
 
   db.exec(`
+    DROP TRIGGER IF EXISTS notion_cells_direct_value_update_intent;
+    DROP TRIGGER IF EXISTS notion_cells_guard_direct_value_update;
+    DROP TRIGGER IF EXISTS notion_cells_block_identity_update;
+    DROP TRIGGER IF EXISTS notion_cells_block_delete;
+    DROP TRIGGER IF EXISTS notion_rows_archive_restore_intent;
+    DROP TRIGGER IF EXISTS notion_rows_block_identity_update;
+    DROP TRIGGER IF EXISTS notion_rows_block_delete;
+    DROP TRIGGER IF EXISTS notion_local_changes_mirror_cell_insert;
+    DROP TRIGGER IF EXISTS notion_local_changes_mirror_row_insert;
+    DROP TRIGGER IF EXISTS notion_cell_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_insert;
+
     PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
     PRAGMA user_version = ${replicaSchemaVersion.toString()};
@@ -168,6 +194,48 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS notion_cell_changes (
+      change_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      value_json TEXT NOT NULL,
+      base_hash TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_row_changes (
+      change_id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('row_archive', 'row_restore', 'row_create')),
+      data_source_id TEXT NOT NULL,
+      page_id TEXT,
+      value_json TEXT,
+      base_hash TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
     CREATE TABLE IF NOT EXISTS notion_local_changes (
       change_id TEXT PRIMARY KEY,
       kind TEXT NOT NULL CHECK (kind IN ('cell_patch', 'row_archive', 'row_restore', 'row_create')),
@@ -217,6 +285,10 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     CREATE INDEX IF NOT EXISTS notion_cells_data_source_property_idx
       ON notion_cells(data_source_id, property_id);
     CREATE INDEX IF NOT EXISTS notion_cells_text_idx ON notion_cells(value_text);
+    CREATE INDEX IF NOT EXISTS notion_cell_changes_pending_idx
+      ON notion_cell_changes(status, data_source_id, page_id, property_id);
+    CREATE INDEX IF NOT EXISTS notion_row_changes_pending_idx
+      ON notion_row_changes(status, data_source_id, page_id);
     CREATE INDEX IF NOT EXISTS notion_local_changes_pending_idx
       ON notion_local_changes(status, data_source_id, page_id);
 
@@ -271,9 +343,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE page_id = OLD.page_id AND property_id = OLD.property_id;
 
-      INSERT INTO notion_local_changes (
+      INSERT INTO notion_cell_changes (
         change_id,
-        kind,
         data_source_id,
         page_id,
         property_id,
@@ -281,13 +352,13 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         base_hash
       ) VALUES (
         'cell:' || OLD.page_id || ':' || OLD.property_id || ':' || lower(hex(randomblob(8))),
-        'cell_patch',
         OLD.data_source_id,
         OLD.page_id,
         OLD.property_id,
         NEW.value_json,
         OLD.base_hash
       );
+
     END;
 
     CREATE TRIGGER IF NOT EXISTS notion_cells_block_identity_update
@@ -309,7 +380,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     FOR EACH ROW
     WHEN NEW.in_trash IS NOT OLD.in_trash
     BEGIN
-      INSERT INTO notion_local_changes (
+      INSERT INTO notion_row_changes (
         change_id,
         kind,
         data_source_id,
@@ -322,6 +393,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         OLD.page_id,
         OLD.properties_hash
       );
+
     END;
 
     CREATE TRIGGER IF NOT EXISTS notion_rows_block_identity_update
@@ -336,6 +408,126 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     FOR EACH ROW
     BEGIN
       SELECT RAISE(ABORT, 'deleting notion_rows is unsafe; set in_trash=1 or insert an explicit local change intent');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_cell_changes_mirror_local_insert
+    AFTER INSERT ON notion_cell_changes
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        page_id,
+        property_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        'cell_patch',
+        NEW.data_source_id,
+        NEW.page_id,
+        NEW.property_id,
+        NEW.value_json,
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_row_changes_mirror_local_insert
+    AFTER INSERT ON notion_row_changes
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        page_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        NEW.kind,
+        NEW.data_source_id,
+        NEW.page_id,
+        NEW.value_json,
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_local_changes_mirror_cell_insert
+    AFTER INSERT ON notion_local_changes
+    FOR EACH ROW
+    WHEN NEW.kind = 'cell_patch'
+    BEGIN
+      INSERT OR IGNORE INTO notion_cell_changes (
+        change_id,
+        data_source_id,
+        page_id,
+        property_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        NEW.data_source_id,
+        NEW.page_id,
+        NEW.property_id,
+        NEW.value_json,
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_local_changes_mirror_row_insert
+    AFTER INSERT ON notion_local_changes
+    FOR EACH ROW
+    WHEN NEW.kind IN ('row_archive', 'row_restore', 'row_create')
+    BEGIN
+      INSERT OR IGNORE INTO notion_row_changes (
+        change_id,
+        kind,
+        data_source_id,
+        page_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        NEW.kind,
+        NEW.data_source_id,
+        NEW.page_id,
+        NEW.value_json,
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
     END;
   `)
 
@@ -371,6 +563,63 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       DROP TABLE notion_local_changes_legacy;
     `)
   }
+
+  db.exec(`
+    INSERT OR IGNORE INTO notion_cell_changes (
+      change_id,
+      data_source_id,
+      page_id,
+      property_id,
+      value_json,
+      base_hash,
+      status,
+      unsupported_reason,
+      created_at,
+      updated_at
+    )
+    SELECT
+      change_id,
+      data_source_id,
+      page_id,
+      property_id,
+      value_json,
+      base_hash,
+      status,
+      unsupported_reason,
+      created_at,
+      updated_at
+    FROM notion_local_changes
+    WHERE kind = 'cell_patch'
+      AND page_id IS NOT NULL
+      AND property_id IS NOT NULL
+      AND value_json IS NOT NULL;
+
+    INSERT OR IGNORE INTO notion_row_changes (
+      change_id,
+      kind,
+      data_source_id,
+      page_id,
+      value_json,
+      base_hash,
+      status,
+      unsupported_reason,
+      created_at,
+      updated_at
+    )
+    SELECT
+      change_id,
+      kind,
+      data_source_id,
+      page_id,
+      value_json,
+      base_hash,
+      status,
+      unsupported_reason,
+      created_at,
+      updated_at
+    FROM notion_local_changes
+    WHERE kind IN ('row_archive', 'row_restore', 'row_create');
+  `)
 }
 
 const clearProjectedReplicaTables = (db: DatabaseSync): void => {
@@ -382,6 +631,10 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_rows_archive_restore_intent;
     DROP TRIGGER IF EXISTS notion_rows_block_identity_update;
     DROP TRIGGER IF EXISTS notion_rows_block_delete;
+    DROP TRIGGER IF EXISTS notion_local_changes_mirror_cell_insert;
+    DROP TRIGGER IF EXISTS notion_local_changes_mirror_row_insert;
+    DROP TRIGGER IF EXISTS notion_cell_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_insert;
 
     DELETE FROM notion_data_sources;
     DELETE FROM notion_properties;
@@ -415,20 +668,18 @@ const latestDataSourcePayloads = (
     const payload = parsePayload(readString({ row, key: 'payload_json' }))
     if (typeof payload !== 'object' || payload === null) continue
     const properties = (payload as { readonly schemaProperties?: unknown }).schemaProperties
-    if (!Array.isArray(properties)) continue
+    if (Array.isArray(properties) === false) continue
     for (const property of properties) {
       if (typeof property !== 'object' || property === null) continue
       const propertyId = (property as { readonly propertyId?: unknown }).propertyId
-      if (typeof propertyId === 'string') result.set(propertyId, property as Record<string, unknown>)
+      if (typeof propertyId === 'string')
+        result.set(propertyId, property as Record<string, unknown>)
     }
   }
   return result
 }
 
-const latestPropertyValueJson = (
-  syncDb: DatabaseSync,
-  rootId: SyncRootId,
-): Map<string, string> => {
+const latestPropertyValueJson = (syncDb: DatabaseSync, rootId: SyncRootId): Map<string, string> => {
   const rows = syncDb
     .prepare(
       `SELECT event_json, payload_json
@@ -448,10 +699,7 @@ const latestPropertyValueJson = (
       readonly propertyId?: unknown
     }
     if (typeof event.pageId !== 'string' || typeof event.propertyId !== 'string') continue
-    result.set(
-      `${event.pageId}\0${event.propertyId}`,
-      valueJson,
-    )
+    result.set(`${event.pageId}\0${event.propertyId}`, valueJson)
   }
   return result
 }
@@ -514,7 +762,8 @@ const rebuildGeneratedViews = (db: DatabaseSync): void => {
   const existing = db
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'view' AND name LIKE 'notion_view_%'`)
     .all() as SqlRow[]
-  for (const row of existing) db.exec(`DROP VIEW IF EXISTS ${quoteIdentifier(readString({ row, key: 'name' }))}`)
+  for (const row of existing)
+    db.exec(`DROP VIEW IF EXISTS ${quoteIdentifier(readString({ row, key: 'name' }))}`)
 
   const dataSources = db
     .prepare(`SELECT data_source_id FROM notion_data_sources ORDER BY data_source_id`)
@@ -710,8 +959,12 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             dataSourceId,
             pageId,
             propertyId,
-            property === undefined ? propertyId : readString({ row: property, key: 'property_name' }),
-            property === undefined ? 'unknown' : readString({ row: property, key: 'property_type' }),
+            property === undefined
+              ? propertyId
+              : readString({ row: property, key: 'property_name' }),
+            property === undefined
+              ? 'unknown'
+              : readString({ row: property, key: 'property_type' }),
             valueJson ?? null,
             scalar.text ?? null,
             scalar.number ?? null,
@@ -719,7 +972,9 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readString({ row, key: 'base_hash' }),
             readString({ row, key: 'remote_hash' }),
             readString({ row, key: 'availability' }),
-            property === undefined ? 'unsupported' : readString({ row: property, key: 'write_class' }),
+            property === undefined
+              ? 'unsupported'
+              : readString({ row: property, key: 'write_class' }),
             readString({ row, key: 'observed_event_id' }),
             readString({ row, key: 'updated_at' }),
           )
@@ -791,7 +1046,10 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
              (SELECT count(*) FROM notion_cells) AS cells,
              (SELECT count(*) FROM notion_bodies) AS bodies,
              (SELECT count(*) FROM notion_conflicts WHERE state = 'open') AS conflicts_open,
-             (SELECT count(*) FROM notion_local_changes WHERE status = 'pending') AS pending_local_changes`,
+             (
+               (SELECT count(*) FROM notion_cell_changes WHERE status = 'pending') +
+               (SELECT count(*) FROM notion_row_changes WHERE status = 'pending')
+             ) AS pending_local_changes`,
         )
         .get() as SqlRow
       replicaDb
@@ -828,14 +1086,41 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
   const db = new DatabaseSync(replicaPath)
   try {
     createReplicaSchema(db)
-    return (db
-      .prepare(
-        `SELECT change_id, kind, data_source_id, page_id, property_id, value_json, base_hash, status
-         FROM notion_local_changes
-         WHERE status = 'pending'
-         ORDER BY created_at, change_id`,
-      )
-      .all() as SqlRow[]).map((row) => ({
+    return (
+      db
+        .prepare(
+          `SELECT change_id, kind, data_source_id, page_id, property_id, value_json, base_hash, status, created_at
+           FROM (
+             SELECT
+               change_id,
+               'cell_patch' AS kind,
+               data_source_id,
+               page_id,
+               property_id,
+               value_json,
+               base_hash,
+               status,
+               created_at
+             FROM notion_cell_changes
+             WHERE status = 'pending'
+             UNION ALL
+             SELECT
+               change_id,
+               kind,
+               data_source_id,
+               page_id,
+               NULL AS property_id,
+               value_json,
+               base_hash,
+               status,
+               created_at
+             FROM notion_row_changes
+             WHERE status = 'pending'
+           )
+           ORDER BY created_at, change_id`,
+        )
+        .all() as SqlRow[]
+    ).map((row) => ({
       changeId: readString({ row, key: 'change_id' }),
       kind: Schema.decodeUnknownSync(
         Schema.Literal('cell_patch', 'row_archive', 'row_restore', 'row_create'),
@@ -868,6 +1153,16 @@ export const markReplicaChangeStatus = ({
     createReplicaSchema(db)
     db.prepare(
       `UPDATE notion_local_changes
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_cell_changes
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_row_changes
        SET status = ?, unsupported_reason = ?, updated_at = ?
        WHERE change_id = ?`,
     ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
@@ -933,10 +1228,10 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       let pageId: PageId
-      let dataSourceId: DataSourceId
+      let _dataSourceId: DataSourceId
       try {
         pageId = decode({ schema: PageId, value: change.pageId })
-        dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
+        _dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
       } catch {
         markChange({
           replicaPath,
@@ -972,7 +1267,10 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       if (change.kind === 'row_archive') {
-        if (change.baseHash !== undefined && change.baseHash !== readString({ row, key: 'properties_hash' })) {
+        if (
+          change.baseHash !== undefined &&
+          change.baseHash !== readString({ row, key: 'properties_hash' })
+        ) {
           markChange({
             replicaPath,
             dryRun,
@@ -984,7 +1282,9 @@ export const replicaChangesToPlannerIntents = ({
         }
         const baseHash = decode({
           schema: Hash,
-          value: change.baseHash ?? pageLifecycleHash({ pageId, inTrash: readNumber({ row, key: 'in_trash' }) === 1 }),
+          value:
+            change.baseHash ??
+            pageLifecycleHash({ pageId, inTrash: readNumber({ row, key: 'in_trash' }) === 1 }),
         })
         const commandId = decode({ schema: CommandId, value: `replica:${change.changeId}` })
         const command = TrashPageCommand.make({
@@ -1062,7 +1362,10 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        if (change.baseHash !== undefined && change.baseHash !== readString({ row: cell, key: 'base_hash' })) {
+        if (
+          change.baseHash !== undefined &&
+          change.baseHash !== readString({ row: cell, key: 'base_hash' })
+        ) {
           markChange({
             replicaPath,
             dryRun,

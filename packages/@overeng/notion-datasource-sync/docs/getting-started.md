@@ -97,14 +97,16 @@ The stable generic tables are:
 | `notion_rows`          | Page row identity, lifecycle, parent/source, row hashes        |
 | `notion_cells`         | Lossless property values plus scalar helper columns            |
 | `notion_bodies`        | Body materialization paths, hashes, and adapter state          |
-| `notion_local_changes` | Local write intents waiting for review/apply                   |
+| `notion_cell_changes`  | Typed local CDC rows for cell edits waiting for review/apply   |
+| `notion_row_changes`   | Typed local CDC rows for row lifecycle/create edits            |
+| `notion_local_changes` | Compatibility projection over local write intents              |
 | `notion_conflicts`     | Open/resolved conflicts projected for users                    |
 | `notion_sync_status`   | Last sync, checkpoints, pending work, guard state              |
 
 Generated read views provide ergonomic SQL for each adopted data source. Their
 names currently use the data-source id slug, such as
 `notion_view_data_source_1`. They are read-only; write to `notion_cells` /
-`notion_rows` current-state columns or to `notion_local_changes` instead.
+`notion_rows` current-state columns or to typed mutation tables instead.
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
@@ -125,15 +127,15 @@ where page_id = '11111111-1111-4111-8111-111111111111'
 ```
 
 This updates scalar helper columns and generated read views to the local desired
-state, then queues a `cell_patch` intent. The equivalent explicit intent form
-is:
+state, then queues a typed `cell_patch` CDC row. The equivalent explicit intent
+form is:
 
 ```sql
-insert into notion_local_changes
-  (kind, data_source_id, page_id, property_id, value_json, base_hash)
+insert into notion_cell_changes
+  (change_id, data_source_id, page_id, property_id, value_json, base_hash)
 values
   (
-    'cell_patch',
+    'cell:11111111-1111-4111-8111-111111111111:status-property-id:manual',
     '00000000-0000-4000-8000-000000000001',
     '11111111-1111-4111-8111-111111111111',
     'status-property-id',

@@ -44,11 +44,13 @@ Editing the internal store is unsupported.
 
 `notion.sqlite` exposes stable public tables such as `notion_data_sources`,
 `notion_properties`, `notion_rows`, `notion_cells`, `notion_bodies`,
-`notion_local_changes`, `notion_conflicts`, and `notion_sync_status`, plus
-generated read views for adopted data sources. Local data edits are inserted as
-guarded intents in `notion_local_changes`; `sync` validates those intents,
-performs a dry-run/reviewable plan when requested, and applies supported writes
-to Notion only after base-hash guards pass.
+`notion_cell_changes`, `notion_row_changes`, `notion_local_changes`,
+`notion_conflicts`, and `notion_sync_status`, plus generated read views for
+adopted data sources. Local data edits are inserted as guarded typed CDC rows;
+`notion_local_changes` mirrors them as a compatibility projection. `sync`
+validates those typed changes, performs a dry-run/reviewable plan when
+requested, and applies supported writes to Notion only after base-hash guards
+pass.
 
 ## CLI Shape
 

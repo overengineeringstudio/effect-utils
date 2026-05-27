@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { PagePropertyItemPage } from '../core/commands.ts'
@@ -102,6 +102,24 @@ const statusFor = (replicaPath: string, changeId: string) => {
   }
 }
 
+const cellChangeFor = (replicaPath: string, changeId: string) => {
+  const db = new DatabaseSync(replicaPath, { readOnly: true })
+  try {
+    return db.prepare(`SELECT * FROM notion_cell_changes WHERE change_id = ?`).get(changeId)
+  } finally {
+    db.close()
+  }
+}
+
+const rowChangeFor = (replicaPath: string, changeId: string) => {
+  const db = new DatabaseSync(replicaPath, { readOnly: true })
+  try {
+    return db.prepare(`SELECT * FROM notion_row_changes WHERE change_id = ?`).get(changeId)
+  } finally {
+    db.close()
+  }
+}
+
 describe('user-facing SQLite replica', () => {
   it('projects observed schema rows cells bodies and generated views into notion.sqlite', async () => {
     const clock = makeFakeClock()
@@ -139,9 +157,9 @@ describe('user-facing SQLite replica', () => {
 
       const db = new DatabaseSync(replicaPath, { readOnly: true })
       try {
-        expect(
-          db.prepare(`SELECT count(*) AS count FROM notion_data_sources`).get(),
-        ).toMatchObject({ count: 1 })
+        expect(db.prepare(`SELECT count(*) AS count FROM notion_data_sources`).get()).toMatchObject(
+          { count: 1 },
+        )
         expect(db.prepare(`SELECT property_name, property_type FROM notion_properties`).get())
           .toMatchInlineSnapshot(`
             {
@@ -152,9 +170,9 @@ describe('user-facing SQLite replica', () => {
         expect(db.prepare(`SELECT value_text FROM notion_cells`).get()).toMatchObject({
           value_text: 'Initial task',
         })
-        expect(
-          db.prepare(`SELECT "Task name" FROM notion_view_data_source_1`).get(),
-        ).toMatchObject({ 'Task name': 'Initial task' })
+        expect(db.prepare(`SELECT "Task name" FROM notion_view_data_source_1`).get()).toMatchObject(
+          { 'Task name': 'Initial task' },
+        )
       } finally {
         db.close()
       }
@@ -163,7 +181,7 @@ describe('user-facing SQLite replica', () => {
     }
   })
 
-  it('turns local SQL cell edit intents into guarded planner intents and leaves row creation fail closed', async () => {
+  it('captures direct cell edits in typed CDC tables and translates them into planner intents', async () => {
     const clock = makeFakeClock()
     const workspaceRoot = tempWorkspace()
     const replicaPath = defaultReplicaPath(workspaceRoot)
@@ -198,7 +216,9 @@ describe('user-facing SQLite replica', () => {
 
       const db = new DatabaseSync(replicaPath)
       try {
-        db.prepare(`UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`).run(
+        db.prepare(
+          `UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`,
+        ).run(
           JSON.stringify({ _tag: 'title', plainText: 'Direct edit' }),
           testIds.pageId,
           testIds.propertyA,
@@ -209,12 +229,42 @@ describe('user-facing SQLite replica', () => {
             .get(testIds.pageId, testIds.propertyA),
         ).toMatchObject({ value_text: 'Direct edit' })
         expect(
-          db.prepare(`SELECT "Task name" FROM notion_view_data_source_1 WHERE page_id = ?`).get(testIds.pageId),
+          db
+            .prepare(`SELECT "Task name" FROM notion_view_data_source_1 WHERE page_id = ?`)
+            .get(testIds.pageId),
         ).toMatchObject({ 'Task name': 'Direct edit' })
+        const typedCellChange = db
+          .prepare(
+            `SELECT change_id, data_source_id, page_id, property_id, value_json, base_hash, status
+             FROM notion_cell_changes`,
+          )
+          .get() as { readonly change_id: string }
+        expect(typedCellChange).toMatchObject({
+          data_source_id: testIds.dataSourceId,
+          page_id: testIds.pageId,
+          property_id: testIds.propertyA,
+          value_json: JSON.stringify({ _tag: 'title', plainText: 'Direct edit' }),
+          status: 'pending',
+        })
+        expect(
+          db
+            .prepare(
+              `SELECT kind, data_source_id, page_id, property_id, value_json, base_hash, status
+               FROM notion_local_changes WHERE change_id = ?`,
+            )
+            .get(typedCellChange.change_id),
+        ).toMatchObject({
+          kind: 'cell_patch',
+          data_source_id: testIds.dataSourceId,
+          page_id: testIds.pageId,
+          property_id: testIds.propertyA,
+          value_json: JSON.stringify({ _tag: 'title', plainText: 'Direct edit' }),
+          status: 'pending',
+        })
         db.prepare(
-          `INSERT INTO notion_local_changes (
-             change_id, kind, data_source_id, page_id, property_id, value_json
-           ) VALUES (?, 'cell_patch', ?, ?, ?, ?)`,
+          `INSERT INTO notion_cell_changes (
+             change_id, data_source_id, page_id, property_id, value_json
+           ) VALUES (?, ?, ?, ?, ?)`,
         ).run(
           'change-1',
           testIds.dataSourceId,
@@ -223,7 +273,7 @@ describe('user-facing SQLite replica', () => {
           JSON.stringify({ _tag: 'title', plainText: 'After' }),
         )
         db.prepare(
-          `INSERT INTO notion_local_changes (
+          `INSERT INTO notion_row_changes (
              change_id, kind, data_source_id, value_json
            ) VALUES (?, 'row_create', ?, ?)`,
         ).run('change-create', testIds.dataSourceId, JSON.stringify({ title: 'Unsupported' }))
@@ -249,10 +299,18 @@ describe('user-facing SQLite replica', () => {
         propertyId: testIds.propertyA,
       })
       expect(statusFor(replicaPath, changes[0]?.changeId ?? '')).toMatchObject({ status: 'queued' })
+      expect(cellChangeFor(replicaPath, changes[0]?.changeId ?? '')).toMatchObject({
+        status: 'queued',
+      })
 
       const after = new DatabaseSync(replicaPath, { readOnly: true })
       try {
         expect(statusFor(replicaPath, 'change-create')).toMatchObject({
+          status: 'unsupported',
+          unsupported_reason:
+            'Row creation needs a create-page gateway command before it can sync safely.',
+        })
+        expect(rowChangeFor(replicaPath, 'change-create')).toMatchObject({
           status: 'unsupported',
           unsupported_reason:
             'Row creation needs a create-page gateway command before it can sync safely.',
@@ -340,14 +398,17 @@ describe('user-facing SQLite replica', () => {
         ).toEqual(before)
         expect(
           db
-            .prepare(
-              `SELECT "Computed score" FROM notion_view_data_source_1 WHERE page_id = ?`,
-            )
+            .prepare(`SELECT "Computed score" FROM notion_view_data_source_1 WHERE page_id = ?`)
             .get(testIds.pageId),
         ).toMatchObject({ 'Computed score': 'Computed value' })
-        expect(db.prepare(`SELECT count(*) AS count FROM notion_local_changes`).get()).toMatchObject({
+        expect(
+          db.prepare(`SELECT count(*) AS count FROM notion_local_changes`).get(),
+        ).toMatchObject({
           count: 0,
         })
+        expect(db.prepare(`SELECT count(*) AS count FROM notion_cell_changes`).get()).toMatchObject(
+          { count: 0 },
+        )
       } finally {
         db.close()
       }
@@ -391,7 +452,9 @@ describe('user-facing SQLite replica', () => {
 
       const db = new DatabaseSync(replicaPath)
       try {
-        db.prepare(`UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`).run(
+        db.prepare(
+          `UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`,
+        ).run(
           JSON.stringify({ _tag: 'title', plainText: 'Queued through SQL' }),
           testIds.pageId,
           testIds.propertyA,
@@ -399,6 +462,21 @@ describe('user-facing SQLite replica', () => {
       } finally {
         db.close()
       }
+
+      const dryRunIntents = replicaChangesToPlannerIntents({
+        changes: readPendingReplicaChanges(replicaPath),
+        replicaPath,
+        dryRun: true,
+      })
+      expect(dryRunIntents).toHaveLength(1)
+      const pendingAfterDryRun = readPendingReplicaChanges(replicaPath)
+      expect(pendingAfterDryRun).toHaveLength(1)
+      expect(statusFor(replicaPath, pendingAfterDryRun[0]?.changeId ?? '')).toMatchObject({
+        status: 'pending',
+      })
+      expect(cellChangeFor(replicaPath, pendingAfterDryRun[0]?.changeId ?? '')).toMatchObject({
+        status: 'pending',
+      })
 
       const intents = replicaChangesToPlannerIntents({
         changes: readPendingReplicaChanges(replicaPath),
@@ -452,7 +530,9 @@ describe('user-facing SQLite replica', () => {
     const workspaceRoot = tempWorkspace()
     const replicaPath = defaultReplicaPath(workspaceRoot)
     const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
-    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Before invalid edits')] })
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [propertyPage('Before invalid edits')],
+    })
 
     try {
       initOneShotSync({
@@ -483,20 +563,14 @@ describe('user-facing SQLite replica', () => {
       const db = new DatabaseSync(replicaPath)
       try {
         db.prepare(
-          `INSERT INTO notion_local_changes (
-             change_id, kind, data_source_id, page_id, property_id, value_json
-           ) VALUES (?, 'cell_patch', ?, ?, ?, ?)`,
-        ).run(
-          'invalid-json',
-          testIds.dataSourceId,
-          testIds.pageId,
-          testIds.propertyA,
-          '{not json',
-        )
+          `INSERT INTO notion_cell_changes (
+             change_id, data_source_id, page_id, property_id, value_json
+           ) VALUES (?, ?, ?, ?, ?)`,
+        ).run('invalid-json', testIds.dataSourceId, testIds.pageId, testIds.propertyA, '{not json')
         db.prepare(
-          `INSERT INTO notion_local_changes (
-             change_id, kind, data_source_id, page_id, property_id, value_json, base_hash
-           ) VALUES (?, 'cell_patch', ?, ?, ?, ?, ?)`,
+          `INSERT INTO notion_cell_changes (
+             change_id, data_source_id, page_id, property_id, value_json, base_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
         ).run(
           'stale-base',
           testIds.dataSourceId,
@@ -506,7 +580,7 @@ describe('user-facing SQLite replica', () => {
           hash('stale-base'),
         )
         db.prepare(
-          `INSERT INTO notion_local_changes (
+          `INSERT INTO notion_row_changes (
              change_id, kind, data_source_id, page_id, base_hash
            ) VALUES (?, 'row_restore', ?, ?, ?)`,
         ).run('restore-unsupported', testIds.dataSourceId, testIds.pageId, hash('restore-base'))
@@ -524,7 +598,15 @@ describe('user-facing SQLite replica', () => {
         status: 'rejected',
         unsupported_reason: 'value_json is not valid canonical Notion property value JSON.',
       })
+      expect(cellChangeFor(replicaPath, 'invalid-json')).toMatchObject({
+        status: 'rejected',
+        unsupported_reason: 'value_json is not valid canonical Notion property value JSON.',
+      })
       expect(statusFor(replicaPath, 'stale-base')).toMatchObject({
+        status: 'conflict',
+        unsupported_reason: 'Local cell patch has a stale base_hash.',
+      })
+      expect(cellChangeFor(replicaPath, 'stale-base')).toMatchObject({
         status: 'conflict',
         unsupported_reason: 'Local cell patch has a stale base_hash.',
       })
@@ -533,6 +615,116 @@ describe('user-facing SQLite replica', () => {
         unsupported_reason:
           'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
       })
+      expect(rowChangeFor(replicaPath, 'restore-unsupported')).toMatchObject({
+        status: 'unsupported',
+        unsupported_reason:
+          'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('captures direct row lifecycle edits in typed CDC tables', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Lifecycle row')] })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        db.prepare(`UPDATE notion_rows SET in_trash = 1 WHERE page_id = ?`).run(testIds.pageId)
+        db.prepare(`UPDATE notion_rows SET in_trash = 0 WHERE page_id = ?`).run(testIds.pageId)
+        expect(
+          db
+            .prepare(`SELECT kind, status, page_id FROM notion_row_changes ORDER BY created_at`)
+            .all(),
+        ).toEqual([
+          expect.objectContaining({
+            kind: 'row_archive',
+            status: 'pending',
+            page_id: testIds.pageId,
+          }),
+          expect.objectContaining({
+            kind: 'row_restore',
+            status: 'pending',
+            page_id: testIds.pageId,
+          }),
+        ])
+        expect(
+          db
+            .prepare(`SELECT kind, status, page_id FROM notion_local_changes ORDER BY created_at`)
+            .all(),
+        ).toEqual([
+          expect.objectContaining({
+            kind: 'row_archive',
+            status: 'pending',
+            page_id: testIds.pageId,
+          }),
+          expect.objectContaining({
+            kind: 'row_restore',
+            status: 'pending',
+            page_id: testIds.pageId,
+          }),
+        ])
+      } finally {
+        db.close()
+      }
+
+      const intents = replicaChangesToPlannerIntents({
+        changes: readPendingReplicaChanges(replicaPath),
+        replicaPath,
+      })
+      expect(intents).toHaveLength(1)
+      expect(intents[0]).toMatchObject({
+        _tag: 'local-delete',
+        pageId: testIds.pageId,
+      })
+
+      const rowChanges = new DatabaseSync(replicaPath, { readOnly: true })
+      try {
+        const statuses = rowChanges
+          .prepare(`SELECT kind, status, unsupported_reason FROM notion_row_changes ORDER BY kind`)
+          .all()
+        expect(statuses).toEqual([
+          expect.objectContaining({ kind: 'row_archive', status: 'queued' }),
+          expect.objectContaining({
+            kind: 'row_restore',
+            status: 'unsupported',
+            unsupported_reason:
+              'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
+          }),
+        ])
+      } finally {
+        rowChanges.close()
+      }
     } finally {
       storeFixture.cleanup()
     }
@@ -596,7 +788,9 @@ describe('user-facing SQLite replica', () => {
       try {
         expect(
           db
-            .prepare(`SELECT "select", "select_prop-b" FROM notion_view_data_source_1 WHERE page_id = ?`)
+            .prepare(
+              `SELECT "select", "select_prop-b" FROM notion_view_data_source_1 WHERE page_id = ?`,
+            )
             .get(testIds.pageId),
         ).toMatchObject({
           select: 'Reserved column',

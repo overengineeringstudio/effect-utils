@@ -30,51 +30,51 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 
 ## Read-Only Or Guarded
 
-| Surface                          | Policy                                                                     |
-| -------------------------------- | -------------------------------------------------------------------------- |
-| Formula, rollup, created/edited  | Observed as computed; writes are rejected                                  |
-| Relation and rollup dependencies | Require shared related data sources/pages; otherwise incomplete/ambiguous  |
-| Files property                   | Metadata can be represented; upload/download byte lifecycle is unsupported |
-| People property                  | Safe only when the integration can observe stable people values            |
-| Notion-hosted signed URLs        | Excluded from stable hashes and diagnostics                                |
-| Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts     |
-| Data-source icon metadata        | Observed as stable identity when possible; writable icon sync is deferred  |
-| Filtered query membership        | Does not classify row absence outside the explicit query contract          |
+| Surface                          | Policy                                                                                       |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
+| Formula, rollup, created/edited  | Observed as computed; writes are rejected                                                    |
+| Relation and rollup dependencies | Require shared related data sources/pages; otherwise incomplete/ambiguous                    |
+| Files property                   | Metadata can be represented; upload/download byte lifecycle is unsupported                   |
+| People property                  | Safe only when the integration can observe stable people values                              |
+| Notion-hosted signed URLs        | Excluded from stable hashes and diagnostics                                                  |
+| Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts                       |
+| Data-source icon metadata        | Observed as stable identity when possible; writable icon sync is deferred                    |
+| Filtered query membership        | Does not classify row absence outside the explicit query contract                            |
 | Local generated views            | Read-only convenience views; writable cells/rows queue guarded intents through public tables |
 
 ## Unsupported Or Deferred
 
-| Notion surface                           | Current policy                                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------------------------- |
-| Data-source views                        | Not synced; views are a separate Notion surface and not local authority               |
-| Data-source writable icons               | Deferred until file/custom/external icon identity has complete proof                  |
-| Database/data-source presentation        | Layout, grouping, sorts, filters, hidden properties, and view settings are not synced |
-| File upload/download bytes               | Deferred; file identity remains fail-closed when bytes matter                         |
-| Destructive schema migrations            | Property delete, type conversion, option removal/rename are blocked                   |
-| Status schema updates                    | Blocked until Notion behavior is proven for the desired operation                     |
-| Comments                                 | Out of scope                                                                          |
-| Permissions/sharing                      | Out of scope; permission ambiguity blocks affected surfaces                           |
-| Webhooks                                 | Not required for correctness; daemon uses observation/reconciliation                  |
-| Synced pages and unsupported body blocks | Delegated to NotionMD guards and blocked when lossy                                   |
-| Local-first data-source creation         | Out of scope; create the data source in Notion first, then adopt it locally           |
-| Direct updates to generated SQL views    | Deferred; V1 writes use guarded `notion_cells`/`notion_rows` updates or explicit intents |
-| Broad schema migrations from SQL edits   | Deferred; schema drift is detected and guarded, rich migration workflows are follow-up |
+| Notion surface                           | Current policy                                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Data-source views                        | Not synced; views are a separate Notion surface and not local authority                  |
+| Data-source writable icons               | Deferred until file/custom/external icon identity has complete proof                     |
+| Database/data-source presentation        | Layout, grouping, sorts, filters, hidden properties, and view settings are not synced    |
+| File upload/download bytes               | Deferred; file identity remains fail-closed when bytes matter                            |
+| Destructive schema migrations            | Property delete, type conversion, option removal/rename are blocked                      |
+| Status schema updates                    | Blocked until Notion behavior is proven for the desired operation                        |
+| Comments                                 | Out of scope                                                                             |
+| Permissions/sharing                      | Out of scope; permission ambiguity blocks affected surfaces                              |
+| Webhooks                                 | Not required for correctness; daemon uses observation/reconciliation                     |
+| Synced pages and unsupported body blocks | Delegated to NotionMD guards and blocked when lossy                                      |
+| Local-first data-source creation         | Out of scope; create the data source in Notion first, then adopt it locally              |
+| Direct updates to generated SQL views    | Deferred; V1 writes use guarded `notion_cells`/`notion_rows` updates or typed CDC tables |
+| Broad schema migrations from SQL edits   | Deferred; schema drift is detected and guarded, rich migration workflows are follow-up   |
 
 ## Public Replica Write Coverage
 
 All ordinary data edit use cases belong in the `notion.sqlite` API, but each
 class must have a typed intent and guard model before it mutates Notion.
 
-| Edit class                     | Target state                                                              |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| Existing row cell edits        | Supported through `notion_cells.value_json` updates or explicit `cell_patch` intents with base hashes |
-| Row creation                   | In scope through explicit `create_row` intents and read-after-write proof  |
-| Row archive/restore            | In scope through explicit lifecycle intents; never inferred from SQL delete |
-| Body edits                     | In scope through NotionMD-backed body intents and body conflict guards     |
-| Data-source metadata edits     | In scope through metadata intents with separate metadata hash              |
-| Safe schema changes            | In scope through guarded schema intents for proven additive/non-destructive operations |
-| Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval    |
-| File bytes                     | Follow-up until File Upload identity and cleanup are modeled               |
+| Edit class                      | Target state                                                                                          |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Existing row cell edits         | Supported through `notion_cells.value_json` updates or explicit `notion_cell_changes` rows with base hashes |
+| Row creation                    | In scope through explicit `notion_row_changes` rows and read-after-write proof                             |
+| Row archive/restore             | In scope through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete           |
+| Body edits                      | In scope through future NotionMD-backed `notion_body_changes` rows and body conflict guards                |
+| Data-source metadata edits      | In scope through future `notion_metadata_changes` rows with separate metadata hash                         |
+| Safe schema changes             | In scope through future guarded `notion_schema_changes` rows for proven additive/non-destructive operations |
+| Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                               |
+| File bytes                      | Follow-up until File Upload identity and cleanup are modeled                                          |
 
 ## Capability Preflight
 
