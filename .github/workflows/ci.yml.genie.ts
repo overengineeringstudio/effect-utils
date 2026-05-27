@@ -705,6 +705,12 @@ export default ciWorkflow({
     // validation branches should fail one authority job, not obscure
     // lint/typecheck/test signal.
     'default-ref-policy': defaultRefPolicyCheckJob({
+      // Keep this tiny policy job on the same Namespace runner class as the
+      // rest of CI so source-policy enforcement does not wait on legacy labels.
+      runsOn: namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+      }),
       // LiveStore intentionally uses dev as its trunk branch.
       defaultRefs: { 'livestorejs/livestore': 'dev' },
     }),
