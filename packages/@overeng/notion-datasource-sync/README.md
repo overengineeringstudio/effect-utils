@@ -44,15 +44,18 @@ Editing the internal store is unsupported.
 
 `notion.sqlite` exposes stable public tables such as `notion_data_sources`,
 `notion_properties`, `notion_rows`, `notion_cells`, `notion_bodies`,
-`notion_cell_changes`, `notion_row_changes`, `notion_local_changes`,
-`notion_conflicts`, and `notion_sync_status`, plus generated read views for
+`notion_cell_changes`, `notion_row_changes`, `notion_body_changes`,
+`notion_metadata_changes`, `notion_schema_changes`,
+`notion_conflict_resolutions`, `notion_local_changes`, `notion_conflicts`, and
+`notion_sync_status`, plus generated read views for
 adopted data sources. Local data edits are inserted as guarded typed CDC rows;
 direct current-state edits use final-state semantics, so repeated edits to the
 same cell or row lifecycle target supersede earlier pending direct changes.
 `notion_local_changes` mirrors typed rows as a compatibility projection. `sync`
 validates those typed changes, performs a dry-run/reviewable plan when
 requested, and applies supported writes to Notion only after base-hash guards
-pass.
+pass. Row creation, file bytes, Notion views, data-source descriptions, and
+destructive schema migrations remain explicit fail-closed surfaces.
 
 ## CLI Shape
 
@@ -93,8 +96,8 @@ body adapter; without a token or injected body port, body sync fails closed.
   copy of accepted intent/conflict state.
 - Query cursors, high-watermarks, and page-property pagination are part of the
   observation contract.
-- Body, schema, data-source metadata, properties, lifecycle, path claims, and conflict state are
-  separate surfaces.
+- Body, schema, data-source metadata, properties, lifecycle, path claims, and
+  conflict state are separate surfaces.
 - Unsupported schema changes, computed properties, incomplete paginated values,
   file bytes, views, and unproven metadata writes block instead of degrading
   data.

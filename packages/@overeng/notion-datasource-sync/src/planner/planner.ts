@@ -4,6 +4,7 @@ import type {
   PatchDataSourceSchemaCommand,
   PatchPagePropertiesCommand,
   RemoteWriteCommand,
+  RestorePageCommand,
   TrashPageCommand,
 } from '../core/commands.ts'
 import type { ConflictPayload } from '../core/conflicts.ts'
@@ -254,14 +255,14 @@ export type DataSourceMetadataEditIntent = {
   readonly desiredHash: Hash
 }
 
-/** Intent to trash a page on the remote, triggered by a local workspace deletion; `policy` and `explicitDestructiveIntent` control whether the planner escalates to a real remote trash or treats it as a candidate. */
+/** Intent to change a page lifecycle state on the remote, triggered by a local workspace/replica lifecycle edit; `policy` and `explicitDestructiveIntent` control whether the planner escalates to a real remote write or treats it as a candidate. */
 export type LocalDeleteIntent = {
   readonly _tag: 'local-delete'
   readonly intentEventId: SyncEventId
   readonly commandKey: IdempotencyKey
   readonly surface: SurfaceKey
   readonly pageId: PageId
-  readonly command: TrashPageCommand
+  readonly command: TrashPageCommand | RestorePageCommand
   readonly baseHash: Hash
   readonly desiredHash: Hash
   readonly explicitDestructiveIntent: boolean
@@ -837,10 +838,11 @@ const planLocalDelete = ({
   }
 
   if (
-    intent.explicitDestructiveIntent === false ||
-    intent.policy === 'candidateOnly' ||
-    body?.sidecarIdentityProven !== true ||
-    intent.directRetrieve !== 'accessible'
+    intent.command._tag === 'TrashPageCommand' &&
+    (intent.explicitDestructiveIntent === false ||
+      intent.policy === 'candidateOnly' ||
+      body?.sidecarIdentityProven !== true ||
+      intent.directRetrieve !== 'accessible')
   ) {
     return {
       _tag: 'AppendEvents',

@@ -153,11 +153,16 @@ notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
 notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
-All data edit use cases are in scope for the public replica layer: cell edits,
-row creation, row archive/restore, body edits through the NotionMD boundary,
-metadata edits, and safe schema-affecting edits. Each supported edit class must
-be represented as an explicit intent with a base hash and conflict policy.
-Computed or unsupported properties remain visible but read-only.
+The public replica layer now ships typed CDC tables for cell edits, row
+lifecycle/create requests, body edits through the NotionMD boundary, metadata
+edits, schema edits, and conflict-resolution requests. The executable subset is
+intentionally narrower: writable scalar/page-property cells, row archive/restore,
+body pushes that pass body safety, data-source title metadata, and conservative
+data-source schema add/rename/select-option operations. Row creation,
+data-source descriptions, files, Notion views, destructive schema changes, and
+manual conflict-resolution execution remain fail-closed until their dedicated
+proof is in place. Computed or unsupported properties remain visible but
+read-only.
 
 ## Reconcile Local Changes
 

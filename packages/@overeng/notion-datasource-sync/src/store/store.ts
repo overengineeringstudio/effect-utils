@@ -987,7 +987,33 @@ export class NotionSyncStore {
             ? 'passed'
             : 'failed',
       },
-      metadata: [],
+      metadata: Array.from(
+        this.#db
+          .prepare(
+            `SELECT event_json
+             FROM sync_event
+             WHERE root_id = ? AND event_type = 'DataSourceMetadataObserved'
+             ORDER BY sequence`,
+          )
+          .all(rootId)
+          .reduce((accumulator, row) => {
+            const event = JSON.parse(readString({ row: row, key: 'event_json' })) as {
+              readonly dataSourceId?: unknown
+              readonly metadataHash?: unknown
+            }
+            if (
+              typeof event.dataSourceId === 'string' &&
+              typeof event.metadataHash === 'string'
+            ) {
+              accumulator.set(event.dataSourceId, event.metadataHash)
+            }
+            return accumulator
+          }, new Map<string, string>())
+          .entries(),
+      ).map(([dataSourceId, metadataHash]) => ({
+        dataSourceId: decodeDataSourceId(dataSourceId),
+        metadataHash: decodeHash(metadataHash),
+      })),
       schema: this.#db
         .prepare(
           `SELECT data_source_id, property_id, schema_hash, config_hash, write_class

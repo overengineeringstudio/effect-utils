@@ -891,6 +891,7 @@ describe('notion datasource sync fake-service E2E harness', () => {
       explicitDestructiveIntent: true,
       policy: 'trustedRemoteTrash',
     }).command
+    if (command._tag !== 'TrashPageCommand') throw new Error('expected trash command fixture')
 
     const requestId = await Effect.runPromise(gatewayHarness.gateway.trashPage(command))
 

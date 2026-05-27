@@ -152,6 +152,10 @@ Stable generic tables:
 | `notion_bodies`        | read          | Body path, body hashes, materialization/adapter state                                                |
 | `notion_cell_changes`  | write         | Typed CDC log for local cell edits queued for guarded sync                                           |
 | `notion_row_changes`   | write         | Typed CDC log for local row lifecycle/create edits queued for guarded sync                           |
+| `notion_body_changes`  | write         | Typed CDC log for body pushes using body path/base hash semantics                                    |
+| `notion_metadata_changes` | write      | Typed CDC log for supported metadata edits                                                           |
+| `notion_schema_changes` | write        | Typed CDC log for conservative data-source schema operations                                         |
+| `notion_conflict_resolutions` | write  | Typed CDC requests for user conflict-resolution actions                                              |
 | `notion_local_changes` | compatibility | Unified local-change projection for inspection and older explicit inserts                            |
 | `notion_conflicts`     | read          | User-visible conflict records and resolution state                                                   |
 | `notion_sync_status`   | read          | Last sync, pending work, checkpoints, guards                                                         |
@@ -211,14 +215,25 @@ notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
 notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
-Supported typed public mutation tables today are `notion_cell_changes` and
-`notion_row_changes`. `notion_row_changes.kind` supports `row_archive`,
-`row_restore`, and `row_create`; restore and create remain fail-closed until
-their remote command path is promoted. Destructive edits are never inferred from
-`delete from notion_rows` or from missing local files. Body edits, metadata
-edits, schema-affecting edits, and conflict-resolution writes require dedicated
-typed tables before sync can show exact planned Notion mutations and execute
-them.
+Supported typed public mutation tables today are `notion_cell_changes`,
+`notion_row_changes`, `notion_body_changes`, `notion_metadata_changes`,
+`notion_schema_changes`, and `notion_conflict_resolutions`.
+`notion_row_changes.kind` supports `row_archive`, `row_restore`, and
+`row_create`; archive and restore can execute through the guarded page lifecycle
+command path, while row creation remains fail-closed until create-page
+idempotency and remote page-id reconciliation are implemented. Destructive edits
+are never inferred from `delete from notion_rows` or from missing local files.
+
+Body changes use `notion_body_changes` with `page_id`, `body_path`,
+`local_body_hash`, optional `local_body_content`, and `base_hash`; unsafe body
+states such as unknown/truncated/synced content remain blocked by the body
+adapter safety guards. Metadata changes currently support data-source title
+updates. Database description writes are a separate resource surface, and
+top-level data-source descriptions are not claimed writable by the current
+Notion data-source update API. Schema changes support only conservative
+data-source operations accepted by the gateway: add property, rename property,
+and select/multi-select option additions. Files and Notion views are separate
+future CDC surfaces.
 
 Direct `notion_rows.in_trash` edits also use final-state CDC semantics. For
 example, toggling `0 -> 1 -> 0` before sync cancels the pending direct archive
