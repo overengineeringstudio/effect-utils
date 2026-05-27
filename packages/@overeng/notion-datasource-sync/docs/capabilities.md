@@ -40,7 +40,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts     |
 | Data-source icon metadata        | Observed as stable identity when possible; writable icon sync is deferred  |
 | Filtered query membership        | Does not classify row absence outside the explicit query contract          |
-| Local generated views            | Read-only convenience views; write intents are the writable public surface |
+| Local generated views            | Read-only convenience views; writable cells/rows queue guarded intents through public tables |
 
 ## Unsupported Or Deferred
 
@@ -67,7 +67,7 @@ class must have a typed intent and guard model before it mutates Notion.
 
 | Edit class                     | Target state                                                              |
 | ------------------------------ | ------------------------------------------------------------------------- |
-| Existing row cell edits        | In scope through `patch_cell` intents with base row/property hashes        |
+| Existing row cell edits        | Supported through `notion_cells.value_json` updates or explicit `cell_patch` intents with base hashes |
 | Row creation                   | In scope through explicit `create_row` intents and read-after-write proof  |
 | Row archive/restore            | In scope through explicit lifecycle intents; never inferred from SQL delete |
 | Body edits                     | In scope through NotionMD-backed body intents and body conflict guards     |

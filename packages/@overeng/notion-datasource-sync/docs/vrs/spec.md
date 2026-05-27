@@ -304,26 +304,27 @@ The public replica has a stable generic schema and rebuildable generated views:
 
 | Table                  | Key shape                                           | Purpose                                                        |
 | ---------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
-| `notion_data_sources`  | `(data_source_id)`                                  | Title, description, icon identity, schema/metadata hashes      |
+| `notion_data_sources`  | `(data_source_id)`                                  | Root binding plus schema/metadata hashes and observation IDs   |
 | `notion_properties`    | `(data_source_id, property_id)`                     | Property name, type, config hash, writable/read-only class     |
-| `notion_rows`          | `(data_source_id, row_id)`                          | Page identity, lifecycle, parent/source, row hashes            |
-| `notion_cells`         | `(data_source_id, row_id, property_id)`             | Lossless `value_json` plus scalar query helper columns         |
-| `notion_bodies`        | `(data_source_id, row_id)`                          | Body path, adapter state, base/current hashes, lossy guards    |
+| `notion_rows`          | `(page_id)`                                         | Page identity, lifecycle flags, and row hashes                 |
+| `notion_cells`         | `(page_id, property_id)`                            | Lossless `value_json` plus scalar query helper columns         |
+| `notion_bodies`        | `(page_id)`                                         | Body path, adapter state, base/current hashes, lossy guards    |
 | `notion_local_changes` | `(change_id)`                                       | User write intents with base hashes, desired payload, status   |
 | `notion_conflicts`     | `(conflict_id)`                                     | Open/resolved conflicts projected for user inspection          |
-| `notion_sync_status`   | `(data_source_id, query_contract_hash, surface)`    | Last sync, pending counts, checkpoints, guard summaries        |
+| `notion_sync_status`   | `(root_id)`                                         | Replica counts, pending counts, and last projection timestamp  |
 
-Generated read views such as `tasks_current` or
-`daily_notes_current__49a9fd15` are derived from `notion_rows`,
-`notion_properties`, and `notion_cells`. View names and column names are
-escaped, collision-safe, and recoverable from metadata; property IDs remain the
-authoritative identity. Generated views are read-only in the initial public API.
+Generated read views named `notion_view_<data-source-id-slug>` are derived from
+`notion_rows`, `notion_properties`, and `notion_cells`. Column names use escaped
+property names, with a property-id suffix for collisions; property IDs remain
+the authoritative identity. Generated views are read-only.
 
 `notion_cells.value_json` is the lossless canonical value. Scalar helper columns
-such as `value_text`, `value_number`, `value_checkbox`, `value_date_start`,
-`value_date_end`, and `value_option_name` exist for querying only. Remote writes
-must be derived from validated Notion-shaped intent payloads, not from helper
-columns alone.
+currently include `value_text`, `value_number`, and `value_boolean`; they exist
+for querying only. Updating `notion_cells.value_json` is a supported direct
+local edit for writable cells: the replica updates helper columns and generated
+views to the local desired value and queues a guarded `cell_patch` intent.
+Remote writes must be derived from validated Notion-shaped payloads, not from
+helper columns alone.
 
 Public schema versions are separate:
 
@@ -343,32 +344,29 @@ closed and must not infer remote writes from replica rows alone.
 Requirement trace: R21-R29, R74-R81.
 
 Users write desired data changes by inserting rows into `notion_local_changes`
-or by using CLI helpers that insert the same rows. Local SQL writes never call
-Notion directly.
+or by updating supported current-state columns that insert the same rows via
+triggers. Local SQL writes never call Notion directly.
 
 ```ts
 type NotionLocalChange =
   | {
-      readonly kind: 'patch_cell'
+      readonly kind: 'cell_patch'
       readonly dataSourceId: DataSourceId
-      readonly rowId: PageId
+      readonly pageId: PageId
       readonly propertyId: PropertyId
       readonly valueJson: CanonicalPropertyValueJson
-      readonly baseRowHash: Hash
-      readonly basePropertyHash: Hash
-      readonly conflictPolicy: 'fail' | 'merge-disjoint'
+      readonly baseHash: Hash | undefined
     }
   | {
-      readonly kind: 'create_row'
+      readonly kind: 'row_create'
       readonly dataSourceId: DataSourceId
-      readonly initialCellsJson: VersionedJson
-      readonly idempotencyKey: IdempotencyKey
+      readonly valueJson: VersionedJson
     }
   | {
-      readonly kind: 'archive_row' | 'restore_row'
+      readonly kind: 'row_archive' | 'row_restore'
       readonly dataSourceId: DataSourceId
-      readonly rowId: PageId
-      readonly baseRowHash: Hash
+      readonly pageId: PageId
+      readonly baseHash: Hash | undefined
     }
   | {
       readonly kind: 'patch_metadata'
@@ -402,15 +400,19 @@ Intent lifecycle:
 ```mermaid
 stateDiagram-v2
   [*] --> Pending: insert into notion_local_changes
-  Pending --> Planned: sync --dry-run validates
-  Pending --> Accepted: sync appends LocalIntentAccepted
-  Accepted --> Enqueued: command appended to outbox
-  Enqueued --> Applied: remote write verified
-  Applied --> Settled: replica reflects observed Notion state
-  Pending --> Rejected: invalid / unsupported / stale base
-  Accepted --> Conflict: remote/schema/body drift affects target
-  Conflict --> Settled: explicit resolution command
+  [*] --> Pending: supported direct table update
+  Pending --> Planned: converted to planner intent
+  Pending --> Unsupported: known unsupported write class
+  Pending --> Rejected: malformed payload / missing target
+  Pending --> Conflict: stale base detected before planning
+  Planned --> Applied: remote write verified
+  Planned --> Conflict: planner detects remote/schema/body drift
+  Conflict --> Applied: explicit resolution command
 ```
+
+The current replica table stores lifecycle as `pending`, `planned`, `applied`,
+`conflict`, `unsupported`, or `rejected`. Unsupported, stale, and malformed
+local changes must not be promoted to `planned`.
 
 Dry-run is true no-write for the public replica and internal store. It may read
 `notion.sqlite` intents and current internal projections, but it must not settle

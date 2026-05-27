@@ -57,7 +57,7 @@ const runWithPorts = <TValue, TError>(
     ),
   )
 
-const propertyPage = (plainText: string) =>
+const propertyPage = (plainText: string, propertyId = testIds.propertyA) =>
   decode({
     schema: PagePropertyItemPage,
     value: {
@@ -65,12 +65,12 @@ const propertyPage = (plainText: string) =>
       apiVersion: '2026-03-11',
       requestId: testIds.requestId,
       pageId: testIds.pageId,
-      propertyId: testIds.propertyA,
+      propertyId,
       items: [
         {
           _tag: 'PagePropertyItem',
           pageId: testIds.pageId,
-          propertyId: testIds.propertyA,
+          propertyId,
           itemHash: hash(`item-${plainText}`),
           valueHash: hash(`value-${plainText}`),
           valueJson: JSON.stringify({ _tag: 'title', plainText }),
@@ -90,6 +90,17 @@ const schemaProperties = [
     writeClass: 'writable' as const,
   },
 ]
+
+const statusFor = (replicaPath: string, changeId: string) => {
+  const db = new DatabaseSync(replicaPath, { readOnly: true })
+  try {
+    return db
+      .prepare(`SELECT status, unsupported_reason FROM notion_local_changes WHERE change_id = ?`)
+      .get(changeId)
+  } finally {
+    db.close()
+  }
+}
 
 describe('user-facing SQLite replica', () => {
   it('projects observed schema rows cells bodies and generated views into notion.sqlite', async () => {
@@ -192,6 +203,14 @@ describe('user-facing SQLite replica', () => {
           testIds.pageId,
           testIds.propertyA,
         )
+        expect(
+          db
+            .prepare(`SELECT value_text FROM notion_cells WHERE page_id = ? AND property_id = ?`)
+            .get(testIds.pageId, testIds.propertyA),
+        ).toMatchObject({ value_text: 'Direct edit' })
+        expect(
+          db.prepare(`SELECT "Task name" FROM notion_view_data_source_1 WHERE page_id = ?`).get(testIds.pageId),
+        ).toMatchObject({ 'Task name': 'Direct edit' })
         db.prepare(
           `INSERT INTO notion_local_changes (
              change_id, kind, data_source_id, page_id, property_id, value_json
@@ -229,14 +248,11 @@ describe('user-facing SQLite replica', () => {
         pageId: testIds.pageId,
         propertyId: testIds.propertyA,
       })
+      expect(statusFor(replicaPath, changes[0]?.changeId ?? '')).toMatchObject({ status: 'planned' })
 
       const after = new DatabaseSync(replicaPath, { readOnly: true })
       try {
-        expect(
-          after
-            .prepare(`SELECT status, unsupported_reason FROM notion_local_changes WHERE change_id = ?`)
-            .get('change-create'),
-        ).toMatchObject({
+        expect(statusFor(replicaPath, 'change-create')).toMatchObject({
           status: 'unsupported',
           unsupported_reason:
             'Row creation needs a create-page gateway command before it can sync safely.',
@@ -335,6 +351,153 @@ describe('user-facing SQLite replica', () => {
       expect(gateway.ledger.successfulPatchPageProperties[0]?.propertyPatch).toMatchObject({
         [testIds.propertyA]: { _tag: 'title', plainText: 'Queued through SQL' },
       })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('rejects invalid local value payloads and preserves unsupported restore status', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Before invalid edits')] })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        db.prepare(
+          `INSERT INTO notion_local_changes (
+             change_id, kind, data_source_id, page_id, property_id, value_json
+           ) VALUES (?, 'cell_patch', ?, ?, ?, ?)`,
+        ).run(
+          'invalid-json',
+          testIds.dataSourceId,
+          testIds.pageId,
+          testIds.propertyA,
+          '{not json',
+        )
+        db.prepare(
+          `INSERT INTO notion_local_changes (
+             change_id, kind, data_source_id, page_id, base_hash
+           ) VALUES (?, 'row_restore', ?, ?, ?)`,
+        ).run('restore-unsupported', testIds.dataSourceId, testIds.pageId, hash('restore-base'))
+      } finally {
+        db.close()
+      }
+
+      const intents = replicaChangesToPlannerIntents({
+        changes: readPendingReplicaChanges(replicaPath),
+        replicaPath,
+      })
+
+      expect(intents).toHaveLength(0)
+      expect(statusFor(replicaPath, 'invalid-json')).toMatchObject({
+        status: 'rejected',
+        unsupported_reason: 'value_json is not valid canonical Notion property value JSON.',
+      })
+      expect(statusFor(replicaPath, 'restore-unsupported')).toMatchObject({
+        status: 'unsupported',
+        unsupported_reason:
+          'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('generates collision-safe escaped view columns for reserved and duplicate property names', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      propertyPages: [
+        propertyPage('Reserved column', testIds.propertyA),
+        propertyPage('Duplicate column', testIds.propertyB),
+      ],
+    })
+    const collidingSchemaProperties = [
+      {
+        propertyId: testIds.propertyA,
+        name: 'select',
+        type: 'title',
+        configHash: hash('config-a'),
+        writeClass: 'writable' as const,
+      },
+      {
+        propertyId: testIds.propertyB,
+        name: 'select',
+        type: 'title',
+        configHash: hash('config-b'),
+        writeClass: 'writable' as const,
+      },
+    ]
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: collidingSchemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath, { readOnly: true })
+      try {
+        expect(
+          db
+            .prepare(`SELECT "select", "select_prop-b" FROM notion_view_data_source_1 WHERE page_id = ?`)
+            .get(testIds.pageId),
+        ).toMatchObject({
+          select: 'Reserved column',
+          'select_prop-b': 'Duplicate column',
+        })
+      } finally {
+        db.close()
+      }
     } finally {
       storeFixture.cleanup()
     }

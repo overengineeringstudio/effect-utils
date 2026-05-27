@@ -83,9 +83,9 @@ Use `notion.sqlite`, not `.notion-datasource-sync/store.sqlite`:
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" ".tables"
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select data_source_id, title from notion_data_sources;"
+  "select data_source_id, schema_hash, metadata_hash from notion_data_sources;"
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select row_id, title, in_trash from notion_rows limit 10;"
+  "select page_id, in_trash, properties_hash from notion_rows limit 10;"
 ```
 
 The stable generic tables are:
@@ -102,30 +102,43 @@ The stable generic tables are:
 | `notion_sync_status`   | Last sync, checkpoints, pending work, guard state              |
 
 Generated read views provide ergonomic SQL for each adopted data source. Their
-names are derived from the data-source title plus a stable suffix when needed.
-They are read-only in the initial public API; write to `notion_local_changes`
-instead.
+names currently use the data-source id slug, such as
+`notion_view_data_source_1`. They are read-only; write to `notion_cells` /
+`notion_rows` current-state columns or to `notion_local_changes` instead.
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  'select "Task name", "Status", "Priority" from tasks_current limit 10;'
+  'select "Task name", "Status", "Priority" from notion_view_data_source_1 limit 10;'
 ```
 
 ## Edit Local Data
 
-Local SQL edits create explicit intents. They do not call Notion immediately:
+Local SQL edits create explicit intents. They do not call Notion immediately.
+For cell edits, updating `notion_cells.value_json` is the direct local-edit
+surface:
+
+```sql
+update notion_cells
+set value_json = '{"_tag":"title","plainText":"Done"}'
+where page_id = '11111111-1111-4111-8111-111111111111'
+  and property_id = 'title-property-id';
+```
+
+This updates scalar helper columns and generated read views to the local desired
+state, then queues a `cell_patch` intent. The equivalent explicit intent form
+is:
 
 ```sql
 insert into notion_local_changes
-  (kind, data_source_id, row_id, property_id, value_json, base_row_hash)
+  (kind, data_source_id, page_id, property_id, value_json, base_hash)
 values
   (
-    'patch_cell',
+    'cell_patch',
     '00000000-0000-4000-8000-000000000001',
     '11111111-1111-4111-8111-111111111111',
     'status-property-id',
-    '{"type":"status","status":{"name":"Done"}}',
-    'sha256-current-row-base'
+    '{"_tag":"status","option":{"id":"done","name":"Done","color":"green"}}',
+    'sha256-current-cell-base'
   );
 ```
 
@@ -197,7 +210,7 @@ Conflicts are visible in `notion.sqlite` and through the CLI:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select conflict_id, kind, row_id, property_id, state from notion_conflicts;"
+  "select conflict_id, page_id, property_id, state from notion_conflicts;"
 
 notion-datasource-sync conflicts list \
   --store "$PWD/notion-workspace/.notion-datasource-sync/store.sqlite" \

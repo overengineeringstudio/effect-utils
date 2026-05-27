@@ -37,6 +37,8 @@ export type ReplicaLocalChange = {
   readonly status: string
 }
 
+type ReplicaChangeStatus = 'pending' | 'planned' | 'applied' | 'conflict' | 'unsupported' | 'rejected'
+
 const readString = ({ row, key }: { readonly row: SqlRow; readonly key: string }): string => {
   const value = row[key]
   if (typeof value !== 'string') throw new Error(`Expected SQLite column ${key} to be a string`)
@@ -86,6 +88,15 @@ export const defaultReplicaPath = (workspaceRoot: AbsolutePath): string =>
   join(workspaceRoot, replicaFileName)
 
 const createReplicaSchema = (db: DatabaseSync): void => {
+  const localChangesSchema = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'notion_local_changes'`)
+    .get() as SqlRow | undefined
+  const needsLocalChangesStatusMigration =
+    typeof localChangesSchema?.sql === 'string' && !localChangesSchema.sql.includes("'rejected'")
+  if (needsLocalChangesStatusMigration) {
+    db.exec(`ALTER TABLE notion_local_changes RENAME TO notion_local_changes_legacy;`)
+  }
+
   db.exec(`
     PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
@@ -169,7 +180,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'planned',
         'applied',
         'conflict',
-        'unsupported'
+        'unsupported',
+        'rejected'
       )),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -211,6 +223,44 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     FOR EACH ROW
     WHEN NEW.value_json IS NOT OLD.value_json
     BEGIN
+      UPDATE notion_cells
+      SET
+        value_text =
+          CASE
+            WHEN NEW.value_json IS NOT NULL AND json_valid(NEW.value_json) THEN
+              CASE json_extract(NEW.value_json, '$._tag')
+                WHEN 'title' THEN json_extract(NEW.value_json, '$.plainText')
+                WHEN 'rich_text' THEN json_extract(NEW.value_json, '$.plainText')
+                WHEN 'select' THEN json_extract(NEW.value_json, '$.option.name')
+                WHEN 'status' THEN json_extract(NEW.value_json, '$.option.name')
+                WHEN 'email' THEN json_extract(NEW.value_json, '$.value')
+                WHEN 'url' THEN json_extract(NEW.value_json, '$.value')
+                WHEN 'phone_number' THEN json_extract(NEW.value_json, '$.value')
+                ELSE NULL
+              END
+            ELSE NULL
+          END,
+        value_number =
+          CASE
+            WHEN NEW.value_json IS NOT NULL
+              AND json_valid(NEW.value_json)
+              AND json_extract(NEW.value_json, '$._tag') = 'number'
+              AND json_type(NEW.value_json, '$.value') IN ('integer', 'real')
+            THEN json_extract(NEW.value_json, '$.value')
+            ELSE NULL
+          END,
+        value_boolean =
+          CASE
+            WHEN NEW.value_json IS NOT NULL
+              AND json_valid(NEW.value_json)
+              AND json_extract(NEW.value_json, '$._tag') = 'checkbox'
+              AND json_type(NEW.value_json, '$.checked') IN ('true', 'false')
+            THEN CASE WHEN json_extract(NEW.value_json, '$.checked') THEN 1 ELSE 0 END
+            ELSE NULL
+          END,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE page_id = OLD.page_id AND property_id = OLD.property_id;
+
       INSERT INTO notion_local_changes (
         change_id,
         kind,
@@ -278,6 +328,39 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       SELECT RAISE(ABORT, 'deleting notion_rows is unsafe; set in_trash=1 or insert an explicit local change intent');
     END;
   `)
+
+  if (needsLocalChangesStatusMigration) {
+    db.exec(`
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        page_id,
+        property_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      )
+      SELECT
+        change_id,
+        kind,
+        data_source_id,
+        page_id,
+        property_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      FROM notion_local_changes_legacy;
+
+      DROP TABLE notion_local_changes_legacy;
+    `)
+  }
 }
 
 const clearProjectedReplicaTables = (db: DatabaseSync): void => {
@@ -766,7 +849,7 @@ export const markReplicaChangeStatus = ({
 }: {
   readonly replicaPath: string
   readonly changeId: string
-  readonly status: 'planned' | 'unsupported'
+  readonly status: Exclude<ReplicaChangeStatus, 'pending'>
   readonly unsupportedReason?: string
 }): void => {
   const db = new DatabaseSync(replicaPath)
@@ -780,6 +863,28 @@ export const markReplicaChangeStatus = ({
   } finally {
     db.close()
   }
+}
+
+const markChange = ({
+  replicaPath,
+  dryRun,
+  changeId,
+  status,
+  reason,
+}: {
+  readonly replicaPath: string
+  readonly dryRun?: boolean | undefined
+  readonly changeId: string
+  readonly status: Exclude<ReplicaChangeStatus, 'pending'>
+  readonly reason?: string
+}): void => {
+  if (dryRun === true) return
+  markReplicaChangeStatus({
+    replicaPath,
+    changeId,
+    status,
+    ...(reason === undefined ? {} : { unsupportedReason: reason }),
+  })
 }
 
 export const replicaChangesToPlannerIntents = ({
@@ -797,37 +902,75 @@ export const replicaChangesToPlannerIntents = ({
     const intents: PlannerIntent[] = []
     for (const change of changes) {
       if (change.kind === 'row_create') {
-        if (dryRun !== true) {
-          markReplicaChangeStatus({
-            replicaPath,
-            changeId: change.changeId,
-            status: 'unsupported',
-            unsupportedReason:
-              'Row creation needs a create-page gateway command before it can sync safely.',
-          })
-        }
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'unsupported',
+          reason: 'Row creation needs a create-page gateway command before it can sync safely.',
+        })
         continue
       }
-      if (change.pageId === undefined) continue
-      const pageId = decode({ schema: PageId, value: change.pageId })
-      const dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
+      if (change.pageId === undefined) {
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'rejected',
+          reason: `${change.kind} requires page_id.`,
+        })
+        continue
+      }
+      let pageId: PageId
+      let dataSourceId: DataSourceId
+      try {
+        pageId = decode({ schema: PageId, value: change.pageId })
+        dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
+      } catch {
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'rejected',
+          reason: 'Invalid data_source_id or page_id in local change.',
+        })
+        continue
+      }
       const row = db
         .prepare(`SELECT properties_hash, in_trash FROM notion_rows WHERE page_id = ?`)
         .get(change.pageId) as SqlRow | undefined
-      if (row === undefined) continue
+      if (row === undefined) {
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'rejected',
+          reason: 'Local change targets a row that is not present in the replica.',
+        })
+        continue
+      }
       if (change.kind === 'row_restore') {
-        if (dryRun !== true) {
-          markReplicaChangeStatus({
-            replicaPath,
-            changeId: change.changeId,
-            status: 'unsupported',
-            unsupportedReason:
-              'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
-          })
-        }
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'unsupported',
+          reason:
+            'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
+        })
         continue
       }
       if (change.kind === 'row_archive') {
+        if (change.baseHash !== undefined && change.baseHash !== readString({ row, key: 'properties_hash' })) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'conflict',
+            reason: 'Local row lifecycle change has a stale base_hash.',
+          })
+          continue
+        }
         const baseHash = decode({
           schema: Hash,
           value: change.baseHash ?? pageLifecycleHash({ pageId, inTrash: readNumber({ row, key: 'in_trash' }) === 1 }),
@@ -852,24 +995,87 @@ export const replicaChangesToPlannerIntents = ({
           policy: 'trustedRemoteTrash',
           directRetrieve: 'accessible',
         })
+        markChange({ replicaPath, dryRun, changeId: change.changeId, status: 'planned' })
         continue
       }
       if (change.kind === 'cell_patch') {
-        if (change.propertyId === undefined || change.valueJson === undefined) continue
-        const propertyId = decode({ schema: PropertyId, value: change.propertyId })
+        if (change.propertyId === undefined || change.valueJson === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'cell_patch requires property_id and value_json.',
+          })
+          continue
+        }
+        let propertyId: PropertyId
+        try {
+          propertyId = decode({ schema: PropertyId, value: change.propertyId })
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'Invalid property_id in local change.',
+          })
+          continue
+        }
         const cell = db
           .prepare(
-            `SELECT base_hash, config_hash
+            `SELECT c.base_hash, p.config_hash, p.write_class
              FROM notion_cells c
              JOIN notion_properties p
                ON p.data_source_id = c.data_source_id AND p.property_id = c.property_id
              WHERE c.page_id = ? AND c.property_id = ?`,
           )
           .get(change.pageId, change.propertyId) as SqlRow | undefined
-        if (cell === undefined) continue
-        const value = Schema.decodeUnknownSync(Schema.parseJson(CanonicalPropertyValue))(
-          change.valueJson,
-        )
+        if (cell === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'Local change targets a cell that is not present in the replica.',
+          })
+          continue
+        }
+        if (readString({ row: cell, key: 'write_class' }) !== 'writable') {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason: 'The target property is read-only or unsupported for replica writes.',
+          })
+          continue
+        }
+        if (change.baseHash !== undefined && change.baseHash !== readString({ row: cell, key: 'base_hash' })) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'conflict',
+            reason: 'Local cell patch has a stale base_hash.',
+          })
+          continue
+        }
+        let value: typeof CanonicalPropertyValue.Type
+        try {
+          value = Schema.decodeUnknownSync(Schema.parseJson(CanonicalPropertyValue))(
+            change.valueJson,
+          )
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'value_json is not valid canonical Notion property value JSON.',
+          })
+          continue
+        }
         const baseHash = decode({
           schema: Hash,
           value: change.baseHash ?? readString({ row: cell, key: 'base_hash' }),
@@ -900,6 +1106,7 @@ export const replicaChangesToPlannerIntents = ({
             value: readString({ row: cell, key: 'config_hash' }),
           }),
         })
+        markChange({ replicaPath, dryRun, changeId: change.changeId, status: 'planned' })
       }
     }
     return intents

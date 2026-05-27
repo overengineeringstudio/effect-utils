@@ -38,7 +38,7 @@ The public replica has two kinds of surfaces:
 | Surface                        | Write policy                                                                 |
 | ------------------------------ | ---------------------------------------------------------------------------- |
 | Generic current-state tables   | Read-only projections of observed Notion state                                |
-| Generated `*_current` views    | Read-only ergonomic views over current rows/cells in the initial public API   |
+| Generated `notion_view_*` views | Read-only ergonomic views over current rows/cells                            |
 | `notion_local_changes` intents | Writable queue for local data edits, with base hashes and conflict policy     |
 | `notion_conflicts`             | Read-only conflict view; resolve through CLI commands                         |
 
@@ -148,7 +148,7 @@ rewriting local values or applying broad migrations.
 
 | Property class                               | Local replica policy                                                         |
 | -------------------------------------------- | ---------------------------------------------------------------------------- |
-| Title, rich text, number, checkbox           | Writable through explicit `patch_cell` intents when base hash matches        |
+| Title, rich text, number, checkbox           | Writable through `notion_cells.value_json` updates or explicit `cell_patch` intents when base hash matches |
 | Date, select, multi-select, status value     | Writable when option/status value semantics are fully observed and supported  |
 | URL, email, phone                            | Writable through scalar cell intents with canonical Notion-shaped JSON        |
 | Relation, people                             | Guarded; requires complete page-property pagination and accessible targets    |

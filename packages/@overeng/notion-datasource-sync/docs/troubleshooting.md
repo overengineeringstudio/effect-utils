@@ -86,15 +86,16 @@ inspect the old store.
 
 ## Local Edit Does Not Reach Notion
 
-Local data edits must be represented as rows in `notion_local_changes` inside
-`notion.sqlite`. Updating generated read views or deleting current-state rows is
-not the initial writable API.
+Local cell edits can update `notion_cells.value_json`; the replica updates
+helper columns/generated views and queues a `cell_patch` row in
+`notion_local_changes`. Generated read views remain read-only, and deleting
+current-state rows is not a writable API.
 
 Check pending intents:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select change_id, kind, row_id, property_id, state from notion_local_changes;"
+  "select change_id, kind, page_id, property_id, status, unsupported_reason from notion_local_changes;"
 ```
 
 Then run:
@@ -164,7 +165,7 @@ Inspect conflicts in `notion.sqlite`:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select conflict_id, kind, row_id, property_id, state from notion_conflicts;"
+  "select conflict_id, page_id, property_id, state from notion_conflicts;"
 ```
 
 Use `conflicts list` and `conflicts resolve` to act on them. Do not update
