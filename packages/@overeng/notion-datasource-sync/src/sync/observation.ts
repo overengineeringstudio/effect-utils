@@ -50,6 +50,8 @@ import { hashStoreBytes } from '../store/projections.ts'
 /** Caller-supplied descriptor for a schema property that should be observed per row during a remote observation pass. */
 export type SchemaPropertyObservation = {
   readonly propertyId: PropertyIdType
+  readonly name?: string
+  readonly type?: string
   readonly configHash: HashType
   readonly writeClass: PropertyWriteClass
 }
@@ -811,6 +813,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               incompleteProperties += 1
             }
 
+            const valueJson = propertyPages
+              .flatMap((page) => page.items)
+              .map((item) => item.valueJson)
+              .find((value) => value !== undefined)
             events.push(
               decode({
                 schema: SyncEvent,
@@ -826,7 +832,11 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                       pageId: row.pageId,
                       propertyId: property.propertyId,
                     }),
-                    payload: { availability, baseHash: valueHash },
+                    payload: {
+                      availability,
+                      baseHash: valueHash,
+                      ...(valueJson === undefined ? {} : { valueJson }),
+                    },
                     now,
                   }),
                   pageId: row.pageId,

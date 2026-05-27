@@ -76,6 +76,13 @@ import {
   type UserCommandResultEnvelope,
 } from '../planner/user-commands.ts'
 import {
+  defaultReplicaPath,
+  markReplicaChangeStatus,
+  projectReplicaFromSyncStore,
+  readPendingReplicaChanges,
+  replicaChangesToPlannerIntents,
+} from '../replica/replica.ts'
+import {
   type CompactionDecision,
   openNotionSyncStore,
   type NotionSyncStore,
@@ -166,6 +173,7 @@ export type CliCommand =
  */
 export type CliContext = {
   readonly store: NotionSyncStore
+  readonly storePath?: string
   readonly rootId: SyncRootIdType
   readonly dataSourceId: typeof DataSourceId.Type
   readonly workspaceRoot: typeof AbsolutePath.Type
@@ -230,6 +238,21 @@ const defaultStorePath = (workspaceRoot: typeof AbsolutePath.Type): typeof Absol
     schema: AbsolutePath,
     value: join(workspaceMetadataDirectory(workspaceRoot), workspaceStoreFileName),
   })
+
+const projectReplicaIfWritable = ({
+  context,
+  dryRun,
+}: {
+  readonly context: CliContext
+  readonly dryRun?: boolean
+}): void => {
+  if (dryRun === true || context.storePath === undefined || context.storePath === ':memory:') return
+  projectReplicaFromSyncStore({
+    syncStorePath: context.storePath,
+    replicaPath: defaultReplicaPath(context.workspaceRoot),
+    rootId: context.rootId,
+  })
+}
 
 const rootIdForDataSource = (dataSourceId: typeof DataSourceId.Type): SyncRootIdType =>
   decode({ schema: SyncRootId, value: `data-source:${dataSourceId}` })
@@ -370,6 +393,8 @@ export const serviceNameForCliCommand = (command: CliCommand): string =>
 
 const SchemaPropertyObservationJson = Schema.Struct({
   propertyId: PropertyId,
+  name: Schema.optional(Schema.NonEmptyTrimmedString),
+  type: Schema.optional(Schema.NonEmptyTrimmedString),
   configHash: Hash,
   writeClass: Schema.Literal('writable', 'computed', 'unsupported'),
 }).annotations({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
@@ -498,7 +523,10 @@ const runCliCommandEffect = ({
         ...context,
         ...remoteObservationContext(context),
         ...withOptionalObservationLimit(context),
-      }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
+      }).pipe(
+        Effect.tap(() => Effect.sync(() => projectReplicaIfWritable({ context }))),
+        Effect.map((result) => envelope({ command: command._tag, context, result })),
+      )
     case 'sync-from-notion':
       return establishFromNotion({
         ...context,
@@ -518,6 +546,10 @@ const runCliCommandEffect = ({
                 materializeBodies: context.materializeBodies !== false,
               }),
             )
+            projectReplicaIfWritable({
+              context,
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+            })
           }),
         ),
         Effect.map((result) => envelope({ command: command._tag, context, result })),
@@ -552,13 +584,44 @@ const runCliCommandEffect = ({
           )
         }
       }
-      return syncOneShot({
-        ...context,
-        ...remoteObservationContext(context),
-        ...withOptionalObservationLimit(context),
-        ...withOptionalRuntimeOptions(context),
-        ...withOptionalCommandOptions({ command, context }),
-      }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
+      return Effect.sync(() => {
+        const replicaPath = defaultReplicaPath(context.workspaceRoot)
+        if (existsSync(replicaPath) === false) return [] as const
+        const changes = readPendingReplicaChanges(replicaPath)
+        const intents = replicaChangesToPlannerIntents({
+          changes,
+          replicaPath,
+          ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+        })
+        if (command.dryRun !== true) {
+          for (const change of changes) {
+            if (change.kind !== 'row_create') {
+              markReplicaChangeStatus({ replicaPath, changeId: change.changeId, status: 'planned' })
+            }
+          }
+        }
+        return intents
+      }).pipe(
+        Effect.flatMap((replicaIntents) =>
+          syncOneShot({
+            ...context,
+            ...remoteObservationContext(context),
+            ...withOptionalObservationLimit(context),
+            ...withOptionalRuntimeOptions(context),
+            ...withOptionalCommandOptions({ command, context }),
+            localIntents: replicaIntents,
+          }),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() =>
+            projectReplicaIfWritable({
+              context,
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+            }),
+          ),
+        ),
+        Effect.map((result) => envelope({ command: command._tag, context, result })),
+      )
     case 'status':
       if (command.workspaceRoot !== undefined) {
         const binding = readOneShotSyncStatus({
@@ -1160,6 +1223,7 @@ export const parseCliContext = ({
 
   return {
     store,
+    storePath: discovered.storePath,
     rootId: discovered.rootId,
     dataSourceId: discovered.dataSourceId,
     workspaceRoot: discovered.workspaceRoot,

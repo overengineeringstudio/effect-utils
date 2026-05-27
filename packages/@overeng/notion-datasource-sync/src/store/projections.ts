@@ -97,6 +97,8 @@ export const DataSourceProjectionPayload = Schema.Struct({
     Schema.Array(
       Schema.Struct({
         propertyId: PropertyId,
+        name: Schema.optional(Schema.NonEmptyTrimmedString),
+        type: Schema.optional(Schema.NonEmptyTrimmedString),
         configHash: Hash,
         writeClass: ProjectionPropertyWriteClass,
       }),
@@ -119,6 +121,7 @@ export type RowProjectionPayload = typeof RowProjectionPayload.Type
 export const PropertyCheckpointProjectionPayload = Schema.Struct({
   baseHash: Schema.optional(Hash),
   availability: Schema.optional(ProjectionPropertyAvailability),
+  valueJson: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.PropertyCheckpointProjectionPayload' })
 export type PropertyCheckpointProjectionPayload = typeof PropertyCheckpointProjectionPayload.Type
 

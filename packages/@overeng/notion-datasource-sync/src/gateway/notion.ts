@@ -924,6 +924,7 @@ const pagePropertyItemsPageFromRemote = (input: {
         propertyId: input.propertyInput.propertyId,
         itemHash: canonicalHash(item),
         valueHash: canonicalHash(propertyValueFromRemoteItem(item)),
+        valueJson: JSON.stringify(propertyValueFromRemoteItem(item)),
       }),
     ),
     listMetadataHash:

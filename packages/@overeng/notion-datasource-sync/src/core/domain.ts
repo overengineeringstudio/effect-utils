@@ -233,6 +233,7 @@ export const PagePropertyItem = Schema.TaggedStruct('PagePropertyItem', {
   propertyId: PropertyId,
   itemHash: Hash,
   valueHash: Hash,
+  valueJson: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.PagePropertyItem' })
 export type PagePropertyItem = typeof PagePropertyItem.Type
 
