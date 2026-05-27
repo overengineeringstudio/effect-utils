@@ -154,34 +154,50 @@ Stable generic tables:
 | `notion_conflicts`     | read   | User-visible conflict records and resolution state             |
 | `notion_sync_status`   | read   | Last sync, pending work, checkpoints, guards                   |
 
-Generated `*_current` views are read-only convenience views for querying adopted
-data sources with property-name columns. They are derived from the generic
-tables and can be rebuilt when Notion schema names change.
+Generated `notion_view_<data-source-slug>` views are read-only convenience views
+for querying adopted data sources with escaped property-name columns. They are
+derived from the generic tables and can be rebuilt when Notion schema names
+change.
 
 Example reads:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select row_id, title, in_trash from notion_rows limit 10;"
+  "select page_id, in_trash, properties_hash from notion_rows limit 10;"
 
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  'select "Name", "Status" from tasks_current limit 10;'
+  'select "Name", "Status" from notion_view_data_source_1 limit 10;'
 ```
 
-Example local edit intent:
+Example local edit through the current-state table:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" <<'SQL'
+update notion_cells
+set value_json = '{"_tag":"title","plainText":"Done"}'
+where page_id = '11111111-1111-4111-8111-111111111111'
+  and property_id = 'title-property-id';
+SQL
+```
+
+That update keeps scalar helper columns and generated read views coherent with
+the local desired value, and queues a guarded `cell_patch` row in
+`notion_local_changes`.
+
+Equivalent explicit local edit intent:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" <<'SQL'
 insert into notion_local_changes
-  (kind, data_source_id, row_id, property_id, value_json, base_row_hash)
+  (kind, data_source_id, page_id, property_id, value_json, base_hash)
 values
   (
-    'patch_cell',
+    'cell_patch',
     '00000000-0000-4000-8000-000000000001',
     '11111111-1111-4111-8111-111111111111',
     'status-property-id',
-    '{"type":"status","status":{"name":"Done"}}',
-    'sha256-current-row-base'
+    '{"_tag":"status","option":{"id":"done","name":"Done","color":"green"}}',
+    'sha256-current-cell-base'
   );
 SQL
 

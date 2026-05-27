@@ -77,7 +77,6 @@ import {
 } from '../planner/user-commands.ts'
 import {
   defaultReplicaPath,
-  markReplicaChangeStatus,
   projectReplicaFromSyncStore,
   readPendingReplicaChanges,
   replicaChangesToPlannerIntents,
@@ -593,13 +592,6 @@ const runCliCommandEffect = ({
           replicaPath,
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
-        if (command.dryRun !== true) {
-          for (const change of changes) {
-            if (change.kind !== 'row_create') {
-              markReplicaChangeStatus({ replicaPath, changeId: change.changeId, status: 'planned' })
-            }
-          }
-        }
         return intents
       }).pipe(
         Effect.flatMap((replicaIntents) =>
