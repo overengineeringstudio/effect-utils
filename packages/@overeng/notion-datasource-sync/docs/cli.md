@@ -251,9 +251,11 @@ insert a `notion_file_changes(action='attach_external_url', page_id,
 property_id, base_hash)` row targeting an empty writable `files` property. The
 sync converts that into a guarded page-property patch and settles the CDC row
 after read-after-write. Local uploads, signed Notion-hosted URLs, replacement,
-deletion, and preserving existing files are fail-closed until file-upload
-identity and attachment lifecycle are modeled. Notion views are a separate
-future read/write surface.
+deletion, preserving existing files, and direct `notion_cells.value_json` edits
+for `files` properties are fail-closed until file-upload identity and attachment
+lifecycle are modeled. Direct `people` cell edits are also fail-closed until
+deterministic accessible user identities and full paginated base values are
+modeled. Notion views are a separate future read/write surface.
 
 Direct `notion_rows.in_trash` edits also use final-state CDC semantics. For
 example, toggling `0 -> 1 -> 0` before sync cancels the pending direct archive

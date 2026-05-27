@@ -178,8 +178,8 @@ rewriting local values or applying broad migrations.
 | Date, select, multi-select, status value    | Writable when option/status value semantics are fully observed and supported                               |
 | URL, email, phone                           | Writable through scalar cell intents with canonical Notion-shaped JSON                                     |
 | Relation                                    | Writable only for removal/reorder of fully paginated existing targets; adding new targets remains guarded until target accessibility is modeled |
-| People                                      | Guarded; requires complete page-property pagination plus deterministic accessible user identities          |
-| Files                                       | External URL attach is supported through explicit staging for empty files properties; uploads/replacement remain guarded |
+| People                                      | Direct cell edits fail closed before visible mutation; requires complete page-property pagination plus deterministic accessible user identities |
+| Files                                       | External URL attach is supported through explicit staging for empty files properties; direct cell edits, uploads, and replacement remain guarded |
 | Formula, rollup, audit fields, unique ID    | Read-only computed values; local write intents are rejected                                                |
 | `place`, unsupported or decode-drift values | Read-only/guarded until the API surface has a lossless model                                               |
 | Schema/property configuration               | Guarded schema intents; destructive migrations are explicit follow-up work                                 |

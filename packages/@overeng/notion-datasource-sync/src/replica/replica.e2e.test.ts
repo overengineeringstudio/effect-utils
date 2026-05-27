@@ -92,7 +92,18 @@ const propertyPage = (plainText: string, propertyId = testIds.propertyA) =>
     },
   })
 
-const filesPropertyPage = () =>
+const filesPropertyPage = ({
+  files = [],
+  valueHash = hash('property-b-base'),
+}: {
+  readonly files?: ReadonlyArray<{
+    readonly _tag: 'CanonicalFileValue'
+    readonly name: string
+    readonly identityHash: string
+    readonly externalUrl?: string
+  }>
+  readonly valueHash?: string
+} = {}) =>
   decode({
     schema: PagePropertyItemPage,
     value: {
@@ -107,8 +118,8 @@ const filesPropertyPage = () =>
           pageId: testIds.pageId,
           propertyId: testIds.propertyB,
           itemHash: hash('item-empty-files'),
-          valueHash: hash('property-b-base'),
-          valueJson: JSON.stringify({ _tag: 'files', files: [] }),
+          valueHash,
+          valueJson: JSON.stringify({ _tag: 'files', files }),
         },
       ],
       nextCursor: null,
@@ -865,6 +876,116 @@ describe('user-facing SQLite replica', () => {
       storeFixture.cleanup()
     }
   })
+
+  it.each([
+    [
+      'people',
+      propertyPage('Observed person', testIds.propertyB),
+      JSON.stringify({ _tag: 'people', userIds: [testIds.pageId] }),
+    ],
+    [
+      'files',
+      filesPropertyPage(),
+      JSON.stringify({
+        _tag: 'files',
+        files: [
+          {
+            _tag: 'CanonicalFileValue',
+            name: 'unsafe.txt',
+            identityHash: hash('unsafe-file'),
+            externalUrl: 'https://example.com/unsafe.txt',
+          },
+        ],
+      }),
+    ],
+  ] as const)(
+    'rejects direct current-state %s updates before visible mutation or CDC append',
+    async (propertyType, propertyPageForType, desiredValueJson) => {
+      const clock = makeFakeClock()
+      const workspaceRoot = tempWorkspace()
+      const replicaPath = defaultReplicaPath(workspaceRoot)
+      const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+      const gateway = makeFakeGatewayHarness({
+        propertyPages: [propertyPage('Editable task', testIds.propertyA), propertyPageForType],
+      })
+      const mixedSchemaProperties = [
+        ...schemaProperties,
+        {
+          propertyId: testIds.propertyB,
+          name: `Guarded ${propertyType}`,
+          type: propertyType,
+          configHash: hash(`config-${propertyType}`),
+          writeClass: 'writable' as const,
+        },
+      ]
+
+      try {
+        initOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          now: clock.now,
+        })
+        await runWithPorts(
+          pullOneShotSync({
+            store: storeFixture.store,
+            rootId: testIds.rootId,
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot,
+            queryContract: defaultQueryContract(),
+            schemaProperties: mixedSchemaProperties,
+            now: clock.now,
+          }),
+          { gateway: gateway.gateway },
+        )
+        projectReplicaFromSyncStore({
+          syncStorePath: storeFixture.path,
+          replicaPath,
+          rootId: testIds.rootId,
+        })
+
+        const db = new DatabaseSync(replicaPath)
+        try {
+          const before = db
+            .prepare(
+              `SELECT value_json, value_text, value_number, value_boolean
+               FROM notion_cells
+               WHERE page_id = ? AND property_id = ?`,
+            )
+            .get(testIds.pageId, testIds.propertyB)
+
+          expect(() =>
+            db
+              .prepare(
+                `UPDATE notion_cells SET value_json = ? WHERE page_id = ? AND property_id = ?`,
+              )
+              .run(desiredValueJson, testIds.pageId, testIds.propertyB),
+          ).toThrow(/people and files current-state edits require typed CDC staging/u)
+
+          expect(
+            db
+              .prepare(
+                `SELECT value_json, value_text, value_number, value_boolean
+                 FROM notion_cells
+                 WHERE page_id = ? AND property_id = ?`,
+              )
+              .get(testIds.pageId, testIds.propertyB),
+          ).toEqual(before)
+          expect(
+            db.prepare(`SELECT count(*) AS count FROM notion_cell_changes`).get(),
+          ).toMatchObject({ count: 0 })
+          expect(
+            db.prepare(`SELECT count(*) AS count FROM notion_local_changes`).get(),
+          ).toMatchObject({ count: 0 })
+        } finally {
+          db.close()
+        }
+      } finally {
+        storeFixture.cleanup()
+      }
+    },
+  )
 
   it('rejects invalid direct current-state cell updates before visible mutation or CDC append', async () => {
     const clock = makeFakeClock()
@@ -1931,7 +2052,19 @@ describe('user-facing SQLite replica', () => {
     const replicaPath = defaultReplicaPath(workspaceRoot)
     const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
     const gateway = makeFakeGatewayHarness({
-      propertyPages: [propertyPage('File row'), filesPropertyPage()],
+      propertyPages: [
+        propertyPage('File row'),
+        filesPropertyPage({
+          files: [
+            {
+              _tag: 'CanonicalFileValue',
+              name: 'existing.txt',
+              identityHash: hash('existing-file'),
+            },
+          ],
+          valueHash: hash('existing-file-value'),
+        }),
+      ],
     })
 
     try {
@@ -1965,24 +2098,6 @@ describe('user-facing SQLite replica', () => {
         const cell = db
           .prepare(`SELECT base_hash FROM notion_cells WHERE page_id = ? AND property_id = ?`)
           .get(testIds.pageId, testIds.propertyB) as { readonly base_hash: string }
-        db.prepare(
-          `UPDATE notion_cells
-           SET value_json = ?
-           WHERE page_id = ? AND property_id = ?`,
-        ).run(
-          JSON.stringify({
-            _tag: 'files',
-            files: [
-              {
-                _tag: 'CanonicalFileValue',
-                name: 'existing.txt',
-                identityHash: hash('existing-file'),
-              },
-            ],
-          }),
-          testIds.pageId,
-          testIds.propertyB,
-        )
         db.prepare(
           `INSERT INTO notion_file_assets (
              asset_id, source_type, name, external_url
