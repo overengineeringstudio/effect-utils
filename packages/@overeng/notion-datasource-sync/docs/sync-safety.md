@@ -22,7 +22,8 @@ for accepted intent, conflicts, tombstones, command attempts, and settlements.
 The user-facing local database is `workspace/notion.sqlite`. The internal event
 log lives in `workspace/.notion-datasource-sync/store.sqlite`. Users and local
 tools read current data from `notion.sqlite` and write desired data edits as
-rows in `notion_local_changes`; they do not mutate the internal store.
+rows in typed CDC tables such as `notion_cell_changes` and
+`notion_row_changes`; they do not mutate the internal store.
 
 ## Local Replica And Write Intents
 
@@ -35,12 +36,13 @@ notion.sqlite intents -> plan -> outbox -> Notion -> observe -> notion.sqlite
 
 The public replica has two kinds of surfaces:
 
-| Surface                        | Write policy                                                                 |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| Generic current-state tables   | Guarded current-state edits for supported cells/row lifecycle; unsafe columns are read-only |
-| Generated `notion_view_*` views | Read-only ergonomic views over current rows/cells                            |
-| `notion_local_changes` intents | Writable queue for local data edits, with base hashes and conflict policy     |
-| `notion_conflicts`             | Read-only conflict view; resolve through CLI commands                         |
+| Surface                         | Write policy                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------- |
+| Generic current-state tables    | Guarded current-state edits for supported cells/row lifecycle; unsafe columns are read-only |
+| Generated `notion_view_*` views | Read-only ergonomic views over current rows/cells                                           |
+| Typed CDC mutation tables       | Writable queues for local data edits, with base hashes and conflict policy                  |
+| `notion_local_changes`          | Compatibility projection over typed mutation rows                                           |
+| `notion_conflicts`              | Read-only conflict view; resolve through CLI commands                                       |
 
 Every write intent must name the target surface, current base hash, desired
 Notion-shaped value, and conflict policy. `sync --dry-run` validates these
@@ -146,17 +148,17 @@ rewriting local values or applying broad migrations.
 
 ## Property Write Matrix
 
-| Property class                               | Local replica policy                                                         |
-| -------------------------------------------- | ---------------------------------------------------------------------------- |
-| Title, rich text, number, checkbox           | Writable through `notion_cells.value_json` updates or explicit `cell_patch` intents when base hash matches |
-| Date, select, multi-select, status value     | Writable when option/status value semantics are fully observed and supported  |
-| URL, email, phone                            | Writable through scalar cell intents with canonical Notion-shaped JSON        |
-| Relation, people                             | Guarded; requires complete page-property pagination and accessible targets    |
-| Files                                        | Read-only until durable File Upload identity and attachment lifecycle exist   |
-| Formula, rollup, audit fields, unique ID     | Read-only computed values; local write intents are rejected                   |
-| `place`, unsupported or decode-drift values  | Read-only/guarded until the API surface has a lossless model                  |
-| Schema/property configuration                | Guarded schema intents; destructive migrations are explicit follow-up work    |
-| Body content                                 | Delegated through NotionMD body intents and body-specific guards              |
+| Property class                              | Local replica policy                                                                                       |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Title, rich text, number, checkbox          | Writable through `notion_cells.value_json` updates or explicit `cell_patch` intents when base hash matches |
+| Date, select, multi-select, status value    | Writable when option/status value semantics are fully observed and supported                               |
+| URL, email, phone                           | Writable through scalar cell intents with canonical Notion-shaped JSON                                     |
+| Relation, people                            | Guarded; requires complete page-property pagination and accessible targets                                 |
+| Files                                       | Read-only until durable File Upload identity and attachment lifecycle exist                                |
+| Formula, rollup, audit fields, unique ID    | Read-only computed values; local write intents are rejected                                                |
+| `place`, unsupported or decode-drift values | Read-only/guarded until the API surface has a lossless model                                               |
+| Schema/property configuration               | Guarded schema intents; destructive migrations are explicit follow-up work                                 |
+| Body content                                | Delegated through NotionMD body intents and body-specific guards                                           |
 
 Unsupported writes fail closed at intent validation or planning. They must not
 be coerced into nulls, empty values, or best-effort patches.

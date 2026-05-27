@@ -184,7 +184,7 @@ Requirement trace: R06-R13, R21-R29, R67-R73.
 | Current remote schema         | Notion after observation               | `schema_projection`                                | Re-read before schema-affecting writes        |
 | Current remote row properties | Notion after observation               | `row_projection`, `property_shadow`                | Re-read relevant row/properties before writes |
 | Current remote page body      | NotionMD adapter after observation     | `body_pointer`                                     | Delegate body guards to `PageBodySyncPort`    |
-| Public local replica          | Derived from sync-control events       | `notion.sqlite`                                    | User reads current state and writes intents    |
+| Public local replica          | Derived from sync-control events       | `notion.sqlite`                                    | User reads current state and writes intents   |
 | Local sync intent             | SQLite event log                       | `sync_event`, `outbox`                             | Commit intent before command execution        |
 | Conflicts                     | SQLite event log/projection            | `conflict_projection`                              | Resolve by appending events                   |
 | Tombstones                    | SQLite event log/projection            | `tombstone_projection`                             | Create only after direct classification       |
@@ -195,10 +195,10 @@ Requirement trace: R06-R13, R21-R29, R67-R73.
 
 There are two SQLite files with different authority:
 
-| File                                      | Role                                                                                 |
-| ----------------------------------------- | ------------------------------------------------------------------------------------ |
-| `workspace/notion.sqlite`                 | User-facing local replica/API: current rows/cells/schema plus local write intents     |
-| `workspace/.notion-datasource-sync/store.sqlite` | Internal sync-control store: events, projections, outbox, conflicts, checkpoints |
+| File                                             | Role                                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `workspace/notion.sqlite`                        | User-facing local replica/API: current rows/cells/schema plus local write intents |
+| `workspace/.notion-datasource-sync/store.sqlite` | Internal sync-control store: events, projections, outbox, conflicts, checkpoints  |
 
 The internal store is the local control plane. It is not a substitute for fresh
 Notion reads before unsafe writes. The public replica is the user data API and is
@@ -302,16 +302,18 @@ workspace/
 
 The public replica has a stable generic schema and rebuildable generated views:
 
-| Table                  | Key shape                                           | Purpose                                                        |
-| ---------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
-| `notion_data_sources`  | `(data_source_id)`                                  | Root binding plus schema/metadata hashes and observation IDs   |
-| `notion_properties`    | `(data_source_id, property_id)`                     | Property name, type, config hash, writable/read-only class     |
-| `notion_rows`          | `(page_id)`                                         | Page identity, lifecycle flags, and row hashes                 |
-| `notion_cells`         | `(page_id, property_id)`                            | Lossless `value_json` plus scalar query helper columns         |
-| `notion_bodies`        | `(page_id)`                                         | Body path, adapter state, base/current hashes, lossy guards    |
-| `notion_local_changes` | `(change_id)`                                       | User write intents with base hashes, desired payload, status   |
-| `notion_conflicts`     | `(conflict_id)`                                     | Open/resolved conflicts projected for user inspection          |
-| `notion_sync_status`   | `(root_id)`                                         | Replica counts, pending counts, and last projection timestamp  |
+| Table                  | Key shape                       | Purpose                                                       |
+| ---------------------- | ------------------------------- | ------------------------------------------------------------- |
+| `notion_data_sources`  | `(data_source_id)`              | Root binding plus schema/metadata hashes and observation IDs  |
+| `notion_properties`    | `(data_source_id, property_id)` | Property name, type, config hash, writable/read-only class    |
+| `notion_rows`          | `(page_id)`                     | Page identity, lifecycle flags, and row hashes                |
+| `notion_cells`         | `(page_id, property_id)`        | Lossless `value_json` plus scalar query helper columns        |
+| `notion_bodies`        | `(page_id)`                     | Body path, adapter state, base/current hashes, lossy guards   |
+| `notion_cell_changes`  | `(change_id)`                   | Typed local CDC rows for cell patches                         |
+| `notion_row_changes`   | `(change_id)`                   | Typed local CDC rows for row lifecycle/create changes         |
+| `notion_local_changes` | `(change_id)`                   | Unified compatibility projection over local change rows       |
+| `notion_conflicts`     | `(conflict_id)`                 | Open/resolved conflicts projected for user inspection         |
+| `notion_sync_status`   | `(root_id)`                     | Replica counts, pending counts, and last projection timestamp |
 
 Generated read views named `notion_view_<data-source-id-slug>` are derived from
 `notion_rows`, `notion_properties`, and `notion_cells`. Column names use escaped
@@ -326,13 +328,21 @@ views to the local desired value and queues a guarded `cell_patch` intent.
 Remote writes must be derived from validated Notion-shaped payloads, not from
 helper columns alone.
 
+Direct current-state edits are captured with local CDC triggers. The typed
+tables are the public write log and source of truth for planner conversion:
+`notion_cells.value_json` updates append to `notion_cell_changes`, and
+`notion_rows.in_trash` updates append to `notion_row_changes`. The unified
+`notion_local_changes` table is retained as a compatibility/projection surface
+and must mirror typed change rows, but new planner code must read the typed
+tables first.
+
 Public schema versions are separate:
 
-| Version                    | Scope                                             |
-| -------------------------- | ------------------------------------------------- |
-| `replica_api_version`      | Stable generic public tables and intent contract  |
-| `generated_view_version`   | Rebuildable per-data-source convenience views     |
-| `sync_store_schema_version` | Internal event/outbox/projection store schema     |
+| Version                     | Scope                                            |
+| --------------------------- | ------------------------------------------------ |
+| `replica_api_version`       | Stable generic public tables and intent contract |
+| `generated_view_version`    | Rebuildable per-data-source convenience views    |
+| `sync_store_schema_version` | Internal event/outbox/projection store schema    |
 
 Replica rebuild drops derived public current-state rows/views, replays internal
 events/projections, and preserves or rehydrates user-visible pending intents and
@@ -343,44 +353,49 @@ closed and must not infer remote writes from replica rows alone.
 
 Requirement trace: R21-R29, R74-R81.
 
-Users write desired data changes by inserting rows into `notion_local_changes`
-or by updating supported current-state columns that insert the same rows via
+Users write desired data changes by inserting rows into typed mutation tables
+or by updating supported current-state columns that insert typed CDC rows via
 triggers. Local SQL writes never call Notion directly.
 
 ```ts
-type NotionLocalChange =
+type NotionCellChange = {
+  readonly changeId: string
+  readonly dataSourceId: DataSourceId
+  readonly pageId: PageId
+  readonly propertyId: PropertyId
+  readonly valueJson: CanonicalPropertyValueJson
+  readonly baseHash: Hash | undefined
+  readonly status: LocalChangeStatus
+}
+
+type NotionRowChange =
   | {
-      readonly kind: 'cell_patch'
-      readonly dataSourceId: DataSourceId
-      readonly pageId: PageId
-      readonly propertyId: PropertyId
-      readonly valueJson: CanonicalPropertyValueJson
-      readonly baseHash: Hash | undefined
-    }
-  | {
-      readonly kind: 'row_create'
-      readonly dataSourceId: DataSourceId
-      readonly valueJson: VersionedJson
-    }
-  | {
+      readonly changeId: string
       readonly kind: 'row_archive' | 'row_restore'
       readonly dataSourceId: DataSourceId
       readonly pageId: PageId
       readonly baseHash: Hash | undefined
     }
+  | {
+      readonly changeId: string
+      readonly kind: 'row_create'
+      readonly dataSourceId: DataSourceId
+      readonly valueJson: VersionedJson
+    }
 ```
 
 All data edit use cases are in scope for this API. Rich schema migrations are
-the exception: schema changes must be detected and guarded. Metadata, body, and
-schema edit intents require dedicated table support before they are part of the
-public SQLite contract.
+the exception: schema changes must be detected and guarded. Future public
+mutation surfaces must use the same typed-table pattern:
+`notion_body_changes`, `notion_metadata_changes`, `notion_schema_changes`, and
+`notion_conflict_resolutions` are reserved design names until implemented.
 
 Intent lifecycle:
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Pending: insert into notion_local_changes
-  [*] --> Pending: supported direct table update
+  [*] --> Pending: insert into typed mutation table
+  [*] --> Pending: supported direct current-state update
   Pending --> Queued: locally validated and handed to planner input
   Pending --> Unsupported: known unsupported write class
   Pending --> Rejected: malformed payload / missing target
@@ -736,7 +751,7 @@ This section names the intentional unsupported surfaces for the current implemen
 | Page metadata and lifecycle   | Explicit row property, trash, restore, and body surfaces only                                             | title/icon/cover/lock/parent/status mutation through the body adapter or any implicit metadata mutation inferred from body sync                         |
 | Query membership              | Complete query checkpoints scoped by filter, sort, page size, API version, high-watermark, and membership | 10k cap exhaustion, changed query contracts, partial scans, filtered absence reused as delete proof                                                     |
 | Live/soak verification        | Secret-gated fixture ledger plus deterministic fake daemon soak                                           | production readiness without representative live schema/body/page-property/high-cardinality/daemon soak proof                                           |
-| Public replica                | `notion.sqlite` generic read tables, generated read views, and explicit write intents                    | direct mutation of internal store tables, writable generated views, broad SQL-trigger schema migrations, or remote writes inferred from SQL deletes    |
+| Public replica                | `notion.sqlite` generic read tables, generated read views, and explicit write intents                     | direct mutation of internal store tables, writable generated views, broad SQL-trigger schema migrations, or remote writes inferred from SQL deletes     |
 
 ## Schema Semantics
 
@@ -970,12 +985,12 @@ Human output is a rendering of this envelope; it is not a separate source of tru
 
 Replica-specific CLI helpers are wrappers around the same public SQLite API:
 
-| Command                     | Purpose                                                                 |
-| --------------------------- | ----------------------------------------------------------------------- |
-| `replica schema`            | Print the stable `notion.sqlite` table/view/intent contract             |
-| `replica changes`           | List pending local intents and their guard status                       |
-| `replica rebuild`           | Rebuild `notion.sqlite` from the internal sync-control store            |
-| `replica clear-applied`     | Remove or compact settled local intent rows after they are represented by events |
+| Command                 | Purpose                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `replica schema`        | Print the stable `notion.sqlite` table/view/intent contract                      |
+| `replica changes`       | List pending local intents and their guard status                                |
+| `replica rebuild`       | Rebuild `notion.sqlite` from the internal sync-control store                     |
+| `replica clear-applied` | Remove or compact settled local intent rows after they are represented by events |
 
 These helpers may be staged after the generic tables exist, but they must not
 define a separate write path. They read or write the same `notion.sqlite` tables
@@ -1033,7 +1048,7 @@ Replica E2E must prove:
 
 - establishment creates `notion.sqlite` and projects observed rows/cells/schema/metadata,
 - generic tables and generated views agree for sampled rows,
-- local SQL insert into `notion_local_changes` produces a planned command in dry-run without settling the public change,
+- local SQL insert into a typed mutation table produces a planner command in dry-run without settling the public change,
 - normal sync applies supported intents to disposable fake/live remotes and settles after read-after-write,
 - stale base hashes become conflicts rather than overwrites,
 - schema drift affecting a pending intent is guarded before apply,
@@ -1046,4 +1061,4 @@ Replica E2E must prove:
 - **DQ2 Workers:** Notion Workers syncs are optional Notion-hosted external-source projections. Current Worker syncs create and manage Worker-owned databases and do not replace arbitrary existing datasource sync, local filesystem reconciliation, SQLite authority, or outbox settlement.
 - **DQ3 Package split staging:** The conceptual `notion-domain` and `notion-sync-core` layers may initially live inside `@overeng/notion-datasource-sync` if APIs remain separated and extractable.
 - **DQ4 File upload support:** Observed Notion file URLs are temporary references. Editable file-byte sync may use durable File Upload API IDs only after additional live E2E proof for upload, expiry, and replacement behavior.
-- **DQ5 Writable generated views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against generated `notion_view_*` views may later be implemented with triggers that insert the same `notion_local_changes` rows. The current public API supports guarded writes through `notion_cells.value_json`, `notion_rows.in_trash`, and explicit intent inserts so write semantics stay visible and testable.
+- **DQ5 Writable generated views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against generated `notion_view_*` views may later be implemented with triggers that insert the same typed CDC rows. The current public API supports guarded writes through `notion_cells.value_json`, `notion_rows.in_trash`, and explicit typed mutation-table inserts so write semantics stay visible and testable.

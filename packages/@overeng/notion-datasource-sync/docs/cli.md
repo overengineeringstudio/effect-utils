@@ -143,16 +143,18 @@ Read and write the local replica through `<workspace-root>/notion.sqlite`.
 
 Stable generic tables:
 
-| Table                  | Access | Purpose                                                        |
-| ---------------------- | ------ | -------------------------------------------------------------- |
-| `notion_data_sources`  | read   | Data-source metadata, schema/metadata hashes, binding summary  |
-| `notion_properties`    | read   | Property ID, display name, type, config, write capability      |
-| `notion_rows`          | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents |
+| Table                  | Access        | Purpose                                                                                              |
+| ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------- |
+| `notion_data_sources`  | read          | Data-source metadata, schema/metadata hashes, binding summary                                        |
+| `notion_properties`    | read          | Property ID, display name, type, config, write capability                                            |
+| `notion_rows`          | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents                |
 | `notion_cells`         | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents |
-| `notion_bodies`        | read   | Body path, body hashes, materialization/adapter state          |
-| `notion_local_changes` | write  | Local data edit intents queued for guarded sync                |
-| `notion_conflicts`     | read   | User-visible conflict records and resolution state             |
-| `notion_sync_status`   | read   | Last sync, pending work, checkpoints, guards                   |
+| `notion_bodies`        | read          | Body path, body hashes, materialization/adapter state                                                |
+| `notion_cell_changes`  | write         | Typed CDC log for local cell edits queued for guarded sync                                           |
+| `notion_row_changes`   | write         | Typed CDC log for local row lifecycle/create edits queued for guarded sync                           |
+| `notion_local_changes` | compatibility | Unified local-change projection for inspection and older explicit inserts                            |
+| `notion_conflicts`     | read          | User-visible conflict records and resolution state                                                   |
+| `notion_sync_status`   | read          | Last sync, pending work, checkpoints, guards                                                         |
 
 Generated `notion_view_<data-source-slug>` views are read-only convenience views
 for querying adopted data sources with escaped property-name columns. They are
@@ -183,18 +185,18 @@ SQL
 That update is accepted only when the cell's `write_class` is `writable`. On
 success it keeps scalar helper columns and generated read views coherent with
 the local desired value, and queues a guarded `cell_patch` row in
-`notion_local_changes`. Computed/system cells fail before visible replica state
-changes.
+`notion_cell_changes`. The compatibility `notion_local_changes` surface mirrors
+that typed row. Computed/system cells fail before visible replica state changes.
 
 Equivalent explicit local edit intent:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" <<'SQL'
-insert into notion_local_changes
-  (kind, data_source_id, page_id, property_id, value_json, base_hash)
+insert into notion_cell_changes
+  (change_id, data_source_id, page_id, property_id, value_json, base_hash)
 values
   (
-    'cell_patch',
+    'cell:11111111-1111-4111-8111-111111111111:status-property-id:manual',
     '00000000-0000-4000-8000-000000000001',
     '11111111-1111-4111-8111-111111111111',
     'status-property-id',
@@ -207,8 +209,11 @@ notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
 notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
-Supported explicit intent kinds are `cell_patch`, `row_archive`, `row_restore`,
-and `row_create`. Destructive edits are never inferred from `delete from
-notion_rows` or from missing local files. Body edits, metadata edits, and
-schema-affecting edits require dedicated supported flows before sync can show
-exact planned Notion mutations and execute them.
+Supported typed public mutation tables today are `notion_cell_changes` and
+`notion_row_changes`. `notion_row_changes.kind` supports `row_archive`,
+`row_restore`, and `row_create`; restore and create remain fail-closed until
+their remote command path is promoted. Destructive edits are never inferred from
+`delete from notion_rows` or from missing local files. Body edits, metadata
+edits, schema-affecting edits, and conflict-resolution writes require dedicated
+typed tables before sync can show exact planned Notion mutations and execute
+them.
