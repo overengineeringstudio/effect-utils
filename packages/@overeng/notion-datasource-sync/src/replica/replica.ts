@@ -34,8 +34,10 @@ import {
   WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
-import type { PlannerIntent } from '../planner/planner.ts'
+import type { PlanDecision, PlannerIntent } from '../planner/planner.ts'
+import { resolveConflictCommand } from '../planner/user-commands.ts'
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
+import type { NotionSyncStore } from '../store/store.ts'
 
 type SqlRow = Record<string, unknown>
 
@@ -88,6 +90,23 @@ type ReplicaChangeStatus =
   | 'conflict'
   | 'unsupported'
   | 'rejected'
+
+export type ApplyReplicaConflictResolutionsOptions = {
+  readonly changes: readonly ReplicaLocalChange[]
+  readonly replicaPath: string
+  readonly store: NotionSyncStore
+  readonly rootId: SyncRootId
+  readonly dryRun?: boolean
+}
+
+export type SettleReplicaChangesOptions = {
+  readonly changes: readonly ReplicaLocalChange[]
+  readonly replicaPath: string
+  readonly store: NotionSyncStore
+  readonly rootId: SyncRootId
+  readonly decisions: readonly PlanDecision[]
+  readonly dryRun?: boolean
+}
 
 const readString = ({ row, key }: { readonly row: SqlRow; readonly key: string }): string => {
   const value = row[key]
@@ -1800,6 +1819,237 @@ const markChange = ({
   })
 }
 
+const conflictResolutionChoiceForChange = (
+  change: ReplicaLocalChange,
+): Parameters<typeof resolveConflictCommand>[0]['choice'] | string => {
+  switch (change.resolutionAction) {
+    case 'choose_remote':
+    case 'abandon_local':
+      return { _tag: 'keep-remote' }
+    case 'choose_local':
+    case 'manual_value':
+      return 'choose_local/manual_value conflict resolution needs property-write post-hash reconciliation before SQLite CDC can execute it safely.'
+    case 'retry_after_refresh':
+      return 'retry_after_refresh needs a fresh pull/replan workflow before it can be executed from SQLite CDC.'
+    default:
+      return `Unsupported conflict resolution action: ${change.resolutionAction ?? 'unknown'}.`
+  }
+}
+
+/** Apply pending conflict-resolution CDC rows through the store-backed user-command surface. */
+export const applyReplicaConflictResolutions = ({
+  changes,
+  replicaPath,
+  store,
+  rootId,
+  dryRun,
+}: ApplyReplicaConflictResolutionsOptions): void => {
+  for (const change of changes) {
+    if (change.kind !== 'conflict_resolution') continue
+    if (change.conflictId === undefined) {
+      markChange({
+        replicaPath,
+        dryRun,
+        changeId: change.changeId,
+        status: 'rejected',
+        reason: 'conflict_resolution requires conflict_id.',
+      })
+      continue
+    }
+
+    let conflictId: SyncEventId
+    try {
+      conflictId = decode({ schema: SyncEventId, value: change.conflictId })
+    } catch {
+      markChange({
+        replicaPath,
+        dryRun,
+        changeId: change.changeId,
+        status: 'rejected',
+        reason: 'Invalid conflict_id in conflict_resolution.',
+      })
+      continue
+    }
+
+    const choice = conflictResolutionChoiceForChange(change)
+    if (typeof choice === 'string') {
+      markChange({
+        replicaPath,
+        dryRun,
+        changeId: change.changeId,
+        status:
+          choice.startsWith('retry_after_refresh') ||
+          choice.startsWith('Unsupported') ||
+          choice.startsWith('choose_local/manual_value')
+            ? 'unsupported'
+            : 'rejected',
+        reason: choice,
+      })
+      continue
+    }
+
+    const result = resolveConflictCommand({
+      store,
+      rootId,
+      conflictId,
+      choice,
+      ...(dryRun === undefined ? {} : { dryRun }),
+    })
+    const guard = result.planned.guards[0]
+    if (guard !== undefined) {
+      markChange({
+        replicaPath,
+        dryRun,
+        changeId: change.changeId,
+        status: 'conflict',
+        reason: guard.message,
+      })
+      continue
+    }
+
+    markChange({
+      replicaPath,
+      dryRun,
+      changeId: change.changeId,
+      status: result.planned.commands.length > 0 ? 'planned' : 'applied',
+    })
+  }
+}
+
+const surfaceForReplicaChange = (change: ReplicaLocalChange): string | undefined => {
+  if (
+    change.kind === 'cell_patch' &&
+    change.pageId !== undefined &&
+    change.propertyId !== undefined
+  ) {
+    return propertySurfaceKey({
+      pageId: decode({ schema: PageId, value: change.pageId }),
+      propertyId: decode({ schema: PropertyId, value: change.propertyId }),
+    })
+  }
+  if (
+    (change.kind === 'row_archive' || change.kind === 'row_restore') &&
+    change.pageId !== undefined
+  ) {
+    return pageSurfaceKey(decode({ schema: PageId, value: change.pageId }))
+  }
+  if (change.kind === 'body_patch' && change.pageId !== undefined) {
+    return bodySurfaceKey(decode({ schema: PageId, value: change.pageId }))
+  }
+  if (change.kind === 'metadata_patch' && change.dataSourceId.length > 0) {
+    return dataSourceMetadataSurfaceKey(
+      decode({ schema: DataSourceId, value: change.dataSourceId }),
+    )
+  }
+  if (change.kind === 'schema_patch' && change.dataSourceId.length > 0) {
+    return schemaSurfaceKey({
+      dataSourceId: decode({ schema: DataSourceId, value: change.dataSourceId }),
+      propertyId: decode({ schema: PropertyId, value: `replica:${change.changeId}` }),
+    })
+  }
+  return undefined
+}
+
+const decisionForReplicaChange = ({
+  change,
+  decisions,
+}: {
+  readonly change: ReplicaLocalChange
+  readonly decisions: readonly PlanDecision[]
+}): PlanDecision | undefined => {
+  const commandId = `replica:${change.changeId}`
+  const commandDecision = decisions.find(
+    (decision) =>
+      decision._tag === 'EnqueueCommands' &&
+      decision.commands.some((command) => command.commandId === commandId),
+  )
+  if (commandDecision !== undefined) return commandDecision
+
+  const surface = surfaceForReplicaChange(change)
+  if (surface === undefined) return undefined
+  return decisions.find(
+    (decision) =>
+      (decision._tag === 'BlockedByGuard' && decision.surface === surface) ||
+      (decision._tag === 'OpenConflict' && decision.conflict.localSurface === surface),
+  )
+}
+
+const settlementStatusForOutboxState = (
+  state: ReturnType<NotionSyncStore['readOutbox']>[number]['state'],
+): Exclude<ReplicaChangeStatus, 'pending'> => {
+  switch (state) {
+    case 'settled':
+      return 'applied'
+    case 'blocked':
+    case 'fenced':
+      return 'conflict'
+    case 'queued':
+    case 'running':
+    case 'retryable':
+    case 'ambiguous':
+      return 'planned'
+  }
+}
+
+/** Settle public replica CDC statuses from planner decisions and durable outbox state. */
+export const settleReplicaChangesAfterSync = ({
+  changes,
+  replicaPath,
+  store,
+  rootId,
+  decisions,
+  dryRun,
+}: SettleReplicaChangesOptions): void => {
+  if (dryRun === true) return
+  const outboxByCommandId = new Map(
+    store.readOutbox(rootId).map((row) => [row.commandId, row] as const),
+  )
+  for (const change of changes) {
+    if (change.kind === 'conflict_resolution' || change.kind === 'row_create') continue
+    const decision = decisionForReplicaChange({ change, decisions })
+    if (decision === undefined) continue
+    if (decision._tag === 'OpenConflict') {
+      markChange({
+        replicaPath,
+        changeId: change.changeId,
+        status: 'conflict',
+        reason: decision.conflict.message,
+      })
+      continue
+    }
+    if (decision._tag === 'BlockedByGuard') {
+      markChange({
+        replicaPath,
+        changeId: change.changeId,
+        status:
+          decision.guard === 'StaleSurfaceBase' || decision.guard === 'DeleteVsEdit'
+            ? 'conflict'
+            : 'unsupported',
+        reason: decision.detail.summary,
+      })
+      continue
+    }
+    if (decision._tag !== 'EnqueueCommands') continue
+    const command = decision.commands.find(
+      (candidate) => candidate.commandId === `replica:${change.changeId}`,
+    )
+    if (command === undefined) continue
+    const outbox = outboxByCommandId.get(command.commandId)
+    if (outbox === undefined) continue
+    markChange({
+      replicaPath,
+      changeId: change.changeId,
+      status: settlementStatusForOutboxState(outbox.state),
+      ...(outbox.state === 'blocked' || outbox.state === 'fenced'
+        ? {
+            reason:
+              'Remote write was blocked during executor preflight; inspect sync status and outbox diagnostics.',
+          }
+        : {}),
+    })
+  }
+}
+
 /** Translate pending replica changes into planner intents the sync executor can consume. */
 export const replicaChangesToPlannerIntents = ({
   changes,
@@ -1826,167 +2076,35 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       if (change.kind === 'conflict_resolution') {
-        const action = change.resolutionAction ?? 'unknown'
         markChange({
           replicaPath,
           dryRun,
           changeId: change.changeId,
           status: 'unsupported',
           reason:
-            action === 'choose_remote' || action === 'abandon_local'
-              ? 'Conflict resolution CDC was recorded for operator review; apply via conflicts resolve so store events and follow-up commands are emitted atomically.'
-              : 'choose_local/manual/retry conflict resolution needs store-backed conflict command execution, not projection patching.',
+            'Conflict resolution CDC requires store-backed execution; sync <workspace> handles it before planner-intent conversion.',
         })
         continue
       }
       if (change.kind === 'metadata_patch') {
-        if (change.baseHash === undefined) {
-          markChange({
-            replicaPath,
-            dryRun,
-            changeId: change.changeId,
-            status: 'rejected',
-            reason: 'metadata_patch requires base_hash.',
-          })
-          continue
-        }
-        let dataSourceId: DataSourceId
-        try {
-          dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
-        } catch {
-          markChange({
-            replicaPath,
-            dryRun,
-            changeId: change.changeId,
-            status: 'rejected',
-            reason: 'Invalid data_source_id in metadata_patch.',
-          })
-          continue
-        }
-        if (change.metadataResourceType === 'data_source' && change.descriptionPlainText !== undefined) {
-          markChange({
-            replicaPath,
-            dryRun,
-            changeId: change.changeId,
-            status: 'unsupported',
-            reason:
-              'Notion data-source description writes are not exposed by the data-source update API; use database metadata only after the owning database surface is modeled.',
-          })
-          continue
-        }
-        if (change.metadataResourceType !== 'data_source') {
-          markChange({
-            replicaPath,
-            dryRun,
-            changeId: change.changeId,
-            status: 'unsupported',
-            reason:
-              'Database metadata CDC is modeled separately from data-source metadata and needs database-id projection before execution.',
-          })
-          continue
-        }
-        const baseHash = decode({ schema: Hash, value: change.baseHash })
-        const metadataPatch =
-          change.titlePlainText === undefined
-            ? {}
-            : { titlePlainText: change.titlePlainText }
-        const desiredHash = hashStoreBytes(
-          JSON.stringify({
-            _tag: 'metadata_patch',
-            dataSourceId: change.dataSourceId,
-            titlePlainText: change.titlePlainText,
-          }),
-        )
-        intents.push({
-          _tag: 'data-source-metadata-edit',
-          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
-          commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
-          surface: dataSourceMetadataSurfaceKey(dataSourceId),
-          dataSourceId,
-          command: PatchDataSourceMetadataCommand.make({
-            _tag: 'PatchDataSourceMetadataCommand',
-            commandId: decode({ schema: CommandId, value: `replica:${change.changeId}` }),
-            dataSourceId,
-            baseMetadataHash: baseHash,
-            metadataPatch,
-          }),
-          baseHash,
-          desiredHash,
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'unsupported',
+          reason:
+            'Public metadata CDC needs full metadata value projection to compute a verified post-write hash; use the dedicated metadata command path until that projection exists.',
         })
         continue
       }
       if (change.kind === 'schema_patch') {
-        if (change.baseHash === undefined || change.schemaOperationJson === undefined) {
-          markChange({
-            replicaPath,
-            dryRun,
-            changeId: change.changeId,
-            status: 'rejected',
-            reason: 'schema_patch requires base_hash and operation_json.',
-          })
-          continue
-        }
-        let dataSourceId: DataSourceId
-        let operation: typeof SchemaPatchOperation.Type
-        try {
-          dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
-          operation = Schema.decodeUnknownSync(Schema.parseJson(SchemaPatchOperation))(
-            change.schemaOperationJson,
-          )
-        } catch {
-          markChange({
-            replicaPath,
-            dryRun,
-            changeId: change.changeId,
-            status: 'rejected',
-            reason:
-              'schema_patch operation_json must be a supported AddProperty, RenameProperty, or AddSelectOptions operation.',
-          })
-          continue
-        }
-        const baseHash = decode({ schema: Hash, value: change.baseHash })
-        const affectedPropertyId =
-          operation._tag === 'AddProperty'
-            ? decode({ schema: PropertyId, value: `replica:${change.changeId}` })
-            : operation.propertyId
-        const schemaProperty = CanonicalDataSourceProperty.make({
-          _tag: 'CanonicalDataSourceProperty',
-          propertyId: affectedPropertyId,
-          name:
-            operation._tag === 'AddProperty'
-              ? operation.name
-              : decode({ schema: PropertyName, value: 'replica schema change' }),
-          type:
-            operation._tag === 'AddProperty'
-              ? operation.definition._tag
-              : operation._tag === 'AddSelectOptions'
-                ? operation.propertyType
-                : 'rich_text',
-          configHash: hashStoreBytes(change.schemaOperationJson),
-        })
-        intents.push({
-          _tag: 'schema-migration',
-          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
-          commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
-          surface: schemaSurfaceKey({ dataSourceId, propertyId: affectedPropertyId }),
-          dataSourceId,
-          affectedPropertyIds:
-            operation._tag === 'AddProperty' ? [] : [operation.propertyId],
-          command: PatchDataSourceSchemaCommand.make({
-            _tag: 'PatchDataSourceSchemaCommand',
-            commandId: decode({ schema: CommandId, value: `replica:${change.changeId}` }),
-            dataSourceId,
-            baseSchemaHash: baseHash,
-            schemaPatch: { [affectedPropertyId]: schemaProperty },
-            operations: [operation],
-          }),
-          baseHash,
-          desiredHash: hashStoreBytes(change.schemaOperationJson),
-          safety: {
-            affectsLocalIntent: false,
-            destructiveMigrationRequired: false,
-            optionDeletionLosesValues: false,
-          },
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'unsupported',
+          reason:
+            'Public schema CDC needs expected post-schema hash reconciliation before remote execution; use the dedicated schema command path until that projection exists.',
         })
         continue
       }
@@ -2002,6 +2120,19 @@ export const replicaChangesToPlannerIntents = ({
             changeId: change.changeId,
             status: 'rejected',
             reason: 'body_patch requires page_id, base_hash, and local_body_hash.',
+          })
+          continue
+        }
+        if (
+          change.localBodyContent !== undefined &&
+          hashStoreBytes(change.localBodyContent) !== change.localBodyHash
+        ) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'body_patch local_body_content does not match local_body_hash.',
           })
           continue
         }

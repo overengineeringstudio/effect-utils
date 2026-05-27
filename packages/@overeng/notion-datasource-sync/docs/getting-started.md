@@ -157,12 +157,13 @@ The public replica layer now ships typed CDC tables for cell edits, row
 lifecycle/create requests, body edits through the NotionMD boundary, metadata
 edits, schema edits, and conflict-resolution requests. The executable subset is
 intentionally narrower: writable scalar/page-property cells, row archive/restore,
-body pushes that pass body safety, data-source title metadata, and conservative
-data-source schema add/rename/select-option operations. Row creation,
-data-source descriptions, files, Notion views, destructive schema changes, and
-manual conflict-resolution execution remain fail-closed until their dedicated
-proof is in place. Computed or unsupported properties remain visible but
-read-only.
+body pushes that pass body safety and content-hash verification, and
+store-backed conflict-resolution choices. Metadata/schema CDC rows are visible
+for review but fail closed from SQLite until verified post-write reconciliation
+is modeled. Row creation, database metadata, files, Notion views, destructive
+schema changes, and unsupported conflict-resolution actions remain fail-closed
+until their dedicated proof is in place. Computed or unsupported properties
+remain visible but read-only.
 
 ## Reconcile Local Changes
 

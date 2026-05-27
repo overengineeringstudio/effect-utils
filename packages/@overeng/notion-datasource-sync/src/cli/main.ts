@@ -77,9 +77,11 @@ import {
 } from '../planner/user-commands.ts'
 import {
   defaultReplicaPath,
+  applyReplicaConflictResolutions,
   projectReplicaFromSyncStore,
   readPendingReplicaChanges,
   replicaChangesToPlannerIntents,
+  settleReplicaChangesAfterSync,
 } from '../replica/replica.ts'
 import {
   type CompactionDecision,
@@ -585,24 +587,44 @@ const runCliCommandEffect = ({
       }
       return Effect.sync(() => {
         const replicaPath = defaultReplicaPath(context.workspaceRoot)
-        if (existsSync(replicaPath) === false) return [] as const
+        if (existsSync(replicaPath) === false) return { changes: [] as const, intents: [] as const, replicaPath }
         const changes = readPendingReplicaChanges(replicaPath)
-        const intents = replicaChangesToPlannerIntents({
+        applyReplicaConflictResolutions({
           changes,
+          replicaPath,
+          store: context.store,
+          rootId: context.rootId,
+          ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+        })
+        const intents = replicaChangesToPlannerIntents({
+          changes: changes.filter((change) => change.kind !== 'conflict_resolution'),
           replicaPath,
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
-        return intents
+        return { changes, intents, replicaPath }
       }).pipe(
-        Effect.flatMap((replicaIntents) =>
+        Effect.flatMap(({ changes, intents, replicaPath }) =>
           syncOneShot({
             ...context,
             ...remoteObservationContext(context),
             ...withOptionalObservationLimit(context),
             ...withOptionalRuntimeOptions(context),
             ...withOptionalCommandOptions({ command, context }),
-            localIntents: replicaIntents,
-          }),
+            localIntents: intents,
+          }).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() =>
+                settleReplicaChangesAfterSync({
+                  changes,
+                  replicaPath,
+                  store: context.store,
+                  rootId: context.rootId,
+                  decisions: result.push.plan.decisions,
+                  ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+                }),
+              ),
+            ),
+          ),
         ),
         Effect.tap(() =>
           Effect.sync(() =>

@@ -153,8 +153,8 @@ Stable generic tables:
 | `notion_cell_changes`  | write         | Typed CDC log for local cell edits queued for guarded sync                                           |
 | `notion_row_changes`   | write         | Typed CDC log for local row lifecycle/create edits queued for guarded sync                           |
 | `notion_body_changes`  | write         | Typed CDC log for body pushes using body path/base hash semantics                                    |
-| `notion_metadata_changes` | write      | Typed CDC log for supported metadata edits                                                           |
-| `notion_schema_changes` | write        | Typed CDC log for conservative data-source schema operations                                         |
+| `notion_metadata_changes` | write      | Typed CDC log for metadata edit requests; execution currently fail-closed pending post-write reconciliation |
+| `notion_schema_changes` | write        | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation |
 | `notion_conflict_resolutions` | write  | Typed CDC requests for user conflict-resolution actions                                              |
 | `notion_local_changes` | compatibility | Unified local-change projection for inspection and older explicit inserts                            |
 | `notion_conflicts`     | read          | User-visible conflict records and resolution state                                                   |
@@ -227,13 +227,15 @@ are never inferred from `delete from notion_rows` or from missing local files.
 Body changes use `notion_body_changes` with `page_id`, `body_path`,
 `local_body_hash`, optional `local_body_content`, and `base_hash`; unsafe body
 states such as unknown/truncated/synced content remain blocked by the body
-adapter safety guards. Metadata changes currently support data-source title
-updates. Database description writes are a separate resource surface, and
-top-level data-source descriptions are not claimed writable by the current
-Notion data-source update API. Schema changes support only conservative
-data-source operations accepted by the gateway: add property, rename property,
-and select/multi-select option additions. Files and Notion views are separate
-future CDC surfaces.
+adapter safety guards, and inline `local_body_content` must hash to
+`local_body_hash` before any remote body write can be planned. Metadata/schema
+change tables are present as typed public CDC surfaces, but they currently
+fail closed from SQLite because the replica does not yet project enough
+canonical metadata/schema value state to compute verified post-write hashes.
+Use the dedicated metadata/schema command paths and live fixtures for those
+surfaces until that reconciliation exists. Conflict-resolution rows execute
+only through the store-backed conflict command path for safe choices. Files and
+Notion views are separate future CDC surfaces.
 
 Direct `notion_rows.in_trash` edits also use final-state CDC semantics. For
 example, toggling `0 -> 1 -> 0` before sync cancels the pending direct archive
