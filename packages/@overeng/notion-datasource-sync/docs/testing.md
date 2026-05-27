@@ -59,9 +59,13 @@ partial adoption mode.
 
 Replica tests must prove that establishment creates `notion.sqlite`, that
 generic tables and generated views match observed Notion rows, and that local SQL
-edits create intents rather than immediate Notion writes. Dry-run assertions
-must check that no replica rows are mutated, no intents settle, no internal
-events append, no outbox commands execute, and no body files materialize.
+edits create intents rather than immediate Notion writes. The focused replica
+E2E suite covers direct current-state CDC, typed body/metadata/schema/lifecycle
+tables, row-create fail-closed behavior, unsafe conflict-resolution requests,
+dry-run no-settlement, stale bases, invalid payloads, and generated view
+escaping. Dry-run assertions must check that no replica rows are mutated, no
+intents settle, no internal events append, no outbox commands execute, and no
+body files materialize.
 
 When `NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID` is set, the suite publishes a
 sanitized summary to that Notion page. The ledger must not contain tokens, token

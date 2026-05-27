@@ -16,7 +16,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Page-property retrieve | Cursor pagination for truncated property-item values                            |
 | Property writes        | Guarded row property patches for modeled writable values                        |
 | Schema writes          | Safe add/rename/add-option subset with base schema hash                         |
-| Data-source metadata   | Guarded title/description patches with a separate metadata hash                 |
+| Data-source metadata   | Guarded title patches with a separate metadata hash                             |
 | Trash/restore          | Explicit command surface with outbox verification                               |
 | Body observation       | Via NotionMD-backed `PageBodySyncPort`                                          |
 | Body materialization   | `.nmd` files plus sidecar identity through the body port                        |
@@ -35,7 +35,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Formula, rollup, created/edited  | Observed as computed; writes are rejected                                                    |
 | Relation and rollup dependencies | Require shared related data sources/pages; otherwise incomplete/ambiguous                    |
 | Files property                   | Metadata can be represented; upload/download byte lifecycle is unsupported                   |
-| People property                  | Safe only when the integration can observe stable people values                              |
+| People/relation writes           | Blocked until full paginated base values are proven; Notion writes are replacement-shaped    |
 | Notion-hosted signed URLs        | Excluded from stable hashes and diagnostics                                                  |
 | Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts                       |
 | Data-source icon metadata        | Observed as stable identity when possible; writable icon sync is deferred                    |
@@ -46,7 +46,8 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 
 | Notion surface                           | Current policy                                                                           |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Data-source views                        | Not synced; views are a separate Notion surface and not local authority                  |
+| Data-source views                        | Not synced; view CDC is a separate surface, not schema                                  |
+| Data-source descriptions                 | Not claimed writable through data-source metadata; database descriptions are separate    |
 | Data-source writable icons               | Deferred until file/custom/external icon identity has complete proof                     |
 | Database/data-source presentation        | Layout, grouping, sorts, filters, hidden properties, and view settings are not synced    |
 | File upload/download bytes               | Deferred; file identity remains fail-closed when bytes matter                            |
@@ -68,11 +69,11 @@ class must have a typed intent and guard model before it mutates Notion.
 | Edit class                      | Target state                                                                                                |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Existing row cell edits         | Supported through `notion_cells.value_json` updates or explicit `notion_cell_changes` rows with base hashes |
-| Row creation                    | In scope through explicit `notion_row_changes` rows and read-after-write proof                              |
-| Row archive/restore             | In scope through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete            |
-| Body edits                      | In scope through future NotionMD-backed `notion_body_changes` rows and body conflict guards                 |
-| Data-source metadata edits      | In scope through future `notion_metadata_changes` rows with separate metadata hash                          |
-| Safe schema changes             | In scope through future guarded `notion_schema_changes` rows for proven additive/non-destructive operations |
+| Row creation                    | Modeled through explicit `notion_row_changes` rows; execution remains blocked until page-id reconciliation  |
+| Row archive/restore             | Supported through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete           |
+| Body edits                      | Supported through NotionMD-backed `notion_body_changes` rows and body conflict guards                       |
+| Data-source metadata edits      | Data-source title is supported through `notion_metadata_changes`; descriptions require database surface     |
+| Safe schema changes             | Supported through guarded `notion_schema_changes` rows for additive/rename/select-option operations         |
 | Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                     |
 | File bytes                      | Follow-up until File Upload identity and cleanup are modeled                                                |
 

@@ -311,6 +311,10 @@ The public replica has a stable generic schema and rebuildable generated views:
 | `notion_bodies`        | `(page_id)`                     | Body path, adapter state, base/current hashes, lossy guards   |
 | `notion_cell_changes`  | `(change_id)`                   | Typed local CDC rows for cell patches                         |
 | `notion_row_changes`   | `(change_id)`                   | Typed local CDC rows for row lifecycle/create changes         |
+| `notion_body_changes`  | `(change_id)`                   | Typed local CDC rows for body pushes                          |
+| `notion_metadata_changes` | `(change_id)`                | Typed local CDC rows for metadata patches                      |
+| `notion_schema_changes` | `(change_id)`                  | Typed local CDC rows for conservative schema operations        |
+| `notion_conflict_resolutions` | `(resolution_id)`        | Typed local CDC rows for conflict-resolution requests          |
 | `notion_local_changes` | `(change_id)`                   | Unified compatibility projection over local change rows       |
 | `notion_conflicts`     | `(conflict_id)`                 | Open/resolved conflicts projected for user inspection         |
 | `notion_sync_status`   | `(root_id)`                     | Replica counts, pending counts, and last projection timestamp |
@@ -386,13 +390,59 @@ type NotionRowChange =
       readonly dataSourceId: DataSourceId
       readonly valueJson: VersionedJson
     }
+
+type NotionBodyChange = {
+  readonly changeId: string
+  readonly pageId: PageId
+  readonly bodyPath: WorkspaceRelativePath | undefined
+  readonly localBodyHash: Hash
+  readonly localBodyContent: string | undefined
+  readonly baseHash: Hash
+  readonly status: LocalChangeStatus
+}
+
+type NotionMetadataChange = {
+  readonly changeId: string
+  readonly dataSourceId: DataSourceId
+  readonly resourceType: 'data_source' | 'database'
+  readonly titlePlainText: string | undefined
+  readonly descriptionPlainText: string | undefined
+  readonly baseHash: Hash
+  readonly status: LocalChangeStatus
+}
+
+type NotionSchemaChange = {
+  readonly changeId: string
+  readonly dataSourceId: DataSourceId
+  readonly operation: AddProperty | RenameProperty | AddSelectOptions
+  readonly baseHash: Hash
+  readonly status: LocalChangeStatus
+}
+
+type NotionConflictResolution = {
+  readonly resolutionId: string
+  readonly conflictId: SyncEventId
+  readonly action:
+    | 'choose_remote'
+    | 'abandon_local'
+    | 'retry_after_refresh'
+    | 'choose_local'
+    | 'manual_value'
+  readonly valueJson: CanonicalPropertyValueJson | undefined
+  readonly status: LocalChangeStatus
+}
 ```
 
 All data edit use cases are in scope for this API. Rich schema migrations are
-the exception: schema changes must be detected and guarded. Future public
-mutation surfaces must use the same typed-table pattern:
-`notion_body_changes`, `notion_metadata_changes`, `notion_schema_changes`, and
-`notion_conflict_resolutions` are reserved design names until implemented.
+the exception: schema changes must be detected and guarded. The current
+executable subset is writable cell patches, row archive/restore, body pushes
+that pass body-adapter safety, data-source title metadata, and conservative
+data-source schema add/rename/select-option operations. Row create is modeled
+but fail-closed until create-page idempotency, returned `page_id`
+reconciliation, and duplicate retry prevention are implemented. Data-source
+description writes, database metadata writes, files, Notion views, destructive
+schema changes, and manual conflict-resolution execution require their own
+surface proof before promotion.
 
 Intent lifecycle:
 

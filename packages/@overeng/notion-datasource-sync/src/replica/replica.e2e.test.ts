@@ -18,6 +18,7 @@ import {
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
+  pageSnapshot,
   testIds,
 } from '../testing/harness.ts'
 import {
@@ -637,7 +638,230 @@ describe('user-facing SQLite replica', () => {
     }
   })
 
-  it('rejects invalid local value payloads and preserves unsupported restore status', async () => {
+  it('promotes typed body metadata schema and restore CDC rows into guarded planner intents', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({
+      pages: [pageSnapshot({ inTrash: true })],
+      propertyPages: [propertyPage('Typed CDC row')],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const body = db
+          .prepare(`SELECT path, current_hash FROM notion_bodies WHERE page_id = ?`)
+          .get(testIds.pageId) as { readonly path: string; readonly current_hash: string }
+        const dataSource = db
+          .prepare(
+            `SELECT schema_hash, metadata_hash FROM notion_data_sources WHERE data_source_id = ?`,
+          )
+          .get(testIds.dataSourceId) as {
+          readonly schema_hash: string
+          readonly metadata_hash: string
+        }
+
+        db.prepare(`UPDATE notion_rows SET in_trash = 0 WHERE page_id = ?`).run(testIds.pageId)
+        db.prepare(
+          `INSERT INTO notion_body_changes (
+             change_id, page_id, body_path, local_body_hash, local_body_content, base_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(
+          'body-row',
+          testIds.pageId,
+          body.path,
+          hash('body-next'),
+          '# Typed body change',
+          body.current_hash,
+        )
+        db.prepare(
+          `INSERT INTO notion_metadata_changes (
+             change_id, data_source_id, resource_type, title_plain_text, base_hash
+           ) VALUES (?, ?, 'data_source', ?, ?)`,
+        ).run('metadata-row', testIds.dataSourceId, 'Typed CDC title', dataSource.metadata_hash)
+        db.prepare(
+          `INSERT INTO notion_schema_changes (
+             change_id, data_source_id, operation_json, base_hash
+           ) VALUES (?, ?, ?, ?)`,
+        ).run(
+          'schema-row',
+          testIds.dataSourceId,
+          JSON.stringify({
+            _tag: 'AddProperty',
+            name: 'Typed notes',
+            definition: { _tag: 'rich_text' },
+          }),
+          dataSource.schema_hash,
+        )
+      } finally {
+        db.close()
+      }
+
+      const intents = replicaChangesToPlannerIntents({
+        changes: readPendingReplicaChanges(replicaPath),
+        replicaPath,
+      })
+      expect(intents.map((intent) => intent._tag).toSorted()).toEqual([
+        'body-edit',
+        'data-source-metadata-edit',
+        'local-delete',
+        'schema-migration',
+      ])
+      expect(statusFor(replicaPath, 'body-row')).toMatchObject({ status: 'pending' })
+      expect(statusFor(replicaPath, 'metadata-row')).toMatchObject({ status: 'pending' })
+      expect(statusFor(replicaPath, 'schema-row')).toMatchObject({ status: 'pending' })
+
+      const dryRun = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          localIntents: intents,
+          dryRun: true,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      expect(dryRun.push.plan.enqueuedCommands).toBe(0)
+      expect(gateway.ledger.successfulRestorePages).toHaveLength(0)
+      expect(gateway.ledger.successfulPatchDataSourceMetadata).toHaveLength(0)
+      expect(gateway.ledger.successfulPatchDataSourceSchemas).toHaveLength(0)
+
+      const applied = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          localIntents: intents,
+          maxExecutorSteps: 8,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      expect(applied.push.plan.enqueuedCommands).toBe(4)
+      expect(gateway.ledger.successfulRestorePages).toHaveLength(1)
+      expect(gateway.ledger.successfulPatchDataSourceMetadata).toHaveLength(1)
+      expect(gateway.ledger.successfulPatchDataSourceSchemas).toHaveLength(1)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('keeps unsafe public CDC surfaces fail-closed with explicit statuses', async () => {
+    const clock = makeFakeClock()
+    const workspaceRoot = tempWorkspace()
+    const replicaPath = defaultReplicaPath(workspaceRoot)
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Unsafe CDC row')] })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: gateway.gateway },
+      )
+      projectReplicaFromSyncStore({
+        syncStorePath: storeFixture.path,
+        replicaPath,
+        rootId: testIds.rootId,
+      })
+
+      const db = new DatabaseSync(replicaPath)
+      try {
+        const dataSource = db
+          .prepare(`SELECT metadata_hash FROM notion_data_sources WHERE data_source_id = ?`)
+          .get(testIds.dataSourceId) as { readonly metadata_hash: string }
+        db.prepare(
+          `INSERT INTO notion_metadata_changes (
+             change_id, data_source_id, resource_type, description_plain_text, base_hash
+           ) VALUES (?, ?, 'data_source', ?, ?)`,
+        ).run(
+          'metadata-description',
+          testIds.dataSourceId,
+          'Unsupported data-source description',
+          dataSource.metadata_hash,
+        )
+        db.prepare(
+          `INSERT INTO notion_conflict_resolutions (
+             resolution_id, conflict_id, action, value_json
+           ) VALUES (?, ?, 'manual_value', ?)`,
+        ).run(
+          'manual-conflict',
+          'conflict-1',
+          JSON.stringify({ _tag: 'title', plainText: 'Manual' }),
+        )
+      } finally {
+        db.close()
+      }
+
+      const intents = replicaChangesToPlannerIntents({
+        changes: readPendingReplicaChanges(replicaPath),
+        replicaPath,
+      })
+      expect(intents).toHaveLength(0)
+      expect(statusFor(replicaPath, 'metadata-description')).toMatchObject({
+        status: 'unsupported',
+        unsupported_reason:
+          'Notion data-source description writes are not exposed by the data-source update API; use database metadata only after the owning database surface is modeled.',
+      })
+      expect(statusFor(replicaPath, 'manual-conflict')).toMatchObject({
+        status: 'unsupported',
+        unsupported_reason:
+          'choose_local/manual/retry conflict resolution needs store-backed conflict command execution, not projection patching.',
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('rejects invalid local value payloads and conflicts stale restore status', async () => {
     const clock = makeFakeClock()
     const workspaceRoot = tempWorkspace()
     const replicaPath = defaultReplicaPath(workspaceRoot)
@@ -723,14 +947,12 @@ describe('user-facing SQLite replica', () => {
         unsupported_reason: 'Local cell patch has a stale base_hash.',
       })
       expect(statusFor(replicaPath, 'restore-unsupported')).toMatchObject({
-        status: 'unsupported',
-        unsupported_reason:
-          'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
+        status: 'conflict',
+        unsupported_reason: 'Local row lifecycle change has a stale base_hash.',
       })
       expect(rowChangeFor(replicaPath, 'restore-unsupported')).toMatchObject({
-        status: 'unsupported',
-        unsupported_reason:
-          'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
+        status: 'conflict',
+        unsupported_reason: 'Local row lifecycle change has a stale base_hash.',
       })
     } finally {
       storeFixture.cleanup()

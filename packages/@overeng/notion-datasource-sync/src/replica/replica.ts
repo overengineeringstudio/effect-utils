@@ -4,10 +4,22 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
 
-import { pageSurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
 import {
+  bodySurfaceKey,
+  dataSourceMetadataSurfaceKey,
+  pageSurfaceKey,
+  propertySurfaceKey,
+  schemaSurfaceKey,
+} from '../core/canonical.ts'
+import {
+  BodyPushCommand,
+  CanonicalDataSourceProperty,
   CanonicalPropertyValue,
   PatchPagePropertiesCommand,
+  PatchDataSourceMetadataCommand,
+  PatchDataSourceSchemaCommand,
+  RestorePageCommand,
+  SchemaPatchOperation,
   TrashPageCommand,
 } from '../core/commands.ts'
 import {
@@ -16,7 +28,10 @@ import {
   Hash,
   PageId,
   PropertyId,
+  PropertyName,
   type AbsolutePath,
+  BodyPointer,
+  WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
 import type { PlannerIntent } from '../planner/planner.ts'
@@ -39,13 +54,30 @@ export type ProjectReplicaOptions = {
 /** Local replica change row representing a pending CDC entry awaiting planning. */
 export type ReplicaLocalChange = {
   readonly changeId: string
-  readonly kind: 'cell_patch' | 'row_archive' | 'row_restore' | 'row_create'
+  readonly kind:
+    | 'cell_patch'
+    | 'row_archive'
+    | 'row_restore'
+    | 'row_create'
+    | 'body_patch'
+    | 'metadata_patch'
+    | 'schema_patch'
+    | 'conflict_resolution'
   readonly dataSourceId: string
   readonly pageId: string | undefined
   readonly propertyId: string | undefined
   readonly valueJson: string | undefined
   readonly baseHash: string | undefined
   readonly status: string
+  readonly bodyPath: string | undefined
+  readonly localBodyHash: string | undefined
+  readonly localBodyContent: string | undefined
+  readonly metadataResourceType: string | undefined
+  readonly titlePlainText: string | undefined
+  readonly descriptionPlainText: string | undefined
+  readonly schemaOperationJson: string | undefined
+  readonly conflictId: string | undefined
+  readonly resolutionAction: string | undefined
 }
 
 type ReplicaChangeStatus =
@@ -112,7 +144,12 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     .get() as SqlRow | undefined
   const needsLocalChangesStatusMigration =
     typeof localChangesSchema?.sql === 'string' &&
-    (!localChangesSchema.sql.includes("'rejected'") || !localChangesSchema.sql.includes("'queued'"))
+    (!localChangesSchema.sql.includes("'rejected'") ||
+      !localChangesSchema.sql.includes("'queued'") ||
+      !localChangesSchema.sql.includes("'body_patch'") ||
+      !localChangesSchema.sql.includes("'metadata_patch'") ||
+      !localChangesSchema.sql.includes("'schema_patch'") ||
+      !localChangesSchema.sql.includes("'conflict_resolution'"))
   if (needsLocalChangesStatusMigration === true) {
     db.exec(`ALTER TABLE notion_local_changes RENAME TO notion_local_changes_legacy;`)
   }
@@ -132,6 +169,14 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_cell_changes_mirror_local_update;
     DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_update;
+    DROP TRIGGER IF EXISTS notion_body_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_body_changes_mirror_local_update;
+    DROP TRIGGER IF EXISTS notion_metadata_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_metadata_changes_mirror_local_update;
+    DROP TRIGGER IF EXISTS notion_schema_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_schema_changes_mirror_local_update;
+    DROP TRIGGER IF EXISTS notion_conflict_resolutions_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_conflict_resolutions_mirror_local_update;
 
     PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
@@ -244,9 +289,101 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     );
 
+    CREATE TABLE IF NOT EXISTS notion_body_changes (
+      change_id TEXT PRIMARY KEY,
+      page_id TEXT NOT NULL,
+      body_path TEXT,
+      local_body_hash TEXT NOT NULL,
+      local_body_content TEXT,
+      base_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_metadata_changes (
+      change_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      resource_type TEXT NOT NULL DEFAULT 'data_source' CHECK (resource_type IN ('data_source', 'database')),
+      title_plain_text TEXT,
+      description_plain_text TEXT,
+      base_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (title_plain_text IS NOT NULL OR description_plain_text IS NOT NULL)
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_schema_changes (
+      change_id TEXT PRIMARY KEY,
+      data_source_id TEXT NOT NULL,
+      operation_json TEXT NOT NULL,
+      base_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (json_valid(operation_json))
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_conflict_resolutions (
+      resolution_id TEXT PRIMARY KEY,
+      conflict_id TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('choose_remote', 'abandon_local', 'retry_after_refresh', 'choose_local', 'manual_value')),
+      value_json TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (value_json IS NULL OR json_valid(value_json))
+    );
+
     CREATE TABLE IF NOT EXISTS notion_local_changes (
       change_id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL CHECK (kind IN ('cell_patch', 'row_archive', 'row_restore', 'row_create')),
+      kind TEXT NOT NULL CHECK (kind IN (
+        'cell_patch',
+        'row_archive',
+        'row_restore',
+        'row_create',
+        'body_patch',
+        'metadata_patch',
+        'schema_patch',
+        'conflict_resolution'
+      )),
       data_source_id TEXT NOT NULL,
       page_id TEXT,
       property_id TEXT,
@@ -297,6 +434,14 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       ON notion_cell_changes(status, data_source_id, page_id, property_id);
     CREATE INDEX IF NOT EXISTS notion_row_changes_pending_idx
       ON notion_row_changes(status, data_source_id, page_id);
+    CREATE INDEX IF NOT EXISTS notion_body_changes_pending_idx
+      ON notion_body_changes(status, page_id);
+    CREATE INDEX IF NOT EXISTS notion_metadata_changes_pending_idx
+      ON notion_metadata_changes(status, data_source_id);
+    CREATE INDEX IF NOT EXISTS notion_schema_changes_pending_idx
+      ON notion_schema_changes(status, data_source_id);
+    CREATE INDEX IF NOT EXISTS notion_conflict_resolutions_pending_idx
+      ON notion_conflict_resolutions(status, conflict_id);
     CREATE INDEX IF NOT EXISTS notion_local_changes_pending_idx
       ON notion_local_changes(status, data_source_id, page_id);
 
@@ -565,6 +710,193 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         unsupported_reason = NEW.unsupported_reason,
         updated_at = NEW.updated_at
       WHERE change_id = NEW.change_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_body_changes_mirror_local_insert
+    AFTER INSERT ON notion_body_changes
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        page_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        'body_patch',
+        '',
+        NEW.page_id,
+        json_object(
+          'body_path', NEW.body_path,
+          'local_body_hash', NEW.local_body_hash,
+          'local_body_content', NEW.local_body_content
+        ),
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_body_changes_mirror_local_update
+    AFTER UPDATE ON notion_body_changes
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_local_changes
+      SET
+        value_json = json_object(
+          'body_path', NEW.body_path,
+          'local_body_hash', NEW.local_body_hash,
+          'local_body_content', NEW.local_body_content
+        ),
+        base_hash = NEW.base_hash,
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.change_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_metadata_changes_mirror_local_insert
+    AFTER INSERT ON notion_metadata_changes
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        'metadata_patch',
+        NEW.data_source_id,
+        json_object(
+          'resource_type', NEW.resource_type,
+          'title_plain_text', NEW.title_plain_text,
+          'description_plain_text', NEW.description_plain_text
+        ),
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_metadata_changes_mirror_local_update
+    AFTER UPDATE ON notion_metadata_changes
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_local_changes
+      SET
+        value_json = json_object(
+          'resource_type', NEW.resource_type,
+          'title_plain_text', NEW.title_plain_text,
+          'description_plain_text', NEW.description_plain_text
+        ),
+        base_hash = NEW.base_hash,
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.change_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_schema_changes_mirror_local_insert
+    AFTER INSERT ON notion_schema_changes
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        'schema_patch',
+        NEW.data_source_id,
+        NEW.operation_json,
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_schema_changes_mirror_local_update
+    AFTER UPDATE ON notion_schema_changes
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_local_changes
+      SET
+        value_json = NEW.operation_json,
+        base_hash = NEW.base_hash,
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.change_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_conflict_resolutions_mirror_local_insert
+    AFTER INSERT ON notion_conflict_resolutions
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        value_json,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.resolution_id,
+        'conflict_resolution',
+        '',
+        json_object(
+          'conflict_id', NEW.conflict_id,
+          'action', NEW.action,
+          'value_json', NEW.value_json
+        ),
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_conflict_resolutions_mirror_local_update
+    AFTER UPDATE ON notion_conflict_resolutions
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_local_changes
+      SET
+        value_json = json_object(
+          'conflict_id', NEW.conflict_id,
+          'action', NEW.action,
+          'value_json', NEW.value_json
+        ),
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.resolution_id;
     END;
 
     CREATE TRIGGER IF NOT EXISTS notion_local_changes_mirror_cell_insert
@@ -1155,7 +1487,11 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
              (SELECT count(*) FROM notion_conflicts WHERE state = 'open') AS conflicts_open,
              (
                (SELECT count(*) FROM notion_cell_changes WHERE status IN ('pending', 'queued')) +
-               (SELECT count(*) FROM notion_row_changes WHERE status IN ('pending', 'queued'))
+               (SELECT count(*) FROM notion_row_changes WHERE status IN ('pending', 'queued')) +
+               (SELECT count(*) FROM notion_body_changes WHERE status IN ('pending', 'queued')) +
+               (SELECT count(*) FROM notion_metadata_changes WHERE status IN ('pending', 'queued')) +
+               (SELECT count(*) FROM notion_schema_changes WHERE status IN ('pending', 'queued')) +
+               (SELECT count(*) FROM notion_conflict_resolutions WHERE status IN ('pending', 'queued'))
              ) AS pending_local_changes`,
         )
         .get() as SqlRow
@@ -1197,7 +1533,25 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
     return (
       db
         .prepare(
-          `SELECT change_id, kind, data_source_id, page_id, property_id, value_json, base_hash, status, created_at
+          `SELECT
+             change_id,
+             kind,
+             data_source_id,
+             page_id,
+             property_id,
+             value_json,
+             base_hash,
+             status,
+             body_path,
+             local_body_hash,
+             local_body_content,
+             metadata_resource_type,
+             title_plain_text,
+             description_plain_text,
+             schema_operation_json,
+             conflict_id,
+             resolution_action,
+             created_at
            FROM (
              SELECT
                change_id,
@@ -1208,6 +1562,15 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                value_json,
                base_hash,
                status,
+               NULL AS body_path,
+               NULL AS local_body_hash,
+               NULL AS local_body_content,
+               NULL AS metadata_resource_type,
+               NULL AS title_plain_text,
+               NULL AS description_plain_text,
+               NULL AS schema_operation_json,
+               NULL AS conflict_id,
+               NULL AS resolution_action,
                created_at
              FROM notion_cell_changes
              WHERE status IN ('pending', 'queued')
@@ -1221,8 +1584,105 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
                value_json,
                base_hash,
                status,
+               NULL AS body_path,
+               NULL AS local_body_hash,
+               NULL AS local_body_content,
+               NULL AS metadata_resource_type,
+               NULL AS title_plain_text,
+               NULL AS description_plain_text,
+               NULL AS schema_operation_json,
+               NULL AS conflict_id,
+               NULL AS resolution_action,
                created_at
              FROM notion_row_changes
+             WHERE status IN ('pending', 'queued')
+             UNION ALL
+             SELECT
+               change_id,
+               'body_patch' AS kind,
+               '' AS data_source_id,
+               page_id,
+               NULL AS property_id,
+               NULL AS value_json,
+               base_hash,
+               status,
+               body_path,
+               local_body_hash,
+               local_body_content,
+               NULL AS metadata_resource_type,
+               NULL AS title_plain_text,
+               NULL AS description_plain_text,
+               NULL AS schema_operation_json,
+               NULL AS conflict_id,
+               NULL AS resolution_action,
+               created_at
+             FROM notion_body_changes
+             WHERE status IN ('pending', 'queued')
+             UNION ALL
+             SELECT
+               change_id,
+               'metadata_patch' AS kind,
+               data_source_id,
+               NULL AS page_id,
+               NULL AS property_id,
+               NULL AS value_json,
+               base_hash,
+               status,
+               NULL AS body_path,
+               NULL AS local_body_hash,
+               NULL AS local_body_content,
+               resource_type AS metadata_resource_type,
+               title_plain_text,
+               description_plain_text,
+               NULL AS schema_operation_json,
+               NULL AS conflict_id,
+               NULL AS resolution_action,
+               created_at
+             FROM notion_metadata_changes
+             WHERE status IN ('pending', 'queued')
+             UNION ALL
+             SELECT
+               change_id,
+               'schema_patch' AS kind,
+               data_source_id,
+               NULL AS page_id,
+               NULL AS property_id,
+               NULL AS value_json,
+               base_hash,
+               status,
+               NULL AS body_path,
+               NULL AS local_body_hash,
+               NULL AS local_body_content,
+               NULL AS metadata_resource_type,
+               NULL AS title_plain_text,
+               NULL AS description_plain_text,
+               operation_json AS schema_operation_json,
+               NULL AS conflict_id,
+               NULL AS resolution_action,
+               created_at
+             FROM notion_schema_changes
+             WHERE status IN ('pending', 'queued')
+             UNION ALL
+             SELECT
+               resolution_id AS change_id,
+               'conflict_resolution' AS kind,
+               '' AS data_source_id,
+               NULL AS page_id,
+               NULL AS property_id,
+               value_json,
+               NULL AS base_hash,
+               status,
+               NULL AS body_path,
+               NULL AS local_body_hash,
+               NULL AS local_body_content,
+               NULL AS metadata_resource_type,
+               NULL AS title_plain_text,
+               NULL AS description_plain_text,
+               NULL AS schema_operation_json,
+               conflict_id,
+               action AS resolution_action,
+               created_at
+             FROM notion_conflict_resolutions
              WHERE status IN ('pending', 'queued')
            )
            ORDER BY created_at, change_id`,
@@ -1231,7 +1691,16 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
     ).map((row) => ({
       changeId: readString({ row, key: 'change_id' }),
       kind: Schema.decodeUnknownSync(
-        Schema.Literal('cell_patch', 'row_archive', 'row_restore', 'row_create'),
+        Schema.Literal(
+          'cell_patch',
+          'row_archive',
+          'row_restore',
+          'row_create',
+          'body_patch',
+          'metadata_patch',
+          'schema_patch',
+          'conflict_resolution',
+        ),
       )(readString({ row, key: 'kind' })),
       dataSourceId: readString({ row, key: 'data_source_id' }),
       pageId: readOptionalString({ row, key: 'page_id' }),
@@ -1239,6 +1708,15 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
       valueJson: readOptionalString({ row, key: 'value_json' }),
       baseHash: readOptionalString({ row, key: 'base_hash' }),
       status: readString({ row, key: 'status' }),
+      bodyPath: readOptionalString({ row, key: 'body_path' }),
+      localBodyHash: readOptionalString({ row, key: 'local_body_hash' }),
+      localBodyContent: readOptionalString({ row, key: 'local_body_content' }),
+      metadataResourceType: readOptionalString({ row, key: 'metadata_resource_type' }),
+      titlePlainText: readOptionalString({ row, key: 'title_plain_text' }),
+      descriptionPlainText: readOptionalString({ row, key: 'description_plain_text' }),
+      schemaOperationJson: readOptionalString({ row, key: 'schema_operation_json' }),
+      conflictId: readOptionalString({ row, key: 'conflict_id' }),
+      resolutionAction: readOptionalString({ row, key: 'resolution_action' }),
     }))
   } finally {
     db.close()
@@ -1274,6 +1752,26 @@ export const markReplicaChangeStatus = ({
       `UPDATE notion_row_changes
        SET status = ?, unsupported_reason = ?, updated_at = ?
        WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_body_changes
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_metadata_changes
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_schema_changes
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_conflict_resolutions
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE resolution_id = ?`,
     ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
   } finally {
     db.close()
@@ -1327,6 +1825,287 @@ export const replicaChangesToPlannerIntents = ({
         })
         continue
       }
+      if (change.kind === 'conflict_resolution') {
+        const action = change.resolutionAction ?? 'unknown'
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'unsupported',
+          reason:
+            action === 'choose_remote' || action === 'abandon_local'
+              ? 'Conflict resolution CDC was recorded for operator review; apply via conflicts resolve so store events and follow-up commands are emitted atomically.'
+              : 'choose_local/manual/retry conflict resolution needs store-backed conflict command execution, not projection patching.',
+        })
+        continue
+      }
+      if (change.kind === 'metadata_patch') {
+        if (change.baseHash === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'metadata_patch requires base_hash.',
+          })
+          continue
+        }
+        let dataSourceId: DataSourceId
+        try {
+          dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'Invalid data_source_id in metadata_patch.',
+          })
+          continue
+        }
+        if (change.metadataResourceType === 'data_source' && change.descriptionPlainText !== undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason:
+              'Notion data-source description writes are not exposed by the data-source update API; use database metadata only after the owning database surface is modeled.',
+          })
+          continue
+        }
+        if (change.metadataResourceType !== 'data_source') {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason:
+              'Database metadata CDC is modeled separately from data-source metadata and needs database-id projection before execution.',
+          })
+          continue
+        }
+        const baseHash = decode({ schema: Hash, value: change.baseHash })
+        const metadataPatch =
+          change.titlePlainText === undefined
+            ? {}
+            : { titlePlainText: change.titlePlainText }
+        const desiredHash = hashStoreBytes(
+          JSON.stringify({
+            _tag: 'metadata_patch',
+            dataSourceId: change.dataSourceId,
+            titlePlainText: change.titlePlainText,
+          }),
+        )
+        intents.push({
+          _tag: 'data-source-metadata-edit',
+          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
+          commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
+          surface: dataSourceMetadataSurfaceKey(dataSourceId),
+          dataSourceId,
+          command: PatchDataSourceMetadataCommand.make({
+            _tag: 'PatchDataSourceMetadataCommand',
+            commandId: decode({ schema: CommandId, value: `replica:${change.changeId}` }),
+            dataSourceId,
+            baseMetadataHash: baseHash,
+            metadataPatch,
+          }),
+          baseHash,
+          desiredHash,
+        })
+        continue
+      }
+      if (change.kind === 'schema_patch') {
+        if (change.baseHash === undefined || change.schemaOperationJson === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'schema_patch requires base_hash and operation_json.',
+          })
+          continue
+        }
+        let dataSourceId: DataSourceId
+        let operation: typeof SchemaPatchOperation.Type
+        try {
+          dataSourceId = decode({ schema: DataSourceId, value: change.dataSourceId })
+          operation = Schema.decodeUnknownSync(Schema.parseJson(SchemaPatchOperation))(
+            change.schemaOperationJson,
+          )
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason:
+              'schema_patch operation_json must be a supported AddProperty, RenameProperty, or AddSelectOptions operation.',
+          })
+          continue
+        }
+        const baseHash = decode({ schema: Hash, value: change.baseHash })
+        const affectedPropertyId =
+          operation._tag === 'AddProperty'
+            ? decode({ schema: PropertyId, value: `replica:${change.changeId}` })
+            : operation.propertyId
+        const schemaProperty = CanonicalDataSourceProperty.make({
+          _tag: 'CanonicalDataSourceProperty',
+          propertyId: affectedPropertyId,
+          name:
+            operation._tag === 'AddProperty'
+              ? operation.name
+              : decode({ schema: PropertyName, value: 'replica schema change' }),
+          type:
+            operation._tag === 'AddProperty'
+              ? operation.definition._tag
+              : operation._tag === 'AddSelectOptions'
+                ? operation.propertyType
+                : 'rich_text',
+          configHash: hashStoreBytes(change.schemaOperationJson),
+        })
+        intents.push({
+          _tag: 'schema-migration',
+          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
+          commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
+          surface: schemaSurfaceKey({ dataSourceId, propertyId: affectedPropertyId }),
+          dataSourceId,
+          affectedPropertyIds:
+            operation._tag === 'AddProperty' ? [] : [operation.propertyId],
+          command: PatchDataSourceSchemaCommand.make({
+            _tag: 'PatchDataSourceSchemaCommand',
+            commandId: decode({ schema: CommandId, value: `replica:${change.changeId}` }),
+            dataSourceId,
+            baseSchemaHash: baseHash,
+            schemaPatch: { [affectedPropertyId]: schemaProperty },
+            operations: [operation],
+          }),
+          baseHash,
+          desiredHash: hashStoreBytes(change.schemaOperationJson),
+          safety: {
+            affectsLocalIntent: false,
+            destructiveMigrationRequired: false,
+            optionDeletionLosesValues: false,
+          },
+        })
+        continue
+      }
+      if (change.kind === 'body_patch') {
+        if (
+          change.pageId === undefined ||
+          change.baseHash === undefined ||
+          change.localBodyHash === undefined
+        ) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'body_patch requires page_id, base_hash, and local_body_hash.',
+          })
+          continue
+        }
+        let pageId: PageId
+        let baseHash: Hash
+        let localBodyHash: Hash
+        try {
+          pageId = decode({ schema: PageId, value: change.pageId })
+          baseHash = decode({ schema: Hash, value: change.baseHash })
+          localBodyHash = decode({ schema: Hash, value: change.localBodyHash })
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'Invalid page_id, base_hash, or local_body_hash in body_patch.',
+          })
+          continue
+        }
+        const body = db
+          .prepare(
+            `SELECT path, current_hash, safety_json, sidecar_identity_proven
+             FROM notion_bodies
+             WHERE page_id = ?`,
+          )
+          .get(change.pageId) as SqlRow | undefined
+        if (body === undefined) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'rejected',
+            reason: 'body_patch targets a page body that is not present in the replica.',
+          })
+          continue
+        }
+        if (readNumber({ row: body, key: 'sidecar_identity_proven' }) !== 1) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason: 'Body writes require a proven local sidecar identity.',
+          })
+          continue
+        }
+        if (change.baseHash !== readString({ row: body, key: 'current_hash' })) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'conflict',
+            reason: 'body_patch has a stale base_hash.',
+          })
+          continue
+        }
+        let safety: unknown
+        try {
+          safety = JSON.parse(readString({ row: body, key: 'safety_json' }))
+        } catch {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason: 'Body safety metadata is not valid JSON.',
+          })
+          continue
+        }
+        const bodyPointer = decode({
+          schema: BodyPointer,
+          value: {
+            _tag: 'BodyPointer',
+            pageId,
+            bodyHash: baseHash,
+            observedAt: new Date().toISOString(),
+            safety,
+          },
+        })
+        intents.push({
+          _tag: 'body-edit',
+          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
+          commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
+          surface: bodySurfaceKey(pageId),
+          pageId,
+          command: BodyPushCommand.make({
+            _tag: 'BodyPushCommand',
+            commandId: decode({ schema: CommandId, value: `replica:${change.changeId}` }),
+            pageId,
+            baseBodyPointer: bodyPointer,
+            nextBodyHash: localBodyHash,
+            ...(change.bodyPath === undefined
+              ? {}
+              : { localBodyPath: decode({ schema: WorkspaceRelativePath, value: change.bodyPath }) }),
+            ...(change.localBodyContent === undefined
+              ? {}
+              : { localBodyContent: change.localBodyContent }),
+          }),
+          baseHash,
+          desiredHash: localBodyHash,
+        })
+        continue
+      }
       if (change.pageId === undefined) {
         markChange({
           replicaPath,
@@ -1376,13 +2155,43 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        markChange({
-          replicaPath,
-          dryRun,
-          changeId: change.changeId,
-          status: 'unsupported',
-          reason:
-            'Row restore needs a dedicated restore planner intent before it can sync from the replica.',
+        if (
+          change.baseHash !== undefined &&
+          change.baseHash !== readString({ row, key: 'properties_hash' })
+        ) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'conflict',
+            reason: 'Local row lifecycle change has a stale base_hash.',
+          })
+          continue
+        }
+        const baseHash = decode({
+          schema: Hash,
+          value:
+            change.baseHash ??
+            pageLifecycleHash({ pageId, inTrash: readNumber({ row, key: 'in_trash' }) === 1 }),
+        })
+        const commandId = decode({ schema: CommandId, value: `replica:${change.changeId}` })
+        intents.push({
+          _tag: 'local-delete',
+          intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),
+          commandKey: decode({ schema: IdempotencyKey, value: `replica:${change.changeId}` }),
+          surface: pageSurfaceKey(pageId),
+          pageId,
+          command: RestorePageCommand.make({
+            _tag: 'RestorePageCommand',
+            commandId,
+            pageId,
+            basePropertiesHash: baseHash,
+          }),
+          baseHash,
+          desiredHash: pageLifecycleHash({ pageId, inTrash: false }),
+          explicitDestructiveIntent: true,
+          policy: 'trustedRemoteTrash',
+          directRetrieve: 'accessible',
         })
         continue
       }
@@ -1464,7 +2273,7 @@ export const replicaChangesToPlannerIntents = ({
         }
         const cell = db
           .prepare(
-            `SELECT c.base_hash, p.config_hash, p.write_class
+            `SELECT c.base_hash, p.config_hash, p.write_class, p.property_type
              FROM notion_cells c
              JOIN notion_properties p
                ON p.data_source_id = c.data_source_id AND p.property_id = c.property_id
@@ -1488,6 +2297,17 @@ export const replicaChangesToPlannerIntents = ({
             changeId: change.changeId,
             status: 'unsupported',
             reason: 'The target property is read-only or unsupported for replica writes.',
+          })
+          continue
+        }
+        if (['relation', 'people', 'files'].includes(readString({ row: cell, key: 'property_type' }))) {
+          markChange({
+            replicaPath,
+            dryRun,
+            changeId: change.changeId,
+            status: 'unsupported',
+            reason:
+              'Relation, people, and file writes require full paginated base/staging proof before replica sync can apply them safely.',
           })
           continue
         }
