@@ -34,6 +34,7 @@ import {
   netlifyStorybookCommentStep,
   pnpmStateSetupStep,
   validateNixStoreStep,
+  defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
 import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
@@ -700,6 +701,19 @@ export default ciWorkflow({
     },
   },
   jobs: {
+    // Keep default-ref/source-policy separate from product checks: downstream
+    // validation branches should fail one authority job, not obscure
+    // lint/typecheck/test signal.
+    'default-ref-policy': defaultRefPolicyCheckJob({
+      // Keep this tiny policy job on the same Namespace runner class as the
+      // rest of CI so source-policy enforcement does not wait on legacy labels.
+      runsOn: namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+      }),
+      // LiveStore intentionally uses dev as its trunk branch.
+      defaultRefs: { 'livestorejs/livestore': 'dev' },
+    }),
     ...jobs,
     ...extraJobs,
     ...deployJobs,

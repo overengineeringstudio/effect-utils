@@ -265,6 +265,59 @@ run_downstream_pure_eval_regression() {
     echo "error: prepared deps derivation does not skip optional dependencies: $drv" >&2
     exit 1
   fi
+  if [[ "$install_phase" != *'-name .devenv'* || "$install_phase" != *"-name '.pnpm-store*'"* || "$install_phase" != *"-name '.pnpm-home*'"* ]]; then
+    echo "error: prepared deps derivation does not purge workspace-local pnpm store state: $drv" >&2
+    exit 1
+  fi
+
+  echo "Check: downstream staged pnpm-workspace.yaml strips live-worktree pnpm settings"
+  local deps_src
+  deps_src="$(nix build --no-link --no-write-lock-file --print-out-paths \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#packages.$SYSTEM.mk-pnpm-cli-pure-eval-fixture.passthru.depsSrcByInstallRoot.root")"
+  for key in \
+    enableGlobalVirtualStore \
+    globalVirtualStoreDir \
+    storeDir \
+    virtualStoreDir \
+    stateDir \
+    cacheDir \
+    packageImportMethod \
+    nodeLinker \
+    optimisticRepeatInstall \
+    verifyDepsBeforeRun \
+    sideEffectsCache \
+    sideEffectsCacheReadonly \
+    verifyStoreIntegrity \
+    strictStorePkgContentCheck \
+    pmOnFail; do
+    if grep -q "^$key:" "$deps_src/pnpm-workspace.yaml"; then
+      echo "error: staged pnpm-workspace.yaml kept live-worktree setting: $key" >&2
+      exit 1
+    fi
+  done
+  if [ -f "$deps_src/.npmrc" ]; then
+    for key in \
+      enable-global-virtual-store \
+      global-virtual-store-dir \
+      store-dir \
+      virtual-store-dir \
+      state-dir \
+      cache-dir \
+      package-import-method \
+      node-linker \
+      verify-deps-before-run \
+      side-effects-cache \
+      side-effects-cache-readonly \
+      verify-store-integrity \
+      strict-store-pkg-content-check \
+      pm-on-fail; do
+      if grep -Eq "^$key[[:space:]]*=" "$deps_src/.npmrc"; then
+        echo "error: staged .npmrc kept live-worktree setting: $key" >&2
+        exit 1
+      fi
+    done
+  fi
 
   echo "Timing: downstream-pure-eval $(( $(date +%s) - start ))s"
 }

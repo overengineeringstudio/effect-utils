@@ -339,6 +339,8 @@ let
     let
       name = baseNameOf path;
     in
+    # Keep caller-local pnpm/devenv/git state out of FOD source identity; the
+    # builder recreates the tiny mutable install state from checked-in inputs.
     !(builtins.elem name [
       ".devenv"
       ".git"
@@ -501,6 +503,63 @@ let
   rootPnpmWorkspaceYamlPath = evalWorkspaceRootPath + "/pnpm-workspace.yaml";
   rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
 
+  # Workspace-local store settings are for live worktrees. Nix dependency
+  # prep owns its private store path through env/.npmrc so prepared outputs
+  # cannot archive a caller's local store.
+  prepLocalPnpmSettingPrefixes = [
+    "cacheDir"
+    "enableGlobalVirtualStore"
+    "globalVirtualStoreDir"
+    "nodeLinker"
+    "optimisticRepeatInstall"
+    "packageImportMethod"
+    "pmOnFail"
+    "sideEffectsCache"
+    "sideEffectsCacheReadonly"
+    "stateDir"
+    "storeDir"
+    "strictStorePkgContentCheck"
+    "virtualStoreDir"
+    "verifyDepsBeforeRun"
+    "verifyStoreIntegrity"
+  ];
+  prepLocalNpmrcSettingPrefixes = [
+    "cache-dir"
+    "enable-global-virtual-store"
+    "global-virtual-store-dir"
+    "node-linker"
+    "package-import-method"
+    "pm-on-fail"
+    "side-effects-cache"
+    "side-effects-cache-readonly"
+    "state-dir"
+    "store-dir"
+    "strict-store-pkg-content-check"
+    "verify-deps-before-run"
+    "verify-store-integrity"
+    "virtual-store-dir"
+  ];
+  stripPrepLocalPnpmSettings =
+    lines:
+    builtins.filter (
+      l:
+      let
+        trimmed = lib.trim l;
+      in
+      !(builtins.any (prefix: lib.hasPrefix prefix trimmed) prepLocalPnpmSettingPrefixes)
+    ) lines;
+  stripPrepLocalNpmrcSettings =
+    lines:
+    builtins.filter (
+      l:
+      let
+        trimmed = lib.trim l;
+      in
+      !(builtins.any (
+        prefix: (lib.hasPrefix "${prefix}=" trimmed) || (lib.hasPrefix "${prefix} " trimmed)
+      ) prepLocalNpmrcSettingPrefixes)
+    ) lines;
+
   workspaceSuffixLines =
     workspaceYaml:
     let
@@ -527,15 +586,6 @@ let
           else
             lines;
 
-      # Workspace-local store settings are for live worktrees. Nix dependency
-      # prep owns its private store path through env/.npmrc so prepared outputs
-      # cannot archive a caller's local store.
-      stripPrepLocalPnpmSettings =
-        lines:
-        builtins.filter (
-          l:
-          !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l)) && !(lib.hasPrefix "storeDir" (lib.trim l))
-        ) lines;
     in
     stripPrepLocalPnpmSettings (
       dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml))
@@ -788,11 +838,26 @@ let
       evalSrcPath = resolveEvalSourceFor relPath;
     in
     if builtins.pathExists evalSrcPath then
-      ''
-        if [ -f ${lib.escapeShellArg (toString (absoluteFileSourcePathFor relPath))} ]; then
-          ${copyFileCmd relPath}
-        fi
-      ''
+      if builtins.baseNameOf relPath == ".npmrc" then
+        let
+          # Local .npmrc may point at a developer-specific pure store path.
+          # Strip those knobs so deps FODs remain portable across worktrees.
+          npmrcFile = pkgs.writeText "npmrc" (
+            builtins.concatStringsSep "\n" (
+              stripPrepLocalNpmrcSettings (lib.splitString "\n" (builtins.readFile evalSrcPath))
+            )
+          );
+        in
+        ''
+          ${mkdirOutParentCmd relPath}
+          cp ${lib.escapeShellArg npmrcFile} "$out/${relPath}"
+        ''
+      else
+        ''
+          if [ -f ${lib.escapeShellArg (toString (absoluteFileSourcePathFor relPath))} ]; then
+            ${copyFileCmd relPath}
+          fi
+        ''
     else
       "";
 

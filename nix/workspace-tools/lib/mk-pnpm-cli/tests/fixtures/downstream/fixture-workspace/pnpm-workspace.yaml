@@ -1,2 +1,18 @@
 packages:
   - app
+
+enableGlobalVirtualStore: true
+globalVirtualStoreDir: .devenv/pnpm-gvs
+storeDir: .devenv/pnpm-store-pure-v1
+virtualStoreDir: node_modules/.pnpm
+stateDir: .devenv/pnpm-state
+cacheDir: .devenv/pnpm-cache
+packageImportMethod: clone
+nodeLinker: isolated
+optimisticRepeatInstall: true
+verifyDepsBeforeRun: install
+sideEffectsCache: false
+sideEffectsCacheReadonly: false
+verifyStoreIntegrity: true
+strictStorePkgContentCheck: true
+pmOnFail: ignore
