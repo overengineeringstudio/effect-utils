@@ -34,6 +34,7 @@ import {
   netlifyStorybookCommentStep,
   pnpmStateSetupStep,
   validateNixStoreStep,
+  defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
 import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
@@ -700,6 +701,9 @@ export default ciWorkflow({
     },
   },
   jobs: {
+    'default-ref-policy': defaultRefPolicyCheckJob({
+      defaultRefs: { 'livestorejs/livestore': 'dev' },
+    }),
     ...jobs,
     ...extraJobs,
     ...deployJobs,
