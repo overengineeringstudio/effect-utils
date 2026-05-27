@@ -35,19 +35,19 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 
 ## Shared Flags
 
-| Flag                       | Meaning                                                      |
-| -------------------------- | ------------------------------------------------------------ |
-| `--from-notion`            | Existing Notion data-source id, or a database URL that resolves to one child data source |
+| Flag                       | Meaning                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| `--from-notion`            | Existing Notion data-source id, or a database URL that resolves to one child data source  |
 | `--limit`, `--max-rows`    | Dry-run-only establishment preview row cap; writes nothing and reports capped query state |
-| `--store`                  | SQLite store path                                            |
-| `--root-id`                | Local sync root partition                                    |
-| `--data-source-id`         | Notion data source id                                        |
-| `--workspace-root`         | Local workspace root                                         |
-| `--query-contract-json`    | Explicit query contract JSON                                 |
-| `--schema-properties-json` | Schema-property observations for write planning              |
-| `--required-capabilities`  | Comma-separated capability preflight list                    |
-| `--max-executor-steps`     | Bound outbox execution in `push`, `sync`, and `watch`        |
-| `--no-materialize-bodies`  | Observe properties/schema without local body materialization |
+| `--store`                  | SQLite store path                                                                         |
+| `--root-id`                | Local sync root partition                                                                 |
+| `--data-source-id`         | Notion data source id                                                                     |
+| `--workspace-root`         | Local workspace root                                                                      |
+| `--query-contract-json`    | Explicit query contract JSON                                                              |
+| `--schema-properties-json` | Schema-property observations for write planning                                           |
+| `--required-capabilities`  | Comma-separated capability preflight list                                                 |
+| `--max-executor-steps`     | Bound outbox execution in `push`, `sync`, and `watch`                                     |
+| `--no-materialize-bodies`  | Observe properties/schema without local body materialization                              |
 
 ## Commands
 

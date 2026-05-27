@@ -48,6 +48,7 @@ describe('notion datasource sync observability', () => {
         "outboxAttempt": "notion.datasource.outbox.attempt",
         "outboxObserveSurface": "notion.datasource.outbox.observe-surface",
         "outboxWriteRemote": "notion.datasource.outbox.write-remote",
+        "syncEstablishFromNotion": "notion.datasource.sync.establish-from-notion",
         "syncInit": "notion.datasource.sync.init",
         "syncOneShot": "notion.datasource.sync.one-shot",
         "syncPull": "notion.datasource.sync.pull",

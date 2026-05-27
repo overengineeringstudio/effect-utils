@@ -564,10 +564,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               _tag: 'CapabilityPreflightChecked',
               ...eventBase({
                 rootId: options.rootId,
-                eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}`,
+                eventId: `capability:${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}:${observationPart}`,
                 family: 'CompatibilityChecked',
                 eventType: 'CapabilityPreflightChecked',
-                idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}`,
+                idempotencyKey: `capability:${options.dataSourceId}:${capability}:${capabilityState}:${observationPart}`,
                 surface: querySurfaceKey({
                   dataSourceId: options.dataSourceId,
                   queryContractHash: hashStoreBytes('capabilities'),
@@ -627,11 +627,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             queryContract,
             startCursor: options.startCursor ?? null,
           })
-          .pipe(
-            queryPageLimit === undefined
-              ? (stream) => stream
-              : Stream.take(queryPageLimit),
-          ),
+          .pipe(queryPageLimit === undefined ? (stream) => stream : Stream.take(queryPageLimit)),
       )
       const queryContractHash =
         queryPages.at(-1)?.queryContractHash ?? queryPages[0]?.queryContractHash
