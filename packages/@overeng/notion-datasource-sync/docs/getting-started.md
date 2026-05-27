@@ -1,9 +1,14 @@
 # Getting Started
 
-`notion-datasource-sync` syncs a Notion data source with a local workspace. It
-observes the data source schema, rows, selected row properties, row lifecycle
-state, and row page bodies. It stores local truth in SQLite and materializes
-workspace artifacts through the local workspace and NotionMD body ports.
+`notion-datasource-sync` syncs a Notion data source with a local SQLite replica.
+The user-facing local API is `workspace/notion.sqlite`. The internal control
+store is `workspace/.notion-datasource-sync/store.sqlite`; do not read or edit
+it as the local Notion database.
+
+The sync engine observes the data source schema, metadata, rows, selected row
+properties, row lifecycle state, and row page bodies. It projects current state
+into `notion.sqlite`, accepts local data edits as guarded write intents, and
+uses CLI sync to apply supported intents to Notion.
 
 ## Credentials
 
@@ -32,10 +37,11 @@ You may also pass a Notion database URL. The CLI resolves it to the database's
 single child data source. If the database has multiple data sources, pass the
 desired data-source id explicitly.
 
-This creates `.notion-datasource-sync/config.json` and
+This creates `notion.sqlite`, `.notion-datasource-sync/config.json`, and
 `.notion-datasource-sync/store.sqlite` under the workspace root, validates the
 Notion data source, records the local binding, pulls remote schema/metadata/rows,
-and materializes row body artifacts when body materialization is enabled.
+projects them into the local replica, and materializes row body artifacts when
+body materialization is enabled.
 
 First establishment is remote-to-local only. It does not scan local files, plan
 local writes, enqueue outbox commands, or mutate Notion.
@@ -70,17 +76,84 @@ local body files:
 notion-datasource-sync sync --from-notion 00000000000040008000000000000001 "$PWD/notion-workspace" --no-materialize-bodies
 ```
 
+## Query The Local Replica
+
+Use `notion.sqlite`, not `.notion-datasource-sync/store.sqlite`:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" ".tables"
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  "select data_source_id, title from notion_data_sources;"
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  "select row_id, title, in_trash from notion_rows limit 10;"
+```
+
+The stable generic tables are:
+
+| Table                  | Purpose                                                        |
+| ---------------------- | -------------------------------------------------------------- |
+| `notion_data_sources`  | Adopted data-source identity, title, description, icon, hashes |
+| `notion_properties`    | Property IDs, names, types, configs, writable/read-only policy |
+| `notion_rows`          | Page row identity, lifecycle, parent/source, row hashes        |
+| `notion_cells`         | Lossless property values plus scalar helper columns            |
+| `notion_bodies`        | Body materialization paths, hashes, and adapter state          |
+| `notion_local_changes` | Local write intents waiting for review/apply                   |
+| `notion_conflicts`     | Open/resolved conflicts projected for users                    |
+| `notion_sync_status`   | Last sync, checkpoints, pending work, guard state              |
+
+Generated read views provide ergonomic SQL for each adopted data source. Their
+names are derived from the data-source title plus a stable suffix when needed.
+They are read-only in the initial public API; write to `notion_local_changes`
+instead.
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  'select "Task name", "Status", "Priority" from tasks_current limit 10;'
+```
+
+## Edit Local Data
+
+Local SQL edits create explicit intents. They do not call Notion immediately:
+
+```sql
+insert into notion_local_changes
+  (kind, data_source_id, row_id, property_id, value_json, base_row_hash)
+values
+  (
+    'patch_cell',
+    '00000000-0000-4000-8000-000000000001',
+    '11111111-1111-4111-8111-111111111111',
+    'status-property-id',
+    '{"type":"status","status":{"name":"Done"}}',
+    'sha256-current-row-base'
+  );
+```
+
+Then review and apply with the CLI:
+
+```sh
+notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
+notion-datasource-sync sync "$PWD/notion-workspace"
+```
+
+All data edit use cases are in scope for the public replica layer: cell edits,
+row creation, row archive/restore, body edits through the NotionMD boundary,
+metadata edits, and safe schema-affecting edits. Each supported edit class must
+be represented as an explicit intent with a base hash and conflict policy.
+Computed or unsupported properties remain visible but read-only.
+
 ## Reconcile Local Changes
 
 ```sh
 notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
-Established `sync` reads the workspace config, observes remote state, scans local
-artifacts, accepts safe local intents, enqueues remote commands, executes bounded
-outbox steps, and verifies settlement. Use `sync "$PWD/notion-workspace"
---dry-run` to observe and plan without appending events, executing the outbox, or
-materializing bodies.
+Established `sync` reads the workspace config, observes remote state, rebuilds
+or updates `notion.sqlite`, scans local write intents and body artifacts,
+enqueues remote commands for supported guarded intents, executes bounded outbox
+steps, verifies settlement, and projects final state back into the replica. Use
+`sync "$PWD/notion-workspace" --dry-run` to observe and plan without appending
+events, executing the outbox, mutating `notion.sqlite`, or materializing bodies.
 
 Use `status` or `doctor` to inspect state:
 
@@ -117,3 +190,21 @@ The live CLI wires the NotionMD-backed `PageBodySyncPort` when a Notion token is
 available. Library callers can also inject the body adapter explicitly. Without
 a token or injected body port, body sync fails closed rather than inventing a
 second body implementation.
+
+## Conflict Workflow
+
+Conflicts are visible in `notion.sqlite` and through the CLI:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  "select conflict_id, kind, row_id, property_id, state from notion_conflicts;"
+
+notion-datasource-sync conflicts list \
+  --store "$PWD/notion-workspace/.notion-datasource-sync/store.sqlite" \
+  --root-id data-source:00000000000040008000000000000001 \
+  --data-source-id 00000000000040008000000000000001 \
+  --workspace-root "$PWD/notion-workspace"
+```
+
+Resolve conflicts with explicit CLI commands. Do not update internal conflict
+projection tables directly.

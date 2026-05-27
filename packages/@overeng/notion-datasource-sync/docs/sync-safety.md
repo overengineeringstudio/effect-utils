@@ -19,6 +19,36 @@ surface and refuses writes when the required evidence is missing.
 SQLite projections are derived state. The event log is the local source of truth
 for accepted intent, conflicts, tombstones, command attempts, and settlements.
 
+The user-facing local database is `workspace/notion.sqlite`. The internal event
+log lives in `workspace/.notion-datasource-sync/store.sqlite`. Users and local
+tools read current data from `notion.sqlite` and write desired data edits as
+rows in `notion_local_changes`; they do not mutate the internal store.
+
+## Local Replica And Write Intents
+
+`notion.sqlite` is a rebuildable replica/read-write API:
+
+```text
+Notion -> observe -> store.sqlite events -> project -> notion.sqlite
+notion.sqlite intents -> plan -> outbox -> Notion -> observe -> notion.sqlite
+```
+
+The public replica has two kinds of surfaces:
+
+| Surface                        | Write policy                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| Generic current-state tables   | Read-only projections of observed Notion state                                |
+| Generated `*_current` views    | Read-only ergonomic views over current rows/cells in the initial public API   |
+| `notion_local_changes` intents | Writable queue for local data edits, with base hashes and conflict policy     |
+| `notion_conflicts`             | Read-only conflict view; resolve through CLI commands                         |
+
+Every write intent must name the target surface, current base hash, desired
+Notion-shaped value, and conflict policy. `sync --dry-run` validates these
+intents and shows planned commands without mutating Notion or settling the
+intents. Normal `sync` converts supported intents into internal events/outbox
+commands, performs Notion writes only after preflight reads pass, then re-reads
+and projects the result back into `notion.sqlite`.
+
 ## Establishment
 
 The normal onboarding command is:
@@ -29,16 +59,18 @@ notion-datasource-sync sync --from-notion <data-source-id-or-url> <workspace-roo
 
 Establishment has a distinct execution mode. It validates the existing Notion
 data source, records the local binding, observes remote state, and materializes
-remote bodies when enabled. It does not scan local artifacts, plan local writes,
-enqueue outbox commands, execute remote writes, or rebind an already configured
+remote bodies when enabled. It also creates or rebuilds `notion.sqlite` from the
+observed state. It does not scan local write intents, plan local writes, enqueue
+outbox commands, execute remote writes, or rebind an already configured
 workspace to a different data source.
 
-`sync --from-notion ... --dry-run` is no-write: no config file, store events,
-sidecars, body files, outbox commands, or Notion mutations. For large existing
-databases, add `--limit <rows>` to bound the remote preview; capped previews are
-reported as incomplete and cannot be applied as partial adoption. Established
-`sync <workspace-root> --dry-run` suppresses event/outbox/remote writes and body
-materialization while still using the existing store for read-only planning.
+`sync --from-notion ... --dry-run` is no-write: no config file, replica file,
+store events, sidecars, body files, outbox commands, or Notion mutations. For
+large existing databases, add `--limit <rows>` to bound the remote preview;
+capped previews are reported as incomplete and cannot be applied as partial
+adoption. Established `sync <workspace-root> --dry-run` suppresses replica
+mutation, event/outbox/remote writes, intent settlement, and body materialization
+while still using the existing store for read-only planning.
 
 ## Fail-Closed Boundaries
 
@@ -95,8 +127,9 @@ page metadata. Surface leaks fail closed and do not settle remote commands.
 
 ## Schema Writes
 
-The current safe subset supports explicit additive or non-destructive operations
-with an expected base schema hash:
+Schema changes are detected and guarded before applying row/cell intents. The
+current safe subset supports explicit additive or non-destructive operations with
+an expected base schema hash:
 
 - add property,
 - rename property,
@@ -106,3 +139,24 @@ with an expected base schema hash:
 Unsupported schema operations include property deletion, type conversion,
 destructive option replacement/removal, automatic status updates, and broad
 schema convergence without an explicit app-owned policy.
+
+Rich schema migration workflows are follow-up work. Until then, schema drift
+that affects pending local intents opens a conflict or guard instead of
+rewriting local values or applying broad migrations.
+
+## Property Write Matrix
+
+| Property class                               | Local replica policy                                                         |
+| -------------------------------------------- | ---------------------------------------------------------------------------- |
+| Title, rich text, number, checkbox           | Writable through explicit `patch_cell` intents when base hash matches        |
+| Date, select, multi-select, status value     | Writable when option/status value semantics are fully observed and supported  |
+| URL, email, phone                            | Writable through scalar cell intents with canonical Notion-shaped JSON        |
+| Relation, people                             | Guarded; requires complete page-property pagination and accessible targets    |
+| Files                                        | Read-only until durable File Upload identity and attachment lifecycle exist   |
+| Formula, rollup, audit fields, unique ID     | Read-only computed values; local write intents are rejected                   |
+| `place`, unsupported or decode-drift values  | Read-only/guarded until the API surface has a lossless model                  |
+| Schema/property configuration                | Guarded schema intents; destructive migrations are explicit follow-up work    |
+| Body content                                 | Delegated through NotionMD body intents and body-specific guards              |
+
+Unsupported writes fail closed at intent validation or planning. They must not
+be coerced into nulls, empty values, or best-effort patches.

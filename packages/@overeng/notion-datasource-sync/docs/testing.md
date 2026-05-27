@@ -10,6 +10,7 @@ services cannot prove.
 | Fake E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/fake-service.e2e.test.ts --config vitest.config.ts` | no      | planner/store/outbox behavior            |
 | Body E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/body-adapter.e2e.test.ts --config vitest.config.ts` | no      | NotionMD adapter boundary                |
 | CLI E2E     | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/cli.e2e.test.ts --config vitest.config.ts`          | no      | CLI parsing, dry-run, adoption safety    |
+| Replica E2E | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/replica-*.e2e.test.ts --config vitest.config.ts`    | no      | `notion.sqlite` reads, intents, conflicts |
 | Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`       | no      | watch loop, restart, lease, backpressure |
 | Live Notion | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`  | yes     | real Notion API semantics                |
 
@@ -56,6 +57,12 @@ For read-only checks against a large existing database, use the database URL
 with `--dry-run --limit <rows>` first; the limit is a capped preview, not a
 partial adoption mode.
 
+Replica tests must prove that establishment creates `notion.sqlite`, that
+generic tables and generated views match observed Notion rows, and that local SQL
+edits create intents rather than immediate Notion writes. Dry-run assertions
+must check that no replica rows are mutated, no intents settle, no internal
+events append, no outbox commands execute, and no body files materialize.
+
 When `NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID` is set, the suite publishes a
 sanitized summary to that Notion page. The ledger must not contain tokens, token
 paths, raw private page bodies, signed URLs, or private workspace URLs.
@@ -84,6 +91,23 @@ CI does not run the demo on ordinary PR/push runs. To include it in the Notion
 integration lane, dispatch the CI workflow manually with
 `run_datasource_sync_demo=true` and provide `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID`
 as a repository secret.
+
+## Live Write Safety
+
+Live sync-up tests may mutate only disposable data sources created by the test
+run. They must record fixture IDs in the cleanup ledger, verify read-after-write
+state, and archive fixtures during cleanup.
+
+Real user database checks are read-only/downsync only:
+
+- `sync --from-notion <database-url> <workspace> --dry-run --limit <rows>`,
+- bounded downsync with `--no-materialize-bodies`,
+- local `notion.sqlite` readback comparisons,
+- before/after sample checks proving Notion `last_edited_time`, `in_trash`, and
+  archive state did not change.
+
+Do not run local write-intent apply tests against real user databases without an
+explicit disposable fixture plan and approval.
 
 ## Traceability
 
