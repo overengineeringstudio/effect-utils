@@ -472,7 +472,9 @@ describe('CLI command surface', () => {
   it('discovers established workspace config for sync and suggests establishment when missing', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-config-'))
     try {
-      expect(() => parseCliContext(['sync', dir])).toThrow('Missing datasource-sync workspace config')
+      expect(() => parseCliContext(['sync', dir])).toThrow(
+        'Missing datasource-sync workspace config',
+      )
       await mkdir(join(dir, '.notion-datasource-sync'), { recursive: true })
       await writeFile(join(dir, '.notion-datasource-sync', 'store.sqlite'), '', 'utf8')
       await writeFile(

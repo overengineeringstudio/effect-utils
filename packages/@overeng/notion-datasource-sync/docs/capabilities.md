@@ -8,22 +8,22 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 
 ## Supported
 
-| Surface                | Current behavior                                                     |
-| ---------------------- | -------------------------------------------------------------------- |
-| Data-source retrieve   | Reads schema, parent metadata, and supported property configs        |
-| Data-source query      | Cursor pagination with canonical filter/sort/high-watermark contract |
-| Page retrieve          | Reads row page lifecycle and property snapshots                      |
-| Page-property retrieve | Cursor pagination for truncated property-item values                 |
-| Property writes        | Guarded row property patches for modeled writable values             |
-| Schema writes          | Safe add/rename/add-option subset with base schema hash              |
-| Data-source metadata   | Guarded title/description patches with a separate metadata hash      |
-| Trash/restore          | Explicit command surface with outbox verification                    |
-| Body observation       | Via NotionMD-backed `PageBodySyncPort`                               |
-| Body materialization   | `.nmd` files plus sidecar identity through the body port             |
-| Body push              | Guarded NotionMD body push when local body path/content is available |
-| Local workspace paths  | Claimed deterministic row paths with collision guards                |
-| Daemon/watch           | Bounded daemon loop, lease fencing, cancellation, restart coverage   |
-| OpenTelemetry          | CLI, daemon, sync, gateway, planner, executor, and guard spans       |
+| Surface                | Current behavior                                                                |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| Data-source retrieve   | Reads schema, parent metadata, and supported property configs                   |
+| Data-source query      | Cursor pagination with canonical filter/sort/high-watermark contract            |
+| Page retrieve          | Reads row page lifecycle and property snapshots                                 |
+| Page-property retrieve | Cursor pagination for truncated property-item values                            |
+| Property writes        | Guarded row property patches for modeled writable values                        |
+| Schema writes          | Safe add/rename/add-option subset with base schema hash                         |
+| Data-source metadata   | Guarded title/description patches with a separate metadata hash                 |
+| Trash/restore          | Explicit command surface with outbox verification                               |
+| Body observation       | Via NotionMD-backed `PageBodySyncPort`                                          |
+| Body materialization   | `.nmd` files plus sidecar identity through the body port                        |
+| Body push              | Guarded NotionMD body push when local body path/content is available            |
+| Local workspace paths  | Claimed deterministic row paths with collision guards                           |
+| Daemon/watch           | Bounded daemon loop, lease fencing, cancellation, restart coverage              |
+| OpenTelemetry          | CLI, daemon, sync, gateway, planner, executor, and guard spans                  |
 | Remote adoption        | `sync --from-notion` establishes a local workspace from an existing data source |
 
 ## Read-Only Or Guarded

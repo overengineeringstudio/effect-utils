@@ -142,11 +142,7 @@ const runLiveBody = <A, E>(
 
 const runLiveAdoption = <A, E>(
   env: { readonly token: string | undefined },
-  effect: Effect.Effect<
-    A,
-    E,
-    NotionDataSourceGateway | PageBodySyncPort | NotionMdGateway
-  >,
+  effect: Effect.Effect<A, E, NotionDataSourceGateway | PageBodySyncPort | NotionMdGateway>,
 ) => {
   if (env.token === undefined) {
     throw new Error('live Notion adoption test requires a token after configuration validation')

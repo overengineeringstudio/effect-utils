@@ -50,21 +50,21 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 
 ## Commands
 
-| Command             | Effect                                                               |
-| ------------------- | -------------------------------------------------------------------- |
+| Command              | Effect                                                                            |
+| -------------------- | --------------------------------------------------------------------------------- |
 | `sync --from-notion` | Establishes a workspace from an existing Notion data source; remote-to-local only |
-| `sync <workspace>`  | Reconciles an established workspace using local config discovery     |
-| `status <workspace>` | Reads projections for an established workspace                       |
-| `init`              | Advanced: records only the local root/data-source/workspace binding  |
-| `pull`              | Advanced: observes Notion and materializes local state where configured |
-| `push`              | Advanced: scans local artifacts, plans writes, and executes the outbox |
-| `sync --store ...`  | Advanced: runs pull, local scan/planning, outbox execution, and verification |
-| `watch`             | Repeats sync cycles with daemon state and optional max-cycle bound   |
-| `conflicts list`    | Prints conflicts, guards, tombstones, and pending outbox actions     |
-| `conflicts resolve` | Resolves a conflict by event, optionally planning follow-up commands |
-| `forget`            | Removes local tracking for a page after explicit user intent         |
-| `restore`           | Plans restore of a tracked trashed page                              |
-| `doctor`            | Aggregates status, compaction readiness, and user-action surfaces    |
+| `sync <workspace>`   | Reconciles an established workspace using local config discovery                  |
+| `status <workspace>` | Reads projections for an established workspace                                    |
+| `init`               | Advanced: records only the local root/data-source/workspace binding               |
+| `pull`               | Advanced: observes Notion and materializes local state where configured           |
+| `push`               | Advanced: scans local artifacts, plans writes, and executes the outbox            |
+| `sync --store ...`   | Advanced: runs pull, local scan/planning, outbox execution, and verification      |
+| `watch`              | Repeats sync cycles with daemon state and optional max-cycle bound                |
+| `conflicts list`     | Prints conflicts, guards, tombstones, and pending outbox actions                  |
+| `conflicts resolve`  | Resolves a conflict by event, optionally planning follow-up commands              |
+| `forget`             | Removes local tracking for a page after explicit user intent                      |
+| `restore`            | Plans restore of a tracked trashed page                                           |
+| `doctor`             | Aggregates status, compaction readiness, and user-action surfaces                 |
 
 ## Output
 
