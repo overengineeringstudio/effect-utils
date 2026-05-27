@@ -126,9 +126,11 @@ where page_id = '11111111-1111-4111-8111-111111111111'
   and property_id = 'title-property-id';
 ```
 
-This updates scalar helper columns and generated read views to the local desired
-state, then queues a typed `cell_patch` CDC row. The equivalent explicit intent
-form is:
+This first validates the canonical value shape, then updates scalar helper
+columns and generated read views to the local desired state and queues a typed
+`cell_patch` CDC row. If the same cell is edited repeatedly before sync, the
+pending typed row is updated to the latest desired value instead of replaying
+intermediate edits. The equivalent explicit intent form is:
 
 ```sql
 insert into notion_cell_changes

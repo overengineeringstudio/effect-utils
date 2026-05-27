@@ -329,12 +329,16 @@ Remote writes must be derived from validated Notion-shaped payloads, not from
 helper columns alone.
 
 Direct current-state edits are captured with local CDC triggers. The typed
-tables are the public write log and source of truth for planner conversion:
-`notion_cells.value_json` updates append to `notion_cell_changes`, and
-`notion_rows.in_trash` updates append to `notion_row_changes`. The unified
-`notion_local_changes` table is retained as a compatibility/projection surface
-and must mirror typed change rows, but new planner code must read the typed
-tables first.
+tables are the public write log and source of truth for planner conversion.
+Direct edits use final-state semantics, not replay semantics: repeated
+`notion_cells.value_json` edits for the same cell coalesce to one effective
+pending `notion_cell_changes` row with the latest desired value, and row
+lifecycle toggles supersede earlier pending direct lifecycle changes when the
+current local row state no longer matches them. Invalid direct cell payloads are
+rejected before `notion_cells`, helper columns, generated views, or typed CDC
+rows change. The unified `notion_local_changes` table is retained as a
+compatibility/projection surface and must mirror typed change rows, but new
+planner code must read the typed tables first.
 
 Public schema versions are separate:
 
@@ -396,9 +400,11 @@ Intent lifecycle:
 stateDiagram-v2
   [*] --> Pending: insert into typed mutation table
   [*] --> Pending: supported direct current-state update
-  Pending --> Queued: locally validated and handed to planner input
+  Pending --> Pending: dry-run / planner conversion without durable enqueue
+  Pending --> Queued: durable outbox enqueue observed
   Pending --> Unsupported: known unsupported write class
   Pending --> Rejected: malformed payload / missing target
+  Pending --> Rejected: superseded direct current-state edit
   Pending --> Conflict: stale base detected before planning
   Queued --> Planned: planner enqueues remote command
   Queued --> Conflict: planner detects remote/schema/body drift
@@ -409,9 +415,11 @@ stateDiagram-v2
 
 The current replica table stores lifecycle as `pending`, `queued`, `planned`,
 `applied`, `conflict`, `unsupported`, or `rejected`. Conversion from the public
-replica to planner input may mark a supported local change `queued`; it must not
-mark a change `planned` until the planner/outbox result is reflected. Unsupported,
-stale, and malformed local changes must not be promoted to `queued` or `planned`.
+replica to planner input must not make a change invisible to later scans.
+`queued` is reserved for changes that remain retriable/visible and correspond
+to durable planner/outbox progress; dry-run and plain conversion leave valid
+changes pending. Unsupported, stale, malformed, and superseded local changes
+must not be promoted to `queued` or `planned`.
 
 Dry-run is true no-write for the public replica and internal store. It may read
 `notion.sqlite` intents and current internal projections, but it must not settle
