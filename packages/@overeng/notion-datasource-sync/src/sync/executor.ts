@@ -455,12 +455,15 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
       }
 
       if (claimed.attemptState === 'ambiguous') {
-        const result = yield* recordAttemptState({
-          options,
-          claimed,
-          attemptState: 'ambiguous',
-          guard: 'AmbiguousCommandOutcome',
-        })
+        // Reclaiming an expired running command already records the ambiguous
+        // attempt in the store. Do not append a second same-attempt event here;
+        // for create-page commands, retrying blindly could duplicate a row.
+        const result = {
+          _tag: 'failed' as const,
+          commandId: claimed.commandId,
+          attemptState: 'ambiguous' as const,
+          guard: 'AmbiguousCommandOutcome' as const,
+        } satisfies OutboxExecutionResult
         yield* annotateOutboxResult(result)
         return result
       }

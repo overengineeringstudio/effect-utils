@@ -381,7 +381,7 @@ describe('notion datasource sync fake-service E2E harness', () => {
         {
           scenarioId: 'NDS-L2-clean-pull-status',
           title: 'bad requirement fixture',
-          requirementIds: ['R74'],
+          requirementIds: ['R99'],
           guards: [],
           lowestPlannerLevel: 'L2',
           highestIntegrationLevel: 'L3',
@@ -392,7 +392,7 @@ describe('notion datasource sync fake-service E2E harness', () => {
       {
         _tag: 'invalid-scenario-requirement-id',
         scenarioId: 'NDS-L2-clean-pull-status',
-        requirementId: 'R74',
+        requirementId: 'R99',
       },
     ])
     expect(requirementTraceabilityGaps({ scenarios: [], residuals: [] })).toContainEqual({

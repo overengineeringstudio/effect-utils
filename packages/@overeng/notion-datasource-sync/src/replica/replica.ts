@@ -2301,6 +2301,16 @@ export const settleReplicaChangesAfterSync = ({
     if (command === undefined) continue
     const outbox = outboxByCommandId.get(command.commandId)
     if (outbox === undefined) continue
+    if (change.kind === 'row_create' && outbox.state === 'ambiguous') {
+      markChange({
+        replicaPath,
+        changeId: change.changeId,
+        status: 'needs_reconciliation',
+        reason:
+          'Create command has an ambiguous remote outcome after an expired running attempt; manual reconciliation is required before retry.',
+      })
+      continue
+    }
     if (change.kind === 'row_create' && outbox.state === 'settled') {
       const createdPageId = createdPageIdForCommand({
         store,
