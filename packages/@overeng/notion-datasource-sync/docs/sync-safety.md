@@ -34,7 +34,9 @@ enqueue outbox commands, execute remote writes, or rebind an already configured
 workspace to a different data source.
 
 `sync --from-notion ... --dry-run` is no-write: no config file, store events,
-sidecars, body files, outbox commands, or Notion mutations. Established
+sidecars, body files, outbox commands, or Notion mutations. For large existing
+databases, add `--limit <rows>` to bound the remote preview; capped previews are
+reported as incomplete and cannot be applied as partial adoption. Established
 `sync <workspace-root> --dry-run` suppresses event/outbox/remote writes and body
 materialization while still using the existing store for read-only planning.
 

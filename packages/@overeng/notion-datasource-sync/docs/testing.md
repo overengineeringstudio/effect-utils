@@ -52,6 +52,9 @@ cleanup.
 The live suite includes `sync --from-notion` adoption semantics against a
 disposable data source: dry-run writes no local events, apply records the
 binding and observations, and rerun is idempotent.
+For read-only checks against a large existing database, use the database URL
+with `--dry-run --limit <rows>` first; the limit is a capped preview, not a
+partial adoption mode.
 
 When `NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID` is set, the suite publishes a
 sanitized summary to that Notion page. The ledger must not contain tokens, token

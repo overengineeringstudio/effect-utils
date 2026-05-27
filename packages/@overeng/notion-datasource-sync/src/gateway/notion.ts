@@ -81,6 +81,9 @@ type NotionGatewayDatabase = {
   readonly title?: readonly unknown[]
   readonly description?: readonly unknown[]
   readonly icon?: unknown
+  readonly data_sources?:
+    | readonly { readonly id: string; readonly name?: string | undefined }[]
+    | undefined
 }
 
 /**

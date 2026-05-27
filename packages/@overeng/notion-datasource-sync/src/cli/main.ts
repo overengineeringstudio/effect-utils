@@ -49,6 +49,7 @@ import {
   type GatewayOperation,
 } from '../gateway/gateway.ts'
 import {
+  makeNotionEffectClientGatewayClient,
   makeNotionDataSourceGatewayFromClient,
   NotionDataSourceGatewayLive,
   type NotionGatewayClient,
@@ -124,8 +125,10 @@ export type CliCommand =
   | {
       readonly _tag: 'sync-from-notion'
       readonly dataSourceId: typeof DataSourceId.Type
+      readonly remoteRef: NotionRemoteRef
       readonly workspaceRoot: typeof AbsolutePath.Type
       readonly dryRun?: boolean
+      readonly limit?: number
     }
   | { readonly _tag: 'status'; readonly workspaceRoot?: typeof AbsolutePath.Type }
   | {
@@ -170,6 +173,7 @@ export type CliContext = {
   readonly schemaProperties: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
+  readonly rowLimit?: number
   readonly maxExecutorSteps?: number
   readonly leaseToken?: string
   readonly leaseDurationMs?: number
@@ -230,6 +234,10 @@ const defaultStorePath = (workspaceRoot: typeof AbsolutePath.Type): typeof Absol
 const rootIdForDataSource = (dataSourceId: typeof DataSourceId.Type): SyncRootIdType =>
   decode({ schema: SyncRootId, value: `data-source:${dataSourceId}` })
 
+export type NotionRemoteRef =
+  | { readonly _tag: 'data-source'; readonly dataSourceId: typeof DataSourceId.Type }
+  | { readonly _tag: 'database'; readonly databaseId: string }
+
 const readWorkspaceCliConfig = (workspaceRoot: typeof AbsolutePath.Type): WorkspaceCliConfig => {
   const path = workspaceConfigPath(workspaceRoot)
   if (existsSync(path) === false) {
@@ -284,6 +292,14 @@ const parseNotionDataSourceRef = (value: string): typeof DataSourceId.Type => {
         ].join('-')
       : parsed
   return decode({ schema: DataSourceId, value: normalized })
+}
+
+const parseNotionRemoteRef = (value: string): NotionRemoteRef => {
+  const id = parseNotionDataSourceRef(value)
+  if (/^https?:\/\//iu.test(value) === true) {
+    return { _tag: 'database', databaseId: id }
+  }
+  return { _tag: 'data-source', dataSourceId: id }
 }
 
 /** Aggregated health check result from the `doctor` command: sync status, compaction decision, and user-action surface. */
@@ -395,6 +411,10 @@ const withOptionalCommandOptions = ({
   ...(context.now === undefined ? {} : { now: context.now }),
 })
 
+const withOptionalObservationLimit = (context: CliContext) => ({
+  ...(context.rowLimit === undefined ? {} : { rowLimit: context.rowLimit }),
+})
+
 const envelope = <TResult>({
   command,
   context,
@@ -474,13 +494,16 @@ const runCliCommandEffect = ({
         }),
       )
     case 'pull':
-      return pullOneShotSync({ ...context, ...remoteObservationContext(context) }).pipe(
-        Effect.map((result) => envelope({ command: command._tag, context, result })),
-      )
+      return pullOneShotSync({
+        ...context,
+        ...remoteObservationContext(context),
+        ...withOptionalObservationLimit(context),
+      }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'sync-from-notion':
       return establishFromNotion({
         ...context,
         ...remoteObservationContext(context),
+        ...withOptionalObservationLimit(context),
         dataSourceId: command.dataSourceId,
         workspaceRoot: command.workspaceRoot,
         ...withOptionalCommandOptions({ command, context }),
@@ -532,6 +555,7 @@ const runCliCommandEffect = ({
       return syncOneShot({
         ...context,
         ...remoteObservationContext(context),
+        ...withOptionalObservationLimit(context),
         ...withOptionalRuntimeOptions(context),
         ...withOptionalCommandOptions({ command, context }),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
@@ -564,6 +588,7 @@ const runCliCommandEffect = ({
       return runWatchDaemon({
         ...context,
         ...remoteObservationContext(context),
+        ...withOptionalObservationLimit(context),
         statePath: command.statePath,
         ...(command.maxCycles === undefined ? {} : { maxCycles: command.maxCycles }),
         ...withOptionalRuntimeOptions(context),
@@ -690,8 +715,11 @@ export const runCliCommand = Effect.fn(spanNames.cliCommand, {
 )
 
 /** Serializes a `CliResultEnvelope` to a pretty-printed JSON string with a trailing newline for stdout. */
+const cliJsonReplacer = (_key: string, value: unknown): unknown =>
+  typeof value === 'bigint' ? value.toString() : value
+
 export const renderCliResultJson = (result: CliResultEnvelope): string =>
-  `${JSON.stringify(result, null, 2)}\n`
+  `${JSON.stringify(result, cliJsonReplacer, 2)}\n`
 
 /** Serializes any thrown error into a `CliErrorEnvelope` JSON string with a trailing newline for stderr. */
 export const renderCliErrorJson = (error: unknown): string => {
@@ -718,7 +746,7 @@ export const renderCliErrorJson = (error: unknown): string => {
           : String(error),
     },
   }
-  return `${JSON.stringify(errorEnvelope, null, 2)}\n`
+  return `${JSON.stringify(errorEnvelope, cliJsonReplacer, 2)}\n`
 }
 
 const parseFlags = (argv: ReadonlyArray<string>): Map<string, string | true> => {
@@ -803,6 +831,15 @@ const positiveIntegerFlag = ({
   throw new CliArgumentError({
     message: `--${name} must be a positive integer`,
   })
+}
+
+const optionalLimitFlag = (flags: Map<string, string | true>): number | undefined => {
+  const limit = positiveIntegerFlag({ flags, name: 'limit' })
+  const maxRows = positiveIntegerFlag({ flags, name: 'max-rows' })
+  if (limit !== undefined && maxRows !== undefined) {
+    throw new CliArgumentError({ message: 'Use only one of --limit or --max-rows' })
+  }
+  return limit ?? maxRows
 }
 
 const capabilityListFlag = ({
@@ -903,11 +940,23 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
             message: 'sync --from-notion accepts exactly one workspace root positional argument',
           })
         }
+        const limit = optionalLimitFlag(flags)
+        if (limit !== undefined && flags.has('dry-run') === false) {
+          throw new CliArgumentError({
+            message: '--limit is only supported with sync --from-notion --dry-run',
+          })
+        }
+        const remoteRef = parseNotionRemoteRef(fromNotion)
         return {
           _tag: 'sync-from-notion',
-          dataSourceId: parseNotionDataSourceRef(fromNotion),
+          dataSourceId:
+            remoteRef._tag === 'data-source'
+              ? remoteRef.dataSourceId
+              : decode({ schema: DataSourceId, value: remoteRef.databaseId }),
+          remoteRef,
           workspaceRoot: normalizeAbsolutePath(workspace),
           dryRun: flags.has('dry-run'),
+          ...(limit === undefined ? {} : { limit }),
         }
       }
       if (words.length > 2) {
@@ -987,9 +1036,12 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
  * Throws `CliArgumentError` for missing or invalid flags; the caller is responsible
  * for closing `context.store` when the command completes.
  */
-export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
+export const parseCliContext = (
+  argv: ReadonlyArray<string>,
+  resolvedCommand?: CliCommand,
+): CliContext => {
   const flags = parseFlags(argv)
-  const command = parseCliCommand(argv)
+  const command = resolvedCommand ?? parseCliCommand(argv)
   const commandDryRun = 'dryRun' in command && command.dryRun === true
   const maxExecutorSteps = positiveIntegerFlag({ flags, name: 'max-executor-steps' })
   const requiredCapabilities = capabilityListFlag({ flags, name: 'required-capabilities' })
@@ -1060,7 +1112,8 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
               }),
             }
           })()
-  const queryContract =
+  const rowLimit = command._tag === 'sync-from-notion' ? command.limit : undefined
+  const baseQueryContract =
     optionalFlag({ flags, name: 'query-contract-json' }) === undefined
       ? decode({
           schema: QueryContract,
@@ -1077,6 +1130,16 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
       : decodeJson({
           schema: QueryContract,
           value: requiredFlag({ flags, name: 'query-contract-json' }),
+        })
+  const queryContract =
+    rowLimit === undefined
+      ? baseQueryContract
+      : decode({
+          schema: QueryContract,
+          value: {
+            ...baseQueryContract,
+            pageSize: Math.min(baseQueryContract.pageSize, rowLimit),
+          },
         })
   const schemaProperties =
     optionalFlag({ flags, name: 'schema-properties-json' }) === undefined
@@ -1101,6 +1164,7 @@ export const parseCliContext = (argv: ReadonlyArray<string>): CliContext => {
     ...(flags.has('no-materialize-bodies') === false && commandDryRun !== true
       ? {}
       : { materializeBodies: false }),
+    ...(rowLimit === undefined ? {} : { rowLimit }),
     ...(maxExecutorSteps === undefined ? {} : { maxExecutorSteps }),
   }
 }
@@ -1121,6 +1185,85 @@ const tokenFromEnv = (env: CliRuntimeEnv): string | undefined => {
     return env.NOTION_TOKEN
   }
   return undefined
+}
+
+const liveNotionClientFromEnv = (env: CliRuntimeEnv): NotionGatewayClient | undefined => {
+  const envToken = tokenFromEnv(env)
+  if (envToken === undefined) return undefined
+
+  const liveBaseLayer = Layer.mergeAll(
+    NotionConfigLive({
+      authToken: Redacted.make(envToken),
+      retryEnabled: true,
+      maxRetries: 2,
+      retryBaseDelay: 500,
+    }),
+    FetchHttpClient.layer,
+  )
+
+  return makeNotionEffectClientGatewayClient((effect) => effect.pipe(Effect.provide(liveBaseLayer)))
+}
+
+const resolveDatabaseDataSourceId = ({
+  databaseId,
+  client,
+}: {
+  readonly databaseId: string
+  readonly client: NotionGatewayClient
+}): Effect.Effect<typeof DataSourceId.Type, CliArgumentError> =>
+  client.retrieveDatabase({ databaseId }).pipe(
+    Effect.mapError(
+      () =>
+        new CliArgumentError({
+          message: `Unable to retrieve Notion database ${databaseId} while resolving --from-notion; pass a data source ID directly if this is not a database URL.`,
+        }),
+    ),
+    Effect.flatMap((database) => {
+      const dataSources = database.data_sources ?? []
+      if (dataSources.length === 1) {
+        const [dataSource] = dataSources
+        return Effect.succeed(decode({ schema: DataSourceId, value: dataSource?.id }))
+      }
+      return Effect.fail(
+        new CliArgumentError({
+          message:
+            dataSources.length === 0
+              ? `Notion database ${databaseId} does not report any child data sources; pass a data source ID directly.`
+              : `Notion database ${databaseId} has multiple child data sources; pass the desired data source ID explicitly.`,
+        }),
+      )
+    }),
+  )
+
+export const resolveCliCommandNotionRefs = ({
+  command,
+  options = {},
+}: {
+  readonly command: CliCommand
+  readonly options?: CliRuntimeOptions
+}): Effect.Effect<CliCommand, CliArgumentError> => {
+  if (command._tag !== 'sync-from-notion' || command.remoteRef._tag !== 'database') {
+    return Effect.succeed(command)
+  }
+  const client = options.gatewayClient ?? liveNotionClientFromEnv(options.env ?? process.env)
+  if (client === undefined) {
+    return Effect.fail(
+      new CliArgumentError({
+        message:
+          'sync --from-notion received a Notion database URL, but no Notion client is configured to resolve its child data source; set NOTION_API_TOKEN/NOTION_TOKEN or pass a data source ID directly.',
+      }),
+    )
+  }
+  return resolveDatabaseDataSourceId({
+    databaseId: command.remoteRef.databaseId,
+    client,
+  }).pipe(
+    Effect.map((dataSourceId) => ({
+      ...command,
+      dataSourceId,
+      remoteRef: { _tag: 'data-source' as const, dataSourceId },
+    })),
+  )
 }
 
 const missingTokenCliGateway: NotionDataSourceGatewayShape = {
@@ -1240,11 +1383,12 @@ export const runCliMain = ({
       return yield* Effect.fail(makeUnsupportedCommandError(command._tag))
     }
 
+    const resolvedCommand = yield* resolveCliCommandNotionRefs({ command, options })
     const context = yield* Effect.try({
-      try: () => parseCliContext(argv),
+      try: () => parseCliContext(argv, resolvedCommand),
       catch: (cause) => cause,
     })
-    yield* runCliCommandWithRuntime({ command, context, options }).pipe(
+    yield* runCliCommandWithRuntime({ command: resolvedCommand, context, options }).pipe(
       Effect.tap((result) => Effect.sync(() => process.stdout.write(renderCliResultJson(result)))),
       Effect.ensuring(Effect.sync(() => context.store.close())),
     )

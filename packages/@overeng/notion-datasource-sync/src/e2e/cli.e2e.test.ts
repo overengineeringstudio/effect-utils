@@ -12,6 +12,8 @@ import {
   CliArgumentError,
   parseCliCommand,
   parseCliContext,
+  renderCliResultJson,
+  resolveCliCommandNotionRefs,
   runCliCommand,
   runCliCommandWithRuntime,
   runCliMain,
@@ -19,7 +21,7 @@ import {
 } from '../cli/main.ts'
 import { propertySurfaceKey } from '../core/canonical.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
-import { AbsolutePath, BodyPointer, WorkspaceRelativePath } from '../core/domain.ts'
+import { AbsolutePath, BodyPointer, PageId, WorkspaceRelativePath } from '../core/domain.ts'
 import { SyncEventId, type SyncEvent as SyncEventType } from '../core/events.ts'
 import {
   LocalWorkspacePort,
@@ -44,6 +46,7 @@ import {
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
+  pageSnapshot,
   testIds,
 } from '../testing/harness.ts'
 
@@ -140,6 +143,7 @@ const makeInjectedNotionClient = (calls: {
   retrieveDataSource: number
   queryDataSource: number
   retrievePage: number
+  retrieveDatabase?: number
 }): NotionGatewayClient => ({
   retrieveDataSource: () => {
     calls.retrieveDataSource += 1
@@ -172,13 +176,16 @@ const makeInjectedNotionClient = (calls: {
       nextCursor: Option.none(),
       hasMore: false,
     }),
-  retrieveDatabase: () =>
-    Effect.succeed({
+  retrieveDatabase: () => {
+    calls.retrieveDatabase = (calls.retrieveDatabase ?? 0) + 1
+    return Effect.succeed({
       id: 'database-1',
       title: [],
       description: [],
       icon: null,
-    }),
+      data_sources: [{ id: testIds.dataSourceId, name: 'Rows' }],
+    })
+  },
   updatePage: (input) =>
     Effect.succeed({
       ...injectedNotionPage(),
@@ -457,8 +464,33 @@ describe('CLI command surface', () => {
     ).toEqual({
       _tag: 'sync-from-notion',
       dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
+      remoteRef: {
+        _tag: 'data-source',
+        dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
+      },
       workspaceRoot: '/tmp/notion-workspace',
       dryRun: false,
+    })
+    expect(
+      parseCliCommand([
+        'sync',
+        '--from-notion',
+        'https://www.notion.so/example/0123456789abcdef0123456789abcdef?v=feedfacefeedfacefeedfacefeedface',
+        '/tmp/notion-workspace',
+        '--dry-run',
+        '--limit',
+        '25',
+      ]),
+    ).toEqual({
+      _tag: 'sync-from-notion',
+      dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
+      remoteRef: {
+        _tag: 'database',
+        databaseId: '01234567-89ab-cdef-0123-456789abcdef',
+      },
+      workspaceRoot: '/tmp/notion-workspace',
+      dryRun: true,
+      limit: 25,
     })
     expect(parseCliCommand(['sync', '/tmp/notion-workspace', '--dry-run'])).toEqual({
       _tag: 'sync',
@@ -467,6 +499,89 @@ describe('CLI command surface', () => {
     })
     expect(() => parseCliCommand(['sync', '--from-notion'])).toThrow(CliArgumentError)
     expect(() => parseCliCommand(['sync', '/tmp/a', '/tmp/b'])).toThrow(CliArgumentError)
+    expect(() =>
+      parseCliCommand([
+        'sync',
+        '--from-notion',
+        '0123456789abcdef0123456789abcdef',
+        '/tmp/notion-workspace',
+        '--limit',
+        '25',
+      ]),
+    ).toThrow('--limit is only supported with sync --from-notion --dry-run')
+  })
+
+  it('resolves a Notion database URL to a single child data source before opening context', async () => {
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0, retrieveDatabase: 0 }
+    const command = parseCliCommand([
+      'sync',
+      '--from-notion',
+      'https://www.notion.so/example/0123456789abcdef0123456789abcdef?v=feedfacefeedfacefeedfacefeedface',
+      '/tmp/notion-workspace',
+      '--dry-run',
+    ])
+
+    const resolved = await Effect.runPromise(
+      resolveCliCommandNotionRefs({
+        command,
+        options: { gatewayClient: makeInjectedNotionClient(calls) },
+      }),
+    )
+
+    expect(resolved).toMatchObject({
+      _tag: 'sync-from-notion',
+      dataSourceId: testIds.dataSourceId,
+      remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
+    })
+    expect(calls.retrieveDatabase).toBe(1)
+    expect(calls.retrieveDataSource).toBe(0)
+  })
+
+  it('fails closed when a Notion database URL has multiple child data sources', async () => {
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    const client: NotionGatewayClient = {
+      ...makeInjectedNotionClient(calls),
+      retrieveDatabase: () =>
+        Effect.succeed({
+          id: 'database-1',
+          title: [],
+          description: [],
+          icon: null,
+          data_sources: [
+            { id: testIds.dataSourceId, name: 'First' },
+            { id: '00000000-0000-0000-0000-000000000002', name: 'Second' },
+          ],
+        }),
+    }
+    const command = parseCliCommand([
+      'sync',
+      '--from-notion',
+      'https://www.notion.so/example/0123456789abcdef0123456789abcdef',
+      '/tmp/notion-workspace',
+      '--dry-run',
+    ])
+
+    await expect(
+      Effect.runPromise(resolveCliCommandNotionRefs({ command, options: { gatewayClient: client } })),
+    ).rejects.toThrow('multiple child data sources')
+  })
+
+  it('renders BigInt values in JSON envelopes without throwing', () => {
+    const rendered = renderCliResultJson({
+      _tag: 'CliResultEnvelope',
+      version: 'v1',
+      command: 'status',
+      ok: true,
+      rootId: testIds.rootId,
+      status: { state: 'clean', binding: undefined, counts: { events: 1n } },
+      surface: { conflicts: [], guards: [], tombstones: [], outbox: [] },
+      result: { sequence: 42n },
+    } as unknown as Parameters<typeof renderCliResultJson>[0])
+
+    expect(JSON.parse(rendered)).toMatchObject({
+      status: { counts: { events: '1' } },
+      result: { sequence: '42' },
+    })
   })
 
   it('discovers established workspace config for sync and suggests establishment when missing', async () => {
@@ -768,6 +883,7 @@ describe('CLI command surface', () => {
           {
             _tag: 'sync-from-notion',
             dataSourceId: testIds.dataSourceId,
+            remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
             workspaceRoot,
           },
           ctx,
@@ -780,6 +896,7 @@ describe('CLI command surface', () => {
           {
             _tag: 'sync-from-notion',
             dataSourceId: testIds.dataSourceId,
+            remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
             workspaceRoot,
           },
           ctx,
@@ -833,6 +950,7 @@ describe('CLI command surface', () => {
           {
             _tag: 'sync-from-notion',
             dataSourceId: testIds.dataSourceId,
+            remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
             workspaceRoot,
             dryRun: true,
           },
@@ -849,6 +967,81 @@ describe('CLI command surface', () => {
       expect(storeFixture.store.replay(testIds.rootId)).toHaveLength(0)
       expect(materializations).toBe(0)
       expect(gateway.ledger.attemptedPatchPageProperties).toHaveLength(0)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('bounded establishment dry-run observes only the preview row limit and writes nothing', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const pageIds = ['page-preview-1', 'page-preview-2', 'page-preview-3'].map((value) =>
+      decode({ schema: PageId, value }),
+    )
+    const pages = pageIds.map((pageId, index) =>
+      pageSnapshot({
+        pageId,
+        propertiesHash: hash(`preview-properties-${index}`),
+      }),
+    )
+    const gateway = makeFakeGatewayHarness({ pages })
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      materializeBodies: false,
+    })
+    const ports = makeHarnessPorts({
+      bodyPages: pageIds.map((pageId, index) =>
+        fakeBodyPage({
+          pageId,
+          pointer: decode({
+            schema: BodyPointer,
+            value: {
+              _tag: 'BodyPointer',
+              pageId,
+              bodyHash: hash(`preview-body-${index}`),
+              observedAt: fixedObservedAt,
+            },
+          }),
+        }),
+      ),
+    })
+    let materializations = 0
+    const workspace: LocalWorkspacePortShape = {
+      scan: ports.workspace.scan,
+      claimPath: ports.workspace.claimPath,
+      materialize: (plan) => {
+        materializations += 1
+        return ports.workspace.materialize(plan)
+      },
+    }
+
+    try {
+      const result = await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'sync-from-notion',
+            dataSourceId: testIds.dataSourceId,
+            remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
+            workspaceRoot,
+            dryRun: true,
+            limit: 2,
+          },
+          { ...ctx, rowLimit: 2, queryContract: { ...ctx.queryContract, pageSize: 2 } },
+        ),
+        { gateway: gateway.gateway, body: ports.body, workspace },
+      )
+      const observation = (
+        result.result as { readonly pull: { readonly observation: { readonly query: unknown } } }
+      ).pull.observation.query
+
+      expect(observation).toMatchObject({
+        rows: 2,
+        cappedAtLimit: true,
+        rowLimit: 2,
+      })
+      expect(storeFixture.store.replay(testIds.rootId)).toHaveLength(0)
+      expect(materializations).toBe(0)
     } finally {
       storeFixture.cleanup()
     }
@@ -876,6 +1069,7 @@ describe('CLI command surface', () => {
             command: {
               _tag: 'sync-from-notion',
               dataSourceId: testIds.dataSourceId,
+              remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
               workspaceRoot: ctx.workspaceRoot,
             },
             context: ctx,
