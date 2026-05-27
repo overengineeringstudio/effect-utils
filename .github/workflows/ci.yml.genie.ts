@@ -701,6 +701,9 @@ export default ciWorkflow({
     },
   },
   jobs: {
+    // Keep default-ref/source-policy separate from product checks: downstream
+    // validation branches should fail one authority job, not obscure
+    // lint/typecheck/test signal.
     'default-ref-policy': defaultRefPolicyCheckJob({
       defaultRefs: { 'livestorejs/livestore': 'dev' },
     }),
