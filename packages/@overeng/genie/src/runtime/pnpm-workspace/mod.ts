@@ -114,6 +114,19 @@ export interface PnpmSettings {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
+   * Hard-link local workspace dependencies as injected package snapshots
+   * instead of resolving them as plain live symlinks.
+   *
+   * This is a packaging-purity control for Nix/FOD package closures: when a
+   * package is built from a reduced package-local workspace, every consumed
+   * workspace package must be represented in the dependency graph and lockfile
+   * instead of being reached through an unstaged source path.
+   *
+   * @see https://pnpm.io/settings#inject-workspace-packages
+   */
+  injectWorkspacePackages?: boolean
+
+  /**
    * Pnpm-lock.yaml will be deterministic and independent of system environment.
    * @see https://pnpm.io/settings#use-lockfile-v6
    * @deprecated Use lockfileVersion instead
@@ -700,6 +713,19 @@ export interface PnpmWorkspaceData {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
+   * Hard-link local workspace dependencies as injected package snapshots
+   * instead of resolving them as plain live symlinks.
+   *
+   * This is a packaging-purity control for Nix/FOD package closures: when a
+   * package is built from a reduced package-local workspace, every consumed
+   * workspace package must be represented in the dependency graph and lockfile
+   * instead of being reached through an unstaged source path.
+   *
+   * @see https://pnpm.io/settings#inject-workspace-packages
+   */
+  injectWorkspacePackages?: boolean
+
+  /**
    * Store dependency contents in a global content-addressed store keyed by
    * dependency graph hash. Required for identity convergence: equivalent
    * standalone and composed dependency graphs for the same physical source
@@ -978,6 +1004,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.nodeLinker !== undefined) {
     result.nodeLinker = data.nodeLinker
+  }
+
+  if (data.injectWorkspacePackages !== undefined) {
+    result.injectWorkspacePackages = data.injectWorkspacePackages
   }
 
   if (data.enableGlobalVirtualStore !== undefined) {

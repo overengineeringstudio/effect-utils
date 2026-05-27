@@ -3,6 +3,7 @@ lockfileVersion: '9.0'
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
+  injectWorkspacePackages: true
 
 packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
 
@@ -440,7 +441,7 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)
+        version: link:../tui-react
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -567,7 +568,7 @@ importers:
         version: link:../kdl-effect
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)
+        version: link:../tui-react
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -694,7 +695,7 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)
+        version: link:../tui-react
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -1326,7 +1327,7 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)
+        version: link:../tui-react
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -2255,23 +2256,6 @@ packages:
       react: '>=19.0.0'
       react-devtools-core: ^7.0.1
       ws: ^8.18.0
-
-  '@overeng/tui-react@file:packages/@overeng/tui-react':
-    resolution: {directory: packages/@overeng/tui-react, type: directory}
-    peerDependencies:
-      '@effect-atom/atom': ^0.5.3
-      '@effect-atom/atom-react': ^0.5.0
-      '@effect/cli': ^0.75.1
-      '@effect/platform-node': ^0.106.0
-      '@opentui/core': ^0.1.88
-      '@opentui/react': ^0.1.88
-      '@storybook/react': ^10.2.3
-      '@types/react': ^19.2.7
-      '@types/react-reconciler': ^0.28.9
-      effect: ^3.21.2
-      react: ^19.2.3
-      react-dom: ^19.2.3
-      react-reconciler: ^0.33.0
 
   '@oxfmt/darwin-arm64@0.23.0':
     resolution: {integrity: sha512-shGng2EjBspvuqtFtcjcKf0WoZ9QCdL8iLYgdOoKSiSQ9pPyLJ4jQf62yhm4b2PpZNVcV/20gV6d8SyKzg6SZQ==}
@@ -5766,71 +5750,6 @@ snapshots:
       - stage-js
       - typescript
       - web-tree-sitter
-
-  '@overeng/tui-react@file:packages/@overeng/tui-react(3320b31dac93676200353be3de13ceca)':
-    dependencies:
-      '@effect-atom/atom': 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@effect-atom/atom-react': 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
-      '@effect/cli': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@effect/cluster': 0.58.2(f335cd339cca8128b299febedcdd4641)
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
-      '@effect/opentelemetry': 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
-      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
-      '@effect/platform-node': 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
-      '@effect/vitest': 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
-      '@effect/workflow': 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
-      '@opentui/core': 0.1.88(stage-js@1.0.2)(typescript@5.9.3)(web-tree-sitter@0.25.10)
-      '@opentui/react': 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.2)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.20.0)
-      '@overeng/tui-core': link:packages/@overeng/tui-core
-      '@overeng/utils': link:packages/@overeng/utils
-      '@playwright/test': 1.59.1
-      '@storybook/react': 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.8.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
-      '@types/react': 19.2.7
-      '@types/react-reconciler': 0.28.9(@types/react@19.2.7)
-      '@xterm/addon-fit': 0.11.0
-      '@xterm/addon-webgl': 0.19.0
-      '@xterm/headless': 6.0.0
-      '@xterm/xterm': 6.0.0
-      cli-truncate: 5.1.1
-      effect: 3.21.2
-      react: 19.2.3
-      react-dom: 19.2.3(react@19.2.3)
-      react-reconciler: 0.33.0(react@19.2.3)
-      string-width: 7.2.0
-      vitest: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
-      yoga-layout: 3.2.1
-    transitivePeerDependencies:
-      - '@edge-runtime/vm'
-      - '@effect/sql'
-      - '@opentelemetry/api'
-      - '@opentelemetry/resources'
-      - '@opentelemetry/sdk-logs'
-      - '@opentelemetry/sdk-metrics'
-      - '@opentelemetry/sdk-trace-base'
-      - '@opentelemetry/sdk-trace-node'
-      - '@opentelemetry/sdk-trace-web'
-      - '@opentelemetry/semantic-conventions'
-      - '@types/debug'
-      - '@types/node'
-      - '@vitest/browser'
-      - '@vitest/ui'
-      - happy-dom
-      - ioredis
-      - jiti
-      - jsdom
-      - less
-      - lightningcss
-      - lmdb
-      - msw
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - supports-color
-      - terser
-      - tsx
-      - yaml
 
   '@oxfmt/darwin-arm64@0.23.0':
     optional: true

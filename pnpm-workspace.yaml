@@ -66,6 +66,8 @@ dedupePeerDependents: true
 
 strictPeerDependencies: true
 
+injectWorkspacePackages: true
+
 enableGlobalVirtualStore: true
 
 storeDir: .devenv/pnpm-store-pure-v1
