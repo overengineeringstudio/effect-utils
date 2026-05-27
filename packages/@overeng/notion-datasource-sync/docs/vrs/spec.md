@@ -310,6 +310,7 @@ The public replica has a stable generic schema and rebuildable generated views:
 | `notion_properties`           | `(data_source_id, property_id)`       | Property name, type, config hash, writable/read-only class    |
 | `notion_rows`                 | `(page_id)`                           | Page identity, lifecycle flags, and row hashes                |
 | `notion_cells`                | `(page_id, property_id)`              | Lossless `value_json` plus scalar query helper columns        |
+| `notion_relation_targets`     | `(data_source_id, property_id, target_page_id)` | Observed accessible relation targets for guarded additions |
 | `notion_bodies`               | `(page_id)`                           | Body path, adapter state, base/current hashes, lossy guards   |
 | `notion_cell_changes`         | `(change_id)`                         | Typed local CDC rows for cell patches                         |
 | `notion_row_changes`          | `(change_id)`                         | Typed local CDC rows for row lifecycle/create changes         |
@@ -460,7 +461,10 @@ are modeled. External URL file attachments are supported through explicit
 preserving existing file arrays, and direct current-state `files` cell edits
 require file-upload lifecycle proof before promotion. Direct `people` cell edits
 also fail closed before visible mutation until deterministic user identity
-projection and full page-property pagination are modeled. Notion views,
+projection and full page-property pagination are modeled. Relation writes may
+remove, reorder, or add targets only from complete paginated bases; added
+targets must already be present in `notion_relation_targets` for the same data
+source and property. Notion views,
 destructive schema changes, and unsupported conflict-resolution actions require
 their own surface proof before promotion.
 
@@ -824,7 +828,7 @@ This section names the intentional unsupported surfaces for the current implemen
 | Schema updates                | Add property, rename property, and additive select/multi-select options with matching base schema hash    | property deletion, type conversion, status updates, status option changes, option removal/rename/replacement, property order changes                    |
 | Computed/generated properties | Observation and canonical hashing when complete                                                           | writes to formula, rollup, created/last edited metadata, created by, last edited by, unique ID, verification, and other generated values                |
 | Page-property pagination      | Cursor-backed property item retrieval for completing supported value hashes                               | incomplete streams, unshared relation targets, unsupported rollup semantics, or capability-missing page-property reads                                  |
-| Relation writes               | Removal/reorder of targets already present in a complete paginated relation base                          | adding new relation targets, incomplete bases, inaccessible targets, and relation arrays over Notion's 100-item write cap                               |
+| Relation writes               | Remove/reorder/add from complete paginated relation bases when added targets were observed through the same relation property | unobserved or inaccessible targets, incomplete bases, and relation arrays over Notion's 100-item write cap                              |
 | Files                         | External URL attach through explicit staging for empty writable `files` properties; canonical references exclude expiring signed URLs from durable identity | direct cell edits, file byte upload, replacement, deletion, preserving existing file arrays, and signed URL identity                                    |
 | People                        | Observation and canonical hashes when complete                                                           | direct cell edits until deterministic accessible user identities and full paginated bases are modeled                                                   |
 | Body sync                     | NotionMD observation, materialization, repair, local body-content planning, and guarded body push         | truncated markdown, unknown block ambiguity, synced-page unsupported writes, child-page/database deletion without explicit approval, hash-only commands |

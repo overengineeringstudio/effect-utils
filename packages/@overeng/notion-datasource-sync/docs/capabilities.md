@@ -35,7 +35,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Formula, rollup, created/edited  | Observed as computed; writes are rejected                                                    |
 | Relation and rollup dependencies | Require shared related data sources/pages; otherwise incomplete/ambiguous                    |
 | Files property                   | External URL attach uses explicit staging; direct cell edits and upload/download bytes are fail-closed |
-| Relation writes                  | Supported for removal/reorder of fully paginated existing targets; adding new targets remains guarded until target accessibility is modeled |
+| Relation writes                  | Supported for remove/reorder/add from fully paginated bases when each added target is already observed in `notion_relation_targets`; unobserved targets fail closed |
 | People writes                    | Direct cell edits fail closed before visible mutation until deterministic accessible user identities and full paginated base values are proven |
 | Notion-hosted signed URLs        | Excluded from stable hashes and diagnostics                                                  |
 | Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts                       |

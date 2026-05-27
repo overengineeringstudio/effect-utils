@@ -96,6 +96,7 @@ The stable generic tables are:
 | `notion_properties`                                | Property IDs, names, types, configs, writable/read-only policy |
 | `notion_rows`                                      | Page row identity, lifecycle, parent/source, row hashes        |
 | `notion_cells`                                     | Lossless property values plus scalar helper columns            |
+| `notion_relation_targets`                          | Observed accessible relation targets for guarded additions     |
 | `notion_bodies`                                    | Body materialization paths, hashes, and adapter state          |
 | `notion_cell_changes`                              | Typed local CDC rows for cell edits waiting for review/apply   |
 | `notion_row_changes`                               | Typed local CDC rows for row lifecycle/create edits            |
