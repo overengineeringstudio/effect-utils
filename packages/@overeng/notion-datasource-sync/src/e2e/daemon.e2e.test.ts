@@ -195,6 +195,7 @@ const daemonOptions = (input: {
   readonly clock: ReturnType<typeof makeFakeClock>
   readonly maxExecutorSteps?: number
   readonly maxCycles?: number
+  readonly cycleTimeoutMs?: number
   readonly leaseToken?: string
   readonly signal?: AbortSignal
   readonly useDefaultLease?: boolean
@@ -217,6 +218,7 @@ const daemonOptions = (input: {
   now: input.clock.now,
   ...(input.maxExecutorSteps === undefined ? {} : { maxExecutorSteps: input.maxExecutorSteps }),
   ...(input.maxCycles === undefined ? {} : { maxCycles: input.maxCycles }),
+  ...(input.cycleTimeoutMs === undefined ? {} : { cycleTimeoutMs: input.cycleTimeoutMs }),
   ...(input.leaseDurationMs === undefined ? {} : { leaseDurationMs: input.leaseDurationMs }),
   ...(input.signal === undefined ? {} : { signal: input.signal }),
   ...(input.sleep === undefined ? {} : { sleep: input.sleep }),
@@ -435,6 +437,79 @@ describe('watch daemon surface', () => {
         state: { repair: { _tag: 'none' } },
       })
       expect(sleeps).toEqual([5_000])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('records retry repair state when an in-progress cycle times out', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+    const hangingGateway = {
+      ...gateway.gateway,
+      retrieveDataSource: () => Effect.never,
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      const firstCycle = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+          }),
+        ),
+        { gateway: gateway.gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      expect(firstCycle).toMatchObject({
+        cycle: 1,
+        state: {
+          lastCompleteCycle: 1,
+          repair: { _tag: 'none' },
+        },
+      })
+
+      await expect(
+        withFailsafe(
+          runWithPorts(
+            runWatchDaemonCycle(
+              daemonOptions({
+                store: storeFixture.store,
+                statePath,
+                clock,
+                cycleTimeoutMs: 1,
+              }),
+            ),
+            { gateway: hangingGateway, body: ports.body, workspace: ports.workspace },
+          ),
+          'watch daemon timeout test did not finish',
+        ),
+      ).rejects.toThrow('Watch daemon cycle 2 timed out after 1ms')
+
+      const state = await Effect.runPromise(
+        readWatchDaemonState({ rootId: testIds.rootId, statePath }),
+      )
+      expect(state).toMatchObject({
+        cycle: 2,
+        lastCompleteCycle: 1,
+        repair: {
+          _tag: 'retry',
+          reason: 'WatchDaemonCycleTimedOut',
+          failedCycle: 2,
+        },
+      })
     } finally {
       storeFixture.cleanup()
     }

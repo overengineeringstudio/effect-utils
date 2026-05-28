@@ -99,6 +99,7 @@ export type WatchDaemonOptions = {
   readonly mode?: WatchDaemonMode
   readonly maxCycles?: number
   readonly maxExecutorSteps?: number
+  readonly cycleTimeoutMs?: number
   readonly leaseToken?: string
   readonly leaseDurationMs?: number
   readonly instanceId?: string
@@ -113,6 +114,17 @@ export class WatchDaemonCancelled extends Schema.TaggedError<WatchDaemonCancelle
   {
     rootId: Schema.String,
     cycle: Schema.Number,
+    message: Schema.String,
+  },
+) {}
+
+/** Tagged error raised when a daemon cycle exceeds its configured wall-clock budget. */
+export class WatchDaemonCycleTimedOut extends Schema.TaggedError<WatchDaemonCycleTimedOut>()(
+  'WatchDaemonCycleTimedOut',
+  {
+    rootId: Schema.String,
+    cycle: Schema.Number,
+    timeoutMillis: Schema.Number,
     message: Schema.String,
   },
 ) {}
@@ -305,6 +317,36 @@ const interruptOnAbort = <TValue, TError, TContext>({
     ? effect
     : effect.pipe(Effect.raceFirst(abortSignalEffect({ signal, rootId, cycle })))
 
+const interruptOnTimeout = <TValue, TError, TContext>({
+  effect,
+  timeoutMs,
+  rootId,
+  cycle,
+}: {
+  readonly effect: Effect.Effect<TValue, TError, TContext>
+  readonly timeoutMs: number | undefined
+  readonly rootId: SyncRootId
+  readonly cycle: number
+}): Effect.Effect<TValue, TError | WatchDaemonCycleTimedOut, TContext> =>
+  timeoutMs === undefined
+    ? effect
+    : effect.pipe(
+        Effect.raceFirst(
+          Effect.sleep(Duration.millis(timeoutMs)).pipe(
+            Effect.zipRight(
+              Effect.fail(
+                new WatchDaemonCycleTimedOut({
+                  rootId,
+                  cycle,
+                  timeoutMillis: timeoutMs,
+                  message: `Watch daemon cycle ${cycle.toString()} timed out after ${timeoutMs.toString()}ms`,
+                }),
+              ),
+            ),
+          ),
+        ),
+      )
+
 /**
  * Executes one full sync cycle under the `notion.datasource.daemon.pass` span.
  *
@@ -323,7 +365,12 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
     options: WatchDaemonOptions,
   ): Effect.Effect<
     WatchDaemonCycleResult,
-    WatchDaemonCancelled | LocalStoreError | NotionGatewayError | BodySyncError | LocalStorageError,
+    | WatchDaemonCancelled
+    | WatchDaemonCycleTimedOut
+    | LocalStoreError
+    | NotionGatewayError
+    | BodySyncError
+    | LocalStorageError,
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   > =>
     Effect.gen(function* () {
@@ -367,30 +414,36 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         },
       })
 
-      const sync = yield* interruptOnAbort({
-        effect: syncOneShot({
-          store: options.store,
+      const syncCycle = syncOneShot({
+        store: options.store,
+        rootId: options.rootId,
+        dataSourceId: options.dataSourceId,
+        workspaceRoot: options.workspaceRoot,
+        queryContract: options.queryContract,
+        ...(options.schemaProperties === undefined
+          ? {}
+          : { schemaProperties: options.schemaProperties }),
+        ...(options.requiredCapabilities === undefined
+          ? {}
+          : { requiredCapabilities: options.requiredCapabilities }),
+        ...(options.materializeBodies === undefined
+          ? {}
+          : { materializeBodies: options.materializeBodies }),
+        maxExecutorSteps: options.maxExecutorSteps ?? 8,
+        leaseToken:
+          options.leaseToken ??
+          defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId }),
+        leaseDurationMs: options.leaseDurationMs ?? 60_000,
+        now,
+      })
+      const sync = yield* interruptOnTimeout({
+        effect: interruptOnAbort({
+          effect: syncCycle,
+          signal: options.signal,
           rootId: options.rootId,
-          dataSourceId: options.dataSourceId,
-          workspaceRoot: options.workspaceRoot,
-          queryContract: options.queryContract,
-          ...(options.schemaProperties === undefined
-            ? {}
-            : { schemaProperties: options.schemaProperties }),
-          ...(options.requiredCapabilities === undefined
-            ? {}
-            : { requiredCapabilities: options.requiredCapabilities }),
-          ...(options.materializeBodies === undefined
-            ? {}
-            : { materializeBodies: options.materializeBodies }),
-          maxExecutorSteps: options.maxExecutorSteps ?? 8,
-          leaseToken:
-            options.leaseToken ??
-            defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId }),
-          leaseDurationMs: options.leaseDurationMs ?? 60_000,
-          now,
+          cycle,
         }),
-        signal: options.signal,
+        timeoutMs: options.cycleTimeoutMs,
         rootId: options.rootId,
         cycle,
       }).pipe(
