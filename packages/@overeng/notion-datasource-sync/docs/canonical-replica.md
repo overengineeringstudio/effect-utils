@@ -1,53 +1,60 @@
 # Canonical SQLite Replica
 
-`notion.sqlite` is a 1:1 local replica artifact for one primary Notion data
-source by default. The default user experience is:
+Each established Notion database is represented by one self-contained SQLite
+file:
+
+```text
+<workspace>/<database-id>.sqlite
+```
+
+The filename is the Notion database ID, not the database display name. This
+keeps renames safe and lets one workspace hold multiple databases without a
+shared store or name collision.
 
 ```sh
 notion-datasource-sync sync --from-notion <data-source-id-or-database-url> ./workspace
-sqlite3 ./workspace/notion.sqlite
+sqlite3 ./workspace/<database-id>.sqlite
 ```
 
-The resulting `./workspace/notion.sqlite` is the file users query and edit. The
-internal `.notion-datasource-sync/store.sqlite` remains the correctness,
-debugging, outbox, CDC, conflict, and rebuild layer; it is not the local data
-API.
-
-Schema discovery is automatic. `sync --from-notion` and subsequent observations
-read the live Notion data-source schema, populate `schema_properties` and
-`notion_properties`, and generate the `rows` property columns from that
-observation. A separate schema JSON file is not part of the normal workflow.
+There is no required `.notion-datasource-sync/store.sqlite` or config sidecar.
+The database file contains both the public local API and private sync state.
 
 ## Public Surfaces
 
-The canonical writable surface is `rows`.
+Stable public surfaces:
 
 | Surface             | Access        | Purpose                                                                 |
 | ------------------- | ------------- | ----------------------------------------------------------------------- |
-| `rows`              | guarded write | One row per Notion page in the primary data source                      |
-| `schema`            | read view     | Data-source metadata, schema hash, and top-level replica binding facts  |
-| `schema_properties` | read view     | Property id, display name, Notion type, write class, and row column map |
+| `rows`              | guarded write | One row per Notion page in the database                                 |
+| `schema`            | read view     | Database/data-source binding, metadata, schema hashes, sync identity    |
+| `schema_properties` | read view     | Property id, display name, Notion type, write class, row column mapping |
+| `changes`           | guarded write | Durable local edit intents and settlement status                        |
+| `conflicts`         | read view     | User-visible conflicts and resolution state                             |
+| `sync_status`       | read view     | Last sync, pending work, checkpoints, guards, doctor state              |
 
-Normalized tables, typed CDC tables, local-change projections, conflict rows,
-outbox state, and generated debug views remain available as implementation and
-debug surfaces. They are the layer that makes `rows` safe: direct mutations on
-`rows` are translated to typed intents, validated, planned, verified, and then
-settled through normal sync.
+Debug surfaces are read-only views named `debug_*`. They expose canonical JSON,
+hashes, pagination evidence, outbox state, and projection diagnostics for
+operators.
 
-Read visibility is intentionally broader than write eligibility. Observed
-computed, people, relation, file, and unsupported properties stay visible in
-`schema_properties`, `notion_properties`, and `notion_cells` when their values
-can be represented, but direct `rows` writes are allowed only for property
-classes with complete values and modeled Notion write/verification behavior.
+Private tables and indexes are prefixed `_nds_`. They hold sync-control state:
+events, projections, outbox, checkpoints, leases, hashes, migrations, and
+integrity digests. Users and automation must not edit `_nds_*`. If private
+state is corrupt, missing, or tampered with, `doctor` fails closed and sync
+does not infer remote writes from public rows alone.
 
 ## Row Shape
 
-`rows` is shaped like the primary Notion data source:
+`rows` matches live Notion properties by default. Establishment and subsequent
+observations read the Notion schema, populate `schema_properties`, and generate
+the property columns. A user-maintained schema JSON file is not part of the
+normal workflow.
+
+`rows` is shaped like the Notion database:
 
 1. Notion properties appear first as ordinary columns.
 2. System columns appear last and are prefixed with `_`.
-3. Property identity is still Notion's property id, not the display name.
-4. `schema_json` is not present in `rows`; inspect schema through `schema` and
+3. Property identity is Notion's property ID, not the display name.
+4. `schema_json` is not present in `rows`; inspect `schema` and
    `schema_properties`.
 
 Example:
@@ -59,6 +66,7 @@ rows(
   "Priority",
   "Due",
   _page_id,
+  _database_id,
   _data_source_id,
   _in_trash,
   _properties_hash,
@@ -79,10 +87,10 @@ from schema_properties
 order by ordinal;
 ```
 
-Inspect top-level replica identity and schema hashes:
+Inspect top-level identity and schema hashes:
 
 ```sql
-select data_source_id, title_plain_text, schema_hash, metadata_hash
+select database_id, data_source_id, title_plain_text, schema_hash, metadata_hash
 from schema;
 ```
 
@@ -98,10 +106,10 @@ order by "Priority", "Name"
 limit 25;
 ```
 
-Use the normalized/debug layer when you need lossless canonical Notion JSON,
-base hashes, CDC status, or conflict diagnostics.
+Use `debug_*` views when you need lossless canonical Notion JSON, base hashes,
+CDC status, outbox state, or pagination diagnostics.
 
-## Updates
+## Direct Local Mutations
 
 Supported scalar/current property edits are direct `UPDATE`s on `rows`:
 
@@ -114,8 +122,8 @@ where _page_id = '11111111-1111-4111-8111-111111111111';
 
 The replica validates that each target column maps to a writable Notion
 property, converts the SQL value into canonical Notion property JSON, updates
-the local desired state, and records typed CDC for guarded sync. The SQL write
-does not call Notion. Run:
+local desired state, and records a durable row in `changes`. The SQL write does
+not call Notion. Run:
 
 ```sh
 notion-datasource-sync sync ./workspace --dry-run
@@ -139,7 +147,7 @@ values ('Draft migration checklist', 'Not started', 2);
 The replica records a local row-create intent with an idempotency key, initial
 property values, and the current base schema hash. The row appears locally as
 pending until sync creates the Notion page and settles the returned remote page
-id.
+ID.
 
 ## Archive And Restore
 
@@ -162,6 +170,20 @@ replaying an intermediate trash command.
 `DELETE FROM rows` is rejected. Destructive remote effects are explicit
 lifecycle intents, not inferred from local SQL deletion or missing files.
 
+## Backup And Copy
+
+Use SQLite-safe copy semantics, not a plain copy of a live WAL-mode database.
+Preferred options:
+
+```sh
+sqlite3 ./workspace/<database-id>.sqlite "pragma wal_checkpoint(full);"
+sqlite3 ./workspace/<database-id>.sqlite ".backup './backup/<database-id>.sqlite'"
+```
+
+For offline copies, close sync/watch processes first, then copy the SQLite file
+and any `-wal`/`-shm` files that still exist. The portable unit is the database
+ID-named SQLite database and its SQLite-managed WAL state.
+
 ## Fail-Closed Cases
 
 The replica rejects or marks unsupported any mutation it cannot prove safe:
@@ -169,6 +191,7 @@ The replica rejects or marks unsupported any mutation it cannot prove safe:
 - writes to computed/audit properties such as formula, rollup, created/edited
   fields, unique ID, or verification,
 - writes to `_` system columns other than `_in_trash`,
+- writes to `debug_*` views or `_nds_*` private tables,
 - writes that cannot be converted to canonical Notion property values,
 - stale base schema or row/property hashes,
 - direct people edits without deterministic accessible user identity proof,
@@ -180,6 +203,6 @@ The replica rejects or marks unsupported any mutation it cannot prove safe:
 - Notion UI view writes from `rows`,
 - ambiguous permission, pagination, API-version, or body-adapter states.
 
-Unsupported cases remain visible in the CDC/debug layer and through `status`,
-`doctor`, and conflict commands; they are not silently coerced into empty values
-or best-effort Notion patches.
+Unsupported cases remain visible through `changes`, `conflicts`, `sync_status`,
+`debug_*` views, `status`, `doctor`, and conflict commands; they are not
+silently coerced into empty values or best-effort Notion patches.

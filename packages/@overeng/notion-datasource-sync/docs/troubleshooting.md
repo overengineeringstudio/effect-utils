@@ -29,7 +29,7 @@ Notion often returns similar failures for missing objects and objects outside th
 integration's permissions. Share the data source and relevant parent pages with
 the integration. For relation and rollup tests, also share the related source.
 
-## Workspace Config Missing
+## Database File Missing
 
 Symptom:
 
@@ -38,7 +38,7 @@ Symptom:
   "_tag": "CliErrorEnvelope",
   "error": {
     "_tag": "CliArgumentError",
-    "message": "Missing datasource-sync workspace config"
+    "message": "Missing datasource-sync database file"
   }
 }
 ```
@@ -50,23 +50,19 @@ notion-datasource-sync sync --from-notion <data-source-id-or-database-url> "$PWD
 ```
 
 `sync <workspace-root>` only works after establishment has written
-`.notion-datasource-sync/config.json`.
+`<workspace-root>/<database-id>.sqlite`.
 
 ## Which SQLite File Should I Open?
 
-Open the user-facing replica:
+Open the database-ID-named replica:
 
 ```sh
-sqlite3 "$PWD/notion-workspace/notion.sqlite"
+sqlite3 "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
-Do not use `.notion-datasource-sync/store.sqlite` as the local Notion database.
-That file is the internal sync-control store for events, projections, outbox,
-conflicts, checkpoints, and migrations.
-
-If `notion.sqlite` is missing but the internal store exists, run `sync
-<workspace-root>` or the repair flow once available. The replica is rebuildable
-from the internal store; user tools should not patch internal projection tables.
+There is no required `.notion-datasource-sync/store.sqlite` local database. Each
+`<database-id>.sqlite` file contains public tables, read-only `debug_*` views,
+and private `_nds_*` sync state. User tools must not patch `_nds_*`.
 
 ## Database URL Is Ambiguous
 
@@ -78,25 +74,23 @@ preview.
 
 ## Workspace Binding Mismatch
 
-If the config points at one data source but the SQLite event log is bound to a
-different data source or workspace path, `sync <workspace-root>` fails closed.
-Do not edit the store manually. Check that the workspace was not copied from
-another project; establish a fresh workspace or use explicit advanced flags to
-inspect the old store.
+If the SQLite filename, public `schema` binding, or private `_nds_*` binding
+points at a different database/data source, `sync <workspace-root>` fails
+closed. Do not edit private tables manually. Establish a fresh workspace or use
+`doctor <workspace>/<database-id>.sqlite` to inspect the mismatch.
 
 ## Local Edit Does Not Reach Notion
 
 Local scalar edits should update `rows`; the replica resolves the
-`schema_properties` mapping and queues typed CDC such as `cell_patch` rows in
-`notion_cell_changes`. `notion_local_changes` mirrors typed change rows for
-inspection. Generated read views remain read-only, and `DELETE FROM rows` is not
-a writable API.
+`schema_properties` mapping and queues public entries in `changes`. `debug_*`
+views remain read-only, `_nds_*` tables are private, and `DELETE FROM rows` is
+not a writable API.
 
 Check pending intents:
 
 ```sh
-sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select change_id, page_id, property_id, status, unsupported_reason from notion_cell_changes;"
+sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" \
+  "select change_id, page_id, property_id, status, unsupported_reason from changes;"
 ```
 
 Then run:
@@ -140,7 +134,7 @@ rollup metadata cannot be preserved, the value stays guarded and is not hashed a
 clean.
 
 Fix the missing permission or rerun after the transient failure is gone. Do not
-patch the store manually.
+patch `_nds_*` manually.
 
 ## Schema Write Is Blocked
 
@@ -162,16 +156,16 @@ ordinary local SQL edits.
 
 ## Conflict Appears In The Replica
 
-Inspect conflicts in `notion.sqlite`:
+Inspect conflicts in the database file:
 
 ```sh
-sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select conflict_id, page_id, property_id, state from notion_conflicts;"
+sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" \
+  "select conflict_id, page_id, property_id, state from conflicts;"
 ```
 
 Use `conflicts list` and `conflicts resolve` to act on them. Do not update
-`notion_conflicts` or internal conflict projection rows directly; resolution
-must append explicit events so replay and audit stay correct.
+`conflicts` rows or private `_nds_*` conflict state directly; resolution must
+append explicit events so replay and audit stay correct.
 
 ## Outbox Command Is Ambiguous
 
@@ -182,8 +176,8 @@ should retry, or needs user action.
 Run:
 
 ```sh
-notion-datasource-sync doctor --store .notion-datasource-sync/store.sqlite --root-id workspace-main --data-source-id <id> --workspace-root "$PWD/notion-workspace"
-notion-datasource-sync conflicts list --store .notion-datasource-sync/store.sqlite --root-id workspace-main --data-source-id <id> --workspace-root "$PWD/notion-workspace"
+notion-datasource-sync doctor "$PWD/notion-workspace/<database-id>.sqlite"
+notion-datasource-sync conflicts list "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 ## Live E2E Leaves Fixtures Behind

@@ -25,13 +25,14 @@ The showcase refreshes the demo page, ensures four current inline data sources,
 patches meaningful data-source descriptions through the datasource-sync metadata
 surface, tops them up to the requested row counts, observes them through
 datasource-sync with the live Notion adapter plus NotionMD body adapter, and
-appends a sanitized verification summary. Each data source is demonstrated as
-its own 1:1 `notion.sqlite` artifact with a canonical `rows` table rather than
-as one combined multi-source SQLite database. The showcase uses default schema
-observation: no schema JSON is supplied, and each artifact derives
-`schema_properties`, `notion_cells`, and `rows` columns from the live Notion
-properties. Reruns reuse the current demo data sources and archive stale extras
-so the page stays bounded without rebuilding hundreds of Notion pages each time.
+appends a sanitized verification summary. Each data source/database is
+demonstrated as its own `<database-id>.sqlite` artifact with a canonical `rows`
+table rather than as one combined multi-source SQLite database. Filenames use
+the Notion database ID, not the visible database title. The showcase uses
+default schema observation: no schema JSON is supplied, and each artifact derives
+`schema_properties` and `rows` columns from the live Notion properties. Reruns
+reuse the current demo data sources and archive stale extras so the page stays
+bounded without rebuilding hundreds of Notion pages each time.
 
 Current domains and cardinalities:
 
@@ -44,6 +45,16 @@ Current domains and cardinalities:
   health properties. Demonstrates CRM-style scalar diversity.
 - Activity events DB: 500 rows proving high-cardinality paginated observation
   with bounded live writes. Demonstrates a narrow event-log shape.
+
+Expected local artifact shape:
+
+```text
+demo-workspace/
+  <projects-database-id>.sqlite
+  <incidents-database-id>.sqlite
+  <customers-database-id>.sqlite
+  <activity-events-database-id>.sqlite
+```
 
 The 500-row activity source proves datasource query pagination and row
 cardinality. Per-row property pagination and body materialization stay on the
