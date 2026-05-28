@@ -5,9 +5,10 @@ This document specifies the Notion datasource sync system. It builds on [require
 ## Status
 
 Draft -- the sync-control layer, live Notion gateway, NotionMD body boundary,
-remote adoption flow, and guarded write model exist. The user-facing
-`notion.sqlite` replica/API is the required local data surface being layered on
-top of the internal control store.
+remote adoption flow, guarded write model, and user-facing 1:1
+`notion.sqlite` replica contract exist. The canonical writable public surface is
+`rows`; normalized tables and typed CDC/outbox state remain the correctness and
+debug layer.
 
 ## Scope
 
@@ -289,7 +290,8 @@ Checkpoint compaction is forbidden while any outbox command is pending, running,
 Requirement trace: R74-R81.
 
 `notion.sqlite` is the local Notion data-source replica exposed to users and
-automation. It is analogous to the `.nmd` files in `@overeng/notion-md`: local
+automation. By default, one `notion.sqlite` artifact maps to one primary Notion
+data source. It is analogous to the `.nmd` files in `@overeng/notion-md`: local
 tools operate on this artifact, while CLI sync reconciles it with Notion.
 
 ```text
@@ -300,10 +302,13 @@ workspace/
     store.sqlite
 ```
 
-The public replica has a stable generic schema and rebuildable generated views:
+The public replica has a canonical user schema plus normalized debug surfaces:
 
 | Table                         | Key shape                             | Purpose                                                       |
 | ----------------------------- | ------------------------------------- | ------------------------------------------------------------- |
+| `rows`                        | `(_page_id)` plus local pending ids   | Canonical writable 1:1 data table for the primary data source |
+| `schema`                      | `(data_source_id)`                    | Read view for replica binding, metadata, schema hashes, and sync identity |
+| `schema_properties`           | `(property_id)`                       | Read view for property id/name/type/write-class to `rows` column mapping |
 | `notion_data_sources`         | `(data_source_id)`                    | Root binding plus schema/metadata hashes and observation IDs  |
 | `notion_databases`            | `(database_id)`                       | Owning database/container metadata and authority identity      |
 | `notion_views`                | `(view_id)`                           | Read-only Notion UI view inventory, separate from SQL views    |
@@ -328,18 +333,29 @@ The public replica has a stable generic schema and rebuildable generated views:
 | `notion_conflicts`            | `(conflict_id)`                       | Open/resolved conflicts projected for user inspection         |
 | `notion_sync_status`          | `(root_id)`                           | Replica counts, pending counts, and last projection timestamp |
 
-Generated read views named `notion_view_<data-source-id-slug>` are derived from
-`notion_rows`, `notion_properties`, and `notion_cells`. Column names use escaped
-property names, with a property-id suffix for collisions; property IDs remain
-the authoritative identity. Generated views are read-only.
+`rows` is the default user-facing table. Columns are ordered as Notion
+properties first and `_` system columns last. `schema_json` is not present in
+`rows`; users inspect schema through `schema` and `schema_properties`.
+`schema_properties` records the stable mapping from each Notion property id to
+its current `rows` column, display name, Notion type, ordinal, and write class.
+Display names are convenient SQL labels only; property ids remain authoritative
+for planning, hashing, conflict detection, and settlement.
 
-`notion_cells.value_json` is the lossless canonical value. Scalar helper columns
-currently include `value_text`, `value_number`, and `value_boolean`; they exist
-for querying only. Updating `notion_cells.value_json` is a supported direct
-local edit for writable cells: the replica updates helper columns and generated
-views to the local desired value and queues a guarded `cell_patch` intent.
-Remote writes must be derived from validated Notion-shaped payloads, not from
-helper columns alone.
+Generated read views named `notion_view_<data-source-id-slug>` are derived from
+`notion_rows`, `notion_properties`, and `notion_cells`. They are rebuildable
+debug views, not the canonical writable surface. Notion UI views are projected
+separately through `notion_views` and are never row membership or deletion
+authority.
+
+`notion_cells.value_json` is the lossless canonical value in the normalized
+debug layer. Scalar helper columns currently include `value_text`,
+`value_number`, and `value_boolean`; they exist for querying and conversion
+diagnostics only. Updating supported scalar/property columns on `rows` is the
+ordinary direct local edit path. The replica resolves the row column through
+`schema_properties`, converts the SQL value to canonical Notion-shaped JSON,
+updates local desired state, and queues a guarded `cell_patch` intent. Remote
+writes must be derived from validated Notion-shaped payloads, not from helper
+columns alone.
 
 Direct current-state edits are captured with local CDC triggers. The typed
 tables are the public write log and source of truth for planner conversion.
@@ -370,9 +386,8 @@ closed and must not infer remote writes from replica rows alone.
 
 Requirement trace: R21-R29, R74-R81.
 
-Users write desired data changes by inserting rows into typed mutation tables
-or by updating supported current-state columns that insert typed CDC rows via
-triggers. Local SQL writes never call Notion directly.
+Users write desired data changes by mutating `rows` or by inserting rows into
+typed mutation tables. Local SQL writes never call Notion directly.
 
 ```ts
 type NotionCellChange = {
@@ -444,11 +459,14 @@ type NotionConflictResolution = {
 
 All data edit use cases are in scope for this API. Rich schema migrations are
 the exception: schema changes must be detected and guarded. The current
-executable subset is writable cell patches, row archive/restore, explicit row
-creates via `notion_row_creates`, body pushes that pass body-adapter safety and
-content-hash verification, data-source and database title/description metadata edits
-verified by post-write metadata hashes, and conflict-resolution choices routed
-through the store-backed command surface. Data-source metadata CDC is precise
+executable subset is scalar/property `UPDATE rows SET ...`, `INSERT INTO rows`
+for row creation, archive/restore through `UPDATE rows SET _in_trash = 1/0`,
+explicit typed CDC equivalents, body pushes that pass body-adapter safety and
+content-hash verification, data-source and database title/description metadata
+edits verified by post-write metadata hashes, and conflict-resolution choices
+routed through the store-backed command surface. `DELETE FROM rows` is rejected;
+remote destructive lifecycle changes are represented as explicit archive/restore
+intents, never inferred from local deletion. Data-source metadata CDC is precise
 about authority: the live adapter patches the owning database metadata because
 the public data-source update shape does not expose top-level description, then
 verifies the resulting data-source metadata hash. Database metadata CDC exposes
@@ -475,7 +493,8 @@ Intent lifecycle:
 ```mermaid
 stateDiagram-v2
   [*] --> Pending: insert into typed mutation table
-  [*] --> Pending: supported direct current-state update
+  [*] --> Pending: supported rows update / insert / _in_trash change
+  [*] --> Pending: supported normalized current-state update
   Pending --> Pending: dry-run / planner conversion without durable enqueue
   Pending --> Queued: durable outbox enqueue observed
   Pending --> Unsupported: known unsupported write class
@@ -1123,7 +1142,7 @@ The authoritative verification contract is:
 - pure unit tests for canonicalization, planners, guards, and conflict classifiers,
 - Effect integration tests against fake Notion, fake body adapter, and fake filesystem services,
 - SQLite integration tests for replay, crash recovery, migrations, outbox, and leases,
-- replica integration tests for `notion.sqlite` schema, generated views, write intents, rebuild, and public/internal boundary enforcement,
+- replica integration tests for `notion.sqlite` `rows`/`schema`/`schema_properties`, generated debug views, write intents, rebuild, and public/internal boundary enforcement,
 - filesystem tests for local paths, sidecars, object storage, and deletion semantics,
 - daemon tests for local and remote event coalescing,
 - live Notion tests for API semantics, capability preflight, current API-version behavior, and completeness boundaries that cannot be proven locally.
@@ -1133,8 +1152,9 @@ The authoritative verification contract is:
 Replica E2E must prove:
 
 - establishment creates `notion.sqlite` and projects observed rows/cells/schema/metadata,
-- generic tables and generated views agree for sampled rows,
-- local SQL insert into a typed mutation table produces a planner command in dry-run without settling the public change,
+- `rows`, `schema_properties`, normalized tables, and generated debug views agree for sampled rows,
+- local SQL insert/update/archive/restore through `rows` and typed CDC tables produce planner commands in dry-run without settling the public change,
+- `DELETE FROM rows` is rejected and never becomes a remote delete,
 - normal sync applies supported intents to disposable fake/live remotes and settles after read-after-write,
 - stale base hashes become conflicts rather than overwrites,
 - schema drift affecting a pending intent is guarded before apply,
@@ -1147,4 +1167,4 @@ Replica E2E must prove:
 - **DQ2 Workers:** Notion Workers syncs are optional Notion-hosted external-source projections. Current Worker syncs create and manage Worker-owned databases and do not replace arbitrary existing datasource sync, local filesystem reconciliation, SQLite authority, or outbox settlement.
 - **DQ3 Package split staging:** The conceptual `notion-domain` and `notion-sync-core` layers may initially live inside `@overeng/notion-datasource-sync` if APIs remain separated and extractable.
 - **DQ4 File upload support:** Observed Notion file URLs are temporary references. Editable file-byte sync may use durable File Upload API IDs only after additional live E2E proof for upload, expiry, and replacement behavior.
-- **DQ5 Writable generated views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against generated `notion_view_*` views may later be implemented with triggers that insert the same typed CDC rows. The current public API supports guarded writes through `notion_cells.value_json`, `notion_rows.in_trash`, and explicit typed mutation-table inserts so write semantics stay visible and testable.
+- **DQ5 Writable generated views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against generated `notion_view_*` debug views may later be implemented with triggers that insert the same typed CDC rows. The current public API supports guarded writes through canonical `rows` plus explicit typed mutation-table inserts so write semantics stay visible and testable.

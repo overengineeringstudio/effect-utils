@@ -41,7 +41,9 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts                       |
 | Data-source icon metadata        | Observed as stable identity when possible; writable icon sync is deferred                    |
 | Filtered query membership        | Does not classify row absence outside the explicit query contract                            |
-| Local generated views            | Read-only convenience views; writable cells/rows queue guarded intents through public tables |
+| Canonical `rows`                 | Primary writable replica table for one data source; property columns first, `_` system columns last |
+| `schema` / `schema_properties`   | Read-only metadata and column/property mapping; `schema_json` is not embedded in `rows` |
+| Local generated views            | Read-only debug views; writes go through `rows` or typed CDC tables |
 
 ## Unsupported Or Deferred
 
@@ -69,9 +71,9 @@ class must have a typed intent and guard model before it mutates Notion.
 
 | Edit class                      | Target state                                                                                                                                      |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Existing row cell edits         | Supported through `notion_cells.value_json` updates or explicit `notion_cell_changes` rows with base hashes                                       |
-| Row creation                    | Supported through explicit `notion_row_creates` rows with local client request keys, base schema guards, and returned `remote_page_id` settlement |
-| Row archive/restore             | Supported through explicit lifecycle rows in `notion_row_changes`; never inferred from SQL delete                                                 |
+| Existing row cell edits         | Supported through scalar/property `UPDATE rows SET ...` or explicit `notion_cell_changes` rows with base hashes                                  |
+| Row creation                    | Supported through `INSERT INTO rows (...)` normalized to row-create CDC with idempotency keys, base schema guards, and returned page-id settlement |
+| Row archive/restore             | Supported through `UPDATE rows SET _in_trash = 1/0` or explicit lifecycle CDC; never inferred from SQL delete                                     |
 | Body edits                      | Supported through NotionMD-backed `notion_body_changes` rows and body conflict guards                                                             |
 | Data-source metadata edits      | Supported through public metadata CDC for title/description, with owning-database patching and data-source metadata hash verification             |
 | Database metadata edits         | Supported for title/description through `notion_databases` plus `notion_metadata_changes(resource_type='database')`                             |
@@ -82,6 +84,7 @@ class must have a typed intent and guard model before it mutates Notion.
 | Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                                                           |
 | File bytes/local uploads        | Explicit staging fields exist, but execution is blocked until File Upload identity, retry, read-after-write, and cleanup are proven                |
 | Notion UI view writes           | `notion_view_changes` records typed requests, but create/update/delete stay blocked until stale-base, cleanup, and cache semantics are proven      |
+| Row deletion                    | `DELETE FROM rows` is rejected; use `_in_trash` for archive/restore lifecycle intents                                                             |
 
 ## Capability Preflight
 

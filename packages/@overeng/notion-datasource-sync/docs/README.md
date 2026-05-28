@@ -12,6 +12,9 @@ Start here:
 - [Getting Started](./getting-started.md): establish a workspace with
   `sync --from-notion`, query `notion.sqlite`, create write intents, and run
   established sync.
+- [Canonical SQLite Replica](./canonical-replica.md): the default 1:1
+  `notion.sqlite` contract with canonical writable `rows`, `schema`, and
+  `schema_properties`.
 - [CLI Reference](./cli.md): commands, flags, environment variables, and output
   shape.
 - [Sync Safety](./sync-safety.md): public replica, write intents, internal event

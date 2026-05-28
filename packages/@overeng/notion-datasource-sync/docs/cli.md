@@ -145,6 +145,9 @@ Stable generic tables:
 
 | Table                         | Access        | Purpose                                                                                                     |
 | ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `rows`                        | guarded write | Canonical 1:1 row surface for the primary data source; Notion property columns first, `_` system columns last |
+| `schema`                      | read view     | Replica binding, data-source metadata, schema hashes, and current primary-source identity                   |
+| `schema_properties`           | read view     | Property id/name/type/write-class to `rows` column mapping                                                  |
 | `notion_data_sources`         | read          | Data-source metadata, schema/metadata hashes, binding summary                                               |
 | `notion_databases`            | read          | Owning database/container metadata projected separately from data-source schema authority                   |
 | `notion_views`                | read          | Notion UI view inventory for the owning database/data source; not local generated SQL views                 |
@@ -169,41 +172,41 @@ Stable generic tables:
 | `notion_conflicts`            | read          | User-visible conflict records and resolution state                                                          |
 | `notion_sync_status`          | read          | Last sync, pending work, checkpoints, guards                                                                |
 
-Generated `notion_view_<data-source-slug>` views are read-only convenience views
-for querying adopted data sources with escaped property-name columns. They are
-local SQLite projections and are distinct from Notion UI views in
-`notion_views`; Notion view query results are never used as row membership or
-deletion authority. Generated SQL views are derived from the generic tables and
-can be rebuilt when Notion schema names change.
+`rows` is the default user-facing table. `schema_json` is intentionally absent
+from `rows`; inspect `schema` and `schema_properties` to understand the current
+data-source binding and column/property mapping. Generated
+`notion_view_<data-source-slug>` views and normalized `notion_*` tables are
+debug/correctness surfaces. Notion view query results are never used as row
+membership or deletion authority.
 
 Example reads:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select page_id, in_trash, properties_hash from notion_rows limit 10;"
+  'select _page_id, _in_trash, "Name", "Status" from rows limit 10;'
 
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  'select "Name", "Status" from notion_view_data_source_1 limit 10;'
+  'select column_name, property_id, property_name, property_type from schema_properties order by ordinal;'
 ```
 
 Example local edit through the current-state table:
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" <<'SQL'
-update notion_cells
-set value_json = '{"_tag":"title","plainText":"Done"}'
-where page_id = '11111111-1111-4111-8111-111111111111'
-  and property_id = 'title-property-id';
+update rows
+set "Name" = 'Done',
+    "Status" = 'Complete'
+where _page_id = '11111111-1111-4111-8111-111111111111';
 SQL
 ```
 
-That update is accepted only when the cell's `write_class` is `writable`. On
-success it keeps scalar helper columns and generated read views coherent with
-the local desired value, and queues a guarded `cell_patch` row in
-`notion_cell_changes`. The compatibility `notion_local_changes` surface mirrors
-that typed row. Repeated direct edits to the same cell before sync coalesce to
-one effective pending typed row with the latest desired value. Invalid canonical
-value JSON and computed/system cells fail before visible replica state changes.
+That update is accepted only when each mapped property's `write_class` is
+`writable` and the SQL value can be converted to canonical Notion property JSON.
+On success it queues guarded typed CDC. The compatibility
+`notion_local_changes` surface mirrors that typed row. Repeated direct edits to
+the same cell before sync coalesce to one effective pending typed row with the
+latest desired value. Invalid values and computed/system cells fail before
+visible replica state changes.
 
 Equivalent explicit local edit intent:
 
@@ -226,16 +229,30 @@ notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
 notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
+Supported direct `rows` mutations are scalar/property `UPDATE`, `INSERT` for a
+new row, and archive/restore through `_in_trash`:
+
+```sh
+sqlite3 "$PWD/notion-workspace/notion.sqlite" <<'SQL'
+insert into rows ("Name", "Status")
+values ('New launch task', 'Not started');
+
+update rows
+set _in_trash = 1
+where _page_id = '11111111-1111-4111-8111-111111111111';
+SQL
+```
+
+`DELETE FROM rows` is rejected. Destructive edits are never inferred from SQL
+delete or from missing local files.
+
 Supported typed public mutation tables today are `notion_cell_changes`,
 `notion_row_changes`, `notion_body_changes`, `notion_metadata_changes`,
-`notion_file_changes`, and `notion_conflict_resolutions`. Row creation uses
-`notion_row_creates`, not `INSERT INTO notion_rows`; the create path requires a
-stable `client_request_key`, `local_row_id`, initial canonical property values,
-and `base_schema_hash`, then settles the returned Notion `remote_page_id` after
-the guarded create-page command succeeds. `notion_row_changes.kind` supports
-`row_archive`, `row_restore`, and compatibility `row_create` rows, but new row
-creation should use `notion_row_creates`. Destructive edits are never inferred from
-`delete from notion_rows` or from missing local files.
+`notion_file_changes`, and `notion_conflict_resolutions`. Row creation is
+normalized into `notion_row_creates`; the create path requires a stable
+client-request key, local row id, initial canonical property values, and
+base-schema hash, then settles the returned Notion remote page id after the
+guarded create-page command succeeds.
 
 Body changes use `notion_body_changes` with `page_id`, `body_path`,
 `local_body_hash`, optional `local_body_content`, and `base_hash`; unsafe body
@@ -253,9 +270,9 @@ insert a `notion_file_changes(action='attach_external_url', page_id,
 property_id, base_hash)` row targeting an empty writable `files` property. The
 sync converts that into a guarded page-property patch and settles the CDC row
 after read-after-write. Local uploads, signed Notion-hosted URLs, replacement,
-deletion, preserving existing files, and direct `notion_cells.value_json` edits
-for `files` properties are fail-closed until file-upload identity and attachment
-lifecycle are modeled. Direct `people` cell edits are also fail-closed until
+deletion, preserving existing files, and direct `rows` edits for `files`
+properties are fail-closed until file-upload identity and attachment lifecycle
+are modeled. Direct `people` row/property edits are also fail-closed until
 deterministic accessible user identities and full paginated base values are
 modeled. Notion views are a separate future read/write surface.
 
@@ -266,6 +283,6 @@ for the same data source and property. This lets local SQL add back or add
 already-observed accessible targets without silently dropping unknown or
 unshared pages.
 
-Direct `notion_rows.in_trash` edits also use final-state CDC semantics. For
+Direct `rows._in_trash` edits also use final-state CDC semantics. For
 example, toggling `0 -> 1 -> 0` before sync cancels the pending direct archive
 instead of replaying an intermediate trash command against Notion.

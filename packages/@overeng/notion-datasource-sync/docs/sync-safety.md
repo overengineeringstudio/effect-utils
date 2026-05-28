@@ -34,21 +34,25 @@ Notion -> observe -> store.sqlite events -> project -> notion.sqlite
 notion.sqlite intents -> plan -> outbox -> Notion -> observe -> notion.sqlite
 ```
 
-The public replica has two kinds of surfaces:
+The public replica has three kinds of surfaces:
 
 | Surface                         | Write policy                                                                                |
 | ------------------------------- | ------------------------------------------------------------------------------------------- |
-| Generic current-state tables    | Guarded current-state edits for supported cells/row lifecycle; unsafe columns are read-only |
-| Generated `notion_view_*` views | Read-only ergonomic views over current rows/cells                                           |
+| Canonical `rows` table          | Guarded current-state edits, row inserts, and `_in_trash` lifecycle intents                 |
+| `schema` / `schema_properties`  | Read-only binding and property-to-column mapping                                            |
+| Normalized/debug tables         | Canonical JSON, hashes, CDC, conflicts, outbox/debug projections                            |
+| Generated `notion_view_*` views | Read-only debug views over current rows/cells                                               |
 | Typed CDC mutation tables       | Writable queues for local data edits, with base hashes and conflict policy                  |
 | `notion_local_changes`          | Compatibility projection over typed mutation rows                                           |
 | `notion_conflicts`              | Read-only conflict view; resolve through CLI commands                                       |
 
-Every write intent must name the target surface, current base hash, desired
-Notion-shaped value, and conflict policy. `sync --dry-run` validates these
-intents and shows planned commands without mutating Notion or settling the
-intents. Direct current-state edits are final-state CDC: repeated edits to the
-same cell or row lifecycle target supersede earlier pending direct changes.
+Every write intent must resolve to a target property/lifecycle surface, current
+base hash, desired Notion-shaped value, and conflict policy. `rows` hides the
+canonical JSON for ordinary scalar edits, but it does not bypass the typed CDC
+and outbox layer. `sync --dry-run` validates these intents and shows planned
+commands without mutating Notion or settling the intents. Direct current-state
+edits are final-state CDC: repeated edits to the same cell or row lifecycle
+target supersede earlier pending direct changes.
 Normal `sync` reads pending or previously queued public changes as planner
 input, performs Notion writes only after preflight reads pass, then re-reads
 and projects the result back into `notion.sqlite`. A public change is not hidden
@@ -56,14 +60,15 @@ from later scans merely because it was converted to planner input.
 
 The shipped typed CDC tables cover cells, row lifecycle/create requests, body
 pushes, metadata edits, schema edits, and conflict-resolution requests. Only the
-safe subset executes today: writable scalar/page-property cell patches, row
-archive/restore, body pushes that pass body-adapter safety and content-hash
-verification, data-source and database title/description metadata patches verified by
-post-write metadata hashes, conflict-resolution choices that can be applied
-through the store-backed conflict command path, and explicit row creates through
-`notion_row_creates`. Row creation uses local client request keys, schema-base
-guards, and durable returned `remote_page_id` settlement; ambiguous create
-outcomes fail into reconciliation instead of blindly retrying. Data-source
+safe subset executes today: writable scalar/page-property edits from `rows` or
+typed CDC, row archive/restore through `_in_trash`, row inserts that normalize
+to create CDC, body pushes that pass body-adapter safety and content-hash
+verification, data-source and database title/description metadata patches
+verified by post-write metadata hashes, and conflict-resolution choices that
+can be applied through the store-backed conflict command path. Row creation uses
+local client request keys, schema-base guards, and durable returned
+`remote_page_id` settlement; ambiguous create outcomes fail into reconciliation
+instead of blindly retrying. Data-source
 metadata CDC is container-backed: the live adapter patches the owning database
 title/description and accepts success only when a subsequent data-source
 retrieval has the expected canonical metadata hash; database metadata CDC uses
@@ -174,7 +179,7 @@ rewriting local values or applying broad migrations.
 
 | Property class                              | Local replica policy                                                                                       |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Title, rich text, number, checkbox          | Writable through `notion_cells.value_json` updates or explicit `cell_patch` intents when base hash matches |
+| Title, rich text, number, checkbox          | Writable through `rows` updates or explicit `cell_patch` intents when base hash matches                    |
 | Date, select, multi-select, status value    | Writable when option/status value semantics are fully observed and supported                               |
 | URL, email, phone                           | Writable through scalar cell intents with canonical Notion-shaped JSON                                     |
 | Relation                                    | Writable for remove/reorder/add from fully paginated bases when each added target is already observed in `notion_relation_targets`; unobserved targets fail closed |

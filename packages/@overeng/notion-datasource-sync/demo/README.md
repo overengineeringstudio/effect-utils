@@ -25,23 +25,30 @@ The showcase refreshes the demo page, ensures four current inline data sources,
 patches meaningful data-source descriptions through the datasource-sync metadata
 surface, tops them up to the requested row counts, observes them through
 datasource-sync with the live Notion adapter plus NotionMD body adapter, and
-appends a sanitized verification summary. Reruns reuse the current demo data
+appends a sanitized verification summary. Each data source is demonstrated as
+its own 1:1 `notion.sqlite` artifact with a canonical `rows` table rather than
+as one combined multi-source SQLite database. Reruns reuse the current demo data
 sources and archive stale extras so the page stays bounded without rebuilding
 hundreds of Notion pages each time.
 
 Current domains and cardinalities:
 
-- Projects: 12 rows with body materialization, URL, select, multi-select, date,
-  checkbox, number, and rich text properties.
-- Incidents: 30 rows with incident severity and operational metadata.
-- Customers: 48 rows with email, phone, ARR, renewal, plan, region, and health
-  properties.
-- Activity events: 500 rows proving high-cardinality paginated observation with
-  bounded live writes.
+- Projects DB: 12 rows with body materialization, URL, select, multi-select,
+  date, checkbox, number, and rich text properties. Demonstrates a medium-width
+  operational table and body synchronization.
+- Incidents DB: 30 rows with severity, owner/status metadata, timestamps, and
+  runbook-style fields. Demonstrates status-heavy incident tracking.
+- Customers DB: 48 rows with email, phone, ARR, renewal, plan, region, and
+  health properties. Demonstrates CRM-style scalar diversity.
+- Activity events DB: 500 rows proving high-cardinality paginated observation
+  with bounded live writes. Demonstrates a narrow event-log shape.
 
 The 500-row activity source proves datasource query pagination and row
 cardinality. Per-row property pagination and body materialization stay on the
 smaller sources so the live demo remains bounded under Notion API rate limits.
+No live/synced SQLite databases are checked in. Any fixture checked into this
+directory must be deterministic synthetic metadata, not private Notion content
+or a binary replica.
 
 `fixtures.json` records the stable page mapping and the expected automated
 surface. Live E2E scratch ledgers remain in local `tmp/` artifacts and the
