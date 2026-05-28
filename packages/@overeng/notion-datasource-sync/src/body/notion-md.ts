@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
@@ -9,6 +8,7 @@ import {
   NmdStateStore,
   parseNmdFile,
   pullPage,
+  sha256Digest,
   type NotionMdGatewayShape,
   type NmdStateStoreShape,
 } from '@overeng/notion-md'
@@ -53,8 +53,7 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: unknown
 }): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
-const sha256Hash = (value: string): Hash =>
-  decode({ schema: Hash, value: `sha256:${createHash('sha256').update(value).digest('hex')}` })
+const sha256Hash = (value: string): Hash => decode({ schema: Hash, value: sha256Digest(value) })
 
 const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date().toISOString() })
 

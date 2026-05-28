@@ -13,6 +13,11 @@ internal `.notion-datasource-sync/store.sqlite` remains the correctness,
 debugging, outbox, CDC, conflict, and rebuild layer; it is not the local data
 API.
 
+Schema discovery is automatic. `sync --from-notion` and subsequent observations
+read the live Notion data-source schema, populate `schema_properties` and
+`notion_properties`, and generate the `rows` property columns from that
+observation. A separate schema JSON file is not part of the normal workflow.
+
 ## Public Surfaces
 
 The canonical writable surface is `rows`.
@@ -28,6 +33,12 @@ outbox state, and generated debug views remain available as implementation and
 debug surfaces. They are the layer that makes `rows` safe: direct mutations on
 `rows` are translated to typed intents, validated, planned, verified, and then
 settled through normal sync.
+
+Read visibility is intentionally broader than write eligibility. Observed
+computed, people, relation, file, and unsupported properties stay visible in
+`schema_properties`, `notion_properties`, and `notion_cells` when their values
+can be represented, but direct `rows` writes are allowed only for property
+classes with complete values and modeled Notion write/verification behavior.
 
 ## Row Shape
 

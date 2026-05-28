@@ -96,11 +96,14 @@ export const DataSourceProjectionPayload = Schema.Struct({
   schemaProperties: Schema.optional(
     Schema.Array(
       Schema.Struct({
+        _tag: Schema.optional(Schema.Literal('DataSourcePropertySnapshot')),
         propertyId: PropertyId,
         name: Schema.optional(Schema.NonEmptyTrimmedString),
         type: Schema.optional(Schema.NonEmptyTrimmedString),
         configHash: Hash,
         writeClass: ProjectionPropertyWriteClass,
+        ordinal: Schema.optional(Schema.NonNegativeInt),
+        configJson: Schema.optional(Schema.String),
       }),
     ),
   ),

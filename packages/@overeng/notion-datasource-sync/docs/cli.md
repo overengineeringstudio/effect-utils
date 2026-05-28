@@ -36,19 +36,19 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 
 ## Shared Flags
 
-| Flag                       | Meaning                                                                                   |
-| -------------------------- | ----------------------------------------------------------------------------------------- |
-| `--from-notion`            | Existing Notion data-source id, or a database URL that resolves to one child data source  |
-| `--limit`, `--max-rows`    | Dry-run-only establishment preview row cap; writes nothing and reports capped query state |
-| `--store`                  | SQLite store path                                                                         |
-| `--root-id`                | Local sync root partition                                                                 |
-| `--data-source-id`         | Notion data source id                                                                     |
-| `--workspace-root`         | Local workspace root                                                                      |
-| `--query-contract-json`    | Explicit query contract JSON                                                              |
-| `--schema-properties-json` | Schema-property observations for write planning                                           |
-| `--required-capabilities`  | Comma-separated capability preflight list                                                 |
-| `--max-executor-steps`     | Bound outbox execution in `push`, `sync`, and `watch`                                     |
-| `--no-materialize-bodies`  | Observe properties/schema without local body materialization                              |
+| Flag                       | Meaning                                                                                            |
+| -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `--from-notion`            | Existing Notion data-source id, or a database URL that resolves to one child data source           |
+| `--limit`, `--max-rows`    | Dry-run-only establishment preview row cap; writes nothing and reports capped query state          |
+| `--store`                  | SQLite store path                                                                                  |
+| `--root-id`                | Local sync root partition                                                                          |
+| `--data-source-id`         | Notion data source id                                                                              |
+| `--workspace-root`         | Local workspace root                                                                               |
+| `--query-contract-json`    | Explicit query contract JSON                                                                       |
+| `--schema-properties-json` | Advanced/debug override for schema-property observations; normal sync discovers schema from Notion |
+| `--required-capabilities`  | Comma-separated capability preflight list                                                          |
+| `--max-executor-steps`     | Bound outbox execution in `push`, `sync`, and `watch`                                              |
+| `--no-materialize-bodies`  | Observe properties/schema without local body materialization                                       |
 
 ## Commands
 
@@ -143,38 +143,41 @@ Read and write the local replica through `<workspace-root>/notion.sqlite`.
 
 Stable generic tables:
 
-| Table                         | Access        | Purpose                                                                                                     |
-| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
-| `rows`                        | guarded write | Canonical 1:1 row surface for the primary data source; Notion property columns first, `_` system columns last |
-| `schema`                      | read view     | Replica binding, data-source metadata, schema hashes, and current primary-source identity                   |
-| `schema_properties`           | read view     | Property id/name/type/write-class to `rows` column mapping                                                  |
-| `notion_data_sources`         | read          | Data-source metadata, schema/metadata hashes, binding summary                                               |
-| `notion_databases`            | read          | Owning database/container metadata projected separately from data-source schema authority                   |
-| `notion_views`                | read          | Notion UI view inventory for the owning database/data source; not local generated SQL views                 |
-| `notion_properties`           | read          | Property ID, display name, type, config, write capability                                                   |
-| `notion_rows`                 | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents                       |
-| `notion_cells`                | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents        |
-| `notion_relation_targets`     | read          | Relation target IDs observed through complete page-property pagination for guarded relation additions        |
-| `notion_bodies`               | read          | Body path, body hashes, materialization/adapter state                                                       |
-| `notion_cell_changes`         | write         | Typed CDC log for local cell edits queued for guarded sync                                                  |
-| `notion_row_changes`          | write         | Typed CDC log for local row lifecycle/create edits queued for guarded sync                                  |
-| `notion_row_creates`          | write         | Explicit row-create CDC with local idempotency keys and returned Notion `remote_page_id` settlement         |
-| `notion_rows_effective`       | read          | Confirmed rows plus pending local creates for local desired-state inspection                                |
-| `notion_cells_effective`      | read          | Confirmed cells plus initial values for pending local creates                                               |
-| `notion_body_changes`         | write         | Typed CDC log for body pushes using body path/base hash semantics                                           |
-| `notion_metadata_changes`     | write         | Typed CDC log for data-source and database title/description metadata edits with post-write hash settlement |
-| `notion_schema_changes`       | write         | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation   |
-| `notion_file_assets`          | write         | Explicit file staging records; external URLs are supported, local uploads remain fail-closed                |
-| `notion_file_changes`         | write         | Typed CDC log for attaching staged external URL files to empty `files` properties                           |
+| Table                         | Access        | Purpose                                                                                                               |
+| ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `rows`                        | guarded write | Canonical 1:1 row surface for the primary data source; Notion property columns first, `_` system columns last         |
+| `schema`                      | read view     | Replica binding, data-source metadata, schema hashes, and current primary-source identity                             |
+| `schema_properties`           | read view     | Property id/name/type/write-class to `rows` column mapping                                                            |
+| `notion_data_sources`         | read          | Data-source metadata, schema/metadata hashes, binding summary                                                         |
+| `notion_databases`            | read          | Owning database/container metadata projected separately from data-source schema authority                             |
+| `notion_views`                | read          | Notion UI view inventory for the owning database/data source; not local generated SQL views                           |
+| `notion_properties`           | read          | Property ID, display name, type, config, write capability                                                             |
+| `notion_rows`                 | guarded write | Row/page identity, lifecycle, parent, row hashes; `in_trash` queues lifecycle intents                                 |
+| `notion_cells`                | guarded write | Lossless property values plus scalar query helper columns; writable `value_json` queues cell intents                  |
+| `notion_relation_targets`     | read          | Relation target IDs observed through complete page-property pagination for guarded relation additions                 |
+| `notion_bodies`               | read          | Body path, body hashes, materialization/adapter state                                                                 |
+| `notion_cell_changes`         | write         | Typed CDC log for local cell edits queued for guarded sync                                                            |
+| `notion_row_changes`          | write         | Typed CDC log for local row lifecycle/create edits queued for guarded sync                                            |
+| `notion_row_creates`          | write         | Explicit row-create CDC with local idempotency keys and returned Notion `remote_page_id` settlement                   |
+| `notion_rows_effective`       | read          | Confirmed rows plus pending local creates for local desired-state inspection                                          |
+| `notion_cells_effective`      | read          | Confirmed cells plus initial values for pending local creates                                                         |
+| `notion_body_changes`         | write         | Typed CDC log for body pushes using body path/base hash semantics                                                     |
+| `notion_metadata_changes`     | write         | Typed CDC log for data-source and database title/description metadata edits with post-write hash settlement           |
+| `notion_schema_changes`       | write         | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation             |
+| `notion_file_assets`          | write         | Explicit file staging records; external URLs are supported, local uploads remain fail-closed                          |
+| `notion_file_changes`         | write         | Typed CDC log for attaching staged external URL files to empty `files` properties                                     |
 | `notion_view_changes`         | write         | Typed CDC requests for Notion UI view writes; execution remains fail-closed until view write reconciliation is proven |
-| `notion_conflict_resolutions` | write         | Typed CDC requests for user conflict-resolution actions                                                     |
-| `notion_local_changes`        | compatibility | Unified local-change projection for inspection and older explicit inserts                                   |
-| `notion_conflicts`            | read          | User-visible conflict records and resolution state                                                          |
-| `notion_sync_status`          | read          | Last sync, pending work, checkpoints, guards                                                                |
+| `notion_conflict_resolutions` | write         | Typed CDC requests for user conflict-resolution actions                                                               |
+| `notion_local_changes`        | compatibility | Unified local-change projection for inspection and older explicit inserts                                             |
+| `notion_conflicts`            | read          | User-visible conflict records and resolution state                                                                    |
+| `notion_sync_status`          | read          | Last sync, pending work, checkpoints, guards                                                                          |
 
-`rows` is the default user-facing table. `schema_json` is intentionally absent
-from `rows`; inspect `schema` and `schema_properties` to understand the current
-data-source binding and column/property mapping. Generated
+`rows` is the default user-facing table. Its property columns are generated from
+the schema observed from Notion during `sync --from-notion` and later
+observations; users do not provide a schema JSON file in the normal workflow.
+`schema_json` is intentionally absent from `rows`; inspect `schema` and
+`schema_properties` to understand the current data-source binding and
+column/property mapping. Generated
 `notion_view_<data-source-slug>` views and normalized `notion_*` tables are
 debug/correctness surfaces. Notion view query results are never used as row
 membership or deletion authority.
@@ -263,6 +266,12 @@ database title/description metadata rows execute with post-write hash
 settlement. Public schema CDC rows are present but fail closed until
 post-schema hash reconciliation is modeled. Conflict-resolution rows execute
 only through the store-backed conflict command path for safe choices.
+
+`--schema-properties-json` remains available for focused tests and advanced
+debugging against synthetic gateways. It should not be part of ordinary
+establishment or sync commands; live/default observation derives
+`schema_properties`, `notion_properties`, `notion_property_column_plan`,
+`notion_cells`, and `rows` columns from the retrieved Notion data source.
 
 External URL file attachments use two explicit tables. Insert one
 `notion_file_assets(source_type='external_url', name, external_url)` row, then

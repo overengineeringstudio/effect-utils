@@ -7,6 +7,7 @@ import {
   CommandId,
   DatabaseId,
   DataSourceId,
+  DataSourcePropertySnapshot,
   Hash,
   NotionApiContract,
   NotionRequestId,
@@ -126,6 +127,16 @@ export const DataSourceObserved = Schema.TaggedStruct('DataSourceObserved', {
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceObserved' })
 export type DataSourceObserved = typeof DataSourceObserved.Type
 
+/** Records the ordered data-source schema properties observed from the live gateway. */
+export const DataSourceSchemaObserved = Schema.TaggedStruct('DataSourceSchemaObserved', {
+  ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'DataSourceSchemaObserved' }),
+  dataSourceId: DataSourceId,
+  requestId: NotionRequestId,
+  schemaHash: Hash,
+  schemaProperties: Schema.Array(DataSourcePropertySnapshot),
+}).annotations({ identifier: 'NotionDatasourceSync.DataSourceSchemaObserved' })
+export type DataSourceSchemaObserved = typeof DataSourceSchemaObserved.Type
+
 /** Records the observation of Notion data-source presentation metadata independently from schema. */
 export const DataSourceMetadataObserved = Schema.TaggedStruct('DataSourceMetadataObserved', {
   ...eventEnvelopeFields({ family: 'RemoteObserved', eventType: 'DataSourceMetadataObserved' }),
@@ -152,7 +163,6 @@ export const DataSourceViewObserved = Schema.TaggedStruct('DataSourceViewObserve
   viewJson: Schema.String,
 }).annotations({ identifier: 'NotionDatasourceSync.DataSourceViewObserved' })
 export type DataSourceViewObserved = typeof DataSourceViewObserved.Type
-
 
 /** Records the observation of a single Notion database row (page) during a query scan, including its properties hash and trash state. */
 export const RowObserved = Schema.TaggedStruct('RowObserved', {
@@ -355,6 +365,7 @@ export const SyncEvent = Schema.Union(
   SyncBindingRecorded,
   ApiContractObserved,
   DataSourceObserved,
+  DataSourceSchemaObserved,
   DataSourceMetadataObserved,
   DataSourceViewObserved,
   RowObserved,

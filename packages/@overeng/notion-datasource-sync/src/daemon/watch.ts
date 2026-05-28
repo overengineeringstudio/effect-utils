@@ -92,7 +92,7 @@ export type WatchDaemonOptions = {
   readonly dataSourceId: DataSourceId
   readonly workspaceRoot: AbsolutePath
   readonly queryContract: QueryContract
-  readonly schemaProperties: ReadonlyArray<SchemaPropertyObservation>
+  readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
   readonly statePath: string
@@ -374,7 +374,9 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           dataSourceId: options.dataSourceId,
           workspaceRoot: options.workspaceRoot,
           queryContract: options.queryContract,
-          schemaProperties: options.schemaProperties,
+          ...(options.schemaProperties === undefined
+            ? {}
+            : { schemaProperties: options.schemaProperties }),
           ...(options.requiredCapabilities === undefined
             ? {}
             : { requiredCapabilities: options.requiredCapabilities }),

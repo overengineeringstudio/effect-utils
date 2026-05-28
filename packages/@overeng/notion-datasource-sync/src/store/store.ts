@@ -1978,9 +1978,53 @@ export class NotionSyncStore {
                WHERE root_id = ? AND data_source_id = ?`,
             )
             .run(event.rootId, event.dataSourceId)
+
+          for (const property of payload.schemaProperties) {
+            this.#db
+              .prepare(
+                `INSERT INTO schema_property_projection (
+                   root_id,
+                   data_source_id,
+                   property_id,
+                   schema_hash,
+                   config_hash,
+                   write_class,
+                   observed_event_id,
+                   updated_at
+                 )
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(root_id, data_source_id, property_id) DO UPDATE SET
+                   schema_hash = excluded.schema_hash,
+                   config_hash = excluded.config_hash,
+                   write_class = excluded.write_class,
+                   observed_event_id = excluded.observed_event_id,
+                   updated_at = excluded.updated_at`,
+              )
+              .run(
+                event.rootId,
+                event.dataSourceId,
+                property.propertyId,
+                event.schemaHash,
+                property.configHash,
+                property.writeClass,
+                event.eventId,
+                currentIso(this.#now),
+              )
+          }
         }
 
-        for (const property of payload?.schemaProperties ?? []) {
+        break
+      }
+      case 'DataSourceSchemaObserved': {
+        const payload = decodePayload({ event: event, decode: decodeDataSourceProjectionPayload })
+        this.#db
+          .prepare(
+            `DELETE FROM schema_property_projection
+             WHERE root_id = ? AND data_source_id = ?`,
+          )
+          .run(event.rootId, event.dataSourceId)
+
+        for (const property of payload?.schemaProperties ?? event.schemaProperties) {
           this.#db
             .prepare(
               `INSERT INTO schema_property_projection (

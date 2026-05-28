@@ -27,9 +27,11 @@ surface, tops them up to the requested row counts, observes them through
 datasource-sync with the live Notion adapter plus NotionMD body adapter, and
 appends a sanitized verification summary. Each data source is demonstrated as
 its own 1:1 `notion.sqlite` artifact with a canonical `rows` table rather than
-as one combined multi-source SQLite database. Reruns reuse the current demo data
-sources and archive stale extras so the page stays bounded without rebuilding
-hundreds of Notion pages each time.
+as one combined multi-source SQLite database. The showcase uses default schema
+observation: no schema JSON is supplied, and each artifact derives
+`schema_properties`, `notion_cells`, and `rows` columns from the live Notion
+properties. Reruns reuse the current demo data sources and archive stale extras
+so the page stays bounded without rebuilding hundreds of Notion pages each time.
 
 Current domains and cardinalities:
 

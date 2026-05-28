@@ -8,7 +8,7 @@ import { FetchHttpClient } from '@effect/platform'
 import { NodeRuntime } from '@effect/platform-node'
 import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
-import { NotionConfigLive } from '@overeng/notion-effect-client'
+import { NotionConfigLive, parseNotionUuid } from '@overeng/notion-effect-client'
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
@@ -179,7 +179,7 @@ export type CliContext = {
   readonly dataSourceId: typeof DataSourceId.Type
   readonly workspaceRoot: typeof AbsolutePath.Type
   readonly queryContract: QueryContract
-  readonly schemaProperties: ReadonlyArray<SchemaPropertyObservation>
+  readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
   readonly rowLimit?: number
@@ -302,21 +302,7 @@ const makeWorkspaceCliConfig = ({
   })
 
 const parseNotionDataSourceRef = (value: string): typeof DataSourceId.Type => {
-  const compact = value.replaceAll('-', '')
-  const direct = /^[0-9a-f]{32}$/iu.test(compact) === true ? compact : undefined
-  const fromUrl = direct ?? value.match(/[0-9a-f]{32}/iu)?.[0]
-  const parsed = fromUrl ?? value
-  const normalized =
-    /^[0-9a-f]{32}$/iu.test(parsed) === true
-      ? [
-          parsed.slice(0, 8),
-          parsed.slice(8, 12),
-          parsed.slice(12, 16),
-          parsed.slice(16, 20),
-          parsed.slice(20),
-        ].join('-')
-      : parsed
-  return decode({ schema: DataSourceId, value: normalized })
+  return decode({ schema: DataSourceId, value: parseNotionUuid(value) ?? value })
 }
 
 const parseNotionRemoteRef = (value: string): NotionRemoteRef => {
@@ -1226,7 +1212,7 @@ export const parseCliContext = ({
         })
   const schemaProperties =
     optionalFlag({ flags, name: 'schema-properties-json' }) === undefined
-      ? []
+      ? undefined
       : (decodeJson({
           schema: Schema.Array(SchemaPropertyObservationJson),
           value: requiredFlag({ flags, name: 'schema-properties-json' }),
@@ -1243,7 +1229,7 @@ export const parseCliContext = ({
     dataSourceId: discovered.dataSourceId,
     workspaceRoot: discovered.workspaceRoot,
     queryContract,
-    schemaProperties,
+    ...(schemaProperties === undefined ? {} : { schemaProperties }),
     ...(requiredCapabilities === undefined ? {} : { requiredCapabilities }),
     ...(flags.has('no-materialize-bodies') === false && commandDryRun !== true
       ? {}

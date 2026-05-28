@@ -42,8 +42,10 @@ desired data-source id explicitly.
 This creates `notion.sqlite`, `.notion-datasource-sync/config.json`, and
 `.notion-datasource-sync/store.sqlite` under the workspace root, validates the
 Notion data source, records the local binding, pulls remote schema/metadata/rows,
-projects them into the local replica, and materializes row body artifacts when
-body materialization is enabled.
+derives `rows` property columns from the live Notion schema, projects values
+into the local replica, and materializes row body artifacts when body
+materialization is enabled. No user-maintained schema JSON file is required for
+normal establishment or sync.
 
 First establishment is remote-to-local only. It does not scan local files, plan
 local writes, enqueue outbox commands, or mutate Notion.

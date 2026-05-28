@@ -17,6 +17,7 @@ import {
 } from 'effect'
 
 import { NotionConfigLive } from '@overeng/notion-effect-client'
+import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import {
@@ -153,19 +154,7 @@ const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 const logJson = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value, null, 2))
 
-const parseNotionPageRef = (value: string): string | undefined => {
-  const compact = value.replaceAll('-', '')
-  const direct = /^[0-9a-f]{32}$/iu.test(compact) === true ? compact : undefined
-  const fromUrl = direct ?? value.match(/[0-9a-f]{32}/iu)?.[0]
-  if (fromUrl === undefined) return undefined
-  return [
-    fromUrl.slice(0, 8),
-    fromUrl.slice(8, 12),
-    fromUrl.slice(12, 16),
-    fromUrl.slice(16, 20),
-    fromUrl.slice(20),
-  ].join('-')
-}
+const parseNotionPageRef = (value: string): string | undefined => parseNotionUuid(value)
 
 const safeJsonError = (error: unknown): Record<string, unknown> => {
   if (typeof error === 'object' && error !== null && '_tag' in error) {

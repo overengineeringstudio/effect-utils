@@ -8,6 +8,7 @@ import {
   NotionDataSources,
   NotionDatabases,
   NotionPages,
+  SchemaHelpers,
   NotionViews,
   type NotionApiError,
   type NotionPage,
@@ -36,13 +37,15 @@ import { PagePropertyItemPage, QueryRowsPage } from '../core/commands.ts'
 import {
   DatabaseId,
   DataSourceId,
+  DataSourcePropertySnapshot,
   DataSourceSnapshot,
   DataSourceViewSnapshot,
   NotionRequestId,
   PageId,
   PagePropertyItem,
   PageSnapshot,
-  type PropertyId,
+  PropertyId,
+  PropertyName,
   QueryCursor,
   RowPageSnapshot,
   type CapabilityName,
@@ -51,7 +54,12 @@ import {
   ViewId,
 } from '../core/domain.ts'
 import type { NotionGatewayError } from '../core/errors.ts'
-import { blocked, guardStaleSurfaceBase, type GuardName } from '../core/guards.ts'
+import {
+  blocked,
+  guardStaleSurfaceBase,
+  type GuardName,
+  type PropertyWriteClass,
+} from '../core/guards.ts'
 import { NotionDataSourceGateway, type NotionDataSourceGatewayShape } from '../core/ports.ts'
 import {
   allGatewayCapabilities,
@@ -347,6 +355,196 @@ const richTextWrite = (plainText: string): ReadonlyArray<unknown> => [
   { type: 'text', text: { content: plainText } },
 ]
 
+const propertyWriteClassFromType = (propertyType: string): PropertyWriteClass => {
+  switch (propertyType) {
+    case 'formula':
+    case 'rollup':
+    case 'created_time':
+    case 'created_by':
+    case 'last_edited_time':
+    case 'last_edited_by':
+    case 'unique_id':
+    case 'verification':
+      return 'computed'
+    case 'title':
+    case 'rich_text':
+    case 'number':
+    case 'checkbox':
+    case 'date':
+    case 'select':
+    case 'multi_select':
+    case 'status':
+    case 'email':
+    case 'url':
+    case 'phone_number':
+    case 'relation':
+    case 'people':
+    case 'files':
+      return 'writable'
+    default:
+      return 'unsupported'
+  }
+}
+
+const schemaPropertiesFromRemote = (
+  properties: Record<string, unknown>,
+): ReadonlyArray<typeof DataSourcePropertySnapshot.Type> =>
+  SchemaHelpers.getPropertiesFromRecord(properties).flatMap((property, ordinal) => {
+    const raw = Object.values(properties).find(
+      (value) => isRecord(value) === true && value.id === property.id,
+    )
+    if (raw === undefined) return []
+
+    return [
+      DataSourcePropertySnapshot.make({
+        _tag: 'DataSourcePropertySnapshot',
+        propertyId: PropertyId.make(property.id),
+        name: PropertyName.make(property.name),
+        type: property._tag,
+        configHash: canonicalHash(raw),
+        writeClass: propertyWriteClassFromType(property._tag),
+        ordinal,
+        configJson: JSON.stringify(raw),
+      }),
+    ]
+  })
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const canonicalOptionFromRemote = (option: unknown): CanonicalOptionValue | null =>
+  isRecord(option) === false
+    ? null
+    : {
+        _tag: 'CanonicalOptionValue',
+        ...(typeof option.id === 'string' ? { id: PropertyId.make(option.id) } : {}),
+        name: PropertyName.make(String(option.name ?? '')),
+        ...(typeof option.color === 'string' ? { color: option.color } : {}),
+      }
+
+const canonicalFileFromRemote = (file: unknown) => {
+  if (isRecord(file) === false || typeof file.name !== 'string' || file.name.length === 0) {
+    return undefined
+  }
+  const externalUrl =
+    isRecord(file.external) === true && typeof file.external.url === 'string'
+      ? file.external.url
+      : undefined
+  return {
+    _tag: 'CanonicalFileValue' as const,
+    name: file.name,
+    identityHash: canonicalHash(file),
+    ...(externalUrl === undefined ? {} : { externalUrl }),
+  }
+}
+
+const canonicalPropertyValueJsonFromPageProperty = (property: unknown): string | undefined => {
+  if (isRecord(property) === false || typeof property.type !== 'string') return undefined
+
+  switch (property.type) {
+    case 'title':
+    case 'rich_text':
+      return Array.isArray(property[property.type]) === true
+        ? JSON.stringify({
+            _tag: property.type,
+            plainText: richTextPlainText(property[property.type] as readonly unknown[]),
+          })
+        : undefined
+    case 'number':
+      return typeof property.number === 'number'
+        ? JSON.stringify({ _tag: 'number', value: property.number })
+        : JSON.stringify({ _tag: 'empty' })
+    case 'checkbox':
+      return JSON.stringify({ _tag: 'checkbox', checked: property.checkbox === true })
+    case 'date':
+      return isRecord(property.date) === true && typeof property.date.start === 'string'
+        ? JSON.stringify({
+            _tag: 'date',
+            start: property.date.start,
+            end: typeof property.date.end === 'string' ? property.date.end : null,
+          })
+        : JSON.stringify({ _tag: 'empty' })
+    case 'select':
+    case 'status':
+      return JSON.stringify({
+        _tag: property.type,
+        option: canonicalOptionFromRemote(property[property.type]),
+      })
+    case 'multi_select':
+      return JSON.stringify({
+        _tag: 'multi_select',
+        options:
+          Array.isArray(property.multi_select) === true
+            ? property.multi_select.flatMap((option) => {
+                const canonical = canonicalOptionFromRemote(option)
+                return canonical === null ? [] : [canonical]
+              })
+            : [],
+      })
+    case 'relation':
+      return JSON.stringify({
+        _tag: 'relation',
+        pageIds:
+          Array.isArray(property.relation) === true
+            ? property.relation.flatMap((relation) =>
+                isRecord(relation) === true && typeof relation.id === 'string'
+                  ? [PageId.make(relation.id)]
+                  : [],
+              )
+            : [],
+      })
+    case 'people':
+      return JSON.stringify({
+        _tag: 'people',
+        userIds:
+          Array.isArray(property.people) === true
+            ? property.people.flatMap((person) =>
+                isRecord(person) === true && typeof person.id === 'string' ? [person.id] : [],
+              )
+            : [],
+      })
+    case 'files':
+      return JSON.stringify({
+        _tag: 'files',
+        files:
+          Array.isArray(property.files) === true
+            ? property.files.flatMap((file) => {
+                const canonical = canonicalFileFromRemote(file)
+                return canonical === undefined ? [] : [canonical]
+              })
+            : [],
+      })
+    case 'email':
+    case 'url':
+    case 'phone_number':
+      return JSON.stringify({
+        _tag: property.type,
+        value: typeof property[property.type] === 'string' ? property[property.type] : null,
+      })
+    case 'formula':
+    case 'rollup':
+    case 'created_time':
+    case 'created_by':
+    case 'last_edited_time':
+    case 'last_edited_by':
+      return JSON.stringify({ _tag: 'computed', valueHash: canonicalHash(property[property.type]) })
+    default:
+      return undefined
+  }
+}
+
+const propertyValuesJsonFromRemotePage = (
+  properties: NotionGatewayPage['properties'],
+): Record<PropertyId, string> =>
+  Object.fromEntries(
+    Object.entries(properties).flatMap(([fallbackName, property]) => {
+      const record = isRecord(property) === true ? property : {}
+      const propertyId = typeof record.id === 'string' ? record.id : fallbackName
+      const valueJson = canonicalPropertyValueJsonFromPageProperty(property)
+      return valueJson === undefined ? [] : [[PropertyId.make(propertyId), valueJson] as const]
+    }),
+  ) as Record<PropertyId, string>
+
 const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) => {
   const metadata = canonicalDataSourceMetadataFromRemote(dataSource)
   return DataSourceSnapshot.make({
@@ -358,12 +556,24 @@ const dataSourceSnapshotFromRemote = (dataSource: NotionGatewayDataSource) => {
     requestId: unavailableRequestId,
     observedAt: observedNow(),
     schemaHash: canonicalHash(dataSource.properties),
+    schemaProperties: schemaPropertiesFromRemote(dataSource.properties),
     metadataHash: dataSourceMetadataHash(metadata),
     metadataJson: JSON.stringify(metadata),
     metadataTitlePlainText: metadata.titlePlainText,
     metadataDescriptionPlainText: metadata.descriptionPlainText,
   })
 }
+
+/** Project raw Notion data-source property definitions into datasource-sync schema observations. */
+export const schemaPropertyObservationsFromRemoteProperties = (
+  properties: Readonly<Record<string, unknown>>,
+): ReadonlyArray<typeof DataSourcePropertySnapshot.Type> => schemaPropertiesFromRemote(properties)
+
+/** Project a full Notion data source into datasource-sync schema-observation descriptors. */
+export const schemaPropertyObservationsFromRemoteDataSource = (
+  dataSource: NotionGatewayDataSource,
+): ReturnType<typeof schemaPropertyObservationsFromRemoteProperties> =>
+  schemaPropertyObservationsFromRemoteProperties(dataSource.properties)
 
 const pageSnapshotFromRemote = (page: NotionGatewayPage) =>
   PageSnapshot.make({
@@ -375,6 +585,7 @@ const pageSnapshotFromRemote = (page: NotionGatewayPage) =>
     requestId: unavailableRequestId,
     observedAt: observedNow(),
     propertiesHash: canonicalHash(page.properties),
+    propertyValuesJson: propertyValuesJsonFromRemotePage(page.properties),
     inTrash: page.in_trash,
   })
 
@@ -488,7 +699,8 @@ const propertyValueToNotion = (
     case 'phone_number':
       return Effect.succeed({ phone_number: value.value })
     case 'files':
-      return value.files.length > 0 && value.files.every((file) => file.externalUrl !== undefined)
+      return value.files.length > 0 &&
+        value.files.every((file) => file.externalUrl !== undefined) === true
         ? Effect.succeed({
             files: value.files.map((file) => ({
               type: 'external',
@@ -1065,13 +1277,13 @@ export const makeNotionEffectClientGatewayClient = (
               databaseId,
               dataSourceId,
               pageSize: 100,
-              ...(Option.isSome(cursor) ? { startCursor: cursor.value } : {}),
+              ...(Option.isSome(cursor) === true ? { startCursor: cursor.value } : {}),
             }),
           ).pipe(
             Effect.map((page) =>
               Option.some([
                 Chunk.fromIterable(page.results as ReadonlyArray<unknown>),
-                page.hasMore && Option.isSome(page.nextCursor)
+                page.hasMore === true && Option.isSome(page.nextCursor) === true
                   ? Option.some(Option.some(page.nextCursor.value))
                   : Option.none(),
               ] as const),

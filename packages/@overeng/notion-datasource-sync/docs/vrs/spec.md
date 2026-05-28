@@ -304,42 +304,47 @@ workspace/
 
 The public replica has a canonical user schema plus normalized debug surfaces:
 
-| Table                         | Key shape                             | Purpose                                                       |
-| ----------------------------- | ------------------------------------- | ------------------------------------------------------------- |
-| `rows`                        | `(_page_id)` plus local pending ids   | Canonical writable 1:1 data table for the primary data source |
-| `schema`                      | `(data_source_id)`                    | Read view for replica binding, metadata, schema hashes, and sync identity |
-| `schema_properties`           | `(property_id)`                       | Read view for property id/name/type/write-class to `rows` column mapping |
-| `notion_data_sources`         | `(data_source_id)`                    | Root binding plus schema/metadata hashes and observation IDs  |
-| `notion_databases`            | `(database_id)`                       | Owning database/container metadata and authority identity      |
-| `notion_views`                | `(view_id)`                           | Read-only Notion UI view inventory, separate from SQL views    |
-| `notion_properties`           | `(data_source_id, property_id)`       | Property name, type, config hash, writable/read-only class    |
-| `notion_rows`                 | `(page_id)`                           | Page identity, lifecycle flags, and row hashes                |
-| `notion_cells`                | `(page_id, property_id)`              | Lossless `value_json` plus scalar query helper columns        |
-| `notion_relation_targets`     | `(data_source_id, property_id, target_page_id)` | Observed accessible relation targets for guarded additions |
-| `notion_bodies`               | `(page_id)`                           | Body path, adapter state, base/current hashes, lossy guards   |
-| `notion_cell_changes`         | `(change_id)`                         | Typed local CDC rows for cell patches                         |
-| `notion_row_changes`          | `(change_id)`                         | Typed local CDC rows for row lifecycle/create changes         |
-| `notion_row_creates`          | `(change_id)`                         | Explicit row-create CDC with local idempotency and page IDs   |
-| `notion_rows_effective`       | `(page_id/local_row_id)`              | Confirmed rows plus pending local creates                     |
-| `notion_cells_effective`      | `(page_id/local_row_id, property_id)` | Confirmed cells plus pending create initial values            |
-| `notion_body_changes`         | `(change_id)`                         | Typed local CDC rows for body pushes                          |
-| `notion_metadata_changes`     | `(change_id)`                         | Typed local CDC rows for metadata patches                     |
-| `notion_schema_changes`       | `(change_id)`                         | Typed local CDC rows for conservative schema operations       |
-| `notion_file_assets`          | `(asset_id)`                          | Explicit file staging records, including local-upload lifecycle fields |
-| `notion_file_changes`         | `(change_id)`                         | Typed local CDC rows for file attachment requests             |
-| `notion_view_changes`         | `(change_id)`                         | Typed local CDC rows for Notion UI view write requests; currently fail-closed |
-| `notion_conflict_resolutions` | `(resolution_id)`                     | Typed local CDC rows for conflict-resolution requests         |
-| `notion_local_changes`        | `(change_id)`                         | Unified compatibility projection over local change rows       |
-| `notion_conflicts`            | `(conflict_id)`                       | Open/resolved conflicts projected for user inspection         |
-| `notion_sync_status`          | `(root_id)`                           | Replica counts, pending counts, and last projection timestamp |
+| Table                         | Key shape                                       | Purpose                                                                       |
+| ----------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| `rows`                        | `(_page_id)` plus local pending ids             | Canonical writable 1:1 data table for the primary data source                 |
+| `schema`                      | `(data_source_id)`                              | Read view for replica binding, metadata, schema hashes, and sync identity     |
+| `schema_properties`           | `(property_id)`                                 | Read view for property id/name/type/write-class to `rows` column mapping      |
+| `notion_data_sources`         | `(data_source_id)`                              | Root binding plus schema/metadata hashes and observation IDs                  |
+| `notion_databases`            | `(database_id)`                                 | Owning database/container metadata and authority identity                     |
+| `notion_views`                | `(view_id)`                                     | Read-only Notion UI view inventory, separate from SQL views                   |
+| `notion_properties`           | `(data_source_id, property_id)`                 | Property name, type, config hash, writable/read-only class                    |
+| `notion_rows`                 | `(page_id)`                                     | Page identity, lifecycle flags, and row hashes                                |
+| `notion_cells`                | `(page_id, property_id)`                        | Lossless `value_json` plus scalar query helper columns                        |
+| `notion_relation_targets`     | `(data_source_id, property_id, target_page_id)` | Observed accessible relation targets for guarded additions                    |
+| `notion_bodies`               | `(page_id)`                                     | Body path, adapter state, base/current hashes, lossy guards                   |
+| `notion_cell_changes`         | `(change_id)`                                   | Typed local CDC rows for cell patches                                         |
+| `notion_row_changes`          | `(change_id)`                                   | Typed local CDC rows for row lifecycle/create changes                         |
+| `notion_row_creates`          | `(change_id)`                                   | Explicit row-create CDC with local idempotency and page IDs                   |
+| `notion_rows_effective`       | `(page_id/local_row_id)`                        | Confirmed rows plus pending local creates                                     |
+| `notion_cells_effective`      | `(page_id/local_row_id, property_id)`           | Confirmed cells plus pending create initial values                            |
+| `notion_body_changes`         | `(change_id)`                                   | Typed local CDC rows for body pushes                                          |
+| `notion_metadata_changes`     | `(change_id)`                                   | Typed local CDC rows for metadata patches                                     |
+| `notion_schema_changes`       | `(change_id)`                                   | Typed local CDC rows for conservative schema operations                       |
+| `notion_file_assets`          | `(asset_id)`                                    | Explicit file staging records, including local-upload lifecycle fields        |
+| `notion_file_changes`         | `(change_id)`                                   | Typed local CDC rows for file attachment requests                             |
+| `notion_view_changes`         | `(change_id)`                                   | Typed local CDC rows for Notion UI view write requests; currently fail-closed |
+| `notion_conflict_resolutions` | `(resolution_id)`                               | Typed local CDC rows for conflict-resolution requests                         |
+| `notion_local_changes`        | `(change_id)`                                   | Unified compatibility projection over local change rows                       |
+| `notion_conflicts`            | `(conflict_id)`                                 | Open/resolved conflicts projected for user inspection                         |
+| `notion_sync_status`          | `(root_id)`                                     | Replica counts, pending counts, and last projection timestamp                 |
 
-`rows` is the default user-facing table. Columns are ordered as Notion
-properties first and `_` system columns last. `schema_json` is not present in
-`rows`; users inspect schema through `schema` and `schema_properties`.
+`rows` is the default user-facing table. Columns are generated from the latest
+observed Notion data-source schema, ordered as Notion properties first and `_`
+system columns last. `schema_json` is not present in `rows`; users inspect
+schema through `schema` and `schema_properties`.
 `schema_properties` records the stable mapping from each Notion property id to
 its current `rows` column, display name, Notion type, ordinal, and write class.
 Display names are convenient SQL labels only; property ids remain authoritative
 for planning, hashing, conflict detection, and settlement.
+
+Observation uses the live retrieved data-source schema by default. Explicit
+schema-property JSON is an advanced fake/debug override; it is not required for
+`sync --from-notion`, watch observation, or normal established sync.
 
 Generated read views named `notion_view_<data-source-id-slug>` are derived from
 `notion_rows`, `notion_properties`, and `notion_cells`. They are rebuildable
@@ -350,7 +355,10 @@ authority.
 `notion_cells.value_json` is the lossless canonical value in the normalized
 debug layer. Scalar helper columns currently include `value_text`,
 `value_number`, and `value_boolean`; they exist for querying and conversion
-diagnostics only. Updating supported scalar/property columns on `rows` is the
+diagnostics only. Read visibility is broader than write eligibility: computed,
+relation, people, file, and unsupported values remain visible when observed,
+while direct `rows` writes are accepted only for modeled writable classes with
+complete values. Updating supported scalar/property columns on `rows` is the
 ordinary direct local edit path. The replica resolves the row column through
 `schema_properties`, converts the SQL value to canonical Notion-shaped JSON,
 updates local desired state, and queues a guarded `cell_patch` intent. Remote
@@ -844,19 +852,19 @@ Every guard must appear in the E2E plan with at least one verification level.
 
 This section names the intentional unsupported surfaces for the current implementation. Unsupported means "typed blocked state, conflict, or capability failure"; it must not degrade into silent omission, empty value interpretation, or best-effort mutation.
 
-| Boundary                      | Current supported subset                                                                                  | Fail-closed cases that remain intentional                                                                                                               |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Schema updates                | Add property, rename property, and additive select/multi-select options with matching base schema hash    | property deletion, type conversion, status updates, status option changes, option removal/rename/replacement, property order changes                    |
-| Computed/generated properties | Observation and canonical hashing when complete                                                           | writes to formula, rollup, created/last edited metadata, created by, last edited by, unique ID, verification, and other generated values                |
-| Page-property pagination      | Cursor-backed property item retrieval for completing supported value hashes                               | incomplete streams, unshared relation targets, unsupported rollup semantics, or capability-missing page-property reads                                  |
-| Relation writes               | Remove/reorder/add from complete paginated relation bases when added targets were observed through the same relation property | unobserved or inaccessible targets, incomplete bases, and relation arrays over Notion's 100-item write cap                              |
+| Boundary                      | Current supported subset                                                                                                                                    | Fail-closed cases that remain intentional                                                                                                               |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Schema updates                | Add property, rename property, and additive select/multi-select options with matching base schema hash                                                      | property deletion, type conversion, status updates, status option changes, option removal/rename/replacement, property order changes                    |
+| Computed/generated properties | Observation and canonical hashing when complete                                                                                                             | writes to formula, rollup, created/last edited metadata, created by, last edited by, unique ID, verification, and other generated values                |
+| Page-property pagination      | Cursor-backed property item retrieval for completing supported value hashes                                                                                 | incomplete streams, unshared relation targets, unsupported rollup semantics, or capability-missing page-property reads                                  |
+| Relation writes               | Remove/reorder/add from complete paginated relation bases when added targets were observed through the same relation property                               | unobserved or inaccessible targets, incomplete bases, and relation arrays over Notion's 100-item write cap                                              |
 | Files                         | External URL attach through explicit staging for empty writable `files` properties; canonical references exclude expiring signed URLs from durable identity | direct cell edits, file byte upload, replacement, deletion, preserving existing file arrays, and signed URL identity                                    |
-| People                        | Observation and canonical hashes when complete                                                           | direct cell edits until deterministic accessible user identities and full paginated bases are modeled                                                   |
-| Body sync                     | NotionMD observation, materialization, repair, local body-content planning, and guarded body push         | truncated markdown, unknown block ambiguity, synced-page unsupported writes, child-page/database deletion without explicit approval, hash-only commands |
-| Page metadata and lifecycle   | Explicit row property, trash, restore, and body surfaces only                                             | title/icon/cover/lock/parent/status mutation through the body adapter or any implicit metadata mutation inferred from body sync                         |
-| Query membership              | Complete query checkpoints scoped by filter, sort, page size, API version, high-watermark, and membership | 10k cap exhaustion, changed query contracts, partial scans, filtered absence reused as delete proof                                                     |
-| Live/soak verification        | Secret-gated fixture ledger plus deterministic fake daemon soak                                           | production readiness without representative live schema/body/page-property/high-cardinality/daemon soak proof                                           |
-| Public replica                | `notion.sqlite` generic read tables, generated read views, and explicit write intents                     | direct mutation of internal store tables, writable generated views, broad SQL-trigger schema migrations, or remote writes inferred from SQL deletes     |
+| People                        | Observation and canonical hashes when complete                                                                                                              | direct cell edits until deterministic accessible user identities and full paginated bases are modeled                                                   |
+| Body sync                     | NotionMD observation, materialization, repair, local body-content planning, and guarded body push                                                           | truncated markdown, unknown block ambiguity, synced-page unsupported writes, child-page/database deletion without explicit approval, hash-only commands |
+| Page metadata and lifecycle   | Explicit row property, trash, restore, and body surfaces only                                                                                               | title/icon/cover/lock/parent/status mutation through the body adapter or any implicit metadata mutation inferred from body sync                         |
+| Query membership              | Complete query checkpoints scoped by filter, sort, page size, API version, high-watermark, and membership                                                   | 10k cap exhaustion, changed query contracts, partial scans, filtered absence reused as delete proof                                                     |
+| Live/soak verification        | Secret-gated fixture ledger plus deterministic fake daemon soak                                                                                             | production readiness without representative live schema/body/page-property/high-cardinality/daemon soak proof                                           |
+| Public replica                | `notion.sqlite` generic read tables, generated read views, and explicit write intents                                                                       | direct mutation of internal store tables, writable generated views, broad SQL-trigger schema migrations, or remote writes inferred from SQL deletes     |
 
 ## Schema Semantics
 
@@ -1070,6 +1078,12 @@ sync dry-run suppresses replica mutation, intent settlement, event/outbox/remote
 writes, and body materialization while using the existing store and replica for
 read-only planning.
 
+Large-cardinality acceptance is currently bounded rather than fully streaming:
+query observation progresses by Notion pages, records capped/incomplete status
+when a limit or API cap prevents completeness, and the demo includes a 500-row
+source. Full streaming public-replica rebuilds remain a follow-up before
+claiming unbounded local projection memory behavior.
+
 Structured output uses one envelope:
 
 ```ts
@@ -1151,8 +1165,9 @@ The authoritative verification contract is:
 
 Replica E2E must prove:
 
-- establishment creates `notion.sqlite` and projects observed rows/cells/schema/metadata,
+- establishment without schema JSON creates `notion.sqlite` and projects observed rows/cells/schema/metadata,
 - `rows`, `schema_properties`, normalized tables, and generated debug views agree for sampled rows,
+- `rows` property columns are generated from live schema before `_` columns and never include `schema_json`,
 - local SQL insert/update/archive/restore through `rows` and typed CDC tables produce planner commands in dry-run without settling the public change,
 - `DELETE FROM rows` is rejected and never becomes a remote delete,
 - normal sync applies supported intents to disposable fake/live remotes and settles after read-after-write,

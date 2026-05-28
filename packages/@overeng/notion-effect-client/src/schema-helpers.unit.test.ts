@@ -55,6 +55,19 @@ const makeDataSource = (properties: Record<string, unknown>) =>
 
 Vitest.describe('SchemaHelpers', () => {
   Vitest.describe('getProperties', () => {
+    Vitest.it('decodes typed property definitions directly from a raw property record', () => {
+      const props = SchemaHelpers.getPropertiesFromRecord({
+        B: { id: 'prop-b', type: 'title', title: {} },
+        A: { id: 'prop-a', type: 'checkbox', checkbox: {} },
+        Unknown: { id: 'prop-x', type: 'made_up', made_up: {} },
+      })
+
+      expect(props.map((p) => [p.name, p._tag])).toEqual([
+        ['A', 'checkbox'],
+        ['B', 'title'],
+      ])
+    })
+
     Vitest.it('decodes typed property definitions from database schema properties', () => {
       const db = makeDatabase({
         B: { id: 'prop-b', type: 'title', title: {} },

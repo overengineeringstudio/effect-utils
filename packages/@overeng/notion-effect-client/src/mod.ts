@@ -68,6 +68,12 @@ export type {
   Page as NotionPage,
   PagePropertyItem as NotionPagePropertyItem,
 } from '@overeng/notion-effect-schema'
+export {
+  compactNotionUuid,
+  formatNotionUuid,
+  notionObjectUrl,
+  parseNotionUuid,
+} from '@overeng/notion-effect-schema'
 // Services
 export { NotionDatabases } from './databases.ts'
 // Error

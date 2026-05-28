@@ -9,7 +9,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { PagePropertyItemPage } from '../core/commands.ts'
 import {
   AbsolutePath,
+  DataSourcePropertySnapshot,
+  DataSourceSnapshot,
   PropertyId,
+  PropertyName,
   type Hash as HashType,
   type PropertyId as PropertyIdType,
 } from '../core/domain.ts'
@@ -23,11 +26,13 @@ import { initOneShotSync, pullOneShotSync, syncOneShot } from '../sync/sync.ts'
 import {
   decode,
   defaultQueryContract,
+  fixedObservedAt,
   hash,
   makeFakeClock,
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
+  pageSnapshot,
   testIds,
   type FakeGatewayInput,
 } from '../testing/harness.ts'
@@ -200,7 +205,10 @@ const scalarSchemaProperties = [
 ]
 
 const scalarPropertyPages = [
-  propertyPage({ propertyId: scalarPropertyIds.title, value: { _tag: 'title', plainText: 'Task' } }),
+  propertyPage({
+    propertyId: scalarPropertyIds.title,
+    value: { _tag: 'title', plainText: 'Task' },
+  }),
   propertyPage({
     propertyId: scalarPropertyIds.richText,
     value: { _tag: 'rich_text', plainText: 'Initial notes' },
@@ -236,12 +244,69 @@ const scalarPropertyPages = [
   }),
 ]
 
+const dataSourceWithSchemaProperties = (
+  schemaProperties: ReadonlyArray<CanonicalSchemaPropertyFixture>,
+) =>
+  decode({
+    schema: DataSourceSnapshot,
+    value: {
+      _tag: 'DataSourceSnapshot',
+      dataSourceId: testIds.dataSourceId,
+      parentDatabaseId: testIds.databaseId,
+      requestId: testIds.requestId,
+      observedAt: fixedObservedAt,
+      schemaHash: hash('schema-with-properties'),
+      schemaProperties: schemaProperties.map((property, ordinal) =>
+        decode({
+          schema: DataSourcePropertySnapshot,
+          value: {
+            _tag: 'DataSourcePropertySnapshot',
+            propertyId: property.propertyId,
+            name: decode({ schema: PropertyName, value: property.name }),
+            type: property.type,
+            configHash: property.configHash,
+            writeClass: property.writeClass,
+            ordinal,
+            configJson: JSON.stringify({ id: property.propertyId, type: property.type }),
+          },
+        }),
+      ),
+      metadataHash: hash('metadata-with-properties'),
+      metadataJson: JSON.stringify({
+        _tag: 'CanonicalDataSourceMetadata',
+        titlePlainText: 'Harness data source',
+        descriptionPlainText: 'Harness data-source description',
+        icon: { _tag: 'none' },
+      }),
+      metadataTitlePlainText: 'Harness data source',
+      metadataDescriptionPlainText: 'Harness data-source description',
+    },
+  })
+
+const inlinePropertyValuesJson = (
+  propertyPages: NonNullable<FakeGatewayInput['propertyPages']>,
+): Record<PropertyIdType, string> =>
+  Object.fromEntries(
+    propertyPages.flatMap((page) => {
+      const valueJson = page.items[0]?.valueJson
+      return valueJson === undefined ? [] : [[page.propertyId, valueJson] as const]
+    }),
+  ) as Record<PropertyIdType, string>
+
 const withProjectedReplica = async ({
   schemaProperties,
   propertyPages,
-  gateway = makeFakeGatewayHarness({ propertyPages }),
+  pullSchemaProperties = schemaProperties,
+  omitSchemaProperties = false,
+  gateway = makeFakeGatewayHarness({
+    dataSource: dataSourceWithSchemaProperties(schemaProperties),
+    pages: [pageSnapshot({ propertyValuesJson: inlinePropertyValuesJson(propertyPages) })],
+    propertyPages,
+  }),
 }: {
   readonly schemaProperties: ReadonlyArray<CanonicalSchemaPropertyFixture>
+  readonly pullSchemaProperties?: ReadonlyArray<CanonicalSchemaPropertyFixture>
+  readonly omitSchemaProperties?: boolean
   readonly propertyPages: NonNullable<FakeGatewayInput['propertyPages']>
   readonly gateway?: ReturnType<typeof makeFakeGatewayHarness>
 }) => {
@@ -264,7 +329,7 @@ const withProjectedReplica = async ({
       dataSourceId: testIds.dataSourceId,
       workspaceRoot,
       queryContract: defaultQueryContract(),
-      schemaProperties,
+      ...(omitSchemaProperties === true ? {} : { schemaProperties: pullSchemaProperties }),
       now: clock.now,
     }),
     { gateway: gateway.gateway },
@@ -309,6 +374,84 @@ const pendingCdcCount = (db: DatabaseSync): number =>
   )
 
 describe('canonical rows SQLite surface contract', () => {
+  it('auto-discovers schema when schema JSON is omitted and projects rows before system columns', async () => {
+    const projected = await withProjectedReplica({
+      schemaProperties: scalarSchemaProperties,
+      omitSchemaProperties: true,
+      propertyPages: scalarPropertyPages,
+    })
+
+    try {
+      const db = new DatabaseSync(projected.replicaPath, { readOnly: true })
+      try {
+        expect(tableNames(db)).toEqual(
+          expect.arrayContaining([
+            'rows',
+            'schema_properties',
+            'notion_properties',
+            'notion_property_column_plan',
+            'notion_cells',
+          ]),
+        )
+        const columns = tableColumns(db, 'rows')
+        expect(columns).not.toContain('schema_json')
+        const firstMetadataColumn = columns.findIndex((column) => column.startsWith('_'))
+        expect(columns.slice(0, firstMetadataColumn)).toEqual([
+          'Name',
+          'Notes',
+          'Count',
+          'Done',
+          'Due',
+          'Status',
+          'Phase',
+          'Email',
+          'URL',
+          'Phone',
+        ])
+        expect(columns.slice(firstMetadataColumn).every((column) => column.startsWith('_'))).toBe(
+          true,
+        )
+        expect(
+          db
+            .prepare(
+              `SELECT column_name, property_id, property_name, property_type
+               FROM schema_properties
+               ORDER BY ordinal`,
+            )
+            .all(),
+        ).toEqual(
+          scalarSchemaProperties.map((property) => ({
+            column_name: property.name,
+            property_id: property.propertyId,
+            property_name: property.name,
+            property_type: property.type,
+          })),
+        )
+        expect(
+          db
+            .prepare(
+              `SELECT value_json
+               FROM notion_cells
+               WHERE property_id = ?
+               ORDER BY page_id`,
+            )
+            .get(scalarPropertyIds.richText),
+        ).toEqual({
+          value_json: JSON.stringify({ _tag: 'rich_text', plainText: 'Initial notes' }),
+        })
+        expect(db.prepare(`SELECT "Name", "Notes", "Count" FROM rows`).get()).toEqual({
+          Name: 'Task',
+          Notes: 'Initial notes',
+          Count: 1,
+        })
+      } finally {
+        db.close()
+      }
+    } finally {
+      projected.storeFixture.cleanup()
+    }
+  })
+
   it('projects rows schema and schema_properties with deterministic column order', async () => {
     const projected = await withProjectedReplica({
       schemaProperties: scalarSchemaProperties,
@@ -444,7 +587,10 @@ describe('canonical rows SQLite surface contract', () => {
           queryContract: defaultQueryContract(),
           schemaProperties: collidingSchemaProperties.map((property) =>
             property.propertyId === renamedProperty
-              ? { ...property, name: 'Renamed', configHash: hash('config-renamed-after') }
+              ? Object.assign({}, property, {
+                  name: 'Renamed',
+                  configHash: hash('config-renamed-after'),
+                })
               : property,
           ),
           now: projected.clock.now,
@@ -492,6 +638,7 @@ describe('canonical rows SQLite surface contract', () => {
   it('queues scalar update archive restore and create CDC through rows then settles via fake gateway', async () => {
     const projected = await withProjectedReplica({
       schemaProperties: scalarSchemaProperties,
+      omitSchemaProperties: true,
       propertyPages: scalarPropertyPages,
     })
 
@@ -548,9 +695,7 @@ describe('canonical rows SQLite surface contract', () => {
 
         db.prepare(`UPDATE rows SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
         expect(canonicalChangeRows(db)).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ kind: 'row_archive' }),
-          ]),
+          expect.arrayContaining([expect.objectContaining({ kind: 'row_archive' })]),
         )
 
         const source = db
@@ -564,9 +709,9 @@ describe('canonical rows SQLite surface contract', () => {
         expect(canonicalChangeRows(db)).toEqual(
           expect.arrayContaining([expect.objectContaining({ kind: 'row_create' })]),
         )
-        expect(() =>
-          db.prepare(`DELETE FROM rows WHERE _page_id = ?`).run(testIds.pageId),
-        ).toThrow(/delete/i)
+        expect(() => db.prepare(`DELETE FROM rows WHERE _page_id = ?`).run(testIds.pageId)).toThrow(
+          /delete/i,
+        )
         expect(source.schema_hash).toEqual(expect.any(String))
       } finally {
         db.close()
@@ -586,7 +731,6 @@ describe('canonical rows SQLite surface contract', () => {
           dataSourceId: testIds.dataSourceId,
           workspaceRoot: projected.workspaceRoot,
           queryContract: defaultQueryContract(),
-          schemaProperties: scalarSchemaProperties,
           localIntents: intents,
           maxExecutorSteps: 32,
           now: projected.clock.now,
@@ -611,6 +755,7 @@ describe('canonical rows SQLite surface contract', () => {
   it('queues restore CDC through rows for an archived row', async () => {
     const projected = await withProjectedReplica({
       schemaProperties: scalarSchemaProperties,
+      omitSchemaProperties: true,
       propertyPages: scalarPropertyPages,
     })
 
@@ -708,6 +853,7 @@ describe('canonical rows SQLite surface contract', () => {
     ]
     const projected = await withProjectedReplica({
       schemaProperties,
+      omitSchemaProperties: true,
       propertyPages: [
         ...scalarPropertyPages,
         propertyPage({
