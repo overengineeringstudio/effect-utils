@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -27,6 +28,13 @@ import {
   spanNames,
   statusSpanAttributes,
 } from '../observability/observability.ts'
+import {
+  applyReplicaConflictResolutions,
+  projectReplicaFromSyncStore,
+  readPendingReplicaChanges,
+  replicaChangesToPlannerIntents,
+  settleReplicaChangesAfterSync,
+} from '../replica/replica.ts'
 import type { NotionSyncStore } from '../store/store.ts'
 import type { SchemaPropertyObservation } from '../sync/observation.ts'
 import { syncOneShot, type OneShotSyncResult } from '../sync/sync.ts'
@@ -88,6 +96,7 @@ export type WatchDaemonRunResult = {
  */
 export type WatchDaemonOptions = {
   readonly store: NotionSyncStore
+  readonly storePath?: string
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceId
   readonly workspaceRoot: AbsolutePath
@@ -347,6 +356,44 @@ const interruptOnTimeout = <TValue, TError, TContext>({
         ),
       )
 
+const readPendingReplicaPlannerInputs = ({ options }: { readonly options: WatchDaemonOptions }) => {
+  const replicaPath = options.storePath
+  if (
+    replicaPath === undefined ||
+    replicaPath === ':memory:' ||
+    existsSync(replicaPath) === false
+  ) {
+    return { changes: [] as const, intents: [] as const, replicaPath }
+  }
+  const changes = readPendingReplicaChanges(replicaPath)
+  applyReplicaConflictResolutions({
+    changes,
+    replicaPath,
+    store: options.store,
+    rootId: options.rootId,
+  })
+  const intents = replicaChangesToPlannerIntents({
+    changes: changes.filter((change) => change.kind !== 'conflict_resolution'),
+    replicaPath,
+  })
+  return { changes, intents, replicaPath }
+}
+
+const projectReplicaIfWritable = ({
+  options,
+  replicaPath,
+}: {
+  readonly options: WatchDaemonOptions
+  readonly replicaPath: string | undefined
+}): void => {
+  if (replicaPath === undefined || replicaPath === ':memory:') return
+  projectReplicaFromSyncStore({
+    syncStorePath: replicaPath,
+    replicaPath,
+    rootId: options.rootId,
+  })
+}
+
 /**
  * Executes one full sync cycle under the `notion.datasource.daemon.pass` span.
  *
@@ -414,6 +461,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         },
       })
 
+      const replicaInputs = yield* Effect.sync(() => readPendingReplicaPlannerInputs({ options }))
       const syncCycle = syncOneShot({
         store: options.store,
         rootId: options.rootId,
@@ -429,13 +477,29 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         ...(options.materializeBodies === undefined
           ? {}
           : { materializeBodies: options.materializeBodies }),
+        localIntents: replicaInputs.intents,
         maxExecutorSteps: options.maxExecutorSteps ?? 8,
         leaseToken:
           options.leaseToken ??
           defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId }),
         leaseDurationMs: options.leaseDurationMs ?? 60_000,
         now,
-      })
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            if (replicaInputs.replicaPath === undefined || replicaInputs.replicaPath === ':memory:')
+              return
+            settleReplicaChangesAfterSync({
+              changes: replicaInputs.changes,
+              replicaPath: replicaInputs.replicaPath,
+              store: options.store,
+              rootId: options.rootId,
+              decisions: result.push.plan.decisions,
+            })
+            projectReplicaIfWritable({ options, replicaPath: replicaInputs.replicaPath })
+          }),
+        ),
+      )
       const sync = yield* interruptOnTimeout({
         effect: interruptOnAbort({
           effect: syncCycle,

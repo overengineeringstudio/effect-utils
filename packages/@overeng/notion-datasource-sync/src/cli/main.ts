@@ -240,6 +240,63 @@ const projectReplicaIfWritable = ({
   })
 }
 
+const statusWithReplicaPending = ({
+  context,
+  status,
+}: {
+  readonly context: CliContext
+  readonly status: OneShotSyncStatus
+}): OneShotSyncStatus => {
+  if (
+    context.storePath === undefined ||
+    context.storePath === ':memory:' ||
+    existsSync(context.storePath) === false
+  ) {
+    return status
+  }
+
+  const db = new DatabaseSync(context.storePath, { readOnly: true })
+  try {
+    const row = db
+      .prepare(
+        `SELECT pending_local_changes, conflicts_open
+         FROM sync_status
+         LIMIT 1`,
+      )
+      .get() as
+      | {
+          readonly pending_local_changes: number | bigint
+          readonly conflicts_open: number | bigint
+        }
+      | undefined
+    if (row === undefined) return status
+
+    const pending = status.counts.pending + Number(row.pending_local_changes)
+    const conflict = status.counts.conflict + Number(row.conflicts_open)
+    const state: OneShotSyncStatus['state'] =
+      conflict > 0
+        ? 'conflict'
+        : status.counts.blocked > 0
+          ? 'blocked'
+          : pending > 0
+            ? 'pending'
+            : 'clean'
+
+    return {
+      ...status,
+      state,
+      counts: {
+        ...status.counts,
+        clean: state === 'clean' ? 1 : 0,
+        pending,
+        conflict,
+      },
+    }
+  } finally {
+    db.close()
+  }
+}
+
 const rootIdForDataSource = (dataSourceId: typeof DataSourceId.Type): SyncRootIdType =>
   decode({ schema: SyncRootId, value: `data-source:${dataSourceId}` })
 
@@ -605,7 +662,10 @@ const runCliCommandEffect = ({
         envelope({
           command: command._tag,
           context,
-          result: readOneShotSyncStatus({ store: context.store, rootId: context.rootId }),
+          result: statusWithReplicaPending({
+            context,
+            status: readOneShotSyncStatus({ store: context.store, rootId: context.rootId }),
+          }),
         }),
       )
     case 'watch':

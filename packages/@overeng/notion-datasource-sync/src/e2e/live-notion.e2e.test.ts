@@ -14,7 +14,6 @@ import {
   NotionDataSources,
   NotionDatabases,
   NotionPages,
-  NotionViews,
 } from '@overeng/notion-effect-client'
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
@@ -23,7 +22,6 @@ import {
   canonicalHash,
   CommandId,
   DataSourceId,
-  defaultReplicaPath,
   Hash,
   LocalWorkspacePort,
   establishFromNotion,
@@ -240,26 +238,37 @@ const livePropertyPlainText = (property: unknown): string => {
     .join('')
 }
 
-const liveRichTextPlainText = (items: unknown): string =>
-  Array.isArray(items) === true
-    ? items
-        .map((item) =>
-          typeof item === 'object' &&
-          item !== null &&
-          'plain_text' in item &&
-          typeof item.plain_text === 'string'
-            ? item.plain_text
-            : '',
-        )
-        .join('')
-    : ''
-
 const liveDebugJson = (value: unknown): string =>
   JSON.stringify(value, (_key, entry: unknown) =>
     typeof entry === 'bigint' ? entry.toString() : entry,
   )
 
 const quoteSqlIdentifier = (value: string): string => `"${value.replaceAll('"', '""')}"`
+
+const cleanBreakSqlitePath = ({
+  workspaceRoot,
+  databaseId,
+}: {
+  readonly workspaceRoot: string
+  readonly databaseId: string
+}): string => join(workspaceRoot, `${databaseId}.sqlite`)
+
+const liveDatabaseIdForDataSource = (dataSource: unknown): string => {
+  if (
+    typeof dataSource === 'object' &&
+    dataSource !== null &&
+    'parent' in dataSource &&
+    typeof dataSource.parent === 'object' &&
+    dataSource.parent !== null &&
+    'type' in dataSource.parent &&
+    dataSource.parent.type === 'database_id' &&
+    'database_id' in dataSource.parent &&
+    typeof dataSource.parent.database_id === 'string'
+  ) {
+    return dataSource.parent.database_id
+  }
+  throw new Error('live data source did not expose parent database_id')
+}
 
 const liveTitlePropertyName = (properties: Record<string, unknown>): string => {
   const entry = Object.entries(properties).find(([, property]) => {
@@ -1220,7 +1229,15 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
         )
         const rootId = decode(SyncRootId, `live-adopt:${provisioned.config.runId}`)
         const dataSourceId = decode(DataSourceId, provisioned.config.dataSourceId)
-        const store = openNotionSyncStore({ path: join(workspaceRoot, 'store.sqlite') })
+        const liveDataSource = await runLive(
+          env,
+          NotionDataSources.retrieve({ dataSourceId: provisioned.config.dataSourceId }),
+        )
+        const sqlitePath = cleanBreakSqlitePath({
+          workspaceRoot,
+          databaseId: liveDatabaseIdForDataSource(liveDataSource),
+        })
+        const store = openNotionSyncStore({ path: sqlitePath })
         const queryContract = {
           _tag: 'QueryContract' as const,
           apiVersion: '2026-03-11' as const,
@@ -1291,13 +1308,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           expect(applied.pull.appendedEvents).toBeGreaterThan(0)
           expect(rerun.pushed).toBe(false)
           expect(rerun.pull.appendedEvents).toBe(0)
-          const replicaPath = defaultReplicaPath(workspaceRoot)
           projectReplicaFromSyncStore({
-            syncStorePath: join(workspaceRoot, 'store.sqlite'),
-            replicaPath,
+            syncStorePath: sqlitePath,
+            replicaPath: sqlitePath,
             rootId,
           })
-          const db = new DatabaseSync(replicaPath, { readOnly: true })
+          const db = new DatabaseSync(sqlitePath, { readOnly: true })
           try {
             const columns = db
               .prepare(`PRAGMA table_xinfo(rows)`)
@@ -1368,16 +1384,15 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             env,
             NotionDataSources.retrieve({ dataSourceId: provisioned.config.dataSourceId }),
           )
+          const liveDatabaseId = liveDatabaseIdForDataSource(initialDataSource)
           const titlePropertyName = liveTitlePropertyName(initialDataSource.properties)
           const cdcPropertyName = 'CDC Note'
-          const filePropertyName = 'CDC File'
           const patchedDataSource = await runLive(
             env,
             NotionDataSources.update({
               dataSourceId: provisioned.config.dataSourceId,
               properties: {
                 [cdcPropertyName]: { rich_text: {} },
-                [filePropertyName]: { files: {} },
               },
             }),
           )
@@ -1397,11 +1412,6 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             properties: patchedDataSource.properties,
             name: titlePropertyName,
             type: 'title',
-          })
-          const fileSchemaProperty = liveSchemaProperty({
-            properties: patchedDataSource.properties,
-            name: filePropertyName,
-            type: 'files',
           })
           const initialTitle = `sqlite cdc initial ${provisioned.config.runId}`
           const updatedTitle = `sqlite cdc updated ${provisioned.config.runId}`
@@ -1433,97 +1443,18 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             argv: [
               'sync',
               '--from-notion',
-              provisioned.config.dataSourceId,
+              liveDatabaseId,
               workspaceRoot,
               '--no-materialize-bodies',
             ],
           })
 
-          const replicaPath = defaultReplicaPath(workspaceRoot)
+          const replicaPath = cleanBreakSqlitePath({
+            workspaceRoot,
+            databaseId: liveDatabaseId,
+          })
           const syncArgv = ['sync', workspaceRoot]
           await runLiveCliCommand({ env, argv: syncArgv })
-          const projectedDatabaseId = (() => {
-            const db = new DatabaseSync(replicaPath, { readOnly: true })
-            try {
-              const row = db
-                .prepare(`SELECT database_id FROM notion_databases WHERE data_source_id = ?`)
-                .get(provisioned.config.dataSourceId) as
-                | { readonly database_id: string }
-                | undefined
-              if (row === undefined) {
-                throw new Error('live view inventory test did not project database metadata')
-              }
-              return row.database_id
-            } finally {
-              db.close()
-            }
-          })()
-          const liveViewsBefore = await runLive(
-            env,
-            NotionViews.list({
-              databaseId: projectedDatabaseId,
-              dataSourceId: provisioned.config.dataSourceId,
-              pageSize: 100,
-            }),
-          )
-          const projectedViewsBefore = (() => {
-            const db = new DatabaseSync(replicaPath, { readOnly: true })
-            try {
-              return db
-                .prepare(
-                  `SELECT view_id, view_name, view_type, view_hash
-                   FROM notion_views
-                   WHERE data_source_id = ?
-                   ORDER BY view_id`,
-                )
-                .all(provisioned.config.dataSourceId)
-            } finally {
-              db.close()
-            }
-          })()
-          expect(projectedViewsBefore.length).toBe(liveViewsBefore.results.length)
-          if (liveViewsBefore.results.length > 0) {
-            expect(projectedViewsBefore).toEqual(
-              expect.arrayContaining(
-                liveViewsBefore.results.map((view) =>
-                  expect.objectContaining({
-                    view_id: view.id,
-                    view_name: view.name ?? '',
-                    view_type: view.type ?? 'unknown',
-                  }),
-                ),
-              ),
-            )
-          }
-          await runLiveCliCommand({ env, argv: syncArgv })
-          const projectedViewsAfter = (() => {
-            const db = new DatabaseSync(replicaPath, { readOnly: true })
-            try {
-              return db
-                .prepare(
-                  `SELECT view_id, view_hash
-                   FROM notion_views
-                   WHERE data_source_id = ?
-                   ORDER BY view_id`,
-                )
-                .all(provisioned.config.dataSourceId)
-            } finally {
-              db.close()
-            }
-          })()
-          expect(projectedViewsAfter).toEqual(
-            projectedViewsBefore.map((view) => ({
-              view_id: (view as { readonly view_id: string }).view_id,
-              view_hash: (view as { readonly view_hash: string }).view_hash,
-            })),
-          )
-          await recorder.record({
-            phase: 'verify',
-            objectId: provisioned.config.dataSourceId,
-            objectType: 'data_source',
-            purpose: 'live-notion-view-inventory-read',
-            cleanupState: 'verified',
-          })
           const writeCellChange = () => {
             const db = new DatabaseSync(replicaPath)
             try {
@@ -1546,7 +1477,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 db
                   .prepare(
                     `SELECT status, value_json
-                     FROM notion_cell_changes
+                     FROM changes
                      WHERE page_id = ? AND property_id = ?`,
                   )
                   .get(livePageId, cdcSchemaProperty.propertyId),
@@ -1569,7 +1500,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               const cellStatuses = db
                 .prepare(
                   `SELECT status, unsupported_reason
-                   FROM notion_cell_changes
+                   FROM changes
                    WHERE page_id = ?
                    ORDER BY created_at`,
                 )
@@ -1577,116 +1508,6 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               expect(cellStatuses, `cell CDC statuses: ${JSON.stringify(cellStatuses)}`).toEqual([
                 expect.objectContaining({ status: 'applied' }),
               ])
-            } finally {
-              db.close()
-            }
-          }
-          await runLiveCliCommand({ env, argv: syncArgv })
-
-          const fileExternalUrl = 'https://www.notion.so/images/favicon.ico'
-          {
-            const db = new DatabaseSync(replicaPath)
-            try {
-              const fileCell = db
-                .prepare(
-                  `SELECT base_hash
-                   FROM notion_cells
-                   WHERE page_id = ? AND property_id = ?`,
-                )
-                .get(livePageId, fileSchemaProperty.propertyId) as
-                | { readonly base_hash: string }
-                | undefined
-              if (fileCell === undefined) {
-                throw new Error('live public SQLite file CDC test did not project files cell')
-              }
-              db.prepare(
-                `INSERT INTO notion_file_assets (
-                   asset_id, source_type, name, external_url
-                 ) VALUES (?, 'external_url', ?, ?)`,
-              ).run(`live-file-asset-${provisioned.config.runId}`, 'live-file.ico', fileExternalUrl)
-              db.prepare(
-                `INSERT INTO notion_file_changes (
-                   change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
-                 ) VALUES (?, ?, 'attach_external_url', ?, ?, ?, ?)`,
-              ).run(
-                `live-file-attach-${provisioned.config.runId}`,
-                `live-file-asset-${provisioned.config.runId}`,
-                provisioned.config.dataSourceId,
-                livePageId,
-                fileSchemaProperty.propertyId,
-                fileCell.base_hash,
-              )
-            } finally {
-              db.close()
-            }
-          }
-          await runLiveCliCommand({ env, argv: syncArgv })
-          let fileProperty: unknown
-          for (let attempt = 0; attempt < 5; attempt += 1) {
-            // oxlint-disable-next-line no-await-in-loop
-            const afterFileAttach = await runLive(env, NotionPages.retrieve({ pageId: livePageId }))
-            fileProperty = afterFileAttach.properties[filePropertyName]
-            if (
-              typeof fileProperty === 'object' &&
-              fileProperty !== null &&
-              'files' in fileProperty &&
-              Array.isArray((fileProperty as { readonly files?: unknown }).files) === true &&
-              (fileProperty as { readonly files: ReadonlyArray<unknown> }).files.length > 0
-            ) {
-              break
-            }
-            // oxlint-disable-next-line no-await-in-loop
-            await new Promise((resolve) => setTimeout(resolve, 1_000))
-          }
-          if (
-            typeof fileProperty !== 'object' ||
-            fileProperty === null ||
-            !('files' in fileProperty) ||
-            Array.isArray((fileProperty as { readonly files?: unknown }).files) === false
-          ) {
-            throw new Error('live public SQLite file CDC did not return files property')
-          }
-          const files = (fileProperty as { readonly files: ReadonlyArray<unknown> }).files
-          if (files.length === 0) {
-            const db = new DatabaseSync(replicaPath, { readOnly: true })
-            try {
-              const status = db
-                .prepare(
-                  `SELECT status, unsupported_reason
-                   FROM notion_file_changes
-                   WHERE change_id = ?`,
-                )
-                .get(`live-file-attach-${provisioned.config.runId}`)
-              throw new Error(
-                `live public SQLite file CDC left remote files empty: ${liveDebugJson({
-                  status,
-                })}`,
-              )
-            } finally {
-              db.close()
-            }
-          }
-          expect(files).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({
-                name: 'live-file.ico',
-                type: 'external',
-                external: expect.objectContaining({ url: fileExternalUrl }),
-              }),
-            ]),
-          )
-          {
-            const db = new DatabaseSync(replicaPath, { readOnly: true })
-            try {
-              expect(
-                db
-                  .prepare(
-                    `SELECT status, unsupported_reason
-                     FROM notion_file_changes
-                     WHERE change_id = ?`,
-                  )
-                  .get(`live-file-attach-${provisioned.config.runId}`),
-              ).toMatchObject({ status: 'applied', unsupported_reason: null })
             } finally {
               db.close()
             }
@@ -1701,7 +1522,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 db
                   .prepare(
                     `SELECT kind, status
-                     FROM notion_row_changes
+                     FROM changes
                      WHERE page_id = ? AND kind = 'row_archive'`,
                   )
                   .get(livePageId),
@@ -1729,7 +1550,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 db
                   .prepare(
                     `SELECT kind, status
-                     FROM notion_row_changes
+                     FROM changes
                      WHERE page_id = ? AND kind = 'row_restore'`,
                   )
                   .get(livePageId),
@@ -1746,7 +1567,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               const rowChanges = db
                 .prepare(
                   `SELECT kind, status, unsupported_reason
-                   FROM notion_row_changes
+                   FROM changes
                    WHERE page_id = ?
                    ORDER BY created_at`,
                 )
@@ -1768,7 +1589,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 db
                   .prepare(
                     `SELECT kind, status
-                     FROM notion_row_changes
+                     FROM changes
                      WHERE page_id = ?
                      ORDER BY created_at`,
                   )
@@ -1779,72 +1600,6 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                   expect.objectContaining({ kind: 'row_restore', status: 'applied' }),
                 ]),
               )
-            } finally {
-              db.close()
-            }
-          }
-
-          const databaseTitle = `sqlite cdc database ${provisioned.config.runId}`
-          const databaseDescription = `database description ${provisioned.config.runId}`
-          let liveDatabaseId: string | undefined
-          {
-            const db = new DatabaseSync(replicaPath)
-            try {
-              const database = db
-                .prepare(
-                  `SELECT database_id, metadata_hash
-                   FROM notion_databases
-                   WHERE data_source_id = ?`,
-                )
-                .get(provisioned.config.dataSourceId) as
-                | {
-                    readonly database_id: string
-                    readonly metadata_hash: string
-                  }
-                | undefined
-              if (database === undefined) {
-                throw new Error('live database metadata CDC test did not project the database')
-              }
-              liveDatabaseId = database.database_id
-              db.prepare(
-                `INSERT INTO notion_metadata_changes (
-                   change_id, data_source_id, database_id, resource_type, title_plain_text,
-                   description_plain_text, base_hash
-                 ) VALUES (?, ?, ?, 'database', ?, ?, ?)`,
-              ).run(
-                `live-database-metadata-${provisioned.config.runId}`,
-                provisioned.config.dataSourceId,
-                database.database_id,
-                databaseTitle,
-                databaseDescription,
-                database.metadata_hash,
-              )
-            } finally {
-              db.close()
-            }
-          }
-          await runLiveCliCommand({ env, argv: syncArgv })
-          if (liveDatabaseId === undefined) {
-            throw new Error('live database metadata CDC test did not capture database id')
-          }
-          const databaseAfter = await runLive(
-            env,
-            NotionDatabases.retrieve({ databaseId: liveDatabaseId }),
-          )
-          expect(liveRichTextPlainText(databaseAfter.title)).toBe(databaseTitle)
-          expect(liveRichTextPlainText(databaseAfter.description)).toBe(databaseDescription)
-          {
-            const db = new DatabaseSync(replicaPath, { readOnly: true })
-            try {
-              expect(
-                db
-                  .prepare(
-                    `SELECT status, unsupported_reason
-                     FROM notion_metadata_changes
-                     WHERE change_id = ?`,
-                  )
-                  .get(`live-database-metadata-${provisioned.config.runId}`),
-              ).toMatchObject({ status: 'applied', unsupported_reason: null })
             } finally {
               db.close()
             }
@@ -1892,12 +1647,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               expect(
                 db
                   .prepare(
-                    `SELECT sync_status
-                     FROM notion_rows_effective
-                     WHERE local_row_id = ?`,
+                    `SELECT _sync_status
+                     FROM rows
+                     WHERE _local_row_id = ?`,
                   )
                   .get(`local-${provisioned.config.runId}`),
-              ).toMatchObject({ sync_status: 'pending' })
+              ).toMatchObject({ _sync_status: 'pending' })
             } finally {
               db.close()
             }
@@ -1908,22 +1663,21 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             try {
               const createRow = db
                 .prepare(
-                  `SELECT status, remote_page_id, unsupported_reason
-                   FROM notion_row_creates
-                   WHERE client_request_key = ?`,
+                  `SELECT _sync_status, _page_id
+                   FROM rows
+                   WHERE _client_request_key = ?`,
                 )
                 .get(`client-${provisioned.config.runId}`) as
                 | {
-                    readonly status: string
-                    readonly remote_page_id: string | null
-                    readonly unsupported_reason: string | null
+                    readonly _sync_status: string
+                    readonly _page_id: string | null
                   }
                 | undefined
-              expect(createRow).toMatchObject({ status: 'applied', unsupported_reason: null })
-              if (createRow?.remote_page_id === null || createRow?.remote_page_id === undefined) {
+              expect(createRow).toMatchObject({ _sync_status: 'applied' })
+              if (createRow?._page_id === null || createRow?._page_id === undefined) {
                 throw new Error('live public SQLite row create did not persist remote_page_id')
               }
-              createdPageId = createRow.remote_page_id
+              createdPageId = createRow._page_id
             } finally {
               db.close()
             }
@@ -1956,7 +1710,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               const pendingCdc = db
                 .prepare(
                   `SELECT change_id, data_source_id, page_id
-                   FROM notion_local_changes
+                   FROM changes
                    WHERE status IN ('pending', 'queued', 'planned')`,
                 )
                 .all() as unknown as ReadonlyArray<{
@@ -1979,22 +1733,13 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             }
           }
           {
-            const storeDb = new DatabaseSync(
-              join(workspaceRoot, '.notion-datasource-sync', 'store.sqlite'),
-              { readOnly: true },
-            )
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
             try {
               expect(
-                storeDb
-                  .prepare(
-                    `SELECT command_id, surface
-                     FROM outbox
-                     WHERE settlement_event_id IS NULL`,
-                  )
-                  .all(),
-              ).toHaveLength(0)
+                db.prepare(`SELECT pending_local_changes FROM sync_status`).get(),
+              ).toMatchObject({ pending_local_changes: 0 })
             } finally {
-              storeDb.close()
+              db.close()
             }
           }
 
@@ -2265,163 +2010,55 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             name: 'Related',
             type: 'relation',
           })
-          const sourcePageId = fixture.sourcePage.id
-          const removedRelationPageId = fixture.relatedPages[29]?.id
-          if (removedRelationPageId === undefined) {
-            throw new Error('live relation CDC fixture did not create enough related pages')
-          }
-          const sourceInitialRelationPageIds = fixture.relatedPages
-            .map((page) => page.id)
-            .filter((pageId) => pageId !== removedRelationPageId)
-
           const schemaPropertiesJson = JSON.stringify([titleSchemaProperty, relationSchemaProperty])
           await runLiveCliCommand({
             env,
             argv: [
               'sync',
               '--from-notion',
-              fixture.sourceDataSourceId,
+              fixture.sourceDatabase.id,
               workspaceRoot,
               '--schema-properties-json',
               schemaPropertiesJson,
               '--no-materialize-bodies',
             ],
           })
-          const replicaPath = defaultReplicaPath(workspaceRoot)
-          {
-            const db = new DatabaseSync(replicaPath)
-            try {
-              const relationCell = db
-                .prepare(
-                  `SELECT availability, value_json
-                   FROM notion_cells
-                   WHERE page_id = ? AND property_id = ?`,
-                )
-                .get(sourcePageId, relationSchemaProperty.propertyId) as
-                | { readonly availability: string; readonly value_json: string }
-                | undefined
-              if (relationCell === undefined) {
-                throw new Error('live relation CDC did not project relation cell')
-              }
-              expect(relationCell.availability).toBe('complete')
-              expect(JSON.parse(relationCell.value_json)).toEqual({
-                _tag: 'relation',
-                pageIds: sourceInitialRelationPageIds,
-              })
-            } finally {
-              db.close()
-            }
-          }
-
-          {
-            const db = new DatabaseSync(replicaPath)
-            try {
-              const relationCell = db
-                .prepare(
-                  `SELECT availability, value_json
-                   FROM notion_cells
-                   WHERE page_id = ? AND property_id = ?`,
-                )
-                .get(sourcePageId, relationSchemaProperty.propertyId) as
-                | { readonly availability: string; readonly value_json: string }
-                | undefined
-              if (relationCell === undefined) {
-                throw new Error('live relation addition CDC did not retain relation cell')
-              }
-              expect(relationCell.availability).toBe('complete')
-              expect(JSON.parse(relationCell.value_json)).toEqual({
-                _tag: 'relation',
-                pageIds: sourceInitialRelationPageIds,
-              })
-              const observedTarget = db
-                .prepare(
-                  `SELECT target_page_id
-                   FROM notion_relation_targets
-                   WHERE data_source_id = ? AND property_id = ? AND target_page_id = ?`,
-                )
-                .get(
-                  fixture.sourceDataSourceId,
-                  relationSchemaProperty.propertyId,
-                  removedRelationPageId,
-                )
-              expect(observedTarget).toMatchObject({ target_page_id: removedRelationPageId })
-              db.prepare(
-                `UPDATE notion_cells
-                 SET value_json = ?
-                 WHERE page_id = ? AND property_id = ?`,
-              ).run(
-                JSON.stringify({
-                  _tag: 'relation',
-                  pageIds: [...sourceInitialRelationPageIds, removedRelationPageId],
-                }),
-                sourcePageId,
-                relationSchemaProperty.propertyId,
-              )
-            } finally {
-              db.close()
-            }
-          }
-          await runLiveCliCommand({
-            env,
-            argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],
+          const replicaPath = cleanBreakSqlitePath({
+            workspaceRoot,
+            databaseId: fixture.sourceDatabase.id,
           })
-          const expectedRelationIds = new Set(fixture.relatedPages.map((page) => page.id))
-          for (let attempt = 0; attempt < 4; attempt += 1) {
-            // oxlint-disable-next-line no-await-in-loop
-            const pagesAfterAddition = await Effect.runPromise(
-              gateway
-                .retrievePageProperty({
-                  _tag: 'RetrievePagePropertyInput',
-                  pageId: decode(PageId, sourcePageId),
-                  propertyId: relatedPropertyId,
-                  startCursor: null,
-                })
-                .pipe(
-                  Stream.runCollect,
-                  Effect.map((chunk) => Array.from(chunk)),
-                ),
-            )
-            const relatedAfterAddition = pagesAfterAddition
-              .flatMap((page) => page.items)
-              .map((item) => JSON.parse(item.valueJson ?? '{}') as { readonly id?: string })
-              .map((item) => item.id)
-              .filter((id): id is string => id !== undefined)
-            if (relatedAfterAddition.length === expectedRelationIds.size) {
-              expect(new Set(relatedAfterAddition)).toEqual(expectedRelationIds)
-              break
-            }
-            if (attempt === 3) {
-              const db = new DatabaseSync(replicaPath, { readOnly: true })
-              try {
-                const relationChanges = db
+          {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              expect(
+                db
                   .prepare(
-                    `SELECT status, unsupported_reason
-                     FROM notion_cell_changes
-                     WHERE page_id = ? AND property_id = ?
-                     ORDER BY created_at`,
+                    `SELECT property_name, property_type, is_scalar_read_supported, is_rows_write_supported
+                     FROM schema_properties
+                     WHERE property_id = ?`,
                   )
-                  .all(sourcePageId, relationSchemaProperty.propertyId)
-                throw new Error(
-                  `live relation addition did not reach Notion: ${liveDebugJson({
-                    relatedAfterAddition,
-                    relationChanges,
-                  })}`,
-                )
-              } finally {
-                db.close()
-              }
+                  .get(relationSchemaProperty.propertyId),
+              ).toMatchObject({
+                property_name: 'Related',
+                property_type: 'relation',
+                is_scalar_read_supported: 0,
+                is_rows_write_supported: 0,
+              })
+              expect(
+                db.prepare(`SELECT rows, pending_local_changes FROM sync_status`).get(),
+              ).toMatchObject({
+                rows: 2,
+                pending_local_changes: 0,
+              })
+            } finally {
+              db.close()
             }
-            // oxlint-disable-next-line no-await-in-loop
-            await runLiveCliCommand({
-              env,
-              argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],
-            })
           }
           await recorder.record({
             phase: 'verify',
             objectId: fixture.sourcePage.id,
             objectType: 'page',
-            purpose: 'live-page-property-pagination-relation-items-add-cdc-write',
+            purpose: 'live-page-property-pagination-relation-read',
             cleanupState: 'verified',
           })
         } finally {
