@@ -1,30 +1,49 @@
 /** SQLite schema version — incremented when a migration is needed. */
-export const STORE_SCHEMA_VERSION = 2
+export const STORE_SCHEMA_VERSION = 3
 
-/** Opaque identifier stamped into every projection_metadata row to detect when projections were built by an incompatible projector. */
+/** Opaque identifier stamped into every _nds_projection_metadata row to detect when projections were built by an incompatible projector. */
 export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'
 
 /**
  * DDL for the full store schema applied on initial bootstrap.
  *
- * Creates the immutable event log (`sync_root`, `sync_event`) and all
- * projection tables: `projection_metadata`, `outbox`, `conflict_projection`,
- * `tombstone_projection`, `guard_block_projection`, `path_claim`, `lease`,
- * `api_contract_projection`, `capability_projection`, `data_source_projection`,
- * `schema_property_projection`, `row_projection`, `property_shadow_projection`,
- * `body_pointer_projection`, `query_absence_projection`,
- * `query_scan_checkpoint`, `page_property_checkpoint`, and `migration_history`.
+ * Creates the immutable event log (`_nds_sync_root`, `_nds_sync_event`) and all
+ * projection tables: `_nds_projection_metadata`, `_nds_outbox`, `_nds_conflict`,
+ * `_nds_tombstone`, `_nds_guard_block`, `_nds_path_claim`, `_nds_lease`,
+ * `_nds_api_contract`, `_nds_capability`, `_nds_data_source`,
+ * `_nds_schema_property`, `_nds_row`, `_nds_property_shadow`,
+ * `_nds_body_pointer`, `_nds_query_absence`,
+ * `_nds_query_scan_checkpoint`, `_nds_page_property_checkpoint`, and `_nds_migration_history`.
  */
 export const createStoreSchemaSql = `
-CREATE TABLE IF NOT EXISTS sync_root (
+CREATE TABLE IF NOT EXISTS _nds_sync_root (
   root_id TEXT PRIMARY KEY,
   created_at TEXT NOT NULL,
   store_identity TEXT NOT NULL,
   settings_json TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS sync_event (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_workspace_binding (
+  root_id TEXT PRIMARY KEY REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
+  data_source_id TEXT NOT NULL,
+  database_id TEXT,
+  workspace_root TEXT NOT NULL,
+  store_identity TEXT NOT NULL,
+  binding_event_id TEXT NOT NULL,
+  metadata_event_id TEXT,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TRIGGER IF NOT EXISTS _nds_workspace_binding_block_invalid_insert
+BEFORE INSERT ON _nds_workspace_binding
+FOR EACH ROW
+WHEN NEW.data_source_id IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'private _nds_workspace_binding is internal; use sync --from-notion to create bindings');
+END;
+
+CREATE TABLE IF NOT EXISTS _nds_sync_event (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   sequence INTEGER NOT NULL,
   event_id TEXT NOT NULL,
   codec_version TEXT NOT NULL,
@@ -43,8 +62,8 @@ CREATE TABLE IF NOT EXISTS sync_event (
   UNIQUE (root_id, payload_hash, event_type, idempotency_key)
 );
 
-CREATE TABLE IF NOT EXISTS projection_metadata (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_projection_metadata (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   projection_name TEXT NOT NULL,
   projector_version TEXT NOT NULL,
   high_water_sequence INTEGER NOT NULL,
@@ -53,8 +72,8 @@ CREATE TABLE IF NOT EXISTS projection_metadata (
   PRIMARY KEY (root_id, projection_name)
 );
 
-CREATE TABLE IF NOT EXISTS outbox (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_outbox (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   command_id TEXT NOT NULL,
   command_key TEXT NOT NULL,
   intent_event_id TEXT NOT NULL,
@@ -80,8 +99,8 @@ CREATE TABLE IF NOT EXISTS outbox (
   PRIMARY KEY (root_id, command_id)
 );
 
-CREATE TABLE IF NOT EXISTS conflict_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_conflict (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   conflict_id TEXT NOT NULL,
   page_id TEXT,
   property_id TEXT,
@@ -95,8 +114,8 @@ CREATE TABLE IF NOT EXISTS conflict_projection (
   PRIMARY KEY (root_id, conflict_id)
 );
 
-CREATE TABLE IF NOT EXISTS tombstone_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_tombstone (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   page_id TEXT NOT NULL,
   classification TEXT NOT NULL CHECK (classification IN (
     'unclassified',
@@ -112,8 +131,8 @@ CREATE TABLE IF NOT EXISTS tombstone_projection (
   PRIMARY KEY (root_id, page_id)
 );
 
-CREATE TABLE IF NOT EXISTS guard_block_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_guard_block (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   block_id TEXT NOT NULL,
   surface TEXT,
   guard TEXT NOT NULL,
@@ -123,8 +142,8 @@ CREATE TABLE IF NOT EXISTS guard_block_projection (
   PRIMARY KEY (root_id, block_id)
 );
 
-CREATE TABLE IF NOT EXISTS path_claim (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_path_claim (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   relative_path TEXT NOT NULL,
   page_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('active', 'released', 'conflict')),
@@ -133,8 +152,8 @@ CREATE TABLE IF NOT EXISTS path_claim (
   PRIMARY KEY (root_id, relative_path)
 );
 
-CREATE TABLE IF NOT EXISTS lease (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_lease (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   lease_name TEXT NOT NULL,
   lease_token TEXT NOT NULL,
   holder_id TEXT NOT NULL,
@@ -144,8 +163,8 @@ CREATE TABLE IF NOT EXISTS lease (
   PRIMARY KEY (root_id, lease_name)
 );
 
-CREATE TABLE IF NOT EXISTS api_contract_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_api_contract (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   api_version TEXT NOT NULL,
   client_version TEXT NOT NULL,
   supported_capabilities_json TEXT NOT NULL,
@@ -154,8 +173,8 @@ CREATE TABLE IF NOT EXISTS api_contract_projection (
   PRIMARY KEY (root_id, api_version)
 );
 
-CREATE TABLE IF NOT EXISTS capability_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_capability (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   capability TEXT NOT NULL,
   data_source_id TEXT NOT NULL,
   supported INTEGER NOT NULL CHECK (supported IN (0, 1)),
@@ -165,8 +184,8 @@ CREATE TABLE IF NOT EXISTS capability_projection (
   PRIMARY KEY (root_id, capability)
 );
 
-CREATE TABLE IF NOT EXISTS data_source_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_data_source (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   data_source_id TEXT NOT NULL,
   request_id TEXT NOT NULL,
   schema_hash TEXT NOT NULL,
@@ -176,8 +195,8 @@ CREATE TABLE IF NOT EXISTS data_source_projection (
   PRIMARY KEY (root_id, data_source_id)
 );
 
-CREATE TABLE IF NOT EXISTS schema_property_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_schema_property (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   data_source_id TEXT NOT NULL,
   property_id TEXT NOT NULL,
   schema_hash TEXT NOT NULL,
@@ -188,8 +207,8 @@ CREATE TABLE IF NOT EXISTS schema_property_projection (
   PRIMARY KEY (root_id, data_source_id, property_id)
 );
 
-CREATE TABLE IF NOT EXISTS row_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_row (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   data_source_id TEXT NOT NULL,
   page_id TEXT NOT NULL,
   properties_hash TEXT NOT NULL,
@@ -202,8 +221,8 @@ CREATE TABLE IF NOT EXISTS row_projection (
   PRIMARY KEY (root_id, page_id)
 );
 
-CREATE TABLE IF NOT EXISTS property_shadow_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_property_shadow (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   page_id TEXT NOT NULL,
   property_id TEXT NOT NULL,
   base_hash TEXT NOT NULL,
@@ -221,8 +240,8 @@ CREATE TABLE IF NOT EXISTS property_shadow_projection (
   PRIMARY KEY (root_id, page_id, property_id)
 );
 
-CREATE TABLE IF NOT EXISTS body_pointer_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_body_pointer (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   page_id TEXT NOT NULL,
   path TEXT NOT NULL,
   base_hash TEXT NOT NULL,
@@ -235,8 +254,8 @@ CREATE TABLE IF NOT EXISTS body_pointer_projection (
   PRIMARY KEY (root_id, page_id)
 );
 
-CREATE TABLE IF NOT EXISTS query_absence_projection (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_query_absence (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   data_source_id TEXT NOT NULL,
   page_id TEXT NOT NULL,
   query_contract_hash TEXT NOT NULL,
@@ -260,8 +279,8 @@ CREATE TABLE IF NOT EXISTS query_absence_projection (
   PRIMARY KEY (root_id, data_source_id, page_id, query_contract_hash)
 );
 
-CREATE TABLE IF NOT EXISTS query_scan_checkpoint (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_query_scan_checkpoint (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   data_source_id TEXT NOT NULL,
   query_contract_hash TEXT NOT NULL,
   next_cursor TEXT,
@@ -274,8 +293,8 @@ CREATE TABLE IF NOT EXISTS query_scan_checkpoint (
   PRIMARY KEY (root_id, data_source_id, query_contract_hash)
 );
 
-CREATE TABLE IF NOT EXISTS page_property_checkpoint (
-  root_id TEXT NOT NULL REFERENCES sync_root(root_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS _nds_page_property_checkpoint (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
   page_id TEXT NOT NULL,
   property_id TEXT NOT NULL,
   next_cursor TEXT,
@@ -286,7 +305,7 @@ CREATE TABLE IF NOT EXISTS page_property_checkpoint (
   PRIMARY KEY (root_id, page_id, property_id)
 );
 
-CREATE TABLE IF NOT EXISTS migration_history (
+CREATE TABLE IF NOT EXISTS _nds_migration_history (
   schema_version INTEGER PRIMARY KEY,
   migration_name TEXT NOT NULL,
   applied_at TEXT NOT NULL
@@ -297,49 +316,51 @@ CREATE TABLE IF NOT EXISTS migration_history (
  * SQL that wipes all projection tables in preparation for a full replay.
  *
  * Deletes rows from all seventeen projection tables (everything except
- * `sync_root`, `sync_event`, and `migration_history`) without touching the
+ * `_nds_sync_root`, `_nds_sync_event`, and `_nds_migration_history`) without touching the
  * append-only event log.
  */
 export const clearProjectionTablesSql = `
-DELETE FROM projection_metadata;
-DELETE FROM outbox;
-DELETE FROM conflict_projection;
-DELETE FROM tombstone_projection;
-DELETE FROM guard_block_projection;
-DELETE FROM path_claim;
-DELETE FROM lease;
-DELETE FROM api_contract_projection;
-DELETE FROM capability_projection;
-DELETE FROM data_source_projection;
-DELETE FROM schema_property_projection;
-DELETE FROM row_projection;
-DELETE FROM property_shadow_projection;
-DELETE FROM body_pointer_projection;
-DELETE FROM query_absence_projection;
-DELETE FROM query_scan_checkpoint;
-DELETE FROM page_property_checkpoint;
+DELETE FROM _nds_projection_metadata;
+DELETE FROM _nds_workspace_binding;
+DELETE FROM _nds_outbox;
+DELETE FROM _nds_conflict;
+DELETE FROM _nds_tombstone;
+DELETE FROM _nds_guard_block;
+DELETE FROM _nds_path_claim;
+DELETE FROM _nds_lease;
+DELETE FROM _nds_api_contract;
+DELETE FROM _nds_capability;
+DELETE FROM _nds_data_source;
+DELETE FROM _nds_schema_property;
+DELETE FROM _nds_row;
+DELETE FROM _nds_property_shadow;
+DELETE FROM _nds_body_pointer;
+DELETE FROM _nds_query_absence;
+DELETE FROM _nds_query_scan_checkpoint;
+DELETE FROM _nds_page_property_checkpoint;
 `
 
 /**
- * All projection table names that are scoped to a `sync_root`, used when
+ * All projection table names that are scoped to a `_nds_sync_root`, used when
  * deleting a root to cascade-clean its projection rows via generated SQL.
  */
 export const rootScopedProjectionTables = [
-  'projection_metadata',
-  'outbox',
-  'conflict_projection',
-  'tombstone_projection',
-  'guard_block_projection',
-  'path_claim',
-  'lease',
-  'api_contract_projection',
-  'capability_projection',
-  'data_source_projection',
-  'schema_property_projection',
-  'row_projection',
-  'property_shadow_projection',
-  'body_pointer_projection',
-  'query_absence_projection',
-  'query_scan_checkpoint',
-  'page_property_checkpoint',
+  '_nds_projection_metadata',
+  '_nds_workspace_binding',
+  '_nds_outbox',
+  '_nds_conflict',
+  '_nds_tombstone',
+  '_nds_guard_block',
+  '_nds_path_claim',
+  '_nds_lease',
+  '_nds_api_contract',
+  '_nds_capability',
+  '_nds_data_source',
+  '_nds_schema_property',
+  '_nds_row',
+  '_nds_property_shadow',
+  '_nds_body_pointer',
+  '_nds_query_absence',
+  '_nds_query_scan_checkpoint',
+  '_nds_page_property_checkpoint',
 ] as const

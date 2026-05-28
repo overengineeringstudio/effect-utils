@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DatabaseSync } from 'node:sqlite'
 
 import { FetchHttpClient } from '@effect/platform'
 import { NodeRuntime } from '@effect/platform-node'
@@ -17,11 +18,11 @@ import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
 import { CanonicalPropertyValue, QueryContract } from '../core/commands.ts'
 import {
   AbsolutePath,
+  DatabaseId,
   DataSourceId,
   Hash,
   PageId,
   PropertyId,
-  SupportedNotionApiVersion,
   type CapabilityName,
 } from '../core/domain.ts'
 import type {
@@ -76,7 +77,6 @@ import {
   type UserCommandResultEnvelope,
 } from '../planner/user-commands.ts'
 import {
-  defaultReplicaPath,
   applyReplicaConflictResolutions,
   projectReplicaFromSyncStore,
   readPendingReplicaChanges,
@@ -87,6 +87,7 @@ import {
   type CompactionDecision,
   openNotionSyncStore,
   type NotionSyncStore,
+  type WorkspaceBindingRow,
 } from '../store/store.ts'
 import { type SchemaPropertyObservation } from '../sync/observation.ts'
 import {
@@ -209,35 +210,19 @@ export type CliRuntimeOptions = {
   readonly workspace?: LocalWorkspacePortShape
 }
 
-const workspaceMetadataDirectoryName = '.notion-datasource-sync'
-const workspaceConfigFileName = 'config.json'
-const workspaceStoreFileName = 'store.sqlite'
-const workspaceConfigVersion = 1
-
-const WorkspaceCliConfig = Schema.Struct({
-  version: Schema.Literal(1),
-  rootId: SyncRootId,
-  dataSourceId: DataSourceId,
-  storePath: AbsolutePath,
-  workspaceRoot: AbsolutePath,
-  notionApiVersion: SupportedNotionApiVersion,
-  bodyMaterialization: Schema.Literal('enabled', 'disabled'),
-})
-type WorkspaceCliConfig = typeof WorkspaceCliConfig.Type
-
 const normalizeAbsolutePath = (value: string): typeof AbsolutePath.Type =>
   decode({ schema: AbsolutePath, value: isAbsolute(value) === true ? value : resolve(value) })
 
-const workspaceMetadataDirectory = (workspaceRoot: typeof AbsolutePath.Type): string =>
-  join(workspaceRoot, workspaceMetadataDirectoryName)
-
-const workspaceConfigPath = (workspaceRoot: typeof AbsolutePath.Type): string =>
-  join(workspaceMetadataDirectory(workspaceRoot), workspaceConfigFileName)
-
-const defaultStorePath = (workspaceRoot: typeof AbsolutePath.Type): typeof AbsolutePath.Type =>
+const defaultSqlitePath = ({
+  workspaceRoot,
+  databaseId,
+}: {
+  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly databaseId: string
+}): typeof AbsolutePath.Type =>
   decode({
     schema: AbsolutePath,
-    value: join(workspaceMetadataDirectory(workspaceRoot), workspaceStoreFileName),
+    value: join(workspaceRoot, `${databaseId}.sqlite`),
   })
 
 const projectReplicaIfWritable = ({
@@ -250,7 +235,7 @@ const projectReplicaIfWritable = ({
   if (dryRun === true || context.storePath === undefined || context.storePath === ':memory:') return
   projectReplicaFromSyncStore({
     syncStorePath: context.storePath,
-    replicaPath: defaultReplicaPath(context.workspaceRoot),
+    replicaPath: context.storePath,
     rootId: context.rootId,
   })
 }
@@ -260,46 +245,12 @@ const rootIdForDataSource = (dataSourceId: typeof DataSourceId.Type): SyncRootId
 
 /** Tagged reference to a Notion entity used as the adoption source — either a Notion data source or a Notion database that owns one. */
 export type NotionRemoteRef =
-  | { readonly _tag: 'data-source'; readonly dataSourceId: typeof DataSourceId.Type }
+  | {
+      readonly _tag: 'data-source'
+      readonly dataSourceId: typeof DataSourceId.Type
+      readonly sourceDatabaseId?: string
+    }
   | { readonly _tag: 'database'; readonly databaseId: string }
-
-const readWorkspaceCliConfig = (workspaceRoot: typeof AbsolutePath.Type): WorkspaceCliConfig => {
-  const path = workspaceConfigPath(workspaceRoot)
-  if (existsSync(path) === false) {
-    throw new CliArgumentError({
-      message: `Missing datasource-sync workspace config at ${path}; establish it with: notion-datasource-sync sync --from-notion <data-source-id-or-url> ${workspaceRoot}`,
-    })
-  }
-  return decode({ schema: WorkspaceCliConfig, value: JSON.parse(readFileSync(path, 'utf8')) })
-}
-
-const writeWorkspaceCliConfig = (config: WorkspaceCliConfig): void => {
-  const path = workspaceConfigPath(config.workspaceRoot)
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, 'utf8')
-}
-
-const makeWorkspaceCliConfig = ({
-  dataSourceId,
-  workspaceRoot,
-  materializeBodies,
-}: {
-  readonly dataSourceId: typeof DataSourceId.Type
-  readonly workspaceRoot: typeof AbsolutePath.Type
-  readonly materializeBodies?: boolean
-}): WorkspaceCliConfig =>
-  decode({
-    schema: WorkspaceCliConfig,
-    value: {
-      version: workspaceConfigVersion,
-      rootId: rootIdForDataSource(dataSourceId),
-      dataSourceId,
-      storePath: defaultStorePath(workspaceRoot),
-      workspaceRoot,
-      notionApiVersion: '2026-03-11',
-      bodyMaterialization: materializeBodies === false ? 'disabled' : 'enabled',
-    },
-  })
 
 const parseNotionDataSourceRef = (value: string): typeof DataSourceId.Type => {
   return decode({ schema: DataSourceId, value: parseNotionUuid(value) ?? value })
@@ -526,13 +477,6 @@ const runCliCommandEffect = ({
         Effect.tap(() =>
           Effect.sync(() => {
             if (command.dryRun === true) return
-            writeWorkspaceCliConfig(
-              makeWorkspaceCliConfig({
-                dataSourceId: command.dataSourceId,
-                workspaceRoot: command.workspaceRoot,
-                materializeBodies: context.materializeBodies !== false,
-              }),
-            )
             projectReplicaIfWritable({
               context,
               ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
@@ -572,7 +516,9 @@ const runCliCommandEffect = ({
         }
       }
       return Effect.sync(() => {
-        const replicaPath = defaultReplicaPath(context.workspaceRoot)
+        const replicaPath = context.storePath
+        if (replicaPath === undefined)
+          return { changes: [] as const, intents: [] as const, replicaPath: ':memory:' }
         if (existsSync(replicaPath) === false)
           return { changes: [] as const, intents: [] as const, replicaPath }
         const changes = readPendingReplicaChanges(replicaPath)
@@ -1095,10 +1041,177 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   })
 }
 
+type DiscoveredSelfContainedStore = {
+  readonly storePath: typeof AbsolutePath.Type
+  readonly rootId: SyncRootIdType
+  readonly dataSourceId: typeof DataSourceId.Type
+  readonly workspaceRoot: typeof AbsolutePath.Type
+}
+
+const readSelfContainedBinding = (storePath: string): WorkspaceBindingRow | undefined => {
+  if (existsSync(storePath) === false) return undefined
+  const db = new DatabaseSync(storePath, { readOnly: true })
+  try {
+    const requiredTables = [
+      '_nds_sync_root',
+      '_nds_sync_event',
+      '_nds_workspace_binding',
+      '_nds_projection_metadata',
+    ] as const
+    for (const table of requiredTables) {
+      const row = db
+        .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+        .get(table)
+      if (row === undefined) return undefined
+    }
+    const row = db
+      .prepare(
+        `SELECT root_id, data_source_id, database_id, workspace_root, store_identity
+         FROM _nds_workspace_binding
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .get() as Record<string, unknown> | undefined
+    if (row === undefined) return undefined
+    return {
+      rootId: decode({ schema: SyncRootId, value: row.root_id }),
+      dataSourceId: decode({ schema: DataSourceId, value: row.data_source_id }),
+      databaseId:
+        typeof row.database_id === 'string'
+          ? decode({ schema: DatabaseId, value: row.database_id })
+          : undefined,
+      workspaceRoot:
+        typeof row.workspace_root === 'string'
+          ? row.workspace_root
+          : (() => {
+              throw new CliArgumentError({
+                message: `Corrupt datasource-sync binding in ${storePath}: missing workspace_root`,
+              })
+            })(),
+      storeIdentity:
+        typeof row.store_identity === 'string'
+          ? row.store_identity
+          : (() => {
+              throw new CliArgumentError({
+                message: `Corrupt datasource-sync binding in ${storePath}: missing store_identity`,
+              })
+            })(),
+    }
+  } finally {
+    db.close()
+  }
+}
+
+const validateSelfContainedSqlite = (storePath: string): void => {
+  const db = new DatabaseSync(storePath, { readOnly: true })
+  try {
+    const requiredObjects = [
+      ['table', '_nds_sync_root'],
+      ['table', '_nds_sync_event'],
+      ['table', '_nds_workspace_binding'],
+      ['table', '_nds_projection_metadata'],
+      ['table', '_nds_api_contract'],
+      ['table', '_nds_body_pointer'],
+      ['table', '_nds_capability'],
+      ['table', '_nds_conflict'],
+      ['table', '_nds_data_source'],
+      ['table', '_nds_guard_block'],
+      ['table', '_nds_outbox'],
+      ['table', '_nds_property_shadow'],
+      ['table', '_nds_query_absence'],
+      ['table', '_nds_query_scan_checkpoint'],
+      ['table', '_nds_row'],
+      ['table', '_nds_schema_property'],
+      ['table', '_nds_tombstone'],
+      ['view', 'rows'],
+      ['view', 'schema'],
+      ['view', 'schema_properties'],
+      ['view', 'changes'],
+      ['view', 'conflicts'],
+      ['view', 'sync_status'],
+      ['trigger', '_nds_rows_update'],
+      ['trigger', '_nds_rows_insert'],
+      ['trigger', '_nds_rows_delete'],
+    ] as const
+    for (const [type, name] of requiredObjects) {
+      const found = db
+        .prepare(`SELECT name FROM sqlite_master WHERE type = ? AND name = ?`)
+        .get(type, name)
+      if (found === undefined) {
+        throw new CliArgumentError({
+          message: `SQLite file ${storePath} is missing required ${type} ${name}; refusing to open`,
+        })
+      }
+    }
+    const triggerCount = db
+      .prepare(`SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger'`)
+      .get() as { readonly count?: unknown } | undefined
+    if (typeof triggerCount?.count !== 'number' || triggerCount.count < 35) {
+      throw new CliArgumentError({
+        message: `SQLite file ${storePath} is missing required datasource-sync triggers; refusing to open`,
+      })
+    }
+  } finally {
+    db.close()
+  }
+}
+
+const discoverSelfContainedStore = (
+  workspaceRoot: typeof AbsolutePath.Type,
+): DiscoveredSelfContainedStore => {
+  const explicitSqliteFiles = readdirSync(workspaceRoot)
+    .filter((entry) => entry.endsWith('.sqlite'))
+    .map((entry) => join(workspaceRoot, entry))
+  const matches = explicitSqliteFiles
+    .map((storePath) => ({ storePath, binding: readSelfContainedBinding(storePath) }))
+    .filter(
+      (entry): entry is { readonly storePath: string; readonly binding: WorkspaceBindingRow } =>
+        entry.binding !== undefined,
+    )
+  if (explicitSqliteFiles.length !== matches.length) {
+    throw new CliArgumentError({
+      message: `Found a SQLite file in ${workspaceRoot} with missing or corrupt datasource-sync internals; pass --sqlite <path> after repair`,
+    })
+  }
+  if (matches.length !== 1) {
+    throw new CliArgumentError({
+      message:
+        matches.length === 0
+          ? `No self-contained datasource-sync SQLite file found in ${workspaceRoot}; run sync --from-notion <database-url> ${workspaceRoot}`
+          : `Multiple datasource-sync SQLite files found in ${workspaceRoot}; pass --sqlite <path>`,
+    })
+  }
+  const { storePath, binding } = matches[0]!
+  if (binding.workspaceRoot !== workspaceRoot) {
+    throw new CliArgumentError({
+      message: `SQLite binding workspace mismatch for ${storePath}; refusing to open it from ${workspaceRoot}`,
+    })
+  }
+  return {
+    storePath: decode({ schema: AbsolutePath, value: storePath }),
+    rootId: binding.rootId,
+    dataSourceId: binding.dataSourceId,
+    workspaceRoot,
+  }
+}
+
+const sqlitePathFromFlags = (flags: Map<string, string | true>): string | undefined => {
+  if (flags.has('store') === true) {
+    throw new CliArgumentError({
+      message: '--store has been removed; use --sqlite <path> for explicit self-contained database files',
+    })
+  }
+  return optionalFlag({ flags, name: 'sqlite' })
+}
+
+const normalizeOptionalSqlitePath = (value: string | undefined): string | undefined =>
+  value === undefined ? undefined : normalizeAbsolutePath(value)
+
 /**
  * Parses `argv` into a `CliContext`, opening the sync store in the process.
  *
- * Requires `--store`, `--root-id`, `--data-source-id`, and `--workspace-root`.
+ * Discovers a self-contained SQLite file for workspace commands. Advanced commands may pass
+ * `--sqlite`; legacy `--store` is rejected so callers do not depend on split-store paths.
  * Throws `CliArgumentError` for missing or invalid flags; the caller is responsible
  * for closing `context.store` when the command completes.
  */
@@ -1114,59 +1227,71 @@ export const parseCliContext = ({
   const commandDryRun = 'dryRun' in command && command.dryRun === true
   const maxExecutorSteps = positiveIntegerFlag({ flags, name: 'max-executor-steps' })
   const requiredCapabilities = capabilityListFlag({ flags, name: 'required-capabilities' })
+  const explicitSqlitePath = normalizeOptionalSqlitePath(sqlitePathFromFlags(flags))
   const discovered =
     command._tag === 'sync-from-notion'
       ? (() => {
-          const configPath = workspaceConfigPath(command.workspaceRoot)
-          const configExists = existsSync(configPath)
-          const config =
-            configExists === true
-              ? readWorkspaceCliConfig(command.workspaceRoot)
-              : makeWorkspaceCliConfig({
-                  dataSourceId: command.dataSourceId,
-                  workspaceRoot: command.workspaceRoot,
-                  materializeBodies: flags.has('no-materialize-bodies') === false,
-                })
-          if (config.dataSourceId !== command.dataSourceId) {
+          const databaseId =
+            command.remoteRef._tag === 'database'
+              ? command.remoteRef.databaseId
+              : (command.remoteRef.sourceDatabaseId ?? command.dataSourceId)
+          const storePath =
+            explicitSqlitePath ??
+            defaultSqlitePath({ workspaceRoot: command.workspaceRoot, databaseId })
+          const existingBinding =
+            commandDryRun === true || existsSync(storePath) === false
+              ? undefined
+              : readSelfContainedBinding(storePath)
+          if (existingBinding !== undefined && existingBinding.dataSourceId !== command.dataSourceId)
             throw new CliArgumentError({
-              message: `Workspace is already configured for data source ${config.dataSourceId}; refusing to establish ${command.dataSourceId}`,
+              message: `SQLite file is already bound to data source ${existingBinding.dataSourceId}; refusing to establish ${command.dataSourceId}`,
             })
-          }
-          if (
-            configExists === true &&
-            commandDryRun !== true &&
-            existsSync(config.storePath) === false
-          ) {
-            throw new CliArgumentError({
-              message: `Workspace config points to missing store ${config.storePath}; refusing to reinitialize implicitly`,
-            })
-          }
           return {
-            storePath: commandDryRun === true ? ':memory:' : config.storePath,
-            rootId: config.rootId,
-            dataSourceId: config.dataSourceId,
-            workspaceRoot: config.workspaceRoot,
+            storePath: commandDryRun === true ? ':memory:' : storePath,
+            rootId: rootIdForDataSource(command.dataSourceId),
+            dataSourceId: command.dataSourceId,
+            workspaceRoot: command.workspaceRoot,
           }
         })()
       : (command._tag === 'sync' || command._tag === 'status') &&
           command.workspaceRoot !== undefined
         ? (() => {
-            const config = readWorkspaceCliConfig(command.workspaceRoot)
-            if (existsSync(config.storePath) === false) {
-              throw new CliArgumentError({
-                message: `Workspace config points to missing store ${config.storePath}; run sync --from-notion to establish a new workspace or repair the missing store explicitly`,
-              })
-            }
-            return {
-              storePath: config.storePath,
-              rootId: config.rootId,
-              dataSourceId: config.dataSourceId,
-              workspaceRoot: config.workspaceRoot,
-            }
+            return explicitSqlitePath === undefined
+              ? discoverSelfContainedStore(command.workspaceRoot)
+              : (() => {
+                  const binding = readSelfContainedBinding(explicitSqlitePath)
+                  if (binding === undefined) {
+                    throw new CliArgumentError({
+                      message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
+                    })
+                  }
+                  return {
+                    storePath: decode({ schema: AbsolutePath, value: explicitSqlitePath }),
+                    rootId: binding.rootId,
+                    dataSourceId: binding.dataSourceId,
+                    workspaceRoot: command.workspaceRoot,
+                  }
+                })()
           })()
+        : explicitSqlitePath !== undefined && flags.has('root-id') === false
+          ? (() => {
+              const binding = readSelfContainedBinding(explicitSqlitePath)
+              if (binding === undefined) {
+                throw new CliArgumentError({
+                  message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
+                })
+              }
+              return {
+                storePath: explicitSqlitePath,
+                rootId: binding.rootId,
+                dataSourceId: binding.dataSourceId,
+                workspaceRoot: decode({ schema: AbsolutePath, value: binding.workspaceRoot }),
+              }
+            })()
         : (() => {
+            const storePath = explicitSqlitePath ?? requiredFlag({ flags, name: 'sqlite' })
             return {
-              storePath: requiredFlag({ flags, name: 'store' }),
+              storePath,
               rootId: decode({
                 schema: SyncRootId,
                 value: requiredFlag({ flags, name: 'root-id' }),
@@ -1219,8 +1344,29 @@ export const parseCliContext = ({
         }) as ReadonlyArray<SchemaPropertyObservation>)
   if (discovered.storePath !== ':memory:') {
     mkdirSync(dirname(discovered.storePath), { recursive: true })
+    if (command._tag !== 'sync-from-notion' && existsSync(discovered.storePath) === true) {
+      validateSelfContainedSqlite(discovered.storePath)
+    }
   }
   const store = openNotionSyncStore({ path: discovered.storePath })
+  if (command._tag !== 'sync-from-notion' && discovered.storePath !== ':memory:') {
+    const binding = store.readWorkspaceBinding(discovered.rootId)
+    if (binding === undefined) {
+      store.close()
+      throw new CliArgumentError({
+        message: `SQLite file ${discovered.storePath} is missing _nds_workspace_binding; refusing to open`,
+      })
+    }
+    if (
+      binding.dataSourceId !== discovered.dataSourceId ||
+      binding.workspaceRoot !== discovered.workspaceRoot
+    ) {
+      store.close()
+      throw new CliArgumentError({
+        message: `SQLite binding mismatch for ${discovered.storePath}; refusing to open`,
+      })
+    }
+  }
 
   return {
     store,
@@ -1280,7 +1426,10 @@ const resolveDatabaseDataSourceId = ({
 }: {
   readonly databaseId: string
   readonly client: NotionGatewayClient
-}): Effect.Effect<typeof DataSourceId.Type, CliArgumentError> =>
+}): Effect.Effect<
+  { readonly dataSourceId: typeof DataSourceId.Type; readonly databaseId: string },
+  CliArgumentError
+> =>
   client.retrieveDatabase({ databaseId }).pipe(
     Effect.mapError(
       () =>
@@ -1292,7 +1441,10 @@ const resolveDatabaseDataSourceId = ({
       const dataSources = database.data_sources ?? []
       if (dataSources.length === 1) {
         const [dataSource] = dataSources
-        return Effect.succeed(decode({ schema: DataSourceId, value: dataSource?.id }))
+        return Effect.succeed({
+          dataSourceId: decode({ schema: DataSourceId, value: dataSource?.id }),
+          databaseId: String(database.id),
+        })
       }
       return Effect.fail(
         new CliArgumentError({
@@ -1325,14 +1477,19 @@ export const resolveCliCommandNotionRefs = ({
       }),
     )
   }
+  const databaseId = command.remoteRef.databaseId
   return resolveDatabaseDataSourceId({
-    databaseId: command.remoteRef.databaseId,
+    databaseId,
     client,
   }).pipe(
-    Effect.map((dataSourceId) => ({
+    Effect.map((resolved) => ({
       ...command,
-      dataSourceId,
-      remoteRef: { _tag: 'data-source' as const, dataSourceId },
+      dataSourceId: resolved.dataSourceId,
+      remoteRef: {
+        _tag: 'data-source' as const,
+        dataSourceId: resolved.dataSourceId,
+        sourceDatabaseId: resolved.databaseId,
+      },
     })),
   )
 }
@@ -1397,7 +1554,7 @@ export const makeCliRuntimeLayer = ({
   const bodyLayer =
     options.body !== undefined
       ? Layer.succeed(PageBodySyncPort, options.body)
-      : liveBaseLayer === undefined
+      : liveBaseLayer === undefined || options.gateway !== undefined || options.gatewayClient !== undefined
         ? Layer.succeed(
             PageBodySyncPort,
             makeUnsupportedPageBodySyncPort({

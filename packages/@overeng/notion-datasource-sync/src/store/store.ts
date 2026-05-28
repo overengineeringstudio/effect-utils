@@ -63,7 +63,7 @@ export type OpenNotionSyncStoreOptions = {
   readonly now?: () => Date
 }
 
-/** Record in `projection_metadata` tracking the projector version and event sequence at which a projection was last rebuilt. */
+/** Record in `_nds_projection_metadata` tracking the projector version and event sequence at which a projection was last rebuilt. */
 export type ProjectionMetadata = {
   readonly rootId: SyncRootId
   readonly projectorVersion: string
@@ -71,7 +71,7 @@ export type ProjectionMetadata = {
   readonly digest: Hash
 }
 
-/** A row from the `outbox` projection table, representing a pending or settled remote-write command. */
+/** A row from the `_nds_outbox` projection table, representing a pending or settled remote-write command. */
 export type OutboxProjectionRow = {
   readonly commandId: string
   readonly commandKey: string
@@ -86,7 +86,7 @@ export type OutboxProjectionRow = {
   readonly settlementEventId: string | undefined
 }
 
-/** A row from `conflict_projection`, representing an open or resolved three-way sync conflict. */
+/** A row from `_nds_conflict`, representing an open or resolved three-way sync conflict. */
 export type ConflictProjectionRow = {
   readonly conflictId: SyncEventId
   readonly pageId: PageId | undefined
@@ -111,7 +111,7 @@ export type ConflictProjectionRow = {
   readonly resolutionEventId: SyncEventId | undefined
 }
 
-/** A row from `guard_block_projection`, representing an active guard block that halted sync progress. */
+/** A row from `_nds_guard_block`, representing an active guard block that halted sync progress. */
 export type GuardBlockProjectionRow = {
   readonly blockId: string
   readonly surface: SurfaceKey | undefined
@@ -120,7 +120,7 @@ export type GuardBlockProjectionRow = {
   readonly eventId: SyncEventId
 }
 
-/** A row from `tombstone_projection`, representing a page classified as deleted or moved out of the tracked data source. */
+/** A row from `_nds_tombstone`, representing a page classified as deleted or moved out of the tracked data source. */
 export type TombstoneProjectionRow = {
   readonly pageId: PageId
   readonly classification:
@@ -134,7 +134,7 @@ export type TombstoneProjectionRow = {
   readonly eventId: SyncEventId
 }
 
-/** A row from `query_scan_checkpoint` tracking pagination state for an ongoing or completed data-source query scan. */
+/** A row from `_nds_query_scan_checkpoint` tracking pagination state for an ongoing or completed data-source query scan. */
 export type QueryCheckpointRow = {
   readonly dataSourceId: DataSourceId
   readonly queryContractHash: Hash
@@ -146,14 +146,14 @@ export type QueryCheckpointRow = {
   readonly eventId: SyncEventId
 }
 
-/** Parameters for atomically claiming an outbox command for execution under a lease. */
+/** Parameters for atomically claiming an _nds_outbox command for execution under a _nds_lease. */
 export type OutboxClaimOptions = {
   readonly rootId: SyncRootId
   readonly leaseToken: string
   readonly leaseDurationMs: number
 }
 
-/** An outbox command that has been atomically claimed for execution, including its decoded payload and the attempt event already written to the log. */
+/** An _nds_outbox command that has been atomically claimed for execution, including its decoded payload and the attempt event already written to the log. */
 export type ClaimedOutboxCommand = {
   readonly rootId: SyncRootId
   readonly commandId: CommandId
@@ -175,7 +175,7 @@ export type ClaimedOutboxCommand = {
   readonly attemptEvent: Extract<SyncEvent, { readonly _tag: 'RemoteWriteAttempted' }>
 }
 
-/** Input for recording the mid-flight state of an outbox command attempt (running, retryable, blocked, fenced, ambiguous). */
+/** Input for recording the mid-flight state of an _nds_outbox command attempt (running, retryable, blocked, fenced, ambiguous). */
 export type OutboxAttemptStateInput = {
   readonly rootId: SyncRootId
   readonly commandId: CommandId
@@ -191,7 +191,7 @@ export type OutboxAttemptStateInput = {
   readonly idempotencyKey?: IdempotencyKey
 }
 
-/** Input for marking an outbox command as successfully settled after a verified remote write. */
+/** Input for marking an _nds_outbox command as successfully settled after a verified remote write. */
 export type OutboxSettlementInput = {
   readonly rootId: SyncRootId
   readonly commandId: CommandId
@@ -212,7 +212,7 @@ export type CompactionBlocker = {
   readonly message: string
 }
 
-/** Tagged union indicating whether event-log compaction may proceed or is blocked by in-flight outbox commands. */
+/** Tagged union indicating whether event-log compaction may proceed or is blocked by in-flight _nds_outbox commands. */
 export type CompactionDecision =
   | { readonly _tag: 'allowed' }
   | { readonly _tag: 'blocked'; readonly blockers: readonly CompactionBlocker[] }
@@ -252,6 +252,14 @@ export type StoreStatusProjection = {
     readonly properties: number
     readonly bodies: number
   }
+}
+
+export type WorkspaceBindingRow = {
+  readonly rootId: SyncRootId
+  readonly dataSourceId: DataSourceId
+  readonly databaseId: DatabaseId | undefined
+  readonly workspaceRoot: string
+  readonly storeIdentity: string
 }
 
 const decodeEventFromJson = Schema.decodeSync(Schema.parseJson(SyncEvent))
@@ -438,7 +446,7 @@ const assertSupportedSchemaVersion = (db: DatabaseSync): void => {
     .prepare(
       `SELECT name
        FROM sqlite_master
-       WHERE type = 'table' AND name = 'migration_history'`,
+       WHERE type = 'table' AND name = '_nds_migration_history'`,
     )
     .get()
 
@@ -447,7 +455,7 @@ const assertSupportedSchemaVersion = (db: DatabaseSync): void => {
   const latestKnownMigration = db
     .prepare(
       `SELECT MAX(schema_version) AS schema_version
-       FROM migration_history`,
+       FROM _nds_migration_history`,
     )
     .get()
   const schemaVersion = latestKnownMigration?.schema_version
@@ -483,7 +491,7 @@ const preflightMigrationSafety = (path: string): void => {
 /**
  * SQLite-backed store for the notion-datasource-sync event log and projections.
  *
- * Holds the append-only `sync_event` log plus all derived projection tables.
+ * Holds the append-only `_nds_sync_event` log plus all derived projection tables.
  * Runs migrations on open and exposes synchronous read/write methods used by
  * the sync engine. Opened via `openNotionSyncStore`.
  */
@@ -558,30 +566,30 @@ export class NotionSyncStore {
       const row = this.#db
         .prepare(
           `SELECT
-             outbox.command_id,
-             outbox.command_key,
-             outbox.intent_event_id,
-             outbox.surface,
-             outbox.command_tag,
-             outbox.state,
-             outbox.base_hash,
-             outbox.desired_hash,
-             outbox.preflight_json,
-             outbox.attempt_count,
-             outbox.updated_at,
+             _nds_outbox.command_id,
+             _nds_outbox.command_key,
+             _nds_outbox.intent_event_id,
+             _nds_outbox.surface,
+             _nds_outbox.command_tag,
+             _nds_outbox.state,
+             _nds_outbox.base_hash,
+             _nds_outbox.desired_hash,
+             _nds_outbox.preflight_json,
+             _nds_outbox.attempt_count,
+             _nds_outbox.updated_at,
              event.event_json
-           FROM outbox
-           JOIN sync_event event
-             ON event.root_id = outbox.root_id
-            AND event.idempotency_key = outbox.command_key
+           FROM _nds_outbox
+           JOIN _nds_sync_event event
+             ON event.root_id = _nds_outbox.root_id
+            AND event.idempotency_key = _nds_outbox.command_key
             AND event.event_type = 'RemoteWritePlanned'
-           WHERE outbox.root_id = ?
-             AND outbox.settlement_event_id IS NULL
+           WHERE _nds_outbox.root_id = ?
+             AND _nds_outbox.settlement_event_id IS NULL
              AND (
-               outbox.state IN ('queued', 'retryable', 'ambiguous')
-               OR (outbox.state = 'running' AND outbox.updated_at <= ?)
+               _nds_outbox.state IN ('queued', 'retryable', 'ambiguous')
+               OR (_nds_outbox.state = 'running' AND _nds_outbox.updated_at <= ?)
              )
-           ORDER BY outbox.updated_at, outbox.command_id
+           ORDER BY _nds_outbox.updated_at, _nds_outbox.command_id
            LIMIT 1`,
         )
         .get(options.rootId, leaseCutoff)
@@ -651,7 +659,7 @@ export class NotionSyncStore {
     const row = this.#db
       .prepare(
         `SELECT state, lease_token, settlement_event_id
-         FROM outbox
+         FROM _nds_outbox
          WHERE root_id = ? AND command_id = ?`,
       )
       .get(rootId, commandId)
@@ -745,7 +753,7 @@ export class NotionSyncStore {
     const row = this.#db
       .prepare(
         `SELECT root_id, projector_version, high_water_sequence, digest
-         FROM projection_metadata
+         FROM _nds_projection_metadata
          WHERE root_id = ? AND projection_name = ?`,
       )
       .get(rootId, projectionName)
@@ -757,6 +765,29 @@ export class NotionSyncStore {
       projectorVersion: readString({ row: row, key: 'projector_version' }),
       highWaterSequence: readInteger({ row: row, key: 'high_water_sequence' }),
       digest: decodeHash(readString({ row: row, key: 'digest' })),
+    }
+  }
+
+  readWorkspaceBinding(rootId: SyncRootId): WorkspaceBindingRow | undefined {
+    const row = this.#db
+      .prepare(
+        `SELECT root_id, data_source_id, database_id, workspace_root, store_identity
+         FROM _nds_workspace_binding
+         WHERE root_id = ?`,
+      )
+      .get(rootId)
+
+    if (row === undefined) return undefined
+
+    return {
+      rootId,
+      dataSourceId: decodeDataSourceId(readString({ row, key: 'data_source_id' })),
+      databaseId:
+        readOptionalString({ row, key: 'database_id' }) === undefined
+          ? undefined
+          : decodeDatabaseId(readString({ row, key: 'database_id' })),
+      workspaceRoot: readString({ row, key: 'workspace_root' }),
+      storeIdentity: readString({ row, key: 'store_identity' }),
     }
   }
 
@@ -775,7 +806,7 @@ export class NotionSyncStore {
                 contract_changed,
                 high_watermark,
                 event_id
-         FROM query_scan_checkpoint
+         FROM _nds_query_scan_checkpoint
          WHERE root_id = ?
            AND data_source_id = ?
            AND query_contract_hash = ?`,
@@ -819,7 +850,7 @@ export class NotionSyncStore {
            attempt_count,
            lease_token,
            settlement_event_id
-         FROM outbox
+         FROM _nds_outbox
          WHERE root_id = ?
          ORDER BY command_id`,
       )
@@ -853,8 +884,8 @@ export class NotionSyncStore {
            conflict.opened_event_id,
            conflict.resolution_event_id,
            opened.event_json
-         FROM conflict_projection conflict
-         JOIN sync_event opened
+         FROM _nds_conflict conflict
+         JOIN _nds_sync_event opened
            ON opened.root_id = conflict.root_id
           AND opened.event_id = conflict.opened_event_id
          WHERE conflict.root_id = ?
@@ -915,7 +946,7 @@ export class NotionSyncStore {
     return this.#db
       .prepare(
         `SELECT block_id, surface, guard, message, event_id
-         FROM guard_block_projection
+         FROM _nds_guard_block
          WHERE root_id = ?
          ORDER BY guard, surface, block_id`,
       )
@@ -936,7 +967,7 @@ export class NotionSyncStore {
     return this.#db
       .prepare(
         `SELECT page_id, classification, reason, event_id
-         FROM tombstone_projection
+         FROM _nds_tombstone
          WHERE root_id = ?
          ORDER BY classification, page_id`,
       )
@@ -953,7 +984,7 @@ export class NotionSyncStore {
     const apiRow = this.#db
       .prepare(
         `SELECT api_version
-         FROM api_contract_projection
+         FROM _nds_api_contract
          WHERE root_id = ?
          ORDER BY updated_at DESC, api_version
          LIMIT 1`,
@@ -962,7 +993,7 @@ export class NotionSyncStore {
     const capabilityRows = this.#db
       .prepare(
         `SELECT capability, supported
-         FROM capability_projection
+         FROM _nds_capability
          WHERE root_id = ?
          ORDER BY capability`,
       )
@@ -996,7 +1027,7 @@ export class NotionSyncStore {
         this.#db
           .prepare(
             `SELECT event_json
-             FROM sync_event
+             FROM _nds_sync_event
              WHERE root_id = ? AND event_type = 'DataSourceMetadataObserved'
              ORDER BY sequence`,
           )
@@ -1020,7 +1051,7 @@ export class NotionSyncStore {
         this.#db
           .prepare(
             `SELECT event_json
-             FROM sync_event
+             FROM _nds_sync_event
              WHERE root_id = ? AND event_type = 'DataSourceMetadataObserved'
              ORDER BY sequence`,
           )
@@ -1052,7 +1083,7 @@ export class NotionSyncStore {
       schema: this.#db
         .prepare(
           `SELECT data_source_id, property_id, schema_hash, config_hash, write_class
-           FROM schema_property_projection
+           FROM _nds_schema_property
            WHERE root_id = ?
            ORDER BY data_source_id, property_id`,
         )
@@ -1069,7 +1100,7 @@ export class NotionSyncStore {
       rows: this.#db
         .prepare(
           `SELECT page_id, data_source_id, properties_hash, in_trash, moved_out, local_delete_candidate
-           FROM row_projection
+           FROM _nds_row
            WHERE root_id = ?
            ORDER BY data_source_id, page_id`,
         )
@@ -1085,7 +1116,7 @@ export class NotionSyncStore {
       properties: this.#db
         .prepare(
           `SELECT page_id, property_id, base_hash, remote_hash, availability
-           FROM property_shadow_projection
+           FROM _nds_property_shadow
            WHERE root_id = ?
            ORDER BY page_id, property_id`,
         )
@@ -1122,7 +1153,7 @@ export class NotionSyncStore {
              sidecar_identity_proven,
              own_write_materialization_ids_json,
              safety_json
-           FROM body_pointer_projection
+           FROM _nds_body_pointer
            WHERE root_id = ?
            ORDER BY page_id`,
         )
@@ -1143,7 +1174,7 @@ export class NotionSyncStore {
       pathClaims: this.#db
         .prepare(
           `SELECT relative_path, page_id, state
-           FROM path_claim
+           FROM _nds_path_claim
            WHERE root_id = ?
            ORDER BY relative_path`,
         )
@@ -1173,7 +1204,7 @@ export class NotionSyncStore {
     const outboxRows = this.#db
       .prepare(
         `SELECT command_id, state, lease_token
-         FROM outbox
+         FROM _nds_outbox
          WHERE root_id = ?`,
       )
       .all(rootId)
@@ -1195,7 +1226,7 @@ export class NotionSyncStore {
     const openConflict = this.#db
       .prepare(
         `SELECT conflict_id
-         FROM conflict_projection
+         FROM _nds_conflict
          WHERE root_id = ? AND state = 'open'
          ORDER BY conflict_id
          LIMIT 1`,
@@ -1212,7 +1243,7 @@ export class NotionSyncStore {
     const unclassifiedTombstone = this.#db
       .prepare(
         `SELECT page_id
-         FROM tombstone_projection
+         FROM _nds_tombstone
          WHERE root_id = ? AND classification = 'unclassified'
          ORDER BY page_id
          LIMIT 1`,
@@ -1233,12 +1264,12 @@ export class NotionSyncStore {
     const outboxRows = this.#db
       .prepare(
         `SELECT state, COUNT(*) AS count
-         FROM outbox
+         FROM _nds_outbox
          WHERE root_id = ?
          GROUP BY state`,
       )
       .all(rootId)
-    const outbox = {
+    const _nds_outbox = {
       queued: 0,
       running: 0,
       retryable: 0,
@@ -1249,19 +1280,19 @@ export class NotionSyncStore {
     } satisfies StoreStatusProjection['outbox']
 
     for (const row of outboxRows) {
-      outbox[readOutboxState({ row: row, key: 'state' })] = Number(
+      _nds_outbox[readOutboxState({ row: row, key: 'state' })] = Number(
         readInteger({ row: row, key: 'count' }),
       )
     }
 
     return {
-      outbox,
+      outbox: _nds_outbox,
       conflicts: {
         open: readCount({
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM conflict_projection
+               FROM _nds_conflict
                WHERE root_id = ? AND state = 'open'`,
             )
             .get(rootId),
@@ -1273,7 +1304,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM tombstone_projection
+               FROM _nds_tombstone
                WHERE root_id = ? AND classification = 'unclassified'`,
             )
             .get(rootId),
@@ -1285,7 +1316,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM guard_block_projection
+               FROM _nds_guard_block
                WHERE root_id = ?`,
             )
             .get(rootId),
@@ -1297,7 +1328,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM capability_projection
+               FROM _nds_capability
                WHERE root_id = ? AND supported = 0`,
             )
             .get(rootId),
@@ -1309,7 +1340,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM query_scan_checkpoint
+               FROM _nds_query_scan_checkpoint
                WHERE root_id = ? AND complete = 0`,
             )
             .get(rootId),
@@ -1319,7 +1350,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM query_scan_checkpoint
+               FROM _nds_query_scan_checkpoint
                WHERE root_id = ? AND capped_at_limit = 1`,
             )
             .get(rootId),
@@ -1329,7 +1360,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM query_scan_checkpoint
+               FROM _nds_query_scan_checkpoint
                WHERE root_id = ? AND contract_changed = 1`,
             )
             .get(rootId),
@@ -1339,7 +1370,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM page_property_checkpoint
+               FROM _nds_page_property_checkpoint
                WHERE root_id = ? AND complete = 0`,
             )
             .get(rootId),
@@ -1351,7 +1382,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM data_source_projection
+               FROM _nds_data_source
                WHERE root_id = ?`,
             )
             .get(rootId),
@@ -1361,7 +1392,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM row_projection
+               FROM _nds_row
                WHERE root_id = ?`,
             )
             .get(rootId),
@@ -1371,7 +1402,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM property_shadow_projection
+               FROM _nds_property_shadow
                WHERE root_id = ?`,
             )
             .get(rootId),
@@ -1381,7 +1412,7 @@ export class NotionSyncStore {
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
-               FROM body_pointer_projection
+               FROM _nds_body_pointer
                WHERE root_id = ?`,
             )
             .get(rootId),
@@ -1400,7 +1431,7 @@ export class NotionSyncStore {
   }): void {
     this.#db
       .prepare(
-        `UPDATE projection_metadata
+        `UPDATE _nds_projection_metadata
          SET digest = ?
          WHERE root_id = ? AND projection_name = ?`,
       )
@@ -1420,7 +1451,7 @@ export class NotionSyncStore {
     const existing = this.#db
       .prepare(
         `SELECT event_json
-         FROM sync_event
+         FROM _nds_sync_event
          WHERE root_id = ? AND idempotency_key = ?`,
       )
       .get(event.rootId, event.idempotencyKey)
@@ -1443,7 +1474,7 @@ export class NotionSyncStore {
 
     this.#db
       .prepare(
-        `INSERT INTO sync_event (
+        `INSERT INTO _nds_sync_event (
            root_id,
            sequence,
            event_id,
@@ -1517,7 +1548,7 @@ export class NotionSyncStore {
 
     if (event._tag !== 'RemoteWriteAttempted') {
       throw new LocalStoreError({
-        operation: 'append-outbox-attempt',
+        operation: 'append-_nds_outbox-attempt',
         message: `Outbox attempt idempotency key resolved to unexpected event ${event._tag}`,
       })
     }
@@ -1530,9 +1561,9 @@ export class NotionSyncStore {
 
     this.#db.exec(createStoreSchemaSql)
     for (const statement of [
-      `ALTER TABLE query_scan_checkpoint
+      `ALTER TABLE _nds_query_scan_checkpoint
        ADD COLUMN capped_at_limit INTEGER NOT NULL DEFAULT 0 CHECK (capped_at_limit IN (0, 1))`,
-      `ALTER TABLE query_scan_checkpoint
+      `ALTER TABLE _nds_query_scan_checkpoint
        ADD COLUMN contract_changed INTEGER NOT NULL DEFAULT 0 CHECK (contract_changed IN (0, 1))`,
     ]) {
       try {
@@ -1545,7 +1576,7 @@ export class NotionSyncStore {
     }
     this.#db
       .prepare(
-        `INSERT OR IGNORE INTO migration_history (schema_version, migration_name, applied_at)
+        `INSERT OR IGNORE INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       )
       .run(STORE_SCHEMA_VERSION, 'planner-projection-schema', currentIso(this.#now))
@@ -1554,7 +1585,7 @@ export class NotionSyncStore {
   #ensureRoot(rootId: SyncRootId): void {
     this.#db
       .prepare(
-        `INSERT OR IGNORE INTO sync_root (root_id, created_at, store_identity, settings_json)
+        `INSERT OR IGNORE INTO _nds_sync_root (root_id, created_at, store_identity, settings_json)
          VALUES (?, ?, ?, ?)`,
       )
       .run(rootId, currentIso(this.#now), `store:${rootId}`, '{}')
@@ -1564,7 +1595,7 @@ export class NotionSyncStore {
     const row = this.#db
       .prepare(
         `SELECT COALESCE(MAX(sequence), 0) AS sequence
-         FROM sync_event
+         FROM _nds_sync_event
          WHERE root_id = ?`,
       )
       .get(rootId)
@@ -1576,7 +1607,7 @@ export class NotionSyncStore {
     return this.#db
       .prepare(
         `SELECT sequence, event_id, payload_hash, event_json
-         FROM sync_event
+         FROM _nds_sync_event
          WHERE root_id = ?
          ORDER BY sequence, event_id`,
       )
@@ -1605,22 +1636,22 @@ export class NotionSyncStore {
     const rows = this.#db
       .prepare(
         `SELECT
-           outbox.intent_event_id,
-           outbox.surface,
-           outbox.desired_hash
-         FROM outbox
-         LEFT JOIN sync_event AS intent_event
-           ON intent_event.root_id = outbox.root_id
-          AND intent_event.event_id = outbox.intent_event_id
-         LEFT JOIN sync_event AS planned_event
-           ON planned_event.root_id = outbox.root_id
+           _nds_outbox.intent_event_id,
+           _nds_outbox.surface,
+           _nds_outbox.desired_hash
+         FROM _nds_outbox
+         LEFT JOIN _nds_sync_event AS intent_event
+           ON intent_event.root_id = _nds_outbox.root_id
+          AND intent_event.event_id = _nds_outbox.intent_event_id
+         LEFT JOIN _nds_sync_event AS planned_event
+           ON planned_event.root_id = _nds_outbox.root_id
           AND planned_event.event_type = 'RemoteWritePlanned'
-          AND planned_event.idempotency_key = outbox.command_key
-         WHERE outbox.root_id = ?
-           AND outbox.command_tag = 'PatchPageProperties'
-           AND outbox.settlement_event_id IS NULL
-           AND outbox.state IN ('queued', 'running', 'retryable', 'blocked', 'ambiguous')
-         ORDER BY COALESCE(intent_event.sequence, planned_event.sequence), outbox.command_id`,
+          AND planned_event.idempotency_key = _nds_outbox.command_key
+         WHERE _nds_outbox.root_id = ?
+           AND _nds_outbox.command_tag = 'PatchPageProperties'
+           AND _nds_outbox.settlement_event_id IS NULL
+           AND _nds_outbox.state IN ('queued', 'running', 'retryable', 'blocked', 'ambiguous')
+         ORDER BY COALESCE(intent_event.sequence, planned_event.sequence), _nds_outbox.command_id`,
       )
       .all(rootId)
 
@@ -1646,8 +1677,8 @@ export class NotionSyncStore {
            absence.data_source_id,
            absence.query_contract_hash,
            absence.direct_retrieve
-         FROM tombstone_projection tombstone
-         LEFT JOIN query_absence_projection absence
+         FROM _nds_tombstone tombstone
+         LEFT JOIN _nds_query_absence absence
            ON absence.root_id = tombstone.root_id
           AND absence.page_id = tombstone.page_id
           AND absence.evidence_event_id = tombstone.event_id
@@ -1719,8 +1750,8 @@ export class NotionSyncStore {
            checkpoint.complete,
            checkpoint.capped_at_limit,
            checkpoint.contract_changed
-         FROM query_absence_projection absence
-         LEFT JOIN query_scan_checkpoint checkpoint
+         FROM _nds_query_absence absence
+         LEFT JOIN _nds_query_scan_checkpoint checkpoint
            ON checkpoint.root_id = absence.root_id
           AND checkpoint.data_source_id = absence.data_source_id
           AND checkpoint.query_contract_hash = absence.query_contract_hash
@@ -1780,7 +1811,7 @@ export class NotionSyncStore {
 
     this.#db
       .prepare(
-        `INSERT INTO projection_metadata (
+        `INSERT INTO _nds_projection_metadata (
            root_id,
            projection_name,
            projector_version,
@@ -1844,7 +1875,7 @@ export class NotionSyncStore {
 
     this.#db
       .prepare(
-        `INSERT INTO query_absence_projection (
+        `INSERT INTO _nds_query_absence (
            root_id,
            data_source_id,
            page_id,
@@ -1882,11 +1913,54 @@ export class NotionSyncStore {
   #applyEvent(event: SyncEvent): void {
     switch (event._tag) {
       case 'SyncBindingRecorded':
+        this.#db
+          .prepare(
+            `INSERT INTO _nds_workspace_binding (
+               root_id,
+               data_source_id,
+               workspace_root,
+               store_identity,
+               binding_event_id,
+               updated_at
+             )
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(root_id) DO UPDATE SET
+               data_source_id = excluded.data_source_id,
+               workspace_root = excluded.workspace_root,
+               store_identity = excluded.store_identity,
+               binding_event_id = excluded.binding_event_id,
+               updated_at = excluded.updated_at`,
+          )
+          .run(
+            event.rootId,
+            event.dataSourceId,
+            event.workspaceRoot,
+            event.storeIdentity,
+            event.eventId,
+            currentIso(this.#now),
+          )
+        break
+      case 'DataSourceMetadataObserved':
+        if (event.parentDatabaseId !== undefined) {
+          this.#db
+            .prepare(
+              `UPDATE _nds_workspace_binding
+               SET database_id = ?, metadata_event_id = ?, updated_at = ?
+               WHERE root_id = ? AND data_source_id = ?`,
+            )
+            .run(
+              event.parentDatabaseId,
+              event.eventId,
+              currentIso(this.#now),
+              event.rootId,
+              event.dataSourceId,
+            )
+        }
         break
       case 'ApiContractObserved':
         this.#db
           .prepare(
-            `INSERT INTO api_contract_projection (
+            `INSERT INTO _nds_api_contract (
                root_id,
                api_version,
                client_version,
@@ -1913,7 +1987,7 @@ export class NotionSyncStore {
       case 'CapabilityPreflightChecked':
         this.#db
           .prepare(
-            `INSERT INTO capability_projection (
+            `INSERT INTO _nds_capability (
                root_id,
                capability,
                data_source_id,
@@ -1944,7 +2018,7 @@ export class NotionSyncStore {
         const payload = decodePayload({ event: event, decode: decodeDataSourceProjectionPayload })
         this.#db
           .prepare(
-            `INSERT INTO data_source_projection (
+            `INSERT INTO _nds_data_source (
                root_id,
                data_source_id,
                request_id,
@@ -1974,7 +2048,7 @@ export class NotionSyncStore {
         if (payload?.schemaProperties !== undefined) {
           this.#db
             .prepare(
-              `DELETE FROM schema_property_projection
+              `DELETE FROM _nds_schema_property
                WHERE root_id = ? AND data_source_id = ?`,
             )
             .run(event.rootId, event.dataSourceId)
@@ -1982,7 +2056,7 @@ export class NotionSyncStore {
           for (const property of payload.schemaProperties) {
             this.#db
               .prepare(
-                `INSERT INTO schema_property_projection (
+                `INSERT INTO _nds_schema_property (
                    root_id,
                    data_source_id,
                    property_id,
@@ -2019,7 +2093,7 @@ export class NotionSyncStore {
         const payload = decodePayload({ event: event, decode: decodeDataSourceProjectionPayload })
         this.#db
           .prepare(
-            `DELETE FROM schema_property_projection
+            `DELETE FROM _nds_schema_property
              WHERE root_id = ? AND data_source_id = ?`,
           )
           .run(event.rootId, event.dataSourceId)
@@ -2027,7 +2101,7 @@ export class NotionSyncStore {
         for (const property of payload?.schemaProperties ?? event.schemaProperties) {
           this.#db
             .prepare(
-              `INSERT INTO schema_property_projection (
+              `INSERT INTO _nds_schema_property (
                  root_id,
                  data_source_id,
                  property_id,
@@ -2062,7 +2136,7 @@ export class NotionSyncStore {
         const payload = decodePayload({ event: event, decode: decodeRowProjectionPayload })
         this.#db
           .prepare(
-            `INSERT INTO row_projection (
+            `INSERT INTO _nds_row (
                root_id,
                data_source_id,
                page_id,
@@ -2108,7 +2182,7 @@ export class NotionSyncStore {
           const bodyHash = event.bodyPointer.bodyHash
           this.#db
             .prepare(
-              `INSERT INTO body_pointer_projection (
+              `INSERT INTO _nds_body_pointer (
                  root_id,
                  page_id,
                  path,
@@ -2148,7 +2222,7 @@ export class NotionSyncStore {
       case 'RemoteWritePlanned':
         this.#db
           .prepare(
-            `INSERT INTO outbox (
+            `INSERT INTO _nds_outbox (
                root_id,
                command_id,
                command_key,
@@ -2186,7 +2260,7 @@ export class NotionSyncStore {
         const existing = this.#db
           .prepare(
             `SELECT attempt_count, lease_token, settlement_event_id
-             FROM outbox
+             FROM _nds_outbox
              WHERE root_id = ? AND command_id = ?`,
           )
           .get(event.rootId, event.commandId)
@@ -2210,7 +2284,7 @@ export class NotionSyncStore {
 
           this.#db
             .prepare(
-              `UPDATE outbox
+              `UPDATE _nds_outbox
                SET state = ?,
                    attempt_count = MAX(attempt_count, ?),
                    lease_token = ?,
@@ -2234,7 +2308,7 @@ export class NotionSyncStore {
         const existing = this.#db
           .prepare(
             `SELECT command_tag, state, desired_hash, attempt_count, settlement_event_id
-             FROM outbox
+             FROM _nds_outbox
              WHERE root_id = ? AND command_id = ?`,
           )
           .get(event.rootId, event.commandId)
@@ -2251,7 +2325,7 @@ export class NotionSyncStore {
         ) {
           this.#db
             .prepare(
-              `UPDATE outbox
+              `UPDATE _nds_outbox
                SET state = 'settled',
                    lease_token = NULL,
                    settlement_event_id = ?,
@@ -2268,7 +2342,7 @@ export class NotionSyncStore {
       case 'ConflictRaised':
         this.#db
           .prepare(
-            `INSERT INTO conflict_projection (
+            `INSERT INTO _nds_conflict (
                root_id,
                conflict_id,
                page_id,
@@ -2299,7 +2373,7 @@ export class NotionSyncStore {
       case 'ConflictResolved':
         this.#db
           .prepare(
-            `UPDATE conflict_projection
+            `UPDATE _nds_conflict
              SET state = 'resolved',
                  resolution_event_id = ?,
                  updated_at = ?
@@ -2312,7 +2386,7 @@ export class NotionSyncStore {
       case 'TombstoneCandidateObserved':
         this.#db
           .prepare(
-            `INSERT INTO tombstone_projection (
+            `INSERT INTO _nds_tombstone (
                root_id,
                page_id,
                classification,
@@ -2333,7 +2407,7 @@ export class NotionSyncStore {
       case 'TombstoneRecorded':
         this.#db
           .prepare(
-            `INSERT INTO tombstone_projection (
+            `INSERT INTO _nds_tombstone (
                root_id,
                page_id,
                classification,
@@ -2361,7 +2435,7 @@ export class NotionSyncStore {
       case 'GuardBlocked':
         this.#db
           .prepare(
-            `INSERT INTO guard_block_projection (
+            `INSERT INTO _nds_guard_block (
                root_id,
                block_id,
                surface,
@@ -2391,7 +2465,7 @@ export class NotionSyncStore {
       case 'PathClaimed':
         this.#db
           .prepare(
-            `INSERT INTO path_claim (
+            `INSERT INTO _nds_path_claim (
                root_id,
                relative_path,
                page_id,
@@ -2417,26 +2491,26 @@ export class NotionSyncStore {
         break
       case 'RowForgotten':
         this.#db
-          .prepare(`DELETE FROM row_projection WHERE root_id = ? AND page_id = ?`)
+          .prepare(`DELETE FROM _nds_row WHERE root_id = ? AND page_id = ?`)
           .run(event.rootId, event.pageId)
         this.#db
-          .prepare(`DELETE FROM property_shadow_projection WHERE root_id = ? AND page_id = ?`)
+          .prepare(`DELETE FROM _nds_property_shadow WHERE root_id = ? AND page_id = ?`)
           .run(event.rootId, event.pageId)
         this.#db
-          .prepare(`DELETE FROM body_pointer_projection WHERE root_id = ? AND page_id = ?`)
+          .prepare(`DELETE FROM _nds_body_pointer WHERE root_id = ? AND page_id = ?`)
           .run(event.rootId, event.pageId)
         this.#db
-          .prepare(`DELETE FROM tombstone_projection WHERE root_id = ? AND page_id = ?`)
+          .prepare(`DELETE FROM _nds_tombstone WHERE root_id = ? AND page_id = ?`)
           .run(event.rootId, event.pageId)
         this.#db
-          .prepare(`DELETE FROM query_absence_projection WHERE root_id = ? AND page_id = ?`)
+          .prepare(`DELETE FROM _nds_query_absence WHERE root_id = ? AND page_id = ?`)
           .run(event.rootId, event.pageId)
         this.#db
-          .prepare(`DELETE FROM path_claim WHERE root_id = ? AND page_id = ?`)
+          .prepare(`DELETE FROM _nds_path_claim WHERE root_id = ? AND page_id = ?`)
           .run(event.rootId, event.pageId)
         this.#db
           .prepare(
-            `UPDATE outbox
+            `UPDATE _nds_outbox
              SET state = 'fenced',
                  lease_token = NULL,
                  last_event_id = ?,
@@ -2457,7 +2531,7 @@ export class NotionSyncStore {
           )
         this.#db
           .prepare(
-            `UPDATE conflict_projection
+            `UPDATE _nds_conflict
              SET state = 'ignored',
                  resolution_event_id = ?,
                  updated_at = ?
@@ -2474,7 +2548,7 @@ export class NotionSyncStore {
         })
         this.#db
           .prepare(
-            `INSERT INTO query_scan_checkpoint (
+            `INSERT INTO _nds_query_scan_checkpoint (
                root_id,
                data_source_id,
                query_contract_hash,
@@ -2519,7 +2593,7 @@ export class NotionSyncStore {
         })
         this.#db
           .prepare(
-            `INSERT INTO page_property_checkpoint (
+            `INSERT INTO _nds_page_property_checkpoint (
                root_id,
                page_id,
                property_id,
@@ -2550,7 +2624,7 @@ export class NotionSyncStore {
         if (event.valueHash !== undefined) {
           this.#db
             .prepare(
-              `INSERT INTO property_shadow_projection (
+              `INSERT INTO _nds_property_shadow (
                  root_id,
                  page_id,
                  property_id,

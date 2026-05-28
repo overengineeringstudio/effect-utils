@@ -39,6 +39,7 @@ import {
   NotionRequestId,
   PageId,
   PropertyId,
+  PropertyName,
   type BodyPointer as BodyPointerType,
   type CapabilityName,
   type DataSourceSnapshot,
@@ -243,6 +244,18 @@ export const makeFakeGatewayHarness = (input: FakeGatewayInput = {}): FakeGatewa
       requestId: testIds.requestId,
       observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
       schemaHash: hash('schema'),
+      schemaProperties: [
+        {
+          _tag: 'DataSourcePropertySnapshot',
+          propertyId: testIds.propertyA,
+          name: decode({ schema: PropertyName, value: 'Task name' }),
+          type: 'title',
+          configHash: hash('property-a-config'),
+          writeClass: 'writable',
+          ordinal: 0,
+          configJson: JSON.stringify({ type: 'title' }),
+        },
+      ],
       metadataHash: hash('metadata'),
       metadataJson: JSON.stringify({
         _tag: 'CanonicalDataSourceMetadata',

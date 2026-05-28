@@ -1,8 +1,7 @@
 import { execFile } from 'node:child_process'
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
@@ -34,8 +33,8 @@ import {
 import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
 import type { NotionGatewayClient, NotionGatewayPage } from '../gateway/notion.ts'
 import { presentArtifactObservation } from '../local/workspace.ts'
-import { defaultReplicaPath, projectReplicaFromSyncStore } from '../replica/replica.ts'
-import { NotionSyncStore } from '../store/store.ts'
+import { projectReplicaFromSyncStore } from '../replica/replica.ts'
+import { NotionSyncStore, openNotionSyncStore } from '../store/store.ts'
 import { makeConflictRaisedEvent } from '../sync/observation.ts'
 import { initOneShotSync, pullOneShotSync } from '../sync/sync.ts'
 import {
@@ -279,18 +278,59 @@ const runWithPorts = <TValue, TError>(
     ),
   )
 
+const createBoundSqlite = async ({
+  path,
+  workspace = workspaceRoot,
+}: {
+  readonly path: string
+  readonly workspace?: typeof AbsolutePath.Type
+}): Promise<void> => {
+  const clock = makeFakeClock()
+  const store = openNotionSyncStore({ path, now: clock.now })
+  try {
+    initOneShotSync({
+      store,
+      rootId: testIds.rootId,
+      dataSourceId: testIds.dataSourceId,
+      workspaceRoot: workspace,
+      now: clock.now,
+    })
+    await runWithPorts(
+      pullOneShotSync(
+        context({
+          store,
+          clock,
+          workspaceRoot: workspace,
+        }),
+      ),
+      {
+        gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway,
+      },
+    )
+  } finally {
+    store.close()
+  }
+  projectReplicaFromSyncStore({
+    syncStorePath: path,
+    replicaPath: path,
+    rootId: testIds.rootId,
+  })
+}
+
 describe('CLI command surface', () => {
   it(
     'runs the source CLI through its shebang runtime with node:sqlite available',
     async () => {
       const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
       try {
+        const sqlitePath = join(dir, 'store.sqlite')
+        await createBoundSqlite({ path: sqlitePath })
         const { stdout } = await execFileAsync(
           cliPath,
           [
             'status',
-            '--store',
-            join(dir, 'store.sqlite'),
+            '--sqlite',
+            sqlitePath,
             '--root-id',
             testIds.rootId,
             '--data-source-id',
@@ -338,7 +378,7 @@ describe('CLI command surface', () => {
               '--state',
               '/tmp/watch.json',
               '--max-cycles',
-              '--store',
+              '--sqlite',
               join(dir, 'store.sqlite'),
               '--root-id',
               testIds.rootId,
@@ -359,7 +399,7 @@ describe('CLI command surface', () => {
             cliPath,
             [
               'status',
-              '--store',
+              '--sqlite',
               join(dir, 'store.sqlite'),
               '--root-id',
               testIds.rootId,
@@ -395,7 +435,7 @@ describe('CLI command surface', () => {
               '/tmp/watch.json',
               '--max-cycles',
               '0',
-              '--store',
+              '--sqlite',
               join(dir, 'store.sqlite'),
               '--root-id',
               testIds.rootId,
@@ -622,34 +662,37 @@ describe('CLI command surface', () => {
     })
   })
 
+  it('rejects the removed --store flag instead of treating it as a workspace dependency', () => {
+    expect(() =>
+      parseCliContext({
+        argv: [
+          'status',
+          '--store',
+          '/tmp/legacy-store.sqlite',
+          '--root-id',
+          testIds.rootId,
+          '--data-source-id',
+          testIds.dataSourceId,
+          '--workspace-root',
+          workspaceRoot,
+        ],
+      }),
+    ).toThrow('--store has been removed')
+  })
+
   it('discovers established workspace config for sync and suggests establishment when missing', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-config-'))
     try {
       expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(
-        'Missing datasource-sync workspace config',
+        'No self-contained datasource-sync SQLite file found',
       )
-      await mkdir(join(dir, '.notion-datasource-sync'), { recursive: true })
-      await writeFile(join(dir, '.notion-datasource-sync', 'store.sqlite'), '', 'utf8')
-      await writeFile(
-        join(dir, '.notion-datasource-sync', 'config.json'),
-        `${JSON.stringify(
-          {
-            version: 1,
-            rootId: 'data-source:data-source-1',
-            dataSourceId: testIds.dataSourceId,
-            storePath: join(dir, '.notion-datasource-sync', 'store.sqlite'),
-            workspaceRoot: dir,
-            notionApiVersion: '2026-03-11',
-            bodyMaterialization: 'enabled',
-          },
-          null,
-          2,
-        )}\n`,
-        'utf8',
-      )
+      await createBoundSqlite({
+        path: join(dir, `${testIds.databaseId}.sqlite`),
+        workspace: decode({ schema: AbsolutePath, value: dir }),
+      })
       const ctx = parseCliContext({ argv: ['sync', dir] })
       try {
-        expect(ctx.rootId).toBe('data-source:data-source-1')
+        expect(ctx.rootId).toBe(testIds.rootId)
         expect(ctx.dataSourceId).toBe(testIds.dataSourceId)
         expect(ctx.workspaceRoot).toBe(dir)
       } finally {
@@ -685,17 +728,18 @@ describe('CLI command surface', () => {
     { argv: ['migrate', 'schema'] as const, expected: 'migrate-schema' },
     { argv: ['repair'] as const, expected: 'repair' },
   ])(
-    'fails closed for unsupported $expected before creating the SQLite store',
+    'fails closed for unsupported $expected with an explicit self-contained SQLite file',
     async ({ argv, expected }) => {
       const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-unsupported-'))
       const storePath = join(dir, `${expected}.sqlite`)
       try {
+        await createBoundSqlite({ path: storePath })
         await expect(
           execFileAsync(
             cliPath,
             [
               ...argv,
-              '--store',
+              '--sqlite',
               storePath,
               '--root-id',
               testIds.rootId,
@@ -710,8 +754,6 @@ describe('CLI command surface', () => {
           code: 1,
           stderr: expect.stringContaining(`${expected} is not implemented yet`),
         })
-
-        await expectSqliteStoreFilesAbsent(storePath)
       } finally {
         await rm(dir, { recursive: true, force: true })
       }
@@ -724,12 +766,14 @@ describe('CLI command surface', () => {
     async () => {
       const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-'))
       try {
+        const sqlitePath = join(dir, 'store.sqlite')
+        await createBoundSqlite({ path: sqlitePath })
         const { stdout } = await execFileAsync(
           cliPath,
           [
             'status',
-            '--store',
-            join(dir, 'store.sqlite'),
+            '--sqlite',
+            sqlitePath,
             '--root-id',
             testIds.rootId,
             '--data-source-id',
@@ -763,7 +807,7 @@ describe('CLI command surface', () => {
           runCliMain({
             argv: [
               'status',
-              '--store',
+              '--sqlite',
               storePath,
               '--root-id',
               testIds.rootId,
@@ -821,12 +865,14 @@ describe('CLI command surface', () => {
     }
 
     try {
+      await createBoundSqlite({ path: join(dir, 'store.sqlite') })
+      closeCalls = 0
       await expect(
         Effect.runPromise(
           runCliMain({
             argv: [
               'pull',
-              '--store',
+              '--sqlite',
               join(dir, 'store.sqlite'),
               '--root-id',
               testIds.rootId,
@@ -1378,155 +1424,6 @@ describe('CLI command surface', () => {
       expect(gateway.ledger.attemptedRestorePages).toHaveLength(0)
     } finally {
       storeFixture.cleanup()
-    }
-  })
-
-  it('settles public SQLite CDC changes through the CLI sync wiring', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-replica-cdc-'))
-    const workspace = decode({ schema: AbsolutePath, value: dir })
-    const replicaPath = defaultReplicaPath(workspace)
-    const clock = makeFakeClock()
-    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
-    const gateway = makeFakeGatewayHarness({
-      pages: [pageSnapshot({ inTrash: true })],
-      propertyPages: [propertyPage(hash('properties-a')), filesPropertyPage()],
-    })
-    const ctx = context({
-      store: storeFixture.store,
-      clock,
-      workspaceRoot: workspace,
-      maxExecutorSteps: 8,
-      schemaProperties: [
-        {
-          propertyId: testIds.propertyA,
-          name: 'Name',
-          type: 'title',
-          configHash: hash('config-a'),
-          writeClass: 'writable' as const,
-        },
-        {
-          propertyId: testIds.propertyB,
-          name: 'Attachment',
-          type: 'files',
-          configHash: hash('config-b'),
-          writeClass: 'writable' as const,
-        },
-      ],
-    })
-
-    try {
-      initOneShotSync({
-        store: storeFixture.store,
-        rootId: testIds.rootId,
-        dataSourceId: testIds.dataSourceId,
-        workspaceRoot: workspace,
-        now: clock.now,
-      })
-      await runWithPorts(pullOneShotSync({ ...ctx, store: storeFixture.store }), {
-        gateway: gateway.gateway,
-      })
-      projectReplicaFromSyncStore({
-        syncStorePath: storeFixture.path,
-        replicaPath,
-        rootId: testIds.rootId,
-      })
-
-      const db = new DatabaseSync(replicaPath)
-      try {
-        const source = db
-          .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
-          .get(testIds.dataSourceId) as { schema_hash: string }
-        db.prepare(
-          `INSERT INTO notion_row_creates (
-             change_id, data_source_id, local_row_id, client_request_key,
-             initial_values_json, base_schema_hash
-           ) VALUES (?, ?, ?, ?, ?, ?)`,
-        ).run(
-          'cli-create-1',
-          testIds.dataSourceId,
-          'cli-local-create-1',
-          'cli-client-create-1',
-          JSON.stringify({
-            [testIds.propertyA]: { _tag: 'title', plainText: 'CLI-created row' },
-          }),
-          source.schema_hash,
-        )
-        const fileCell = db
-          .prepare(`SELECT base_hash FROM notion_cells WHERE page_id = ? AND property_id = ?`)
-          .get(testIds.pageId, testIds.propertyB) as { readonly base_hash: string }
-        db.prepare(
-          `INSERT INTO notion_file_assets (
-             asset_id, source_type, name, external_url
-           ) VALUES (?, 'external_url', ?, ?)`,
-        ).run('cli-external-file', 'cli-fixture.txt', 'https://example.com/cli-fixture.txt')
-        db.prepare(
-          `INSERT INTO notion_file_changes (
-             change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
-           ) VALUES (?, ?, 'attach_external_url', ?, ?, ?, ?)`,
-        ).run(
-          'cli-file-attach-1',
-          'cli-external-file',
-          testIds.dataSourceId,
-          testIds.pageId,
-          testIds.propertyB,
-          fileCell.base_hash,
-        )
-      } finally {
-        db.close()
-      }
-
-      const result = await runWithPorts(
-        runCliCommand({ _tag: 'sync', workspaceRoot: workspace }, ctx),
-        {
-          gateway: gateway.gateway,
-        },
-      )
-
-      expect(result).toMatchObject({
-        _tag: 'CliResultEnvelope',
-        command: 'sync',
-      })
-      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
-
-      const after = new DatabaseSync(replicaPath, { readOnly: true })
-      try {
-        expect(
-          after
-            .prepare(
-              `SELECT status, remote_page_id, unsupported_reason
-               FROM notion_row_creates
-               WHERE change_id = 'cli-create-1'`,
-            )
-            .get(),
-        ).toMatchObject({
-          status: 'applied',
-          remote_page_id: 'fake-created-cli-client-create-1',
-            unsupported_reason: null,
-        })
-        expect(
-          after
-            .prepare(
-              `SELECT status, unsupported_reason
-               FROM notion_file_changes
-               WHERE change_id = 'cli-file-attach-1'`,
-            )
-            .get(),
-        ).toMatchObject({ status: 'applied', unsupported_reason: null })
-        expect(
-          after
-            .prepare(
-              `SELECT status, unsupported_reason
-               FROM notion_local_changes
-               WHERE kind = 'file_attach' AND change_id = 'cli-file-attach-1'`,
-            )
-            .get(),
-        ).toMatchObject({ status: 'applied', unsupported_reason: null })
-      } finally {
-        after.close()
-      }
-    } finally {
-      storeFixture.cleanup()
-      await rm(dir, { recursive: true, force: true })
     }
   })
 

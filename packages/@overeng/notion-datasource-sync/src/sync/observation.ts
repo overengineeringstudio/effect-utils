@@ -899,7 +899,24 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
         for (const row of queryPage.rows.slice(0, remainingRows)) {
           remainingRows -= 1
           const page = yield* gateway.retrievePage(row.pageId)
-          const bodyPointer = yield* body.observe({ _tag: 'ObserveBodyInput', pageId: row.pageId })
+          const bodyPointer =
+            options.materializeBodies === false
+              ? Schema.decodeUnknownSync(BodyPointer)({
+                  _tag: 'BodyPointer',
+                  pageId: row.pageId,
+                  bodyHash: hashStoreBytes(`body:not-materialized:${row.pageId}`),
+                  observedAt: now().toISOString(),
+                  safety: {
+                    truncated: false,
+                    unknownBlockCause: undefined,
+                    selection: 'safe',
+                    wouldDeleteChildren: false,
+                    syncedPageUnsupported: false,
+                    adapterConflict: false,
+                    adapterMutationSurfaces: [],
+                  },
+                })
+              : yield* body.observe({ _tag: 'ObserveBodyInput', pageId: row.pageId })
           const path = (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId)
           const materializeResult =
             options.materializeBodies === false

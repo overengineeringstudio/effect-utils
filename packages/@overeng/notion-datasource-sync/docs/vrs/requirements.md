@@ -143,11 +143,11 @@ These requirements serve [vision.md](./vision.md). They define the production co
 
 ### Must Expose A Local SQLite Replica API
 
-- **R74 Public replica file:** Each established workspace must expose `notion.sqlite` as the stable user-facing local replica/API.
-- **R75 Internal store boundary:** `.notion-datasource-sync/store.sqlite` must remain internal sync-control state and must not be documented or required as the user's local Notion database.
-- **R76 Rebuildable replica:** `notion.sqlite` must be rebuildable from the internal sync-control store without losing accepted intents, conflicts, or settlement state.
-- **R77 Generic read model:** The replica must expose stable generic tables for data sources, properties, rows, cells, bodies, local changes, conflicts, and sync status.
-- **R78 Ergonomic views:** The replica may expose generated read views per data source, but those views must be derived from the generic model and tolerate property rename/collision cases.
+- **R74 Public replica file:** Each established workspace must expose one `<database-id>.sqlite` file as the stable user-facing local replica/API.
+- **R75 Internal store boundary:** Private sync-control state must live inside `_nds_*` tables in that same SQLite file and must not be documented as user-editable API.
+- **R76 Portable replica:** `<database-id>.sqlite` must remain copyable/back-up-able without required config or store sidecars while preserving accepted intents, conflicts, and settlement state.
+- **R77 Generic read model:** The replica must expose stable public surfaces for `rows`, `schema`, `schema_properties`, `changes`, `conflicts`, `sync_status`, and read-only `debug_*` diagnostics.
+- **R78 Ergonomic rows view:** The writable `rows` view must provide property-name columns and tolerate property rename/collision cases.
 - **R79 Writable intents:** Local data edits must enter the system as explicit, durable write intents with target identity, base hashes, desired value, actor/source, and conflict policy.
 - **R80 Intent safety:** Local SQL writes must not call Notion directly; CLI sync must plan, dry-run, enqueue, execute, verify, and settle intents through the guarded outbox model.
 - **R81 Public schema versioning:** The replica API schema must be versioned separately from the internal store schema and generated view definitions.
