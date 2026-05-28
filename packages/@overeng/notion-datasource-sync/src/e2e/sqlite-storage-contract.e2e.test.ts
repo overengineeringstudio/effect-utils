@@ -199,7 +199,7 @@ const establishWorkspace = async (workspace: AbsolutePathType) => {
     retrieveDatabase: 0,
   }
   const gatewayClient = makeDatabaseResolverClient(calls)
-  const argv = ['sync', '--from-notion', databaseUrl, workspace] as const
+  const argv = ['sync', '--from-notion', databaseUrl, workspace, '--no-materialize-bodies'] as const
   const command = await Effect.runPromise(
     resolveCliCommandNotionRefs({
       command: parseCliCommand(argv),

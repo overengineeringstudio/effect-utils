@@ -154,7 +154,7 @@ const readQueryCheckpointRows = (path: string): ReadonlyArray<QueryCheckpointRow
                 capped_at_limit,
                 contract_changed,
                 high_watermark
-         FROM query_scan_checkpoint
+         FROM _nds_query_scan_checkpoint
          WHERE root_id = ?
          ORDER BY data_source_id, query_contract_hash`,
       )

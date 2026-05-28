@@ -17,9 +17,9 @@
 ## The Vision
 
 - Datasource sync is a standalone primitive for synchronizing Notion data sources with a user-facing local SQLite replica and a durable internal control plane.
-- `notion.sqlite` is the local data API. Users and tools read current data and write guarded intents there, analogous to how `@overeng/notion-md` users read and write `.nmd` files.
+- `<database-id>.sqlite` is the local data API. Users and tools read current data and write guarded intents there, analogous to how `@overeng/notion-md` users read and write `.nmd` files.
 - The primitive composes with `@overeng/notion-md` for page-body materialization, while keeping page bodies and data-source rows as distinct sync surfaces.
-- Local state is auditable and replayable. The internal control store records history and recovery state; the public replica is rebuildable from it. Sync decisions are explainable, reproducible, guarded, and repairable.
+- Local state is auditable and replayable. Private `_nds_*` state records history and recovery state in the same SQLite file as the public surfaces. Sync decisions are explainable, reproducible, guarded, and repairable.
 - Notion remains authoritative for current remote facts after observation. Local state is authoritative for local intent, conflict records, outbox lifecycle, tombstones, path claims, and migration history.
 - Every unsafe condition has a typed guard. Unknown, lossy, stale, ambiguous, or unsupported state blocks automatic writes instead of falling back to last-writer-wins behavior.
 - Continuous sync uses the same correctness model as one-shot commands, so background operation cannot bypass guards.
@@ -35,11 +35,11 @@
 - It is not a replacement for Notion permissions, ownership, or workspace policy.
 - It is not dependent on Notion Workers, webhooks, or any hosted callback path for correctness.
 - It is not a generic relational database replicator for arbitrary SQL schemas.
-- It is not a promise that every table inside `.notion-datasource-sync/store.sqlite` is public API.
+- It is not a promise that every object inside `<database-id>.sqlite` is public API; `_nds_*` remains private implementation state.
 
 ## Success Criteria
 
-1. A user can bind a Notion data source to a local workspace, inspect schema and rows through `notion.sqlite`, edit supported local data through SQLite intents and page-body files, and push changes without mixing body metadata into data-source state.
+1. A user can bind a Notion data source to a local workspace, inspect schema and rows through `<database-id>.sqlite`, edit supported local data through public SQLite surfaces and page-body files, and push changes without mixing body metadata into data-source state.
 2. Local control-plane state can be replayed to rebuild derived sync state deterministically.
 3. A normal sync refuses stale, ambiguous, lossy, or unsupported writes and reports the exact guard that blocked the operation.
 4. Disjoint local and remote edits merge automatically at the smallest safe sync surface; same-surface edits become durable conflicts with explicit resolution commands.

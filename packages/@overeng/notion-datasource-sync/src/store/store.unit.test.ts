@@ -411,29 +411,29 @@ describe('Notion sync SQLite store', () => {
            FROM sqlite_master
            WHERE type = 'table'
              AND name IN (
-               'data_source_projection',
-               'schema_property_projection',
-               'row_projection',
-               'property_shadow_projection',
-               'body_pointer_projection',
-               'query_absence_projection'
+               '_nds_data_source',
+               '_nds_schema_property',
+               '_nds_row',
+               '_nds_property_shadow',
+               '_nds_body_pointer',
+               '_nds_query_absence'
              )
            ORDER BY name`,
         )
         .all()
         .map((row) => String(row.name))
       const queryColumns = db
-        .prepare(`PRAGMA table_info(query_scan_checkpoint)`)
+        .prepare(`PRAGMA table_info(_nds_query_scan_checkpoint)`)
         .all()
         .map((row) => String(row.name))
 
       expect(tables).toEqual([
-        'body_pointer_projection',
-        'data_source_projection',
-        'property_shadow_projection',
-        'query_absence_projection',
-        'row_projection',
-        'schema_property_projection',
+        '_nds_body_pointer',
+        '_nds_data_source',
+        '_nds_property_shadow',
+        '_nds_query_absence',
+        '_nds_row',
+        '_nds_schema_property',
       ])
       expect(queryColumns).toEqual(expect.arrayContaining(['capped_at_limit', 'contract_changed']))
     } finally {
@@ -446,14 +446,14 @@ describe('Notion sync SQLite store', () => {
     const db = new DatabaseSync(path, { readBigInts: true })
     try {
       db.exec(`
-        CREATE TABLE migration_history (
+        CREATE TABLE _nds_migration_history (
           schema_version INTEGER PRIMARY KEY,
           migration_name TEXT NOT NULL,
           applied_at TEXT NOT NULL
         )
       `)
       db.prepare(
-        `INSERT INTO migration_history (schema_version, migration_name, applied_at)
+        `INSERT INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       ).run(999, 'future-schema', observedAt)
     } finally {
@@ -475,7 +475,7 @@ describe('Notion sync SQLite store', () => {
           .prepare(
             `SELECT name
              FROM sqlite_master
-             WHERE type = 'table' AND name = 'sync_root'`,
+             WHERE type = 'table' AND name = '_nds_sync_root'`,
           )
           .get(),
       ).toBeUndefined()
@@ -490,14 +490,14 @@ describe('Notion sync SQLite store', () => {
     const db = new DatabaseSync(path, { readBigInts: true })
     try {
       db.exec(`
-        CREATE TABLE migration_history (
+        CREATE TABLE _nds_migration_history (
           schema_version TEXT PRIMARY KEY,
           migration_name TEXT NOT NULL,
           applied_at TEXT NOT NULL
         )
       `)
       db.prepare(
-        `INSERT INTO migration_history (schema_version, migration_name, applied_at)
+        `INSERT INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       ).run('future', 'unknown-schema', observedAt)
     } finally {
@@ -519,7 +519,7 @@ describe('Notion sync SQLite store', () => {
           .prepare(
             `SELECT name
              FROM sqlite_master
-             WHERE type = 'table' AND name = 'sync_root'`,
+             WHERE type = 'table' AND name = '_nds_sync_root'`,
           )
           .get(),
       ).toBeUndefined()
