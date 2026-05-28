@@ -11,7 +11,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Surface                | Current behavior                                                                                                            |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Data-source retrieve   | Reads schema, parent metadata, and supported property configs                                                               |
-| Data-source query      | Cursor pagination with canonical filter/sort/high-watermark contract                                                        |
+| Data-source query      | Cursor pagination for full database replica scans                                                                           |
 | Page retrieve          | Reads row page lifecycle and property snapshots                                                                             |
 | Page-property retrieve | Cursor pagination for truncated property-item values                                                                        |
 | Property writes        | Guarded row property patches for modeled writable values                                                                    |
@@ -40,7 +40,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Notion-hosted signed URLs        | Excluded from stable hashes and diagnostics                                                                                                                              |
 | Page-property rollup metadata    | Preserved in observation hashes without inflating relation item counts                                                                                                   |
 | Data-source icon metadata        | Observed as stable identity when possible; writable icon sync is deferred                                                                                                |
-| Filtered query membership        | Does not classify row absence outside the explicit query contract                                                                                                        |
+| Query caps and internal filters  | Capped previews and internal filtered/debug scans do not establish replicas or classify row absence                                                                       |
 | Canonical `rows`                 | Primary writable replica table for one data source; property columns first, `_` system columns last                                                                      |
 | `schema` / `schema_properties`   | Read-only metadata and column/property mapping; `schema_json` is not embedded in `rows`                                                                                  |
 | Local generated views            | Read-only debug views; writes go through `rows` or `changes`                                                                                                             |

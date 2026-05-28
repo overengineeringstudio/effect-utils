@@ -115,16 +115,14 @@ body adapter.
 
 ## Query Scan Does Not Mark Rows Missing
 
-Rows are not considered absent unless the scan is complete for the exact query
-contract. Check:
+Rows are not considered absent unless the full database scan completes. Check:
 
 - pagination reached the terminal page,
-- the filter/sort/page size/high-watermark did not change,
 - the query did not hit a cap,
-- the membership scope matches the intended workspace.
+- the command was not a dry-run preview with `--limit`.
 
-Filtered queries track the filtered membership only. They do not prove absence
-from the full data source.
+Filtered/query-contract scans are not a product replica mode. They do not prove
+absence from a full database and must not create database-ID-named SQLite files.
 
 ## Property Value Is Incomplete
 

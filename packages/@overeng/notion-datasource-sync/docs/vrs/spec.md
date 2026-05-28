@@ -124,6 +124,9 @@ type NotionApiContract = {
 
 type QueryRowsInput = {
   readonly dataSourceId: DataSourceId
+  // Product sync always supplies the full database membership contract. Custom
+  // query contracts are internal test/debug inputs and are not CLI
+  // establishment modes.
   readonly queryContract: QueryContract
   readonly startCursor: QueryCursor | null
 }
@@ -140,11 +143,11 @@ type QueryRowsPage = {
 
 type QueryContract = {
   readonly apiVersion: '2026-03-11'
-  readonly filter: CanonicalNotionFilter | null
-  readonly sorts: readonly CanonicalNotionSort[]
+  readonly filter: null
+  readonly sorts: readonly []
   readonly pageSize: PositiveInt
-  readonly highWatermark: DateTimeUtc | null
-  readonly membershipScope: 'all-data-source-rows' | 'explicit-filter'
+  readonly highWatermark: null
+  readonly membershipScope: 'all-data-source-rows'
 }
 
 type PagePropertyItemPage = {
@@ -761,20 +764,24 @@ Remote membership and row hashing require two different completeness proofs:
 | Query scan completeness     | data-source query pages  | cursor chain reaches `hasMore=false` before the 10,000-result cap hides rows | do not advance completeness checkpoint or classify absence    |
 | Property value completeness | page-property item pages | every paginated property needed for hashing reaches `hasMore=false`          | mark property incomplete and block clean hash/write decisions |
 
-`QueryContract` is part of the checkpoint identity. A scan with a different filter, sort, page size, API version, high-watermark rule, or membership scope starts a new checkpoint and cannot reuse old absence evidence.
+`QueryContract` is private checkpoint identity for the full database query.
+Product replicas do not expose filtered or query-contract establishment. Any
+internal debug/test query shape starts a separate private `_nds_*` checkpoint and
+must not produce a database-ID-named product replica.
 
 Query policy:
 
-| Case                                                         | Decision                                                                         |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| unsorted query                                               | allowed for bounded full scans only; not a stable incremental proof              |
-| `last_edited_time` sort                                      | optimization for polling; repair scans still verify known pages and completeness |
-| `filter_properties` omits edited/hash-relevant properties    | fetch omitted values through page-property pagination before hashing             |
-| linked data source or unsupported wiki/special data source   | block with unsupported guard                                                     |
-| filtered query with `membershipScope='explicit-filter'`      | absence may mean outside the sync scope only after direct retrieval              |
-| filtered query with `membershipScope='all-data-source-rows'` | absence is never delete/move evidence                                            |
+| Case                                                       | Decision                                                                           |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| unsorted full query                                        | normal product scan; must page to terminal completion before absence is evidence   |
+| `last_edited_time` sort                                    | internal optimization only; repair scans still verify known pages and completeness |
+| `filter_properties` omits edited/hash-relevant properties  | fetch omitted values through page-property pagination before hashing               |
+| linked data source or unsupported wiki/special data source | block with unsupported guard                                                       |
+| filtered query                                             | internal test/debug only; not a product replica or tombstone proof                 |
 
-The 10,000-result query cap is a hard completeness boundary. Large bindings must use complete partitioned query contracts or stay blocked by `QueryResultCapExceeded`.
+The 10,000-result query cap is a hard completeness boundary. Large databases
+must either complete a full scan or stay blocked by `QueryResultCapExceeded`;
+partial replicas are not a supported fallback.
 
 ## Guard Matrix
 
@@ -927,7 +934,9 @@ stateDiagram-v2
 
 Local file deletion creates a delete candidate by default, not a remote-trash intent. A remote-trash intent may be accepted only when SQLite still owns the row, the body sidecar proves identity, and either an explicit CLI command requested trash or the binding policy is `trustedRemoteTrash` with explicit command approval. Watch mode never auto-applies remote trash from a bare filesystem delete under the default `candidateOnly` policy. Deleting sidecar state is repairable projection damage, not remote delete intent.
 
-Filtered absence is not a tombstone candidate unless the binding explicitly scopes membership to the filter and a direct page retrieve confirms the lifecycle. Query scans that are incomplete, capped, interrupted, or based on a changed query contract cannot produce absence candidates.
+Filtered absence is not a product tombstone candidate. Query scans that are
+incomplete, capped, interrupted, filtered, or based on an internal changed query
+contract cannot produce product absence candidates.
 
 Direct classifier outcomes:
 
@@ -1012,7 +1021,7 @@ Requirement trace: R48-R52, R67-R73.
 | Command                   | Primary flags                                                                                             | Purpose                                                                                                             |
 | ------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `sync --from-notion`      | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies` | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
-| `sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                             | Reconcile an established workspace discovered from its self-contained SQLite file                                    |
+| `sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                             | Reconcile an established workspace discovered from its self-contained SQLite file                                   |
 | `status <workspace-root>` | `--json`, `--porcelain`                                                                                   | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
 | `init`                    | `--data-source-id`, `--root`, `--sqlite`                                                                  | Advanced: bind a local root to a Notion data source without observing it                                            |
 | `pull`                    | `--since`, `--full-scan`, `--dry-run`                                                                     | Advanced: observe remote schema/rows/body pointers and materialize local projections                                |
@@ -1033,7 +1042,8 @@ Workspace establishment writes `<workspace>/<database-id>.sqlite` under the
 workspace root. The database file is named with the Notion database ID, not the
 display name, and contains the public API plus private `_nds_*` event/outbox
 state. No `.notion-datasource-sync/store.sqlite` or config sidecar is required
-state, and there is no compatibility mode for split-store layouts. If the
+state, and there is no compatibility mode for split-store layouts or partial
+query-contract replicas. If the
 filename, public `schema` metadata, and private `_nds_*` binding disagree,
 established commands fail closed.
 
