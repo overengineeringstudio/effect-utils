@@ -17,7 +17,6 @@ import {
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
 import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
-import { canonicalHash } from '../core/canonical.ts'
 import {
   CanonicalOptionValue,
   PatchDataSourceMetadataCommand,
@@ -39,6 +38,7 @@ import {
   makeNotionDataSourceGatewayFromClient,
   makeNotionEffectClientGatewayClient,
   NotionDataSourceGatewayLive,
+  schemaPropertyObservationsFromRemoteProperties,
 } from '../gateway/notion.ts'
 import { makeFilesystemLocalWorkspacePort } from '../local/workspace.ts'
 import { commandIdFor, observeRemoteDataSource } from '../sync/observation.ts'
@@ -1287,11 +1287,9 @@ const observeDemoDataSource = ({
       properties: dataSourceProperties,
       name: spec.filterPropertyName,
     })
-    const schemaProperties = spec.schemaPropertyNames.map((name) => ({
-      propertyId: PropertyId.make(resolvePropertyId({ properties: dataSourceProperties, name })),
-      configHash: canonicalHash(dataSourceProperties[name]),
-      writeClass: 'writable' as const,
-    }))
+    const schemaProperties = schemaPropertyObservationsFromRemoteProperties(
+      dataSourceProperties,
+    ).filter((property) => spec.schemaPropertyNames.includes(property.name))
     const queryContract: QueryContract = {
       _tag: 'QueryContract',
       apiVersion: '2026-03-11',
@@ -1703,6 +1701,18 @@ export const provisionLiveNotionDataSourceFixture = async ({
       properties: {
         Name: { title: {} },
         Done: { checkbox: {} },
+        Notes: { rich_text: {} },
+        Count: { number: { format: 'number' } },
+        Stage: {
+          select: {
+            options: [
+              { name: 'todo', color: 'gray' },
+              { name: 'doing', color: 'blue' },
+              { name: 'done', color: 'green' },
+            ],
+          },
+        },
+        Due: { date: {} },
       },
     }).pipe(Effect.provide(layer)),
   )

@@ -51,6 +51,7 @@ import {
   WorkspaceRelativePath,
   openNotionSyncStore,
 } from '../mod.ts'
+import { projectReplicaFromSyncStore } from '../replica/replica.ts'
 import { makeFakeGatewayHarness, testIds } from '../testing/harness.ts'
 import {
   emptyLiveFixtureLedger,
@@ -1188,6 +1189,31 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           config: processLiveConfig,
         })
         const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
+        const rowTitle = `auto schema row ${provisioned.config.runId}`
+        const seededPage = await runLive(
+          env,
+          NotionPages.create({
+            parent: {
+              type: 'data_source_id',
+              data_source_id: provisioned.config.dataSourceId,
+            },
+            properties: {
+              Name: title(rowTitle),
+              Done: { checkbox: true },
+              Notes: { rich_text: [text('observed without schema json')] },
+              Count: { number: 7 },
+              Stage: { select: { name: 'doing' } },
+              Due: { date: { start: '2026-05-28' } },
+            },
+          }),
+        )
+        await recorder.record({
+          phase: 'create',
+          objectId: seededPage.id,
+          objectType: 'page',
+          purpose: 'live-auto-schema-rows-value-fixture',
+          cleanupState: 'created',
+        })
         const workspaceRoot = decode(
           AbsolutePath,
           await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-adopt-')),
@@ -1265,6 +1291,48 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           expect(applied.pull.appendedEvents).toBeGreaterThan(0)
           expect(rerun.pushed).toBe(false)
           expect(rerun.pull.appendedEvents).toBe(0)
+          const replicaPath = defaultReplicaPath(workspaceRoot)
+          projectReplicaFromSyncStore({
+            syncStorePath: join(workspaceRoot, 'store.sqlite'),
+            replicaPath,
+            rootId,
+          })
+          const db = new DatabaseSync(replicaPath, { readOnly: true })
+          try {
+            const columns = db
+              .prepare(`PRAGMA table_xinfo(rows)`)
+              .all()
+              .map((row) => String((row as { readonly name: unknown }).name))
+            expect(columns).not.toContain('schema_json')
+            expect(columns.findIndex((column) => column.startsWith('_'))).toBeGreaterThan(0)
+            expect(
+              db
+                .prepare(
+                  `SELECT property_name, property_type
+                   FROM schema_properties
+                   ORDER BY ordinal`,
+                )
+                .all(),
+            ).toEqual(expect.arrayContaining([expect.objectContaining({ property_name: 'Name' })]))
+            expect(
+              db
+                .prepare(
+                  `SELECT "Name", "Done", "Notes", "Count", "Stage", "Due"
+                   FROM rows
+                   WHERE _page_id = ?`,
+                )
+                .get(seededPage.id),
+            ).toMatchObject({
+              Name: rowTitle,
+              Done: 1,
+              Notes: 'observed without schema json',
+              Count: 7,
+              Stage: 'doing',
+              Due: '2026-05-28',
+            })
+          } finally {
+            db.close()
+          }
           await recorder.record({
             phase: 'verify',
             objectType: 'data_source',
@@ -1335,7 +1403,6 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             name: filePropertyName,
             type: 'files',
           })
-          const liveSchemaProperties = [titleSchemaProperty, cdcSchemaProperty, fileSchemaProperty]
           const initialTitle = `sqlite cdc initial ${provisioned.config.runId}`
           const updatedTitle = `sqlite cdc updated ${provisioned.config.runId}`
           const page = await runLive(
@@ -1368,19 +1435,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               '--from-notion',
               provisioned.config.dataSourceId,
               workspaceRoot,
-              '--schema-properties-json',
-              JSON.stringify(liveSchemaProperties),
               '--no-materialize-bodies',
             ],
           })
 
           const replicaPath = defaultReplicaPath(workspaceRoot)
-          const syncArgv = [
-            'sync',
-            workspaceRoot,
-            '--schema-properties-json',
-            JSON.stringify(liveSchemaProperties),
-          ]
+          const syncArgv = ['sync', workspaceRoot]
           await runLiveCliCommand({ env, argv: syncArgv })
           const projectedDatabaseId = (() => {
             const db = new DatabaseSync(replicaPath, { readOnly: true })
@@ -1473,9 +1533,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                    FROM schema_properties
                    WHERE property_id = ?`,
                 )
-                .get(cdcSchemaProperty.propertyId) as
-                | { readonly column_name: string }
-                | undefined
+                .get(cdcSchemaProperty.propertyId) as { readonly column_name: string } | undefined
               if (propertyColumn === undefined) {
                 throw new Error('live public SQLite rows test did not project the CDC column')
               }
@@ -1545,11 +1603,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 `INSERT INTO notion_file_assets (
                    asset_id, source_type, name, external_url
                  ) VALUES (?, 'external_url', ?, ?)`,
-              ).run(
-                `live-file-asset-${provisioned.config.runId}`,
-                'live-file.ico',
-                fileExternalUrl,
-              )
+              ).run(`live-file-asset-${provisioned.config.runId}`, 'live-file.ico', fileExternalUrl)
               db.prepare(
                 `INSERT INTO notion_file_changes (
                    change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
@@ -1569,6 +1623,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await runLiveCliCommand({ env, argv: syncArgv })
           let fileProperty: unknown
           for (let attempt = 0; attempt < 5; attempt += 1) {
+            // oxlint-disable-next-line no-await-in-loop
             const afterFileAttach = await runLive(env, NotionPages.retrieve({ pageId: livePageId }))
             fileProperty = afterFileAttach.properties[filePropertyName]
             if (
@@ -1580,6 +1635,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             ) {
               break
             }
+            // oxlint-disable-next-line no-await-in-loop
             await new Promise((resolve) => setTimeout(resolve, 1_000))
           }
           if (
@@ -1804,7 +1860,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                    FROM schema_properties
                    WHERE property_id IN (?, ?)`,
                 )
-                .all(titleSchemaProperty.propertyId, cdcSchemaProperty.propertyId) as unknown as ReadonlyArray<{
+                .all(
+                  titleSchemaProperty.propertyId,
+                  cdcSchemaProperty.propertyId,
+                ) as unknown as ReadonlyArray<{
                 readonly property_id: string
                 readonly column_name: string
               }>
@@ -2215,10 +2274,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             .map((page) => page.id)
             .filter((pageId) => pageId !== removedRelationPageId)
 
-          const schemaPropertiesJson = JSON.stringify([
-            titleSchemaProperty,
-            relationSchemaProperty,
-          ])
+          const schemaPropertiesJson = JSON.stringify([titleSchemaProperty, relationSchemaProperty])
           await runLiveCliCommand({
             env,
             argv: [
@@ -2311,6 +2367,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           })
           const expectedRelationIds = new Set(fixture.relatedPages.map((page) => page.id))
           for (let attempt = 0; attempt < 4; attempt += 1) {
+            // oxlint-disable-next-line no-await-in-loop
             const pagesAfterAddition = await Effect.runPromise(
               gateway
                 .retrievePageProperty({
@@ -2354,6 +2411,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 db.close()
               }
             }
+            // oxlint-disable-next-line no-await-in-loop
             await runLiveCliCommand({
               env,
               argv: ['sync', workspaceRoot, '--schema-properties-json', schemaPropertiesJson],

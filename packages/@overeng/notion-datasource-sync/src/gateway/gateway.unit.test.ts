@@ -22,6 +22,7 @@ import {
   makeNotionApiContract,
   pagePropertyPatchToNotion,
   queryContractHash,
+  schemaPropertyObservationsFromRemoteProperties,
   type FakeNotionDataSourceGatewayConfig,
   type NotionGatewayClient,
   type NotionGatewayPage,
@@ -129,6 +130,37 @@ const expectGatewayFailure = (
 }
 
 describe('Notion data source gateway fake', () => {
+  it('projects raw Notion schema properties through shared schema helpers', () => {
+    const properties = {
+      Name: { id: 'title-id', type: 'title', title: {} },
+      Formula: { id: 'formula-id', type: 'formula', formula: { expression: '1 + 1' } },
+      Unknown: { id: 'unknown-id', type: 'made_up', made_up: {} },
+    }
+
+    expect(schemaPropertyObservationsFromRemoteProperties(properties)).toEqual([
+      {
+        _tag: 'DataSourcePropertySnapshot',
+        propertyId: propertyId('formula-id'),
+        name: 'Formula',
+        type: 'formula',
+        configHash: canonicalHash(properties.Formula),
+        writeClass: 'computed',
+        ordinal: 0,
+        configJson: JSON.stringify(properties.Formula),
+      },
+      {
+        _tag: 'DataSourcePropertySnapshot',
+        propertyId: propertyId('title-id'),
+        name: 'Name',
+        type: 'title',
+        configHash: canonicalHash(properties.Name),
+        writeClass: 'writable',
+        ordinal: 1,
+        configJson: JSON.stringify(properties.Name),
+      },
+    ])
+  })
+
   it('exposes the supported API contract and blocks configured version drift', async () => {
     const gatewayConfig = config({ configuredApiVersion: '2022-06-28' })
 

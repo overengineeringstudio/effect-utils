@@ -164,6 +164,26 @@ export const CapabilityPreflightResult = Schema.TaggedStruct('CapabilityPrefligh
 }).annotations({ identifier: 'NotionDatasourceSync.CapabilityPreflightResult' })
 export type CapabilityPreflightResult = typeof CapabilityPreflightResult.Type
 
+/** Observed write behavior for a Notion data-source property. */
+export const DataSourcePropertyWriteClass = Schema.Literal(
+  'writable',
+  'computed',
+  'unsupported',
+).annotations({ identifier: 'NotionDatasourceSync.DataSourcePropertyWriteClass' })
+export type DataSourcePropertyWriteClass = typeof DataSourcePropertyWriteClass.Type
+
+/** Ordered typed schema descriptor observed from Notion's data-source properties map. */
+export const DataSourcePropertySnapshot = Schema.TaggedStruct('DataSourcePropertySnapshot', {
+  propertyId: PropertyId,
+  name: PropertyName,
+  type: Schema.NonEmptyTrimmedString,
+  configHash: Hash,
+  writeClass: DataSourcePropertyWriteClass,
+  ordinal: Schema.NonNegativeInt,
+  configJson: Schema.optional(Schema.String),
+}).annotations({ identifier: 'NotionDatasourceSync.DataSourcePropertySnapshot' })
+export type DataSourcePropertySnapshot = typeof DataSourcePropertySnapshot.Type
+
 /** Point-in-time observation of a Notion database: captures request metadata plus independent schema and metadata hashes. */
 export const DataSourceSnapshot = Schema.TaggedStruct('DataSourceSnapshot', {
   dataSourceId: DataSourceId,
@@ -171,6 +191,7 @@ export const DataSourceSnapshot = Schema.TaggedStruct('DataSourceSnapshot', {
   requestId: NotionRequestId,
   observedAt: Schema.DateTimeUtc,
   schemaHash: Hash,
+  schemaProperties: Schema.optional(Schema.Array(DataSourcePropertySnapshot)),
   metadataHash: Schema.optional(Hash),
   metadataJson: Schema.optional(Schema.String),
   metadataTitlePlainText: Schema.optional(Schema.String),
@@ -199,6 +220,7 @@ export const PageSnapshot = Schema.TaggedStruct('PageSnapshot', {
   requestId: NotionRequestId,
   observedAt: Schema.DateTimeUtc,
   propertiesHash: Hash,
+  propertyValuesJson: Schema.optional(Schema.Record({ key: PropertyId, value: Schema.String })),
   inTrash: Schema.Boolean,
 }).annotations({ identifier: 'NotionDatasourceSync.PageSnapshot' })
 export type PageSnapshot = typeof PageSnapshot.Type

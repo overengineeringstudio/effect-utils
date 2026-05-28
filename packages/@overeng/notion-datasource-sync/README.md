@@ -46,8 +46,10 @@ Editing the internal store is unsupported.
 
 `notion.sqlite` exposes `rows` as the ordinary data table. Notion properties are
 first-class columns, `_` system columns come last, and `schema_json` is not part
-of `rows`. Inspect `schema` for the replica binding and `schema_properties` for
-the property-id to row-column mapping. Local `SELECT`, supported scalar
+of `rows`. Those columns are generated from live Notion schema observation by
+default; user schema JSON is not part of normal establishment or sync. Inspect
+`schema` for the replica binding and `schema_properties` for the property-id to
+row-column mapping. Local `SELECT`, supported scalar
 `UPDATE`, `INSERT`, and archive/restore via `_in_trash` are translated into
 guarded typed CDC and planned through the same outbox verification path; `DELETE
 FROM rows` is rejected rather than interpreted as remote deletion.

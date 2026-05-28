@@ -53,6 +53,35 @@ export const NotionUUID = Schema.String.annotations({
 
 export type NotionUUID = typeof NotionUUID.Type
 
+const compactNotionUuidPattern = /^[0-9a-f]{32}$/iu
+
+/** Return the 32-character compact representation used in Notion URLs. */
+export const compactNotionUuid = (id: string): string => id.replaceAll('-', '')
+
+/** Format a compact 32-character Notion ID as the canonical dashed UUID string. */
+export const formatNotionUuid = (compactId: string): NotionUUID | undefined => {
+  if (compactNotionUuidPattern.test(compactId) === false) return undefined
+
+  return [
+    compactId.slice(0, 8),
+    compactId.slice(8, 12),
+    compactId.slice(12, 16),
+    compactId.slice(16, 20),
+    compactId.slice(20),
+  ].join('-')
+}
+
+/** Parse a Notion UUID from either a dashed ID, compact ID, or Notion URL. */
+export const parseNotionUuid = (value: string): NotionUUID | undefined => {
+  const compact = compactNotionUuid(value)
+  const direct = compactNotionUuidPattern.test(compact) === true ? compact : undefined
+  const fromUrl = direct ?? value.match(/[0-9a-f]{32}/iu)?.[0]
+  return fromUrl === undefined ? undefined : formatNotionUuid(fromUrl)
+}
+
+/** Build the canonical public Notion object URL for an ID-like value. */
+export const notionObjectUrl = (id: string): string => `https://notion.so/${compactNotionUuid(id)}`
+
 /**
  * ISO 8601 date-time string as returned by Notion API.
  *

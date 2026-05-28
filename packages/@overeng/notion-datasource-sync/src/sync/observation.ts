@@ -20,6 +20,7 @@ import {
   type BodyPointer as BodyPointerType,
   type CapabilityName,
   type DataSourceId as DataSourceIdType,
+  type DataSourcePropertySnapshot,
   type Hash,
   type Hash as HashType,
   type LocalArtifactObservation,
@@ -54,6 +55,8 @@ export type SchemaPropertyObservation = {
   readonly type?: string
   readonly configHash: HashType
   readonly writeClass: PropertyWriteClass
+  readonly ordinal?: number
+  readonly configJson?: string | undefined
 }
 
 /** Configuration for `observeRemoteDataSource`: identifies the data source, the query contract, schema properties to fetch per row, and optional body materialization settings. */
@@ -62,7 +65,7 @@ export type RemoteObservationOptions = {
   readonly dataSourceId: DataSourceIdType
   readonly workspaceRoot: AbsolutePath
   readonly queryContract: QueryContract
-  readonly schemaProperties: ReadonlyArray<SchemaPropertyObservation>
+  readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
   readonly rowLimit?: number
@@ -226,14 +229,16 @@ const requiredObservationCapabilities = (
     'data_source_retrieve',
     'data_source_query',
     'page_retrieve',
-    ...(options.schemaProperties.length === 0 ? [] : (['page_property_paginate'] as const)),
+    ...(options.schemaProperties !== undefined && options.schemaProperties.length > 0
+      ? (['page_property_paginate'] as const)
+      : []),
   ])
 
 const pagePropertyFailureAvailability = (error: NotionGatewayError): PropertyAvailability =>
   error.guard === 'UnsupportedRemoteShape' ? 'unsupported' : 'paginated-incomplete'
 
 const schemaPropertiesObservationHash = (
-  properties: ReadonlyArray<SchemaPropertyObservation>,
+  properties: ReadonlyArray<SchemaPropertyObservation | DataSourcePropertySnapshot>,
 ): HashType =>
   hashStoreBytes(
     JSON.stringify(
@@ -243,6 +248,7 @@ const schemaPropertiesObservationHash = (
           propertyId: property.propertyId,
           configHash: property.configHash,
           writeClass: property.writeClass,
+          ordinal: 'ordinal' in property ? property.ordinal : undefined,
         })),
     ),
   )
@@ -251,6 +257,9 @@ const rowProjectionPayloadHash = (input: {
   readonly inTrash: boolean
   readonly payload: unknown
 }): HashType => hashStoreBytes(JSON.stringify(input))
+
+const shouldPaginateProperty = (propertyType: string | undefined): boolean =>
+  propertyType === 'relation' || propertyType === 'people' || propertyType === 'files'
 
 /** Build a `SyncBindingRecorded` event that anchors a data source to its local workspace root path; idempotent via content-based event id. */
 export const makeSyncBindingRecordedEvent = (input: {
@@ -580,7 +589,9 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             preflight.supportedCapabilities.includes(capability) === true
               ? 'supported'
               : 'unsupported'
-          const capabilityPart = `${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}`
+          const capabilityPart = `${eventIdPart(options.dataSourceId)}:${capability}:${capabilityState}${
+            capabilityState === 'unsupported' ? `:${now().toISOString()}` : ''
+          }`
 
           return decode({
             schema: SyncEvent,
@@ -629,6 +640,87 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
       }
 
       const dataSource = yield* gateway.retrieveDataSource(options.dataSourceId)
+      const observedSchemaProperties = dataSource.schemaProperties ?? []
+      const schemaProperties =
+        options.schemaProperties === undefined ? observedSchemaProperties : options.schemaProperties
+      const normalizedSchemaProperties = schemaProperties.map((property, ordinal) => {
+        const normalized = {
+          _tag: 'DataSourcePropertySnapshot' as const,
+          propertyId: property.propertyId,
+          name: property.name ?? property.propertyId,
+          type: property.type ?? 'unknown',
+          configHash: property.configHash,
+          writeClass: property.writeClass,
+          ordinal:
+            'ordinal' in property && property.ordinal !== undefined ? property.ordinal : ordinal,
+        }
+        return 'configJson' in property && property.configJson !== undefined
+          ? Object.assign(normalized, { configJson: property.configJson })
+          : normalized
+      })
+      if (
+        normalizedSchemaProperties.some((property) => shouldPaginateProperty(property.type)) ===
+          true &&
+        preflight.supportedCapabilities.includes('page_property_paginate') === false
+      ) {
+        const pagePropertyPreflight = yield* gateway.preflightCapabilities({
+          _tag: 'CapabilityPreflightInput',
+          dataSourceId: options.dataSourceId,
+          requiredCapabilities: ['page_property_paginate'],
+        })
+        const capabilityState =
+          pagePropertyPreflight.supportedCapabilities.includes('page_property_paginate') === true
+            ? 'supported'
+            : 'unsupported'
+        const capabilityPart = `${eventIdPart(options.dataSourceId)}:page_property_paginate:${capabilityState}${
+          capabilityState === 'unsupported' ? `:${now().toISOString()}` : ''
+        }`
+        events.push(
+          decode({
+            schema: SyncEvent,
+            value: {
+              _tag: 'CapabilityPreflightChecked',
+              ...eventBase({
+                rootId: options.rootId,
+                eventId: `capability:${capabilityPart}`,
+                family: 'CompatibilityChecked',
+                eventType: 'CapabilityPreflightChecked',
+                idempotencyKey: `capability:${capabilityPart}`,
+                surface: querySurfaceKey({
+                  dataSourceId: options.dataSourceId,
+                  queryContractHash: hashStoreBytes('capabilities'),
+                }),
+                payload: { capability: 'page_property_paginate' },
+                now,
+              }),
+              dataSourceId: options.dataSourceId,
+              capability: 'page_property_paginate',
+              supported: capabilityState === 'supported',
+              requestId:
+                pagePropertyPreflight.dataSourceId === options.dataSourceId ? undefined : undefined,
+            },
+          }),
+        )
+        if (pagePropertyPreflight.missingCapabilities.length > 0) {
+          return {
+            events,
+            materialized: [],
+            query: {
+              startCursor: options.startCursor ?? null,
+              pages: 0,
+              rows: 0,
+              complete: false,
+              cappedAtLimit: false,
+              rowLimit: options.rowLimit,
+              queryContractHash: undefined,
+            },
+            properties: {
+              observed: 0,
+              incomplete: 0,
+            },
+          }
+        }
+      }
       const queryContract =
         options.rowLimit === undefined
           ? options.queryContract
@@ -668,7 +760,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
         rows: queryRows,
         complete: complete && cappedAtLimit === false,
       })
-      const schemaPropertiesHash = schemaPropertiesObservationHash(options.schemaProperties)
+      const schemaPropertiesHash = schemaPropertiesObservationHash(normalizedSchemaProperties)
       events.push(
         decode({
           schema: SyncEvent,
@@ -676,20 +768,45 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             _tag: 'DataSourceObserved',
             ...eventBase({
               rootId: options.rootId,
-              eventId: `data-source:${eventIdPart(dataSource.dataSourceId)}:${dataSource.schemaHash}:${schemaPropertiesHash}`,
+              eventId: `data-source:${eventIdPart(dataSource.dataSourceId)}:${dataSource.schemaHash}`,
               family: 'RemoteObserved',
               eventType: 'DataSourceObserved',
-              idempotencyKey: `data-source:${dataSource.dataSourceId}:${dataSource.schemaHash}:${schemaPropertiesHash}`,
+              idempotencyKey: `data-source:${dataSource.dataSourceId}:${dataSource.schemaHash}`,
               surface: querySurfaceKey({
                 dataSourceId: dataSource.dataSourceId,
                 queryContractHash: hashStoreBytes('schema'),
               }),
-              payload: { schemaProperties: options.schemaProperties },
+              payload: {},
               now,
             }),
             dataSourceId: dataSource.dataSourceId,
             requestId: dataSource.requestId,
             schemaHash: dataSource.schemaHash,
+          },
+        }),
+      )
+      events.push(
+        decode({
+          schema: SyncEvent,
+          value: {
+            _tag: 'DataSourceSchemaObserved',
+            ...eventBase({
+              rootId: options.rootId,
+              eventId: `data-source-schema:${eventIdPart(dataSource.dataSourceId)}:${dataSource.schemaHash}:${schemaPropertiesHash}`,
+              family: 'RemoteObserved',
+              eventType: 'DataSourceSchemaObserved',
+              idempotencyKey: `data-source-schema:${dataSource.dataSourceId}:${dataSource.schemaHash}:${schemaPropertiesHash}`,
+              surface: querySurfaceKey({
+                dataSourceId: dataSource.dataSourceId,
+                queryContractHash: hashStoreBytes('schema'),
+              }),
+              payload: { schemaProperties: normalizedSchemaProperties },
+              now,
+            }),
+            dataSourceId: dataSource.dataSourceId,
+            requestId: dataSource.requestId,
+            schemaHash: dataSource.schemaHash,
+            schemaProperties: normalizedSchemaProperties,
           },
         }),
       )
@@ -715,7 +832,9 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                 : { parentDatabaseId: dataSource.parentDatabaseId }),
               requestId: dataSource.requestId,
               metadataHash: dataSource.metadataHash,
-              ...(dataSource.metadataJson === undefined ? {} : { metadataJson: dataSource.metadataJson }),
+              ...(dataSource.metadataJson === undefined
+                ? {}
+                : { metadataJson: dataSource.metadataJson }),
               ...(dataSource.metadataTitlePlainText === undefined
                 ? {}
                 : { titlePlainText: dataSource.metadataTitlePlainText }),
@@ -831,7 +950,56 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             }),
           )
 
-          for (const property of options.schemaProperties) {
+          for (const property of normalizedSchemaProperties) {
+            const inlineValueJson = page.propertyValuesJson?.[property.propertyId]
+            if (
+              options.schemaProperties === undefined &&
+              inlineValueJson !== undefined &&
+              shouldPaginateProperty(property.type) === false
+            ) {
+              const valueHash = hashStoreBytes(inlineValueJson)
+              observedProperties += 1
+              const propertyPart = `${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:${valueHash}`
+              events.push(
+                decode({
+                  schema: SyncEvent,
+                  value: {
+                    _tag: 'PagePropertyCheckpointRecorded',
+                    ...eventBase({
+                      rootId: options.rootId,
+                      eventId: `property:${propertyPart}`,
+                      family: 'QueryScanRecorded',
+                      eventType: 'PagePropertyCheckpointRecorded',
+                      idempotencyKey: `property:${propertyPart}`,
+                      surface: propertySurfaceKey({
+                        pageId: row.pageId,
+                        propertyId: property.propertyId,
+                      }),
+                      payload: {
+                        availability: 'complete',
+                        baseHash: valueHash,
+                        valueJson: inlineValueJson,
+                      },
+                      now,
+                    }),
+                    pageId: row.pageId,
+                    propertyId: property.propertyId,
+                    nextCursor: null,
+                    complete: true,
+                    valueHash,
+                  },
+                }),
+              )
+              continue
+            }
+
+            if (
+              options.schemaProperties === undefined &&
+              shouldPaginateProperty(property.type) === false
+            ) {
+              continue
+            }
+
             const propertyPagesResult = yield* collectStream(
               gateway.retrievePageProperty({
                 _tag: 'RetrievePagePropertyInput',
@@ -851,8 +1019,9 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                 propertyPagesResult.error instanceof NotionGatewayError
                   ? pagePropertyFailureAvailability(propertyPagesResult.error)
                   : 'paginated-incomplete'
+              const observedAtPart = now().toISOString()
               incompleteProperties += 1
-              const propertyPart = `${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed:${availability}`
+              const propertyPart = `${eventIdPart(row.pageId)}:${eventIdPart(property.propertyId)}:failed:${availability}:${observedAtPart}`
               events.push(
                 decode({
                   schema: SyncEvent,

@@ -51,8 +51,10 @@ all created objects in a local `tmp/` ledger, and archive fixtures during
 cleanup.
 
 The live suite includes `sync --from-notion` adoption semantics against a
-disposable data source: dry-run writes no local events, apply records the
-binding and observations, and rerun is idempotent.
+disposable data source with title, checkbox, rich text, number, select, and date
+properties. It omits schema JSON, proves the live schema is discovered into
+`schema_properties`/`notion_properties`, projects values into `notion_cells`,
+and verifies `rows` property columns precede `_` system columns.
 For read-only checks against a large existing database, use the database URL
 with `--dry-run --limit <rows>` first; the limit is a capped preview, not a
 partial adoption mode.
@@ -93,6 +95,10 @@ CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
 The demo refreshes one durable Notion page, archives stale demo data-source
 blocks, creates multiple current inline data sources with different schemas, and
 includes a 500-row activity source for high-cardinality query pagination.
+Current acceptance proves bounded page-query progress and capped dry-run
+behavior. Full streaming projection of arbitrarily large `rows` rebuilds is a
+follow-up once replica rebuilds no longer materialize a whole observed batch in
+memory.
 
 CI does not run the demo on ordinary PR/push runs. To include it in the Notion
 integration lane, dispatch the CI workflow manually with

@@ -104,6 +104,7 @@ type ReplicaChangeStatus =
   | 'rejected'
   | 'needs_reconciliation'
 
+/** Inputs for marking user-selected replica conflict resolutions as settled in the local replica. */
 export type ApplyReplicaConflictResolutionsOptions = {
   readonly changes: readonly ReplicaLocalChange[]
   readonly replicaPath: string
@@ -112,6 +113,7 @@ export type ApplyReplicaConflictResolutionsOptions = {
   readonly dryRun?: boolean
 }
 
+/** Inputs for reconciling planner decisions back into local replica change rows. */
 export type SettleReplicaChangesOptions = {
   readonly changes: readonly ReplicaLocalChange[]
   readonly replicaPath: string
@@ -1921,7 +1923,7 @@ const latestDataSourcePayloads = ({
     .prepare(
       `SELECT payload_json
        FROM sync_event
-       WHERE root_id = ? AND event_type = 'DataSourceObserved'
+       WHERE root_id = ? AND event_type IN ('DataSourceObserved', 'DataSourceSchemaObserved')
        ORDER BY sequence`,
     )
     .all(rootId) as SqlRow[]
@@ -2026,7 +2028,16 @@ const scalarColumns = (valueJson: string | undefined) => {
   }
 }
 
-const relationValueSetEquals = (leftJson: string, rightJson: string): boolean => {
+const normalizeRelationPageIds = (pageIds: ReadonlyArray<unknown>): ReadonlyArray<string> =>
+  pageIds.map(String).toSorted((leftId, rightId) => leftId.localeCompare(rightId))
+
+const relationValueSetEquals = ({
+  leftJson,
+  rightJson,
+}: {
+  readonly leftJson: string
+  readonly rightJson: string
+}): boolean => {
   try {
     const left = JSON.parse(leftJson) as { readonly _tag?: unknown; readonly pageIds?: unknown }
     const right = JSON.parse(rightJson) as { readonly _tag?: unknown; readonly pageIds?: unknown }
@@ -2034,7 +2045,8 @@ const relationValueSetEquals = (leftJson: string, rightJson: string): boolean =>
     if (Array.isArray(left.pageIds) === false || Array.isArray(right.pageIds) === false)
       return false
     return (
-      JSON.stringify([...left.pageIds].toSorted()) === JSON.stringify([...right.pageIds].toSorted())
+      JSON.stringify(normalizeRelationPageIds(left.pageIds)) ===
+      JSON.stringify(normalizeRelationPageIds(right.pageIds))
     )
   } catch {
     return false
@@ -2049,7 +2061,8 @@ const cellValueMatches = ({
   readonly desiredJson: string
 }): boolean =>
   observedJson === desiredJson ||
-  (observedJson !== undefined && relationValueSetEquals(observedJson, desiredJson) === true)
+  (observedJson !== undefined &&
+    relationValueSetEquals({ leftJson: observedJson, rightJson: desiredJson }) === true)
 
 const settleAppliedCellChangesFromProjection = ({
   replicaDb,
@@ -2150,7 +2163,7 @@ const safeRowsColumnBaseName = ({
   readonly propertyId: string
 }): string => {
   const trimmed = propertyName.trim()
-  if (trimmed.length === 0 || trimmed.startsWith('_'))
+  if (trimmed.length === 0 || trimmed.startsWith('_') === true)
     return `property_${propertyIdSuffix(propertyId)}`
   return trimmed
 }
@@ -2169,16 +2182,18 @@ const planRowsColumnNames = (
       propertyId: property.propertyId,
     })
     const keywordCollision = sqliteKeywords.has(baseName.toUpperCase())
-    let columnName = keywordCollision
-      ? `${baseName}_${propertyIdSuffix(property.propertyId)}`
-      : baseName
+    let columnName =
+      keywordCollision === true ? `${baseName}_${propertyIdSuffix(property.propertyId)}` : baseName
     let lowerColumnName = columnName.toLowerCase()
-    if (usedNames.has(lowerColumnName)) {
+    if (usedNames.has(lowerColumnName) === true) {
       columnName = `${baseName}_${propertyIdSuffix(property.propertyId)}`
       lowerColumnName = columnName.toLowerCase()
     }
     let attempt = 2
-    while (usedNames.has(lowerColumnName) || sqliteKeywords.has(columnName.toUpperCase())) {
+    while (
+      usedNames.has(lowerColumnName) === true ||
+      sqliteKeywords.has(columnName.toUpperCase()) === true
+    ) {
       columnName = `${baseName}_${propertyIdSuffix(property.propertyId)}_${attempt.toString()}`
       lowerColumnName = columnName.toLowerCase()
       attempt += 1
@@ -2205,7 +2220,7 @@ const rowsColumnReadExpression = ({
         ? 'c.value_boolean'
         : propertyType === 'date'
           ? "json_extract(c.value_json, '$.start')"
-          : isRowsWritablePropertyType(propertyType)
+          : isRowsWritablePropertyType(propertyType) === true
             ? 'c.value_text'
             : 'c.value_json'
   return `(SELECT ${valueExpression}
@@ -2219,8 +2234,13 @@ const rowsColumnReadExpression = ({
           LIMIT 1) AS ${quoteIdentifier(columnName)}`
 }
 
-const rowsValueReference = (scope: 'NEW' | 'OLD', columnName: string): string =>
-  `${scope}.${quoteIdentifier(columnName)}`
+const rowsValueReference = ({
+  scope,
+  columnName,
+}: {
+  readonly scope: 'NEW' | 'OLD'
+  readonly columnName: string
+}): string => `${scope}.${quoteIdentifier(columnName)}`
 
 const rowsValueShapePredicate = ({
   columnName,
@@ -2229,7 +2249,7 @@ const rowsValueShapePredicate = ({
   readonly columnName: string
   readonly propertyType: string
 }): string => {
-  const value = rowsValueReference('NEW', columnName)
+  const value = rowsValueReference({ scope: 'NEW', columnName })
   switch (propertyType) {
     case 'title':
     case 'rich_text':
@@ -2258,7 +2278,7 @@ const rowsCanonicalValueExpression = ({
   readonly columnName: string
   readonly propertyType: string
 }): string => {
-  const value = rowsValueReference('NEW', columnName)
+  const value = rowsValueReference({ scope: 'NEW', columnName })
   switch (propertyType) {
     case 'title':
       return `json_object('_tag', 'title', 'plainText', ${value})`
@@ -2320,7 +2340,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     const propertyType = readString({ row: property, key: 'property_type' })
     const writeClass = readString({ row: property, key: 'write_class' })
     const isWriteSupported =
-      writeClass === 'writable' && isRowsWritablePropertyType(propertyType) ? 1 : 0
+      writeClass === 'writable' && isRowsWritablePropertyType(propertyType) === true ? 1 : 0
     db.prepare(
       `INSERT INTO notion_property_column_plan (
          data_source_id, property_id, property_name, column_name, property_type, write_class,
@@ -2335,7 +2355,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       propertyType,
       writeClass,
       index,
-      isRowsWritablePropertyType(propertyType) ? 1 : 0,
+      isRowsWritablePropertyType(propertyType) === true ? 1 : 0,
       isWriteSupported,
       nullWriteBehaviorForPropertyType(propertyType),
       readOptionalString({ row: property, key: 'config_json' }) ?? null,
@@ -2387,13 +2407,13 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     .map(
       (column) =>
         `SELECT RAISE(ABORT, 'rows system columns are read-only except _in_trash')
-         WHERE ${rowsValueReference('NEW', column)} IS NOT ${rowsValueReference('OLD', column)};`,
+         WHERE ${rowsValueReference({ scope: 'NEW', columnName: column })} IS NOT ${rowsValueReference({ scope: 'OLD', columnName: column })};`,
     )
   const propertyGuards = plannedProperties.map((property) => {
     const columnName = readString({ row: property, key: 'column_name' })
     const propertyType = readString({ row: property, key: 'property_type' })
     const isWriteSupported = readNumber({ row: property, key: 'is_rows_write_supported' }) === 1
-    const changed = `${rowsValueReference('NEW', columnName)} IS NOT ${rowsValueReference('OLD', columnName)}`
+    const changed = `${rowsValueReference({ scope: 'NEW', columnName })} IS NOT ${rowsValueReference({ scope: 'OLD', columnName })}`
     if (isWriteSupported === false) {
       return `SELECT RAISE(ABORT, 'rows property column is not supported for direct writes')
               WHERE ${changed};`
@@ -2412,13 +2432,13 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
               })}
               WHERE page_id = OLD.${quoteIdentifier('_page_id')}
                 AND property_id = ${quoteStringLiteral(readString({ row: property, key: 'property_id' }))}
-                AND ${rowsValueReference('NEW', columnName)} IS NOT ${rowsValueReference('OLD', columnName)};`
+                AND ${rowsValueReference({ scope: 'NEW', columnName })} IS NOT ${rowsValueReference({ scope: 'OLD', columnName })};`
     })
   const insertPropertyGuards = plannedProperties.map((property) => {
     const columnName = readString({ row: property, key: 'column_name' })
     const propertyType = readString({ row: property, key: 'property_type' })
     const isWriteSupported = readNumber({ row: property, key: 'is_rows_write_supported' }) === 1
-    const newValue = rowsValueReference('NEW', columnName)
+    const newValue = rowsValueReference({ scope: 'NEW', columnName })
     if (isWriteSupported === false) {
       return `SELECT RAISE(ABORT, 'rows INSERT includes a property that is not supported for row-create CDC')
               WHERE ${newValue} IS NOT NULL;`
@@ -2433,7 +2453,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       return `SELECT
                 ${quoteStringLiteral(readString({ row: property, key: 'property_id' }))} AS property_id,
                 CASE
-                  WHEN ${rowsValueReference('NEW', columnName)} IS NULL THEN NULL
+                  WHEN ${rowsValueReference({ scope: 'NEW', columnName })} IS NULL THEN NULL
                   ELSE ${rowsCanonicalValueExpression({
                     columnName,
                     propertyType: readString({ row: property, key: 'property_type' }),
@@ -2466,7 +2486,10 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       SELECT RAISE(ABORT, 'rows INSERT cannot create archived rows')
       WHERE NEW.${quoteIdentifier('_in_trash')} IS NOT NULL AND NEW.${quoteIdentifier('_in_trash')} != 0;
       ${rowsSystemColumns
-        .filter((column) => !['_page_id', '_local_row_id', '_client_request_key', '_in_trash'].includes(column))
+        .filter(
+          (column) =>
+            !['_page_id', '_local_row_id', '_client_request_key', '_in_trash'].includes(column),
+        )
         .map(
           (column) =>
             `SELECT RAISE(ABORT, 'rows INSERT system columns are generated by the replica')
@@ -2491,7 +2514,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
           (
             SELECT json_group_object(property_id, json(value_json))
             FROM (
-              ${insertValueRows.length === 0 ? "SELECT NULL AS property_id, NULL AS value_json WHERE 0" : insertValueRows.join('\n              UNION ALL\n              ')}
+              ${insertValueRows.length === 0 ? 'SELECT NULL AS property_id, NULL AS value_json WHERE 0' : insertValueRows.join('\n              UNION ALL\n              ')}
             )
             WHERE value_json IS NOT NULL
           ),
@@ -2599,8 +2622,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             hash: event.metadataHash,
             parentDatabaseId:
               typeof event.parentDatabaseId === 'string' ? event.parentDatabaseId : undefined,
-            metadataJson:
-              typeof event.metadataJson === 'string' ? event.metadataJson : undefined,
+            metadataJson: typeof event.metadataJson === 'string' ? event.metadataJson : undefined,
             titlePlainText:
               typeof event.titlePlainText === 'string' ? event.titlePlainText : undefined,
             descriptionPlainText:
@@ -2641,10 +2663,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readOptionalString({ row, key: 'observed_at' }) ?? null,
             readString({ row, key: 'updated_at' }),
           )
-        if (
-          metadataRow?.parentDatabaseId !== undefined &&
-          metadataRow.metadataJson !== undefined
-        ) {
+        if (metadataRow?.parentDatabaseId !== undefined && metadataRow.metadataJson !== undefined) {
           replicaDb
             .prepare(
               `INSERT OR REPLACE INTO notion_databases (
@@ -3571,9 +3590,7 @@ const surfaceForReplicaChange = (change: ReplicaLocalChange): string | undefined
   }
   if (change.kind === 'metadata_patch' && change.dataSourceId.length > 0) {
     if (change.metadataResourceType === 'database' && change.databaseId !== undefined) {
-      return databaseMetadataSurfaceKey(
-        decode({ schema: DatabaseId, value: change.databaseId }),
-      )
+      return databaseMetadataSurfaceKey(decode({ schema: DatabaseId, value: change.databaseId }))
     }
     return dataSourceMetadataSurfaceKey(
       decode({ schema: DataSourceId, value: change.dataSourceId }),
@@ -4024,7 +4041,8 @@ export const replicaChangesToPlannerIntents = ({
               dryRun,
               changeId: change.changeId,
               status: 'rejected',
-              reason: 'database metadata_patch targets a database that is not present in the replica.',
+              reason:
+                'database metadata_patch targets a database that is not present in the replica.',
             })
             continue
           }
@@ -4049,9 +4067,9 @@ export const replicaChangesToPlannerIntents = ({
             databaseId = decode({ schema: DatabaseId, value: change.databaseId })
             dataSourceId = decode({ schema: DataSourceId, value: dataSourceIdString })
             baseMetadataHash = decode({ schema: Hash, value: change.baseHash })
-            currentMetadata = Schema.decodeUnknownSync(Schema.parseJson(CanonicalDataSourceMetadata))(
-              metadataJson,
-            )
+            currentMetadata = Schema.decodeUnknownSync(
+              Schema.parseJson(CanonicalDataSourceMetadata),
+            )(metadataJson)
           } catch {
             markChange({
               replicaPath,
@@ -4183,9 +4201,7 @@ export const replicaChangesToPlannerIntents = ({
         }
         const nextMetadata: CanonicalDataSourceMetadata = {
           ...currentMetadata,
-          ...(change.titlePlainText === undefined
-            ? {}
-            : { titlePlainText: change.titlePlainText }),
+          ...(change.titlePlainText === undefined ? {} : { titlePlainText: change.titlePlainText }),
           ...(change.descriptionPlainText === undefined
             ? {}
             : { descriptionPlainText: change.descriptionPlainText }),
@@ -4372,8 +4388,7 @@ export const replicaChangesToPlannerIntents = ({
             dryRun,
             changeId: change.changeId,
             status: 'rejected',
-            reason:
-              'file_attach requires page_id, property_id, asset_id, action, and base_hash.',
+            reason: 'file_attach requires page_id, property_id, asset_id, action, and base_hash.',
           })
           continue
         }
@@ -4497,7 +4512,7 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        if (/^https:\/\//u.test(change.fileExternalUrl) === false) {
+        if (change.fileExternalUrl.startsWith('https://') === false) {
           markChange({
             replicaPath,
             dryRun,
@@ -4515,7 +4530,9 @@ export const replicaChangesToPlannerIntents = ({
               name: change.fileName,
               identityHash: decode({
                 schema: Hash,
-                value: hashStoreBytes(`external-file\t${change.fileName}\t${change.fileExternalUrl}`),
+                value: hashStoreBytes(
+                  `external-file\t${change.fileName}\t${change.fileExternalUrl}`,
+                ),
               }),
               externalUrl: change.fileExternalUrl,
             },

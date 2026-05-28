@@ -31,6 +31,7 @@ import {
   NotionDatabases,
   NotionDataSources,
 } from '@overeng/notion-effect-client'
+import { notionObjectUrl } from '@overeng/notion-effect-schema'
 
 import { generateSchemaCode } from '../../codegen.ts'
 import { type DumpPage, encodeDumpPage } from '../../dump/schema.ts'
@@ -469,7 +470,7 @@ export const DUMP_META = {
 
                   const dumpPage: typeof DumpPage.Type = {
                     id: page.id,
-                    url: page.url ?? `https://notion.so/${page.id.replace(/-/g, '')}`,
+                    url: page.url ?? notionObjectUrl(page.id),
                     createdTime: page.created_time,
                     lastEditedTime: page.last_edited_time,
                     properties,
