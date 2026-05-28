@@ -183,6 +183,10 @@ const schemaPropertiesViewName = 'schema_properties'
 const changesViewName = 'changes'
 const conflictsViewName = 'conflicts'
 const syncStatusViewName = 'sync_status'
+const pendingReplicaChangeStatusesSql =
+  "'pending', 'queued', 'planned', 'needs_reconciliation', 'conflict'"
+const pendingReplicaChangesCountSql = `(SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status IN (${pendingReplicaChangeStatusesSql}))`
+const openReplicaConflictsCountSql = `(SELECT count(*) FROM _nds_replica_conflicts WHERE state = 'open')`
 
 const rowsSystemColumns = [
   '_page_id',
@@ -345,7 +349,9 @@ export const defaultReplicaPath = (workspaceRoot: AbsolutePath): string =>
 
 const createReplicaSchema = (db: DatabaseSync): void => {
   const localChangesSchema = db
-    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '_nds_replica_local_changes'`)
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '_nds_replica_local_changes'`,
+    )
     .get() as SqlRow | undefined
   const needsLocalChangesStatusMigration =
     typeof localChangesSchema?.sql === 'string' &&
@@ -854,9 +860,15 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         NULL AS observed_event_id,
         NULL AS observed_at,
         updated_at
-      FROM _nds_replica_row_creates
-      WHERE status IN ('pending', 'queued', 'planned', 'needs_reconciliation')
-        OR (remote_page_id IS NOT NULL AND status != 'applied');
+            FROM _nds_replica_row_creates
+            WHERE status IN ('pending', 'queued', 'planned')
+        OR (
+          remote_page_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM _nds_replica_rows observed
+            WHERE observed.page_id = _nds_replica_row_creates.remote_page_id
+          )
+        );
 
     CREATE VIEW IF NOT EXISTS _nds_replica_cells_effective AS
       SELECT
@@ -922,7 +934,13 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         ON p.data_source_id = c.data_source_id
        AND p.property_id = values_by_property.key
       WHERE c.status IN ('pending', 'queued', 'planned', 'needs_reconciliation')
-        OR (c.remote_page_id IS NOT NULL AND c.status != 'applied');
+        OR (
+          c.remote_page_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM _nds_replica_rows observed
+            WHERE observed.page_id = c.remote_page_id
+          )
+        );
 
     CREATE VIEW IF NOT EXISTS ${quoteIdentifier(schemaViewName)} AS
       SELECT
@@ -971,14 +989,38 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         ON plan.data_source_id = p.data_source_id AND plan.property_id = p.property_id;
 
     CREATE VIEW IF NOT EXISTS ${quoteIdentifier(changesViewName)} AS
-      SELECT * FROM _nds_replica_local_changes;
+      SELECT
+        local.change_id,
+        local.kind,
+        local.data_source_id,
+        local.page_id,
+        local.property_id,
+        local.value_json,
+        local.base_hash,
+        local.status,
+        local.unsupported_reason,
+        row_create.local_row_id,
+        row_create.client_request_key,
+        row_create.remote_page_id,
+        local.created_at,
+        local.updated_at
+      FROM _nds_replica_local_changes local
+      LEFT JOIN _nds_replica_row_creates row_create
+        ON row_create.change_id = local.change_id;
 
     CREATE VIEW IF NOT EXISTS ${quoteIdentifier(conflictsViewName)} AS
       SELECT * FROM _nds_replica_conflicts;
 
     CREATE VIEW IF NOT EXISTS ${quoteIdentifier(syncStatusViewName)} AS
       SELECT
-        status.*,
+        status.root_id,
+        status.data_sources,
+        status.rows,
+        status.cells,
+        status.bodies,
+        ${openReplicaConflictsCountSql} AS conflicts_open,
+        ${pendingReplicaChangesCountSql} AS pending_local_changes,
+        status.updated_at,
         CASE
           WHEN binding.workspace_root IS NULL THEN 'unbound'
           WHEN database_list.file LIKE binding.workspace_root || '/%' THEN 'bound'
@@ -2339,9 +2381,9 @@ const rowsCanonicalValueExpression = ({
     case 'date':
       return `json_object('_tag', 'date', 'start', ${value}, 'end', NULL)`
     case 'select':
-      return `json_object('_tag', 'select', 'option', CASE WHEN ${value} IS NULL THEN NULL ELSE json_object('name', ${value}) END)`
+      return `json_object('_tag', 'select', 'option', CASE WHEN ${value} IS NULL THEN NULL ELSE json_object('_tag', 'CanonicalOptionValue', 'name', ${value}) END)`
     case 'status':
-      return `json_object('_tag', 'status', 'option', CASE WHEN ${value} IS NULL THEN NULL ELSE json_object('name', ${value}) END)`
+      return `json_object('_tag', 'status', 'option', CASE WHEN ${value} IS NULL THEN NULL ELSE json_object('_tag', 'CanonicalOptionValue', 'name', ${value}) END)`
     case 'email':
       return `json_object('_tag', 'email', 'value', ${value})`
     case 'url':
@@ -2494,7 +2536,12 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
                 OLD.${quoteIdentifier('_page_id')},
                 ${quoteStringLiteral(propertyId)},
                 ${valueExpression},
-                OLD.${quoteIdentifier('_properties_hash')}
+                (
+                  SELECT base_hash
+                  FROM _nds_replica_cells
+                  WHERE page_id = OLD.${quoteIdentifier('_page_id')}
+                    AND property_id = ${quoteStringLiteral(propertyId)}
+                )
               WHERE ${changed};`
     })
   const insertPropertyGuards = plannedProperties.map((property) => {
@@ -2607,7 +2654,9 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
 
 const rebuildGeneratedViews = (db: DatabaseSync): void => {
   const existing = db
-    .prepare(`SELECT name FROM sqlite_master WHERE type = 'view' AND name LIKE '_nds_replica_view_%'`)
+    .prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'view' AND name LIKE '_nds_replica_view_%'`,
+    )
     .all() as SqlRow[]
   for (const row of existing)
     db.exec(`DROP VIEW IF EXISTS ${quoteIdentifier(readString({ row, key: 'name' }))}`)
@@ -3044,18 +3093,8 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
              (SELECT count(*) FROM _nds_replica_rows) AS rows,
              (SELECT count(*) FROM _nds_replica_cells) AS cells,
              (SELECT count(*) FROM _nds_replica_bodies) AS bodies,
-             (SELECT count(*) FROM _nds_replica_conflicts WHERE state = 'open') AS conflicts_open,
-             (
-               (SELECT count(*) FROM _nds_replica_cell_changes WHERE status IN ('pending', 'queued')) +
-               (SELECT count(*) FROM _nds_replica_row_changes WHERE status IN ('pending', 'queued')) +
-               (SELECT count(*) FROM _nds_replica_row_creates WHERE status IN ('pending', 'queued', 'planned', 'needs_reconciliation')) +
-               (SELECT count(*) FROM _nds_replica_body_changes WHERE status IN ('pending', 'queued')) +
-               (SELECT count(*) FROM _nds_replica_metadata_changes WHERE status IN ('pending', 'queued')) +
-               (SELECT count(*) FROM _nds_replica_schema_changes WHERE status IN ('pending', 'queued')) +
-               (SELECT count(*) FROM _nds_replica_file_changes WHERE status IN ('pending', 'queued')) +
-               (SELECT count(*) FROM _nds_replica_view_changes WHERE status IN ('pending', 'queued')) +
-               (SELECT count(*) FROM _nds_replica_conflict_resolutions WHERE status IN ('pending', 'queued'))
-             ) AS pending_local_changes`,
+             ${openReplicaConflictsCountSql} AS conflicts_open,
+             ${pendingReplicaChangesCountSql} AS pending_local_changes`,
         )
         .get() as SqlRow
       replicaDb

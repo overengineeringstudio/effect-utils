@@ -76,6 +76,7 @@ export type OneShotPushOptions = {
   readonly rootId: RemoteObservationOptions['rootId']
   readonly workspaceRoot: AbsolutePath
   readonly localIntents?: ReadonlyArray<PlannerIntent>
+  readonly materializeBodies?: boolean
   readonly maxExecutorSteps?: number
   readonly leaseToken?: string
   readonly leaseDurationMs?: number
@@ -85,7 +86,10 @@ export type OneShotPushOptions = {
 
 /** Combined options for `syncOneShot`, merging pull and push settings into a single pass. */
 export type OneShotSyncOptions = OneShotPullOptions &
-  Pick<OneShotPushOptions, 'localIntents' | 'maxExecutorSteps' | 'leaseToken' | 'leaseDurationMs'>
+  Pick<
+    OneShotPushOptions,
+    'localIntents' | 'materializeBodies' | 'maxExecutorSteps' | 'leaseToken' | 'leaseDurationMs'
+  >
 
 /** Options for first establishment from an existing Notion data source into a local workspace. */
 export type EstablishFromNotionOptions = OneShotPullOptions & OneShotInitOptions
@@ -519,7 +523,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
       })
       const now = options.now ?? (() => new Date())
       const body = yield* PageBodySyncPort
-      const local = yield* observeLocalWorkspace(options.workspaceRoot)
+      const local =
+        options.materializeBodies === false
+          ? { observations: [] }
+          : yield* observeLocalWorkspace(options.workspaceRoot)
       const summaries: OneShotPlanSummary[] = []
 
       for (const intent of options.localIntents ?? []) {

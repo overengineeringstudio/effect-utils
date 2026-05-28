@@ -198,13 +198,67 @@ const openReadOnly = <TValue>(path: string, f: (db: DatabaseSync) => TValue): TV
   }
 }
 
+const insertPublicRowsCreate = ({
+  sqlitePath,
+  title,
+  clientRequestKey,
+}: {
+  readonly sqlitePath: string
+  readonly title: string
+  readonly clientRequestKey: string
+}): void => {
+  const db = new DatabaseSync(sqlitePath)
+  try {
+    db.prepare(`INSERT INTO rows ("Task name", _client_request_key) VALUES (?, ?)`).run(
+      title,
+      clientRequestKey,
+    )
+  } finally {
+    db.close()
+  }
+}
+
+const updatePublicRowsTitle = ({
+  sqlitePath,
+  title,
+}: {
+  readonly sqlitePath: string
+  readonly title: string
+}): void => {
+  const db = new DatabaseSync(sqlitePath)
+  try {
+    db.prepare(`UPDATE rows SET "Task name" = ? WHERE _page_id = ?`).run(title, testIds.pageId)
+  } finally {
+    db.close()
+  }
+}
+
 const establishWorkspace = async (workspace: AbsolutePathType) => {
   const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
   const calls = {
     retrieveDatabase: 0,
   }
   const gatewayClient = makeDatabaseResolverClient(calls)
-  const argv = ['sync', '--from-notion', databaseUrl, workspace, '--no-materialize-bodies'] as const
+  const schemaPropertiesJson = JSON.stringify([
+    {
+      propertyId: testIds.propertyA,
+      name: 'Task name',
+      type: 'title',
+      configHash: hash('property-a-config'),
+      writeClass: 'writable',
+      ordinal: 0,
+      configJson: JSON.stringify({ type: 'title' }),
+    },
+  ])
+  const argv = [
+    'sync',
+    '--from-notion',
+    databaseUrl,
+    workspace,
+    '--schema-properties-json',
+    schemaPropertiesJson,
+    '--no-materialize-bodies',
+  ] as const
   const command = await Effect.runPromise(
     resolveCliCommandNotionRefs({
       command: parseCliCommand(argv),
@@ -474,6 +528,169 @@ describe('clean-break self-contained SQLite storage contract', () => {
         expect(row(db, `SELECT count(*) AS count FROM changes WHERE status = 'pending'`)).toEqual(
           beforePending,
         )
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'public changes reports a pending row_create from direct rows INSERT before watch runs',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+
+      insertPublicRowsCreate({
+        sqlitePath,
+        title: 'Created before watch',
+        clientRequestKey: 'watch-create-pending',
+      })
+
+      openReadOnly(sqlitePath, (db) => {
+        expect(
+          row(
+            db,
+            `SELECT kind, status
+             FROM changes
+             WHERE kind = 'row_create'
+             ORDER BY created_at DESC
+             LIMIT 1`,
+          ),
+        ).toMatchObject({
+          kind: 'row_create',
+          status: 'pending',
+        })
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'watch drains a direct public rows INSERT row_create through fake Notion and settles it',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+      insertPublicRowsCreate({
+        sqlitePath,
+        title: 'Created by watch',
+        clientRequestKey: 'watch-create-settled',
+      })
+
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      const watch = await runWorkspaceCommand({
+        argv: [
+          'watch',
+          '--sqlite',
+          sqlitePath,
+          '--state',
+          join(workspace, 'watch.json'),
+          '--max-cycles',
+          '1',
+          '--no-materialize-bodies',
+        ],
+        gateway,
+      })
+
+      expect(watch.result.status.state).toBe('clean')
+      openReadOnly(sqlitePath, (db) => {
+        expect(
+          row(
+            db,
+            `SELECT kind, status
+             FROM changes
+             WHERE kind = 'row_create'
+             ORDER BY created_at DESC
+             LIMIT 1`,
+          ),
+        ).toMatchObject({
+          kind: 'row_create',
+          status: 'applied',
+        })
+        expect(
+          row(
+            db,
+            `SELECT _page_id, _client_request_key, _sync_status
+             FROM rows
+             WHERE _client_request_key = ?`,
+            'watch-create-settled',
+          ),
+        ).toMatchObject({
+          _page_id: 'fake-created-watch-create-settled',
+          _client_request_key: 'watch-create-settled',
+          _sync_status: 'applied',
+        })
+        expect(
+          row(db, `SELECT count(*) AS count FROM changes WHERE status = 'pending'`),
+        ).toMatchObject({ count: 0 })
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'CLI status stays non-clean while direct public rows INSERT leaves pending changes',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+      insertPublicRowsCreate({
+        sqlitePath,
+        title: 'Pending after watch',
+        clientRequestKey: 'watch-create-not-clean',
+      })
+
+      const status = await runWorkspaceCommand({
+        argv: ['status', '--sqlite', sqlitePath],
+      })
+
+      expect(status.result.command).toBe('status')
+      if (status.result.command !== 'status') throw new Error('expected status result')
+      expect(status.result.result).toMatchObject({
+        state: 'pending',
+        counts: {
+          pending: expect.any(Number),
+          clean: 0,
+        },
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'watch drains a direct public rows UPDATE through fake Notion and settles it',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+      updatePublicRowsTitle({ sqlitePath, title: 'Updated by watch' })
+
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      await runWorkspaceCommand({
+        argv: [
+          'watch',
+          '--sqlite',
+          sqlitePath,
+          '--state',
+          join(workspace, 'watch.json'),
+          '--max-cycles',
+          '1',
+          '--no-materialize-bodies',
+        ],
+        gateway,
+      })
+
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
+      openReadOnly(sqlitePath, (db) => {
+        expect(
+          row(
+            db,
+            `SELECT kind, status, value_json
+             FROM changes
+             WHERE kind = 'cell_patch' AND page_id = ?`,
+            testIds.pageId,
+          ),
+        ).toMatchObject({
+          kind: 'cell_patch',
+          status: 'applied',
+          value_json: JSON.stringify({ _tag: 'title', plainText: 'Updated by watch' }),
+        })
       })
     },
     sqliteContractTimeoutMs,
