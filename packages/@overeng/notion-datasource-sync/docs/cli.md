@@ -48,7 +48,7 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 | `sync <workspace>`   | Reconciles all established database files in a workspace             |
 | `status <workspace>` | Reads public status and pending work for established database files  |
 | `doctor <sqlite>`    | Verifies one database file, including private `_nds_*` integrity     |
-| `watch <workspace>`  | Repeats sync cycles with daemon state and optional max-cycle bound   |
+| `watch <workspace>`  | Repeats sync cycles and processes local SQLite CDC with daemon state |
 | `conflicts list`     | Prints conflicts, guards, tombstones, and pending outbox actions     |
 | `conflicts resolve`  | Resolves a conflict by explicit user action                          |
 | `forget`             | Removes local tracking for a page after explicit user intent         |
@@ -126,6 +126,11 @@ database-ID-named replica files.
 ## Public SQLite API
 
 Read and write the local replica through `<workspace-root>/<database-id>.sqlite`.
+For product integrations, `rows` is the primary writable API. Write ordinary
+row data with guarded `INSERT` / `UPDATE` statements against `rows`; use
+`changes`, `conflicts`, and `sync_status` to observe what the planner accepted,
+blocked, settled, or left for user action. `_nds_*` tables are private state,
+not extension points.
 
 Stable public surfaces:
 
@@ -200,6 +205,12 @@ unsupported, queued, planned, applied, rejected, and conflict states for direct
 row edits and explicit change requests. Sync reads public changes, validates
 them against `_nds_*` base hashes, enqueues private outbox commands, executes
 remote writes, then settles only after read-after-write verification.
+
+`watch <workspace-root>` must process the same local SQLite CDC as
+`sync <workspace-root>`. A daemon cycle observes pending public changes,
+coalesces current-state row edits where appropriate, plans guarded remote
+commands, and settles only after verification. Watch mode must not ignore local
+`rows` edits while polling Notion.
 
 ## Backup And Copy
 

@@ -11,7 +11,7 @@ services cannot prove.
 | Body E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/body-adapter.e2e.test.ts --config vitest.config.ts` | no      | NotionMD adapter boundary                        |
 | CLI E2E     | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/cli.e2e.test.ts --config vitest.config.ts`          | no      | CLI parsing, dry-run, adoption safety            |
 | Replica E2E | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/replica-*.e2e.test.ts --config vitest.config.ts`    | no      | `<database-id>.sqlite` reads, intents, conflicts |
-| Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`       | no      | watch loop, restart, lease, backpressure         |
+| Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`       | no      | watch loop, local SQLite CDC, restart, lease     |
 | Live Notion | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`  | yes     | real Notion API semantics                        |
 
 Run package TypeScript after code changes:
@@ -67,6 +67,13 @@ sidecar is required state. `rows`, `schema`, `schema_properties`, `changes`,
 `conflicts`, `sync_status`, and read-only `debug_*` views must match observed
 Notion rows, while private `_nds_*` tables remain non-public.
 
+Daemon tests must prove that `watch <workspace>` processes the same public
+SQLite CDC as `sync <workspace>`. A pending `rows` update, insert, or lifecycle
+change must be read from `changes`, planned through the shared planner,
+executed through the outbox when safe, and reflected back through `changes`,
+`conflicts`, and `sync_status`. Remote polling coverage alone is not sufficient
+watch coverage.
+
 The focused replica E2E suite covers direct current-state CDC, body/lifecycle
 changes, metadata planning/settlement, schema fail-closed behavior, row-create
 planning/settlement behavior, external URL file staging/attachment, safe and
@@ -106,6 +113,11 @@ page-query progress, and capped dry-run behavior. Full streaming projection of
 arbitrarily large `rows` rebuilds is a follow-up once replica rebuilds no longer
 materialize a whole observed batch in memory.
 
+Regression follow-up: keep large-replica verification bounded until full
+streaming public-replica rebuilds are proven. Bounded previews and targeted
+scratch-row checks must not be documented or implemented as partial product
+replicas.
+
 CI does not run the demo on ordinary PR/push runs. To include it in the Notion
 integration lane, dispatch the CI workflow manually with
 `run_datasource_sync_demo=true` and provide `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID`
@@ -138,8 +150,11 @@ Required coverage for the self-contained SQLite contract:
 
 - database-ID filename creation and display-name rename safety,
 - multi-database workspace with one SQLite file per Notion database,
+- full database replica semantics; filtered/query-contract scans are internal
+  test/debug inputs only,
 - public surface shape: `rows`, `schema`, `schema_properties`, `changes`,
   `conflicts`, `sync_status`,
+- `rows` as the primary writable API, including watch processing of local CDC,
 - read-only `debug_*` diagnostics,
 - private `_nds_*` tamper/corruption fail-closed behavior,
 - copy/backup portability using SQLite checkpoint/backup semantics,

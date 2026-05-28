@@ -22,11 +22,11 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Body materialization   | `.nmd` files plus sidecar identity through the body port                                                                    |
 | Body push              | Guarded NotionMD body push when local body path/content is available                                                        |
 | Local workspace paths  | Claimed deterministic row paths with collision guards                                                                       |
-| Daemon/watch           | Bounded daemon loop, lease fencing, cancellation, restart coverage                                                          |
+| Daemon/watch           | Bounded daemon loop that processes local SQLite CDC plus remote polling, lease fencing, cancellation, restart coverage       |
 | OpenTelemetry          | CLI, daemon, sync, gateway, planner, executor, and guard spans                                                              |
 | Remote adoption        | `sync --from-notion` establishes a local workspace from an existing data source                                             |
-| Local SQLite replica   | `<database-id>.sqlite` is the self-contained public local read/write API and sync-state file for an adopted Notion database |
-| Local write intents    | User edits are queued as guarded intents before CLI sync applies them                                                       |
+| Local SQLite replica   | `<database-id>.sqlite` is the self-contained full-database public local read/write API and sync-state file                  |
+| Local write intents    | `rows` edits are the primary write API and queue guarded intents before `sync` or `watch` applies them                      |
 
 ## Read-Only Or Guarded
 
@@ -71,7 +71,7 @@ class must have a typed intent and guard model before it mutates Notion.
 
 | Edit class                      | Target state                                                                                                                                       |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Existing row cell edits         | Supported through scalar/property `UPDATE rows SET ...` or explicit `changes` rows with base hashes                                                |
+| Existing row cell edits         | Supported primarily through scalar/property `UPDATE rows SET ...`; explicit `changes` rows are an advanced intent surface                          |
 | Row creation                    | Supported through `INSERT INTO rows (...)` normalized to row-create CDC with idempotency keys, base schema guards, and returned page-id settlement |
 | Row archive/restore             | Supported through `UPDATE rows SET _in_trash = 1/0` or explicit lifecycle CDC; never inferred from SQL delete                                      |
 | Body edits                      | Supported through NotionMD-backed `changes` rows and body conflict guards                                                                          |

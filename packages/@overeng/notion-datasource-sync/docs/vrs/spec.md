@@ -451,22 +451,28 @@ type NotionConflictResolution = {
 }
 ```
 
-All data edit use cases are in scope for this API. Rich schema migrations are
-the exception: schema changes must be detected and guarded. The current
-executable subset is scalar/property `UPDATE rows SET ...`, `INSERT INTO rows`
-for row creation, archive/restore through `UPDATE rows SET _in_trash = 1/0`,
-explicit `changes` equivalents, body pushes that pass body-adapter safety and
-content-hash verification, data-source and database title/description metadata
-edits verified by post-write metadata hashes, and conflict-resolution choices
-routed through the store-backed command surface. `DELETE FROM rows` is rejected;
-remote destructive lifecycle changes are represented as explicit archive/restore
-intents, never inferred from local deletion. Data-source metadata CDC is precise
-about authority: the live adapter patches the owning database metadata because
-the public data-source update shape does not expose top-level description, then
-verifies the resulting data-source metadata hash. Database metadata CDC exposes
-the database/container authority separately through private/debug projections
-and requires `database_id` plus the owning data source metadata hash for
-read-after-write settlement. Public schema CDC rows are
+`rows` is the primary writable product API for row data. All ordinary row edit
+use cases are in scope for `rows`; explicit `changes` rows exist for advanced
+intent surfaces and observability, not as a competing primary row API. Rich
+schema migrations are the exception: schema changes must be detected and
+guarded. The current executable subset is scalar/property
+`UPDATE rows SET ...`, `INSERT INTO rows` for row creation, archive/restore
+through `UPDATE rows SET _in_trash = 1/0`, explicit `changes` equivalents, body
+pushes that pass body-adapter safety and content-hash verification,
+data-source and database title/description metadata edits verified by
+post-write metadata hashes, and conflict-resolution choices routed through the
+store-backed command surface. `DELETE FROM rows` is rejected; remote
+destructive lifecycle changes are represented as explicit archive/restore
+intents, never inferred from local deletion. `changes`, `conflicts`, and
+`sync_status` are public observability surfaces for accepted intent, conflict
+state, settlement, guards, and pending work. `_nds_*` remains private
+implementation state and is not a user extension API. Data-source metadata CDC
+is precise about authority: the live adapter patches the owning database
+metadata because the public data-source update shape does not expose top-level
+description, then verifies the resulting data-source metadata hash. Database
+metadata CDC exposes the database/container authority separately through
+private/debug projections and requires `database_id` plus the owning data source
+metadata hash for read-after-write settlement. Public schema CDC rows are
 part of the public API shape but fail closed until expected post-schema hashes
 are modeled. External URL file attachments are supported through explicit
 `changes` staging for empty writable `files` properties; local uploads, signed
@@ -988,6 +994,11 @@ Queue policy:
 | repair work         | low priority; never blocks settlement of already accepted intents unless store integrity is suspect |
 
 The daemon and one-shot commands share the same planner and executor. Watch mode adds scheduling, coalescing, cancellation, and lease heartbeats only.
+It must process local SQLite CDC from public `rows` and `changes` on every
+cycle before or alongside remote polling. A daemon that only observes Notion
+remote drift is incomplete: pending local row edits, row creates, lifecycle
+changes, and explicit public changes must flow through the shared planner,
+private `_nds_*` outbox, verification, and public observability surfaces.
 
 Poll cursor rules:
 
@@ -1028,7 +1039,7 @@ Requirement trace: R48-R52, R67-R73.
 | `status`                  | `--json`, `--porcelain`                                                                                   | Show local edits, remote drift, conflicts, tombstones, outbox state                                                 |
 | `push`                    | `--dry-run`, `--conflict-policy`                                                                          | Plan and apply local intents to Notion with guards                                                                  |
 | `sync`                    | `--dry-run`, `--max-attempts`                                                                             | Advanced: pull, plan, push, settle, and refresh from explicit flags                                                 |
-| `watch`                   | `--mode`, `--foreground`, `--json-events`                                                                 | Run the local daemon                                                                                                |
+| `watch`                   | `--mode`, `--foreground`, `--json-events`                                                                 | Run the local daemon, including local SQLite CDC processing for established replicas                                |
 | `conflicts list`          | `--json`                                                                                                  | List open conflicts                                                                                                 |
 | `conflicts resolve`       | `--strategy`, `--manual-value`                                                                            | Append conflict resolution events and follow-up commands                                                            |
 | `migrate store`           | `--to`, `--dry-run`                                                                                       | Execute forward-only SQLite migrations                                                                              |
@@ -1073,7 +1084,10 @@ Large-cardinality acceptance is currently bounded rather than fully streaming:
 query observation progresses by Notion pages, records capped/incomplete status
 when a limit or API cap prevents completeness, and the demo includes a 500-row
 source. Full streaming public-replica rebuilds remain a follow-up before
-claiming unbounded local projection memory behavior.
+claiming unbounded local projection memory behavior. Regression note: bounded
+large-database previews and targeted scratch-row checks are verification tools,
+not product modes; they must not reintroduce partial `<database-id>.sqlite`
+replicas.
 
 Structured output uses one envelope:
 
