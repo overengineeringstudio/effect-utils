@@ -320,8 +320,9 @@ The public replica has a stable generic schema and rebuildable generated views:
 | `notion_body_changes`         | `(change_id)`                         | Typed local CDC rows for body pushes                          |
 | `notion_metadata_changes`     | `(change_id)`                         | Typed local CDC rows for metadata patches                     |
 | `notion_schema_changes`       | `(change_id)`                         | Typed local CDC rows for conservative schema operations       |
-| `notion_file_assets`          | `(asset_id)`                          | Explicit file staging records                                 |
+| `notion_file_assets`          | `(asset_id)`                          | Explicit file staging records, including local-upload lifecycle fields |
 | `notion_file_changes`         | `(change_id)`                         | Typed local CDC rows for file attachment requests             |
+| `notion_view_changes`         | `(change_id)`                         | Typed local CDC rows for Notion UI view write requests; currently fail-closed |
 | `notion_conflict_resolutions` | `(resolution_id)`                     | Typed local CDC rows for conflict-resolution requests         |
 | `notion_local_changes`        | `(change_id)`                         | Unified compatibility projection over local change rows       |
 | `notion_conflicts`            | `(conflict_id)`                       | Open/resolved conflicts projected for user inspection         |
@@ -464,9 +465,10 @@ also fail closed before visible mutation until deterministic user identity
 projection and full page-property pagination are modeled. Relation writes may
 remove, reorder, or add targets only from complete paginated bases; added
 targets must already be present in `notion_relation_targets` for the same data
-source and property. Notion views,
-destructive schema changes, and unsupported conflict-resolution actions require
-their own surface proof before promotion.
+source and property. Notion UI view inventory is projected read-only through
+`notion_views`; Notion view writes through `notion_view_changes`, destructive
+schema changes, and unsupported conflict-resolution actions require their own
+surface proof before promotion.
 
 Intent lifecycle:
 

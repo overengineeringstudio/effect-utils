@@ -67,6 +67,7 @@ export type ReplicaLocalChange = {
     | 'metadata_patch'
     | 'schema_patch'
     | 'file_attach'
+    | 'view_change'
     | 'conflict_resolution'
   readonly dataSourceId: string
   readonly pageId: string | undefined
@@ -199,6 +200,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       !localChangesSchema.sql.includes("'metadata_patch'") ||
       !localChangesSchema.sql.includes("'schema_patch'") ||
       !localChangesSchema.sql.includes("'file_attach'") ||
+      !localChangesSchema.sql.includes("'view_change'") ||
       !localChangesSchema.sql.includes("'conflict_resolution'"))
   if (needsLocalChangesStatusMigration === true) {
     db.exec(`ALTER TABLE notion_local_changes RENAME TO notion_local_changes_legacy;`)
@@ -232,6 +234,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_schema_changes_mirror_local_update;
     DROP TRIGGER IF EXISTS notion_file_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_file_changes_mirror_local_update;
+    DROP TRIGGER IF EXISTS notion_view_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS notion_view_changes_mirror_local_update;
     DROP TRIGGER IF EXISTS notion_conflict_resolutions_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_conflict_resolutions_mirror_local_update;
 
@@ -485,16 +489,22 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       source_type TEXT NOT NULL CHECK (source_type IN ('external_url', 'local_upload')),
       name TEXT NOT NULL,
       external_url TEXT,
+      local_path TEXT,
       content_hash TEXT,
+      byte_length INTEGER,
+      mime_type TEXT,
       notion_file_upload_id TEXT,
       upload_status TEXT,
+      expires_at TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
       status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'pending_upload', 'uploaded', 'expired', 'failed', 'unsupported')),
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       CHECK (
         (source_type = 'external_url' AND external_url IS NOT NULL AND notion_file_upload_id IS NULL)
-        OR source_type = 'local_upload'
+        OR (source_type = 'local_upload' AND local_path IS NOT NULL AND content_hash IS NOT NULL)
       )
     );
 
@@ -519,6 +529,37 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       unsupported_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_view_changes (
+      change_id TEXT PRIMARY KEY,
+      action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+      view_id TEXT,
+      database_id TEXT,
+      data_source_id TEXT,
+      view_name TEXT,
+      view_type TEXT,
+      filter_json TEXT,
+      sorts_json TEXT,
+      configuration_json TEXT,
+      base_hash TEXT,
+      destructive_ack TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending',
+        'queued',
+        'planned',
+        'applied',
+        'conflict',
+        'unsupported',
+        'rejected',
+        'needs_reconciliation'
+      )),
+      unsupported_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      CHECK (filter_json IS NULL OR json_valid(filter_json)),
+      CHECK (sorts_json IS NULL OR json_valid(sorts_json)),
+      CHECK (configuration_json IS NULL OR json_valid(configuration_json))
     );
 
     CREATE TABLE IF NOT EXISTS notion_conflict_resolutions (
@@ -553,6 +594,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         'metadata_patch',
         'schema_patch',
         'file_attach',
+        'view_change',
         'conflict_resolution'
       )),
       data_source_id TEXT NOT NULL,
@@ -717,6 +759,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       ON notion_schema_changes(status, data_source_id);
     CREATE INDEX IF NOT EXISTS notion_file_changes_pending_idx
       ON notion_file_changes(status, data_source_id, page_id, property_id);
+    CREATE INDEX IF NOT EXISTS notion_view_changes_pending_idx
+      ON notion_view_changes(status, data_source_id, view_id);
     CREATE INDEX IF NOT EXISTS notion_conflict_resolutions_pending_idx
       ON notion_conflict_resolutions(status, conflict_id);
     CREATE INDEX IF NOT EXISTS notion_local_changes_pending_idx
@@ -1270,6 +1314,68 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       WHERE change_id = NEW.change_id;
     END;
 
+    CREATE TRIGGER IF NOT EXISTS notion_view_changes_mirror_local_insert
+    AFTER INSERT ON notion_view_changes
+    FOR EACH ROW
+    BEGIN
+      INSERT OR IGNORE INTO notion_local_changes (
+        change_id,
+        kind,
+        data_source_id,
+        value_json,
+        base_hash,
+        status,
+        unsupported_reason,
+        created_at,
+        updated_at
+      ) VALUES (
+        NEW.change_id,
+        'view_change',
+        COALESCE(NEW.data_source_id, ''),
+        json_object(
+          'action', NEW.action,
+          'view_id', NEW.view_id,
+          'database_id', NEW.database_id,
+          'view_name', NEW.view_name,
+          'view_type', NEW.view_type,
+          'filter_json', NEW.filter_json,
+          'sorts_json', NEW.sorts_json,
+          'configuration_json', NEW.configuration_json,
+          'destructive_ack', NEW.destructive_ack
+        ),
+        NEW.base_hash,
+        NEW.status,
+        NEW.unsupported_reason,
+        NEW.created_at,
+        NEW.updated_at
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS notion_view_changes_mirror_local_update
+    AFTER UPDATE ON notion_view_changes
+    FOR EACH ROW
+    BEGIN
+      UPDATE notion_local_changes
+      SET
+        data_source_id = COALESCE(NEW.data_source_id, ''),
+        value_json = json_object(
+          'action', NEW.action,
+          'view_id', NEW.view_id,
+          'database_id', NEW.database_id,
+          'view_name', NEW.view_name,
+          'view_type', NEW.view_type,
+          'filter_json', NEW.filter_json,
+          'sorts_json', NEW.sorts_json,
+          'configuration_json', NEW.configuration_json,
+          'destructive_ack', NEW.destructive_ack
+        ),
+        base_hash = NEW.base_hash,
+        status = NEW.status,
+        unsupported_reason = NEW.unsupported_reason,
+        updated_at = NEW.updated_at
+      WHERE change_id = NEW.change_id;
+    END;
+
     CREATE TRIGGER IF NOT EXISTS notion_conflict_resolutions_mirror_local_insert
     AFTER INSERT ON notion_conflict_resolutions
     FOR EACH ROW
@@ -1405,6 +1511,42 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     db,
     table: 'notion_metadata_changes',
     column: 'database_id',
+    definition: 'TEXT',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_file_assets',
+    column: 'local_path',
+    definition: 'TEXT',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_file_assets',
+    column: 'byte_length',
+    definition: 'INTEGER',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_file_assets',
+    column: 'mime_type',
+    definition: 'TEXT',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_file_assets',
+    column: 'expires_at',
+    definition: 'TEXT',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_file_assets',
+    column: 'retry_count',
+    definition: 'INTEGER NOT NULL DEFAULT 0',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_file_assets',
+    column: 'last_error',
     definition: 'TEXT',
   })
 
@@ -2170,6 +2312,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
                (SELECT count(*) FROM notion_metadata_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_schema_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_file_changes WHERE status IN ('pending', 'queued')) +
+               (SELECT count(*) FROM notion_view_changes WHERE status IN ('pending', 'queued')) +
                (SELECT count(*) FROM notion_conflict_resolutions WHERE status IN ('pending', 'queued'))
              ) AS pending_local_changes`,
         )
@@ -2452,6 +2595,46 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
              WHERE fc.status IN ('pending', 'queued')
              UNION ALL
              SELECT
+               change_id,
+               'view_change' AS kind,
+               COALESCE(data_source_id, '') AS data_source_id,
+               NULL AS page_id,
+               NULL AS property_id,
+               json_object(
+                 'action', action,
+                 'view_id', view_id,
+                 'database_id', database_id,
+                 'view_name', view_name,
+                 'view_type', view_type,
+                 'filter_json', filter_json,
+                 'sorts_json', sorts_json,
+                 'configuration_json', configuration_json,
+                 'destructive_ack', destructive_ack
+               ) AS value_json,
+               base_hash,
+               status,
+               NULL AS body_path,
+               NULL AS local_body_hash,
+               NULL AS local_body_content,
+               NULL AS metadata_resource_type,
+               database_id,
+               NULL AS title_plain_text,
+               NULL AS description_plain_text,
+               NULL AS schema_operation_json,
+               NULL AS file_asset_id,
+               NULL AS file_action,
+               NULL AS file_name,
+               NULL AS file_external_url,
+               NULL AS conflict_id,
+               NULL AS resolution_action,
+               NULL AS local_row_id,
+               NULL AS client_request_key,
+               NULL AS remote_page_id,
+               created_at
+             FROM notion_view_changes
+             WHERE status IN ('pending', 'queued')
+             UNION ALL
+             SELECT
                resolution_id AS change_id,
                'conflict_resolution' AS kind,
                '' AS data_source_id,
@@ -2496,6 +2679,7 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
           'metadata_patch',
           'schema_patch',
           'file_attach',
+          'view_change',
           'conflict_resolution',
         ),
       )(readString({ row, key: 'kind' })),
@@ -2580,6 +2764,11 @@ export const markReplicaChangeStatus = ({
     ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
     db.prepare(
       `UPDATE notion_file_changes
+       SET status = ?, unsupported_reason = ?, updated_at = ?
+       WHERE change_id = ?`,
+    ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
+    db.prepare(
+      `UPDATE notion_view_changes
        SET status = ?, unsupported_reason = ?, updated_at = ?
        WHERE change_id = ?`,
     ).run(status, unsupportedReason ?? null, new Date().toISOString(), changeId)
@@ -3709,6 +3898,17 @@ export const replicaChangesToPlannerIntents = ({
             schema: Hash,
             value: readString({ row: cell, key: 'config_hash' }),
           }),
+        })
+        continue
+      }
+      if (change.kind === 'view_change') {
+        markChange({
+          replicaPath,
+          dryRun,
+          changeId: change.changeId,
+          status: 'unsupported',
+          reason:
+            'Notion view write CDC needs stable post-write view hashes, cache/incomplete-query modeling, and scratch cleanup proof before execution.',
         })
         continue
       }

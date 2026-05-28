@@ -2312,9 +2312,18 @@ describe('user-facing SQLite replica', () => {
         )
         db.prepare(
           `INSERT INTO notion_file_assets (
-             asset_id, source_type, name, content_hash, status
-           ) VALUES (?, 'local_upload', ?, ?, 'pending_upload')`,
-        ).run('local-upload-asset', 'local.txt', hash('local-file'))
+             asset_id, source_type, name, local_path, content_hash, byte_length, mime_type,
+             upload_status, retry_count, status
+           ) VALUES (?, 'local_upload', ?, ?, ?, ?, ?, 'pending', ?, 'pending_upload')`,
+        ).run(
+          'local-upload-asset',
+          'local.txt',
+          'fixtures/local.txt',
+          hash('local-file'),
+          12,
+          'text/plain',
+          1,
+        )
         db.prepare(
           `INSERT INTO notion_file_changes (
              change_id, asset_id, action, data_source_id, page_id, property_id, base_hash
@@ -2326,6 +2335,18 @@ describe('user-facing SQLite replica', () => {
           testIds.pageId,
           testIds.propertyA,
           fileCell.base_hash,
+        )
+        db.prepare(
+          `INSERT INTO notion_view_changes (
+             change_id, action, view_id, database_id, data_source_id, view_name, view_type, base_hash
+           ) VALUES (?, 'update', ?, ?, ?, ?, 'table', ?)`,
+        ).run(
+          'view-update-change',
+          'view-1',
+          'database-1',
+          testIds.dataSourceId,
+          'Updated view',
+          hash('view-base'),
         )
       } finally {
         db.close()
@@ -2349,6 +2370,11 @@ describe('user-facing SQLite replica', () => {
         status: 'unsupported',
         unsupported_reason:
           'Only external URL file attachments are supported; local uploads need upload-id/status/retry modeling.',
+      })
+      expect(statusFor(replicaPath, 'view-update-change')).toMatchObject({
+        status: 'unsupported',
+        unsupported_reason:
+          'Notion view write CDC needs stable post-write view hashes, cache/incomplete-query modeling, and scratch cleanup proof before execution.',
       })
     } finally {
       storeFixture.cleanup()
