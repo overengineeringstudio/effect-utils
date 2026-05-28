@@ -15,7 +15,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Page retrieve          | Reads row page lifecycle and property snapshots                                 |
 | Page-property retrieve | Cursor pagination for truncated property-item values                            |
 | Property writes        | Guarded row property patches for modeled writable values                        |
-| Schema writes          | Safe add/rename/add-option subset with base schema hash                         |
+| Schema command writes  | Dedicated safe add/rename/add-option command path with base schema hash; public SQLite schema CDC remains fail-closed |
 | Data-source metadata   | Guarded title patches with a separate metadata hash                             |
 | Trash/restore          | Explicit command surface with outbox verification                               |
 | Body observation       | Via NotionMD-backed `PageBodySyncPort`                                          |
@@ -47,11 +47,11 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 
 | Notion surface                           | Current policy                                                                           |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Data-source views                        | Not synced; view CDC is a separate surface, not schema                                   |
+| Data-source views                        | Read-only Notion UI view inventory is projected in `notion_views`; view writes and view-query membership authority are not synced |
 | Database metadata                        | Title/description CDC supported through `notion_databases`; icon/cover/parent/trash/lock remain deferred |
 | Data-source writable icons               | Deferred until file/custom/external icon identity has complete proof                     |
 | Database/data-source presentation        | Layout, grouping, sorts, filters, hidden properties, and view settings are not synced    |
-| File upload/download bytes               | Deferred; file identity remains fail-closed when bytes matter                            |
+| File upload/download bytes               | Local-upload lifecycle fields are modeled in `notion_file_assets`, but upload execution remains fail-closed until retry/expiry/read-after-write proof exists |
 | Destructive schema migrations            | Property delete, type conversion, option removal/rename are blocked                      |
 | Status schema updates                    | Blocked until Notion behavior is proven for the desired operation                        |
 | Comments                                 | Out of scope                                                                             |
@@ -80,8 +80,8 @@ class must have a typed intent and guard model before it mutates Notion.
 | People/file direct cell edits   | Fail closed before visible replica mutation; people requires deterministic user identity proof, files require explicit staging/upload lifecycle   |
 | Safe schema changes             | Dedicated schema command path exists; public SQLite CDC remains blocked until post-write hash proof                                               |
 | Rich/destructive schema changes | Follow-up migration workflows with impact reports and explicit approval                                                                           |
-| File bytes/local uploads        | Follow-up until File Upload identity, retry, read-after-write, and cleanup are modeled                                                            |
-| Notion UI view writes           | Follow-up typed view CDC; create/update/delete stay blocked until stale-base, cleanup, and cache semantics are proven                             |
+| File bytes/local uploads        | Explicit staging fields exist, but execution is blocked until File Upload identity, retry, read-after-write, and cleanup are proven                |
+| Notion UI view writes           | `notion_view_changes` records typed requests, but create/update/delete stay blocked until stale-base, cleanup, and cache semantics are proven      |
 
 ## Capability Preflight
 

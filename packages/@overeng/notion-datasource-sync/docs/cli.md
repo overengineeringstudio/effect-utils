@@ -163,6 +163,7 @@ Stable generic tables:
 | `notion_schema_changes`       | write         | Typed CDC log for schema edit requests; execution currently fail-closed pending post-write reconciliation   |
 | `notion_file_assets`          | write         | Explicit file staging records; external URLs are supported, local uploads remain fail-closed                |
 | `notion_file_changes`         | write         | Typed CDC log for attaching staged external URL files to empty `files` properties                           |
+| `notion_view_changes`         | write         | Typed CDC requests for Notion UI view writes; execution remains fail-closed until view write reconciliation is proven |
 | `notion_conflict_resolutions` | write         | Typed CDC requests for user conflict-resolution actions                                                     |
 | `notion_local_changes`        | compatibility | Unified local-change projection for inspection and older explicit inserts                                   |
 | `notion_conflicts`            | read          | User-visible conflict records and resolution state                                                          |
