@@ -4,15 +4,15 @@
 that proves the behavior, then add live tests only for Notion semantics that fake
 services cannot prove.
 
-| Layer       | Command                                                                                                                               | Network | Purpose                                   |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------- |
-| Unit        | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/core/contracts.unit.test.ts --config vitest.config.ts`  | no      | schemas, contracts, hashes, guards        |
-| Fake E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/fake-service.e2e.test.ts --config vitest.config.ts` | no      | planner/store/outbox behavior             |
-| Body E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/body-adapter.e2e.test.ts --config vitest.config.ts` | no      | NotionMD adapter boundary                 |
-| CLI E2E     | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/cli.e2e.test.ts --config vitest.config.ts`          | no      | CLI parsing, dry-run, adoption safety     |
-| Replica E2E | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/replica-*.e2e.test.ts --config vitest.config.ts`    | no      | `notion.sqlite` reads, intents, conflicts |
-| Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`       | no      | watch loop, restart, lease, backpressure  |
-| Live Notion | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`  | yes     | real Notion API semantics                 |
+| Layer       | Command                                                                                                                               | Network | Purpose                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------ |
+| Unit        | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/core/contracts.unit.test.ts --config vitest.config.ts`  | no      | schemas, contracts, hashes, guards               |
+| Fake E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/fake-service.e2e.test.ts --config vitest.config.ts` | no      | planner/store/outbox behavior                    |
+| Body E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/body-adapter.e2e.test.ts --config vitest.config.ts` | no      | NotionMD adapter boundary                        |
+| CLI E2E     | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/cli.e2e.test.ts --config vitest.config.ts`          | no      | CLI parsing, dry-run, adoption safety            |
+| Replica E2E | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/replica-*.e2e.test.ts --config vitest.config.ts`    | no      | `<database-id>.sqlite` reads, intents, conflicts |
+| Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`       | no      | watch loop, restart, lease, backpressure         |
+| Live Notion | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`  | yes     | real Notion API semantics                        |
 
 Run package TypeScript after code changes:
 
@@ -51,26 +51,31 @@ all created objects in a local `tmp/` ledger, and archive fixtures during
 cleanup.
 
 The live suite includes `sync --from-notion` adoption semantics against a
-disposable data source with title, checkbox, rich text, number, select, and date
-properties. It omits schema JSON, proves the live schema is discovered into
-`schema_properties`/`notion_properties`, projects values into `notion_cells`,
-and verifies `rows` property columns precede `_` system columns.
+disposable database/data source with title, checkbox, rich text, number, select,
+and date properties. It omits schema JSON, proves the live schema is discovered
+into `schema_properties`, projects values into `rows`, and verifies `rows`
+property columns precede `_` system columns.
 For read-only checks against a large existing database, use the database URL
 with `--dry-run --limit <rows>` first; the limit is a capped preview, not a
 partial adoption mode.
 
-Replica tests must prove that establishment creates `notion.sqlite`, that
-`rows`, `schema_properties`, normalized tables, and generated debug views match
-observed Notion rows, and that local SQL edits create intents rather than
-immediate Notion writes. The focused replica E2E suite covers direct
-current-state CDC, typed body/lifecycle tables,
-metadata CDC planning/settlement, schema CDC fail-closed behavior,
-row-create planning/settlement behavior, external URL file staging/attachment,
-safe and unsafe conflict-resolution requests, dry-run no-settlement, stale bases,
-invalid payloads, and generated view escaping. Dry-run assertions must check
-that no replica rows are mutated, no
-intents settle, no internal events append, no outbox commands execute, and no
-body files materialize.
+Replica tests must prove that establishment creates
+`<workspace>/<database-id>.sqlite`, that the filename uses the Notion database
+ID rather than the display name, that multiple databases establish as separate
+SQLite files, and that no `.notion-datasource-sync/store.sqlite` or config
+sidecar is required state. `rows`, `schema`, `schema_properties`, `changes`,
+`conflicts`, `sync_status`, and read-only `debug_*` views must match observed
+Notion rows, while private `_nds_*` tables remain non-public.
+
+The focused replica E2E suite covers direct current-state CDC, body/lifecycle
+changes, metadata planning/settlement, schema fail-closed behavior, row-create
+planning/settlement behavior, external URL file staging/attachment, safe and
+unsafe conflict-resolution requests, dry-run no-settlement, stale bases, invalid
+payloads, generated/debug view escaping, database-ID filename portability,
+backup/copy via SQLite checkpoint/backup semantics, and fail-closed tamper
+detection for `_nds_*` state. Dry-run assertions must check that no public rows
+are mutated, no intents settle, no private events append, no outbox commands
+execute, and no body files materialize.
 
 When `NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID` is set, the suite publishes a
 sanitized summary to that Notion page. The ledger must not contain tokens, token
@@ -95,10 +100,11 @@ CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
 The demo refreshes one durable Notion page, archives stale demo data-source
 blocks, creates multiple current inline data sources with different schemas, and
 includes a 500-row activity source for high-cardinality query pagination.
-Current acceptance proves bounded page-query progress and capped dry-run
-behavior. Full streaming projection of arbitrarily large `rows` rebuilds is a
-follow-up once replica rebuilds no longer materialize a whole observed batch in
-memory.
+Current acceptance proves that each data source/database is represented as its
+own `<database-id>.sqlite` file with realistic schemas/cardinality, bounded
+page-query progress, and capped dry-run behavior. Full streaming projection of
+arbitrarily large `rows` rebuilds is a follow-up once replica rebuilds no longer
+materialize a whole observed batch in memory.
 
 CI does not run the demo on ordinary PR/push runs. To include it in the Notion
 integration lane, dispatch the CI workflow manually with
@@ -115,7 +121,7 @@ Real user database checks are read-only/downsync only:
 
 - `sync --from-notion <database-url> <workspace> --dry-run --limit <rows>`,
 - bounded downsync with `--no-materialize-bodies`,
-- local `notion.sqlite` readback comparisons,
+- local `<database-id>.sqlite` readback comparisons,
 - before/after sample checks proving Notion `last_edited_time`, `in_trash`, and
   archive state did not change.
 
@@ -127,3 +133,14 @@ explicit disposable fixture plan and approval.
 Scenario metadata lives in `src/testing/scenarios.ts`. The VRS E2E plan maps
 requirements and guards to verification levels. Add or update scenario metadata
 when adding a new guard, supported surface, or live proof.
+
+Required coverage for the self-contained SQLite contract:
+
+- database-ID filename creation and display-name rename safety,
+- multi-database workspace with one SQLite file per Notion database,
+- public surface shape: `rows`, `schema`, `schema_properties`, `changes`,
+  `conflicts`, `sync_status`,
+- read-only `debug_*` diagnostics,
+- private `_nds_*` tamper/corruption fail-closed behavior,
+- copy/backup portability using SQLite checkpoint/backup semantics,
+- live scratch adoption and readback without split-store state.
