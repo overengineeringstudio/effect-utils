@@ -258,6 +258,8 @@ const liveDebugJson = (value: unknown): string =>
     typeof entry === 'bigint' ? entry.toString() : entry,
   )
 
+const quoteSqlIdentifier = (value: string): string => `"${value.replaceAll('"', '""')}"`
+
 const liveTitlePropertyName = (properties: Record<string, unknown>): string => {
   const entry = Object.entries(properties).find(([, property]) => {
     if (typeof property !== 'object' || property === null) return false
@@ -1465,28 +1467,23 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           const writeCellChange = () => {
             const db = new DatabaseSync(replicaPath)
             try {
-              const cell = db
+              const propertyColumn = db
                 .prepare(
-                  `SELECT property_id, value_text
-                   FROM notion_cells
-                   WHERE page_id = ? AND property_name = ?`,
+                  `SELECT column_name
+                   FROM schema_properties
+                   WHERE property_id = ?`,
                 )
-                .get(livePageId, cdcPropertyName) as
-                | { readonly property_id: string; readonly value_text: string }
+                .get(cdcSchemaProperty.propertyId) as
+                | { readonly column_name: string }
                 | undefined
-              if (cell === undefined) {
-                throw new Error('live public SQLite CDC test did not project the CDC cell')
+              if (propertyColumn === undefined) {
+                throw new Error('live public SQLite rows test did not project the CDC column')
               }
-              expect(cell.property_id).toBe(cdcSchemaProperty.propertyId)
               db.prepare(
-                `UPDATE notion_cells
-                 SET value_json = ?
-                 WHERE page_id = ? AND property_id = ?`,
-              ).run(
-                JSON.stringify({ _tag: 'rich_text', plainText: updatedTitle }),
-                livePageId,
-                cell.property_id,
-              )
+                `UPDATE rows
+                 SET ${quoteSqlIdentifier(propertyColumn.column_name)} = ?
+                 WHERE _page_id = ?`,
+              ).run(updatedTitle, livePageId)
               expect(
                 db
                   .prepare(
@@ -1494,7 +1491,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                      FROM notion_cell_changes
                      WHERE page_id = ? AND property_id = ?`,
                   )
-                  .get(livePageId, cell.property_id),
+                  .get(livePageId, cdcSchemaProperty.propertyId),
               ).toMatchObject({
                 status: 'pending',
                 value_json: JSON.stringify({ _tag: 'rich_text', plainText: updatedTitle }),
@@ -1643,7 +1640,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           {
             const db = new DatabaseSync(replicaPath)
             try {
-              db.prepare(`UPDATE notion_rows SET in_trash = 1 WHERE page_id = ?`).run(livePageId)
+              db.prepare(`UPDATE rows SET _in_trash = 1 WHERE _page_id = ?`).run(livePageId)
               expect(
                 db
                   .prepare(
@@ -1671,29 +1668,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           {
             const db = new DatabaseSync(replicaPath)
             try {
-              const row = db
-                .prepare(`SELECT properties_hash FROM notion_rows WHERE page_id = ?`)
-                .get(livePageId) as { readonly properties_hash: string } | undefined
-              if (row === undefined) {
-                throw new Error('live public SQLite CDC test did not retain row projection')
-              }
-              db.prepare(`UPDATE notion_rows SET in_trash = 0 WHERE page_id = ?`).run(livePageId)
-              db.prepare(
-                `INSERT INTO notion_row_changes (
-                   change_id, kind, data_source_id, page_id, base_hash
-                 )
-                 SELECT ?, 'row_restore', ?, ?, ?
-                 WHERE NOT EXISTS (
-                   SELECT 1 FROM notion_row_changes
-                   WHERE page_id = ? AND kind = 'row_restore' AND status IN ('pending', 'queued')
-                 )`,
-              ).run(
-                `live-restore-${provisioned.config.runId}`,
-                provisioned.config.dataSourceId,
-                livePageId,
-                row.properties_hash,
-                livePageId,
-              )
+              db.prepare(`UPDATE rows SET _in_trash = 0 WHERE _page_id = ?`).run(livePageId)
               expect(
                 db
                   .prepare(
@@ -1823,31 +1798,37 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           {
             const db = new DatabaseSync(replicaPath)
             try {
-              const source = db
-                .prepare(`SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ?`)
-                .get(provisioned.config.dataSourceId) as { readonly schema_hash: string }
+              const createdColumns = db
+                .prepare(
+                  `SELECT property_id, column_name
+                   FROM schema_properties
+                   WHERE property_id IN (?, ?)`,
+                )
+                .all(titleSchemaProperty.propertyId, cdcSchemaProperty.propertyId) as unknown as ReadonlyArray<{
+                readonly property_id: string
+                readonly column_name: string
+              }>
+              const titleColumn = createdColumns.find(
+                (column) => column.property_id === titleSchemaProperty.propertyId,
+              )?.column_name
+              const cdcColumn = createdColumns.find(
+                (column) => column.property_id === cdcSchemaProperty.propertyId,
+              )?.column_name
+              if (titleColumn === undefined || cdcColumn === undefined) {
+                throw new Error('live public SQLite rows create did not project required columns')
+              }
               db.prepare(
-                `INSERT INTO notion_row_creates (
-                   change_id,
-                   data_source_id,
-                   local_row_id,
-                   client_request_key,
-                   initial_values_json,
-                   base_schema_hash
-                 ) VALUES (?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO rows (
+                   ${quoteSqlIdentifier(titleColumn)},
+                   ${quoteSqlIdentifier(cdcColumn)},
+                   _local_row_id,
+                   _client_request_key
+                 ) VALUES (?, ?, ?, ?)`,
               ).run(
-                `live-create-${provisioned.config.runId}`,
-                provisioned.config.dataSourceId,
+                createdTitle,
+                `created note ${provisioned.config.runId}`,
                 `local-${provisioned.config.runId}`,
                 `client-${provisioned.config.runId}`,
-                JSON.stringify({
-                  [titleSchemaProperty.propertyId]: { _tag: 'title', plainText: createdTitle },
-                  [cdcSchemaProperty.propertyId]: {
-                    _tag: 'rich_text',
-                    plainText: `created note ${provisioned.config.runId}`,
-                  },
-                }),
-                source.schema_hash,
               )
               expect(
                 db
@@ -1870,9 +1851,9 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 .prepare(
                   `SELECT status, remote_page_id, unsupported_reason
                    FROM notion_row_creates
-                   WHERE change_id = ?`,
+                   WHERE client_request_key = ?`,
                 )
-                .get(`live-create-${provisioned.config.runId}`) as
+                .get(`client-${provisioned.config.runId}`) as
                 | {
                     readonly status: string
                     readonly remote_page_id: string | null
@@ -1909,6 +1890,54 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             }),
           )
           expect(createdRows.results).toHaveLength(1)
+
+          {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              const pendingCdc = db
+                .prepare(
+                  `SELECT change_id, data_source_id, page_id
+                   FROM notion_local_changes
+                   WHERE status IN ('pending', 'queued', 'planned')`,
+                )
+                .all() as unknown as ReadonlyArray<{
+                readonly change_id: string
+                readonly data_source_id: string
+                readonly page_id: string | null
+              }>
+              expect(
+                pendingCdc.every(
+                  (row) =>
+                    row.data_source_id === provisioned.config.dataSourceId &&
+                    (row.page_id === null ||
+                      row.page_id === livePageId ||
+                      row.page_id === createdPageId),
+                ),
+              ).toBe(true)
+              expect(pendingCdc).toHaveLength(0)
+            } finally {
+              db.close()
+            }
+          }
+          {
+            const storeDb = new DatabaseSync(
+              join(workspaceRoot, '.notion-datasource-sync', 'store.sqlite'),
+              { readOnly: true },
+            )
+            try {
+              expect(
+                storeDb
+                  .prepare(
+                    `SELECT command_id, surface
+                     FROM outbox
+                     WHERE settlement_event_id IS NULL`,
+                  )
+                  .all(),
+              ).toHaveLength(0)
+            } finally {
+              storeDb.close()
+            }
+          }
 
           await recorder.record({
             phase: 'verify',
