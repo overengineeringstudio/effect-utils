@@ -2,7 +2,7 @@
   "automatedDemo": {
     "pageId": "36cf141b18dc803b98ebd21f2a243453",
     "url": "https://www.notion.so/overeng-notion-datasource-sync-demo-automated-36cf141b18dc803b98ebd21f2a243453",
-    "retainedArtifacts": "four refreshed inline demo data sources plus sanitized verification summary",
-    "scenario": "live datasource-sync observation across projects, incidents, customers, and a 500-row activity data source with realistic property data, paginated query, NotionMD body observation, and bounded reruns"
+    "retainedArtifacts": "four refreshed inline demo data sources plus sanitized verification summary; no checked-in live SQLite replicas",
+    "scenario": "live datasource-sync observation across projects, incidents, customers, and a 500-row activity data source, each demonstrated as its own 1:1 notion.sqlite artifact with canonical rows/schema/schema_properties surfaces, realistic property data, paginated query, NotionMD body observation, and bounded reruns"
   }
 }

@@ -1,9 +1,11 @@
 # Getting Started
 
 `notion-datasource-sync` syncs a Notion data source with a local SQLite replica.
-The user-facing local API is `workspace/notion.sqlite`. The internal control
-store is `workspace/.notion-datasource-sync/store.sqlite`; do not read or edit
-it as the local Notion database.
+By default, one `workspace/notion.sqlite` file maps to one primary Notion data
+source. The user-facing local API is `workspace/notion.sqlite`; its canonical
+writable table is `rows`. The internal control store is
+`workspace/.notion-datasource-sync/store.sqlite`; do not read or edit it as the
+local Notion database.
 
 The sync engine observes the data source schema, metadata, rows, selected row
 properties, row lifecycle state, and row page bodies. It projects current state
@@ -83,15 +85,26 @@ Use `notion.sqlite`, not `.notion-datasource-sync/store.sqlite`:
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" ".tables"
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select data_source_id, schema_hash, metadata_hash from notion_data_sources;"
+  "select data_source_id, schema_hash, metadata_hash from schema;"
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  "select page_id, in_trash, properties_hash from notion_rows limit 10;"
+  "select column_name, property_id, property_type, write_class from schema_properties order by ordinal;"
+sqlite3 "$PWD/notion-workspace/notion.sqlite" \
+  'select _page_id, "Task name", "Status" from rows limit 10;'
 ```
+
+`rows` is the default surface for ordinary users. Notion properties are exposed
+as columns first, `_` system columns are last, and `schema_json` is intentionally
+absent. Use `schema` and `schema_properties` to inspect binding, schema hashes,
+and column/property mapping. See [Canonical SQLite Replica](./canonical-replica.md)
+for the full row contract.
 
 The stable generic tables are:
 
 | Table                                              | Purpose                                                        |
 | -------------------------------------------------- | -------------------------------------------------------------- |
+| `rows`                                             | Canonical writable 1:1 row surface for the primary data source |
+| `schema`                                           | Read view for replica binding, metadata, and schema hashes     |
+| `schema_properties`                                | Read view for property-to-`rows` column mapping                |
 | `notion_data_sources`                              | Adopted data-source identity, title, description, icon, hashes |
 | `notion_properties`                                | Property IDs, names, types, configs, writable/read-only policy |
 | `notion_rows`                                      | Page row identity, lifecycle, parent/source, row hashes        |
@@ -107,36 +120,34 @@ The stable generic tables are:
 | `notion_conflicts`                                 | Open/resolved conflicts projected for users                    |
 | `notion_sync_status`                               | Last sync, checkpoints, pending work, guard state              |
 
-Generated read views provide ergonomic SQL for each adopted data source. Their
-names currently use the data-source id slug, such as
-`notion_view_data_source_1`. They are read-only; write to `notion_cells` /
-`notion_rows` current-state columns or to typed mutation tables instead.
-These generated SQL views are local projections and are distinct from Notion UI
-views in `notion_views`.
+Generated and normalized read views provide debugging SQL for adopted data
+sources. They are secondary to `rows`; use them when you need canonical JSON,
+base hashes, or CDC status. They are distinct from Notion UI views in
+`notion_views`.
 
 ```sh
 sqlite3 "$PWD/notion-workspace/notion.sqlite" \
-  'select "Task name", "Status", "Priority" from notion_view_data_source_1 limit 10;'
+  'select "Task name", "Status", "Priority" from rows limit 10;'
 ```
 
 ## Edit Local Data
 
 Local SQL edits create explicit intents. They do not call Notion immediately.
-For cell edits, updating `notion_cells.value_json` is the direct local-edit
-surface:
+For ordinary scalar edits, update `rows`:
 
 ```sql
-update notion_cells
-set value_json = '{"_tag":"title","plainText":"Done"}'
-where page_id = '11111111-1111-4111-8111-111111111111'
-  and property_id = 'title-property-id';
+update rows
+set "Status" = 'Done',
+    "Priority" = 3
+where _page_id = '11111111-1111-4111-8111-111111111111';
 ```
 
-This first validates the canonical value shape, then updates scalar helper
-columns and generated read views to the local desired state and queues a typed
-`cell_patch` CDC row. If the same cell is edited repeatedly before sync, the
-pending typed row is updated to the latest desired value instead of replaying
-intermediate edits. The equivalent explicit intent form is:
+This validates the property mapping and value shape, updates local desired
+state, and queues typed CDC for guarded sync. If the same cell is edited
+repeatedly before sync, the pending typed row is updated to the latest desired
+value instead of replaying intermediate edits. The normalized explicit intent
+form is still available for debugging and automation that needs canonical
+Notion-shaped JSON:
 
 ```sql
 insert into notion_cell_changes
@@ -170,11 +181,14 @@ hash reconciliation; schema CDC rows are visible for review but fail closed from
 SQLite until verified post-write reconciliation is modeled. External URL files
 can be attached to empty writable `files` properties through
 `notion_file_assets` plus `notion_file_changes`; local uploads and replacing or
-deleting existing file arrays remain guarded. Row creation is supported through `notion_row_creates`; direct
-`INSERT INTO notion_rows` is blocked because `notion_rows` is observed remote
-state. Notion view writes, destructive schema changes, and unsupported conflict-resolution actions remain fail-closed
-until their dedicated proof is in place. Computed or unsupported properties
-remain visible but read-only.
+deleting existing file arrays remain guarded. Row creation is supported through
+`INSERT INTO rows (...) VALUES (...)`; the normalized CDC representation is
+`notion_row_creates`. Archive/restore is `UPDATE rows SET _in_trash = 1/0`.
+`DELETE FROM rows` is rejected, because destructive remote effects must be
+explicit lifecycle intents. Notion view writes, destructive schema changes, and
+unsupported conflict-resolution actions remain fail-closed until their
+dedicated proof is in place. Computed or unsupported properties remain visible
+but read-only.
 
 ## Reconcile Local Changes
 

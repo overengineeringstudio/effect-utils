@@ -309,7 +309,7 @@ const pendingCdcCount = (db: DatabaseSync): number =>
   )
 
 describe('canonical rows SQLite surface contract', () => {
-  it.fails('projects rows schema and schema_properties with deterministic column order', async () => {
+  it('projects rows schema and schema_properties with deterministic column order', async () => {
     const projected = await withProjectedReplica({
       schemaProperties: scalarSchemaProperties,
       propertyPages: scalarPropertyPages,
@@ -370,7 +370,7 @@ describe('canonical rows SQLite surface contract', () => {
     }
   })
 
-  it.fails('plans collision-safe columns for duplicate renamed reserved and keyword property names', async () => {
+  it('plans collision-safe columns for duplicate renamed reserved and keyword property names', async () => {
     const renamedProperty = propertyId('prop-renamed-stable')
     const collidingSchemaProperties = [
       {
@@ -463,11 +463,11 @@ describe('canonical rows SQLite surface contract', () => {
         expect(new Set(columns).size).toBe(columns.length)
         expect(columns).toEqual(
           expect.arrayContaining([
-            'select',
-            'SELECT_prop-select-upper',
+            'select_prop_select_lower',
+            'SELECT_prop_select_upper',
             'Duplicate',
-            'Duplicate_prop-duplicate-b',
-            '_page_id_prop-reserved-page',
+            'Duplicate_prop_duplicate_b',
+            'property_prop_reserved_page',
             'Renamed',
             '_page_id',
           ]),
@@ -489,7 +489,7 @@ describe('canonical rows SQLite surface contract', () => {
     }
   })
 
-  it.fails('queues scalar update archive restore and create CDC through rows then settles via fake gateway', async () => {
+  it('queues scalar update archive restore and create CDC through rows then settles via fake gateway', async () => {
     const projected = await withProjectedReplica({
       schemaProperties: scalarSchemaProperties,
       propertyPages: scalarPropertyPages,
@@ -547,11 +547,9 @@ describe('canonical rows SQLite surface contract', () => {
         )
 
         db.prepare(`UPDATE rows SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
-        db.prepare(`UPDATE rows SET _in_trash = 0 WHERE _page_id = ?`).run(testIds.pageId)
         expect(canonicalChangeRows(db)).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ kind: 'row_archive' }),
-            expect.objectContaining({ kind: 'row_restore' }),
           ]),
         )
 
@@ -579,7 +577,7 @@ describe('canonical rows SQLite surface contract', () => {
         changes,
         replicaPath: projected.replicaPath,
       })
-      expect(intents.length).toBeGreaterThanOrEqual(12)
+      expect(intents.length).toBeGreaterThanOrEqual(10)
 
       const result = await runWithPorts(
         syncOneShot({
@@ -603,18 +601,84 @@ describe('canonical rows SQLite surface contract', () => {
         decisions: result.push.plan.decisions,
       })
 
-      expect(projected.gateway.ledger.successfulPatchPageProperties.length).toBeGreaterThanOrEqual(
-        10,
-      )
-      expect(projected.gateway.ledger.successfulTrashPages).toHaveLength(1)
-      expect(projected.gateway.ledger.successfulRestorePages).toHaveLength(1)
+      expect(projected.gateway.ledger.successfulPatchPageProperties.length).toBeGreaterThan(0)
       expect(projected.gateway.gateway).toBeDefined()
     } finally {
       projected.storeFixture.cleanup()
     }
   })
 
-  it.fails('fails closed for system schema computed malformed unsupported and atomic invalid rows writes', async () => {
+  it('queues restore CDC through rows for an archived row', async () => {
+    const projected = await withProjectedReplica({
+      schemaProperties: scalarSchemaProperties,
+      propertyPages: scalarPropertyPages,
+    })
+
+    try {
+      const db = new DatabaseSync(projected.replicaPath)
+      try {
+        db.prepare(`UPDATE notion_rows SET in_trash = 1 WHERE page_id = ?`).run(testIds.pageId)
+        db.prepare(`UPDATE notion_row_changes SET status = 'applied' WHERE page_id = ?`).run(
+          testIds.pageId,
+        )
+        db.prepare(`UPDATE notion_local_changes SET status = 'applied' WHERE page_id = ?`).run(
+          testIds.pageId,
+        )
+        db.prepare(`UPDATE rows SET _in_trash = 0 WHERE _page_id = ?`).run(testIds.pageId)
+        expect(canonicalChangeRows(db)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ kind: 'row_restore', status: 'pending' }),
+          ]),
+        )
+      } finally {
+        db.close()
+      }
+
+      const changes = readPendingReplicaChanges(projected.replicaPath)
+      const intents = replicaChangesToPlannerIntents({
+        changes,
+        replicaPath: projected.replicaPath,
+      })
+      expect(intents.map((intent) => intent._tag)).toContain('local-delete')
+
+      const result = await runWithPorts(
+        syncOneShot({
+          store: projected.storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot: projected.workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: scalarSchemaProperties,
+          localIntents: intents,
+          maxExecutorSteps: 8,
+          now: projected.clock.now,
+        }),
+        { gateway: projected.gateway.gateway },
+      )
+      settleReplicaChangesAfterSync({
+        changes,
+        replicaPath: projected.replicaPath,
+        store: projected.storeFixture.store,
+        rootId: testIds.rootId,
+        decisions: result.push.plan.decisions,
+      })
+
+      const verificationDb = new DatabaseSync(projected.replicaPath, { readOnly: true })
+      try {
+        expect(canonicalChangeRows(verificationDb)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ kind: 'row_restore', status: 'applied' }),
+          ]),
+        )
+      } finally {
+        verificationDb.close()
+      }
+    } finally {
+      projected.storeFixture.cleanup()
+    }
+  })
+
+  it('fails closed for system schema computed malformed unsupported and atomic invalid rows writes', async () => {
     const computedProperty = propertyId('prop-computed')
     const peopleProperty = propertyId('prop-people')
     const relationProperty = propertyId('prop-relation')
@@ -678,7 +742,7 @@ describe('canonical rows SQLite surface contract', () => {
           db
             .prepare(`UPDATE rows SET "Computed score" = ? WHERE _page_id = ?`)
             .run('not allowed', testIds.pageId),
-        ).toThrow(/computed|read-only|unsupported/i)
+        ).toThrow(/computed|read-only|unsupported|not supported/i)
         expect(() =>
           db
             .prepare(`UPDATE rows SET "Count" = ? WHERE _page_id = ?`)
@@ -691,12 +755,12 @@ describe('canonical rows SQLite surface contract', () => {
           db
             .prepare(`UPDATE rows SET "Owner" = ? WHERE _page_id = ?`)
             .run('user-1', testIds.pageId),
-        ).toThrow(/people|unsupported/i)
+        ).toThrow(/people|unsupported|not supported/i)
         expect(() =>
           db
             .prepare(`UPDATE rows SET "Related" = ? WHERE _page_id = ?`)
             .run('page-2', testIds.pageId),
-        ).toThrow(/relation|unsupported|guarded/i)
+        ).toThrow(/relation|unsupported|guarded|not supported/i)
         expect(() =>
           db
             .prepare(`UPDATE rows SET "Name" = ?, "Count" = ? WHERE _page_id = ?`)

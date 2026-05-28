@@ -175,6 +175,156 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
 const quoteIdentifier = (value: string): string => `"${value.replaceAll('"', '""')}"`
 const quoteStringLiteral = (value: string): string => `'${value.replaceAll("'", "''")}'`
 
+const rowsViewName = 'rows'
+const schemaViewName = 'schema'
+const schemaPropertiesViewName = 'schema_properties'
+
+const rowsSystemColumns = [
+  '_page_id',
+  '_data_source_id',
+  '_local_row_id',
+  '_client_request_key',
+  '_origin',
+  '_properties_hash',
+  '_in_trash',
+  '_moved_out',
+  '_local_delete_candidate',
+  '_sync_status',
+  '_observed_event_id',
+  '_observed_at',
+  '_updated_at',
+] as const
+
+const sqliteKeywords = new Set([
+  'ABORT',
+  'ACTION',
+  'ADD',
+  'AFTER',
+  'ALL',
+  'ALTER',
+  'ANALYZE',
+  'AND',
+  'AS',
+  'ASC',
+  'ATTACH',
+  'AUTOINCREMENT',
+  'BEFORE',
+  'BEGIN',
+  'BETWEEN',
+  'BY',
+  'CASCADE',
+  'CASE',
+  'CAST',
+  'CHECK',
+  'COLLATE',
+  'COLUMN',
+  'COMMIT',
+  'CONFLICT',
+  'CONSTRAINT',
+  'CREATE',
+  'CROSS',
+  'CURRENT_DATE',
+  'CURRENT_TIME',
+  'CURRENT_TIMESTAMP',
+  'DATABASE',
+  'DEFAULT',
+  'DEFERRABLE',
+  'DEFERRED',
+  'DELETE',
+  'DESC',
+  'DETACH',
+  'DISTINCT',
+  'DROP',
+  'EACH',
+  'ELSE',
+  'END',
+  'ESCAPE',
+  'EXCEPT',
+  'EXCLUSIVE',
+  'EXISTS',
+  'EXPLAIN',
+  'FAIL',
+  'FOR',
+  'FOREIGN',
+  'FROM',
+  'FULL',
+  'GLOB',
+  'GROUP',
+  'HAVING',
+  'IF',
+  'IGNORE',
+  'IMMEDIATE',
+  'IN',
+  'INDEX',
+  'INDEXED',
+  'INITIALLY',
+  'INNER',
+  'INSERT',
+  'INSTEAD',
+  'INTERSECT',
+  'INTO',
+  'IS',
+  'ISNULL',
+  'JOIN',
+  'KEY',
+  'LEFT',
+  'LIKE',
+  'LIMIT',
+  'MATCH',
+  'NATURAL',
+  'NO',
+  'NOT',
+  'NOTNULL',
+  'NULL',
+  'OF',
+  'OFFSET',
+  'ON',
+  'OR',
+  'ORDER',
+  'OUTER',
+  'PLAN',
+  'PRAGMA',
+  'PRIMARY',
+  'QUERY',
+  'RAISE',
+  'RECURSIVE',
+  'REFERENCES',
+  'REGEXP',
+  'REINDEX',
+  'RELEASE',
+  'RENAME',
+  'REPLACE',
+  'RESTRICT',
+  'RETURNING',
+  'RIGHT',
+  'ROLLBACK',
+  'ROW',
+  'ROWS',
+  'SAVEPOINT',
+  'SELECT',
+  'SET',
+  'TABLE',
+  'TEMP',
+  'TEMPORARY',
+  'THEN',
+  'TO',
+  'TRANSACTION',
+  'TRIGGER',
+  'UNION',
+  'UNIQUE',
+  'UPDATE',
+  'USING',
+  'VACUUM',
+  'VALUES',
+  'VIEW',
+  'VIRTUAL',
+  'WHEN',
+  'WHERE',
+  'WINDOW',
+  'WITH',
+  'WITHOUT',
+])
+
 const slugForView = (value: string): string => {
   const slug = value
     .trim()
@@ -238,6 +388,8 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_view_changes_mirror_local_update;
     DROP TRIGGER IF EXISTS notion_conflict_resolutions_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_conflict_resolutions_mirror_local_update;
+    DROP VIEW IF EXISTS ${quoteIdentifier(schemaPropertiesViewName)};
+    DROP VIEW IF EXISTS ${quoteIdentifier(schemaViewName)};
 
     PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
@@ -278,9 +430,28 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       config_hash TEXT NOT NULL,
       schema_hash TEXT NOT NULL,
       write_class TEXT NOT NULL,
+      schema_ordinal INTEGER NOT NULL DEFAULT 0,
+      config_json TEXT,
       observed_event_id TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       PRIMARY KEY (data_source_id, property_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS notion_property_column_plan (
+      data_source_id TEXT NOT NULL,
+      property_id TEXT NOT NULL,
+      property_name TEXT NOT NULL,
+      column_name TEXT NOT NULL,
+      property_type TEXT NOT NULL,
+      write_class TEXT NOT NULL,
+      ordinal INTEGER NOT NULL,
+      is_scalar_read_supported INTEGER NOT NULL CHECK (is_scalar_read_supported IN (0, 1)),
+      is_rows_write_supported INTEGER NOT NULL CHECK (is_rows_write_supported IN (0, 1)),
+      null_write_behavior TEXT NOT NULL,
+      config_json TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (data_source_id, property_id),
+      UNIQUE (data_source_id, column_name)
     );
 
     CREATE TABLE IF NOT EXISTS notion_views (
@@ -739,6 +910,47 @@ const createReplicaSchema = (db: DatabaseSync): void => {
        AND p.property_id = values_by_property.key
       WHERE c.status IN ('pending', 'queued', 'planned', 'needs_reconciliation')
         OR (c.remote_page_id IS NOT NULL AND c.status != 'applied');
+
+    CREATE VIEW IF NOT EXISTS ${quoteIdentifier(schemaViewName)} AS
+      SELECT
+        ds.data_source_id,
+        ds.root_id,
+        ds.parent_database_id,
+        ds.schema_hash,
+        ds.metadata_hash,
+        ds.title_plain_text,
+        ds.description_plain_text,
+        ds.observed_event_id,
+        ds.observed_at,
+        ds.updated_at,
+        CASE
+          WHEN (SELECT count(*) FROM notion_data_sources) = 1 THEN 1
+          ELSE 0
+        END AS is_primary_rows_source
+      FROM notion_data_sources ds;
+
+    CREATE VIEW IF NOT EXISTS ${quoteIdentifier(schemaPropertiesViewName)} AS
+      SELECT
+        p.data_source_id,
+        p.schema_hash,
+        ds.observed_event_id AS data_source_observed_event_id,
+        ds.observed_at AS data_source_observed_at,
+        p.observed_event_id AS property_observed_event_id,
+        p.updated_at,
+        p.property_id,
+        p.property_name,
+        plan.column_name,
+        p.property_type,
+        p.write_class,
+        plan.ordinal,
+        COALESCE(plan.is_scalar_read_supported, 0) AS is_scalar_read_supported,
+        COALESCE(plan.is_rows_write_supported, 0) AS is_rows_write_supported,
+        COALESCE(plan.null_write_behavior, 'unsupported') AS null_write_behavior,
+        p.config_json
+      FROM notion_properties p
+      JOIN notion_data_sources ds ON ds.data_source_id = p.data_source_id
+      LEFT JOIN notion_property_column_plan plan
+        ON plan.data_source_id = p.data_source_id AND plan.property_id = p.property_id;
 
     CREATE INDEX IF NOT EXISTS notion_cells_data_source_property_idx
       ON notion_cells(data_source_id, property_id);
@@ -1549,6 +1761,18 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     column: 'last_error',
     definition: 'TEXT',
   })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_properties',
+    column: 'schema_ordinal',
+    definition: 'INTEGER NOT NULL DEFAULT 0',
+  })
+  ensureReplicaColumn({
+    db,
+    table: 'notion_properties',
+    column: 'config_json',
+    definition: 'TEXT',
+  })
 
   if (needsLocalChangesStatusMigration === true) {
     db.exec(`
@@ -1657,11 +1881,16 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS notion_cell_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_row_changes_mirror_local_insert;
     DROP TRIGGER IF EXISTS notion_file_changes_mirror_local_insert;
+    DROP TRIGGER IF EXISTS rows_update;
+    DROP TRIGGER IF EXISTS rows_insert;
+    DROP TRIGGER IF EXISTS rows_delete;
+    DROP VIEW IF EXISTS ${quoteIdentifier(rowsViewName)};
 
     DELETE FROM notion_data_sources;
     DELETE FROM notion_databases;
     DELETE FROM notion_views;
     DELETE FROM notion_properties;
+    DELETE FROM notion_property_column_plan;
     DELETE FROM notion_rows;
     DELETE FROM notion_cells;
     DELETE FROM notion_relation_targets;
@@ -1676,13 +1905,18 @@ const parsePayload = (payloadJson: string): unknown => {
   return typeof decoded.canonicalJson === 'string' ? JSON.parse(decoded.canonicalJson) : {}
 }
 
+type DataSourceSchemaPropertyPayload = {
+  readonly payload: Record<string, unknown>
+  readonly ordinal: number
+}
+
 const latestDataSourcePayloads = ({
   syncDb,
   rootId,
 }: {
   readonly syncDb: DatabaseSync
   readonly rootId: SyncRootId
-}): Map<string, Record<string, unknown>> => {
+}): Map<string, DataSourceSchemaPropertyPayload> => {
   const rows = syncDb
     .prepare(
       `SELECT payload_json
@@ -1691,17 +1925,17 @@ const latestDataSourcePayloads = ({
        ORDER BY sequence`,
     )
     .all(rootId) as SqlRow[]
-  const result = new Map<string, Record<string, unknown>>()
+  const result = new Map<string, DataSourceSchemaPropertyPayload>()
   for (const row of rows) {
     const payload = parsePayload(readString({ row, key: 'payload_json' }))
     if (typeof payload !== 'object' || payload === null) continue
     const properties = (payload as { readonly schemaProperties?: unknown }).schemaProperties
     if (Array.isArray(properties) === false) continue
-    for (const property of properties) {
+    for (const [ordinal, property] of properties.entries()) {
       if (typeof property !== 'object' || property === null) continue
       const propertyId = (property as { readonly propertyId?: unknown }).propertyId
       if (typeof propertyId === 'string')
-        result.set(propertyId, property as Record<string, unknown>)
+        result.set(propertyId, { payload: property as Record<string, unknown>, ordinal })
     }
   }
   return result
@@ -1865,6 +2099,416 @@ const settleAppliedCellChangesFromProjection = ({
   }
 }
 
+const isRowsWritablePropertyType = (propertyType: string): boolean =>
+  [
+    'title',
+    'rich_text',
+    'number',
+    'checkbox',
+    'date',
+    'select',
+    'status',
+    'email',
+    'url',
+    'phone_number',
+  ].includes(propertyType)
+
+const nullWriteBehaviorForPropertyType = (propertyType: string): string => {
+  switch (propertyType) {
+    case 'select':
+    case 'status':
+      return 'clear-option'
+    case 'email':
+    case 'url':
+    case 'phone_number':
+      return 'clear-value'
+    case 'title':
+    case 'rich_text':
+    case 'number':
+    case 'checkbox':
+    case 'date':
+      return 'reject-null'
+    default:
+      return 'unsupported'
+  }
+}
+
+const propertyIdSuffix = (propertyId: string): string => {
+  const suffix = propertyId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '_')
+    .replace(/^_+|_+$/gu, '')
+    .slice(0, 24)
+  return suffix.length === 0 ? 'property' : suffix
+}
+
+const safeRowsColumnBaseName = ({
+  propertyName,
+  propertyId,
+}: {
+  readonly propertyName: string
+  readonly propertyId: string
+}): string => {
+  const trimmed = propertyName.trim()
+  if (trimmed.length === 0 || trimmed.startsWith('_'))
+    return `property_${propertyIdSuffix(propertyId)}`
+  return trimmed
+}
+
+const planRowsColumnNames = (
+  properties: readonly {
+    readonly propertyId: string
+    readonly propertyName: string
+  }[],
+): Map<string, string> => {
+  const usedNames = new Set(rowsSystemColumns.map((column) => column.toLowerCase()))
+  const result = new Map<string, string>()
+  for (const property of properties) {
+    const baseName = safeRowsColumnBaseName({
+      propertyName: property.propertyName,
+      propertyId: property.propertyId,
+    })
+    const keywordCollision = sqliteKeywords.has(baseName.toUpperCase())
+    let columnName = keywordCollision
+      ? `${baseName}_${propertyIdSuffix(property.propertyId)}`
+      : baseName
+    let lowerColumnName = columnName.toLowerCase()
+    if (usedNames.has(lowerColumnName)) {
+      columnName = `${baseName}_${propertyIdSuffix(property.propertyId)}`
+      lowerColumnName = columnName.toLowerCase()
+    }
+    let attempt = 2
+    while (usedNames.has(lowerColumnName) || sqliteKeywords.has(columnName.toUpperCase())) {
+      columnName = `${baseName}_${propertyIdSuffix(property.propertyId)}_${attempt.toString()}`
+      lowerColumnName = columnName.toLowerCase()
+      attempt += 1
+    }
+    usedNames.add(lowerColumnName)
+    result.set(property.propertyId, columnName)
+  }
+  return result
+}
+
+const rowsColumnReadExpression = ({
+  propertyId,
+  propertyType,
+  columnName,
+}: {
+  readonly propertyId: string
+  readonly propertyType: string
+  readonly columnName: string
+}): string => {
+  const valueExpression =
+    propertyType === 'number'
+      ? 'c.value_number'
+      : propertyType === 'checkbox'
+        ? 'c.value_boolean'
+        : propertyType === 'date'
+          ? "json_extract(c.value_json, '$.start')"
+          : isRowsWritablePropertyType(propertyType)
+            ? 'c.value_text'
+            : 'c.value_json'
+  return `(SELECT ${valueExpression}
+          FROM notion_cells_effective c
+          WHERE c.data_source_id = r.data_source_id
+            AND c.property_id = ${quoteStringLiteral(propertyId)}
+            AND (
+              c.page_id = r.page_id
+              OR (c.local_row_id IS NOT NULL AND c.local_row_id = r.local_row_id)
+            )
+          LIMIT 1) AS ${quoteIdentifier(columnName)}`
+}
+
+const rowsValueReference = (scope: 'NEW' | 'OLD', columnName: string): string =>
+  `${scope}.${quoteIdentifier(columnName)}`
+
+const rowsValueShapePredicate = ({
+  columnName,
+  propertyType,
+}: {
+  readonly columnName: string
+  readonly propertyType: string
+}): string => {
+  const value = rowsValueReference('NEW', columnName)
+  switch (propertyType) {
+    case 'title':
+    case 'rich_text':
+    case 'date':
+      return `${value} IS NOT NULL AND typeof(${value}) = 'text'`
+    case 'number':
+      return `${value} IS NOT NULL AND typeof(${value}) IN ('integer', 'real')`
+    case 'checkbox':
+      return `${value} IS NOT NULL AND typeof(${value}) = 'integer' AND ${value} IN (0, 1)`
+    case 'select':
+    case 'status':
+      return `${value} IS NULL OR (typeof(${value}) = 'text' AND length(trim(${value})) > 0)`
+    case 'email':
+    case 'url':
+    case 'phone_number':
+      return `${value} IS NULL OR typeof(${value}) = 'text'`
+    default:
+      return '0'
+  }
+}
+
+const rowsCanonicalValueExpression = ({
+  columnName,
+  propertyType,
+}: {
+  readonly columnName: string
+  readonly propertyType: string
+}): string => {
+  const value = rowsValueReference('NEW', columnName)
+  switch (propertyType) {
+    case 'title':
+      return `json_object('_tag', 'title', 'plainText', ${value})`
+    case 'rich_text':
+      return `json_object('_tag', 'rich_text', 'plainText', ${value})`
+    case 'number':
+      return `json_object('_tag', 'number', 'value', ${value})`
+    case 'checkbox':
+      return `json_object('_tag', 'checkbox', 'checked', CASE WHEN ${value} THEN json('true') ELSE json('false') END)`
+    case 'date':
+      return `json_object('_tag', 'date', 'start', ${value}, 'end', NULL)`
+    case 'select':
+      return `json_object('_tag', 'select', 'option', CASE WHEN ${value} IS NULL THEN NULL ELSE json_object('name', ${value}) END)`
+    case 'status':
+      return `json_object('_tag', 'status', 'option', CASE WHEN ${value} IS NULL THEN NULL ELSE json_object('name', ${value}) END)`
+    case 'email':
+      return `json_object('_tag', 'email', 'value', ${value})`
+    case 'url':
+      return `json_object('_tag', 'url', 'value', ${value})`
+    case 'phone_number':
+      return `json_object('_tag', 'phone_number', 'value', ${value})`
+    default:
+      return 'NULL'
+  }
+}
+
+const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
+  db.exec(`
+    DROP TRIGGER IF EXISTS rows_update;
+    DROP TRIGGER IF EXISTS rows_insert;
+    DROP TRIGGER IF EXISTS rows_delete;
+    DROP VIEW IF EXISTS ${quoteIdentifier(rowsViewName)};
+    DELETE FROM notion_property_column_plan;
+  `)
+
+  const dataSources = db
+    .prepare(`SELECT data_source_id FROM notion_data_sources ORDER BY data_source_id`)
+    .all() as SqlRow[]
+  if (dataSources.length !== 1) return
+
+  const dataSourceId = readString({ row: dataSources[0]!, key: 'data_source_id' })
+  const properties = db
+    .prepare(
+      `SELECT property_id, property_name, property_type, write_class, config_json
+       FROM notion_properties
+       WHERE data_source_id = ?
+       ORDER BY schema_ordinal, property_id`,
+    )
+    .all(dataSourceId) as SqlRow[]
+  const plannedNames = planRowsColumnNames(
+    properties.map((property) => ({
+      propertyId: readString({ row: property, key: 'property_id' }),
+      propertyName: readString({ row: property, key: 'property_name' }),
+    })),
+  )
+  const now = new Date().toISOString()
+  properties.forEach((property, index) => {
+    const propertyId = readString({ row: property, key: 'property_id' })
+    const propertyType = readString({ row: property, key: 'property_type' })
+    const writeClass = readString({ row: property, key: 'write_class' })
+    const isWriteSupported =
+      writeClass === 'writable' && isRowsWritablePropertyType(propertyType) ? 1 : 0
+    db.prepare(
+      `INSERT INTO notion_property_column_plan (
+         data_source_id, property_id, property_name, column_name, property_type, write_class,
+         ordinal, is_scalar_read_supported, is_rows_write_supported, null_write_behavior,
+         config_json, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      dataSourceId,
+      propertyId,
+      readString({ row: property, key: 'property_name' }),
+      plannedNames.get(propertyId) ?? `property_${propertyIdSuffix(propertyId)}`,
+      propertyType,
+      writeClass,
+      index,
+      isRowsWritablePropertyType(propertyType) ? 1 : 0,
+      isWriteSupported,
+      nullWriteBehaviorForPropertyType(propertyType),
+      readOptionalString({ row: property, key: 'config_json' }) ?? null,
+      now,
+    )
+  })
+
+  const plannedProperties = db
+    .prepare(
+      `SELECT property_id, property_type, column_name, is_rows_write_supported
+       FROM notion_property_column_plan
+       WHERE data_source_id = ?
+       ORDER BY ordinal`,
+    )
+    .all(dataSourceId) as SqlRow[]
+  const propertySelects = plannedProperties.map((property) =>
+    rowsColumnReadExpression({
+      propertyId: readString({ row: property, key: 'property_id' }),
+      propertyType: readString({ row: property, key: 'property_type' }),
+      columnName: readString({ row: property, key: 'column_name' }),
+    }),
+  )
+  db.exec(`
+    CREATE VIEW ${quoteIdentifier(rowsViewName)} AS
+    SELECT
+      ${propertySelects.length === 0 ? '' : `${propertySelects.join(',\n      ')},`}
+      r.page_id AS ${quoteIdentifier('_page_id')},
+      r.data_source_id AS ${quoteIdentifier('_data_source_id')},
+      r.local_row_id AS ${quoteIdentifier('_local_row_id')},
+      rc.client_request_key AS ${quoteIdentifier('_client_request_key')},
+      r.origin AS ${quoteIdentifier('_origin')},
+      r.properties_hash AS ${quoteIdentifier('_properties_hash')},
+      r.in_trash AS ${quoteIdentifier('_in_trash')},
+      r.moved_out AS ${quoteIdentifier('_moved_out')},
+      r.local_delete_candidate AS ${quoteIdentifier('_local_delete_candidate')},
+      r.sync_status AS ${quoteIdentifier('_sync_status')},
+      r.observed_event_id AS ${quoteIdentifier('_observed_event_id')},
+      r.observed_at AS ${quoteIdentifier('_observed_at')},
+      r.updated_at AS ${quoteIdentifier('_updated_at')}
+    FROM notion_rows_effective r
+    LEFT JOIN notion_row_creates rc
+      ON rc.data_source_id = r.data_source_id
+     AND rc.local_row_id = r.local_row_id
+    WHERE r.data_source_id = ${quoteStringLiteral(dataSourceId)};
+  `)
+
+  const systemGuards = rowsSystemColumns
+    .filter((column) => column !== '_in_trash')
+    .map(
+      (column) =>
+        `SELECT RAISE(ABORT, 'rows system columns are read-only except _in_trash')
+         WHERE ${rowsValueReference('NEW', column)} IS NOT ${rowsValueReference('OLD', column)};`,
+    )
+  const propertyGuards = plannedProperties.map((property) => {
+    const columnName = readString({ row: property, key: 'column_name' })
+    const propertyType = readString({ row: property, key: 'property_type' })
+    const isWriteSupported = readNumber({ row: property, key: 'is_rows_write_supported' }) === 1
+    const changed = `${rowsValueReference('NEW', columnName)} IS NOT ${rowsValueReference('OLD', columnName)}`
+    if (isWriteSupported === false) {
+      return `SELECT RAISE(ABORT, 'rows property column is not supported for direct writes')
+              WHERE ${changed};`
+    }
+    return `SELECT RAISE(ABORT, 'rows property column value is malformed or uses unsupported NULL behavior')
+            WHERE ${changed} AND NOT (${rowsValueShapePredicate({ columnName, propertyType })});`
+  })
+  const propertyUpdates = plannedProperties
+    .filter((property) => readNumber({ row: property, key: 'is_rows_write_supported' }) === 1)
+    .map((property) => {
+      const columnName = readString({ row: property, key: 'column_name' })
+      return `UPDATE notion_cells
+              SET value_json = ${rowsCanonicalValueExpression({
+                columnName,
+                propertyType: readString({ row: property, key: 'property_type' }),
+              })}
+              WHERE page_id = OLD.${quoteIdentifier('_page_id')}
+                AND property_id = ${quoteStringLiteral(readString({ row: property, key: 'property_id' }))}
+                AND ${rowsValueReference('NEW', columnName)} IS NOT ${rowsValueReference('OLD', columnName)};`
+    })
+  const insertPropertyGuards = plannedProperties.map((property) => {
+    const columnName = readString({ row: property, key: 'column_name' })
+    const propertyType = readString({ row: property, key: 'property_type' })
+    const isWriteSupported = readNumber({ row: property, key: 'is_rows_write_supported' }) === 1
+    const newValue = rowsValueReference('NEW', columnName)
+    if (isWriteSupported === false) {
+      return `SELECT RAISE(ABORT, 'rows INSERT includes a property that is not supported for row-create CDC')
+              WHERE ${newValue} IS NOT NULL;`
+    }
+    return `SELECT RAISE(ABORT, 'rows INSERT property value is malformed or uses unsupported NULL behavior')
+            WHERE ${newValue} IS NOT NULL AND NOT (${rowsValueShapePredicate({ columnName, propertyType })});`
+  })
+  const insertValueRows = plannedProperties
+    .filter((property) => readNumber({ row: property, key: 'is_rows_write_supported' }) === 1)
+    .map((property) => {
+      const columnName = readString({ row: property, key: 'column_name' })
+      return `SELECT
+                ${quoteStringLiteral(readString({ row: property, key: 'property_id' }))} AS property_id,
+                CASE
+                  WHEN ${rowsValueReference('NEW', columnName)} IS NULL THEN NULL
+                  ELSE ${rowsCanonicalValueExpression({
+                    columnName,
+                    propertyType: readString({ row: property, key: 'property_type' }),
+                  })}
+                END AS value_json`
+    })
+  db.exec(`
+    CREATE TRIGGER rows_update
+    INSTEAD OF UPDATE ON ${quoteIdentifier(rowsViewName)}
+    FOR EACH ROW
+    BEGIN
+      SELECT RAISE(ABORT, 'rows UPDATE only supports applied remote rows')
+      WHERE OLD.${quoteIdentifier('_origin')} != 'remote';
+      ${systemGuards.join('\n      ')}
+      SELECT RAISE(ABORT, 'rows._in_trash must be 0 or 1')
+      WHERE NEW.${quoteIdentifier('_in_trash')} IS NOT OLD.${quoteIdentifier('_in_trash')}
+        AND (typeof(NEW.${quoteIdentifier('_in_trash')}) != 'integer' OR NEW.${quoteIdentifier('_in_trash')} NOT IN (0, 1));
+      ${propertyGuards.join('\n      ')}
+      UPDATE notion_rows
+      SET in_trash = NEW.${quoteIdentifier('_in_trash')}
+      WHERE page_id = OLD.${quoteIdentifier('_page_id')}
+        AND NEW.${quoteIdentifier('_in_trash')} IS NOT OLD.${quoteIdentifier('_in_trash')};
+      ${propertyUpdates.join('\n      ')}
+    END;
+
+    CREATE TRIGGER rows_insert
+    INSTEAD OF INSERT ON ${quoteIdentifier(rowsViewName)}
+    FOR EACH ROW
+    BEGIN
+      SELECT RAISE(ABORT, 'rows INSERT cannot create archived rows')
+      WHERE NEW.${quoteIdentifier('_in_trash')} IS NOT NULL AND NEW.${quoteIdentifier('_in_trash')} != 0;
+      ${rowsSystemColumns
+        .filter((column) => !['_page_id', '_local_row_id', '_client_request_key', '_in_trash'].includes(column))
+        .map(
+          (column) =>
+            `SELECT RAISE(ABORT, 'rows INSERT system columns are generated by the replica')
+             WHERE NEW.${quoteIdentifier(column)} IS NOT NULL;`,
+        )
+        .join('\n      ')}
+      ${insertPropertyGuards.join('\n      ')}
+      INSERT INTO notion_row_creates (
+        change_id,
+        data_source_id,
+        local_row_id,
+        client_request_key,
+        initial_values_json,
+        base_schema_hash
+      )
+      SELECT
+        'row:create:' || lower(hex(randomblob(8))),
+        ${quoteStringLiteral(dataSourceId)},
+        COALESCE(NEW.${quoteIdentifier('_local_row_id')}, NEW.${quoteIdentifier('_page_id')}, 'local:' || lower(hex(randomblob(8)))),
+        COALESCE(NEW.${quoteIdentifier('_client_request_key')}, NEW.${quoteIdentifier('_local_row_id')}, NEW.${quoteIdentifier('_page_id')}, 'client:' || lower(hex(randomblob(8)))),
+        COALESCE(
+          (
+            SELECT json_group_object(property_id, json(value_json))
+            FROM (
+              ${insertValueRows.length === 0 ? "SELECT NULL AS property_id, NULL AS value_json WHERE 0" : insertValueRows.join('\n              UNION ALL\n              ')}
+            )
+            WHERE value_json IS NOT NULL
+          ),
+          '{}'
+        ),
+        (SELECT schema_hash FROM notion_data_sources WHERE data_source_id = ${quoteStringLiteral(dataSourceId)});
+    END;
+
+    CREATE TRIGGER rows_delete
+    INSTEAD OF DELETE ON ${quoteIdentifier(rowsViewName)}
+    FOR EACH ROW
+    BEGIN
+      SELECT RAISE(ABORT, 'DELETE FROM rows is intentionally unsupported; update _in_trash for archive CDC');
+    END;
+  `)
+}
+
 const rebuildGeneratedViews = (db: DatabaseSync): void => {
   const existing = db
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'view' AND name LIKE 'notion_view_%'`)
@@ -1907,6 +2551,7 @@ const rebuildGeneratedViews = (db: DatabaseSync): void => {
       WHERE r.data_source_id = ${quoteStringLiteral(dataSourceId)};
     `)
   }
+  rebuildCanonicalRowsSurface(db)
 }
 
 /** Project the sync store's authoritative events into a user-facing SQLite replica. */
@@ -2031,13 +2676,14 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         )
         .all(options.rootId) as SqlRow[]) {
         const propertyId = readString({ row, key: 'property_id' })
-        const payload = schemaPayloads.get(propertyId)
+        const schemaPropertyPayload = schemaPayloads.get(propertyId)
+        const payload = schemaPropertyPayload?.payload
         replicaDb
           .prepare(
             `INSERT INTO notion_properties (
                data_source_id, property_id, property_name, property_type, config_hash, schema_hash,
-               write_class, observed_event_id, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               write_class, schema_ordinal, config_json, observed_event_id, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             readString({ row, key: 'data_source_id' }),
@@ -2047,6 +2693,8 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readString({ row, key: 'config_hash' }),
             readString({ row, key: 'schema_hash' }),
             readString({ row, key: 'write_class' }),
+            schemaPropertyPayload?.ordinal ?? 0,
+            payload === undefined ? null : JSON.stringify(payload),
             readString({ row, key: 'observed_event_id' }),
             readString({ row, key: 'updated_at' }),
           )

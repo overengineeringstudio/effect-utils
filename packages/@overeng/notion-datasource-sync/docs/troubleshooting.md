@@ -86,11 +86,11 @@ inspect the old store.
 
 ## Local Edit Does Not Reach Notion
 
-Local cell edits can update `notion_cells.value_json`; the replica updates
-helper columns/generated views and queues a `cell_patch` row in
+Local scalar edits should update `rows`; the replica resolves the
+`schema_properties` mapping and queues typed CDC such as `cell_patch` rows in
 `notion_cell_changes`. `notion_local_changes` mirrors typed change rows for
-inspection. Generated read views remain read-only, and deleting current-state
-rows is not a writable API.
+inspection. Generated read views remain read-only, and `DELETE FROM rows` is not
+a writable API.
 
 Check pending intents:
 

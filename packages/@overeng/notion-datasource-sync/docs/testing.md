@@ -58,9 +58,10 @@ with `--dry-run --limit <rows>` first; the limit is a capped preview, not a
 partial adoption mode.
 
 Replica tests must prove that establishment creates `notion.sqlite`, that
-generic tables and generated views match observed Notion rows, and that local SQL
-edits create intents rather than immediate Notion writes. The focused replica
-E2E suite covers direct current-state CDC, typed body/lifecycle tables,
+`rows`, `schema_properties`, normalized tables, and generated debug views match
+observed Notion rows, and that local SQL edits create intents rather than
+immediate Notion writes. The focused replica E2E suite covers direct
+current-state CDC, typed body/lifecycle tables,
 metadata CDC planning/settlement, schema CDC fail-closed behavior,
 row-create planning/settlement behavior, external URL file staging/attachment,
 safe and unsafe conflict-resolution requests, dry-run no-settlement, stale bases,

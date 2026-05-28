@@ -11,6 +11,7 @@ boundary.
 ## Docs
 
 - [Getting Started](./docs/getting-started.md)
+- [Canonical SQLite Replica](./docs/canonical-replica.md)
 - [CLI Reference](./docs/cli.md)
 - [Sync Safety](./docs/sync-safety.md)
 - [Supported Capabilities](./docs/capabilities.md)
@@ -22,10 +23,11 @@ boundary.
 
 The package is still pre-release. The core sync model, planner, internal SQLite
 control store, fake gateway, live gateway, filesystem workspace, NotionMD body
-boundary, CLI surface, daemon loop, and E2E harness exist. The public
-`notion.sqlite` replica/API is the intended user surface and is being layered on
-top of the control store. Unsupported or unproven Notion surfaces fail closed
-instead of being silently dropped.
+boundary, CLI surface, daemon loop, and E2E harness exist. The default public
+UX is one user-facing `notion.sqlite` file mapped to one primary Notion data
+source. Its canonical writable surface is `rows`; normalized tables and typed
+CDC/outbox projections remain the correctness and debugging layer. Unsupported
+or unproven Notion surfaces fail closed instead of being silently dropped.
 
 ## Local Files
 
@@ -42,36 +44,24 @@ Use `notion.sqlite` for local reads and data edits. Treat
 log, projections, outbox, conflicts, checkpoints, hashes, and migrations.
 Editing the internal store is unsupported.
 
-`notion.sqlite` exposes stable public tables such as `notion_data_sources`,
-`notion_databases`,
-`notion_views`, `notion_properties`, `notion_rows`, `notion_cells`, `notion_bodies`,
-`notion_cell_changes`, `notion_row_changes`, `notion_row_creates`,
-`notion_rows_effective`, `notion_cells_effective`, `notion_body_changes`,
-`notion_metadata_changes`, `notion_schema_changes`, `notion_file_assets`,
-`notion_file_changes`,
-`notion_conflict_resolutions`, `notion_local_changes`, `notion_conflicts`, and
-`notion_sync_status`, plus generated read views for
-adopted data sources. Local data edits are inserted as guarded typed CDC rows;
-direct current-state edits use final-state semantics, so repeated edits to the
-same cell or row lifecycle target supersede earlier pending direct changes.
-`notion_local_changes` mirrors typed rows as a compatibility projection. `sync`
-validates those typed changes, performs a dry-run/reviewable plan when
-requested, and applies supported writes to Notion only after base-hash guards
-pass. After non-dry-run sync, typed CDC rows are settled from actual planner and
-outbox state instead of from conversion alone. Row creation uses explicit
-`notion_row_creates` rows with local client request keys and returned
-`remote_page_id` settlement; direct inserts into `notion_rows` are blocked
-because that table is confirmed remote-observed state. Data-source and database
-metadata CDC can patch title/description with post-write metadata hash
-verification. External URL file attachments are supported through explicit file
-staging for empty writable `files` properties. `notion_views` is a read-only
-inventory of Notion UI views and is separate from generated local SQL views.
-Relation writes may remove, reorder, or add targets only from complete
-paginated bases; added targets must already appear in the
-`notion_relation_targets` accessibility projection for the same relation
-property. Public schema CDC, local file uploads/file bytes, people writes,
-Notion view writes, and destructive schema migrations remain explicit
-fail-closed surfaces until their verified post-write reconciliation is modeled.
+`notion.sqlite` exposes `rows` as the ordinary data table. Notion properties are
+first-class columns, `_` system columns come last, and `schema_json` is not part
+of `rows`. Inspect `schema` for the replica binding and `schema_properties` for
+the property-id to row-column mapping. Local `SELECT`, supported scalar
+`UPDATE`, `INSERT`, and archive/restore via `_in_trash` are translated into
+guarded typed CDC and planned through the same outbox verification path; `DELETE
+FROM rows` is rejected rather than interpreted as remote deletion.
+
+The normalized implementation layer remains available for diagnostics:
+`notion_data_sources`, `notion_databases`, `notion_views`, `notion_properties`,
+`notion_rows`, `notion_cells`, `notion_bodies`, typed CDC tables,
+`notion_local_changes`, `notion_conflicts`, and `notion_sync_status`. These
+tables carry canonical JSON, hashes, statuses, conflict state, and settlement
+evidence. External URL file attachments, relation writes from complete bases,
+metadata CDC, body CDC, and conflict resolution are represented there. Public
+schema CDC, local file uploads/file bytes, people writes, Notion view writes,
+and destructive schema migrations remain explicit fail-closed surfaces until
+their verified post-write reconciliation is modeled.
 
 ## CLI Shape
 
@@ -121,5 +111,6 @@ body adapter; without a token or injected body port, body sync fails closed.
 ## Demo
 
 The automated live showcase is documented in [demo/README.md](./demo/README.md).
-It refreshes a dedicated Notion page with multiple realistic data sources,
-including a 500-row activity source for high-cardinality observation.
+It refreshes a dedicated Notion page with multiple realistic data sources and
+treats each one as its own 1:1 `notion.sqlite` replica artifact, including a
+500-row activity source for high-cardinality observation.
