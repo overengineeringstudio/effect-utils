@@ -37,6 +37,12 @@ Notion -> observe -> _nds_* events/projections -> public rows/schema/debug views
 public rows/changes -> validate -> _nds_* outbox -> Notion -> observe -> public rows
 ```
 
+`rows` is the primary writable product API. It exposes current-state Notion row
+data as ordinary SQLite columns while preserving guarded CDC semantics under the
+hood. The other stable public surfaces are for observation and user action:
+`changes` explains accepted or blocked local intent, `conflicts` exposes
+conflict records, and `sync_status` exposes health and pending-work state.
+
 Public surfaces:
 
 | Surface                        | Write policy                                                                |
@@ -62,6 +68,13 @@ reads pending public changes, performs Notion writes only after preflight reads
 pass, then re-reads and projects the result back into the same SQLite file. A
 public change is not hidden from later scans merely because it was converted to
 planner input.
+
+Watch mode has the same local CDC obligation as one-shot sync. Each daemon
+cycle must read pending `rows` / `changes` state from established
+`<database-id>.sqlite` files, plan safe remote effects, execute verified
+commands, and update public observability. Remote polling, repair scans, and
+retry timers are additions to that contract, not replacements for local SQLite
+CDC processing.
 
 ## Establishment
 

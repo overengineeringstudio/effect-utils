@@ -24,6 +24,12 @@ The database file contains both the public local API and private sync state.
 
 ## Public Surfaces
 
+`rows` is the primary writable API. User tools should read and mutate ordinary
+Notion row state through `rows`; direct writes to lower-level implementation
+tables are outside the product contract. `changes`, `conflicts`, and
+`sync_status` are public observability surfaces for intent lifecycle, conflict
+state, and health.
+
 Stable public surfaces:
 
 | Surface             | Access        | Purpose                                                                 |
@@ -44,6 +50,10 @@ events, projections, outbox, checkpoints, leases, hashes, migrations, and
 integrity digests. Users and automation must not edit `_nds_*`. If private
 state is corrupt, missing, or tampered with, `doctor` fails closed and sync
 does not infer remote writes from public rows alone.
+
+`sync` and `watch` consume the same public SQLite CDC contract. A supported
+`rows` edit must remain visible through `changes` until it is planned,
+executed, verified, and settled; watch mode is not remote-only polling.
 
 ## Row Shape
 
@@ -114,7 +124,8 @@ CDC status, outbox state, or pagination diagnostics.
 
 ## Direct Local Mutations
 
-Supported scalar/current property edits are direct `UPDATE`s on `rows`:
+Supported scalar/current property edits are direct `UPDATE`s on `rows`; this is
+the preferred write path for ordinary row data:
 
 ```sql
 update rows
