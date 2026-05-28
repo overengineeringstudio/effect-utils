@@ -57,8 +57,10 @@ demo-workspace/
 ```
 
 The 500-row activity source proves datasource query pagination and row
-cardinality. Per-row property pagination and body materialization stay on the
-smaller sources so the live demo remains bounded under Notion API rate limits.
+cardinality through full database replicas only. Per-row property pagination
+and body materialization stay on the smaller sources so the live demo remains
+bounded under Notion API rate limits. The demo does not use filtered or partial
+query-contract replicas.
 No live/synced SQLite databases are checked in. Any fixture checked into this
 directory must be deterministic synthetic metadata, not private Notion content
 or a binary replica.

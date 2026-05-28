@@ -57,9 +57,7 @@ const propertyPage = (plainText: string) =>
     },
   })
 
-const makeDatabaseResolverClient = (calls: {
-  retrieveDatabase: number
-}): NotionGatewayClient => ({
+const makeDatabaseResolverClient = (calls: { retrieveDatabase: number }): NotionGatewayClient => ({
   retrieveDataSource: () => Effect.succeed({ id: testIds.dataSourceId, properties: {} }),
   queryDataSource: () =>
     Effect.succeed({
@@ -160,7 +158,14 @@ const sqliteMasterObjects = (db: DatabaseSync) =>
      ORDER BY type, name`,
   )
 
-const publicSafeNames = new Set(['rows', 'schema', 'schema_properties', 'changes', 'conflicts', 'sync_status'])
+const publicSafeNames = new Set([
+  'rows',
+  'schema',
+  'schema_properties',
+  'changes',
+  'conflicts',
+  'sync_status',
+])
 
 const assertStorageTaxonomy = (db: DatabaseSync): void => {
   const objects = sqliteMasterObjects(db)
@@ -297,12 +302,13 @@ describe('clean-break self-contained SQLite storage contract', () => {
 
       openReadOnly(sqlitePath, (db) => {
         assertStorageTaxonomy(db)
-        expect(row(db, `SELECT database_id, data_source_id, workspace_root FROM _nds_workspace_binding`))
-          .toMatchObject({
-            database_id: testIds.databaseId,
-            data_source_id: testIds.dataSourceId,
-            workspace_root: workspace,
-          })
+        expect(
+          row(db, `SELECT database_id, data_source_id, workspace_root FROM _nds_workspace_binding`),
+        ).toMatchObject({
+          database_id: testIds.databaseId,
+          data_source_id: testIds.dataSourceId,
+          workspace_root: workspace,
+        })
         expect(row(db, `SELECT property_name, property_type FROM schema_properties`)).toEqual({
           property_name: 'Task name',
           property_type: 'title',
@@ -322,14 +328,58 @@ describe('clean-break self-contained SQLite storage contract', () => {
   )
 
   it(
+    'rejects product query contracts and establishment path overrides before creating database files',
+    async () => {
+      const workspace = await tempWorkspace()
+      const explicitPath = join(workspace, 'custom.sqlite')
+      const queryContractJson = JSON.stringify({
+        _tag: 'QueryContract',
+        apiVersion: '2026-03-11',
+        filter: {
+          _tag: 'property_value',
+          propertyId: testIds.propertyA,
+          operator: 'contains',
+          value: { _tag: 'title', plainText: 'subset' },
+        },
+        sorts: [],
+        pageSize: 10,
+        highWatermark: null,
+        membershipScope: 'explicit-filter',
+      })
+
+      expect(() =>
+        parseCliContext({
+          argv: [
+            'sync',
+            '--from-notion',
+            databaseUrl,
+            workspace,
+            '--query-contract-json',
+            queryContractJson,
+          ],
+          resolvedCommand: parseCliCommand(['sync', '--from-notion', databaseUrl, workspace]),
+        }),
+      ).toThrow('--query-contract-json is not supported')
+      expect(await exists(sqlitePathForWorkspace(workspace))).toBe(false)
+
+      expect(() =>
+        parseCliContext({
+          argv: ['sync', '--from-notion', databaseUrl, workspace, '--sqlite', explicitPath],
+          resolvedCommand: parseCliCommand(['sync', '--from-notion', databaseUrl, workspace]),
+        }),
+      ).toThrow('always creates <workspace>/<database-id>.sqlite')
+      expect(await exists(explicitPath)).toBe(false)
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
     'CLI status sync watch and doctor discover the self-contained SQLite from workspace or --sqlite without sidecars',
     async () => {
       const workspace = await tempWorkspace()
       const { sqlitePath } = await establishWorkspace(workspace)
 
-      await expect(
-        runWorkspaceCommand({ argv: ['status', workspace] }),
-      ).resolves.toMatchObject({
+      await expect(runWorkspaceCommand({ argv: ['status', workspace] })).resolves.toMatchObject({
         result: { command: 'status', result: { state: 'clean' } },
       })
       await expect(
@@ -344,7 +394,15 @@ describe('clean-break self-contained SQLite storage contract', () => {
       })
       await expect(
         runWorkspaceCommand({
-          argv: ['watch', '--sqlite', sqlitePath, '--state', join(workspace, 'watch.json'), '--max-cycles', '1'],
+          argv: [
+            'watch',
+            '--sqlite',
+            sqlitePath,
+            '--state',
+            join(workspace, 'watch.json'),
+            '--max-cycles',
+            '1',
+          ],
         }),
       ).resolves.toMatchObject({
         result: { command: 'watch' },
@@ -384,13 +442,17 @@ describe('clean-break self-contained SQLite storage contract', () => {
           rows(db, `SELECT kind, status FROM changes ORDER BY created_at, change_id`).map(
             (change) => change.kind,
           ),
-        ).toEqual(expect.arrayContaining(['cell_patch', 'row_create', 'row_archive', 'row_restore']))
+        ).toEqual(
+          expect.arrayContaining(['cell_patch', 'row_create', 'row_archive', 'row_restore']),
+        )
 
         expect(() => db.prepare(`DELETE FROM rows WHERE _page_id = ?`).run(testIds.pageId)).toThrow(
           /unsupported|unsafe|archive/i,
         )
         expect(() =>
-          db.prepare(`UPDATE rows SET _page_id = 'other-page' WHERE _page_id = ?`).run(testIds.pageId),
+          db
+            .prepare(`UPDATE rows SET _page_id = 'other-page' WHERE _page_id = ?`)
+            .run(testIds.pageId),
         ).toThrow(/read-only|system|identity/i)
         expect(() => db.prepare(`UPDATE schema SET name = 'Unsafe'`).run()).toThrow(
           /read-only|schema/i,
@@ -504,11 +566,12 @@ describe('clean-break self-contained SQLite storage contract', () => {
 
       openReadOnly(copyPath, (db) => {
         assertStorageTaxonomy(db)
-        expect(row(db, `SELECT database_id, data_source_id FROM _nds_workspace_binding`))
-          .toMatchObject({
-            database_id: testIds.databaseId,
-            data_source_id: testIds.dataSourceId,
-          })
+        expect(
+          row(db, `SELECT database_id, data_source_id FROM _nds_workspace_binding`),
+        ).toMatchObject({
+          database_id: testIds.databaseId,
+          data_source_id: testIds.dataSourceId,
+        })
         expect(row(db, `SELECT workspace_status FROM sync_status`)).toMatchObject({
           workspace_status: 'moved',
         })

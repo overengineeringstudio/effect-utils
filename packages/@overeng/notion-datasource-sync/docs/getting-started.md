@@ -71,6 +71,10 @@ notion-datasource-sync sync --from-notion \
 The limit reports a capped query preview and does not perform a partial
 adoption.
 
+There is no filtered or query-contract establishment mode. Once a SQLite file
+is written as `<database-id>.sqlite`, it represents the full Notion database
+replica.
+
 ## Query The Local Replica
 
 Open the database-ID-named SQLite file:
@@ -179,12 +183,13 @@ checkpoint state, query completeness, pending changes, conflicts, and
 portability hazards. If private state is corrupt or tampered with, it fails
 closed.
 
-## Query Contracts
+## Full Replica Completeness
 
-The default query contract observes all rows with page size `100` and no filter
-or sort. Changed filters, sorts, page sizes, high-watermarks, or membership
-scope produce a different observation contract. The sync engine does not
-classify absence from an incomplete or incompatible query.
+Product sync observes the full Notion database with page size `100` and no
+filter or sort. A `<database-id>.sqlite` file is only written after the product
+path has used full database membership. Capped previews, interrupted scans, or
+internal debug query shapes do not establish a replica and do not classify row
+absence.
 
 ## Body Sync
 

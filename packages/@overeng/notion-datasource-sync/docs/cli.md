@@ -35,7 +35,6 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 | -------------------------- | -------------------------------------------------------------------------------------------------- |
 | `--from-notion`            | Existing Notion data-source ID, or a database URL that resolves to one child data source           |
 | `--limit`, `--max-rows`    | Dry-run-only establishment preview row cap; writes nothing and reports capped query state          |
-| `--query-contract-json`    | Explicit query contract JSON                                                                       |
 | `--schema-properties-json` | Advanced/debug override for schema-property observations; normal sync discovers schema from Notion |
 | `--required-capabilities`  | Comma-separated capability preflight list                                                          |
 | `--max-executor-steps`     | Bound outbox execution in `sync` and `watch`                                                       |
@@ -117,6 +116,12 @@ notion-datasource-sync sync --from-notion <database-url> <workspace-root> --dry-
 `--limit` and `--max-rows` are aliases and are intentionally dry-run-only. They
 cap the remote row preview and mark the query as capped; they do not perform a
 partial adoption.
+
+Product sync does not accept query-contract JSON. Every
+`<workspace-root>/<database-id>.sqlite` file is established from the full Notion
+database membership query. Internal tests may exercise filtered gateway queries,
+but those paths are not CLI establishment modes and must not create
+database-ID-named replica files.
 
 ## Public SQLite API
 

@@ -2,8 +2,8 @@
 
 import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { fileURLToPath } from 'node:url'
 
 import { FetchHttpClient } from '@effect/platform'
 import { NodeRuntime } from '@effect/platform-node'
@@ -242,6 +242,20 @@ const projectReplicaIfWritable = ({
 
 const rootIdForDataSource = (dataSourceId: typeof DataSourceId.Type): SyncRootIdType =>
   decode({ schema: SyncRootId, value: `data-source:${dataSourceId}` })
+
+const fullReplicaQueryContract = (): QueryContract =>
+  decode({
+    schema: QueryContract,
+    value: {
+      _tag: 'QueryContract',
+      apiVersion: '2026-03-11',
+      filter: null,
+      sorts: [],
+      pageSize: 100,
+      highWatermark: null,
+      membershipScope: 'all-data-source-rows',
+    },
+  })
 
 /** Tagged reference to a Notion entity used as the adoption source — either a Notion data source or a Notion database that owns one. */
 export type NotionRemoteRef =
@@ -1198,7 +1212,8 @@ const discoverSelfContainedStore = (
 const sqlitePathFromFlags = (flags: Map<string, string | true>): string | undefined => {
   if (flags.has('store') === true) {
     throw new CliArgumentError({
-      message: '--store has been removed; use --sqlite <path> for explicit self-contained database files',
+      message:
+        '--store has been removed; use --sqlite <path> for explicit self-contained database files',
     })
   }
   return optionalFlag({ flags, name: 'sqlite' })
@@ -1228,6 +1243,18 @@ export const parseCliContext = ({
   const maxExecutorSteps = positiveIntegerFlag({ flags, name: 'max-executor-steps' })
   const requiredCapabilities = capabilityListFlag({ flags, name: 'required-capabilities' })
   const explicitSqlitePath = normalizeOptionalSqlitePath(sqlitePathFromFlags(flags))
+  if (flags.has('query-contract-json') === true) {
+    throw new CliArgumentError({
+      message:
+        '--query-contract-json is not supported by the product CLI; database-ID SQLite files are always full Notion database replicas',
+    })
+  }
+  if (command._tag === 'sync-from-notion' && explicitSqlitePath !== undefined) {
+    throw new CliArgumentError({
+      message:
+        'sync --from-notion always creates <workspace>/<database-id>.sqlite; --sqlite is only for established replica commands',
+    })
+  }
   const discovered =
     command._tag === 'sync-from-notion'
       ? (() => {
@@ -1242,7 +1269,10 @@ export const parseCliContext = ({
             commandDryRun === true || existsSync(storePath) === false
               ? undefined
               : readSelfContainedBinding(storePath)
-          if (existingBinding !== undefined && existingBinding.dataSourceId !== command.dataSourceId)
+          if (
+            existingBinding !== undefined &&
+            existingBinding.dataSourceId !== command.dataSourceId
+          )
             throw new CliArgumentError({
               message: `SQLite file is already bound to data source ${existingBinding.dataSourceId}; refusing to establish ${command.dataSourceId}`,
             })
@@ -1288,43 +1318,26 @@ export const parseCliContext = ({
                 workspaceRoot: decode({ schema: AbsolutePath, value: binding.workspaceRoot }),
               }
             })()
-        : (() => {
-            const storePath = explicitSqlitePath ?? requiredFlag({ flags, name: 'sqlite' })
-            return {
-              storePath,
-              rootId: decode({
-                schema: SyncRootId,
-                value: requiredFlag({ flags, name: 'root-id' }),
-              }),
-              dataSourceId: decode({
-                schema: DataSourceId,
-                value: requiredFlag({ flags, name: 'data-source-id' }),
-              }),
-              workspaceRoot: decode({
-                schema: AbsolutePath,
-                value: requiredFlag({ flags, name: 'workspace-root' }),
-              }),
-            }
-          })()
+          : (() => {
+              const storePath = explicitSqlitePath ?? requiredFlag({ flags, name: 'sqlite' })
+              return {
+                storePath,
+                rootId: decode({
+                  schema: SyncRootId,
+                  value: requiredFlag({ flags, name: 'root-id' }),
+                }),
+                dataSourceId: decode({
+                  schema: DataSourceId,
+                  value: requiredFlag({ flags, name: 'data-source-id' }),
+                }),
+                workspaceRoot: decode({
+                  schema: AbsolutePath,
+                  value: requiredFlag({ flags, name: 'workspace-root' }),
+                }),
+              }
+            })()
   const rowLimit = command._tag === 'sync-from-notion' ? command.limit : undefined
-  const baseQueryContract =
-    optionalFlag({ flags, name: 'query-contract-json' }) === undefined
-      ? decode({
-          schema: QueryContract,
-          value: {
-            _tag: 'QueryContract',
-            apiVersion: '2026-03-11',
-            filter: null,
-            sorts: [],
-            pageSize: 100,
-            highWatermark: null,
-            membershipScope: 'all-data-source-rows',
-          },
-        })
-      : decodeJson({
-          schema: QueryContract,
-          value: requiredFlag({ flags, name: 'query-contract-json' }),
-        })
+  const baseQueryContract = fullReplicaQueryContract()
   const queryContract =
     rowLimit === undefined
       ? baseQueryContract
@@ -1554,7 +1567,9 @@ export const makeCliRuntimeLayer = ({
   const bodyLayer =
     options.body !== undefined
       ? Layer.succeed(PageBodySyncPort, options.body)
-      : liveBaseLayer === undefined || options.gateway !== undefined || options.gatewayClient !== undefined
+      : liveBaseLayer === undefined ||
+          options.gateway !== undefined ||
+          options.gatewayClient !== undefined
         ? Layer.succeed(
             PageBodySyncPort,
             makeUnsupportedPageBodySyncPort({

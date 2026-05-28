@@ -96,30 +96,6 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
     },
   })
 
-const filesPropertyPage = () =>
-  decode({
-    schema: PagePropertyItemPage,
-    value: {
-      _tag: 'PagePropertyItemPage',
-      apiVersion: '2026-03-11',
-      requestId: testIds.requestId,
-      pageId: testIds.pageId,
-      propertyId: testIds.propertyB,
-      items: [
-        {
-          _tag: 'PagePropertyItem',
-          pageId: testIds.pageId,
-          propertyId: testIds.propertyB,
-          itemHash: hash('item-empty-files'),
-          valueHash: hash('property-b-base'),
-          valueJson: JSON.stringify({ _tag: 'files', files: [] }),
-        },
-      ],
-      nextCursor: null,
-      hasMore: false,
-    },
-  })
-
 const bodyPage = (bodyHash = hash('body-a'), remoteBodyHash = bodyHash) =>
   fakeBodyPage({
     pointer: decode({
@@ -798,7 +774,7 @@ describe('CLI command surface', () => {
     cliTestTimeoutMs,
   )
 
-  it('does not open the store when context JSON is malformed', async () => {
+  it('rejects query contracts before opening a product replica store', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-context-'))
     const storePath = join(dir, 'store.sqlite')
     try {
@@ -816,11 +792,11 @@ describe('CLI command surface', () => {
               '--workspace-root',
               workspaceRoot,
               '--query-contract-json',
-              '{',
+              JSON.stringify(defaultQueryContract()),
             ],
           }),
         ),
-      ).rejects.toThrow()
+      ).rejects.toThrow('--query-contract-json is not supported')
 
       await expectSqliteStoreFilesAbsent(storePath)
     } finally {

@@ -11,6 +11,9 @@ The filename is the Notion database ID, not the database display name. This
 keeps renames safe and lets one workspace hold multiple databases without a
 shared store or name collision.
 
+A database-ID-named file is always the full Notion database replica. Filtered
+query contracts and subset membership are not product replica modes.
+
 ```sh
 notion-datasource-sync sync --from-notion <data-source-id-or-database-url> ./workspace
 sqlite3 ./workspace/<database-id>.sqlite

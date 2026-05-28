@@ -17,17 +17,12 @@ import {
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
 import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
-import {
-  CanonicalOptionValue,
-  PatchDataSourceMetadataCommand,
-  type QueryContract,
-} from '../core/commands.ts'
+import { PatchDataSourceMetadataCommand, type QueryContract } from '../core/commands.ts'
 import {
   AbsolutePath,
   DataSourceId,
   PageId,
   PropertyId,
-  PropertyName,
   type CapabilityName,
 } from '../core/domain.ts'
 import { SyncRootId } from '../core/events.ts'
@@ -624,8 +619,6 @@ type DemoDataSourceSpec = {
   readonly pageSize: number
   readonly icon: string
   readonly sortPropertyName: string
-  readonly filterPropertyName: string
-  readonly filterOptionName: string
   readonly schemaPropertyNames: ReadonlyArray<string>
   readonly properties: Record<string, unknown>
   readonly rowProperties: (input: {
@@ -760,8 +753,6 @@ const demoDataSourceSpecs = [
     pageSize: 5,
     icon: '📁',
     sortPropertyName: 'State',
-    filterPropertyName: 'State',
-    filterOptionName: 'active',
     schemaPropertyNames: ['Summary'],
     properties: {
       Name: { title: {} },
@@ -805,8 +796,6 @@ const demoDataSourceSpecs = [
     pageSize: 10,
     icon: '🚨',
     sortPropertyName: 'Severity',
-    filterPropertyName: 'Severity',
-    filterOptionName: 'sev3',
     schemaPropertyNames: ['Notes'],
     properties: {
       Name: { title: {} },
@@ -849,8 +838,6 @@ const demoDataSourceSpecs = [
     pageSize: 24,
     icon: '🤝',
     sortPropertyName: 'Plan',
-    filterPropertyName: 'Plan',
-    filterOptionName: 'enterprise',
     schemaPropertyNames: ['Health'],
     properties: {
       Name: { title: {} },
@@ -894,8 +881,6 @@ const demoDataSourceSpecs = [
     pageSize: 50,
     icon: '📈',
     sortPropertyName: 'Segment',
-    filterPropertyName: 'Segment',
-    filterOptionName: 'ingest',
     schemaPropertyNames: [],
     properties: {
       Name: { title: {} },
@@ -1283,10 +1268,6 @@ const observeDemoDataSource = ({
       properties: dataSourceProperties,
       name: spec.sortPropertyName,
     })
-    const filterPropertyId = resolvePropertyId({
-      properties: dataSourceProperties,
-      name: spec.filterPropertyName,
-    })
     const schemaProperties = schemaPropertyObservationsFromRemoteProperties(
       dataSourceProperties,
     ).filter((property) => spec.schemaPropertyNames.includes(property.name))
@@ -1305,24 +1286,6 @@ const observeDemoDataSource = ({
       highWatermark: null,
       membershipScope: 'all-data-source-rows',
     }
-    const highWatermark = Schema.decodeUnknownSync(Schema.DateTimeUtc)('2026-05-20T00:00:00.000Z')
-    const filteredContract: QueryContract = {
-      ...queryContract,
-      filter: {
-        _tag: 'property_value',
-        propertyId: PropertyId.make(filterPropertyId),
-        operator: 'equals',
-        value: {
-          _tag: 'select',
-          option: Schema.decodeUnknownSync(CanonicalOptionValue)({
-            _tag: 'CanonicalOptionValue',
-            name: Schema.decodeUnknownSync(PropertyName)(spec.filterOptionName),
-          }),
-        },
-      },
-      highWatermark,
-      membershipScope: 'explicit-filter',
-    }
     const first = yield* observeRemoteDataSource({
       rootId,
       dataSourceId: DataSourceId.make(dataSourceId),
@@ -1335,26 +1298,14 @@ const observeDemoDataSource = ({
       Effect.provideService(PageBodySyncPort, bodyPort),
       Effect.provideService(LocalWorkspacePort, workspace),
     )
-    const filtered = yield* observeRemoteDataSource({
-      rootId,
-      dataSourceId: DataSourceId.make(dataSourceId),
-      workspaceRoot,
-      queryContract: filteredContract,
-      schemaProperties: [],
-      materializeBodies: false,
-      requiredCapabilities: strictLivePreflightCapabilities,
-    }).pipe(
-      Effect.provideService(PageBodySyncPort, bodyPort),
-      Effect.provideService(LocalWorkspacePort, workspace),
-    )
 
     return {
-      pages: first.query.pages + filtered.query.pages,
-      rows: first.query.rows + filtered.query.rows,
+      pages: first.query.pages,
+      rows: first.query.rows,
       materializedBodies: first.materialized.length,
       observedProperties: first.properties.observed,
       incompleteProperties: first.properties.incomplete,
-      events: first.events.length + filtered.events.length,
+      events: first.events.length,
     }
   })
 

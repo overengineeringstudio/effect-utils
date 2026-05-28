@@ -137,9 +137,9 @@ These requirements serve [vision.md](./vision.md). They define the production co
 
 ### Must Query Remote State Completely
 
-- **R71 Pagination completeness:** Remote data-source queries must page until Notion reports completion; partial pages, cursor failures, or interrupted scans must not advance completeness checkpoints or classify absence.
-- **R72 Query contract:** Remote scans must record the filter, sort, cursor, page-size, and high-watermark contract used for observation so changed query shape cannot be treated as the same membership proof.
-- **R73 Filtered absence:** Filtered queries and views must not imply deletion or movement for rows outside the filter unless the binding explicitly scopes sync membership to that filter and direct retrieval confirms lifecycle state.
+- **R71 Pagination completeness:** Product remote data-source queries must page the full database until Notion reports completion; partial pages, cursor failures, capped previews, or interrupted scans must not advance completeness checkpoints or classify absence.
+- **R72 Full replica contract:** User-facing `<database-id>.sqlite` files must only be created from the full database membership query. Query-contract/filter/high-watermark variants are internal test/debug concerns and must not be exposed as establishment or sync modes.
+- **R73 Filtered absence:** Filtered queries and views must not imply deletion or movement for product replicas. They may only remain in private debug/test paths that do not create database-ID-named files.
 
 ### Must Expose A Local SQLite Replica API
 

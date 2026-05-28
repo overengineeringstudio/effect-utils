@@ -14,7 +14,7 @@ missing.
 | Local accepted intent    | `_nds_*` event log in the database file | Commit event before remote effect                     |
 | Pending remote effects   | `_nds_*` outbox in the database file    | Execute outside SQL transaction, verify settlement    |
 | Local file paths         | Workspace path claims                   | Never overwrite another page's claimed path           |
-| Query membership         | Query contract plus complete pagination | Never infer absence from incomplete/incompatible scan |
+| Query membership         | Full database query plus complete pagination | Never infer absence from incomplete or capped scans |
 | Lifecycle and tombstones | Direct row/page classification          | No remote trash from accidental local disappearance   |
 
 Each Notion database has one self-contained SQLite file:
@@ -126,9 +126,10 @@ command, retries safely, or opens an ambiguous-outcome guard.
 
 ## Query And Pagination
 
-The query contract includes the Notion API version, filter, sorts, page size,
-high-watermark, and membership scope. A complete scan advances the checkpoint
-only after the terminal page is reached.
+Product replicas use full database membership: no filter, no sort, page size
+`100`, and no high-watermark. A complete scan advances the private checkpoint
+only after the terminal page is reached. Dry-run limits are capped previews and
+do not establish or update `<database-id>.sqlite` replicas.
 
 Page-property pagination is part of row observation for values that Notion may
 truncate on normal page retrieval. Relation, people, title, rich text, and rollup

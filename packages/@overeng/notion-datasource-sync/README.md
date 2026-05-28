@@ -82,6 +82,10 @@ source when unambiguous; ambiguous multi-source databases require an explicit
 data-source id. `--limit` gives large databases a bounded no-write dry-run
 preview, not a partial adoption.
 
+Normal product sync always creates full replicas. Query-contract or filtered
+membership sync is not a CLI mode, and `<database-id>.sqlite` files must not be
+created for subsets of a Notion database.
+
 The live CLI reads `NOTION_API_TOKEN` and accepts `NOTION_TOKEN` as a legacy
 fallback. When a live token is configured, the CLI wires the NotionMD-backed
 body adapter; without a token or injected body port, body sync fails closed.
