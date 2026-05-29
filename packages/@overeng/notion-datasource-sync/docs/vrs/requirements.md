@@ -106,6 +106,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **R49 Dry-run plans:** Mutating commands must support dry-run output that shows planned events, conflicts, outbox commands, and guard failures.
 - **R50 Machine output:** CLI output must support structured machine-readable mode for CI and agent workflows.
 - **R51 Human diagnostics:** CLI output must provide concise human-readable explanations for conflicts, blocked guards, retries, tombstones, and migrations.
+- **R51a Sync progress:** Long-running sync commands must always expose live sync progress for humans, including phase and bounded progress-bar state, without corrupting stdout machine-readable result output.
 - **R52 Secret safety:** CLI, telemetry, fixtures, and errors must never print tokens, signed URLs, full private document bodies, or private workspace identifiers.
 
 ### Must Compose With The Notion Library Stack

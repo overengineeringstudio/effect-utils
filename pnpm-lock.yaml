@@ -763,10 +763,25 @@ importers:
       '@overeng/notion-md':
         specifier: workspace:^
         version: link:../notion-md
+      '@overeng/tui-react':
+        specifier: workspace:^
+        version: link:../tui-react
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+    dependenciesMeta:
+      '@overeng/tui-react':
+        injected: true
     devDependencies:
+      '@effect-atom/atom':
+        specifier: 0.5.3
+        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@effect-atom/atom-react':
+        specifier: 0.5.0
+        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
       '@effect/cli':
         specifier: 0.75.1
         version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
@@ -794,15 +809,36 @@ importers:
       '@effect/workflow':
         specifier: 0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@opentui/core':
+        specifier: 0.1.88
+        version: 0.1.88(stage-js@1.0.2)(typescript@5.9.3)(web-tree-sitter@0.25.10)
+      '@opentui/react':
+        specifier: 0.1.88
+        version: 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.2)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.20.0)
       '@playwright/test':
         specifier: 1.59.1
         version: 1.59.1
+      '@storybook/react':
+        specifier: 10.2.3
+        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.8.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@types/node':
         specifier: 25.3.3
         version: 25.3.3
+      '@types/react':
+        specifier: 19.2.7
+        version: 19.2.7
+      '@types/react-reconciler':
+        specifier: 0.28.9
+        version: 0.28.9(@types/react@19.2.7)
       effect:
         specifier: 3.21.2
         version: 3.21.2
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      react-reconciler:
+        specifier: 0.33.0
+        version: 0.33.0(react@19.2.3)
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -3128,7 +3164,6 @@ packages:
 
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
-    deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
   '@vitejs/plugin-react@5.1.2':
     resolution: {integrity: sha512-EcA07pHJouywpzsoTUqNh5NwGayl2PPVEJKUSinGGSxFGYn+shYbqMGBg6FXDqgXum9Ou/ecb+411ssw8HImJQ==}
@@ -4939,7 +4974,6 @@ packages:
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
     engines: {node: '>=18'}
-    deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
   whatwg-mimetype@3.0.0:
     resolution: {integrity: sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==}

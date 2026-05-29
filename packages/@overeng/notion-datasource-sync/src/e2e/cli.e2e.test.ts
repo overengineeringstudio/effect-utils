@@ -949,6 +949,60 @@ describe('CLI command surface', () => {
     }
   })
 
+  it('renders sync progress on stderr while keeping the JSON result on stdout', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-progress-'))
+    const originalStdoutWrite = process.stdout.write
+    const originalStderrWrite = process.stderr.write
+    let stdout = ''
+    let stderr = ''
+
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      stderr += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      return true
+    }) as typeof process.stderr.write
+
+    try {
+      const sqlitePath = join(dir, 'store.sqlite')
+      await createBoundSqlite({ path: sqlitePath })
+      await Effect.runPromise(
+        runCliMain({
+          argv: [
+            'pull',
+            '--sqlite',
+            sqlitePath,
+            '--root-id',
+            testIds.rootId,
+            '--data-source-id',
+            testIds.dataSourceId,
+            '--workspace-root',
+            workspaceRoot,
+            '--no-materialize-bodies',
+          ],
+          options: {
+            gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway,
+          },
+        }),
+      )
+
+      expect(JSON.parse(stdout)).toMatchObject({
+        _tag: 'CliResultEnvelope',
+        command: 'pull',
+        ok: true,
+      })
+      expect(stderr).toContain('notion-datasource-sync')
+      expect(stderr).toContain('pull')
+      expect(stderr).toContain('100%')
+    } finally {
+      process.stdout.write = originalStdoutWrite
+      process.stderr.write = originalStderrWrite
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('wires pull/sync through an injected Notion client, real adapter, and real filesystem workspace', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-runtime-'))
     const clock = makeFakeClock()

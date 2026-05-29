@@ -40,7 +40,8 @@
     ],
     "composite": true,
     "rootDir": ".",
-    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*"],
   "references": [
@@ -49,6 +50,9 @@
     },
     {
       "path": "../notion-md"
+    },
+    {
+      "path": "../tui-react"
     },
     {
       "path": "../utils"

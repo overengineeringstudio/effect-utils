@@ -19,6 +19,7 @@ import {
   type NotionDataSourceGateway,
   type PageBodySyncPort,
 } from '../core/ports.ts'
+import { reportSyncProgress } from '../core/progress.ts'
 import type { SignalInboxRecord } from '../core/signals.ts'
 import type { OneShotSyncStatus } from '../core/status.ts'
 import {
@@ -542,6 +543,11 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         }),
       )
       yield* ensureNotCancelled({ signal: options.signal, rootId: options.rootId, cycle })
+      yield* reportSyncProgress({
+        _tag: 'phase',
+        phase: 'watching',
+        message: `Starting watch cycle ${cycle.toString()}`,
+      })
 
       yield* writeWatchDaemonState({
         statePath: options.statePath,
@@ -702,6 +708,11 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         lastStatus: sync.status,
       }
       yield* writeWatchDaemonState({ statePath: options.statePath, state })
+      yield* reportSyncProgress({
+        _tag: 'phase',
+        phase: 'watching',
+        message: `Completed watch cycle ${cycle.toString()}`,
+      })
 
       yield* Effect.annotateCurrentSpan({
         ...statusSpanAttributes(sync.status),

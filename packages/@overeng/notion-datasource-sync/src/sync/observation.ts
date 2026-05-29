@@ -43,6 +43,7 @@ import {
 } from '../core/events.ts'
 import type { GuardName, PropertyAvailability, PropertyWriteClass } from '../core/guards.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
+import { reportSyncProgress } from '../core/progress.ts'
 import { readOnlyGatewayCapabilities } from '../gateway/gateway.ts'
 import { bodyPathForRow } from '../local/workspace.ts'
 import { spanAttr, spanAttributes, spanNames } from '../observability/observability.ts'
@@ -746,6 +747,9 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
         options.rowLimit === undefined
           ? undefined
           : Math.max(1, Math.ceil(options.rowLimit / queryContract.pageSize))
+      let observedQueryPages = 0
+      let observedQueryRows = 0
+      yield* reportSyncProgress({ _tag: 'phase', phase: 'querying' })
       const queryPages = yield* collectStream(
         gateway
           .queryRows({
@@ -754,7 +758,19 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             queryContract,
             startCursor: options.startCursor ?? null,
           })
-          .pipe(queryPageLimit === undefined ? (stream) => stream : Stream.take(queryPageLimit)),
+          .pipe(
+            queryPageLimit === undefined ? (stream) => stream : Stream.take(queryPageLimit),
+            Stream.tap((page) => {
+              observedQueryPages += 1
+              observedQueryRows += page.rows.length
+              return reportSyncProgress({
+                _tag: 'query-page',
+                pages: observedQueryPages,
+                rows: observedQueryRows,
+                hasMore: page.hasMore,
+              })
+            }),
+          ),
       )
       const queryContractHash =
         queryPages.at(-1)?.queryContractHash ?? queryPages[0]?.queryContractHash
@@ -904,11 +920,18 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
       let observedProperties = 0
       let incompleteProperties = 0
       let remainingRows = queryRows.length
+      let hydratedRows = 0
 
       for (const queryPage of queryPages) {
         if (remainingRows <= 0) break
         for (const row of queryPage.rows.slice(0, remainingRows)) {
           remainingRows -= 1
+          hydratedRows += 1
+          yield* reportSyncProgress({
+            _tag: 'hydrate-row',
+            current: hydratedRows,
+            total: queryRows.length,
+          })
           const page =
             row.propertyValuesJson === undefined
               ? yield* gateway.retrievePage(row.pageId)
