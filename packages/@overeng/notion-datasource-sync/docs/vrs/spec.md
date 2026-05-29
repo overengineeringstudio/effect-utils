@@ -770,18 +770,24 @@ Remote membership and row hashing require two different completeness proofs:
 | Query scan completeness     | data-source query pages  | cursor chain reaches `hasMore=false` before the 10,000-result cap hides rows | do not advance completeness checkpoint or classify absence    |
 | Property value completeness | page-property item pages | every paginated property needed for hashing reaches `hasMore=false`          | mark property incomplete and block clean hash/write decisions |
 
-`QueryContract` is private checkpoint identity for the full database query.
-Product replicas do not expose filtered or query-contract establishment. Any
-internal debug/test query shape starts a separate private `_nds_*` checkpoint and
-must not produce a database-ID-named product replica.
+`QueryContract` is private checkpoint identity for the full database membership
+query. The membership contract is distinct from the scan window: a
+high-watermark poll is an incremental observation of the same full-replica
+membership, not a different product replica. Product replicas do not expose
+filtered or query-contract establishment. Any internal debug/test query shape
+starts a separate private `_nds_*` checkpoint and must not produce a
+database-ID-named product replica.
 
 Query policy:
 
 | Case                                                       | Decision                                                                           |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | unsorted full query                                        | normal product scan; must page to terminal completion before absence is evidence   |
+| inclusive `last_edited_time` high-watermark query          | steady-state optimization only; must not emit absence or tombstone candidates      |
 | `last_edited_time` sort                                    | internal optimization only; repair scans still verify known pages and completeness |
 | `filter_properties` omits edited/hash-relevant properties  | fetch omitted values through page-property pagination before hashing               |
+| query result includes complete page property values        | hash inline values directly; do not issue per-row page retrieval                   |
+| query result omits or truncates required property values   | fall back to page/page-property retrieval before producing clean hashes            |
 | linked data source or unsupported wiki/special data source | block with unsupported guard                                                       |
 | filtered query                                             | internal test/debug only; not a product replica or tombstone proof                 |
 
@@ -817,7 +823,8 @@ Requirement trace: R21-R29, R30-R41, R66-R73.
 | `PathClaimCollision`                 | Two pages map to same local path                                               | Conflict; no overwrite                                                       | `ConflictDetected`                             |
 | `QueryAbsenceUnclassified`           | Row missing from datasource query                                              | Direct page retrieve before tombstone                                        | `RemoteObserved` missing candidate             |
 | `PaginationIncomplete`               | Query or page-property pagination stops before terminal page                   | Do not checkpoint completeness or hash clean value                           | `QueryScanRecorded` incomplete                 |
-| `QueryContractChanged`               | Filter/sort/page size/high-watermark contract changes                          | Start new checkpoint; old absence evidence is invalid                        | `CompatibilityChecked` or `QueryScanRecorded`  |
+| `QueryContractChanged`               | Filter/sort/page size/membership contract changes                              | Start new checkpoint; old absence evidence is invalid                        | `CompatibilityChecked` or `QueryScanRecorded`  |
+| `IncrementalAbsenceNotProof`         | Known row omitted by a high-watermark poll                                     | Keep row projection active; wait for full scan/direct classifier evidence    | no tombstone event                             |
 | `QueryResultCapExceeded`             | Data-source query reaches the 10,000-result cap                                | Fail closed unless a complete partitioned query contract exists              | `QueryScanRecorded` capped                     |
 | `FilteredAbsenceNotProof`            | Row absent from filtered query/view                                            | Do not classify delete/move unless scoped binding and direct retrieve agree  | blocked tombstone candidate                    |
 | `LinkedDataSourceUnsupported`        | Binding points at public-API-unsupported linked data source                    | Block init/pull with diagnostic                                              | `CompatibilityChecked` failed                  |
@@ -967,14 +974,21 @@ The daemon owns one sync root lease at a time. It multiplexes:
 - periodic repair scans,
 - retry timers for transient outbox failures.
 
-Remote polling uses `high_watermark - overlap`, then dedupes by canonical materialized hashes. Sorting by `last_edited_time` is an optimization, not a completeness proof. Query absence emits candidates only after a complete query checkpoint; the tombstone classifier performs direct page retrieval.
+Remote polling uses the latest complete checkpoint high-watermark with an
+inclusive overlap window, then dedupes by canonical materialized hashes. Sorting
+by `last_edited_time` is an optimization, not a completeness proof. Incremental
+polls may update rows that appear in the result, but omission from an incremental
+poll is not evidence of deletion, movement, or permission loss. Query absence
+emits candidates only after a complete full-membership query checkpoint; the
+tombstone classifier performs direct page retrieval.
 
 Daemon loop:
 
 ```mermaid
 flowchart TD
   Lease[acquire or refresh lease] --> Intake[bounded intake queues]
-  Intake --> Observe[remote poll / fs scan / retry due]
+  Intake --> LocalFast[plan and push runnable local CDC/outbox]
+  LocalFast --> Observe[remote poll / fs scan / retry due]
   Observe --> Tx[append observations and rebuild projections]
   Tx --> Plan[pure planner]
   Plan --> Commands[append conflicts or outbox commands]
@@ -995,10 +1009,14 @@ Queue policy:
 
 The daemon and one-shot commands share the same planner and executor. Watch mode adds scheduling, coalescing, cancellation, and lease heartbeats only.
 It must process local SQLite CDC from public `rows` and `changes` on every
-cycle before or alongside remote polling. A daemon that only observes Notion
-remote drift is incomplete: pending local row edits, row creates, lifecycle
-changes, and explicit public changes must flow through the shared planner,
-private `_nds_*` outbox, verification, and public observability surfaces.
+cycle before or alongside remote polling. If public SQLite CDC or runnable outbox
+work exists, the daemon performs a local-first guarded push pass before the
+remote pull so outbound latency is not gated by a full table scan. That pass uses
+the same executor preflight and read-after-write settlement as normal sync. A
+daemon that only observes Notion remote drift is incomplete: pending local row
+edits, row creates, lifecycle changes, and explicit public changes must flow
+through the shared planner, private `_nds_*` outbox, verification, and public
+observability surfaces.
 
 Poll cursor rules:
 
@@ -1007,6 +1025,9 @@ Poll cursor rules:
 | complete cycle with terminal page                 | advance high-water mark to the last fully drained timestamp bucket                        |
 | partial cycle, cancellation, crash, or page error | keep prior high-water mark and persist incomplete cursor evidence                         |
 | multiple rows share the boundary timestamp        | continue until the whole same-timestamp bucket is drained before advancing                |
+| steady-state cycle after complete checkpoint      | reuse persisted high-water mark for an inclusive incremental poll                         |
+| row absent from high-watermark poll               | keep existing projection active; do not record query absence or tombstone candidate       |
+| scheduled full reconcile                          | run complete full-membership scan before using query absence as tombstone evidence        |
 | materialization writes from this process          | tag writes with operation ID and suppress matching filesystem events as local edit intent |
 
 Own-write suppression only suppresses intent creation. The daemon may still verify materialized files, object references, and path claims.

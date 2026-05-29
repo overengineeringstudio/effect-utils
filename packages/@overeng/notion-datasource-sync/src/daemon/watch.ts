@@ -5,7 +5,7 @@ import { dirname } from 'node:path'
 
 import { Duration, Effect, Schema } from 'effect'
 
-import type { QueryContract } from '../core/commands.ts'
+import type { QueryContract as QueryContractType } from '../core/commands.ts'
 import type { AbsolutePath, CapabilityName, DataSourceId } from '../core/domain.ts'
 import {
   LocalStoreError,
@@ -38,7 +38,7 @@ import {
 } from '../replica/replica.ts'
 import type { NotionSyncStore } from '../store/store.ts'
 import type { SchemaPropertyObservation } from '../sync/observation.ts'
-import { syncOneShot, type OneShotSyncResult } from '../sync/sync.ts'
+import { pushOneShotSync, syncOneShot, type OneShotSyncResult } from '../sync/sync.ts'
 
 /** Backoff tier for the watch daemon loop — controls the inter-cycle sleep duration (1 s / 5 s / 15 s). */
 export type WatchDaemonMode = 'development' | 'normal' | 'low-priority'
@@ -108,7 +108,7 @@ export type WatchDaemonOptions = {
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceId
   readonly workspaceRoot: AbsolutePath
-  readonly queryContract: QueryContract
+  readonly queryContract: QueryContractType
   readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
@@ -460,6 +460,35 @@ const projectReplicaIfWritable = ({
   })
 }
 
+const incrementalQueryContractForWatch = ({
+  options,
+}: {
+  readonly options: WatchDaemonOptions
+}): QueryContractType => {
+  if (options.queryContract.highWatermark !== null) return options.queryContract
+  const checkpoint = options.store.readLatestCompleteQueryCheckpoint({
+    rootId: options.rootId,
+    dataSourceId: options.dataSourceId,
+  })
+  if (checkpoint?.highWatermark === undefined || checkpoint.highWatermark === null) {
+    return options.queryContract
+  }
+  return {
+    ...options.queryContract,
+    highWatermark: checkpoint.highWatermark,
+  }
+}
+
+const hasRunnableOutboxWork = (options: WatchDaemonOptions): boolean =>
+  options.store
+    .readOutbox(options.rootId)
+    .some(
+      (command) =>
+        command.state === 'queued' ||
+        command.state === 'retryable' ||
+        command.state === 'ambiguous',
+    )
+
 const daemonCycleErrorReason = (cause: unknown): string =>
   typeof cause === 'object' && cause !== null && '_tag' in cause
     ? String(cause._tag)
@@ -543,12 +572,43 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         }),
       )
       const replicaInputs = yield* Effect.sync(() => readPendingReplicaPlannerInputs({ options }))
+      const effectiveQueryContract = incrementalQueryContractForWatch({ options })
+      const shouldRunFastPush =
+        replicaInputs.intents.length > 0 || hasRunnableOutboxWork(options) === true
+      const fastPush =
+        shouldRunFastPush === true
+          ? yield* pushOneShotSync({
+              store: options.store,
+              rootId: options.rootId,
+              workspaceRoot: options.workspaceRoot,
+              localIntents: replicaInputs.intents,
+              materializeBodies: false,
+              maxExecutorSteps: options.maxExecutorSteps ?? 8,
+              leaseToken,
+              leaseDurationMs,
+              now,
+            })
+          : undefined
+      if (fastPush !== undefined) {
+        yield* Effect.sync(() => {
+          if (replicaInputs.replicaPath === undefined || replicaInputs.replicaPath === ':memory:')
+            return
+          settleReplicaChangesAfterSync({
+            changes: replicaInputs.changes,
+            replicaPath: replicaInputs.replicaPath,
+            store: options.store,
+            rootId: options.rootId,
+            decisions: fastPush.plan.decisions,
+          })
+          projectReplicaIfWritable({ options, replicaPath: replicaInputs.replicaPath })
+        })
+      }
       const syncCycle = syncOneShot({
         store: options.store,
         rootId: options.rootId,
         dataSourceId: options.dataSourceId,
         workspaceRoot: options.workspaceRoot,
-        queryContract: options.queryContract,
+        queryContract: effectiveQueryContract,
         ...(options.schemaProperties === undefined
           ? {}
           : { schemaProperties: options.schemaProperties }),
@@ -558,7 +618,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         ...(options.materializeBodies === undefined
           ? {}
           : { materializeBodies: options.materializeBodies }),
-        localIntents: replicaInputs.intents,
+        localIntents: fastPush === undefined ? replicaInputs.intents : [],
         maxExecutorSteps: options.maxExecutorSteps ?? 8,
         leaseToken,
         leaseDurationMs,

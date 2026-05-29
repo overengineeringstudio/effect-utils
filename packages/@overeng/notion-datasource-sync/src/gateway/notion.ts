@@ -1183,7 +1183,11 @@ const queryRowsPageFromRemote = (input: {
     rows: input.result.results.map((page) => ({
       _tag: 'QueriedRow',
       pageId: rowSnapshotFromRemote(page).pageId,
+      ...(optionalDataSourceIdFromPage(page) === undefined
+        ? {}
+        : { dataSourceId: optionalDataSourceIdFromPage(page) }),
       propertiesHash: rowSnapshotFromRemote(page).propertiesHash,
+      propertyValuesJson: propertyValuesJsonFromRemotePage(page.properties),
       lastEditedTime: rowSnapshotFromRemote(page).lastEditedTime,
       inTrash: rowSnapshotFromRemote(page).inTrash,
     })),

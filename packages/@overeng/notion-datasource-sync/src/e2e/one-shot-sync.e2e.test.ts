@@ -120,7 +120,17 @@ describe('one-shot sync orchestration', () => {
   it('initial bind and pull produce clean status while dry-run status does not write', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
-    const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const inlineTitleJson = JSON.stringify({ _tag: 'title', plainText: 'Initial task' })
+    const gatewayHarness = makeFakeGatewayHarness({
+      pages: [
+        pageSnapshot({
+          propertyValuesJson: {
+            [testIds.propertyA]: inlineTitleJson,
+          },
+        }),
+      ],
+      propertyPages: [propertyPage()],
+    })
 
     try {
       expect(
@@ -169,6 +179,66 @@ describe('one-shot sync orchestration', () => {
           projections: { dataSources: 1, rows: 1, properties: 1, bodies: 1 },
         },
       })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('uses inline query-row property values without per-row retrievePage when bodies are disabled', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const inlineTitleJson = JSON.stringify({ _tag: 'title', plainText: 'Initial task' })
+    const gatewayHarness = makeFakeGatewayHarness({
+      pages: [
+        pageSnapshot({
+          propertyValuesJson: {
+            [testIds.propertyA]: inlineTitleJson,
+          },
+        }),
+      ],
+      propertyPages: [propertyPage()],
+    })
+    let retrievePageCalls = 0
+    const gateway = {
+      ...gatewayHarness.gateway,
+      retrievePage: (pageId: Parameters<typeof gatewayHarness.gateway.retrievePage>[0]) => {
+        retrievePageCalls += 1
+        return gatewayHarness.gateway.retrievePage(pageId)
+      },
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      const pull = await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          materializeBodies: false,
+          now: clock.now,
+        }),
+        { gateway },
+      )
+
+      expect(pull.status.state).toBe('clean')
+      expect(pull.observation.query.rows).toBe(1)
+      expect(retrievePageCalls).toBe(0)
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).properties).toEqual([
+        expect.objectContaining({
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyA,
+          baseHash: hashStoreBytes(inlineTitleJson),
+          remoteHash: hashStoreBytes(inlineTitleJson),
+        }),
+      ])
     } finally {
       storeFixture.cleanup()
     }

@@ -989,7 +989,7 @@ describe('CLI command surface', () => {
         command: 'sync',
         status: { state: 'clean' },
       })
-      expect(calls).toEqual({ retrieveDataSource: 2, queryDataSource: 1, retrievePage: 1 })
+      expect(calls).toEqual({ retrieveDataSource: 2, queryDataSource: 1, retrievePage: 0 })
       await expect(
         readFile(join(dir, `page-${testIds.pageId}--${testIds.pageId}.nmd`), 'utf8'),
       ).resolves.toContain('notion-datasource-sync body materialization placeholder')

@@ -389,13 +389,23 @@ export const makeFakeNotionDataSourceGateway = (
                   ? pageKey(left.row.pageId).localeCompare(pageKey(right.row.pageId))
                   : edited
               })
-              .map((page) => ({
-                _tag: 'QueriedRow' as const,
-                pageId: page.row.pageId,
-                propertiesHash: page.row.propertiesHash,
-                lastEditedTime: page.row.lastEditedTime,
-                inTrash: page.row.inTrash,
-              }))
+              .map((page) =>
+                Object.assign(
+                  {
+                    _tag: 'QueriedRow' as const,
+                    pageId: page.row.pageId,
+                    propertiesHash: page.row.propertiesHash,
+                    lastEditedTime: page.row.lastEditedTime,
+                    inTrash: page.row.inTrash,
+                  },
+                  page.snapshot.dataSourceId === undefined
+                    ? {}
+                    : { dataSourceId: page.snapshot.dataSourceId },
+                  page.snapshot.propertyValuesJson === undefined
+                    ? {}
+                    : { propertyValuesJson: page.snapshot.propertyValuesJson },
+                ),
+              )
             const cap = Math.max(0, Math.min(queryResultCap, allRows.length))
             const cappedAtLimit = allRows.length > cap
             const visibleRows = allRows.slice(0, cap)
