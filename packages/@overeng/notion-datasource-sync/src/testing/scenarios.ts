@@ -517,6 +517,15 @@ export const e2eHarnessScenarios = [
     file: 'src/e2e/fake-service.e2e.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-L3-outbox-rate-limit-retry-after',
+    title: 'outbox executor stores rate-limit retry-after before reclaiming retryable work',
+    requirementIds: ['R09', 'R10', 'R11', 'R21', 'R45', 'R64'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/fake-service.e2e.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-L3-outbox-crash-after-attempt-recovery',
     title: 'outbox executor recovers a crash after remote attempt without duplicate writes',
     requirementIds: ['R10', 'R11', 'R21'],

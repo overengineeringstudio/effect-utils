@@ -12,6 +12,7 @@ import {
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
+import { makeGatewayError } from '../gateway/gateway.ts'
 import {
   planIntent,
   type OutboxCommandEnvelope,
@@ -29,6 +30,7 @@ import {
   buildPlannerSnapshot,
   defaultQueryContract,
   hash,
+  makeFakeClock,
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
@@ -101,6 +103,7 @@ const implementedFakeScenarioIds = new Set<ScenarioId>([
   'NDS-L3-outbox-property-patch-settles',
   'NDS-L3-outbox-stale-base-blocks',
   'NDS-L3-outbox-read-after-write-mismatch',
+  'NDS-L3-outbox-rate-limit-retry-after',
   'NDS-L3-outbox-crash-after-attempt-recovery',
   'NDS-L3-outbox-legacy-running-lease-fence',
 ])
@@ -1138,6 +1141,66 @@ describe('notion datasource sync fake-service E2E harness', () => {
           state: 'retryable',
           settlementEventId: undefined,
         },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('stores rate-limit retry-after before reclaiming retryable outbox work', async () => {
+    const command = plannedPropertyCommand()
+    if (command === undefined) return
+
+    const clock = makeFakeClock()
+    const gatewayHarness = makeFakeGatewayHarness()
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    let attemptedPatches = 0
+    const gateway: NotionDataSourceGatewayShape = {
+      ...gatewayHarness.gateway,
+      patchPageProperties: (patchCommand) =>
+        Effect.sync(() => {
+          attemptedPatches += 1
+        }).pipe(
+          Effect.zipRight(
+            Effect.fail(
+              makeGatewayError({
+                operation: 'patchPageProperties',
+                pageId: patchCommand.pageId,
+                retryAfterMillis: 3_000,
+                message: 'rate limited',
+              }),
+            ),
+          ),
+        ),
+    }
+
+    try {
+      appendPlannedCommand({ store: storeFixture.store, command })
+
+      await expect(
+        runExecutor({ gateway, body: ports.body, store: storeFixture.store }),
+      ).resolves.toMatchObject({
+        _tag: 'failed',
+        attemptState: 'retryable',
+      })
+      expect(attemptedPatches).toBe(1)
+
+      await expect(
+        runExecutor({ gateway, body: ports.body, store: storeFixture.store }),
+      ).resolves.toEqual({ _tag: 'idle' })
+      expect(attemptedPatches).toBe(1)
+
+      clock.advanceMillis(3_000)
+      await expect(
+        runExecutor({ gateway, body: ports.body, store: storeFixture.store }),
+      ).resolves.toMatchObject({
+        _tag: 'failed',
+        attemptState: 'retryable',
+      })
+      expect(attemptedPatches).toBe(2)
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        { commandId: testIds.commandId, state: 'retryable', settlementEventId: undefined },
       ])
     } finally {
       storeFixture.cleanup()

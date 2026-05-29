@@ -1,5 +1,5 @@
 import { HttpClient } from '@effect/platform'
-import { Chunk, Effect, Layer, Option, Schema, Stream } from 'effect'
+import { Chunk, Duration, Effect, Layer, Option, Schema, Stream } from 'effect'
 
 import {
   type DatabaseFilter,
@@ -171,6 +171,14 @@ export class UnsupportedAdapterOperation extends Schema.TaggedError<UnsupportedA
 export type NotionDataSourceGatewayLiveOptions = {
   readonly configuredApiVersion?: string
   readonly clientVersion?: string
+  readonly rateLimit?: NotionGatewayRateLimitOptions | false
+}
+
+export type NotionGatewayRateLimitOptions = {
+  readonly requestsPerSecond?: number
+  readonly burst?: number
+  readonly now?: () => number
+  readonly sleep?: (millis: number) => Effect.Effect<void>
 }
 
 const supportedNotionEffectClientCapabilities: ReadonlyArray<CapabilityName> = [
@@ -210,6 +218,49 @@ const isPermissionAmbiguous = (error: NotionApiError): boolean =>
   error.code === 'restricted_resource' ||
   error.code === 'object_not_found'
 
+const notionRetryAfterMillis = (error: NotionApiError): number | undefined =>
+  Option.getOrUndefined(error.retryAfterSeconds.pipe(Option.map((seconds) => seconds * 1000)))
+
+const isRateLimited = (error: NotionApiError): boolean =>
+  error.status === 429 || error.code === 'rate_limited'
+
+const makeNotionGatewayRateLimiter = (
+  options: NotionGatewayRateLimitOptions | false | undefined,
+) => {
+  if (options === false) {
+    return {
+      acquire: () => Effect.void,
+      pauseFor: (_millis: number) => Effect.void,
+    }
+  }
+
+  const requestsPerSecond = options?.requestsPerSecond ?? 3
+  const burst = Math.max(1, options?.burst ?? 1)
+  const spacingMillis = Math.ceil(1000 / requestsPerSecond)
+  const now = options?.now ?? (() => Date.now())
+  const sleep =
+    options?.sleep ?? ((millis: number) => Effect.sleep(Duration.millis(Math.max(0, millis))))
+  let nextAvailableAt = 0
+
+  return {
+    acquire: (): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const current = now()
+        const burstWindow = spacingMillis * (burst - 1)
+        nextAvailableAt = Math.max(nextAvailableAt, current - burstWindow)
+        const waitMillis = Math.max(0, nextAvailableAt - current)
+        nextAvailableAt = Math.max(current, nextAvailableAt) + spacingMillis
+        if (waitMillis > 0) {
+          yield* sleep(waitMillis)
+        }
+      }),
+    pauseFor: (millis: number): Effect.Effect<void> =>
+      Effect.sync(() => {
+        nextAvailableAt = Math.max(nextAvailableAt, now() + millis)
+      }),
+  }
+}
+
 const mapClientError =
   (input: {
     readonly operation: GatewayOperation
@@ -235,6 +286,9 @@ const mapClientError =
       ...input,
       ...(requestId === undefined ? {} : { requestId }),
       ...(isPermissionAmbiguous(cause) === true ? { guard: 'PermissionAmbiguous' } : {}),
+      ...(isRateLimited(cause) === true
+        ? { retryAfterMillis: notionRetryAfterMillis(cause) ?? 1_000 }
+        : {}),
       message: cause.message,
       cause,
     })
@@ -1337,7 +1391,7 @@ export const makeNotionEffectClientGatewayClient = (
  * StaleSurfaceBase, ReadAfterWriteMismatch, etc.).
  */
 export const makeNotionDataSourceGatewayFromClient = ({
-  client,
+  client: rawClient,
   options = {},
 }: {
   readonly client: NotionGatewayClient
@@ -1347,6 +1401,37 @@ export const makeNotionDataSourceGatewayFromClient = ({
     clientVersion: options.clientVersion ?? 'notion-effect-client:0.1.0',
     supportedCapabilities: supportedNotionEffectClientCapabilities,
   })
+  const limiter = makeNotionGatewayRateLimiter(options.rateLimit)
+  const rateLimitFailure = (cause: unknown): Effect.Effect<void> =>
+    isNotionApiError(cause) === true && isRateLimited(cause) === true
+      ? limiter.pauseFor(notionRetryAfterMillis(cause) ?? 1_000)
+      : Effect.void
+  const runClient = <A>(effect: Effect.Effect<A, unknown>): Effect.Effect<A, unknown> =>
+    limiter.acquire().pipe(Effect.zipRight(effect), Effect.tapError(rateLimitFailure))
+  const client: NotionGatewayClient = {
+    ...rawClient,
+    retrieveDataSource: (input) => runClient(rawClient.retrieveDataSource(input)),
+    queryDataSource: (input) => runClient(rawClient.queryDataSource(input)),
+    retrievePage: (input) => runClient(rawClient.retrievePage(input)),
+    retrievePageProperty: (input) => runClient(rawClient.retrievePageProperty(input)),
+    retrieveDatabase: (input) => runClient(rawClient.retrieveDatabase(input)),
+    ...(rawClient.listViews === undefined
+      ? {}
+      : {
+          listViews: (input) =>
+            Stream.unwrap(
+              limiter
+                .acquire()
+                .pipe(
+                  Effect.as(rawClient.listViews!(input).pipe(Stream.tapError(rateLimitFailure))),
+                ),
+            ),
+        }),
+    updatePage: (input) => runClient(rawClient.updatePage(input)),
+    createPage: (input) => runClient(rawClient.createPage(input)),
+    updateDatabase: (input) => runClient(rawClient.updateDatabase(input)),
+    updateDataSource: (input) => runClient(rawClient.updateDataSource(input)),
+  }
 
   return makeNotionDataSourceGateway({
     configuredApiVersion: options.configuredApiVersion ?? supportedNotionApiVersion,

@@ -206,6 +206,7 @@ export const RemoteWriteAttempted = Schema.TaggedStruct('RemoteWriteAttempted', 
   attemptState: Schema.Literal('running', 'retryable', 'blocked', 'fenced', 'ambiguous'),
   leaseToken: Schema.optional(Schema.NonEmptyTrimmedString),
   guard: Schema.optional(GuardName),
+  retryAfterMillis: Schema.optional(Schema.NonNegativeInt),
 }).annotations({ identifier: 'NotionDatasourceSync.RemoteWriteAttempted' })
 export type RemoteWriteAttempted = typeof RemoteWriteAttempted.Type
 

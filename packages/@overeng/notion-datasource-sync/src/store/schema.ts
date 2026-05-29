@@ -1,5 +1,5 @@
 /** SQLite schema version — incremented when a migration is needed. */
-export const STORE_SCHEMA_VERSION = 4
+export const STORE_SCHEMA_VERSION = 5
 
 /** Opaque identifier stamped into every _nds_projection_metadata row to detect when projections were built by an incompatible projector. */
 export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'
@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS _nds_outbox (
   attempt_count INTEGER NOT NULL,
   lease_token TEXT,
   settlement_event_id TEXT,
+  retry_after_millis INTEGER,
+  retry_after_at TEXT,
   last_event_id TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (root_id, command_id)

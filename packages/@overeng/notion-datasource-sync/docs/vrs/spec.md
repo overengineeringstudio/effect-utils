@@ -1034,7 +1034,14 @@ Poll cursor rules:
 
 Own-write suppression only suppresses intent creation. The daemon may still verify materialized files, object references, and path claims.
 
-The default Notion limiter is per connection and targets no more than 3 requests per second. A 429 response with `Retry-After` schedules retries at or after the returned delay; it does not create a conflict or data fact.
+The default Notion limiter is per connection and targets no more than 3
+requests per second. It is proactive: every live gateway request acquires shared
+capacity before calling Notion, so row queries, page-property hydration,
+preflight reads, writes, and read-after-write verification compete for the same
+connection budget. A 429 response with `Retry-After` pauses the shared limiter
+and records retry-after metadata on retryable outbox attempts; retryable commands
+are not reclaimed before their retry time. Rate-limit and transient retry
+responses never create conflicts, tombstones, or projection facts.
 
 Connection webhooks may enqueue dirty entity hints into the same intake queue. Webhook hints are at-most-once, aggregated, unordered, and possibly stale, so they never update projections directly; every hinted entity is re-read through the gateway before planning. `sync --watch --webhook manual` starts a local receiver and reports its callback URL for externally managed relays. `sync --watch --webhook tailscale` starts the same receiver and attempts to expose it through Tailscale Funnel, degrading back to polling unless `--webhook-required` is set. Workers webhooks receive external-service events into a Notion Worker and are not a Notion workspace change stream.
 
