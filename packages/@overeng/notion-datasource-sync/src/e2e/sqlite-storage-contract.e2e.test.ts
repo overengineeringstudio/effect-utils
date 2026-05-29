@@ -13,7 +13,7 @@ import {
   runCliCommandWithRuntime,
 } from '../cli/main.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
-import { AbsolutePath, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
+import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
 import {
   decode,
@@ -233,23 +233,70 @@ const updatePublicRowsTitle = ({
   }
 }
 
-const establishWorkspace = async (workspace: AbsolutePathType) => {
+const rowsTitleSchemaProperty = {
+  propertyId: testIds.propertyA,
+  name: 'Task name',
+  type: 'title',
+  configHash: hash('property-a-config'),
+  writeClass: 'writable',
+  ordinal: 0,
+  configJson: JSON.stringify({ type: 'title' }),
+}
+
+const rowsStatusSchemaProperty = {
+  propertyId: decode({ schema: PropertyId, value: 'status-prop' }),
+  name: 'Status',
+  type: 'status',
+  configHash: hash('status-config'),
+  writeClass: 'writable',
+  ordinal: 1,
+  configJson: JSON.stringify({
+    id: 'status-prop',
+    name: 'Status',
+    type: 'status',
+    status: {
+      options: [
+        { id: 'next', name: 'Next up', color: 'gray' },
+        { id: 'done', name: 'Done', color: 'green' },
+      ],
+    },
+  }),
+}
+
+const rowsSelectSchemaProperty = {
+  propertyId: decode({ schema: PropertyId, value: 'priority-prop' }),
+  name: 'Priority',
+  type: 'select',
+  configHash: hash('priority-config'),
+  writeClass: 'writable',
+  ordinal: 2,
+  configJson: JSON.stringify({
+    id: 'priority-prop',
+    name: 'Priority',
+    type: 'select',
+    select: {
+      options: [
+        { id: 'low', name: 'Low', color: 'green' },
+        { id: 'high', name: 'High', color: 'red' },
+      ],
+    },
+  }),
+}
+
+const establishWorkspace = async (
+  workspace: AbsolutePathType,
+  {
+    schemaProperties = [rowsTitleSchemaProperty],
+  }: {
+    readonly schemaProperties?: readonly (typeof rowsTitleSchemaProperty)[]
+  } = {},
+) => {
   const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
   const calls = {
     retrieveDatabase: 0,
   }
   const gatewayClient = makeDatabaseResolverClient(calls)
-  const schemaPropertiesJson = JSON.stringify([
-    {
-      propertyId: testIds.propertyA,
-      name: 'Task name',
-      type: 'title',
-      configHash: hash('property-a-config'),
-      writeClass: 'writable',
-      ordinal: 0,
-      configJson: JSON.stringify({ type: 'title' }),
-    },
-  ])
+  const schemaPropertiesJson = JSON.stringify(schemaProperties)
   const argv = [
     'sync',
     '--from-notion',
@@ -692,6 +739,83 @@ describe('clean-break self-contained SQLite storage contract', () => {
           value_json: JSON.stringify({ _tag: 'title', plainText: 'Updated by watch' }),
         })
       })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'rows enforces current Notion select and status options before queuing CDC',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace, {
+        schemaProperties: [
+          rowsTitleSchemaProperty,
+          rowsStatusSchemaProperty,
+          rowsSelectSchemaProperty,
+        ],
+      })
+
+      const db = new DatabaseSync(sqlitePath)
+      try {
+        expect(() =>
+          db
+            .prepare(`UPDATE rows SET "Status" = ? WHERE _page_id = ?`)
+            .run('Definitely not real', testIds.pageId),
+        ).toThrow(/malformed|unsupported/i)
+        expect(() =>
+          db.prepare(`UPDATE rows SET "Priority" = ? WHERE _page_id = ?`).run('', testIds.pageId),
+        ).toThrow(/malformed|unsupported/i)
+        expect(() =>
+          db
+            .prepare(`INSERT INTO rows ("Task name", "Status") VALUES (?, ?)`)
+            .run('Bad status create', 'Definitely not real'),
+        ).toThrow(/malformed|unsupported/i)
+
+        db.prepare(`UPDATE rows SET "Status" = ?, "Priority" = ? WHERE _page_id = ?`).run(
+          'Next up',
+          'High',
+          testIds.pageId,
+        )
+        db.prepare(`INSERT INTO rows ("Task name", "Status", "Priority") VALUES (?, ?, ?)`).run(
+          'Good option create',
+          'Done',
+          'Low',
+        )
+
+        expect(
+          rows(
+            db,
+            `SELECT kind, property_id, value_json
+             FROM changes
+             WHERE status = 'pending'
+             ORDER BY created_at, change_id`,
+          ),
+        ).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'cell_patch',
+              property_id: 'status-prop',
+              value_json: JSON.stringify({
+                _tag: 'status',
+                option: { _tag: 'CanonicalOptionValue', name: 'Next up' },
+              }),
+            }),
+            expect.objectContaining({
+              kind: 'cell_patch',
+              property_id: 'priority-prop',
+              value_json: JSON.stringify({
+                _tag: 'select',
+                option: { _tag: 'CanonicalOptionValue', name: 'High' },
+              }),
+            }),
+            expect.objectContaining({
+              kind: 'row_create',
+            }),
+          ]),
+        )
+      } finally {
+        db.close()
+      }
     },
     sqliteContractTimeoutMs,
   )
