@@ -2332,11 +2332,59 @@ const rowsValueReference = ({
   readonly columnName: string
 }): string => `${scope}.${quoteIdentifier(columnName)}`
 
+const optionNamesFromPropertyConfig = ({
+  configJson,
+  propertyType,
+}: {
+  readonly configJson: string | undefined
+  readonly propertyType: string
+}): readonly string[] => {
+  if (configJson === undefined) return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(configJson)
+  } catch {
+    return []
+  }
+  if (typeof parsed !== 'object' || parsed === null) return []
+  const payload = parsed as Record<string, unknown>
+  const typed =
+    typeof payload.configJson === 'string'
+      ? (() => {
+          try {
+            const nested = JSON.parse(payload.configJson)
+            return typeof nested === 'object' && nested !== null
+              ? (nested as Record<string, unknown>)
+              : payload
+          } catch {
+            return payload
+          }
+        })()
+      : payload
+  const container = typed[propertyType]
+  if (typeof container !== 'object' || container === null) return []
+  const options = (container as Record<string, unknown>).options
+  if (Array.isArray(options) === false) return []
+  return [
+    ...new Set(
+      options
+        .map((option) =>
+          typeof option === 'object' && option !== null && 'name' in option
+            ? (option as { readonly name?: unknown }).name
+            : undefined,
+        )
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0),
+    ),
+  ].toSorted()
+}
+
 const rowsValueShapePredicate = ({
   columnName,
+  configJson,
   propertyType,
 }: {
   readonly columnName: string
+  readonly configJson: string | undefined
   readonly propertyType: string
 }): string => {
   const value = rowsValueReference({ scope: 'NEW', columnName })
@@ -2350,8 +2398,14 @@ const rowsValueShapePredicate = ({
     case 'checkbox':
       return `${value} IS NOT NULL AND typeof(${value}) = 'integer' AND ${value} IN (0, 1)`
     case 'select':
-    case 'status':
-      return `${value} IS NULL OR (typeof(${value}) = 'text' AND length(trim(${value})) > 0)`
+    case 'status': {
+      const optionNames = optionNamesFromPropertyConfig({ configJson, propertyType })
+      const optionGuard =
+        optionNames.length === 0
+          ? '0'
+          : `${value} IN (${optionNames.map(quoteStringLiteral).join(', ')})`
+      return `${value} IS NULL OR (typeof(${value}) = 'text' AND length(trim(${value})) > 0 AND ${optionGuard})`
+    }
     case 'email':
     case 'url':
     case 'phone_number':
@@ -2455,7 +2509,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
 
   const plannedProperties = db
     .prepare(
-      `SELECT property_id, property_type, column_name, is_rows_write_supported
+      `SELECT property_id, property_type, column_name, is_rows_write_supported, config_json
        FROM _nds_replica_property_column_plan
        WHERE data_source_id = ?
        ORDER BY ordinal`,
@@ -2508,8 +2562,9 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       return `SELECT RAISE(ABORT, 'rows property column is not supported for direct writes')
               WHERE ${changed};`
     }
+    const configJson = readOptionalString({ row: property, key: 'config_json' })
     return `SELECT RAISE(ABORT, 'rows property column value is malformed or uses unsupported NULL behavior')
-            WHERE ${changed} AND NOT (${rowsValueShapePredicate({ columnName, propertyType })});`
+            WHERE ${changed} AND NOT (${rowsValueShapePredicate({ columnName, configJson, propertyType })});`
   })
   const propertyUpdates = plannedProperties
     .filter((property) => readNumber({ row: property, key: 'is_rows_write_supported' }) === 1)
@@ -2553,8 +2608,9 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       return `SELECT RAISE(ABORT, 'rows INSERT includes a property that is not supported for row-create CDC')
               WHERE ${newValue} IS NOT NULL;`
     }
+    const configJson = readOptionalString({ row: property, key: 'config_json' })
     return `SELECT RAISE(ABORT, 'rows INSERT property value is malformed or uses unsupported NULL behavior')
-            WHERE ${newValue} IS NOT NULL AND NOT (${rowsValueShapePredicate({ columnName, propertyType })});`
+            WHERE ${newValue} IS NOT NULL AND NOT (${rowsValueShapePredicate({ columnName, configJson, propertyType })});`
   })
   const insertValueRows = plannedProperties
     .filter((property) => readNumber({ row: property, key: 'is_rows_write_supported' }) === 1)

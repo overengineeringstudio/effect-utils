@@ -406,6 +406,7 @@ const SchemaPropertyObservationJson = Schema.Struct({
   type: Schema.optional(Schema.NonEmptyTrimmedString),
   configHash: Hash,
   writeClass: Schema.Literal('writable', 'computed', 'unsupported'),
+  configJson: Schema.optional(Schema.String),
 }).annotations({ identifier: 'NotionDatasourceSync.Cli.SchemaPropertyObservationJson' })
 
 const capabilityNames = new Set<CapabilityName>(allGatewayCapabilities)
