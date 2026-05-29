@@ -183,8 +183,7 @@ const schemaPropertiesViewName = 'schema_properties'
 const changesViewName = 'changes'
 const conflictsViewName = 'conflicts'
 const syncStatusViewName = 'sync_status'
-const pendingReplicaChangeStatusesSql =
-  "'pending', 'queued', 'planned', 'needs_reconciliation', 'conflict'"
+const pendingReplicaChangeStatusesSql = "'pending', 'queued', 'planned', 'needs_reconciliation'"
 const pendingReplicaChangesCountSql = `(SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status IN (${pendingReplicaChangeStatusesSql}))`
 const openReplicaConflictsCountSql = `(SELECT count(*) FROM _nds_replica_conflicts WHERE state = 'open')`
 
