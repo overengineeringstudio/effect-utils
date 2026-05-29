@@ -1074,6 +1074,71 @@ describe('Notion sync SQLite store', () => {
     })
   })
 
+  it('advances property base hashes on clean observations after remote-only drift', () => {
+    withStore((store) => {
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-base',
+          idempotencyKey: 'property:page-1:property-1:base',
+          valueHash: hash('8'),
+        }),
+      )
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-remote',
+          idempotencyKey: 'property:page-1:property-1:remote',
+          valueHash: hash('9'),
+        }),
+      )
+
+      expect(store.readPlannerProjectionSnapshot(rootId).properties).toEqual([
+        expect.objectContaining({
+          pageId: 'page-1',
+          propertyId: 'property-1',
+          baseHash: hash('9'),
+          remoteHash: hash('9'),
+        }),
+      ])
+    })
+  })
+
+  it('preserves property base hashes while a local property outbox is unresolved', () => {
+    withStore((store) => {
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-base',
+          idempotencyKey: 'property:page-1:property-1:base',
+          valueHash: hash('8'),
+        }),
+      )
+      store.appendEvent(
+        remoteWritePlanned({
+          eventId: 'event-command-pending',
+          idempotencyKey: 'command:pending-property',
+          commandId: 'cmd-1',
+          desiredHash: hash('a'),
+          surface: propertySurfaceKey({ pageId, propertyId }),
+        }),
+      )
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-remote',
+          idempotencyKey: 'property:page-1:property-1:remote',
+          valueHash: hash('9'),
+        }),
+      )
+
+      expect(store.readPlannerProjectionSnapshot(rootId).properties).toEqual([
+        expect.objectContaining({
+          pageId: 'page-1',
+          propertyId: 'property-1',
+          baseHash: hash('8'),
+          remoteHash: hash('9'),
+        }),
+      ])
+    })
+  })
+
   it('removes schema properties missing from the latest full data source observation', () => {
     withStore((store) => {
       store.appendEvent(
@@ -1451,6 +1516,42 @@ describe('Notion sync SQLite store', () => {
     } finally {
       store.close()
     }
+  })
+
+  it('does not downgrade a classified tombstone when a later absence event is already classified', () => {
+    withStore((store) => {
+      store.appendEvent(
+        decode(SyncEvent, {
+          _tag: 'TombstoneRecorded',
+          ...eventBase({
+            eventId: 'event-tombstone-recorded',
+            family: 'TombstoneClassified',
+            eventType: 'TombstoneRecorded',
+            idempotencyKey: 'tombstone:page-1',
+            canonicalJson: '{}',
+            surface: 'page:page-1',
+          }),
+          pageId: 'page-1',
+          reason: 'remote_trash',
+        }),
+      )
+      store.appendEvent(
+        tombstoneCandidate({
+          eventId: 'event-classified-absence',
+          idempotencyKey: 'absence:page-1:classified',
+          directRetrieve: 'in-trash',
+        }),
+      )
+
+      expect(store.readTombstones(rootId)).toEqual([
+        {
+          pageId: 'page-1',
+          classification: 'remote_trash',
+          reason: 'remote_trash',
+          eventId: 'event-tombstone-recorded',
+        },
+      ])
+    })
   })
 
   it('exposes tombstone direct-retrieve evidence only for the matching source/query identity', () => {

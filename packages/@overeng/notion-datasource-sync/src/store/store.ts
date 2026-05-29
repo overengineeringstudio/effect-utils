@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
 
+import { propertySurfaceKey } from '../core/canonical.ts'
 import { RemoteWritePlanPayload, type RemoteWriteCommand } from '../core/commands.ts'
 import {
   BodySafetySnapshot,
@@ -2764,7 +2765,8 @@ export class NotionSyncStore {
                  classification = 'unclassified',
                  reason = excluded.reason,
                  event_id = excluded.event_id,
-                 updated_at = excluded.updated_at`,
+                 updated_at = excluded.updated_at
+               WHERE _nds_tombstone.classification = 'unclassified'`,
             )
             .run(event.rootId, event.pageId, event.reason, event.eventId, currentIso(this.#now))
         }
@@ -3019,6 +3021,19 @@ export class NotionSyncStore {
                )
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(root_id, page_id, property_id) DO UPDATE SET
+                 base_hash = CASE
+                   WHEN NOT EXISTS (
+                     SELECT 1
+                     FROM _nds_outbox pending
+                     WHERE pending.root_id = excluded.root_id
+                       AND pending.command_tag = 'PatchPageProperties'
+                       AND pending.surface = ?
+                       AND pending.settlement_event_id IS NULL
+                       AND pending.state IN ('queued', 'running', 'retryable', 'blocked', 'ambiguous')
+                   )
+                     THEN excluded.remote_hash
+                   ELSE _nds_property_shadow.base_hash
+                 END,
                  remote_hash = excluded.remote_hash,
                  availability = excluded.availability,
                  observed_event_id = excluded.observed_event_id,
@@ -3034,6 +3049,7 @@ export class NotionSyncStore {
                 (event.complete === true ? 'complete' : 'paginated-incomplete'),
               event.eventId,
               currentIso(this.#now),
+              propertySurfaceKey({ pageId: event.pageId, propertyId: event.propertyId }),
             )
         } else {
           this.#db

@@ -783,6 +783,59 @@ describe('clean-break self-contained SQLite storage contract', () => {
   )
 
   it(
+    'sync --watch uses the latest clean remote observation as the base for public rows UPDATE',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+      await runWorkspaceCommand({
+        argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+        gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage('Remote drift')] }),
+      })
+      updatePublicRowsTitle({ sqlitePath, title: 'Local after remote drift' })
+
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Remote drift')] })
+      const watch = await runWorkspaceCommand({
+        argv: [
+          'sync',
+          '--watch',
+          '--sqlite',
+          sqlitePath,
+          '--state',
+          join(workspace, 'watch-after-drift.json'),
+          '--max-cycles',
+          '1',
+          '--no-materialize-bodies',
+        ],
+        gateway,
+      })
+
+      expect(watch.result.status.state).toBe('clean')
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
+      openReadOnly(sqlitePath, (db) => {
+        expect(
+          row(
+            db,
+            `SELECT kind, status, unsupported_reason
+             FROM changes
+             WHERE kind = 'cell_patch' AND page_id = ?
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            testIds.pageId,
+          ),
+        ).toMatchObject({
+          kind: 'cell_patch',
+          status: 'applied',
+          unsupported_reason: null,
+        })
+        expect(row(db, `SELECT conflicts_open FROM sync_status LIMIT 1`)).toMatchObject({
+          conflicts_open: 0,
+        })
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
     'sync --watch drains a direct public rows archive through fake Notion and settles it',
     async () => {
       const workspace = await tempWorkspace()
