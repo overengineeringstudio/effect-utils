@@ -469,7 +469,7 @@ in
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v15";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v16";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -629,7 +629,7 @@ in
                 fi
                 # Back up scrubbed .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\nchild-concurrency=2\nnetwork-concurrency=8\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\nchild-concurrency=1\nnetwork-concurrency=4\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
         if [ -f pnpm-workspace.yaml ]; then
           ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|virtualStoreDir|enableGlobalVirtualStore|globalVirtualStoreDir|stateDir|cacheDir|packageImportMethod|nodeLinker|optimisticRepeatInstall|verifyDepsBeforeRun|sideEffectsCache|sideEffectsCacheReadonly|verifyStoreIntegrity|strictStorePkgContentCheck|pmOnFail|childConcurrency|networkConcurrency):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
         fi
@@ -673,6 +673,14 @@ in
                   # Keep the frozen invocation literal in-source so downstream
                   # contract checks can verify the strict default install mode:
                   # pnpm install --frozen-lockfile --ignore-scripts
+                  ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+                    # APFS copy-based materialization of the root workspace can push
+                    # pnpm's node process into kernel kill territory on GitHub macOS.
+                    # Keep the heap bounded here so the builder fails deterministically
+                    # with a Node error instead of an unstructured SIGKILL when the
+                    # install graph gets large.
+                    export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
+                  ''}
                   node "$PNPM_MJS" install ${pnpmLockfileModeArg} ${pnpmOptionalModeArg} --ignore-scripts
                   popd >/dev/null
                   installDuration=$(timer_elapsed "$installStartedAt")
