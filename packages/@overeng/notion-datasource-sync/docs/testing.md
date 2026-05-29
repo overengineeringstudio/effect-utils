@@ -146,6 +146,14 @@ Scenario metadata lives in `src/testing/scenarios.ts`. The VRS E2E plan maps
 requirements and guards to verification levels. Add or update scenario metadata
 when adding a new guard, supported surface, or live proof.
 
+Bidirectional safety scenarios live in `src/testing/bidi-safety.ts` and are
+registered in `src/testing/scenarios.ts`. They are the required structure for
+new sync-up/sync-down race coverage: each row names the initial state, local
+action, remote action, data-loss or liveness risk, and required assertions. The
+metadata test fails if a bidi-safety row is not registered as an E2E scenario.
+Promote live bugs into the lowest deterministic tier that would have caught the
+bug before keeping a live smoke test.
+
 Required coverage for the self-contained SQLite contract:
 
 - database-ID filename creation and display-name rename safety,
