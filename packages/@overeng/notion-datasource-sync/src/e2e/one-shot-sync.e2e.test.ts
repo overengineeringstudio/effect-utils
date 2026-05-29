@@ -559,7 +559,7 @@ describe('one-shot sync orchestration', () => {
         },
       })
       expect(propertyFailedAgain.status).toMatchObject({
-        state: 'blocked',
+        state: 'clean',
         counts: { checkpoints: { incompleteProperties: 1 } },
       })
       expect(

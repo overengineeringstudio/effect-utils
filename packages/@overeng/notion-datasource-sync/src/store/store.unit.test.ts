@@ -256,7 +256,7 @@ const pagePropertyCheckpoint = (overrides: {
   readonly rootId?: SyncRootId
   readonly pageId?: string
   readonly propertyId?: string
-  readonly valueHash?: string
+  readonly valueHash?: string | null
   readonly availability?: 'complete' | 'paginated-incomplete'
 }) =>
   decode(SyncEvent, {
@@ -276,7 +276,7 @@ const pagePropertyCheckpoint = (overrides: {
     propertyId: overrides.propertyId ?? 'property-1',
     nextCursor: null,
     complete: overrides.availability !== 'paginated-incomplete',
-    valueHash: overrides.valueHash ?? hash('8'),
+    ...(overrides.valueHash === null ? {} : { valueHash: overrides.valueHash ?? hash('8') }),
   })
 
 const queryCheckpoint = (overrides: {
@@ -1043,6 +1043,37 @@ describe('Notion sync SQLite store', () => {
     })
   })
 
+  it('keeps incomplete property checkpoints diagnostic while preserving per-property write guards', () => {
+    withStore((store) => {
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-complete',
+          idempotencyKey: 'property:page-1:property-1:complete',
+          valueHash: hash('8'),
+        }),
+      )
+      store.appendEvent(
+        pagePropertyCheckpoint({
+          eventId: 'event-property-incomplete',
+          idempotencyKey: 'property:page-1:property-1:incomplete',
+          valueHash: null,
+          availability: 'paginated-incomplete',
+        }),
+      )
+
+      expect(store.readStatusProjection(rootId).checkpoints.incompleteProperties).toBe(1)
+      expect(store.readPlannerProjectionSnapshot(rootId).properties).toEqual([
+        expect.objectContaining({
+          pageId: 'page-1',
+          propertyId: 'property-1',
+          baseHash: hash('8'),
+          remoteHash: hash('8'),
+          availability: 'paginated-incomplete',
+        }),
+      ])
+    })
+  })
+
   it('removes schema properties missing from the latest full data source observation', () => {
     withStore((store) => {
       store.appendEvent(
@@ -1359,6 +1390,67 @@ describe('Notion sync SQLite store', () => {
         },
       ])
     })
+  })
+
+  it('prunes unreferenced stale query checkpoints after a complete replacement checkpoint', () => {
+    const path = tempDatabasePath()
+    const store = openNotionSyncStore({
+      path,
+      busyTimeoutMs: 2_500,
+      now: () => new Date(observedAt),
+    })
+    try {
+      store.appendEvent(
+        queryCheckpoint({
+          eventId: 'event-query-stale',
+          idempotencyKey: 'query:stale',
+          queryContractHash: hash('7'),
+          complete: true,
+        }),
+      )
+      store.appendEvent(
+        queryCheckpoint({
+          eventId: 'event-query-referenced',
+          idempotencyKey: 'query:referenced',
+          queryContractHash: hash('8'),
+          complete: true,
+        }),
+      )
+      store.appendEvent(
+        tombstoneCandidate({
+          eventId: 'event-absence-referenced',
+          idempotencyKey: 'absence:referenced',
+          queryContractHash: hash('8'),
+          directRetrieve: 'in-trash',
+        }),
+      )
+      store.appendEvent(
+        queryCheckpoint({
+          eventId: 'event-query-current',
+          idempotencyKey: 'query:current',
+          queryContractHash: hash('9'),
+          complete: true,
+        }),
+      )
+
+      const db = new DatabaseSync(path)
+      try {
+        expect(
+          db
+            .prepare(
+              `SELECT query_contract_hash
+               FROM _nds_query_scan_checkpoint
+               ORDER BY query_contract_hash`,
+            )
+            .all()
+            .map((row) => String(row.query_contract_hash)),
+        ).toEqual([hash('8'), hash('9')])
+      } finally {
+        db.close()
+      }
+    } finally {
+      store.close()
+    }
   })
 
   it('exposes tombstone direct-retrieve evidence only for the matching source/query identity', () => {

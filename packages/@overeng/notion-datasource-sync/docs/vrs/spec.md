@@ -768,7 +768,7 @@ Remote membership and row hashing require two different completeness proofs:
 | Proof                       | Source                   | Required terminal condition                                                  | Failure behavior                                              |
 | --------------------------- | ------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | Query scan completeness     | data-source query pages  | cursor chain reaches `hasMore=false` before the 10,000-result cap hides rows | do not advance completeness checkpoint or classify absence    |
-| Property value completeness | page-property item pages | every paginated property needed for hashing reaches `hasMore=false`          | mark property incomplete and block clean hash/write decisions |
+| Property value completeness | page-property item pages | every paginated property needed for hashing reaches `hasMore=false`          | mark property incomplete; block writes to that property only  |
 
 `QueryContract` is private checkpoint identity for the full database membership
 query. The membership contract is distinct from the scan window: a
@@ -776,7 +776,9 @@ high-watermark poll is an incremental observation of the same full-replica
 membership, not a different product replica. Product replicas do not expose
 filtered or query-contract establishment. Any internal debug/test query shape
 starts a separate private `_nds_*` checkpoint and must not produce a
-database-ID-named product replica.
+database-ID-named product replica. The query contract hash excludes the moving
+high-watermark so repeated incremental windows update the same checkpoint row
+instead of creating unbounded checkpoint identities.
 
 Query policy:
 

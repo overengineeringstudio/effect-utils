@@ -370,7 +370,7 @@ describe('Notion data source gateway fake', () => {
         label,
         hashFor(variantContract, apiVersion ?? apiContract.apiVersion) === baseHash,
       ]),
-    ).toEqual(variants.map(({ label }) => [label, false]))
+    ).toEqual(variants.map(({ label }) => [label, label === 'high watermark']))
     expect(hashFor(queryContract({ filter: selectFilter }))).not.toBe(
       hashFor(queryContract({ filter: doneFilter })),
     )

@@ -140,9 +140,11 @@ command, retries safely, or opens an ambiguous-outcome guard.
 ## Query And Pagination
 
 Product replicas use full database membership: no filter, no sort, page size
-`100`, and no high-watermark. A complete scan advances the private checkpoint
-only after the terminal page is reached. Dry-run limits are capped previews and
-do not establish or update `<database-id>.sqlite` replicas.
+`100`, and no user-visible high-watermark. Watch mode may add an internal
+inclusive high-watermark filter for steady-state polling; that filter is a scan
+window, not product membership identity. A complete scan advances the private
+checkpoint only after the terminal page is reached. Dry-run limits are capped
+previews and do not establish or update `<database-id>.sqlite` replicas.
 
 Page-property pagination is part of row observation for values that Notion may
 truncate on normal page retrieval. Relation, people, title, rich text, and rollup

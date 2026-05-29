@@ -1003,6 +1003,59 @@ describe('CLI command surface', () => {
     }
   })
 
+  it('renders sync --watch progress on stderr through the top-level CLI wrapper', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-watch-progress-'))
+    const originalStdoutWrite = process.stdout.write
+    const originalStderrWrite = process.stderr.write
+    let stdout = ''
+    let stderr = ''
+
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      stderr += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      return true
+    }) as typeof process.stderr.write
+
+    try {
+      const sqlitePath = join(dir, 'store.sqlite')
+      await createBoundSqlite({ path: sqlitePath })
+      await Effect.runPromise(
+        runCliMain({
+          argv: [
+            'sync',
+            '--watch',
+            '--sqlite',
+            sqlitePath,
+            '--state',
+            join(dir, 'watch.json'),
+            '--max-cycles',
+            '1',
+            '--no-materialize-bodies',
+          ],
+          options: {
+            gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway,
+          },
+        }),
+      )
+
+      expect(JSON.parse(stdout)).toMatchObject({
+        _tag: 'CliResultEnvelope',
+        command: 'sync',
+        ok: true,
+      })
+      expect(stderr).toContain('notion-datasource-sync')
+      expect(stderr).toContain('sync')
+      expect(stderr).toContain('100%')
+    } finally {
+      process.stdout.write = originalStdoutWrite
+      process.stderr.write = originalStderrWrite
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('wires pull/sync through an injected Notion client, real adapter, and real filesystem workspace', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-runtime-'))
     const clock = makeFakeClock()

@@ -101,7 +101,6 @@ export const queryContractHash = ({
     queryContract: {
       apiVersion: input.queryContract.apiVersion,
       filter: input.queryContract.filter,
-      highWatermark: input.queryContract.highWatermark,
       membershipScope: input.queryContract.membershipScope,
       pageSize: input.queryContract.pageSize,
       sorts: input.queryContract.sorts,
