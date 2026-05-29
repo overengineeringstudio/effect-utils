@@ -10,7 +10,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **A02 Notion signal model:** Notion queries, page timestamps, webhooks, and workers are invalidation or projection mechanisms, not durable ordered change streams.
 - **A03 Body adapter:** `@overeng/notion-md` owns `.nmd` page-body materialization and guarded body pushes.
 - **A04 Effect runtime:** Implementation uses Effect services, Effect Schema, typed errors, scoped resources, and Effect CLI conventions.
-- **A05 Local daemon scope:** Initial watch mode is a local daemon. Hosted webhooks and Notion Workers may feed the same reconciliation queues later but are not required for correctness.
+- **A05 Local daemon scope:** Initial watch mode is a local daemon. Hosted webhooks and Notion Workers may feed the same reconciliation queues later but are not required for correctness; provider flags must report explicit running/degraded status instead of silently becoming dead flags.
 - **A06 SQLite control plane:** Internal sync-control state uses SQLite as the durable event log, outbox, projection, conflict, tombstone, lease, checkpoint, and migration store.
 - **A07 Live verification:** Claims about Notion behavior require representative live E2E tests in an isolated temporary Notion workspace.
 - **A08 Notion drift:** Notion API behavior, connection capabilities, and workspace permissions may differ by API version, workspace, and integration configuration.
@@ -90,7 +90,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 
 ### Must Provide Reliable Watch Mode
 
-- **R42 Local daemon:** Watch mode must be implemented as a local daemon with the same planner and guards used by one-shot commands.
+- **R42 Local daemon:** `sync --watch` must run a local daemon with the same planner and guards used by one-shot commands.
 - **R43 Poll overlap:** Remote polling must query from `high_watermark - overlap` and dedupe by materialized hashes.
 - **R44 Known-page scan:** The daemon must maintain and periodically verify the known-page set so query absence can become a tombstone candidate.
 - **R45 Backpressure:** The daemon must bound queues, honor Notion rate limits, and surface stuck commands.
@@ -99,7 +99,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 
 ### Must Expose Operable Tools
 
-- **R48 CLI commands:** The package must provide CLI commands for init, pull, status, push, sync, watch, conflicts, migrate, doctor, repair, forget, and restore.
+- **R48 CLI commands:** The package must provide CLI commands for init, pull, status, push, sync, `sync --watch`, conflicts, migrate, doctor, repair, forget, and restore. There is no standalone user-facing `watch` command.
 - **R49 Dry-run plans:** Mutating commands must support dry-run output that shows planned events, conflicts, outbox commands, and guard failures.
 - **R50 Machine output:** CLI output must support structured machine-readable mode for CI and agent workflows.
 - **R51 Human diagnostics:** CLI output must provide concise human-readable explanations for conflicts, blocked guards, retries, tombstones, and migrations.
@@ -110,7 +110,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **R53 Shared schemas:** Wire schemas and canonicalizers must be reusable by datasource-sync, NotionMD, Notion React, and CLI tooling.
 - **R54 Gateway ports:** Datasource sync must depend on typed ports for Notion data sources, pages, page bodies, files, and local storage.
 - **R55 Adapter independence:** Alternative body adapters or local storage adapters must be possible without changing the sync planner.
-- **R56 Worker optionality:** Notion Workers and webhooks may provide optional invalidation/projection inputs but must not replace local reconciliation or SQLite authority.
+- **R56 Worker/webhook optionality:** Notion Workers and webhooks may provide optional invalidation/projection inputs but must not replace local reconciliation or SQLite authority. `sync --watch --webhook manual|tailscale` must start a local receiver, enqueue durable SQLite signals, wake the daemon after successful enqueue, and continue polling in degraded provider mode unless the user requested `--webhook-required`.
 
 ### Must Be Observable
 
@@ -124,7 +124,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **R61 Fake-service integration:** Sync flows must have Effect integration tests against fake Notion gateways, fake body adapters, and fake filesystem/storage services.
 - **R62 SQLite replay coverage:** Event replay, projection rebuild, migration, crash recovery, outbox idempotency, and lease fencing must be covered by SQLite integration tests.
 - **R63 Filesystem coverage:** Path claims, local edits, local deletes, sidecar damage, object store repair, and workspace scans must be tested against a real local filesystem.
-- **R64 Daemon coverage:** Watch mode must be tested for polling overlap, local file events, restart recovery, queue backpressure, cancellation, and stale lease behavior.
+- **R64 Daemon coverage:** `sync --watch` mode must be tested for polling overlap, local file events, restart recovery, queue backpressure, cancellation, and stale lease behavior.
 - **R65 Live Notion coverage:** Supported Notion API semantics must have isolated live E2E coverage with creation, mutation, verification, and cleanup.
 - **R66 Guard matrix:** Every problematic edge case must map to a named guard, expected behavior, and at least one unit, fake integration, SQLite, filesystem, daemon, or live E2E test.
 

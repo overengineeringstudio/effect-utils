@@ -11,7 +11,14 @@ import type {
 } from '../core/commands.ts'
 import type { ConflictPayload } from '../core/conflicts.ts'
 import { classifyConflict, type ConflictSurface } from '../core/conflicts.ts'
-import type { CommandId, DatabaseId, DataSourceId, Hash, PageId, PropertyId } from '../core/domain.ts'
+import type {
+  CommandId,
+  DatabaseId,
+  DataSourceId,
+  Hash,
+  PageId,
+  PropertyId,
+} from '../core/domain.ts'
 import type { IdempotencyKey, SurfaceKey, SyncEventId, SyncRootId } from '../core/events.ts'
 import {
   guardApiCompatibility,

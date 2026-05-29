@@ -176,9 +176,9 @@ const assertStorageTaxonomy = (db: DatabaseSync): void => {
   expect(names.some((name) => name.startsWith('debug_'))).toBe(true)
 
   const unsafePublic = names.filter((name) => {
-    if (publicSafeNames.has(name)) return false
-    if (name.startsWith('debug_')) return false
-    if (name.startsWith('_nds_')) return false
+    if (publicSafeNames.has(name) === true) return false
+    if (name.startsWith('debug_') === true) return false
+    if (name.startsWith('_nds_') === true) return false
     return true
   })
   expect(unsafePublic).toEqual([])
@@ -381,9 +381,7 @@ const expectNoRemoteWrites = (gateway: ReturnType<typeof makeFakeGatewayHarness>
 
 describe('clean-break self-contained SQLite storage contract', () => {
   afterEach(async () => {
-    for (const dir of scratchDirs.splice(0)) {
-      await rm(dir, { recursive: true, force: true })
-    }
+    await Promise.all(scratchDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
   })
 
   it(
@@ -475,7 +473,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
   )
 
   it(
-    'CLI status sync watch and doctor discover the self-contained SQLite from workspace or --sqlite without sidecars',
+    'CLI status sync --watch and doctor discover the self-contained SQLite from workspace or --sqlite without sidecars',
     async () => {
       const workspace = await tempWorkspace()
       const { sqlitePath } = await establishWorkspace(workspace)
@@ -496,7 +494,8 @@ describe('clean-break self-contained SQLite storage contract', () => {
       await expect(
         runWorkspaceCommand({
           argv: [
-            'watch',
+            'sync',
+            '--watch',
             '--sqlite',
             sqlitePath,
             '--state',
@@ -506,7 +505,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
           ],
         }),
       ).resolves.toMatchObject({
-        result: { command: 'watch' },
+        result: { command: 'sync' },
       })
       await expect(
         runWorkspaceCommand({ argv: ['doctor', '--sqlite', sqlitePath] }),
@@ -565,23 +564,23 @@ describe('clean-break self-contained SQLite storage contract', () => {
         db.close()
       }
 
-      const beforePending = openReadOnly(sqlitePath, (db) =>
-        row(db, `SELECT count(*) AS count FROM changes WHERE status = 'pending'`),
+      const beforePending = openReadOnly(sqlitePath, (readDb) =>
+        row(readDb, `SELECT count(*) AS count FROM changes WHERE status = 'pending'`),
       )
 
       await establishWorkspace(workspace)
 
-      openReadOnly(sqlitePath, (db) => {
-        expect(row(db, `SELECT count(*) AS count FROM changes WHERE status = 'pending'`)).toEqual(
-          beforePending,
-        )
+      openReadOnly(sqlitePath, (readDb) => {
+        expect(
+          row(readDb, `SELECT count(*) AS count FROM changes WHERE status = 'pending'`),
+        ).toEqual(beforePending)
       })
     },
     sqliteContractTimeoutMs,
   )
 
   it(
-    'public changes reports a pending row_create from direct rows INSERT before watch runs',
+    'public changes reports a pending row_create from direct rows INSERT before sync --watch runs',
     async () => {
       const workspace = await tempWorkspace()
       const { sqlitePath } = await establishWorkspace(workspace)
@@ -612,7 +611,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
   )
 
   it(
-    'watch drains a direct public rows INSERT row_create through fake Notion and settles it',
+    'sync --watch drains a direct public rows INSERT row_create through fake Notion and settles it',
     async () => {
       const workspace = await tempWorkspace()
       const { sqlitePath } = await establishWorkspace(workspace)
@@ -625,7 +624,8 @@ describe('clean-break self-contained SQLite storage contract', () => {
       const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
       const watch = await runWorkspaceCommand({
         argv: [
-          'watch',
+          'sync',
+          '--watch',
           '--sqlite',
           sqlitePath,
           '--state',
@@ -702,7 +702,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
   )
 
   it(
-    'watch drains a direct public rows UPDATE through fake Notion and settles it',
+    'sync --watch drains a direct public rows UPDATE through fake Notion and settles it',
     async () => {
       const workspace = await tempWorkspace()
       const { sqlitePath } = await establishWorkspace(workspace)
@@ -711,7 +711,8 @@ describe('clean-break self-contained SQLite storage contract', () => {
       const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
       await runWorkspaceCommand({
         argv: [
-          'watch',
+          'sync',
+          '--watch',
           '--sqlite',
           sqlitePath,
           '--state',
@@ -879,19 +880,21 @@ describe('clean-break self-contained SQLite storage contract', () => {
         },
       ]
 
-      for (const tamperCase of tamperCases) {
-        const copyPath = join(workspace, `${tamperCase.name.replaceAll(' ', '-')}.sqlite`)
-        await copyFile(sqlitePath, copyPath)
-        const db = new DatabaseSync(copyPath)
-        try {
-          tamperCase.sql(db)
-        } finally {
-          db.close()
-        }
+      await Promise.all(
+        tamperCases.map(async (tamperCase) => {
+          const copyPath = join(workspace, `${tamperCase.name.replaceAll(' ', '-')}.sqlite`)
+          await copyFile(sqlitePath, copyPath)
+          const db = new DatabaseSync(copyPath)
+          try {
+            tamperCase.sql(db)
+          } finally {
+            db.close()
+          }
 
-        const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
-        await expectCommandFailsClosed({ argv: tamperCase.argv(copyPath), gateway })
-      }
+          const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+          await expectCommandFailsClosed({ argv: tamperCase.argv(copyPath), gateway })
+        }),
+      )
     },
     sqliteContractTimeoutMs,
   )

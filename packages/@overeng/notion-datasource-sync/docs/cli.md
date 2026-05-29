@@ -5,6 +5,7 @@ The binary is `notion-datasource-sync`.
 ```sh
 notion-datasource-sync sync --from-notion <data-source-id-or-database-url> <workspace-root> [--dry-run] [--limit <rows>] [--no-materialize-bodies]
 notion-datasource-sync sync <workspace-root> [--dry-run]
+notion-datasource-sync sync --watch <workspace-root> [--state <path>] [--max-cycles <n>] [--mode <development|normal|low-priority>] [--webhook <none|tailscale|manual>] [--webhook-required]
 notion-datasource-sync status <workspace-root>
 notion-datasource-sync doctor <workspace-root>/<database-id>.sqlite
 sqlite3 <workspace-root>/<database-id>.sqlite
@@ -13,7 +14,6 @@ notion-datasource-sync conflicts list <workspace-root>/<database-id>.sqlite
 notion-datasource-sync conflicts resolve <workspace-root>/<database-id>.sqlite --conflict-id <id> --strategy <keep-remote|keep-local|manual> [--value-json <json>] [--dry-run]
 notion-datasource-sync forget <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
 notion-datasource-sync restore <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
-notion-datasource-sync watch <workspace-root> [--max-cycles <n>]
 ```
 
 `migrate store`, `migrate schema`, and `repair` are parsed but currently
@@ -37,8 +37,15 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 | `--limit`, `--max-rows`    | Dry-run-only establishment preview row cap; writes nothing and reports capped query state          |
 | `--schema-properties-json` | Advanced/debug override for schema-property observations; normal sync discovers schema from Notion |
 | `--required-capabilities`  | Comma-separated capability preflight list                                                          |
-| `--max-executor-steps`     | Bound outbox execution in `sync` and `watch`                                                       |
+| `--max-executor-steps`     | Bound outbox execution in `sync` and `sync --watch`                                                |
 | `--no-materialize-bodies`  | Observe properties/schema without local body materialization                                       |
+| `--watch`                  | Run `sync` as a long-lived daemon loop                                                             |
+| `--state`                  | Override the `sync --watch` daemon state JSON path                                                 |
+| `--max-cycles`             | Bound `sync --watch` cycles for tests, demos, and supervised runs                                  |
+| `--mode`                   | Select `sync --watch` daemon backoff: `development`, `normal`, or `low-priority`                   |
+| `--webhook`                | Optional `sync --watch` wakeup status mode: `none`, `tailscale`, or `manual`                       |
+| `--webhook-required`       | Require the selected webhook provider to report usable status before the daemon starts             |
+| `--non-interactive`        | Reserve provider setup for non-interactive runs; current webhook status checks never prompt        |
 
 ## Commands
 
@@ -46,9 +53,9 @@ Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 | -------------------- | -------------------------------------------------------------------- |
 | `sync --from-notion` | Establishes a workspace from an existing Notion database/data source |
 | `sync <workspace>`   | Reconciles all established database files in a workspace             |
+| `sync --watch`       | Repeats sync cycles and processes local SQLite CDC with daemon state |
 | `status <workspace>` | Reads public status and pending work for established database files  |
 | `doctor <sqlite>`    | Verifies one database file, including private `_nds_*` integrity     |
-| `watch <workspace>`  | Repeats sync cycles and processes local SQLite CDC with daemon state |
 | `conflicts list`     | Prints conflicts, guards, tombstones, and pending outbox actions     |
 | `conflicts resolve`  | Resolves a conflict by explicit user action                          |
 | `forget`             | Removes local tracking for a page after explicit user intent         |
@@ -84,6 +91,22 @@ Errors print a JSON envelope to stderr:
   }
 }
 ```
+
+## Webhook Wakeups
+
+`sync --watch` is correct without webhooks. Polling reconciliation and local SQLite
+CDC remain the authority. Webhooks are dirty wakeup hints only, and every hinted
+entity must still be re-read before planning.
+
+`--webhook manual` starts a local HTTP receiver and reports the callback URL in
+the JSON result. Use this with an externally managed tunnel or relay. After a
+signed Notion delivery is persisted to the SQLite signal inbox, the receiver
+wakes the daemon immediately; polling reconciliation still validates the change.
+
+`--webhook tailscale` starts the same local receiver and attempts to expose it
+with Tailscale Funnel. If Funnel setup fails, the daemon still starts in degraded
+webhook mode unless `--webhook-required` is present. Receiver and provider
+resources are stopped when `sync --watch` exits.
 
 Treat command output as operational data. It can include page IDs, database
 IDs, data-source IDs, and local paths.
@@ -206,7 +229,7 @@ row edits and explicit change requests. Sync reads public changes, validates
 them against `_nds_*` base hashes, enqueues private outbox commands, executes
 remote writes, then settles only after read-after-write verification.
 
-`watch <workspace-root>` must process the same local SQLite CDC as
+`sync --watch <workspace-root>` must process the same local SQLite CDC as
 `sync <workspace-root>`. A daemon cycle observes pending public changes,
 coalesces current-state row edits where appropriate, plans guarded remote
 commands, and settles only after verification. Watch mode must not ignore local
@@ -221,5 +244,5 @@ sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" "pragma wal_checkpoint(full
 sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" ".backup '$PWD/backup/<database-id>.sqlite'"
 ```
 
-For an offline copy, stop sync/watch first and copy the SQLite file plus any
+For an offline copy, stop `sync --watch` first and copy the SQLite file plus any
 SQLite-managed `-wal`/`-shm` files that still exist.

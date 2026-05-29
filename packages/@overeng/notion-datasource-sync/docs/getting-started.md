@@ -221,5 +221,5 @@ sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" "pragma wal_checkpoint(full
 sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" ".backup '$PWD/backup/<database-id>.sqlite'"
 ```
 
-For offline copies, stop sync/watch first, then copy the SQLite database and any
+For offline copies, stop `sync --watch` first, then copy the SQLite database and any
 remaining SQLite-managed `-wal`/`-shm` files.

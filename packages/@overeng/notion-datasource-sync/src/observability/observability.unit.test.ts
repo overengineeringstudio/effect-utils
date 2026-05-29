@@ -31,7 +31,7 @@ describe('notion datasource sync observability', () => {
       cli: 'notion-datasource-sync-cli',
       daemon: 'notion-datasource-sync-daemon',
     })
-    expect(otelServiceNameForCliArgv(['watch'])).toBe('notion-datasource-sync-daemon')
+    expect(otelServiceNameForCliArgv(['sync', '--watch'])).toBe('notion-datasource-sync-daemon')
     expect(otelServiceNameForCliArgv(['sync'])).toBe('notion-datasource-sync-cli')
   })
 

@@ -6,16 +6,16 @@ missing.
 
 ## Authority
 
-| Surface                  | Source of truth while syncing           | Write rule                                            |
-| ------------------------ | --------------------------------------- | ----------------------------------------------------- |
-| Current remote schema    | Fresh Notion observation                | Re-read before schema-affecting writes                |
-| Current row properties   | Fresh Notion row/property observation   | Re-read and hash before property patches              |
-| Row page body            | `PageBodySyncPort` / NotionMD           | Delegate body conflict and destructive-body guards    |
-| Local accepted intent    | `_nds_*` event log in the database file | Commit event before remote effect                     |
-| Pending remote effects   | `_nds_*` outbox in the database file    | Execute outside SQL transaction, verify settlement    |
-| Local file paths         | Workspace path claims                   | Never overwrite another page's claimed path           |
+| Surface                  | Source of truth while syncing                | Write rule                                          |
+| ------------------------ | -------------------------------------------- | --------------------------------------------------- |
+| Current remote schema    | Fresh Notion observation                     | Re-read before schema-affecting writes              |
+| Current row properties   | Fresh Notion row/property observation        | Re-read and hash before property patches            |
+| Row page body            | `PageBodySyncPort` / NotionMD                | Delegate body conflict and destructive-body guards  |
+| Local accepted intent    | `_nds_*` event log in the database file      | Commit event before remote effect                   |
+| Pending remote effects   | `_nds_*` outbox in the database file         | Execute outside SQL transaction, verify settlement  |
+| Local file paths         | Workspace path claims                        | Never overwrite another page's claimed path         |
 | Query membership         | Full database query plus complete pagination | Never infer absence from incomplete or capped scans |
-| Lifecycle and tombstones | Direct row/page classification          | No remote trash from accidental local disappearance   |
+| Lifecycle and tombstones | Direct row/page classification               | No remote trash from accidental local disappearance |
 
 Each Notion database has one self-contained SQLite file:
 `<workspace>/<database-id>.sqlite`. Public local surfaces are `rows`, `schema`,
@@ -69,7 +69,7 @@ pass, then re-reads and projects the result back into the same SQLite file. A
 public change is not hidden from later scans merely because it was converted to
 planner input.
 
-Watch mode has the same local CDC obligation as one-shot sync. Each daemon
+`sync --watch` mode has the same local CDC obligation as one-shot sync. Each daemon
 cycle must read pending `rows` / `changes` state from established
 `<database-id>.sqlite` files, plan safe remote effects, execute verified
 commands, and update public observability. Remote polling, repair scans, and

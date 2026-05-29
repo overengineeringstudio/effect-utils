@@ -18,7 +18,6 @@ import {
   SyncRootId,
   bodySurfaceKey,
   dataSourceMetadataSurfaceKey,
-  databaseMetadataSurfaceKey,
   classifyConflict,
   guardApiCompatibility,
   guardBodyAdapterBoundary,

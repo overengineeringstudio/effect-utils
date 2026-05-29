@@ -19,6 +19,7 @@ import {
   type NotionDataSourceGateway,
   type PageBodySyncPort,
 } from '../core/ports.ts'
+import type { SignalInboxRecord } from '../core/signals.ts'
 import type { OneShotSyncStatus } from '../core/status.ts'
 import {
   shortSpanId,
@@ -74,6 +75,7 @@ export type WatchDaemonCycleResult = {
   readonly status: OneShotSyncStatus
   readonly sync: OneShotSyncResult
   readonly state: WatchDaemonState
+  readonly signal: SignalInboxRecord | undefined
 }
 
 /** Aggregate result for a full `runWatchDaemon` invocation: total attempted/completed cycles, cancellation flag, and final daemon state. */
@@ -87,12 +89,18 @@ export type WatchDaemonRunResult = {
   readonly state: WatchDaemonState
 }
 
+/** In-process wake channel shared by webhook receivers and the watch daemon loop. */
+export type WatchDaemonWakeNotifier = {
+  readonly wake: () => void
+  readonly awaitWake: (millis: number) => Effect.Effect<void>
+}
+
 /**
  * Runtime configuration for `runWatchDaemon` and `runWatchDaemonCycle`.
  *
  * Includes the sync dependencies (store, gateway ports, workspace root, contracts),
  * daemon identity / lease parameters, backoff mode, cycle cap, and optional
- * test-seam overrides for `sleep`, `now`, and the `AbortSignal`.
+ * overrides for sleep, webhook wake notifications, now, and the AbortSignal.
  */
 export type WatchDaemonOptions = {
   readonly store: NotionSyncStore
@@ -113,6 +121,7 @@ export type WatchDaemonOptions = {
   readonly leaseDurationMs?: number
   readonly instanceId?: string
   readonly sleep?: (millis: number) => Effect.Effect<void>
+  readonly wakeNotifier?: WatchDaemonWakeNotifier
   readonly now?: () => Date
   readonly signal?: AbortSignal
 }
@@ -167,6 +176,63 @@ const modeBackoffMillis = (mode: WatchDaemonMode): number => {
       return 5_000
     case 'low-priority':
       return 15_000
+  }
+}
+
+/** Creates a process-local wake notifier. A receiver should enqueue a durable signal, then call `wake()`. */
+export const makeWatchDaemonWakeNotifier = (): WatchDaemonWakeNotifier => {
+  const waiters = new Set<() => void>()
+  let pendingWake = false
+
+  return {
+    wake: () => {
+      if (waiters.size === 0) {
+        pendingWake = true
+        return
+      }
+
+      pendingWake = false
+      const callbacks = Array.from(waiters)
+      waiters.clear()
+      for (const callback of callbacks) {
+        callback()
+      }
+    },
+    awaitWake: (millis) => {
+      if (millis <= 0 || pendingWake === true) {
+        pendingWake = false
+        return Effect.void
+      }
+
+      return Effect.async<void>((resume, effectSignal) => {
+        let completed = false
+        let timeout: ReturnType<typeof setTimeout> | undefined
+        const complete = () => {
+          if (completed === true) return
+          completed = true
+          if (timeout !== undefined) {
+            clearTimeout(timeout)
+          }
+          waiters.delete(complete)
+          resume(Effect.void)
+        }
+        timeout = setTimeout(complete, millis)
+
+        waiters.add(complete)
+        effectSignal.addEventListener(
+          'abort',
+          () => {
+            if (completed === true) return
+            completed = true
+            if (timeout !== undefined) {
+              clearTimeout(timeout)
+            }
+            waiters.delete(complete)
+          },
+          { once: true },
+        )
+      })
+    },
   }
 }
 
@@ -394,6 +460,11 @@ const projectReplicaIfWritable = ({
   })
 }
 
+const daemonCycleErrorReason = (cause: unknown): string =>
+  typeof cause === 'object' && cause !== null && '_tag' in cause
+    ? String(cause._tag)
+    : 'unknown-daemon-cycle-error'
+
 /**
  * Executes one full sync cycle under the `notion.datasource.daemon.pass` span.
  *
@@ -461,6 +532,16 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         },
       })
 
+      const leaseToken =
+        options.leaseToken ?? defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId })
+      const leaseDurationMs = options.leaseDurationMs ?? 60_000
+      const claimedSignal = yield* Effect.sync(() =>
+        options.store.claimNextSignal({
+          rootId: options.rootId,
+          leaseToken,
+          leaseDurationMs,
+        }),
+      )
       const replicaInputs = yield* Effect.sync(() => readPendingReplicaPlannerInputs({ options }))
       const syncCycle = syncOneShot({
         store: options.store,
@@ -479,10 +560,8 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           : { materializeBodies: options.materializeBodies }),
         localIntents: replicaInputs.intents,
         maxExecutorSteps: options.maxExecutorSteps ?? 8,
-        leaseToken:
-          options.leaseToken ??
-          defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId }),
-        leaseDurationMs: options.leaseDurationMs ?? 60_000,
+        leaseToken,
+        leaseDurationMs,
         now,
       }).pipe(
         Effect.tap((result) =>
@@ -499,6 +578,16 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
             projectReplicaIfWritable({ options, replicaPath: replicaInputs.replicaPath })
           }),
         ),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (claimedSignal === undefined) return
+            options.store.settleSignal({
+              rootId: options.rootId,
+              signalId: claimedSignal.signalId,
+              leaseToken,
+            })
+          }),
+        ),
       )
       const sync = yield* interruptOnTimeout({
         effect: interruptOnAbort({
@@ -512,23 +601,32 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         cycle,
       }).pipe(
         Effect.tapError((cause) =>
-          writeWatchDaemonState({
-            statePath: options.statePath,
-            state: {
-              ...previous,
-              cycle,
-              lastStartedAt: startedAt,
-              repair: {
-                _tag: 'retry',
-                reason:
-                  typeof cause === 'object' && cause !== null && '_tag' in cause
-                    ? String(cause._tag)
-                    : 'unknown-daemon-cycle-error',
-                retryAfterMillis: modeBackoffMillis(mode),
-                failedCycle: cycle,
-              },
-            },
-          }),
+          Effect.sync(() => {
+            if (claimedSignal === undefined) return
+            options.store.releaseSignal({
+              rootId: options.rootId,
+              signalId: claimedSignal.signalId,
+              leaseToken,
+              error: daemonCycleErrorReason(cause),
+            })
+          }).pipe(
+            Effect.zipRight(
+              writeWatchDaemonState({
+                statePath: options.statePath,
+                state: {
+                  ...previous,
+                  cycle,
+                  lastStartedAt: startedAt,
+                  repair: {
+                    _tag: 'retry',
+                    reason: daemonCycleErrorReason(cause),
+                    retryAfterMillis: modeBackoffMillis(mode),
+                    failedCycle: cycle,
+                  },
+                },
+              }),
+            ),
+          ),
         ),
       )
       yield* ensureNotCancelled({ signal: options.signal, rootId: options.rootId, cycle })
@@ -557,6 +655,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         status: sync.status,
         sync,
         state,
+        signal: claimedSignal,
       }
     }),
 )
@@ -589,6 +688,7 @@ export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
       const maxCycles = options.maxCycles
       const mode = options.mode ?? 'normal'
       const sleep = options.sleep ?? ((millis: number) => Effect.sleep(Duration.millis(millis)))
+      const awaitWake = options.wakeNotifier?.awaitWake ?? sleep
       const instanceId = options.instanceId ?? makeWatchDaemonInstanceId()
       let completed = 0
       let attempted = 0
@@ -651,8 +751,13 @@ export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
         }
 
         if (maxCycles === undefined || attempted < maxCycles) {
+          const pendingSignals = options.store.readSignalStatus(options.rootId).pending
           const delay =
-            state.repair._tag === 'retry' ? state.repair.retryAfterMillis : modeBackoffMillis(mode)
+            state.repair._tag === 'retry'
+              ? state.repair.retryAfterMillis
+              : pendingSignals > 0
+                ? 0
+                : modeBackoffMillis(mode)
           if (options.signal?.aborted === true) {
             const result = {
               _tag: 'WatchDaemonRunResult' as const,
@@ -674,7 +779,7 @@ export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
             )
             return result
           }
-          yield* sleep(delay)
+          yield* awaitWake(delay)
         }
       }
 
