@@ -290,7 +290,7 @@ describe('one-shot sync orchestration', () => {
         {
           pageId: testIds.pageId,
           propertyId: testIds.propertyA,
-          baseHash: hash('property-a-base'),
+          baseHash: hash('property-a-remote'),
           remoteHash: hash('property-a-remote'),
           availability: 'complete',
           pendingLocal: undefined,
