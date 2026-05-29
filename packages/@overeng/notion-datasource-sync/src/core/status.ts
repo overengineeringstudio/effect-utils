@@ -73,8 +73,7 @@ export const readOneShotSyncStatus = ({
     projection.capabilities.unsupported +
     projection.checkpoints.incompleteQueries +
     projection.checkpoints.cappedQueries +
-    projection.checkpoints.changedQueryContracts +
-    projection.checkpoints.incompleteProperties
+    projection.checkpoints.changedQueryContracts
   const state: OneShotStatusState =
     conflict > 0 ? 'conflict' : blocked > 0 ? 'blocked' : pending > 0 ? 'pending' : 'clean'
 

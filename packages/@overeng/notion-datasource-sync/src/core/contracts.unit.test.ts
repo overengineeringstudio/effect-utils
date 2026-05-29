@@ -20,6 +20,7 @@ import {
   SyncEvent,
   guardApiVersion,
   guardCapabilities,
+  queryContractHash,
   shouldAdvanceQueryCheckpoint,
   type NotionDataSourceGatewayShape,
 } from '../mod.ts'
@@ -53,6 +54,47 @@ describe('@overeng/notion-datasource-sync contracts', () => {
 
     expect(queryContract.apiVersion).toBe('2026-03-11')
     expect(queryContract.pageSize).toBe(50)
+  })
+
+  it('keeps query membership identity stable across incremental high-watermark windows', () => {
+    const baseContract = {
+      _tag: 'QueryContract',
+      apiVersion: '2026-03-11',
+      filter: null,
+      sorts: [],
+      pageSize: 100,
+      membershipScope: 'all-data-source-rows',
+    } as const
+    const firstWindow = decode(QueryContract, {
+      ...baseContract,
+      highWatermark: null,
+    })
+    const secondWindow = decode(QueryContract, {
+      ...baseContract,
+      highWatermark: '2026-05-29T12:45:00.000Z',
+    })
+
+    expect(
+      queryContractHash({
+        apiVersion: '2026-03-11',
+        input: {
+          _tag: 'QueryRowsInput',
+          dataSourceId,
+          queryContract: firstWindow,
+          startCursor: null,
+        },
+      }),
+    ).toBe(
+      queryContractHash({
+        apiVersion: '2026-03-11',
+        input: {
+          _tag: 'QueryRowsInput',
+          dataSourceId,
+          queryContract: secondWindow,
+          startCursor: null,
+        },
+      }),
+    )
   })
 
   it('keeps remote write commands as tagged data', () => {

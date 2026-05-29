@@ -2950,6 +2950,23 @@ export class NotionSyncStore {
             event.eventId,
             currentIso(this.#now),
           )
+        if (event.complete === true) {
+          this.#db
+            .prepare(
+              `DELETE FROM _nds_query_scan_checkpoint
+               WHERE root_id = ?
+                 AND data_source_id = ?
+                 AND query_contract_hash != ?
+                 AND NOT EXISTS (
+                   SELECT 1
+                   FROM _nds_query_absence absence
+                   WHERE absence.root_id = _nds_query_scan_checkpoint.root_id
+                     AND absence.data_source_id = _nds_query_scan_checkpoint.data_source_id
+                     AND absence.query_contract_hash = _nds_query_scan_checkpoint.query_contract_hash
+                 )`,
+            )
+            .run(event.rootId, event.dataSourceId, event.queryContractHash)
+        }
         break
       }
       case 'PagePropertyCheckpointRecorded': {
@@ -3017,6 +3034,26 @@ export class NotionSyncStore {
                 (event.complete === true ? 'complete' : 'paginated-incomplete'),
               event.eventId,
               currentIso(this.#now),
+            )
+        } else {
+          this.#db
+            .prepare(
+              `UPDATE _nds_property_shadow
+               SET availability = ?,
+                   observed_event_id = ?,
+                   updated_at = ?
+               WHERE root_id = ?
+                 AND page_id = ?
+                 AND property_id = ?`,
+            )
+            .run(
+              payload?.availability ??
+                (event.complete === true ? 'complete' : 'paginated-incomplete'),
+              event.eventId,
+              currentIso(this.#now),
+              event.rootId,
+              event.pageId,
+              event.propertyId,
             )
         }
         break

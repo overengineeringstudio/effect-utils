@@ -545,6 +545,17 @@ describe('clean-break self-contained SQLite storage contract', () => {
         ).toEqual(
           expect.arrayContaining(['cell_patch', 'row_create', 'row_archive', 'row_restore']),
         )
+        expect(
+          row(
+            db,
+            `SELECT count(*) AS count
+             FROM changes
+             WHERE kind = 'row_archive' AND status = 'rejected'`,
+          ),
+        ).toMatchObject({ count: 1 })
+        expect(row(db, `SELECT pending_local_changes FROM sync_status LIMIT 1`)).toMatchObject({
+          pending_local_changes: 3,
+        })
 
         expect(() => db.prepare(`DELETE FROM rows WHERE _page_id = ?`).run(testIds.pageId)).toThrow(
           /unsupported|unsafe|archive/i,
