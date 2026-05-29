@@ -290,31 +290,31 @@ const collectRepoStoreWorktrees = ({
           broken: false,
         })
       }
-    } else {
-      for (const refType of STORE_REF_TYPES) {
-        const refTypePath = EffectPath.ops.join(
-          repoPath,
-          EffectPath.unsafe.relativeDir(`refs/${refType}/`),
-        )
-        const refTypeStat = yield* fs
-          .stat(refTypePath)
-          .pipe(Effect.catchAll(() => Effect.succeed(null)))
-        if (refTypeStat?.type !== 'Directory') continue
+    }
 
-        const layoutWorktrees = yield* collectStoreWorktrees({
-          fs,
-          refTypePath,
-          currentPath: refTypePath,
-          refType,
-        })
+    for (const refType of STORE_REF_TYPES) {
+      const refTypePath = EffectPath.ops.join(
+        repoPath,
+        EffectPath.unsafe.relativeDir(`refs/${refType}/`),
+      )
+      const refTypeStat = yield* fs
+        .stat(refTypePath)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)))
+      if (refTypeStat?.type !== 'Directory') continue
 
-        for (const worktree of layoutWorktrees) {
-          const normalizedPath = worktree.path.replace(/\/+$/, '')
-          if (seenPaths.has(normalizedPath) === true) continue
+      const layoutWorktrees = yield* collectStoreWorktrees({
+        fs,
+        refTypePath,
+        currentPath: refTypePath,
+        refType,
+      })
 
-          seenPaths.add(normalizedPath)
-          result.push(worktree)
-        }
+      for (const worktree of layoutWorktrees) {
+        const normalizedPath = worktree.path.replace(/\/+$/, '')
+        if (seenPaths.has(normalizedPath) === true) continue
+
+        seenPaths.add(normalizedPath)
+        result.push(worktree)
       }
     }
 
