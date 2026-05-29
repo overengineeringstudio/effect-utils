@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -524,7 +525,10 @@ const defaultWatchStatePath = (context: CliContext): string =>
     : `${context.storePath}.watch.json`
 
 const defaultWebhookReceiverPort = 39231
-const defaultWebhookReceiverPath = '/notion-datasource-sync/webhook/notion'
+const defaultWebhookReceiverPathPrefix = '/notion-datasource-sync/webhook/notion'
+
+const makeDefaultWebhookReceiverPath = (): string =>
+  `${defaultWebhookReceiverPathPrefix}/${randomUUID()}`
 
 // oxlint-disable-next-line overeng/named-args -- implements TailscaleProcessRunner callback shape.
 const defaultTailscaleProcessRunner: TailscaleProcessRunner = (command, args) =>
@@ -601,7 +605,7 @@ const setupWatchWebhook = ({
           ? {}
           : { hostname: context.webhookReceiverHostname }),
         port: context.webhookReceiverPort ?? defaultWebhookReceiverPort,
-        path: context.webhookReceiverPath ?? defaultWebhookReceiverPath,
+        path: context.webhookReceiverPath ?? makeDefaultWebhookReceiverPath(),
         onSignalEnqueued: () => wakeNotifier.wake(),
       })
       context.webhookReceiverStarted?.(receiver)

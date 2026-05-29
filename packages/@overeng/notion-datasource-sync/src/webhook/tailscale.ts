@@ -179,9 +179,7 @@ export const publicUrlFromTailscaleStatusJson = ({
   const exact = candidates.find(
     (candidate) => candidate.path === normalizedPath && candidate.publicUrl !== undefined,
   )
-  return (
-    exact?.publicUrl ?? candidates.find((candidate) => candidate.publicUrl !== undefined)?.publicUrl
-  )
+  return exact?.publicUrl
 }
 
 /** Build a Tailscale Funnel relay provider around an injected process runner. */

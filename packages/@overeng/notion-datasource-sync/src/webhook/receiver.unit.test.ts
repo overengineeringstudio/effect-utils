@@ -68,6 +68,43 @@ describe('Notion webhook receiver', () => {
     expect(signal?.payloadJson).not.toContain('do-not-persist')
   })
 
+  it('dedupes duplicate signed deliveries by provider event id', async () => {
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+    receiverFixtures.push(storeFixture)
+    const receiver = await startNotionWebhookReceiver({
+      rootId: testIds.rootId,
+      store: storeFixture.store,
+      verificationToken,
+      path: '/notion/webhook',
+    })
+    receiverFixtures.push({ cleanup: () => receiver.close() })
+
+    const rawBody = JSON.stringify({
+      id: 'event-duplicate',
+      type: 'page.updated',
+      entity: { id: testIds.pageId, type: 'page' },
+      data: { parent: { data_source_id: testIds.dataSourceId } },
+    })
+    const headers = {
+      'content-type': 'application/json',
+      'x-notion-signature': computeNotionWebhookSignature({ rawBody, verificationToken }),
+    }
+
+    const first = await fetch(receiver.url, { method: 'POST', body: rawBody, headers })
+    const second = await fetch(receiver.url, { method: 'POST', body: rawBody, headers })
+
+    expect(first.status).toBe(200)
+    expect(await first.json()).toEqual({ ok: true, inserted: true })
+    expect(second.status).toBe(200)
+    expect(await second.json()).toEqual({ ok: true, inserted: false })
+    expect(storeFixture.store.readSignalStatus(testIds.rootId)).toEqual({
+      pending: 1,
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+    })
+  })
+
   it('captures verification tokens and then accepts signed deliveries with that token', async () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
     receiverFixtures.push(storeFixture)

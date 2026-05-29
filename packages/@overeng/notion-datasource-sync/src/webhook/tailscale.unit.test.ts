@@ -35,6 +35,36 @@ describe('Tailscale Funnel webhook relay provider', () => {
     ).toBeUndefined()
   })
 
+  it('does not accept an unrelated Funnel route as provider status', async () => {
+    const statusJson = JSON.stringify({
+      Routes: [
+        {
+          path: '/other-service',
+          publicUrl: 'https://machine.tailnet.ts.net/other-service',
+        },
+      ],
+    })
+
+    expect(
+      publicUrlFromTailscaleStatusJson({
+        path: '/notion-datasource-sync/nonce',
+        statusJson,
+      }),
+    ).toBeUndefined()
+
+    const provider = makeTailscaleFunnelProvider({
+      localPort: 34567,
+      path: '/notion-datasource-sync/nonce',
+      run: async () => ({ exitCode: 0, stdout: statusJson, stderr: '' }),
+    })
+
+    await expect(provider.status()).resolves.toEqual({
+      _tag: 'not-running',
+      provider: 'tailscale-funnel',
+      reason: 'No Tailscale Funnel public URL was reported',
+    })
+  })
+
   it('starts Funnel using an injected process runner and then reads status', async () => {
     const calls: Array<{ readonly command: string; readonly args: readonly string[] }> = []
     const run: TailscaleProcessRunner = async (command, args) => {

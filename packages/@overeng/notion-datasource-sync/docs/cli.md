@@ -99,9 +99,12 @@ CDC remain the authority. Webhooks are dirty wakeup hints only, and every hinted
 entity must still be re-read before planning.
 
 `--webhook manual` starts a local HTTP receiver and reports the callback URL in
-the JSON result. Use this with an externally managed tunnel or relay. After a
-signed Notion delivery is persisted to the SQLite signal inbox, the receiver
-wakes the daemon immediately; polling reconciliation still validates the change.
+the JSON result. By default the callback path includes a per-run unguessable
+suffix so a public relay cannot pre-claim the first Notion verification token;
+explicit receiver paths should only be used behind a trusted relay. Use this with
+an externally managed tunnel or relay. After a signed Notion delivery is
+persisted to the SQLite signal inbox, the receiver wakes the daemon immediately;
+polling reconciliation still validates the change.
 
 `--webhook tailscale` starts the same local receiver and attempts to expose it
 with Tailscale Funnel. If Funnel setup fails, the daemon still starts in degraded
