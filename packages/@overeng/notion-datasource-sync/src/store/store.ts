@@ -2672,24 +2672,58 @@ export class NotionSyncStore {
           .run(event.eventId, currentIso(this.#now), event.rootId, event.conflictId)
         break
       case 'TombstoneCandidateObserved':
-        this.#db
-          .prepare(
-            `INSERT INTO _nds_tombstone (
-               root_id,
-               page_id,
-               classification,
-               reason,
-               event_id,
-               updated_at
-             )
-             VALUES (?, ?, 'unclassified', ?, ?, ?)
-             ON CONFLICT(root_id, page_id) DO UPDATE SET
-               classification = 'unclassified',
-               reason = excluded.reason,
-               event_id = excluded.event_id,
-             updated_at = excluded.updated_at`,
-          )
-          .run(event.rootId, event.pageId, event.reason, event.eventId, currentIso(this.#now))
+        const queryAbsencePayload = decodePayload({
+          event: event,
+          decode: decodeQueryAbsenceProjectionPayload,
+        })
+        if (queryAbsencePayload?.directRetrieve === 'accessible') {
+          if (
+            queryAbsencePayload.dataSourceId !== undefined &&
+            queryAbsencePayload.queryContractHash !== undefined
+          ) {
+            this.#db
+              .prepare(
+                `DELETE FROM _nds_tombstone
+                 WHERE root_id = ?
+                   AND page_id = ?
+                   AND event_id IN (
+                     SELECT evidence_event_id
+                     FROM _nds_query_absence
+                     WHERE root_id = ?
+                       AND data_source_id = ?
+                       AND page_id = ?
+                       AND query_contract_hash = ?
+                   )`,
+              )
+              .run(
+                event.rootId,
+                event.pageId,
+                event.rootId,
+                queryAbsencePayload.dataSourceId,
+                event.pageId,
+                queryAbsencePayload.queryContractHash,
+              )
+          }
+        } else {
+          this.#db
+            .prepare(
+              `INSERT INTO _nds_tombstone (
+                 root_id,
+                 page_id,
+                 classification,
+                 reason,
+                 event_id,
+                 updated_at
+               )
+               VALUES (?, ?, 'unclassified', ?, ?, ?)
+               ON CONFLICT(root_id, page_id) DO UPDATE SET
+                 classification = 'unclassified',
+                 reason = excluded.reason,
+                 event_id = excluded.event_id,
+                 updated_at = excluded.updated_at`,
+            )
+            .run(event.rootId, event.pageId, event.reason, event.eventId, currentIso(this.#now))
+        }
         this.#applyQueryAbsenceEvidence({ event, defaultClassified: false })
         break
       case 'TombstoneRecorded':

@@ -1352,10 +1352,10 @@ describe('Notion sync SQLite store', () => {
       expect(store.readPlannerProjectionSnapshot(rootId).tombstones).toEqual([
         {
           pageId: 'page-1',
-          dataSourceId: 'data-source-2',
+          dataSourceId: 'data-source-1',
           queryContractHash: hash('7'),
           state: 'candidate',
-          directRetrieve: 'accessible',
+          directRetrieve: 'in-trash',
         },
       ])
     })

@@ -638,7 +638,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         lastCompleteCycle: cycle,
         lastStartedAt: startedAt,
         lastCompletedAt: now().toISOString(),
-        repair: sync.status.state === 'clean' ? { _tag: 'none' } : previous.repair,
+        repair: { _tag: 'none' },
         lastStatus: sync.status,
       }
       yield* writeWatchDaemonState({ statePath: options.statePath, state })

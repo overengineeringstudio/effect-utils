@@ -73,6 +73,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-datasource-sync**: Classify full-query absence candidates with direct page retrieval, clear stale watch repair markers after completed cycles, and avoid duplicate public SQLite row-edit CDC so bidirectional row/title sync settles reliably.
 - **@overeng/notion-datasource-sync**: Fail closed for direct public SQLite `people` and `files` current-state cell edits before visible replica mutation or CDC append; these surfaces must use deterministic user-identity pagination or explicit file staging/upload lifecycle before promotion.
 - **@overeng/notion-datasource-sync**: Surface ambiguous public SQLite row-create outcomes as `needs_reconciliation` instead of leaving them as planned, with E2E coverage for the expired-running create crash window and no duplicate `createPage` retry.
 - **@overeng/notion-datasource-sync**: Make live remote adoption reruns idempotent for unchanged capability/property observations, settle public SQLite page-property CDC writes against live Notion, and use lifecycle hashes for row archive/restore CDC so direct `<database-id>.sqlite` row edits do not replay stale archive intents.

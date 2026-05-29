@@ -729,6 +729,15 @@ describe('clean-break self-contained SQLite storage contract', () => {
         expect(
           row(
             db,
+            `SELECT COUNT(*) AS count
+             FROM changes
+             WHERE kind = 'cell_patch' AND page_id = ?`,
+            testIds.pageId,
+          ),
+        ).toMatchObject({ count: 1 })
+        expect(
+          row(
+            db,
             `SELECT kind, status, value_json
              FROM changes
              WHERE kind = 'cell_patch' AND page_id = ?`,

@@ -23,6 +23,7 @@ export const spanNames = {
   syncPull: 'notion.datasource.sync.pull',
   syncPush: 'notion.datasource.sync.push',
   syncOneShot: 'notion.datasource.sync.one-shot',
+  syncQueryAbsence: 'notion.datasource.sync.query-absence',
 } as const
 
 /** Typed map of every OTel span attribute key emitted by this package — use instead of raw strings. */

@@ -53,6 +53,7 @@ describe('notion datasource sync observability', () => {
         "syncOneShot": "notion.datasource.sync.one-shot",
         "syncPull": "notion.datasource.sync.pull",
         "syncPush": "notion.datasource.sync.push",
+        "syncQueryAbsence": "notion.datasource.sync.query-absence",
       }
     `)
   })
