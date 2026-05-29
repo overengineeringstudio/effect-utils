@@ -4,13 +4,20 @@ import {
   bodySurfaceKey,
   pageSurfaceKey,
   queryContractHash as computeQueryContractHash,
+  querySurfaceKey,
 } from '../core/canonical.ts'
-import { BodyPointer, Hash, PageId, PropertyId, type AbsolutePath } from '../core/domain.ts'
-import type {
-  BodySyncError,
-  LocalStorageError,
-  LocalStoreError,
+import {
+  BodyPointer,
+  Hash,
+  PageId,
+  PropertyId,
+  type AbsolutePath,
+  type PageSnapshot,
+} from '../core/domain.ts'
+import type { BodySyncError, LocalStorageError, LocalStoreError } from '../core/errors.ts'
+import {
   NotionGatewayError,
+  type NotionGatewayError as NotionGatewayErrorType,
 } from '../core/errors.ts'
 import {
   NotionDataSourceGateway,
@@ -312,6 +319,49 @@ const canClassifyDisappearedRows = (options: OneShotPullOptions): boolean =>
   options.queryContract.filter === null &&
   options.queryContract.highWatermark === null
 
+type QueryAbsenceDirectRetrieve =
+  | 'accessible'
+  | 'in-trash'
+  | 'moved-out'
+  | 'permission-ambiguous'
+  | 'inaccessible'
+  | 'unknown'
+
+const classifyQueryAbsencePage = ({
+  dataSourceId,
+  page,
+}: {
+  readonly dataSourceId: OneShotPullOptions['dataSourceId']
+  readonly page: PageSnapshot
+}): QueryAbsenceDirectRetrieve => {
+  if (page.inTrash === true) return 'in-trash'
+  if (page.dataSourceId !== dataSourceId) return 'moved-out'
+  return 'accessible'
+}
+
+const classifyQueryAbsenceError = (error: NotionGatewayErrorType): QueryAbsenceDirectRetrieve =>
+  error instanceof NotionGatewayError && error.guard === 'PermissionAmbiguous'
+    ? 'permission-ambiguous'
+    : 'unknown'
+
+const queryAbsenceRecordedReason = (
+  directRetrieve: QueryAbsenceDirectRetrieve,
+): 'remote-trash' | 'moved-out' | 'inaccessible' | 'unknown' | undefined => {
+  switch (directRetrieve) {
+    case 'accessible':
+    case 'permission-ambiguous':
+      return undefined
+    case 'in-trash':
+      return 'remote-trash'
+    case 'moved-out':
+      return 'moved-out'
+    case 'inaccessible':
+      return 'inaccessible'
+    case 'unknown':
+      return 'unknown'
+  }
+}
+
 const annotateOneShotStart = (input: {
   readonly operation: 'pull' | 'push' | 'sync' | 'establish-from-notion'
   readonly rootId: RemoteObservationOptions['rootId']
@@ -352,44 +402,85 @@ const resumeCursorForPull = (options: OneShotPullOptions) => {
   return checkpoint?.complete === false ? checkpoint.nextCursor : null
 }
 
-const disappearanceCandidateEvents = ({
-  options,
-  observation,
-}: {
-  readonly options: OneShotPullOptions
-  readonly observation: RemoteObservationResult
-}) => {
-  if (
-    observation.query.startCursor !== null ||
-    observation.query.complete === false ||
-    observation.query.cappedAtLimit === true ||
-    observation.query.queryContractHash === undefined ||
-    canClassifyDisappearedRows(options) === false
-  ) {
-    return []
-  }
+const disappearanceCandidateEvents = Effect.fn(spanNames.syncQueryAbsence)(
+  ({
+    options,
+    observation,
+  }: {
+    readonly options: OneShotPullOptions
+    readonly observation: RemoteObservationResult
+  }) =>
+    Effect.gen(function* () {
+      yield* Effect.annotateCurrentSpan(
+        spanAttributes({
+          [spanAttr.spanLabel]: spanLabel('query-absence', shortSpanId(options.rootId)),
+          [spanAttr.rootId]: options.rootId,
+          [spanAttr.dataSourceId]: options.dataSourceId,
+        }),
+      )
+      if (
+        observation.query.startCursor !== null ||
+        observation.query.complete === false ||
+        observation.query.cappedAtLimit === true ||
+        observation.query.queryContractHash === undefined ||
+        canClassifyDisappearedRows(options) === false
+      ) {
+        return []
+      }
 
-  const observedPageIds = new Set(
-    observation.events.filter((event) => event._tag === 'RowObserved').map((event) => event.pageId),
-  )
-  const queryContractHash = observation.query.queryContractHash
-  if (queryContractHash === undefined) return []
+      const observedPageIds = new Set(
+        observation.events
+          .filter((event) => event._tag === 'RowObserved')
+          .map((event) => event.pageId),
+      )
+      const queryContractHash = observation.query.queryContractHash
+      if (queryContractHash === undefined) return []
 
-  return options.store
-    .readPlannerProjectionSnapshot(options.rootId)
-    .rows.filter((row) => row.dataSourceId === options.dataSourceId)
-    .filter((row) => observedPageIds.has(row.pageId) === false)
-    .map((row) =>
-      makeQueryAbsenceCandidateEvent({
-        rootId: options.rootId,
-        dataSourceId: options.dataSourceId,
-        pageId: row.pageId,
-        queryContractHash,
-        queryContract: options.queryContract,
-        ...(options.now === undefined ? {} : { now: options.now }),
-      }),
-    )
-}
+      const gateway = yield* NotionDataSourceGateway
+      const events = []
+      for (const row of options.store
+        .readPlannerProjectionSnapshot(options.rootId)
+        .rows.filter((candidate) => candidate.dataSourceId === options.dataSourceId)
+        .filter((candidate) => observedPageIds.has(candidate.pageId) === false)) {
+        const directRetrieve = yield* gateway.retrievePage(row.pageId).pipe(
+          Effect.match({
+            onFailure: classifyQueryAbsenceError,
+            onSuccess: (page) =>
+              classifyQueryAbsencePage({ dataSourceId: options.dataSourceId, page }),
+          }),
+        )
+        const candidate = makeQueryAbsenceCandidateEvent({
+          rootId: options.rootId,
+          dataSourceId: options.dataSourceId,
+          pageId: row.pageId,
+          queryContractHash,
+          queryContract: options.queryContract,
+          directRetrieve,
+          ...(options.now === undefined ? {} : { now: options.now }),
+        })
+        events.push(candidate)
+
+        const reason = queryAbsenceRecordedReason(directRetrieve)
+        if (reason !== undefined) {
+          const recorded = makePlannerEvent({
+            rootId: options.rootId,
+            event: {
+              _tag: 'TombstoneClassified',
+              pageId: row.pageId,
+              surface:
+                candidate.surface ??
+                querySurfaceKey({ dataSourceId: options.dataSourceId, queryContractHash }),
+              reason,
+            },
+            ...(options.now === undefined ? {} : { now: options.now }),
+          })
+          if (recorded !== undefined) events.push(recorded)
+        }
+      }
+
+      return events
+    }),
+)
 
 /** Record the initial `SyncBindingRecorded` event that ties a data source to its local workspace root; idempotent and synchronous. */
 export const initOneShotSync = (options: OneShotInitOptions): OneShotSyncStatus => {
@@ -436,7 +527,8 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
           appendedEvents += 1
         }
       }
-      for (const event of disappearanceCandidateEvents({ options, observation })) {
+      const absenceEvents = yield* disappearanceCandidateEvents({ options, observation })
+      for (const event of absenceEvents) {
         if (options.dryRun === true) continue
         if (options.store.appendEventWithResult(event).inserted === true) {
           appendedEvents += 1

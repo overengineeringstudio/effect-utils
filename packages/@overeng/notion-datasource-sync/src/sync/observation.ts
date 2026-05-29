@@ -450,9 +450,19 @@ export const makeQueryAbsenceCandidateEvent = (input: {
   readonly pageId: PageIdType
   readonly queryContractHash: HashType
   readonly queryContract: QueryContract
+  readonly directRetrieve?:
+    | 'not-run'
+    | 'accessible'
+    | 'in-trash'
+    | 'moved-out'
+    | 'permission-ambiguous'
+    | 'inaccessible'
+    | 'unknown'
   readonly now?: () => Date
 }): Extract<SyncEventType, { readonly _tag: 'TombstoneCandidateObserved' }> => {
   const now = input.now ?? (() => new Date())
+  const directRetrieve = input.directRetrieve ?? 'not-run'
+  const classifierPart = directRetrieve === 'not-run' ? '' : `:${directRetrieve}`
   const filtered =
     input.queryContract.filter !== null ||
     input.queryContract.membershipScope !== 'all-data-source-rows'
@@ -463,10 +473,10 @@ export const makeQueryAbsenceCandidateEvent = (input: {
       _tag: 'TombstoneCandidateObserved',
       ...eventBase({
         rootId: input.rootId,
-        eventId: `absence:${eventIdPart(input.dataSourceId)}:${eventIdPart(input.pageId)}:${input.queryContractHash}`,
+        eventId: `absence:${eventIdPart(input.dataSourceId)}:${eventIdPart(input.pageId)}:${input.queryContractHash}${classifierPart}`,
         family: 'RemoteObserved',
         eventType: 'TombstoneCandidateObserved',
-        idempotencyKey: `absence:${input.dataSourceId}:${input.pageId}:${input.queryContractHash}`,
+        idempotencyKey: `absence:${input.dataSourceId}:${input.pageId}:${input.queryContractHash}${classifierPart}`,
         surface: querySurfaceKey({
           dataSourceId: input.dataSourceId,
           queryContractHash: input.queryContractHash,
@@ -475,10 +485,10 @@ export const makeQueryAbsenceCandidateEvent = (input: {
           dataSourceId: input.dataSourceId,
           pageId: input.pageId,
           queryContractHash: input.queryContractHash,
-          classified: false,
+          classified: directRetrieve !== 'not-run',
           membershipScope: input.queryContract.membershipScope,
           filtered,
-          directRetrieve: 'not-run',
+          directRetrieve,
         },
         now,
       }),

@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 
 import { Effect, Fiber, Schema, Tracer } from 'effect'
@@ -18,6 +19,7 @@ import { BodySyncError } from '../core/errors.ts'
 import { SyncEventId } from '../core/events.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
 import { SignalExternalId, SignalId, SignalProvider } from '../core/signals.ts'
+import { readOneShotSyncStatus } from '../core/status.ts'
 import {
   makeWatchDaemonWakeNotifier,
   readWatchDaemonState,
@@ -25,7 +27,7 @@ import {
   runWatchDaemonCycle,
   type WatchDaemonOptions,
 } from '../daemon/watch.ts'
-import { makeGatewayError } from '../gateway/gateway.ts'
+import { allGatewayCapabilities, makeGatewayError } from '../gateway/gateway.ts'
 import {
   isOwnWriteObservation,
   makeFilesystemLocalWorkspacePort,
@@ -668,6 +670,77 @@ describe('watch daemon surface', () => {
         state: { repair: { _tag: 'none' } },
       })
       expect(sleeps).toEqual([5_000])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('clears retry repair state after a completed but blocked cycle', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+    const blockedGatewayHarness = makeFakeGatewayHarness({
+      capabilities: allGatewayCapabilities.filter(
+        (capability) => capability !== 'page_property_paginate',
+      ),
+      propertyPages: [propertyPage()],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await writeFile(
+        statePath,
+        `${JSON.stringify(
+          {
+            version: 1,
+            rootId: testIds.rootId,
+            cycle: 7,
+            lastCompleteCycle: 7,
+            lastStartedAt: clock.nowIso(),
+            lastCompletedAt: clock.nowIso(),
+            repair: {
+              _tag: 'retry',
+              reason: 'previous-cycle-did-not-complete',
+              retryAfterMillis: 0,
+              failedCycle: 6,
+            },
+            lastStatus: readOneShotSyncStatus({
+              store: storeFixture.store,
+              rootId: testIds.rootId,
+            }),
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      )
+
+      const result = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+          }),
+        ),
+        { gateway: blockedGatewayHarness.gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      expect(result).toMatchObject({
+        cycle: 8,
+        status: { state: 'blocked' },
+        state: {
+          repair: { _tag: 'none' },
+          lastStatus: { state: 'blocked' },
+        },
+      })
     } finally {
       storeFixture.cleanup()
     }

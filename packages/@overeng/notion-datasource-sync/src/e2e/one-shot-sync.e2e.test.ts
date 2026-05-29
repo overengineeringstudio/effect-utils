@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { makeFakePageBodySyncPort } from '../body/adapter.ts'
@@ -97,6 +97,24 @@ const runWithPorts = <TValue, TError>(
       Effect.provideService(LocalWorkspacePort, input.workspace ?? makeHarnessPorts().workspace),
     ),
   )
+
+const hidePageFromQuery = (
+  gateway: ReturnType<typeof makeFakeGatewayHarness>['gateway'],
+  hiddenPageId: typeof testIds.pageId,
+) => ({
+  ...gateway,
+  queryRows: (input: Parameters<typeof gateway.queryRows>[0]) =>
+    gateway.queryRows(input).pipe(
+      Stream.map((page) =>
+        Object.assign({}, page, {
+          rows: page.rows.filter((row) => row.pageId !== hiddenPageId),
+          nextCursor: null,
+          hasMore: false,
+          cappedAtLimit: false,
+        }),
+      ),
+    ),
+})
 
 describe('one-shot sync orchestration', () => {
   it('initial bind and pull produce clean status while dry-run status does not write', async () => {
@@ -488,7 +506,7 @@ describe('one-shot sync orchestration', () => {
     }
   })
 
-  it('records disappeared rows from a complete uncapped query as absence candidates', async () => {
+  it('directly classifies query-absence candidates and clears accessible disappearances', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
     const initialPages = [
@@ -519,6 +537,7 @@ describe('one-shot sync orchestration', () => {
         }),
         { gateway: makeFakeGatewayHarness({ pages: initialPages }).gateway, body },
       )
+      const gateway = makeFakeGatewayHarness({ pages: initialPages }).gateway
       const pull = await runWithPorts(
         pullOneShotSync({
           store: storeFixture.store,
@@ -529,7 +548,183 @@ describe('one-shot sync orchestration', () => {
           schemaProperties: [],
           now: clock.now,
         }),
-        { gateway: makeFakeGatewayHarness({ pages: [pageSnapshot()] }).gateway, body },
+        { gateway: hidePageFromQuery(gateway, testIds.otherPageId), body },
+      )
+
+      expect(pull.status).toMatchObject({
+        state: 'clean',
+        counts: { tombstones: { unclassified: 0 } },
+      })
+      const snapshot = storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId)
+      expect(snapshot.tombstones).toEqual([])
+      expect(snapshot.queries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            pageId: testIds.otherPageId,
+            absence: expect.objectContaining({
+              classified: true,
+              directRetrieve: 'accessible',
+            }),
+          }),
+        ]),
+      )
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('records direct query-absence classifiers for remote trash and moved-out pages', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const initialPages = [
+      pageSnapshot(),
+      pageSnapshot({ pageId: testIds.otherPageId, propertiesHash: hash('properties-other') }),
+    ]
+    const body = makeHarnessPorts({
+      bodyPages: [bodyPageFor(testIds.pageId), bodyPageFor(testIds.otherPageId)],
+    }).body
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: makeFakeGatewayHarness({ pages: initialPages }).gateway, body },
+      )
+
+      const trashedGateway = makeFakeGatewayHarness({
+        pages: [
+          pageSnapshot(),
+          pageSnapshot({
+            pageId: testIds.otherPageId,
+            propertiesHash: hash('properties-other-trashed'),
+            inTrash: true,
+          }),
+        ],
+      }).gateway
+      const trashedPull = await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: hidePageFromQuery(trashedGateway, testIds.otherPageId), body },
+      )
+
+      expect(trashedPull.status).toMatchObject({
+        state: 'clean',
+        counts: { tombstones: { unclassified: 0 } },
+      })
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).tombstones).toEqual([
+        expect.objectContaining({
+          pageId: testIds.otherPageId,
+          state: 'remote-trash',
+          directRetrieve: 'in-trash',
+        }),
+      ])
+
+      const movedGateway = makeFakeGatewayHarness({
+        pages: [
+          pageSnapshot(),
+          pageSnapshot({
+            pageId: testIds.otherPageId,
+            dataSourceId: testIds.otherDataSourceId,
+            propertiesHash: hash('properties-other-moved'),
+          }),
+        ],
+      }).gateway
+      const movedPull = await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: movedGateway, body },
+      )
+
+      expect(movedPull.status).toMatchObject({
+        state: 'clean',
+        counts: { tombstones: { unclassified: 0 } },
+      })
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).tombstones).toEqual([
+        expect.objectContaining({
+          pageId: testIds.otherPageId,
+          state: 'moved-out',
+          directRetrieve: 'moved-out',
+        }),
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('keeps permission-ambiguous query absence blocked with classifier evidence', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const initialPages = [
+      pageSnapshot(),
+      pageSnapshot({ pageId: testIds.otherPageId, propertiesHash: hash('properties-other') }),
+    ]
+    const body = makeHarnessPorts({
+      bodyPages: [bodyPageFor(testIds.pageId), bodyPageFor(testIds.otherPageId)],
+    }).body
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: makeFakeGatewayHarness({ pages: initialPages }).gateway, body },
+      )
+      const ambiguousGateway = makeFakeGatewayHarness({
+        pages: [pageSnapshot()],
+        permissionAmbiguousPageIds: [testIds.otherPageId],
+      }).gateway
+      const pull = await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: clock.now,
+        }),
+        { gateway: ambiguousGateway, body },
       )
 
       expect(pull.status).toMatchObject({
@@ -537,13 +732,11 @@ describe('one-shot sync orchestration', () => {
         counts: { tombstones: { unclassified: 1 } },
       })
       expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).tombstones).toEqual([
-        {
+        expect.objectContaining({
           pageId: testIds.otherPageId,
-          dataSourceId: testIds.dataSourceId,
-          queryContractHash: pull.observation.query.queryContractHash,
           state: 'candidate',
-          directRetrieve: 'not-run',
-        },
+          directRetrieve: 'permission-ambiguous',
+        }),
       ])
     } finally {
       storeFixture.cleanup()
