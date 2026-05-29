@@ -9,6 +9,7 @@ import {
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
+import { makeGatewayError } from '../gateway/gateway.ts'
 import { planIntent, type OutboxCommandEnvelope } from '../planner/planner.ts'
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import {
@@ -17,6 +18,7 @@ import {
   decode,
   hash,
   localDeleteIntent,
+  makeFakeClock,
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
@@ -198,6 +200,63 @@ describe('outbox executor', () => {
       expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
         { commandId: testIds.commandId, state: 'retryable', settlementEventId: undefined },
       ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('does not reclaim retryable writes until the gateway retry-after delay has elapsed', async () => {
+    const clock = makeFakeClock()
+    const gatewayHarness = makeFakeGatewayHarness()
+    const ports = makeHarnessPorts()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    let patchAttempts = 0
+    const gateway: NotionDataSourceGatewayShape = {
+      ...gatewayHarness.gateway,
+      patchPageProperties: (command) =>
+        Effect.sync(() => {
+          patchAttempts += 1
+        }).pipe(
+          Effect.zipRight(
+            Effect.fail(
+              makeGatewayError({
+                operation: 'patchPageProperties',
+                pageId: command.pageId,
+                retryAfterMillis: 2_000,
+                message: 'rate limited',
+              }),
+            ),
+          ),
+        ),
+    }
+
+    try {
+      appendPlannedCommand({
+        store: storeFixture.store,
+        command: plannedPropertyCommand(expectedPatchHash()),
+      })
+
+      await expect(
+        runExecutor({ gateway, body: ports.body, store: storeFixture.store }),
+      ).resolves.toMatchObject({
+        _tag: 'failed',
+        attemptState: 'retryable',
+      })
+      expect(patchAttempts).toBe(1)
+
+      await expect(
+        runExecutor({ gateway, body: ports.body, store: storeFixture.store }),
+      ).resolves.toEqual({ _tag: 'idle' })
+      expect(patchAttempts).toBe(1)
+
+      clock.advanceMillis(2_000)
+      await expect(
+        runExecutor({ gateway, body: ports.body, store: storeFixture.store }),
+      ).resolves.toMatchObject({
+        _tag: 'failed',
+        attemptState: 'retryable',
+      })
+      expect(patchAttempts).toBe(2)
     } finally {
       storeFixture.cleanup()
     }

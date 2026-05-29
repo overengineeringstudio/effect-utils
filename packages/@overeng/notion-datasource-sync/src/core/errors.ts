@@ -32,6 +32,7 @@ export class NotionGatewayError extends Schema.TaggedError<NotionGatewayError>()
     pageId: Schema.optional(PageId),
     requestId: Schema.optional(Schema.String),
     guard: Schema.optional(GuardName),
+    retryAfterMillis: Schema.optional(Schema.NonNegativeInt),
     message: Schema.String,
     cause: Schema.optional(Schema.Defect),
   },

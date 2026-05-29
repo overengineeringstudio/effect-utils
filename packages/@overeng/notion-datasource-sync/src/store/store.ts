@@ -202,6 +202,7 @@ export type OutboxAttemptStateInput = {
   >
   readonly leaseToken?: string
   readonly guard?: typeof GuardName.Type
+  readonly retryAfterMillis?: number
   readonly idempotencyKey?: IdempotencyKey
 }
 
@@ -600,6 +601,7 @@ export class NotionSyncStore {
              _nds_outbox.desired_hash,
              _nds_outbox.preflight_json,
              _nds_outbox.attempt_count,
+             _nds_outbox.retry_after_at,
              _nds_outbox.updated_at,
              event.event_json
            FROM _nds_outbox
@@ -610,13 +612,15 @@ export class NotionSyncStore {
            WHERE _nds_outbox.root_id = ?
              AND _nds_outbox.settlement_event_id IS NULL
              AND (
-               _nds_outbox.state IN ('queued', 'retryable', 'ambiguous')
+               _nds_outbox.state IN ('queued', 'ambiguous')
+               OR (_nds_outbox.state = 'retryable'
+                   AND (_nds_outbox.retry_after_at IS NULL OR _nds_outbox.retry_after_at <= ?))
                OR (_nds_outbox.state = 'running' AND _nds_outbox.updated_at <= ?)
              )
            ORDER BY _nds_outbox.updated_at, _nds_outbox.command_id
            LIMIT 1`,
         )
-        .get(options.rootId, leaseCutoff)
+        .get(options.rootId, currentIso(this.#now), leaseCutoff)
 
       if (row === undefined) {
         this.#db.exec('COMMIT')
@@ -1832,6 +1836,7 @@ export class NotionSyncStore {
             attempt: input.attempt,
             attemptState: input.attemptState,
             guard: input.guard,
+            retryAfterMillis: input.retryAfterMillis,
           }),
         ),
         observedAt: currentIso(this.#now),
@@ -1840,6 +1845,9 @@ export class NotionSyncStore {
         attemptState: input.attemptState,
         ...(input.leaseToken === undefined ? {} : { leaseToken: input.leaseToken }),
         ...(input.guard === undefined ? {} : { guard: input.guard }),
+        ...(input.retryAfterMillis === undefined
+          ? {}
+          : { retryAfterMillis: input.retryAfterMillis }),
       }),
     )
 
@@ -1898,6 +1906,10 @@ export class NotionSyncStore {
        ADD COLUMN capped_at_limit INTEGER NOT NULL DEFAULT 0 CHECK (capped_at_limit IN (0, 1))`,
       `ALTER TABLE _nds_query_scan_checkpoint
        ADD COLUMN contract_changed INTEGER NOT NULL DEFAULT 0 CHECK (contract_changed IN (0, 1))`,
+      `ALTER TABLE _nds_outbox
+       ADD COLUMN retry_after_millis INTEGER`,
+      `ALTER TABLE _nds_outbox
+       ADD COLUMN retry_after_at TEXT`,
     ]) {
       try {
         this.#db.exec(statement)
@@ -1912,7 +1924,7 @@ export class NotionSyncStore {
         `INSERT OR IGNORE INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       )
-      .run(STORE_SCHEMA_VERSION, 'signal-inbox', currentIso(this.#now))
+      .run(STORE_SCHEMA_VERSION, 'outbox-retry-after', currentIso(this.#now))
   }
 
   #ensureRoot(rootId: SyncRootId): void {
@@ -2615,12 +2627,19 @@ export class NotionSyncStore {
             break
           }
 
+          const retryAfterAt =
+            event.attemptState === 'retryable' && event.retryAfterMillis !== undefined
+              ? new Date(this.#now().getTime() + event.retryAfterMillis).toISOString()
+              : null
+
           this.#db
             .prepare(
               `UPDATE _nds_outbox
                SET state = ?,
                    attempt_count = MAX(attempt_count, ?),
                    lease_token = ?,
+                   retry_after_millis = ?,
+                   retry_after_at = ?,
                    last_event_id = ?,
                    updated_at = ?
                WHERE root_id = ? AND command_id = ?`,
@@ -2629,6 +2648,8 @@ export class NotionSyncStore {
               event.attemptState,
               event.attempt,
               event.leaseToken ?? null,
+              event.retryAfterMillis ?? null,
+              retryAfterAt,
               event.eventId,
               currentIso(this.#now),
               event.rootId,

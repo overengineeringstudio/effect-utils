@@ -85,6 +85,7 @@ export type GatewayErrorInput = {
   readonly pageId?: PageId
   readonly requestId?: string
   readonly guard?: GuardName
+  readonly retryAfterMillis?: number
   readonly message: string
   readonly cause?: unknown
 }
@@ -97,6 +98,7 @@ export const makeGatewayError = (input: GatewayErrorInput): NotionGatewayError =
     ...(input.pageId === undefined ? {} : { pageId: input.pageId }),
     ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
     ...(input.guard === undefined ? {} : { guard: input.guard }),
+    ...(input.retryAfterMillis === undefined ? {} : { retryAfterMillis: input.retryAfterMillis }),
     message: input.message,
     ...(input.cause === undefined ? {} : { cause: input.cause }),
   })

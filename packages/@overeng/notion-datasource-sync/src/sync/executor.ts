@@ -331,16 +331,25 @@ const guardFromWriteError = (error: NotionGatewayError | BodySyncError): GuardNa
     ? error.guard
     : 'CurrentSurfaceMissing'
 
+const retryAfterFromWriteError = (
+  error: NotionGatewayError | BodySyncError,
+): { readonly retryAfterMillis?: number } =>
+  error instanceof NotionGatewayError && error.retryAfterMillis !== undefined
+    ? { retryAfterMillis: error.retryAfterMillis }
+    : {}
+
 const recordAttemptState = ({
   options,
   claimed,
   attemptState,
   guard,
+  retryAfterMillis,
 }: {
   readonly options: OutboxExecutorOptions
   readonly claimed: ClaimedOutboxCommand
   readonly attemptState: 'retryable' | 'blocked' | 'fenced' | 'ambiguous'
   readonly guard: GuardName
+  readonly retryAfterMillis?: number
 }) =>
   storeEffect({
     operation: 'append-outbox-attempt-state',
@@ -354,8 +363,11 @@ const recordAttemptState = ({
         attemptState,
         leaseToken: claimed.leaseToken,
         guard,
+        ...(retryAfterMillis === undefined ? {} : { retryAfterMillis }),
         idempotencyKey: idempotencyKey(
-          `${claimed.commandKey}:attempt-state:${claimed.attempt}:${attemptState}:${guard}`,
+          `${claimed.commandKey}:attempt-state:${claimed.attempt}:${attemptState}:${guard}:${
+            retryAfterMillis ?? 'no-retry-after'
+          }`,
         ),
       }),
   }).pipe(
@@ -491,6 +503,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
                 ? 'blocked'
                 : 'retryable',
             guard: guardFromWriteError(error),
+            ...retryAfterFromWriteError(error),
           }),
         ),
       )
@@ -569,6 +582,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
                 ? 'blocked'
                 : 'retryable',
             guard: guardFromWriteError(error),
+            ...retryAfterFromWriteError(error),
           }),
         ),
       )
@@ -594,6 +608,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
                   claimed,
                   attemptState: 'retryable',
                   guard: guardFromWriteError(error),
+                  ...retryAfterFromWriteError(error),
                 }),
               ),
             )
@@ -616,6 +631,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
                   claimed,
                   attemptState: 'retryable',
                   guard: guardFromWriteError(error),
+                  ...retryAfterFromWriteError(error),
                 }),
               ),
             )
