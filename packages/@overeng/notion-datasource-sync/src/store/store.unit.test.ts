@@ -8,7 +8,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { propertySurfaceKey } from '../core/canonical.ts'
 import { PatchPagePropertiesCommand } from '../core/commands.ts'
-import { CommandId, Hash, NotionRequestId, PageId, PropertyId } from '../core/domain.ts'
+import {
+  CommandId,
+  DataSourceId,
+  Hash,
+  NotionRequestId,
+  PageId,
+  PropertyId,
+} from '../core/domain.ts'
 import {
   IdempotencyKey,
   SyncEvent,
@@ -16,6 +23,7 @@ import {
   SyncRootId,
   type SyncEvent as SyncEventType,
 } from '../core/events.ts'
+import { SignalExternalId, SignalId, SignalProvider } from '../core/signals.ts'
 import { planIntent } from '../planner/planner.ts'
 import { hashStoreBytes } from './projections.ts'
 import { openNotionSyncStore, type NotionSyncStore } from './store.ts'
@@ -31,6 +39,9 @@ const propertyId = decode(PropertyId, 'property-1')
 const commandId = decode(CommandId, 'cmd-1')
 const intentEventId = decode(SyncEventId, 'intent-1')
 const commandKey = decode(IdempotencyKey, 'intent:cmd-1')
+const signalProvider = decode(SignalProvider, 'test-provider')
+const signalId = decode(SignalId, 'signal-1')
+const signalExternalId = decode(SignalExternalId, 'external-1')
 const observedAt = '2026-05-25T00:00:00.000Z'
 const tmpDirs: string[] = []
 
@@ -416,7 +427,8 @@ describe('Notion sync SQLite store', () => {
                '_nds_row',
                '_nds_property_shadow',
                '_nds_body_pointer',
-               '_nds_query_absence'
+               '_nds_query_absence',
+               '_nds_signal_inbox'
              )
            ORDER BY name`,
         )
@@ -434,6 +446,7 @@ describe('Notion sync SQLite store', () => {
         '_nds_query_absence',
         '_nds_row',
         '_nds_schema_property',
+        '_nds_signal_inbox',
       ])
       expect(queryColumns).toEqual(expect.arrayContaining(['capped_at_limit', 'contract_changed']))
     } finally {
@@ -483,6 +496,90 @@ describe('Notion sync SQLite store', () => {
     } finally {
       after.close()
     }
+  })
+
+  it('dedupes durable signals by provider and external id', () => {
+    withStore((store) => {
+      const first = store.enqueueSignal({
+        rootId,
+        signalId,
+        provider: signalProvider,
+        externalId: signalExternalId,
+        payloadJson: '{"event":"delivered"}',
+        dataSourceId: decode(DataSourceId, 'data-source-1'),
+        pageId,
+      })
+      const duplicate = store.enqueueSignal({
+        rootId,
+        signalId: decode(SignalId, 'signal-duplicate'),
+        provider: signalProvider,
+        externalId: signalExternalId,
+        payloadJson: '{"event":"duplicate"}',
+      })
+
+      expect(first.inserted).toBe(true)
+      expect(duplicate.inserted).toBe(false)
+      expect(duplicate.signal.signalId).toBe(signalId)
+      expect(store.readSignalStatus(rootId)).toEqual({
+        pending: 1,
+        claimed: 0,
+        processed: 0,
+        failed: 0,
+      })
+    })
+  })
+
+  it('claims, settles, and releases durable signals with lease fencing', () => {
+    withStore((store) => {
+      store.enqueueSignal({
+        rootId,
+        signalId,
+        provider: signalProvider,
+        externalId: signalExternalId,
+      })
+
+      const claimed = store.claimNextSignal({ rootId, leaseToken: 'lease-a' })
+      expect(claimed).toMatchObject({
+        signalId,
+        state: 'claimed',
+        attemptCount: 1,
+        leaseToken: 'lease-a',
+      })
+      expect(store.readSignalStatus(rootId)).toEqual({
+        pending: 0,
+        claimed: 1,
+        processed: 0,
+        failed: 0,
+      })
+
+      store.releaseSignal({
+        rootId,
+        signalId,
+        leaseToken: 'wrong-lease',
+        error: 'ignored release',
+      })
+      expect(store.readSignalStatus(rootId).claimed).toBe(1)
+
+      store.releaseSignal({
+        rootId,
+        signalId,
+        leaseToken: 'lease-a',
+        error: 'cycle failed',
+      })
+      expect(store.readSignals(rootId)).toMatchObject([
+        { state: 'pending', attemptCount: 1, lastError: 'cycle failed' },
+      ])
+
+      const reclaimed = store.claimNextSignal({ rootId, leaseToken: 'lease-b' })
+      expect(reclaimed).toMatchObject({ state: 'claimed', attemptCount: 2 })
+      store.settleSignal({ rootId, signalId, leaseToken: 'lease-b' })
+      expect(store.readSignalStatus(rootId)).toEqual({
+        pending: 0,
+        claimed: 0,
+        processed: 1,
+        failed: 0,
+      })
+    })
   })
 
   it('fails closed before WAL when migration history has an unknown schema version type', () => {

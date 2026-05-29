@@ -50,6 +50,7 @@ import {
   pageSnapshot,
   testIds,
 } from '../testing/harness.ts'
+import { computeNotionWebhookSignature } from '../webhook/notion.ts'
 
 const execFileAsync = promisify(execFile)
 const packageDir = fileURLToPath(new URL('../..', import.meta.url))
@@ -219,6 +220,9 @@ const context = (input: {
   readonly schemaProperties?: CliContext['schemaProperties']
   readonly requiredCapabilities?: CliContext['requiredCapabilities']
   readonly materializeBodies?: CliContext['materializeBodies']
+  readonly tailscaleProcessRunner?: CliContext['tailscaleProcessRunner']
+  readonly webhookReceiverPort?: CliContext['webhookReceiverPort']
+  readonly webhookReceiverStarted?: CliContext['webhookReceiverStarted']
 }): CliContext => ({
   store: input.store,
   rootId: testIds.rootId,
@@ -231,6 +235,15 @@ const context = (input: {
     : { requiredCapabilities: input.requiredCapabilities }),
   ...(input.materializeBodies === undefined ? {} : { materializeBodies: input.materializeBodies }),
   ...(input.maxExecutorSteps === undefined ? {} : { maxExecutorSteps: input.maxExecutorSteps }),
+  ...(input.tailscaleProcessRunner === undefined
+    ? {}
+    : { tailscaleProcessRunner: input.tailscaleProcessRunner }),
+  ...(input.webhookReceiverPort === undefined
+    ? {}
+    : { webhookReceiverPort: input.webhookReceiverPort }),
+  ...(input.webhookReceiverStarted === undefined
+    ? {}
+    : { webhookReceiverStarted: input.webhookReceiverStarted }),
   now: input.clock.now,
 })
 
@@ -329,16 +342,63 @@ describe('CLI command surface', () => {
     cliTestTimeoutMs,
   )
 
-  it('keeps watch unbounded by default until --max-cycles is provided', () => {
-    expect(parseCliCommand(['watch', '--state', '/tmp/watch.json'])).toEqual({
-      _tag: 'watch',
+  it('keeps sync --watch unbounded by default until --max-cycles is provided', () => {
+    expect(parseCliCommand(['sync', '--watch', '--state', '/tmp/watch.json'])).toEqual({
+      _tag: 'sync',
+      watch: true,
       statePath: '/tmp/watch.json',
+      dryRun: false,
     })
-    expect(parseCliCommand(['watch', '--state', '/tmp/watch.json', '--max-cycles', '2'])).toEqual({
-      _tag: 'watch',
-      statePath: '/tmp/watch.json',
+    expect(parseCliCommand(['sync', '--watch', '/tmp/workspace', '--max-cycles', '2'])).toEqual({
+      _tag: 'sync',
+      workspaceRoot: '/tmp/workspace',
+      dryRun: false,
+      watch: true,
       maxCycles: 2,
     })
+    expect(
+      parseCliCommand([
+        'sync',
+        '--watch',
+        '--webhook',
+        'none',
+        '--mode',
+        'development',
+        '--non-interactive',
+      ]),
+    ).toEqual({
+      _tag: 'sync',
+      dryRun: false,
+      watch: true,
+      mode: 'development',
+      webhook: 'none',
+      nonInteractive: true,
+    })
+    expect(
+      parseCliCommand([
+        'sync',
+        '--watch',
+        '--webhook',
+        'tailscale',
+        '--webhook-required',
+        '--max-cycles',
+        '1',
+      ]),
+    ).toEqual({
+      _tag: 'sync',
+      dryRun: false,
+      watch: true,
+      webhook: 'tailscale',
+      webhookRequired: true,
+      maxCycles: 1,
+    })
+    expect(parseCliCommand(['sync', '--watch', '--webhook', 'manual'])).toEqual({
+      _tag: 'sync',
+      dryRun: false,
+      watch: true,
+      webhook: 'manual',
+    })
+    expect(() => parseCliCommand(['watch', '--state', '/tmp/watch.json'])).toThrow(CliArgumentError)
   })
 
   it(
@@ -350,7 +410,8 @@ describe('CLI command surface', () => {
           execFileAsync(
             cliPath,
             [
-              'watch',
+              'sync',
+              '--watch',
               '--state',
               '/tmp/watch.json',
               '--max-cycles',
@@ -393,10 +454,14 @@ describe('CLI command surface', () => {
         })
 
         await expect(
-          execFileAsync(cliPath, ['watch', '--state', '/tmp/watch.json', '--max-cycles', 'NaN'], {
-            cwd: packageDir,
-            timeout: cliTestTimeoutMs,
-          }),
+          execFileAsync(
+            cliPath,
+            ['sync', '--watch', '--state', '/tmp/watch.json', '--max-cycles', 'NaN'],
+            {
+              cwd: packageDir,
+              timeout: cliTestTimeoutMs,
+            },
+          ),
         ).rejects.toMatchObject({
           code: 1,
           stderr: expect.stringContaining('CliErrorEnvelope'),
@@ -406,7 +471,8 @@ describe('CLI command surface', () => {
           execFileAsync(
             cliPath,
             [
-              'watch',
+              'sync',
+              '--watch',
               '--state',
               '/tmp/watch.json',
               '--max-cycles',
@@ -439,7 +505,8 @@ describe('CLI command surface', () => {
   it('rejects unsupported numeric flag shapes before command execution', () => {
     expect(() =>
       parseCliCommand([
-        'watch',
+        'sync',
+        '--watch',
         '--state',
         '/tmp/watch.json',
         '--max-cycles',
@@ -450,13 +517,20 @@ describe('CLI command surface', () => {
     ).toThrow(CliArgumentError)
 
     expect(() =>
-      parseCliCommand(['watch', '--state', '/tmp/watch.json', '--max-cycles', '1e2']),
+      parseCliCommand(['sync', '--watch', '--state', '/tmp/watch.json', '--max-cycles', '1e2']),
     ).toThrow('--max-cycles must be a positive integer')
     expect(() =>
-      parseCliCommand(['watch', '--state', '/tmp/watch.json', '--max-cycles', 'Infinity']),
+      parseCliCommand([
+        'sync',
+        '--watch',
+        '--state',
+        '/tmp/watch.json',
+        '--max-cycles',
+        'Infinity',
+      ]),
     ).toThrow('--max-cycles must be a positive integer')
     expect(() =>
-      parseCliCommand(['watch', '--state', '/tmp/watch.json', '--max-cycles', '-1']),
+      parseCliCommand(['sync', '--watch', '--state', '/tmp/watch.json', '--max-cycles', '-1']),
     ).toThrow('--max-cycles must be a positive integer')
   })
 
@@ -878,6 +952,7 @@ describe('CLI command surface', () => {
       clock,
       workspaceRoot: decode({ schema: AbsolutePath, value: dir }),
       schemaProperties: [],
+      webhookReceiverPort: 0,
     })
     const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
 
@@ -1171,7 +1246,7 @@ describe('CLI command surface', () => {
     }
   })
 
-  it('runs one bounded watch cycle through real runtime wiring over a temp filesystem', async () => {
+  it('runs one bounded sync --watch cycle through real runtime wiring over a temp filesystem', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-watch-'))
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
@@ -1199,19 +1274,358 @@ describe('CLI command surface', () => {
 
       const result = await Effect.runPromise(
         runCliCommandWithRuntime({
-          command: { _tag: 'watch', statePath: join(dir, 'watch.json'), maxCycles: 1 },
+          command: {
+            _tag: 'sync',
+            watch: true,
+            statePath: join(dir, 'watch.json'),
+            maxCycles: 1,
+          },
           context: ctx,
           options: { gatewayClient: makeInjectedNotionClient(calls), body },
         }),
       )
 
       expect(result).toMatchObject({
-        command: 'watch',
+        command: 'sync',
         result: { _tag: 'WatchDaemonRunResult', cycles: 1, completed: 1 },
       })
       await expect(readFile(join(dir, 'watch.json'), 'utf8')).resolves.toContain(
         '"lastCompleteCycle": 1',
       )
+    } finally {
+      storeFixture.cleanup()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('runs sync --watch with manual webhook mode as a local receiver seam', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-watch-webhook-'))
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      workspaceRoot: decode({ schema: AbsolutePath, value: dir }),
+      schemaProperties: [],
+    })
+    const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
+
+    try {
+      await Effect.runPromise(
+        runCliCommandWithRuntime({
+          command: {
+            _tag: 'init',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot: ctx.workspaceRoot,
+          },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
+      )
+
+      const result = await Effect.runPromise(
+        runCliCommandWithRuntime({
+          command: {
+            _tag: 'sync',
+            watch: true,
+            webhook: 'manual',
+            statePath: join(dir, 'watch.json'),
+            maxCycles: 1,
+          },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
+      )
+
+      expect(result).toMatchObject({
+        command: 'sync',
+        result: {
+          _tag: 'SyncWatchRunResult',
+          webhook: {
+            _tag: 'WebhookManualStatus',
+            provider: 'manual',
+            state: 'running',
+            receiver: {
+              path: '/notion-datasource-sync/webhook/notion',
+            },
+            exposure: {
+              provider: 'manual',
+              path: '/notion-datasource-sync/webhook/notion',
+            },
+          },
+          daemon: { _tag: 'WatchDaemonRunResult', cycles: 1, completed: 1 },
+        },
+      })
+    } finally {
+      storeFixture.cleanup()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('checks Tailscale Funnel status for sync --watch --webhook tailscale', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-watch-tailscale-'))
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    const tailscaleCalls: string[][] = []
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      workspaceRoot: decode({ schema: AbsolutePath, value: dir }),
+      schemaProperties: [],
+      webhookReceiverPort: 0,
+      tailscaleProcessRunner: async (command, args) => {
+        tailscaleCalls.push([command, ...args])
+        if (args.join(' ') !== 'funnel status --json') {
+          return { exitCode: 0, stdout: '', stderr: '' }
+        }
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            Web: [
+              {
+                Path: '/notion-datasource-sync/webhook/notion',
+                URL: 'https://tasks.tailnet.example/notion-datasource-sync/webhook/notion',
+              },
+            ],
+          }),
+          stderr: '',
+        }
+      },
+    })
+    const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
+
+    try {
+      await Effect.runPromise(
+        runCliCommandWithRuntime({
+          command: {
+            _tag: 'init',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot: ctx.workspaceRoot,
+          },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
+      )
+
+      const result = await Effect.runPromise(
+        runCliCommandWithRuntime({
+          command: {
+            _tag: 'sync',
+            watch: true,
+            webhook: 'tailscale',
+            webhookRequired: true,
+            statePath: join(dir, 'watch.json'),
+            maxCycles: 1,
+          },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
+      )
+
+      expect(tailscaleCalls).toEqual([
+        [
+          'tailscale',
+          'funnel',
+          '--bg',
+          '--https=443',
+          '--set-path=/notion-datasource-sync/webhook/notion',
+          expect.stringMatching(/^localhost:[0-9]+$/),
+        ],
+        ['tailscale', 'funnel', 'status', '--json'],
+        ['tailscale', 'funnel', '--bg', '--set-path=/notion-datasource-sync/webhook/notion', 'off'],
+      ])
+      expect(result).toMatchObject({
+        command: 'sync',
+        result: {
+          _tag: 'SyncWatchRunResult',
+          webhook: {
+            _tag: 'WebhookTailscaleStatus',
+            provider: 'tailscale',
+            state: 'running',
+            receiver: {
+              path: '/notion-datasource-sync/webhook/notion',
+            },
+            exposure: {
+              provider: 'tailscale-funnel',
+              publicUrl: 'https://tasks.tailnet.example/notion-datasource-sync/webhook/notion',
+              localTarget: expect.stringMatching(/^localhost:[0-9]+$/),
+              path: '/notion-datasource-sync/webhook/notion',
+            },
+          },
+          daemon: { _tag: 'WatchDaemonRunResult', cycles: 1, completed: 1 },
+        },
+      })
+    } finally {
+      storeFixture.cleanup()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails sync --watch --webhook-required when Tailscale status is not running', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      schemaProperties: [],
+      webhookReceiverPort: 0,
+      tailscaleProcessRunner: async () => ({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'not running',
+      }),
+    })
+
+    try {
+      await expect(
+        Effect.runPromise(
+          runCliCommandWithRuntime({
+            command: {
+              _tag: 'sync',
+              watch: true,
+              webhook: 'tailscale',
+              webhookRequired: true,
+              maxCycles: 1,
+            },
+            context: ctx,
+            options: {
+              gatewayClient: makeInjectedNotionClient({
+                retrieveDataSource: 0,
+                queryDataSource: 0,
+                retrievePage: 0,
+              }),
+            },
+          }),
+        ),
+      ).rejects.toThrow('sync --watch --webhook-required could not start Tailscale Funnel')
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('wakes sync --watch from a manual webhook delivery before the normal poll interval', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-watch-wake-'))
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    let receiverResolve: ((status: { readonly url: string }) => void) | undefined
+    const receiverStarted = new Promise<{ readonly url: string }>((resolve) => {
+      receiverResolve = resolve
+    })
+    const ctx = context({
+      store: storeFixture.store,
+      clock,
+      workspaceRoot: decode({ schema: AbsolutePath, value: dir }),
+      schemaProperties: [],
+      webhookReceiverPort: 0,
+      webhookReceiverStarted: (status) => receiverResolve?.(status),
+    })
+    const body = makeHarnessPorts({ bodyPages: [bodyPage()] }).body
+    const verificationToken = 'cli-watch-webhook-verification-token'
+    const withTimeout = async <TValue>(promise: Promise<TValue>, millis: number): Promise<TValue> =>
+      await Promise.race([
+        promise,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`timed out after ${millis.toString()}ms`)), millis),
+        ),
+      ])
+    const waitForFirstCycle = async () => {
+      const deadline = Date.now() + 2_000
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(() => {
+          void (async () => {
+            try {
+              const state = JSON.parse(await readFile(join(dir, 'watch.json'), 'utf8')) as {
+                readonly lastCompleteCycle?: unknown
+              }
+              if (state.lastCompleteCycle === 1) {
+                clearInterval(interval)
+                resolve()
+                return
+              }
+            } catch {
+              // File is created after the first cycle completes.
+            }
+            if (Date.now() > deadline) {
+              clearInterval(interval)
+              reject(new Error('sync --watch did not complete first cycle'))
+            }
+          })()
+        }, 25)
+      })
+    }
+
+    try {
+      await Effect.runPromise(
+        runCliCommandWithRuntime({
+          command: {
+            _tag: 'init',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot: ctx.workspaceRoot,
+          },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
+      )
+
+      const running = Effect.runPromise(
+        runCliCommandWithRuntime({
+          command: {
+            _tag: 'sync',
+            watch: true,
+            webhook: 'manual',
+            mode: 'normal',
+            statePath: join(dir, 'watch.json'),
+            maxCycles: 2,
+          },
+          context: ctx,
+          options: { gatewayClient: makeInjectedNotionClient(calls), body },
+        }),
+      )
+
+      const receiver = await withTimeout(receiverStarted, 1_000)
+      await waitForFirstCycle()
+
+      const verificationResponse = await fetch(receiver.url, {
+        method: 'POST',
+        body: JSON.stringify({ verification_token: verificationToken }),
+        headers: { 'content-type': 'application/json' },
+      })
+      expect(verificationResponse.status).toBe(200)
+
+      const rawBody = JSON.stringify({
+        id: 'cli-watch-wake-event',
+        type: 'page.updated',
+        timestamp: '2026-05-29T08:00:00.000Z',
+        entity: { id: testIds.pageId, type: 'page' },
+        data: { parent: { data_source_id: testIds.dataSourceId } },
+      })
+      const eventResponse = await fetch(receiver.url, {
+        method: 'POST',
+        body: rawBody,
+        headers: {
+          'content-type': 'application/json',
+          'x-notion-signature': computeNotionWebhookSignature({ rawBody, verificationToken }),
+        },
+      })
+      expect(eventResponse.status).toBe(200)
+
+      const result = await withTimeout(running, 2_500)
+      expect(result).toMatchObject({
+        command: 'sync',
+        result: {
+          _tag: 'SyncWatchRunResult',
+          daemon: { _tag: 'WatchDaemonRunResult', cycles: 2, completed: 2 },
+        },
+      })
+      expect(storeFixture.store.readSignalStatus(testIds.rootId)).toEqual({
+        pending: 0,
+        claimed: 0,
+        processed: 1,
+        failed: 0,
+      })
     } finally {
       storeFixture.cleanup()
       await rm(dir, { recursive: true, force: true })

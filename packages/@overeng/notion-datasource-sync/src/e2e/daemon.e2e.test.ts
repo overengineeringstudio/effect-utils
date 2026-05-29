@@ -17,7 +17,9 @@ import {
 import { BodySyncError } from '../core/errors.ts'
 import { SyncEventId } from '../core/events.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
+import { SignalExternalId, SignalId, SignalProvider } from '../core/signals.ts'
 import {
+  makeWatchDaemonWakeNotifier,
   readWatchDaemonState,
   runWatchDaemon,
   runWatchDaemonCycle,
@@ -56,6 +58,12 @@ const schemaProperties = [
     writeClass: 'writable' as const,
   },
 ]
+
+const signalProvider = decode({ schema: SignalProvider, value: 'test-provider' })
+const signalIdA = decode({ schema: SignalId, value: 'signal-a' })
+const signalIdB = decode({ schema: SignalId, value: 'signal-b' })
+const signalExternalIdA = decode({ schema: SignalExternalId, value: 'external-a' })
+const signalExternalIdB = decode({ schema: SignalExternalId, value: 'external-b' })
 
 const implementedDaemonScenarioIds = new Set<ScenarioId>([
   'NDS-L5-watch-daemon-local-cycle',
@@ -201,6 +209,7 @@ const daemonOptions = (input: {
   readonly useDefaultLease?: boolean
   readonly leaseDurationMs?: number
   readonly sleep?: WatchDaemonOptions['sleep']
+  readonly wakeNotifier?: WatchDaemonOptions['wakeNotifier']
   readonly queryContract?: WatchDaemonOptions['queryContract']
   readonly schemaProperties?: WatchDaemonOptions['schemaProperties']
   readonly workspaceRoot?: WatchDaemonOptions['workspaceRoot']
@@ -222,6 +231,7 @@ const daemonOptions = (input: {
   ...(input.leaseDurationMs === undefined ? {} : { leaseDurationMs: input.leaseDurationMs }),
   ...(input.signal === undefined ? {} : { signal: input.signal }),
   ...(input.sleep === undefined ? {} : { sleep: input.sleep }),
+  ...(input.wakeNotifier === undefined ? {} : { wakeNotifier: input.wakeNotifier }),
 })
 
 const runWithPorts = <TValue, TError>(
@@ -370,6 +380,227 @@ describe('watch daemon surface', () => {
         cancelled: true,
       })
       expect(sleeps).toEqual([5_000])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('settles a claimed signal after a successful full sync cycle', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      storeFixture.store.enqueueSignal({
+        rootId: testIds.rootId,
+        signalId: signalIdA,
+        provider: signalProvider,
+        externalId: signalExternalIdA,
+        dataSourceId: testIds.dataSourceId,
+        pageId: testIds.pageId,
+      })
+
+      const result = await runWithPorts(
+        runWatchDaemonCycle(daemonOptions({ store: storeFixture.store, statePath, clock })),
+        { gateway: gateway.gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      expect(result.signal?.signalId).toBe(signalIdA)
+      expect(storeFixture.store.readSignalStatus(testIds.rootId)).toEqual({
+        pending: 0,
+        claimed: 0,
+        processed: 1,
+        failed: 0,
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('releases a claimed signal without marking it processed when the cycle fails', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+    const failingGateway = {
+      ...gateway.gateway,
+      retrieveDataSource: (
+        dataSourceId: Parameters<typeof gateway.gateway.retrieveDataSource>[0],
+      ) =>
+        Effect.fail(
+          makeGatewayError({
+            operation: 'retrieveDataSource',
+            dataSourceId,
+            message: 'signal cycle failure',
+          }),
+        ),
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      storeFixture.store.enqueueSignal({
+        rootId: testIds.rootId,
+        signalId: signalIdA,
+        provider: signalProvider,
+        externalId: signalExternalIdA,
+      })
+
+      await expect(
+        runWithPorts(
+          runWatchDaemonCycle(daemonOptions({ store: storeFixture.store, statePath, clock })),
+          { gateway: failingGateway, body: ports.body, workspace: ports.workspace },
+        ),
+      ).rejects.toThrow('signal cycle failure')
+
+      expect(storeFixture.store.readSignals(testIds.rootId)).toMatchObject([
+        {
+          signalId: signalIdA,
+          state: 'pending',
+          attemptCount: 1,
+          lastError: 'NotionGatewayError',
+        },
+      ])
+      expect(storeFixture.store.readSignalStatus(testIds.rootId).processed).toBe(0)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('uses pending signals to wake the next daemon cycle without normal polling delay', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+    const sleeps: number[] = []
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      storeFixture.store.enqueueSignal({
+        rootId: testIds.rootId,
+        signalId: signalIdA,
+        provider: signalProvider,
+        externalId: signalExternalIdA,
+      })
+      storeFixture.store.enqueueSignal({
+        rootId: testIds.rootId,
+        signalId: signalIdB,
+        provider: signalProvider,
+        externalId: signalExternalIdB,
+      })
+
+      const result = await runWithPorts(
+        runWatchDaemon(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            maxCycles: 2,
+            sleep: (millis) =>
+              Effect.sync(() => {
+                sleeps.push(millis)
+              }),
+          }),
+        ),
+        { gateway: gateway.gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      expect(result).toMatchObject({ cycles: 2, completed: 2, cancelled: false })
+      expect(sleeps).toEqual([0])
+      expect(storeFixture.store.readSignalStatus(testIds.rootId)).toEqual({
+        pending: 0,
+        claimed: 0,
+        processed: 2,
+        failed: 0,
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('wakes a sleeping daemon when a webhook receiver notifies a newly enqueued signal', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+    const wakeNotifier = makeWatchDaemonWakeNotifier()
+    const sleepStarted = makeDeferred<number>()
+    const observedWaits: number[] = []
+    const instrumentedWakeNotifier = {
+      wake: wakeNotifier.wake,
+      awaitWake: (millis: number) =>
+        Effect.sync(() => {
+          observedWaits.push(millis)
+          sleepStarted.resolve(millis)
+        }).pipe(Effect.zipRight(wakeNotifier.awaitWake(millis))),
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      const running = runWithPorts(
+        runWatchDaemon(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            maxCycles: 2,
+            wakeNotifier: instrumentedWakeNotifier,
+          }),
+        ),
+        { gateway: gateway.gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      await expect(
+        withFailsafe(sleepStarted.promise, 'daemon did not enter wake wait'),
+      ).resolves.toBe(5_000)
+      storeFixture.store.enqueueSignal({
+        rootId: testIds.rootId,
+        signalId: signalIdA,
+        provider: signalProvider,
+        externalId: signalExternalIdA,
+      })
+      instrumentedWakeNotifier.wake()
+
+      const result = await withFailsafe(running, 'daemon did not wake after signal notification')
+
+      expect(result).toMatchObject({ cycles: 2, completed: 2, cancelled: false })
+      expect(observedWaits).toEqual([5_000])
+      expect(storeFixture.store.readSignalStatus(testIds.rootId)).toEqual({
+        pending: 0,
+        claimed: 0,
+        processed: 1,
+        failed: 0,
+      })
     } finally {
       storeFixture.cleanup()
     }

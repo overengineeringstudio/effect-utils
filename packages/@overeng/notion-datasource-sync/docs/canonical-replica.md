@@ -51,7 +51,7 @@ integrity digests. Users and automation must not edit `_nds_*`. If private
 state is corrupt, missing, or tampered with, `doctor` fails closed and sync
 does not infer remote writes from public rows alone.
 
-`sync` and `watch` consume the same public SQLite CDC contract. A supported
+`sync` and `sync --watch` consume the same public SQLite CDC contract. A supported
 `rows` edit must remain visible through `changes` until it is planned,
 executed, verified, and settled; watch mode is not remote-only polling.
 
@@ -194,7 +194,7 @@ sqlite3 ./workspace/<database-id>.sqlite "pragma wal_checkpoint(full);"
 sqlite3 ./workspace/<database-id>.sqlite ".backup './backup/<database-id>.sqlite'"
 ```
 
-For offline copies, close sync/watch processes first, then copy the SQLite file
+For offline copies, close `sync --watch` processes first, then copy the SQLite file
 and any `-wal`/`-shm` files that still exist. The portable unit is the database
 ID-named SQLite database and its SQLite-managed WAL state.
 

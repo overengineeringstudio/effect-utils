@@ -362,19 +362,16 @@ export const PatchDataSourceMetadataCommand = Schema.TaggedStruct(
 export type PatchDataSourceMetadataCommand = typeof PatchDataSourceMetadataCommand.Type
 
 /** Remote write command: patches database/container metadata, verified through the owning data source metadata projection. */
-export const PatchDatabaseMetadataCommand = Schema.TaggedStruct(
-  'PatchDatabaseMetadataCommand',
-  {
-    commandId: CommandId,
-    databaseId: DatabaseId,
-    dataSourceId: DataSourceId,
-    baseMetadataHash: Hash,
-    metadataPatch: Schema.Struct({
-      titlePlainText: Schema.optional(Schema.String),
-      descriptionPlainText: Schema.optional(Schema.String),
-    }),
-  },
-).annotations({ identifier: 'NotionDatasourceSync.PatchDatabaseMetadataCommand' })
+export const PatchDatabaseMetadataCommand = Schema.TaggedStruct('PatchDatabaseMetadataCommand', {
+  commandId: CommandId,
+  databaseId: DatabaseId,
+  dataSourceId: DataSourceId,
+  baseMetadataHash: Hash,
+  metadataPatch: Schema.Struct({
+    titlePlainText: Schema.optional(Schema.String),
+    descriptionPlainText: Schema.optional(Schema.String),
+  }),
+}).annotations({ identifier: 'NotionDatasourceSync.PatchDatabaseMetadataCommand' })
 export type PatchDatabaseMetadataCommand = typeof PatchDatabaseMetadataCommand.Type
 
 /** Remote write command: moves a Notion page to the trash, gated on the base properties hash. */

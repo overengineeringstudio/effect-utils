@@ -67,6 +67,7 @@ reports the database as unsafe instead of inferring remote writes.
 notion-datasource-sync sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
 notion-datasource-sync sync --from-notion <database-url> "$PWD/notion-workspace" --dry-run --limit 25
 notion-datasource-sync sync "$PWD/notion-workspace"
+notion-datasource-sync sync --watch "$PWD/notion-workspace"
 notion-datasource-sync status "$PWD/notion-workspace"
 
 sqlite3 "$PWD/notion-workspace/<database-id>.sqlite"

@@ -25,6 +25,19 @@ import {
   type SyncRootId,
 } from '../core/events.ts'
 import { GuardName } from '../core/guards.ts'
+import {
+  SignalExternalId,
+  SignalId,
+  SignalKind,
+  SignalProvider,
+  SignalState,
+  type ClaimSignalInput,
+  type EnqueueSignalInput,
+  type ReleaseSignalInput,
+  type SettleSignalInput,
+  type SignalInboxStatus,
+  type SignalInboxRecord,
+} from '../core/signals.ts'
 import type { PlannerProjectionSnapshot } from '../planner/planner.ts'
 import {
   computePayloadHash,
@@ -252,8 +265,10 @@ export type StoreStatusProjection = {
     readonly properties: number
     readonly bodies: number
   }
+  readonly signals: SignalInboxStatus
 }
 
+/** Stored binding between a self-contained SQLite replica and its Notion sync root. */
 export type WorkspaceBindingRow = {
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceId
@@ -416,6 +431,14 @@ const readTombstoneClassification = ({
       'unknown',
     ),
   )(readString({ row, key }))
+
+const readSignalState = ({
+  row,
+  key,
+}: {
+  readonly row: SqlRow
+  readonly key: string
+}): SignalState => Schema.decodeUnknownSync(SignalState)(readString({ row, key }))
 
 const readCount = ({
   row,
@@ -868,6 +891,234 @@ export class NotionSyncStore {
         leaseToken: readOptionalString({ row: row, key: 'lease_token' }),
         settlementEventId: readOptionalString({ row: row, key: 'settlement_event_id' }),
       }))
+  }
+
+  enqueueSignal(input: EnqueueSignalInput): {
+    readonly signal: SignalInboxRecord
+    readonly inserted: boolean
+  } {
+    this.#db.exec('BEGIN IMMEDIATE')
+    try {
+      this.#ensureRoot(input.rootId)
+      const existing = this.#db
+        .prepare(
+          `SELECT *
+           FROM _nds_signal_inbox
+           WHERE root_id = ? AND provider = ? AND external_id = ?`,
+        )
+        .get(input.rootId, input.provider, input.externalId)
+
+      if (existing !== undefined) {
+        this.#db.exec('COMMIT')
+        return {
+          signal: this.#signalRecord({ rootId: input.rootId, row: existing }),
+          inserted: false,
+        }
+      }
+
+      const now = currentIso(this.#now)
+      this.#db
+        .prepare(
+          `INSERT INTO _nds_signal_inbox (
+             root_id,
+             signal_id,
+             provider,
+             external_id,
+             kind,
+             payload_json,
+             data_source_id,
+             page_id,
+             state,
+             attempt_count,
+             created_at,
+             updated_at
+           )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+        )
+        .run(
+          input.rootId,
+          input.signalId,
+          input.provider,
+          input.externalId,
+          input.kind ?? 'remote-change',
+          input.payloadJson ?? '{}',
+          input.dataSourceId ?? null,
+          input.pageId ?? null,
+          now,
+          now,
+        )
+
+      const row = this.#db
+        .prepare(
+          `SELECT *
+           FROM _nds_signal_inbox
+           WHERE root_id = ? AND signal_id = ?`,
+        )
+        .get(input.rootId, input.signalId)
+
+      if (row === undefined) {
+        throw new LocalStoreError({
+          operation: 'enqueue-signal',
+          message: `Signal ${input.signalId} was not readable after insert`,
+        })
+      }
+
+      this.#db.exec('COMMIT')
+      return { signal: this.#signalRecord({ rootId: input.rootId, row }), inserted: true }
+    } catch (cause) {
+      this.#db.exec('ROLLBACK')
+      throw cause
+    }
+  }
+
+  claimNextSignal(input: ClaimSignalInput): SignalInboxRecord | undefined {
+    this.#db.exec('BEGIN IMMEDIATE')
+    try {
+      this.#ensureRoot(input.rootId)
+      const now = currentIso(this.#now)
+      const leaseCutoff = new Date(
+        this.#now().getTime() - (input.leaseDurationMs ?? 60_000),
+      ).toISOString()
+      const candidate = this.#db
+        .prepare(
+          `SELECT *
+           FROM _nds_signal_inbox
+           WHERE root_id = ?
+             AND (
+               state = 'pending'
+               OR (state = 'claimed' AND claimed_at <= ?)
+             )
+           ORDER BY updated_at, signal_id
+           LIMIT 1`,
+        )
+        .get(input.rootId, leaseCutoff)
+
+      if (candidate === undefined) {
+        this.#db.exec('COMMIT')
+        return undefined
+      }
+
+      const signalId = readString({ row: candidate, key: 'signal_id' })
+      this.#db
+        .prepare(
+          `UPDATE _nds_signal_inbox
+           SET state = 'claimed',
+               attempt_count = attempt_count + 1,
+               lease_token = ?,
+               claimed_at = ?,
+               processed_at = NULL,
+               updated_at = ?
+           WHERE root_id = ? AND signal_id = ?`,
+        )
+        .run(input.leaseToken, now, now, input.rootId, signalId)
+
+      const row = this.#db
+        .prepare(
+          `SELECT *
+           FROM _nds_signal_inbox
+           WHERE root_id = ? AND signal_id = ?`,
+        )
+        .get(input.rootId, signalId)
+
+      if (row === undefined) {
+        throw new LocalStoreError({
+          operation: 'claim-signal',
+          message: `Signal ${signalId} was not readable after claim`,
+        })
+      }
+
+      this.#db.exec('COMMIT')
+      return this.#signalRecord({ rootId: input.rootId, row })
+    } catch (cause) {
+      this.#db.exec('ROLLBACK')
+      throw cause
+    }
+  }
+
+  settleSignal(input: SettleSignalInput): void {
+    this.#db.exec('BEGIN IMMEDIATE')
+    try {
+      const now = currentIso(this.#now)
+      this.#db
+        .prepare(
+          `UPDATE _nds_signal_inbox
+           SET state = 'processed',
+               lease_token = NULL,
+               processed_at = ?,
+               last_error = NULL,
+               updated_at = ?
+           WHERE root_id = ?
+             AND signal_id = ?
+             AND state = 'claimed'
+             AND lease_token = ?`,
+        )
+        .run(now, now, input.rootId, input.signalId, input.leaseToken)
+      this.#db.exec('COMMIT')
+    } catch (cause) {
+      this.#db.exec('ROLLBACK')
+      throw cause
+    }
+  }
+
+  releaseSignal(input: ReleaseSignalInput): void {
+    this.#db.exec('BEGIN IMMEDIATE')
+    try {
+      const now = currentIso(this.#now)
+      this.#db
+        .prepare(
+          `UPDATE _nds_signal_inbox
+           SET state = ?,
+               lease_token = NULL,
+               last_error = ?,
+               updated_at = ?
+           WHERE root_id = ?
+             AND signal_id = ?
+             AND state = 'claimed'
+             AND lease_token = ?`,
+        )
+        .run(
+          input.failed === true ? 'failed' : 'pending',
+          input.error,
+          now,
+          input.rootId,
+          input.signalId,
+          input.leaseToken,
+        )
+      this.#db.exec('COMMIT')
+    } catch (cause) {
+      this.#db.exec('ROLLBACK')
+      throw cause
+    }
+  }
+
+  readSignals(rootId: SyncRootId): readonly SignalInboxRecord[] {
+    return this.#db
+      .prepare(
+        `SELECT *
+         FROM _nds_signal_inbox
+         WHERE root_id = ?
+         ORDER BY created_at, signal_id`,
+      )
+      .all(rootId)
+      .map((row) => this.#signalRecord({ rootId, row }))
+  }
+
+  readSignalStatus(rootId: SyncRootId): SignalInboxStatus {
+    const rows = this.#db
+      .prepare(
+        `SELECT state, COUNT(*) AS count
+         FROM _nds_signal_inbox
+         WHERE root_id = ?
+         GROUP BY state`,
+      )
+      .all(rootId)
+    const status = { pending: 0, claimed: 0, processed: 0, failed: 0 } satisfies SignalInboxStatus
+
+    for (const row of rows) {
+      status[readSignalState({ row, key: 'state' })] = Number(readInteger({ row, key: 'count' }))
+    }
+
+    return status
   }
 
   readConflicts(rootId: SyncRootId): readonly ConflictProjectionRow[] {
@@ -1419,6 +1670,7 @@ export class NotionSyncStore {
           key: 'count',
         }),
       },
+      signals: this.readSignalStatus(rootId),
     }
   }
 
@@ -1556,6 +1808,42 @@ export class NotionSyncStore {
     return event
   }
 
+  #signalRecord({
+    rootId,
+    row,
+  }: {
+    readonly rootId: SyncRootId
+    readonly row: SqlRow
+  }): SignalInboxRecord {
+    const dataSourceId = readOptionalString({ row, key: 'data_source_id' })
+    const pageId = readOptionalString({ row, key: 'page_id' })
+    const leaseToken = readOptionalString({ row, key: 'lease_token' })
+    const claimedAt = readOptionalString({ row, key: 'claimed_at' })
+    const processedAt = readOptionalString({ row, key: 'processed_at' })
+    const lastError = readOptionalString({ row, key: 'last_error' })
+
+    return {
+      rootId,
+      signalId: Schema.decodeUnknownSync(SignalId)(readString({ row, key: 'signal_id' })),
+      provider: Schema.decodeUnknownSync(SignalProvider)(readString({ row, key: 'provider' })),
+      externalId: Schema.decodeUnknownSync(SignalExternalId)(
+        readString({ row, key: 'external_id' }),
+      ),
+      kind: Schema.decodeUnknownSync(SignalKind)(readString({ row, key: 'kind' })),
+      payloadJson: readString({ row, key: 'payload_json' }),
+      state: readSignalState({ row, key: 'state' }),
+      ...(dataSourceId === undefined ? {} : { dataSourceId: decodeDataSourceId(dataSourceId) }),
+      ...(pageId === undefined ? {} : { pageId: decodePageId(pageId) }),
+      attemptCount: Number(readInteger({ row, key: 'attempt_count' })),
+      ...(leaseToken === undefined ? {} : { leaseToken }),
+      ...(claimedAt === undefined ? {} : { claimedAt }),
+      ...(processedAt === undefined ? {} : { processedAt }),
+      ...(lastError === undefined ? {} : { lastError }),
+      createdAt: readString({ row, key: 'created_at' }),
+      updatedAt: readString({ row, key: 'updated_at' }),
+    }
+  }
+
   #runMigrations(): void {
     assertSupportedSchemaVersion(this.#db)
 
@@ -1579,7 +1867,7 @@ export class NotionSyncStore {
         `INSERT OR IGNORE INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       )
-      .run(STORE_SCHEMA_VERSION, 'planner-projection-schema', currentIso(this.#now))
+      .run(STORE_SCHEMA_VERSION, 'signal-inbox', currentIso(this.#now))
   }
 
   #ensureRoot(rootId: SyncRootId): void {

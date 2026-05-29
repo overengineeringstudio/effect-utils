@@ -136,12 +136,10 @@ const expectSpanAttributes = (span: RecordedSpan, attributes: Record<string, unk
 }
 
 describe('notion datasource sync OTEL tracing', () => {
-  it('records a safe nested watch trace with CLI, daemon, sync, gateway, and executor spans', async () => {
+  it('records a safe nested sync --watch trace with CLI, daemon, sync, gateway, and executor spans', async () => {
     expect(serviceNameForCliCommand({ _tag: 'sync' })).toBe(otelServiceNames.cli)
-    expect(serviceNameForCliCommand({ _tag: 'watch', statePath: '/tmp/watch.json' })).toBe(
-      otelServiceNames.daemon,
-    )
-    expect(otelServiceNameForCliArgv(['watch'])).toBe(otelServiceNames.daemon)
+    expect(serviceNameForCliCommand({ _tag: 'sync', watch: true })).toBe(otelServiceNames.daemon)
+    expect(otelServiceNameForCliArgv(['sync', '--watch'])).toBe(otelServiceNames.daemon)
 
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
@@ -162,7 +160,7 @@ describe('notion datasource sync OTEL tracing', () => {
     try {
       const result = await Effect.runPromise(
         runCliCommand(
-          { _tag: 'watch', statePath: join(dir, 'watch.json'), maxCycles: 1 },
+          { _tag: 'sync', watch: true, statePath: join(dir, 'watch.json'), maxCycles: 1 },
           context({ store: storeFixture.store, clock }),
         ).pipe(
           Effect.provideService(NotionDataSourceGateway, gateway.gateway),
@@ -177,7 +175,7 @@ describe('notion datasource sync OTEL tracing', () => {
       const cli = expectSpan(trace.spans, spanNames.cliCommand)
       expect(spanParentName(cli)).toBeUndefined()
       expect(cli.attributes[spanAttr.processRole]).toBe('daemon')
-      expect(cli.attributes[spanAttr.command]).toBe('watch')
+      expect(cli.attributes[spanAttr.command]).toBe('sync')
 
       expectSpan(trace.spans, spanNames.daemonRun, (span) =>
         spanAncestors(span).includes(spanNames.cliCommand),

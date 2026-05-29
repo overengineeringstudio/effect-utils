@@ -1,5 +1,5 @@
 /** SQLite schema version — incremented when a migration is needed. */
-export const STORE_SCHEMA_VERSION = 3
+export const STORE_SCHEMA_VERSION = 4
 
 /** Opaque identifier stamped into every _nds_projection_metadata row to detect when projections were built by an incompatible projector. */
 export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'
@@ -7,13 +7,8 @@ export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'
 /**
  * DDL for the full store schema applied on initial bootstrap.
  *
- * Creates the immutable event log (`_nds_sync_root`, `_nds_sync_event`) and all
- * projection tables: `_nds_projection_metadata`, `_nds_outbox`, `_nds_conflict`,
- * `_nds_tombstone`, `_nds_guard_block`, `_nds_path_claim`, `_nds_lease`,
- * `_nds_api_contract`, `_nds_capability`, `_nds_data_source`,
- * `_nds_schema_property`, `_nds_row`, `_nds_property_shadow`,
- * `_nds_body_pointer`, `_nds_query_absence`,
- * `_nds_query_scan_checkpoint`, `_nds_page_property_checkpoint`, and `_nds_migration_history`.
+ * Creates the immutable event log (`_nds_sync_root`, `_nds_sync_event`), projection
+ * tables, durable signal inbox, and `_nds_migration_history`.
  */
 export const createStoreSchemaSql = `
 CREATE TABLE IF NOT EXISTS _nds_sync_root (
@@ -304,6 +299,30 @@ CREATE TABLE IF NOT EXISTS _nds_page_property_checkpoint (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (root_id, page_id, property_id)
 );
+
+CREATE TABLE IF NOT EXISTS _nds_signal_inbox (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
+  signal_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('remote-change')),
+  payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
+  data_source_id TEXT,
+  page_id TEXT,
+  state TEXT NOT NULL CHECK (state IN ('pending', 'claimed', 'processed', 'failed')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  lease_token TEXT,
+  claimed_at TEXT,
+  processed_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (root_id, signal_id),
+  UNIQUE (root_id, provider, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS _nds_signal_inbox_ready_idx
+ON _nds_signal_inbox(root_id, state, updated_at, signal_id);
 
 CREATE TABLE IF NOT EXISTS _nds_migration_history (
   schema_version INTEGER PRIMARY KEY,

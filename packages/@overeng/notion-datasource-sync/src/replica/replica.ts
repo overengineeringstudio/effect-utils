@@ -2759,8 +2759,8 @@ const rebuildGeneratedViews = (db: DatabaseSync): void => {
 export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): void => {
   mkdirSync(dirname(options.replicaPath), { recursive: true })
   const unified = options.syncStorePath === options.replicaPath
-  const syncDb = new DatabaseSync(options.syncStorePath, unified ? {} : { readOnly: true })
-  const replicaDb = unified ? syncDb : new DatabaseSync(options.replicaPath)
+  const syncDb = new DatabaseSync(options.syncStorePath, unified === true ? {} : { readOnly: true })
+  const replicaDb = unified === true ? syncDb : new DatabaseSync(options.replicaPath)
   try {
     createReplicaSchema(replicaDb)
     const schemaPayloads = latestDataSourcePayloads({ syncDb, rootId: options.rootId })

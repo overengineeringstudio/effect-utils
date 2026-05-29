@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -41,8 +42,15 @@ import {
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
 import { readUserActionSurface, type UserActionSurface } from '../core/result-envelope.ts'
+import type { SignalInboxStatus } from '../core/signals.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from '../core/status.ts'
-import { runWatchDaemon, type WatchDaemonRunResult } from '../daemon/watch.ts'
+import {
+  makeWatchDaemonWakeNotifier,
+  runWatchDaemon,
+  type WatchDaemonMode,
+  type WatchDaemonRunResult,
+  type WatchDaemonWakeNotifier,
+} from '../daemon/watch.ts'
 import {
   allGatewayCapabilities,
   makeGatewayError,
@@ -101,6 +109,17 @@ import {
   type OneShotPushResult,
   type OneShotSyncResult,
 } from '../sync/sync.ts'
+import {
+  startNotionWebhookReceiver,
+  type NotionWebhookReceiverHandle,
+  type NotionWebhookReceiverStatus,
+} from '../webhook/receiver.ts'
+import {
+  makeManualWebhookRelayProvider,
+  makeTailscaleFunnelProvider,
+  type TailscaleProcessRunner,
+  type WebhookRelayExposure,
+} from '../webhook/tailscale.ts'
 
 const remoteObservationContext = (context: CliContext) => ({
   ...(context.requiredCapabilities === undefined
@@ -130,6 +149,13 @@ export type CliCommand =
       readonly _tag: 'sync'
       readonly workspaceRoot?: typeof AbsolutePath.Type
       readonly dryRun?: boolean
+      readonly watch?: boolean
+      readonly statePath?: string
+      readonly maxCycles?: number
+      readonly mode?: WatchDaemonMode
+      readonly webhook?: 'none' | 'tailscale' | 'manual'
+      readonly webhookRequired?: boolean
+      readonly nonInteractive?: boolean
     }
   | {
       readonly _tag: 'sync-from-notion'
@@ -140,11 +166,6 @@ export type CliCommand =
       readonly limit?: number
     }
   | { readonly _tag: 'status'; readonly workspaceRoot?: typeof AbsolutePath.Type }
-  | {
-      readonly _tag: 'watch'
-      readonly statePath: string
-      readonly maxCycles?: number
-    }
   | { readonly _tag: 'conflicts-list' }
   | {
       readonly _tag: 'conflicts-resolve'
@@ -188,6 +209,11 @@ export type CliContext = {
   readonly leaseToken?: string
   readonly leaseDurationMs?: number
   readonly now?: () => Date
+  readonly tailscaleProcessRunner?: TailscaleProcessRunner
+  readonly webhookReceiverHostname?: string
+  readonly webhookReceiverPort?: number
+  readonly webhookReceiverPath?: string
+  readonly webhookReceiverStarted?: (status: NotionWebhookReceiverStatus) => void
 }
 
 /** Environment variables read by `makeCliRuntimeLayer` to obtain the Notion API token. */
@@ -344,6 +370,45 @@ export type DoctorResult = {
   readonly surface: UserActionSurface
 }
 
+/** Runtime webhook health reported by `sync --watch`. */
+export type SyncWatchWebhookStatus =
+  | {
+      readonly _tag: 'WebhookDisabled'
+      readonly provider: 'none'
+      readonly signals: SignalInboxStatus
+    }
+  | {
+      readonly _tag: 'WebhookManualStatus'
+      readonly provider: 'manual'
+      readonly state: 'running'
+      readonly message: string
+      readonly receiver: NotionWebhookReceiverStatus
+      readonly exposure: WebhookRelayExposure
+      readonly signals: SignalInboxStatus
+    }
+  | {
+      readonly _tag: 'WebhookTailscaleStatus'
+      readonly provider: 'tailscale'
+      readonly state: 'running' | 'degraded'
+      readonly message: string
+      readonly receiver: NotionWebhookReceiverStatus
+      readonly exposure?: WebhookRelayExposure
+      readonly signals: SignalInboxStatus
+    }
+
+/** Result envelope returned after a bounded `sync --watch` daemon run. */
+export type SyncWatchRunResult = {
+  readonly _tag: 'SyncWatchRunResult'
+  readonly webhook: SyncWatchWebhookStatus
+  readonly daemon: WatchDaemonRunResult
+}
+
+type ActiveWatchWebhook = {
+  readonly status: SyncWatchWebhookStatus
+  readonly wakeNotifier: WatchDaemonWakeNotifier | undefined
+  readonly close: () => Promise<void>
+}
+
 /**
  * Successful JSON output envelope written to `stdout` by every CLI command.
  *
@@ -396,9 +461,12 @@ const makeUnsupportedCommandError = (command: CliCommand['_tag']): CliUnsupporte
 const isUnsupportedCommand = (command: CliCommand): boolean =>
   command._tag === 'migrate-store' || command._tag === 'migrate-schema' || command._tag === 'repair'
 
-/** Returns the OTel service name for the given parsed command — `watch` maps to the daemon service, all others to the CLI service. */
+const isWatchCommand = (command: CliCommand): boolean =>
+  command._tag === 'sync' && command.watch === true
+
+/** Returns the OTel service name for the given parsed command — `sync --watch` maps to the daemon service, all others to the CLI service. */
 export const serviceNameForCliCommand = (command: CliCommand): string =>
-  command._tag === 'watch' ? otelServiceNames.daemon : otelServiceNames.cli
+  isWatchCommand(command) === true ? otelServiceNames.daemon : otelServiceNames.cli
 
 const SchemaPropertyObservationJson = Schema.Struct({
   propertyId: PropertyId,
@@ -450,6 +518,176 @@ const withOptionalCommandOptions = ({
 const withOptionalObservationLimit = (context: CliContext): { readonly rowLimit?: number } =>
   context.rowLimit === undefined ? {} : { rowLimit: context.rowLimit }
 
+const defaultWatchStatePath = (context: CliContext): string =>
+  context.storePath === undefined || context.storePath === ':memory:'
+    ? join(context.workspaceRoot, '.notion-datasource-sync', 'watch.json')
+    : `${context.storePath}.watch.json`
+
+const defaultWebhookReceiverPort = 39231
+const defaultWebhookReceiverPath = '/notion-datasource-sync/webhook/notion'
+
+// oxlint-disable-next-line overeng/named-args -- implements TailscaleProcessRunner callback shape.
+const defaultTailscaleProcessRunner: TailscaleProcessRunner = (command, args) =>
+  new Promise((resolveProcess) => {
+    execFile(command, [...args], { timeout: 5_000 }, (error, stdout, stderr) => {
+      if (error === null) {
+        resolveProcess({ exitCode: 0, stdout, stderr })
+        return
+      }
+      const maybeExitCode =
+        typeof error === 'object' && 'code' in error && typeof error.code === 'number'
+          ? error.code
+          : 1
+      resolveProcess({
+        exitCode: maybeExitCode,
+        stdout,
+        stderr,
+      })
+    })
+  })
+
+const signalStatus = (context: CliContext): SignalInboxStatus =>
+  context.store.readSignalStatus(context.rootId)
+
+const closeWebhookResources = async ({
+  receiver,
+  providerStop,
+}: {
+  readonly receiver: NotionWebhookReceiverHandle | undefined
+  readonly providerStop: (() => Promise<void>) | undefined
+}) => {
+  try {
+    await providerStop?.()
+  } finally {
+    await receiver?.close()
+  }
+}
+
+const setupWatchWebhook = ({
+  command,
+  context,
+}: {
+  readonly command: Extract<CliCommand, { readonly _tag: 'sync' }>
+  readonly context: CliContext
+}): Effect.Effect<ActiveWatchWebhook, CliArgumentError> => {
+  const provider = command.webhook ?? 'none'
+  if (provider === 'none') {
+    if (command.webhookRequired === true) {
+      return Effect.fail(
+        new CliArgumentError({
+          message:
+            'sync --watch --webhook-required requires --webhook tailscale or --webhook manual',
+        }),
+      )
+    }
+    return Effect.succeed({
+      status: {
+        _tag: 'WebhookDisabled',
+        provider: 'none',
+        signals: signalStatus(context),
+      },
+      wakeNotifier: undefined,
+      close: async () => {},
+    })
+  }
+
+  return Effect.tryPromise({
+    try: async () => {
+      const wakeNotifier = makeWatchDaemonWakeNotifier()
+      const receiver = await startNotionWebhookReceiver({
+        rootId: context.rootId,
+        store: context.store,
+        ...(context.webhookReceiverHostname === undefined
+          ? {}
+          : { hostname: context.webhookReceiverHostname }),
+        port: context.webhookReceiverPort ?? defaultWebhookReceiverPort,
+        path: context.webhookReceiverPath ?? defaultWebhookReceiverPath,
+        onSignalEnqueued: () => wakeNotifier.wake(),
+      })
+      context.webhookReceiverStarted?.(receiver)
+
+      if (provider === 'manual') {
+        const manual = makeManualWebhookRelayProvider({
+          publicUrl: receiver.url,
+          localTarget: `${receiver.hostname}:${receiver.port.toString()}`,
+          path: receiver.path,
+        })
+        const exposure = await manual.start()
+        return {
+          status: {
+            _tag: 'WebhookManualStatus',
+            provider: 'manual',
+            state: 'running',
+            message:
+              'Manual webhook receiver is running locally; configure an external relay to deliver Notion webhooks to the callback URL.',
+            receiver,
+            exposure,
+            signals: signalStatus(context),
+          },
+          wakeNotifier,
+          close: () => closeWebhookResources({ receiver, providerStop: manual.stop }),
+        } satisfies ActiveWatchWebhook
+      }
+
+      const tailscale = makeTailscaleFunnelProvider({
+        localPort: receiver.port,
+        path: receiver.path,
+        run: context.tailscaleProcessRunner ?? defaultTailscaleProcessRunner,
+      })
+      let shouldStopTailscale = false
+      try {
+        const exposure = await tailscale.start()
+        shouldStopTailscale = true
+        return {
+          status: {
+            _tag: 'WebhookTailscaleStatus',
+            provider: 'tailscale',
+            state: 'running',
+            message:
+              'Tailscale Funnel is exposing the local webhook receiver; webhook hints still require reconciliation before planning.',
+            receiver,
+            exposure,
+            signals: signalStatus(context),
+          },
+          wakeNotifier,
+          close: () =>
+            closeWebhookResources({
+              receiver,
+              providerStop: shouldStopTailscale === true ? tailscale.stop : undefined,
+            }),
+        } satisfies ActiveWatchWebhook
+      } catch (cause) {
+        if (cause instanceof CliArgumentError) throw cause
+        if (command.webhookRequired === true) {
+          await closeWebhookResources({ receiver, providerStop: undefined })
+          throw new CliArgumentError({
+            message: 'sync --watch --webhook-required could not start Tailscale Funnel',
+          })
+        }
+        return {
+          status: {
+            _tag: 'WebhookTailscaleStatus',
+            provider: 'tailscale',
+            state: 'degraded',
+            message:
+              'Local webhook receiver is running, but Tailscale Funnel could not be started; continuing with polling reconciliation.',
+            receiver,
+            signals: signalStatus(context),
+          },
+          wakeNotifier,
+          close: () => closeWebhookResources({ receiver, providerStop: undefined }),
+        } satisfies ActiveWatchWebhook
+      }
+    },
+    catch: (cause) =>
+      cause instanceof CliArgumentError
+        ? cause
+        : new CliArgumentError({
+            message: 'Unable to initialize sync --watch webhook status',
+          }),
+  })
+}
+
 const envelope = <TResult>({
   command,
   context,
@@ -479,6 +717,7 @@ type CliCommandRuntimeResult = CliResultEnvelope<
   | OneShotPushResult
   | OneShotSyncResult
   | WatchDaemonRunResult
+  | SyncWatchRunResult
   | UserCommandResultEnvelope
   | DoctorResult
 >
@@ -564,6 +803,54 @@ const runCliCommandEffect = ({
         ...withOptionalCommandOptions({ command, context }),
       }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'sync':
+      if (command.watch === true) {
+        if (command.dryRun === true) {
+          return Effect.fail(
+            new CliArgumentError({
+              message:
+                'sync --watch does not support --dry-run; run sync --dry-run for a one-shot dry run',
+            }),
+          )
+        }
+        return setupWatchWebhook({ command, context }).pipe(
+          Effect.flatMap((webhook) =>
+            runWatchDaemon({
+              ...context,
+              ...remoteObservationContext(context),
+              ...withOptionalObservationLimit(context),
+              statePath: command.statePath ?? defaultWatchStatePath(context),
+              ...(command.maxCycles === undefined ? {} : { maxCycles: command.maxCycles }),
+              ...(command.mode === undefined ? {} : { mode: command.mode }),
+              ...(webhook.wakeNotifier === undefined ? {} : { wakeNotifier: webhook.wakeNotifier }),
+              ...withOptionalRuntimeOptions(context),
+            }).pipe(
+              Effect.map((daemon) =>
+                envelope({
+                  command: command._tag,
+                  context,
+                  result:
+                    command.webhook === undefined || command.webhook === 'none'
+                      ? daemon
+                      : ({
+                          _tag: 'SyncWatchRunResult',
+                          webhook: webhook.status,
+                          daemon,
+                        } satisfies SyncWatchRunResult),
+                }),
+              ),
+              Effect.ensuring(
+                Effect.tryPromise({
+                  try: webhook.close,
+                  catch: (cause) =>
+                    new CliArgumentError({
+                      message: `Unable to stop sync --watch webhook resources: ${String(cause)}`,
+                    }),
+                }).pipe(Effect.ignore),
+              ),
+            ),
+          ),
+        )
+      }
       if (command.workspaceRoot !== undefined) {
         const binding = readOneShotSyncStatus({
           store: context.store,
@@ -669,15 +956,6 @@ const runCliCommandEffect = ({
           }),
         }),
       )
-    case 'watch':
-      return runWatchDaemon({
-        ...context,
-        ...remoteObservationContext(context),
-        ...withOptionalObservationLimit(context),
-        statePath: command.statePath,
-        ...(command.maxCycles === undefined ? {} : { maxCycles: command.maxCycles }),
-        ...withOptionalRuntimeOptions(context),
-      }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
     case 'conflicts-list':
       return Effect.sync(() =>
         envelope({
@@ -783,11 +1061,14 @@ export const runCliCommand = Effect.fn(spanNames.cliCommand, {
           }),
           [spanAttr.spanLabel]: spanLabel(command._tag),
           [spanAttr.command]: command._tag,
-          [spanAttr.processRole]: processRoleForCliCommand(command._tag),
+          [spanAttr.processRole]: processRoleForCliCommand(command._tag, {
+            watch: isWatchCommand(command),
+          }),
           [spanAttr.rootId]: context.rootId,
           [spanAttr.dataSourceId]: context.dataSourceId,
           [spanAttr.dryRun]: 'dryRun' in command ? command.dryRun === true : undefined,
-          [spanAttr.maxCycles]: command._tag === 'watch' ? command.maxCycles : undefined,
+          [spanAttr.maxCycles]:
+            command._tag === 'sync' && command.watch === true ? command.maxCycles : undefined,
         }),
       )
       const result = yield* runCliCommandEffect({ command, context })
@@ -836,6 +1117,14 @@ export const renderCliErrorJson = (error: unknown): string => {
   return `${JSON.stringify(errorEnvelope, cliJsonReplacer, 2)}\n`
 }
 
+const booleanFlags = new Set([
+  'dry-run',
+  'no-materialize-bodies',
+  'non-interactive',
+  'watch',
+  'webhook-required',
+])
+
 const parseFlags = (argv: ReadonlyArray<string>): Map<string, string | true> => {
   const flags = new Map<string, string | true>()
   for (let index = 0; index < argv.length; index += 1) {
@@ -846,7 +1135,7 @@ const parseFlags = (argv: ReadonlyArray<string>): Map<string, string | true> => 
       throw new CliArgumentError({ message: `Repeated --${key} is not supported` })
     }
     const next = argv[index + 1]
-    if (next !== undefined && next.startsWith('--') === false) {
+    if (booleanFlags.has(key) === false && next !== undefined && next.startsWith('--') === false) {
       flags.set(key, next)
       index += 1
     } else {
@@ -862,7 +1151,12 @@ const parsePositionals = (argv: ReadonlyArray<string>): ReadonlyArray<string> =>
     const item = argv[index]
     if (item?.startsWith('--') === true) {
       const next = argv[index + 1]
-      if (next !== undefined && next.startsWith('--') === false) index += 1
+      if (
+        booleanFlags.has(item.slice(2)) === false &&
+        next !== undefined &&
+        next.startsWith('--') === false
+      )
+        index += 1
       continue
     }
     if (item !== undefined) positionals.push(item)
@@ -918,6 +1212,45 @@ const positiveIntegerFlag = ({
   throw new CliArgumentError({
     message: `--${name} must be a positive integer`,
   })
+}
+
+const watchModeFlag = (flags: Map<string, string | true>): WatchDaemonMode | undefined => {
+  const mode = optionalFlag({ flags, name: 'mode' })
+  if (mode === undefined) return undefined
+  switch (mode) {
+    case 'development':
+    case 'normal':
+    case 'low-priority':
+      return mode
+    default:
+      throw new CliArgumentError({
+        message: '--mode must be one of: development, normal, low-priority',
+      })
+  }
+}
+
+const webhookProviderFlag = (
+  flags: Map<string, string | true>,
+): 'none' | 'tailscale' | 'manual' | undefined => {
+  const provider = optionalFlag({ flags, name: 'webhook' })
+  if (provider === undefined) {
+    if (flags.has('webhook') === true) {
+      throw new CliArgumentError({
+        message: '--webhook must be one of: none, tailscale, manual',
+      })
+    }
+    return undefined
+  }
+  switch (provider) {
+    case 'none':
+    case 'tailscale':
+    case 'manual':
+      return provider
+    default:
+      throw new CliArgumentError({
+        message: '--webhook must be one of: none, tailscale, manual',
+      })
+  }
 }
 
 const optionalLimitFlag = (flags: Map<string, string | true>): number | undefined => {
@@ -1051,10 +1384,48 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
           message: 'sync accepts at most one workspace root positional argument',
         })
       }
+      const watch = flags.has('watch')
+      if (watch === false) {
+        if (flags.has('state') === true) {
+          throw new CliArgumentError({ message: '--state is only supported with sync --watch' })
+        }
+        if (flags.has('max-cycles') === true) {
+          throw new CliArgumentError({
+            message: '--max-cycles is only supported with sync --watch',
+          })
+        }
+        if (flags.has('mode') === true) {
+          throw new CliArgumentError({ message: '--mode is only supported with sync --watch' })
+        }
+        if (flags.has('webhook') === true) {
+          throw new CliArgumentError({ message: '--webhook is only supported with sync --watch' })
+        }
+        if (flags.has('webhook-required') === true) {
+          throw new CliArgumentError({
+            message: '--webhook-required is only supported with sync --watch',
+          })
+        }
+        if (flags.has('non-interactive') === true) {
+          throw new CliArgumentError({
+            message: '--non-interactive is only supported with sync --watch',
+          })
+        }
+      }
+      const statePath = optionalFlag({ flags, name: 'state' })
+      const maxCycles = positiveIntegerFlag({ flags, name: 'max-cycles' })
+      const mode = watchModeFlag(flags)
+      const webhook = webhookProviderFlag(flags)
       return {
         _tag: 'sync',
         ...(words[1] === undefined ? {} : { workspaceRoot: normalizeAbsolutePath(words[1]) }),
         dryRun: flags.has('dry-run'),
+        ...(watch === false ? {} : { watch: true }),
+        ...(statePath === undefined ? {} : { statePath }),
+        ...(maxCycles === undefined ? {} : { maxCycles }),
+        ...(mode === undefined ? {} : { mode }),
+        ...(webhook === undefined ? {} : { webhook }),
+        ...(flags.has('webhook-required') === false ? {} : { webhookRequired: true }),
+        ...(flags.has('non-interactive') === false ? {} : { nonInteractive: true }),
       }
     }
     case 'status':
@@ -1067,14 +1438,6 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
         _tag: 'status',
         ...(words[1] === undefined ? {} : { workspaceRoot: normalizeAbsolutePath(words[1]) }),
       }
-    case 'watch': {
-      const maxCycles = positiveIntegerFlag({ flags, name: 'max-cycles' })
-      return {
-        _tag: 'watch',
-        statePath: requiredFlag({ flags, name: 'state' }),
-        ...(maxCycles === undefined ? {} : { maxCycles }),
-      }
-    }
     case 'conflicts':
       if (subcommand === 'list') return { _tag: 'conflicts-list' }
       if (subcommand === 'resolve') {
@@ -1112,7 +1475,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   }
   throw new CliArgumentError({
     message:
-      'Expected one of: init, pull, push, sync, status, watch, conflicts list, conflicts resolve, forget, restore, migrate store, migrate schema, repair, doctor',
+      'Expected one of: init, pull, push, sync, status, conflicts list, conflicts resolve, forget, restore, migrate store, migrate schema, repair, doctor',
   })
 }
 

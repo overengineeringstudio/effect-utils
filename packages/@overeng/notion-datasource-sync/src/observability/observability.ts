@@ -112,13 +112,18 @@ export const spanLabel = (
 /** Strips the `Command` suffix from a command `_tag` to get a short kind string for span attributes. */
 export const commandKind = (tag: string): string => tag.replace(/Command$/, '')
 
-/** Maps a CLI command name to its `ProcessRole` — `watch` becomes `daemon`, everything else becomes `cli`. */
-export const processRoleForCliCommand = (command: string): ProcessRole =>
-  command === 'watch' ? 'daemon' : 'cli'
+/** Maps a CLI command to its `ProcessRole` — `sync --watch` becomes `daemon`, everything else becomes `cli`. */
+// oxlint-disable-next-line overeng/named-args -- public helper mirrors argv-style command plus options.
+export const processRoleForCliCommand = (
+  command: string,
+  options: { readonly watch?: boolean } = {},
+): ProcessRole => (command === 'sync' && options.watch === true ? 'daemon' : 'cli')
 
-/** Picks the correct OTel service name from raw `argv` (before full parsing) — falls back to the CLI service name when the command is not `watch`. */
+/** Picks the correct OTel service name from raw `argv` (before full parsing) — `sync --watch` uses the daemon service. */
 export const otelServiceNameForCliArgv = (argv: ReadonlyArray<string>): string =>
-  argv[0] === 'watch' ? otelServiceNames.daemon : otelServiceNames.cli
+  argv[0] === 'sync' && argv.includes('--watch') === true
+    ? otelServiceNames.daemon
+    : otelServiceNames.cli
 
 /**
  * Converts a `OneShotSyncStatus` snapshot into OTel span attributes.

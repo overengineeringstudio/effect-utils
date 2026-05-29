@@ -4,15 +4,15 @@
 that proves the behavior, then add live tests only for Notion semantics that fake
 services cannot prove.
 
-| Layer       | Command                                                                                                                               | Network | Purpose                                          |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------ |
-| Unit        | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/core/contracts.unit.test.ts --config vitest.config.ts`  | no      | schemas, contracts, hashes, guards               |
-| Fake E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/fake-service.e2e.test.ts --config vitest.config.ts` | no      | planner/store/outbox behavior                    |
-| Body E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/body-adapter.e2e.test.ts --config vitest.config.ts` | no      | NotionMD adapter boundary                        |
-| CLI E2E     | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/cli.e2e.test.ts --config vitest.config.ts`          | no      | CLI parsing, dry-run, adoption safety            |
-| Replica E2E | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/replica-*.e2e.test.ts --config vitest.config.ts`    | no      | `<database-id>.sqlite` reads, intents, conflicts |
-| Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`       | no      | watch loop, local SQLite CDC, restart, lease     |
-| Live Notion | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`  | yes     | real Notion API semantics                        |
+| Layer       | Command                                                                                                                               | Network | Purpose                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------------------------- |
+| Unit        | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/core/contracts.unit.test.ts --config vitest.config.ts`  | no      | schemas, contracts, hashes, guards                         |
+| Fake E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/fake-service.e2e.test.ts --config vitest.config.ts` | no      | planner/store/outbox behavior                              |
+| Body E2E    | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/body-adapter.e2e.test.ts --config vitest.config.ts` | no      | NotionMD adapter boundary                                  |
+| CLI E2E     | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/cli.e2e.test.ts --config vitest.config.ts`          | no      | CLI parsing, dry-run, adoption safety, webhook status seam |
+| Replica E2E | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/replica-*.e2e.test.ts --config vitest.config.ts`    | no      | `<database-id>.sqlite` reads, intents, conflicts           |
+| Daemon E2E  | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/daemon.e2e.test.ts --config vitest.config.ts`       | no      | `sync --watch` loop, local SQLite CDC, restart, lease      |
+| Live Notion | `CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts`  | yes     | real Notion API semantics                                  |
 
 Run package TypeScript after code changes:
 
@@ -67,12 +67,12 @@ sidecar is required state. `rows`, `schema`, `schema_properties`, `changes`,
 `conflicts`, `sync_status`, and read-only `debug_*` views must match observed
 Notion rows, while private `_nds_*` tables remain non-public.
 
-Daemon tests must prove that `watch <workspace>` processes the same public
+Daemon tests must prove that `sync --watch <workspace>` processes the same public
 SQLite CDC as `sync <workspace>`. A pending `rows` update, insert, or lifecycle
 change must be read from `changes`, planned through the shared planner,
 executed through the outbox when safe, and reflected back through `changes`,
 `conflicts`, and `sync_status`. Remote polling coverage alone is not sufficient
-watch coverage.
+watch-mode coverage.
 
 The focused replica E2E suite covers direct current-state CDC, body/lifecycle
 changes, metadata planning/settlement, schema fail-closed behavior, row-create
@@ -154,7 +154,7 @@ Required coverage for the self-contained SQLite contract:
   test/debug inputs only,
 - public surface shape: `rows`, `schema`, `schema_properties`, `changes`,
   `conflicts`, `sync_status`,
-- `rows` as the primary writable API, including watch processing of local CDC,
+- `rows` as the primary writable API, including `sync --watch` processing of local CDC,
 - read-only `debug_*` diagnostics,
 - private `_nds_*` tamper/corruption fail-closed behavior,
 - copy/backup portability using SQLite checkpoint/backup semantics,
