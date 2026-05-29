@@ -765,10 +765,10 @@ Requirement trace: R16, R19, R36-R37, R43-R44, R67-R73.
 
 Remote membership and row hashing require two different completeness proofs:
 
-| Proof                       | Source                   | Required terminal condition                                                  | Failure behavior                                              |
-| --------------------------- | ------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Query scan completeness     | data-source query pages  | cursor chain reaches `hasMore=false` before the 10,000-result cap hides rows | do not advance completeness checkpoint or classify absence    |
-| Property value completeness | page-property item pages | every paginated property needed for hashing reaches `hasMore=false`          | mark property incomplete; block writes to that property only  |
+| Proof                       | Source                   | Required terminal condition                                                  | Failure behavior                                             |
+| --------------------------- | ------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Query scan completeness     | data-source query pages  | cursor chain reaches `hasMore=false` before the 10,000-result cap hides rows | do not advance completeness checkpoint or classify absence   |
+| Property value completeness | page-property item pages | every paginated property needed for hashing reaches `hasMore=false`          | mark property incomplete; block writes to that property only |
 
 `QueryContract` is private checkpoint identity for the full database membership
 query. The membership contract is distinct from the scan window: a
@@ -1211,6 +1211,17 @@ Replica E2E must prove:
 - schema drift affecting a pending intent is guarded before apply,
 - public table/view rebuild from private `_nds_*` state is deterministic,
 - real user database tests remain read-only/downsync and prove representative Notion rows are unchanged.
+
+Bidirectional safety scenarios are defined in [e2e-plan.md](./e2e-plan.md) and
+typed in `src/testing/bidi-safety.ts`. This matrix is the acceptance surface for
+data-loss and liveness risks that span multiple subsystems: false conflicts,
+same-surface races, disjoint merges, lifecycle/edit races, incremental
+watermark boundaries, incremental absence safety, relation pagination failure,
+ambiguous write idempotency, conflict-resolution lifecycle, rebuild/replay
+safety, local-first slow-pull latency, and inline hydration correctness. Each
+scenario must assert the remote mutation ledger as well as the final SQLite
+projection; an apparently correct final state is not enough if an unsafe remote
+mutation was attempted.
 
 ## Design Questions
 

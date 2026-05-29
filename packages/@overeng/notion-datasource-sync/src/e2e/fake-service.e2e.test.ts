@@ -21,6 +21,7 @@ import {
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import { executeOutboxOnce } from '../sync/executor.ts'
 import { observeRemoteDataSource } from '../sync/observation.ts'
+import { bidiSafetyScenarioCoverageGaps, bidiSafetyScenarios } from '../testing/bidi-safety.ts'
 import {
   bodyAdapterResultIntent,
   bodyLocalChangeInput,
@@ -288,6 +289,10 @@ describe('notion datasource sync fake-service E2E harness', () => {
     expect(concreteScenarioMatrixGaps()).toEqual([])
     expect(invalidScenarioRequirementIdGaps()).toEqual([])
     expect(requirementTraceabilityGaps()).toEqual([])
+    expect(bidiSafetyScenarioCoverageGaps()).toEqual([])
+    expect(bidiSafetyScenarios.map((entry) => entry.scenarioId)).toContain(
+      'NDS-L4-bidi-clean-outbound-after-remote-observation',
+    )
     expect(
       scenarioImplementationGaps({
         file: 'src/e2e/fake-service.e2e.test.ts',
