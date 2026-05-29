@@ -263,7 +263,18 @@ let
     relinkLocalVirtualPackages(workspaceRoot);
 
     const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-      const realDirPath = fs.realpathSync(dirPath);
+      let realDirPath;
+      try {
+        realDirPath = fs.realpathSync(dirPath);
+      } catch (error) {
+        // pnpm's virtual store may contain package-edge symlinks that are not
+        // materialized in a narrowed FOD projection. Those are dependency
+        // edges, not directories that can contain .bin scripts.
+        if (error && error.code === "ENOENT") {
+          return;
+        }
+        throw error;
+      }
       if (visitedRealPaths.has(realDirPath)) {
         return;
       }
@@ -330,7 +341,17 @@ let
     };
 
     const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-      const realDirPath = fs.realpathSync(dirPath);
+      let realDirPath;
+      try {
+        realDirPath = fs.realpathSync(dirPath);
+      } catch (error) {
+        // Prepared workspace restores can see the same narrowed pnpm graph as
+        // the FOD builder. Dangling package-edge symlinks are not script dirs.
+        if (error && error.code === "ENOENT") {
+          return;
+        }
+        throw error;
+      }
       if (visitedRealPaths.has(realDirPath)) {
         return;
       }
@@ -600,12 +621,17 @@ in
                 fi
 
                 # pnpm 11 rejects `pnpm config set --global` for keys it considers
-                # workspace-only. Use env vars and .npmrc instead.
-                # Back up .npmrc before appending build-local settings (restored after install).
+                # workspace-only. Use env vars and .npmrc instead. Strip
+                # live-worktree store/layout policy first so the prepared
+                # artifact does not preserve caller-local paths.
+                if [ -f .npmrc ]; then
+                  ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(store-dir|virtual-store-dir|enable-global-virtual-store|global-virtual-store-dir|state-dir|cache-dir|package-import-method|node-linker|side-effects-cache|side-effects-cache-readonly|verify-store-integrity|strict-store-pkg-content-check|pm-on-fail|verify-deps-before-run)\s*=.*\n//mg' .npmrc
+                fi
+                # Back up scrubbed .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
         printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
         if [ -f pnpm-workspace.yaml ]; then
-          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|enableGlobalVirtualStore):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
+          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|virtualStoreDir|enableGlobalVirtualStore|globalVirtualStoreDir|stateDir|cacheDir|packageImportMethod|nodeLinker|optimisticRepeatInstall|verifyDepsBeforeRun|sideEffectsCache|sideEffectsCacheReadonly|verifyStoreIntegrity|strictStorePkgContentCheck|pmOnFail):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
         fi
                 # Keep prepared dependency artifacts platform-neutral. Native
                 # optional packages are owned by the Nix package/build layer so
@@ -677,12 +703,23 @@ in
                 log_path_stats "prepared-workspace-pre-archive" .
                 log_path_stats "pnpm-store-final" "$STORE_PATH"
                 rm -rf "$STORE_PATH"
+                # Live-worktree pnpm store state is mutable and path-sensitive.
+                # Prepared deps FODs own their private store through env/.npmrc
+                # and must archive only the materialized dependency graph.
+                find . \
+                  \( -type d -name .devenv -o -type d -name '.pnpm-store*' -o -type d -name '.pnpm-home*' \) \
+                  -prune -exec rm -rf {} +
                 rm -f .pnpm-install-roots.txt
 
                 ${pkgs.nodejs}/bin/node ${lib.escapeShellArg normalizePreparedTreeScript} .
 
-                if [ -e "$SOURCE_DIR/.pnpm-store" ]; then
-                  echo "workspace-prep: FATAL - workspace-local .pnpm-store leaked into prepared output" >&2
+                leaked_path=$(
+                  find "$SOURCE_DIR" \
+                    \( -path '*/.devenv/pnpm-*' -o -path '*/.pnpm-store*' -o -path '*/.pnpm-home*' -o -path '*/node_modules/.pnpm/lock.yaml' \) \
+                    -print -quit
+                )
+                if [ -n "$leaked_path" ]; then
+                  echo "workspace-prep: FATAL - workspace-local pnpm store state leaked into prepared output: $leaked_path" >&2
                   exit 1
                 fi
 

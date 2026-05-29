@@ -41,7 +41,15 @@ export type DefaultRefPolicyCheckJobOptions = DefaultRefPolicyCheckStepOptions &
   readonly postSteps?: readonly GitHubWorkflowStep[]
 }
 
-/** Dedicated CI job for first-party default-ref policy so normal jobs keep their signal. */
+/**
+ * Dedicated CI job for first-party default-ref policy.
+ *
+ * We intentionally keep this out of lint/typecheck/test jobs. Downstream PRs
+ * often validate against temporary first-party branches while an upstream PR is
+ * still open, and that should fail in one authority/policy job without hiding
+ * whether the actual product jobs are green. Before merge, repos must retarget
+ * those first-party inputs back to their default refs and refresh locks.
+ */
 export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions = {}) => {
   const { name, runsOn, env, permissions, defaults, preSteps, postSteps, ...stepOpts } = opts
 
