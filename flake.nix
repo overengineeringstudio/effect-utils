@@ -10,9 +10,9 @@
   # graph, so downstream repos should make their root nixpkgs follow
   # `effect-utils/nixpkgs` instead of overriding the input the other way around.
   inputs = {
-    # Track release-26.05 so we pick up backports like nixpkgs#524989
-    # (crates.io importCargoLock UA fix) without master churn. See issue #703.
-    nixpkgs.url = "github:NixOS/nixpkgs/release-26.05";
+    # Track nixos-unstable; the crates.io importCargoLock UA fix landed there,
+    # so we can pick it up with a lock bump only. See issue #703.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     tsgo.url = "github:Effect-TS/tsgo";
   };

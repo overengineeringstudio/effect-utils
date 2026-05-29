@@ -10,7 +10,7 @@ import { Effect, Option, Schedule, Stream } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
-import { run } from '@overeng/tui-react'
+import { OutputModeTag, run } from '@overeng/tui-react'
 
 import {
   parseSourceString,
@@ -70,6 +70,100 @@ const GC_REPO_CONCURRENCY = 1
 const GC_WORKTREE_CONCURRENCY = 1
 const GC_PROGRESS_BATCH_SIZE = 10
 const STORE_REF_TYPES = ['heads', 'tags', 'commits'] as const
+
+const runStoreCommand = ({ output, action }: { output: string; action: StoreAction }) => {
+  const visualEffect = run(
+    StoreApp,
+    (tui) =>
+      Effect.sync(() => {
+        tui.dispatch(action)
+      }),
+    { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+  )
+
+  const jsonEffect = Effect.gen(function* () {
+    const mode = yield* OutputModeTag
+    if (mode._tag !== 'json' || mode.timing !== 'final') {
+      return yield* visualEffect
+    }
+
+    return yield* run(StoreApp, (tui) =>
+      Effect.sync(() => {
+        tui.dispatch(action)
+      }),
+    )
+  })
+
+  return jsonEffect.pipe(Effect.provide(outputModeLayer(output as never)))
+}
+
+const toStoreGcAction = ({
+  basePath,
+  results,
+  dryRun,
+  warning,
+  force,
+  repoCount,
+  completedRepoCount,
+  discoveredWorktreeCount,
+  activeWorktreeCount,
+  statusMessage,
+  done,
+}: {
+  basePath: string
+  results: ReadonlyArray<StoreGcResult>
+  dryRun: boolean
+  warning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined
+  force: boolean
+  repoCount: number | undefined
+  completedRepoCount: number
+  discoveredWorktreeCount: number
+  activeWorktreeCount: number
+  statusMessage: string | undefined
+  done: boolean
+}): StoreAction => ({
+  _tag: 'SetGc',
+  basePath,
+  results: [...results],
+  dryRun,
+  warning,
+  showForceHint: !force,
+  processedCount: results.length,
+  repoCount,
+  completedRepoCount,
+  discoveredWorktreeCount,
+  activeWorktreeCount,
+  statusMessage,
+  done,
+})
+
+const classifyGcProtection = ({
+  store,
+  currentWorkspaceRoot,
+  worktree,
+  all,
+}: {
+  store: Effect.Effect.Success<typeof Store>
+  currentWorkspaceRoot: Option.Option<AbsoluteDirPath>
+  worktree: CollectedWorktree
+  all: boolean
+}) =>
+  Effect.gen(function* () {
+    const liveSet = yield* collectStoreLiveSet({
+      store,
+      ...(Option.isSome(currentWorkspaceRoot) === true
+        ? { currentWorkspaceRoot: currentWorkspaceRoot.value }
+        : {}),
+      pruneStaleRegistry: true,
+      refreshCurrentWorkspace: false,
+    })
+
+    return classifyStoreWorktreePolicy({
+      liveSet,
+      mode: all === true ? 'all' : 'default',
+      worktree,
+    })
+  })
 
 const collectStoreWorktrees = ({
   fs,
@@ -151,7 +245,7 @@ const collectRepoStoreWorktrees = ({
     const result: Array<CollectedWorktree> = []
     const seenPaths = new Set<string>()
 
-    const gitWorktrees = yield* Git.listWorktrees(bareRepoPath).pipe(
+    const gitWorktreesResult = yield* Git.listWorktrees(bareRepoPath).pipe(
       Effect.tapError((error) =>
         Effect.gen(function* () {
           yield* Effect.annotateCurrentSpan('store.git_worktree_list.failed', true)
@@ -164,61 +258,63 @@ const collectRepoStoreWorktrees = ({
           )
         }),
       ),
-      Effect.catchAll(() => Effect.succeed([])),
+      Effect.either,
     )
 
-    for (const worktree of gitWorktrees) {
-      const normalizedPath = worktree.path.replace(/\/+$/, '')
-      const relativePath =
-        normalizedPath.startsWith(refsPrefix) === true
-          ? normalizedPath.slice(refsPrefix.length)
-          : normalizedPath.startsWith(realRefsPrefix) === true
-            ? normalizedPath.slice(realRefsPrefix.length)
-            : undefined
-      if (relativePath === undefined) continue
-
-      const separatorIndex = relativePath.indexOf('/')
-      if (separatorIndex === -1) continue
-
-      const refType = relativePath.slice(0, separatorIndex)
-      if (refType !== 'heads' && refType !== 'tags' && refType !== 'commits') continue
-
-      const ref = relativePath.slice(separatorIndex + 1)
-      if (ref.length === 0) continue
-
-      seenPaths.add(normalizedPath)
-      seenPaths.add(`${repoPrefix}/refs/${relativePath}`)
-      result.push({
-        ref,
-        refType,
-        path: EffectPath.unsafe.absoluteDir(`${repoPrefix}/refs/${relativePath}/`),
-        broken: false,
-      })
-    }
-
-    for (const refType of STORE_REF_TYPES) {
-      const refTypePath = EffectPath.ops.join(
-        repoPath,
-        EffectPath.unsafe.relativeDir(`refs/${refType}/`),
-      )
-      const refTypeStat = yield* fs
-        .stat(refTypePath)
-        .pipe(Effect.catchAll(() => Effect.succeed(null)))
-      if (refTypeStat?.type !== 'Directory') continue
-
-      const layoutWorktrees = yield* collectStoreWorktrees({
-        fs,
-        refTypePath,
-        currentPath: refTypePath,
-        refType,
-      })
-
-      for (const worktree of layoutWorktrees) {
+    if (gitWorktreesResult._tag === 'Right') {
+      for (const worktree of gitWorktreesResult.right) {
         const normalizedPath = worktree.path.replace(/\/+$/, '')
-        if (seenPaths.has(normalizedPath) === true) continue
+        const relativePath =
+          normalizedPath.startsWith(refsPrefix) === true
+            ? normalizedPath.slice(refsPrefix.length)
+            : normalizedPath.startsWith(realRefsPrefix) === true
+              ? normalizedPath.slice(realRefsPrefix.length)
+              : undefined
+        if (relativePath === undefined) continue
+
+        const separatorIndex = relativePath.indexOf('/')
+        if (separatorIndex === -1) continue
+
+        const refType = relativePath.slice(0, separatorIndex)
+        if (refType !== 'heads' && refType !== 'tags' && refType !== 'commits') continue
+
+        const ref = relativePath.slice(separatorIndex + 1)
+        if (ref.length === 0) continue
 
         seenPaths.add(normalizedPath)
-        result.push(worktree)
+        seenPaths.add(`${repoPrefix}/refs/${relativePath}`)
+        result.push({
+          ref,
+          refType,
+          path: EffectPath.unsafe.absoluteDir(`${repoPrefix}/refs/${relativePath}/`),
+          broken: false,
+        })
+      }
+    } else {
+      for (const refType of STORE_REF_TYPES) {
+        const refTypePath = EffectPath.ops.join(
+          repoPath,
+          EffectPath.unsafe.relativeDir(`refs/${refType}/`),
+        )
+        const refTypeStat = yield* fs
+          .stat(refTypePath)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+        if (refTypeStat?.type !== 'Directory') continue
+
+        const layoutWorktrees = yield* collectStoreWorktrees({
+          fs,
+          refTypePath,
+          currentPath: refTypePath,
+          refType,
+        })
+
+        for (const worktree of layoutWorktrees) {
+          const normalizedPath = worktree.path.replace(/\/+$/, '')
+          if (seenPaths.has(normalizedPath) === true) continue
+
+          seenPaths.add(normalizedPath)
+          result.push(worktree)
+        }
       }
     }
 
@@ -299,18 +395,14 @@ const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ outpu
     const store = yield* Store
     const repos = yield* store.listRepos()
 
-    yield* run(
-      StoreApp,
-      (tui) =>
-        Effect.sync(() => {
-          tui.dispatch({
-            _tag: 'SetLs',
-            basePath: store.basePath,
-            repos: repos.map((r) => ({ relativePath: r.relativePath })),
-          })
-        }),
-      { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-    ).pipe(Effect.provide(outputModeLayer(output)))
+    yield* runStoreCommand({
+      output,
+      action: {
+        _tag: 'SetLs',
+        basePath: store.basePath,
+        repos: repos.map((r) => ({ relativePath: r.relativePath })),
+      },
+    })
   }).pipe(
     Effect.provide(StoreLayer),
     Effect.withSpan('megarepo/store/ls', { attributes: { 'span.label': 'ls' } }),
@@ -475,20 +567,16 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     const totalWorktreeCount = worktreeStatuses.length
 
     // Use TuiApp for output
-    yield* run(
-      StoreApp,
-      (tui) =>
-        Effect.sync(() => {
-          tui.dispatch({
-            _tag: 'SetStatus',
-            basePath: store.basePath,
-            repoCount: repos.length,
-            worktreeCount: totalWorktreeCount,
-            worktrees: worktreeStatuses,
-          })
-        }),
-      { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-    ).pipe(Effect.provide(outputModeLayer(output)))
+    yield* runStoreCommand({
+      output,
+      action: {
+        _tag: 'SetStatus',
+        basePath: store.basePath,
+        repoCount: repos.length,
+        worktreeCount: totalWorktreeCount,
+        worktrees: worktreeStatuses,
+      },
+    })
   }).pipe(
     Effect.provide(StoreLayer),
     Effect.withSpan('megarepo/store/status', { attributes: { 'span.label': 'status' } }),
@@ -532,19 +620,15 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
     const elapsed = Date.now() - startTime
 
     // Use StoreApp for all output modes
-    yield* run(
-      StoreApp,
-      (tui) =>
-        Effect.sync(() => {
-          tui.dispatch({
-            _tag: 'SetFetch',
-            basePath: store.basePath,
-            results: results,
-            elapsedMs: elapsed,
-          })
-        }),
-      { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-    ).pipe(Effect.provide(outputModeLayer(output)))
+    yield* runStoreCommand({
+      output,
+      action: {
+        _tag: 'SetFetch',
+        basePath: store.basePath,
+        results: results,
+        elapsedMs: elapsed,
+      },
+    })
   }).pipe(
     Effect.provide(StoreLayer),
     Effect.withSpan('megarepo/store/fetch', { attributes: { 'span.label': 'fetch' } }),
@@ -641,16 +725,11 @@ const storeGcCommand = Cli.Command.make(
             const removeResult = yield* storeLock
               .withWorktreeLock(worktree.path)(
                 Effect.gen(function* () {
-                  const removalLiveSet = yield* collectStoreLiveSet({
+                  const removalPolicy = yield* classifyGcProtection({
                     store,
-                    ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
-                    pruneStaleRegistry: true,
-                    refreshCurrentWorkspace: false,
-                  })
-                  const removalPolicy = classifyStoreWorktreePolicy({
-                    liveSet: removalLiveSet,
-                    mode: all === true ? 'all' : 'default',
+                    currentWorkspaceRoot: root,
                     worktree,
+                    all,
                   })
                   if (removalPolicy.isProtected === true) {
                     return { _tag: 'skipped_live' as const, message: removalPolicy.message }
@@ -736,152 +815,196 @@ const storeGcCommand = Cli.Command.make(
           lastProgressResultCount = results.length
           const dispatch = tuiDispatch
           if (dispatch === undefined) return
-          dispatch({
-            _tag: 'SetGc',
-            basePath: store.basePath,
-            results: [...results],
-            dryRun,
-            warning: gcWarning,
-            showForceHint: !force,
-            processedCount: results.length,
-            repoCount,
-            completedRepoCount,
-            discoveredWorktreeCount,
-            activeWorktreeCount,
-            statusMessage,
-            done,
-          })
+          dispatch(
+            toStoreGcAction({
+              basePath: store.basePath,
+              results,
+              dryRun,
+              warning: gcWarning,
+              force,
+              repoCount,
+              completedRepoCount,
+              discoveredWorktreeCount,
+              activeWorktreeCount,
+              statusMessage,
+              done,
+            }),
+          )
         })
 
       let tuiDispatch: ((action: StoreAction) => void) | undefined
 
-      // Use TuiApp for output
-      yield* run(
-        StoreApp,
-        (tui) =>
-          Effect.gen(function* () {
-            tuiDispatch = tui.dispatch
+      const executeGc = ({ progressive }: { progressive: boolean }) =>
+        Effect.gen(function* () {
+          if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
             yield* Stream.fromSchedule(Schedule.spaced('1 second')).pipe(
               Stream.runForEach(() => dispatchGc({ done: false, forceDispatch: true })),
               Effect.forkScoped,
             )
+          }
 
-            statusMessage = 'collecting liveness registry'
+          statusMessage = 'collecting liveness registry'
+          if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
-            root = yield* findMegarepoRoot(cwd)
-            const liveSet = yield* collectStoreLiveSet({
-              store,
-              ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
-              pruneStaleRegistry: dryRun === false,
-              refreshCurrentWorkspace: dryRun === false,
-            })
-            liveSetForMetrics = liveSet
+          }
+          root = yield* findMegarepoRoot(cwd)
+          const liveSet = yield* collectStoreLiveSet({
+            store,
+            ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+            pruneStaleRegistry: dryRun === false,
+            refreshCurrentWorkspace: dryRun === false,
+          })
+          liveSetForMetrics = liveSet
 
-            gcWarning =
-              all === false && Option.isNone(root) === true
-                ? { type: 'not_in_megarepo' }
-                : all === false && Option.isSome(root) === true
-                  ? { type: 'only_current_megarepo' }
-                  : undefined
+          gcWarning =
+            all === false && Option.isNone(root) === true
+              ? { type: 'not_in_megarepo' }
+              : all === false && Option.isSome(root) === true
+                ? { type: 'only_current_megarepo' }
+                : undefined
 
-            statusMessage = 'listing store repositories'
+          statusMessage = 'listing store repositories'
+          if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
-            const repos = yield* store.listRepos()
-            repoCount = repos.length
-            statusMessage = 'checking worktrees'
+          }
+          const repos = yield* store.listRepos()
+          repoCount = repos.length
+          statusMessage = 'checking worktrees'
+          if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
+          }
 
-            yield* Stream.fromIterable(repos).pipe(
-              Stream.mapEffect(
-                (repo) =>
-                  Effect.gen(function* () {
-                    let removedForRepo = 0
-                    const bareRepoPath = EffectPath.ops.join(
-                      repo.fullPath,
-                      EffectPath.unsafe.relativeDir('.bare/'),
-                    )
-                    const worktrees = yield* collectRepoStoreWorktrees({
-                      fs,
-                      repoPath: repo.fullPath,
-                      bareRepoPath,
-                    })
+          yield* Stream.fromIterable(repos).pipe(
+            Stream.mapEffect(
+              (repo) =>
+                Effect.gen(function* () {
+                  let removedForRepo = 0
+                  const bareRepoPath = EffectPath.ops.join(
+                    repo.fullPath,
+                    EffectPath.unsafe.relativeDir('.bare/'),
+                  )
+                  const worktrees = yield* collectRepoStoreWorktrees({
+                    fs,
+                    repoPath: repo.fullPath,
+                    bareRepoPath,
+                  })
 
-                    yield* Stream.fromIterable(worktrees).pipe(
-                      Stream.mapEffect(
-                        (worktree) =>
-                          Effect.gen(function* () {
-                            discoveredWorktreeCount += 1
-                            activeWorktreeCount += 1
+                  yield* Stream.fromIterable(worktrees).pipe(
+                    Stream.mapEffect(
+                      (worktree) =>
+                        Effect.gen(function* () {
+                          discoveredWorktreeCount += 1
+                          activeWorktreeCount += 1
+                          if (progressive === true) {
                             yield* dispatchGc({ done: false, forceDispatch: true })
-                            yield* Effect.gen(function* () {
-                              const decision = yield* classifyGcWorktree({
-                                worktree,
-                                liveSet,
-                                all,
-                              })
-                              const result = yield* processGcDecision({
-                                decision,
-                                repoRelativePath: repo.relativePath,
-                                bareRepoPath,
-                              })
-                              if (result.status === 'removed' && dryRun === false) {
-                                removedForRepo += 1
-                              }
-                              results.push(result)
-                            }).pipe(
-                              Effect.ensuring(
-                                Effect.sync(() => {
-                                  activeWorktreeCount -= 1
-                                }).pipe(
-                                  Effect.zipRight(dispatchGc({ done: false, forceDispatch: true })),
+                          }
+                          yield* Effect.gen(function* () {
+                            const decision = yield* classifyGcWorktree({
+                              worktree,
+                              liveSet,
+                              all,
+                            })
+                            const result = yield* processGcDecision({
+                              decision,
+                              repoRelativePath: repo.relativePath,
+                              bareRepoPath,
+                            })
+                            if (result.status === 'removed' && dryRun === false) {
+                              removedForRepo += 1
+                            }
+                            results.push(result)
+                          }).pipe(
+                            Effect.ensuring(
+                              Effect.sync(() => {
+                                activeWorktreeCount -= 1
+                              }).pipe(
+                                Effect.zipRight(
+                                  progressive === true
+                                    ? dispatchGc({ done: false, forceDispatch: true })
+                                    : Effect.void,
                                 ),
                               ),
-                            )
-                          }),
-                        { concurrency: GC_WORKTREE_CONCURRENCY, unordered: true },
+                            ),
+                          )
+                        }),
+                      { concurrency: GC_WORKTREE_CONCURRENCY, unordered: true },
+                    ),
+                    Stream.runDrain,
+                  )
+
+                  if (removedForRepo > 0) {
+                    yield* Git.pruneWorktrees(bareRepoPath).pipe(
+                      Effect.catchAll((error) =>
+                        Effect.sync(() => {
+                          results.push({
+                            repo: repo.relativePath,
+                            ref: '.bare',
+                            refType: 'commits',
+                            path: bareRepoPath,
+                            status: 'error',
+                            message:
+                              error instanceof Error === true ? error.message : String(error),
+                          })
+                        }),
                       ),
-                      Stream.runDrain,
                     )
+                  }
 
-                    if (removedForRepo > 0) {
-                      yield* Git.pruneWorktrees(bareRepoPath).pipe(
-                        Effect.catchAll((error) =>
-                          Effect.sync(() => {
-                            results.push({
-                              repo: repo.relativePath,
-                              ref: '.bare',
-                              refType: 'commits',
-                              path: bareRepoPath,
-                              status: 'error',
-                              message:
-                                error instanceof Error === true ? error.message : String(error),
-                            })
-                          }),
-                        ),
-                      )
-                    }
-
-                    completedRepoCount += 1
+                  completedRepoCount += 1
+                  if (progressive === true) {
                     yield* dispatchGc({ done: false, forceDispatch: true })
-                  }).pipe(
-                    Effect.withSpan('megarepo/store/gc/repo', {
-                      attributes: {
-                        'span.label': repo.relativePath,
-                        'store.repo': repo.relativePath,
-                      },
-                    }),
-                  ),
-                { concurrency: GC_REPO_CONCURRENCY, unordered: true },
-              ),
-              Stream.runDrain,
-            )
+                  }
+                }).pipe(
+                  Effect.withSpan('megarepo/store/gc/repo', {
+                    attributes: {
+                      'span.label': repo.relativePath,
+                      'store.repo': repo.relativePath,
+                    },
+                  }),
+                ),
+              { concurrency: GC_REPO_CONCURRENCY, unordered: true },
+            ),
+            Stream.runDrain,
+          )
 
-            statusMessage = undefined
+          statusMessage = undefined
+          if (progressive === true) {
             yield* dispatchGc({ done: true, forceDispatch: true })
+          }
+        })
+
+      const mode = yield* OutputModeTag.pipe(Effect.provide(outputModeLayer(output as never)))
+
+      if (mode._tag === 'json' && mode.timing === 'final') {
+        yield* executeGc({ progressive: false })
+        yield* runStoreCommand({
+          output,
+          action: toStoreGcAction({
+            basePath: store.basePath,
+            results,
+            dryRun,
+            warning: gcWarning,
+            force,
+            repoCount,
+            completedRepoCount,
+            discoveredWorktreeCount,
+            activeWorktreeCount,
+            statusMessage,
+            done: true,
           }),
-        { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
-      ).pipe(Effect.provide(outputModeLayer(output)))
+        })
+      } else {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.gen(function* () {
+              tuiDispatch = tui.dispatch
+              yield* executeGc({ progressive: true })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output as never)))
+      }
 
       yield* Effect.annotateCurrentSpan('gc.policy', all === true ? 'all' : 'root-set')
       yield* Effect.annotateCurrentSpan(

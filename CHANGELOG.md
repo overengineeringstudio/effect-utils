@@ -56,6 +56,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: Keep store/test integration fixtures independent of user tag-signing Git config by creating fixture tags with `--no-sign`, avoid slow filesystem-watch semaphore acquisition in store locks, and let `mr store gc --output json` take the final-state path directly while preferring `git worktree list` for store worktree discovery.
 - **@overeng/tui-react**: Let Effect CLI own Ctrl-C entrypoint handling for `run(App, handler)`. Apps whose action schema includes `Interrupted` now dispatch it during normal Effect interruption finalization, map interrupt-only CLI exits to code 130, and suppress noisy interrupt-only error output in `runTuiMain`.
 - **@overeng/megarepo**: Stop store repository discovery from walking internal scratch roots like `tmp` before scanning repos, yield during repository discovery so Effect interruption can propagate promptly, and tighten CLI OTel flush timing so interrupted TTY commands return quickly while still exporting traces.
 - **@overeng/megarepo**: Improve `mr store gc --dry-run --output tty` progress UX with early phase updates, heartbeat refreshes, realtime worktree discovery/active-check counts, explicit interrupted output, exit code 130 for Ctrl-C, and more granular OTel spans for removal status checks. GC removal checks now use a single `git status --untracked-files=normal` dirty preflight before the upstream check, avoiding expensive recursive untracked-file enumeration while still failing closed for dirty worktrees.
