@@ -342,6 +342,18 @@ let
       };
     };
 
+  sequentialNixCheckScript = pkgs.writeShellScript "nix-check-all" (
+    lib.concatStringsSep "\n" (
+      [
+        "set -euo pipefail"
+      ]
+      ++ map (
+        pkg:
+        "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'"
+      ) cliPackages
+    )
+  );
+
   # Filter packages that have lockfile defined
   packagesWithLockfile = builtins.filter (p: p ? lockfile) cliPackages;
 
@@ -370,7 +382,8 @@ lib.mkIf hasPackages {
 
           "nix:check" = {
             description = "Check if any CLI hashes are stale (for CI, full build)";
-            after = map (p: "nix:check:${p.name}") cliPackages;
+            exec = trace.exec "nix:check" "${sequentialNixCheckScript}";
+            after = lib.optional (packagesWithLockfile != [ ]) "pnpm:install";
           };
 
           "nix:check:quick" = {
