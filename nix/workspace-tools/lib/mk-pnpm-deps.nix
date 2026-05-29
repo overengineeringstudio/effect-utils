@@ -625,13 +625,13 @@ in
                 # live-worktree store/layout policy first so the prepared
                 # artifact does not preserve caller-local paths.
                 if [ -f .npmrc ]; then
-                  ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(store-dir|virtual-store-dir|enable-global-virtual-store|global-virtual-store-dir|state-dir|cache-dir|package-import-method|node-linker|side-effects-cache|side-effects-cache-readonly|verify-store-integrity|strict-store-pkg-content-check|pm-on-fail|verify-deps-before-run)\s*=.*\n//mg' .npmrc
+                  ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(store-dir|virtual-store-dir|enable-global-virtual-store|global-virtual-store-dir|state-dir|cache-dir|package-import-method|node-linker|side-effects-cache|side-effects-cache-readonly|verify-store-integrity|strict-store-pkg-content-check|pm-on-fail|verify-deps-before-run|child-concurrency|network-concurrency)\s*=.*\n//mg' .npmrc
                 fi
                 # Back up scrubbed .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\nchild-concurrency=2\nnetwork-concurrency=8\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
         if [ -f pnpm-workspace.yaml ]; then
-          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|virtualStoreDir|enableGlobalVirtualStore|globalVirtualStoreDir|stateDir|cacheDir|packageImportMethod|nodeLinker|optimisticRepeatInstall|verifyDepsBeforeRun|sideEffectsCache|sideEffectsCacheReadonly|verifyStoreIntegrity|strictStorePkgContentCheck|pmOnFail):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
+          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|virtualStoreDir|enableGlobalVirtualStore|globalVirtualStoreDir|stateDir|cacheDir|packageImportMethod|nodeLinker|optimisticRepeatInstall|verifyDepsBeforeRun|sideEffectsCache|sideEffectsCacheReadonly|verifyStoreIntegrity|strictStorePkgContentCheck|pmOnFail|childConcurrency|networkConcurrency):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
         fi
                 # Keep prepared dependency artifacts platform-neutral. Native
                 # optional packages are owned by the Nix package/build layer so
