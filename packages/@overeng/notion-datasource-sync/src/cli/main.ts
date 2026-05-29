@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 import { FetchHttpClient } from '@effect/platform'
 import { NodeRuntime } from '@effect/platform-node'
-import { Effect, Layer, Redacted, Schema, Stream } from 'effect'
+import { Effect, Either, Layer, Redacted, Schema, Stream } from 'effect'
 
 import { NotionConfigLive, parseNotionUuid } from '@overeng/notion-effect-client'
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
@@ -42,6 +42,7 @@ import {
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
+import { SyncProgress } from '../core/progress.ts'
 import { readUserActionSurface, type UserActionSurface } from '../core/result-envelope.ts'
 import type { SignalInboxStatus } from '../core/signals.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from '../core/status.ts'
@@ -2033,6 +2034,108 @@ export const runCliCommandWithRuntime = ({
 }) =>
   runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer({ context, options })))
 
+const syncProgressCommandTags = new Set<CliCommand['_tag']>([
+  'init',
+  'pull',
+  'push',
+  'sync',
+  'sync-from-notion',
+])
+
+const shouldShowSyncProgress = (command: CliCommand): boolean =>
+  syncProgressCommandTags.has(command._tag)
+
+const runWithPlainSyncProgress = <A, E, R>({
+  command,
+  effect,
+}: {
+  readonly command: CliCommand
+  readonly effect: Effect.Effect<A, E, R>
+}): Effect.Effect<A, E, R> =>
+  effect.pipe(
+    Effect.provideService(SyncProgress, {
+      report: (event) =>
+        Effect.sync(() => {
+          const suffix =
+            event._tag === 'query-page'
+              ? ` ${event.rows.toString()} rows`
+              : event._tag === 'hydrate-row'
+                ? ` ${event.current.toString()}/${event.total.toString()} rows`
+                : event._tag === 'executor-step'
+                  ? ` ${event.current.toString()}/${event.max.toString()} write steps`
+                  : ''
+          const phase = event._tag === 'phase' ? event.phase : event._tag
+          process.stderr.write(`notion-datasource-sync ${command._tag} ${phase}${suffix}\n`)
+        }),
+    }),
+    Effect.tap(() =>
+      Effect.sync(() => {
+        process.stderr.write(`notion-datasource-sync ${command._tag} complete 100%\n`)
+      }),
+    ),
+  )
+
+const runWithCliSyncProgress = <A, E, R>({
+  command,
+  effect,
+}: {
+  readonly command: CliCommand
+  readonly effect: Effect.Effect<A, E, R>
+}): Effect.Effect<A, E, R> => {
+  const loadTuiProgress = Effect.promise(() => import('./progress.ts')).pipe(
+    Effect.flatMap((progressModule) =>
+      Effect.promise(() => import('@overeng/tui-react')).pipe(
+        Effect.flatMap((tuiReact) =>
+          Effect.promise(() => import('@overeng/tui-react/node')).pipe(
+            Effect.map((tuiReactNode) => ({ progressModule, tuiReact, tuiReactNode })),
+          ),
+        ),
+      ),
+    ),
+    Effect.either,
+  )
+
+  return loadTuiProgress.pipe(
+    Effect.flatMap((loaded) => {
+      if (Either.isLeft(loaded) === true) {
+        return runWithPlainSyncProgress({ command, effect })
+      }
+      const { progressModule, tuiReact, tuiReactNode } = loaded.right
+      const progressApp = progressModule.createSyncProgressApp(command._tag)
+      const progressView = progressModule.createSyncProgressView(progressApp)
+
+      return Effect.scoped(
+        progressApp.run(progressView).pipe(
+          Effect.flatMap((tui) =>
+            effect.pipe(
+              Effect.provideService(SyncProgress, {
+                report: (event) =>
+                  Effect.sync(() => {
+                    tui.dispatch({ _tag: 'ApplyEvent', event })
+                  }),
+              }),
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  tui.dispatch({
+                    _tag: 'ApplyEvent',
+                    event: { _tag: 'phase', phase: 'complete' },
+                  })
+                }),
+              ),
+            ),
+          ),
+          Effect.provide(
+            Layer.mergeAll(
+              tuiReactNode.outputModeLayer('ci-plain'),
+              Layer.succeed(tuiReact.ViewOutputStreamTag, process.stderr),
+            ),
+          ),
+        ),
+      )
+    }),
+  )
+}
+
 /**
  * Top-level CLI entry point: parses `argv`, rejects unsupported commands early, runs the command,
  * and writes the JSON result to `stdout`. The store is closed via `Effect.ensuring` regardless of outcome.
@@ -2061,7 +2164,13 @@ export const runCliMain = ({
       try: () => parseCliContext({ argv, resolvedCommand }),
       catch: (cause) => cause,
     })
-    yield* runCliCommandWithRuntime({ command: resolvedCommand, context, options }).pipe(
+    const commandEffect = runCliCommandWithRuntime({ command: resolvedCommand, context, options })
+    const effectWithProgress =
+      shouldShowSyncProgress(resolvedCommand) === true
+        ? runWithCliSyncProgress({ command: resolvedCommand, effect: commandEffect })
+        : commandEffect
+
+    yield* effectWithProgress.pipe(
       Effect.tap((result) => Effect.sync(() => process.stdout.write(renderCliResultJson(result)))),
       Effect.ensuring(Effect.sync(() => context.store.close())),
     )

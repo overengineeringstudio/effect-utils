@@ -7,6 +7,7 @@ import {
 } from '../../../genie/internal.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionMdPkg from '../notion-md/package.json.genie.ts'
+import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
@@ -25,11 +26,27 @@ const peerDepNames = [
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-datasource-sync' }),
   dependencies: {
-    workspace: [notionEffectClientPkg, notionMdPkg, utilsPkg],
+    workspace: [notionEffectClientPkg, notionMdPkg, tuiReactPkg, utilsPkg],
+    external: catalog.pick('react'),
   },
   devDependencies: {
     external: {
-      ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'typescript', 'vitest'),
+      ...catalog.pick(
+        ...peerDepNames,
+        '@effect-atom/atom',
+        '@effect-atom/atom-react',
+        '@effect/vitest',
+        '@opentui/core',
+        '@opentui/react',
+        '@storybook/react',
+        '@types/node',
+        '@types/react',
+        '@types/react-reconciler',
+        'react-dom',
+        'react-reconciler',
+        'typescript',
+        'vitest',
+      ),
     },
   },
   peerDependencies: {
@@ -55,6 +72,9 @@ export default packageJson(
       exports: {
         '.': './dist/src/mod.js',
       },
+    },
+    dependenciesMeta: {
+      '@overeng/tui-react': { injected: true },
     },
   } satisfies PackageJsonData,
   workspaceDeps,

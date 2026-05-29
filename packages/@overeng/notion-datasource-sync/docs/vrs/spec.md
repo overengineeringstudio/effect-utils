@@ -1100,6 +1100,15 @@ sync dry-run suppresses replica mutation, intent settlement, private
 event/outbox/remote writes, and body materialization while using the existing
 database file for read-only planning.
 
+Sync-family commands (`init`, `pull`, `push`, `sync`, and
+`sync --from-notion`) render live human progress through the shared
+`@overeng/tui-react` terminal app. The progress renderer is a side channel:
+the final command result remains structured JSON on stdout, while progress
+frames, phase names, row/page counters, hydration counters, and executor-step
+updates render on stderr. This preserves shell pipelines and agent consumers
+while making long Notion scans visibly active in both TTY and CI/plain output
+modes.
+
 Large-cardinality acceptance is currently bounded rather than fully streaming:
 query observation progresses by Notion pages, records capped/incomplete status
 when a limit or API cap prevents completeness, and the demo includes a 500-row

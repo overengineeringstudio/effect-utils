@@ -18,9 +18,13 @@
   "dependencies": {
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-md": "workspace:^",
-    "@overeng/utils": "workspace:^"
+    "@overeng/tui-react": "workspace:^",
+    "@overeng/utils": "workspace:^",
+    "react": "19.2.3"
   },
   "devDependencies": {
+    "@effect-atom/atom": "0.5.3",
+    "@effect-atom/atom-react": "0.5.0",
     "@effect/cli": "0.75.1",
     "@effect/cluster": "0.58.2",
     "@effect/experimental": "0.60.0",
@@ -30,11 +34,23 @@
     "@effect/rpc": "0.75.1",
     "@effect/vitest": "0.29.0",
     "@effect/workflow": "0.18.0",
+    "@opentui/core": "0.1.88",
+    "@opentui/react": "0.1.88",
     "@playwright/test": "1.59.1",
+    "@storybook/react": "10.2.3",
     "@types/node": "25.3.3",
+    "@types/react": "19.2.7",
+    "@types/react-reconciler": "0.28.9",
     "effect": "3.21.2",
+    "react-dom": "19.2.3",
+    "react-reconciler": "0.33.0",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
+  },
+  "dependenciesMeta": {
+    "@overeng/tui-react": {
+      "injected": true
+    }
   },
   "peerDependencies": {
     "@effect/cli": "^0.75.1",

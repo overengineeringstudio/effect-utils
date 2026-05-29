@@ -24,6 +24,7 @@ import {
   PageBodySyncPort,
   type LocalWorkspacePort,
 } from '../core/ports.ts'
+import { reportSyncProgress } from '../core/progress.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from '../core/status.ts'
 import {
   shortSpanId,
@@ -515,6 +516,7 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
         dataSourceId: options.dataSourceId,
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       })
+      yield* reportSyncProgress({ _tag: 'phase', phase: 'pulling' })
       const observation = yield* observeRemoteDataSource({
         ...options,
         ...(options.dryRun === true ? { materializeBodies: false } : {}),
@@ -570,6 +572,11 @@ export const establishFromNotion = Effect.fn(spanNames.syncEstablishFromNotion)(
         dataSourceId: options.dataSourceId,
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       })
+      yield* reportSyncProgress({
+        _tag: 'phase',
+        phase: 'preparing',
+        message: 'Establishing local replica',
+      })
       const gateway = yield* NotionDataSourceGateway
       yield* gateway.retrieveDataSource(options.dataSourceId)
       const binding = initOneShotSync(options)
@@ -613,6 +620,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           ? {}
           : { leaseDurationMs: options.leaseDurationMs }),
       })
+      yield* reportSyncProgress({ _tag: 'phase', phase: 'pushing' })
       const now = options.now ?? (() => new Date())
       const body = yield* PageBodySyncPort
       const local =
@@ -621,6 +629,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           : yield* observeLocalWorkspace(options.workspaceRoot)
       const summaries: OneShotPlanSummary[] = []
 
+      yield* reportSyncProgress({ _tag: 'phase', phase: 'planning' })
       for (const intent of options.localIntents ?? []) {
         const snapshot = options.store.readPlannerProjectionSnapshot(options.rootId)
         summaries.push(
@@ -758,6 +767,12 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
             leaseDurationMs: options.leaseDurationMs ?? 60_000,
           })
           results.push(result)
+          yield* reportSyncProgress({
+            _tag: 'executor-step',
+            current: step + 1,
+            max: maxExecutorSteps,
+            result: result._tag,
+          })
           if (result._tag === 'idle') {
             break
           }
@@ -813,6 +828,7 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
       const pull = yield* pullOneShotSync(options)
       const push = yield* pushOneShotSync(options)
       const status = readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
+      yield* reportSyncProgress({ _tag: 'phase', phase: 'complete' })
 
       yield* Effect.annotateCurrentSpan({
         ...statusSpanAttributes(status),
