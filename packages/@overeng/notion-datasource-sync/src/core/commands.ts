@@ -206,7 +206,9 @@ export const QueryRowsPage = Schema.TaggedStruct('QueryRowsPage', {
   rows: Schema.Array(
     Schema.TaggedStruct('QueriedRow', {
       pageId: PageId,
+      dataSourceId: Schema.optional(DataSourceId),
       propertiesHash: Hash,
+      propertyValuesJson: Schema.optional(Schema.Record({ key: PropertyId, value: Schema.String })),
       lastEditedTime: Schema.DateTimeUtc,
       inTrash: Schema.Boolean,
     }),

@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 
-import { Effect, Fiber, Schema, Tracer } from 'effect'
+import { Effect, Fiber, Schema, Stream, Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { makeFakePageBodySyncPort } from '../body/adapter.ts'
@@ -1508,6 +1508,162 @@ describe('watch daemon surface', () => {
     }
   })
 
+  it('uses the completed checkpoint watermark for steady-state watch polling', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const statePath = `${storeFixture.path}.watch.json`
+    const ports = makeHarnessPorts()
+    const observedWatermarks: Array<string | null> = []
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            schemaProperties: [],
+          }),
+        ),
+        {
+          gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway,
+          body: ports.body,
+          workspace: ports.workspace,
+        },
+      )
+      expect(readQueryCheckpointRows(storeFixture.path)).toEqual([
+        expect.objectContaining({
+          complete: 1,
+          capped_at_limit: 0,
+          high_watermark: fixedObservedAt,
+        }),
+      ])
+
+      const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+      const gateway = {
+        ...gatewayHarness.gateway,
+        queryRows: (input: Parameters<typeof gatewayHarness.gateway.queryRows>[0]) => {
+          observedWatermarks.push(
+            input.queryContract.highWatermark === null
+              ? null
+              : Schema.encodeSync(Schema.DateTimeUtc)(input.queryContract.highWatermark),
+          )
+          return gatewayHarness.gateway.queryRows(input)
+        },
+      }
+      await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            schemaProperties: [],
+          }),
+        ),
+        { gateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      expect(observedWatermarks).toEqual([fixedObservedAt])
+      expect(storeFixture.store.readStatusProjection(testIds.rootId).tombstones).toMatchObject({
+        unclassified: 0,
+      })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('does not classify absence from incremental watch polling as a tombstone candidate', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const statePath = `${storeFixture.path}.watch.json`
+    const ports = makeHarnessPorts()
+    const body = makeFakePageBodySyncPort({
+      pages: [
+        bodyPage(),
+        bodyPage({ pageId: testIds.otherPageId, bodyHash: hash('body-other-page') }),
+      ],
+    })
+    const pageA = pageSnapshot({ pageId: testIds.pageId })
+    const pageB = pageSnapshot({
+      pageId: testIds.otherPageId,
+      propertiesHash: hash('properties-other-page'),
+    })
+    const gatewayHarness = makeFakeGatewayHarness({
+      pages: [pageA, pageB],
+      propertyPages: [
+        propertyPage({ pageId: testIds.pageId }),
+        propertyPage({ pageId: testIds.otherPageId, itemHash: hash('property-other-page') }),
+      ],
+    })
+    const incrementalGateway = {
+      ...gatewayHarness.gateway,
+      queryRows: (input: Parameters<typeof gatewayHarness.gateway.queryRows>[0]) =>
+        gatewayHarness.gateway.queryRows(input).pipe(
+          Stream.map((page) =>
+            input.queryContract.highWatermark === null
+              ? page
+              : Object.assign({}, page, {
+                  rows: page.rows.filter((row) => row.pageId !== testIds.otherPageId),
+                }),
+          ),
+        ),
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            schemaProperties: [],
+          }),
+        ),
+        { gateway: gatewayHarness.gateway, body, workspace: ports.workspace },
+      )
+      expect(storeFixture.store.readStatusProjection(testIds.rootId).projections.rows).toBe(2)
+
+      await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            schemaProperties: [],
+          }),
+        ),
+        { gateway: incrementalGateway, body, workspace: ports.workspace },
+      )
+
+      const status = storeFixture.store.readStatusProjection(testIds.rootId)
+      expect(status.projections.rows).toBe(2)
+      expect(status.tombstones).toMatchObject({
+        unclassified: 0,
+      })
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).tombstones).toEqual(
+        [],
+      )
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('bounds outbox execution per cycle and leaves queued work for backpressure recovery', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ now: clock.now })
@@ -1606,7 +1762,7 @@ describe('watch daemon surface', () => {
       expect(bodyPushes).toBe(2)
       expect(drained.sync.push.executor).toMatchObject({
         steps: 1,
-        maxStepsReached: true,
+        maxStepsReached: false,
       })
       expect(drained.status).toMatchObject({
         state: 'clean',

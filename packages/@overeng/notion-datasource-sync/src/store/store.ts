@@ -854,6 +854,50 @@ export class NotionSyncStore {
     }
   }
 
+  readLatestCompleteQueryCheckpoint(input: {
+    readonly rootId: SyncRootId
+    readonly dataSourceId: DataSourceId
+  }): QueryCheckpointRow | undefined {
+    const row = this.#db
+      .prepare(
+        `SELECT data_source_id,
+                query_contract_hash,
+                next_cursor,
+                complete,
+                capped_at_limit,
+                contract_changed,
+                high_watermark,
+                event_id
+         FROM _nds_query_scan_checkpoint
+         WHERE root_id = ?
+           AND data_source_id = ?
+           AND complete = 1
+           AND capped_at_limit = 0
+           AND contract_changed = 0
+           AND high_watermark IS NOT NULL
+         ORDER BY high_watermark DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .get(input.rootId, input.dataSourceId)
+
+    if (row === undefined) return undefined
+
+    const nextCursor = readOptionalString({ row: row, key: 'next_cursor' })
+    const highWatermark = readOptionalString({ row: row, key: 'high_watermark' })
+
+    return {
+      dataSourceId: decodeDataSourceId(readString({ row: row, key: 'data_source_id' })),
+      queryContractHash: decodeHash(readString({ row: row, key: 'query_contract_hash' })),
+      nextCursor: nextCursor === undefined ? null : decodeQueryCursor(nextCursor),
+      complete: readBoolean({ row: row, key: 'complete' }),
+      cappedAtLimit: readBoolean({ row: row, key: 'capped_at_limit' }),
+      contractChanged: readBoolean({ row: row, key: 'contract_changed' }),
+      highWatermark:
+        highWatermark === undefined ? null : Schema.decodeSync(Schema.DateTimeUtc)(highWatermark),
+      eventId: decodeSyncEventId(readString({ row: row, key: 'event_id' })),
+    }
+  }
+
   computeCurrentProjectionDigest(rootId: SyncRootId): Hash {
     return computeProjectionDigest(this.#projectionDigestInputs(rootId))
   }

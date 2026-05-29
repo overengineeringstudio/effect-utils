@@ -708,7 +708,24 @@ describe('clean-break self-contained SQLite storage contract', () => {
       const { sqlitePath } = await establishWorkspace(workspace)
       updatePublicRowsTitle({ sqlitePath, title: 'Updated by watch' })
 
-      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      const baseGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      const operationOrder: string[] = []
+      const gateway = {
+        ...baseGateway,
+        gateway: {
+          ...baseGateway.gateway,
+          queryRows: (input: Parameters<typeof baseGateway.gateway.queryRows>[0]) => {
+            operationOrder.push('query')
+            return baseGateway.gateway.queryRows(input)
+          },
+          patchPageProperties: (
+            command: Parameters<typeof baseGateway.gateway.patchPageProperties>[0],
+          ) =>
+            Effect.sync(() => {
+              operationOrder.push('patch')
+            }).pipe(Effect.zipRight(baseGateway.gateway.patchPageProperties(command))),
+        },
+      }
       await runWorkspaceCommand({
         argv: [
           'sync',
@@ -725,6 +742,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
       })
 
       expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
+      expect(operationOrder.indexOf('patch')).toBeLessThan(operationOrder.indexOf('query'))
       openReadOnly(sqlitePath, (db) => {
         expect(
           row(
@@ -748,6 +766,54 @@ describe('clean-break self-contained SQLite storage contract', () => {
           status: 'applied',
           value_json: JSON.stringify({ _tag: 'title', plainText: 'Updated by watch' }),
         })
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'sync --watch drains a direct public rows archive through fake Notion and settles it',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+      const db = new DatabaseSync(sqlitePath)
+      try {
+        db.prepare(`UPDATE rows SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        db.close()
+      }
+
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      await runWorkspaceCommand({
+        argv: [
+          'sync',
+          '--watch',
+          '--sqlite',
+          sqlitePath,
+          '--state',
+          join(workspace, 'watch.json'),
+          '--max-cycles',
+          '1',
+          '--no-materialize-bodies',
+        ],
+        gateway,
+      })
+
+      expect(gateway.ledger.successfulTrashPages).toHaveLength(1)
+      openReadOnly(sqlitePath, (readDb) => {
+        expect(
+          rows(
+            readDb,
+            `SELECT kind, status
+             FROM changes
+             WHERE kind = 'row_archive' AND page_id = ?
+             ORDER BY created_at, change_id`,
+            testIds.pageId,
+          ),
+        ).toEqual([expect.objectContaining({ kind: 'row_archive', status: 'applied' })])
+        expect(
+          row(readDb, `SELECT _in_trash FROM rows WHERE _page_id = ?`, testIds.pageId),
+        ).toMatchObject({ _in_trash: 1 })
       })
     },
     sqliteContractTimeoutMs,

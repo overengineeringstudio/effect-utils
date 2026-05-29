@@ -15,6 +15,7 @@ import {
 import {
   BodyPointer,
   CommandId,
+  PageSnapshot,
   WorkspaceRelativePath,
   type AbsolutePath,
   type BodyPointer as BodyPointerType,
@@ -908,7 +909,19 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
         if (remainingRows <= 0) break
         for (const row of queryPage.rows.slice(0, remainingRows)) {
           remainingRows -= 1
-          const page = yield* gateway.retrievePage(row.pageId)
+          const page =
+            row.propertyValuesJson === undefined
+              ? yield* gateway.retrievePage(row.pageId)
+              : PageSnapshot.make({
+                  _tag: 'PageSnapshot',
+                  pageId: row.pageId,
+                  ...(row.dataSourceId === undefined ? {} : { dataSourceId: row.dataSourceId }),
+                  requestId: queryPage.requestId,
+                  observedAt: Schema.decodeSync(Schema.DateTimeUtc)(now().toISOString()),
+                  propertiesHash: row.propertiesHash,
+                  propertyValuesJson: row.propertyValuesJson,
+                  inTrash: row.inTrash,
+                })
           const bodyPointer =
             options.materializeBodies === false
               ? Schema.decodeUnknownSync(BodyPointer)({

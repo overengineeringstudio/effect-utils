@@ -1268,8 +1268,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         CASE WHEN NEW.in_trash = 1 THEN 'row_archive' ELSE 'row_restore' END,
         OLD.data_source_id,
         OLD.page_id,
-        OLD.properties_hash
-      WHERE changes() = 0;
+        OLD.properties_hash;
 
     END;
 
@@ -2641,16 +2640,6 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       SET in_trash = NEW.${quoteIdentifier('_in_trash')}
       WHERE page_id = OLD.${quoteIdentifier('_page_id')}
         AND NEW.${quoteIdentifier('_in_trash')} IS NOT OLD.${quoteIdentifier('_in_trash')};
-      INSERT INTO _nds_replica_local_changes (
-        change_id, kind, data_source_id, page_id, base_hash
-      )
-      SELECT
-        'rows:lifecycle:' || OLD.${quoteIdentifier('_page_id')} || ':' || NEW.${quoteIdentifier('_in_trash')} || ':' || lower(hex(randomblob(8))),
-        CASE WHEN NEW.${quoteIdentifier('_in_trash')} = 1 THEN 'row_archive' ELSE 'row_restore' END,
-        ${quoteStringLiteral(dataSourceId)},
-        OLD.${quoteIdentifier('_page_id')},
-        OLD.${quoteIdentifier('_properties_hash')}
-      WHERE NEW.${quoteIdentifier('_in_trash')} IS NOT OLD.${quoteIdentifier('_in_trash')};
       ${propertyUpdates.join('\n      ')}
     END;
 
@@ -4784,16 +4773,6 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       if (change.kind === 'row_restore') {
-        if (readNumber({ row, key: 'in_trash' }) !== 0) {
-          markChange({
-            replicaPath,
-            dryRun,
-            changeId: change.changeId,
-            status: 'conflict',
-            reason: 'Local row restore no longer matches the current desired row state.',
-          })
-          continue
-        }
         if (
           change.baseHash !== undefined &&
           change.baseHash !== readString({ row, key: 'properties_hash' })
@@ -4835,16 +4814,6 @@ export const replicaChangesToPlannerIntents = ({
         continue
       }
       if (change.kind === 'row_archive') {
-        if (readNumber({ row, key: 'in_trash' }) !== 1) {
-          markChange({
-            replicaPath,
-            dryRun,
-            changeId: change.changeId,
-            status: 'rejected',
-            reason: 'Local row archive was superseded by the current desired row state.',
-          })
-          continue
-        }
         if (
           change.baseHash !== undefined &&
           change.baseHash !== readString({ row, key: 'properties_hash' })

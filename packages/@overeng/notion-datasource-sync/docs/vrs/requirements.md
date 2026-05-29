@@ -91,11 +91,14 @@ These requirements serve [vision.md](./vision.md). They define the production co
 ### Must Provide Reliable Watch Mode
 
 - **R42 Local daemon:** `sync --watch` must run a local daemon with the same planner and guards used by one-shot commands.
-- **R43 Poll overlap:** Remote polling must query from `high_watermark - overlap` and dedupe by materialized hashes.
-- **R44 Known-page scan:** The daemon must maintain and periodically verify the known-page set so query absence can become a tombstone candidate.
+- **R43 Poll overlap:** Remote polling must query from the latest complete checkpoint high-watermark with an inclusive overlap window and dedupe by materialized hashes.
+- **R44 Known-page scan:** The daemon must maintain and periodically verify the known-page set with a complete full-membership scan so query absence can become a tombstone candidate.
 - **R45 Backpressure:** The daemon must bound queues, honor Notion rate limits, and surface stuck commands.
 - **R46 Lease fencing:** Only one logical writer may settle commands for a sync root at a time; stale leases must be fenced.
-- **R47 Repair scans:** Periodic repair scans must detect missed events, projection drift, orphaned files, and unresolved tombstone candidates.
+- **R47 Repair scans:** Periodic repair scans must detect missed events, projection drift, orphaned files, unresolved tombstone candidates, and any drift hidden by incremental polling windows.
+- **R47a Local-first push latency:** When local SQLite CDC or runnable outbox work exists, watch mode must plan and attempt guarded outbound work without waiting for a full remote pull. Remote preflight and read-after-write guards still apply.
+- **R47b Incremental absence safety:** High-watermark, filtered, capped, interrupted, or partial query results must not create disappearance or tombstone candidates. Only complete full-membership scans can provide query-absence evidence.
+- **R47c Query payload hydration:** If the data-source query payload contains the complete row property values needed for hashing, observation must use those inline values and avoid per-row page retrieval. It may fall back to page retrieval only when inline payloads are missing or incomplete.
 
 ### Must Expose Operable Tools
 
@@ -125,6 +128,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **R62 SQLite replay coverage:** Event replay, projection rebuild, migration, crash recovery, outbox idempotency, and lease fencing must be covered by SQLite integration tests.
 - **R63 Filesystem coverage:** Path claims, local edits, local deletes, sidecar damage, object store repair, and workspace scans must be tested against a real local filesystem.
 - **R64 Daemon coverage:** `sync --watch` mode must be tested for polling overlap, local file events, restart recovery, queue backpressure, cancellation, and stale lease behavior.
+- **R64a Incremental sync coverage:** Watch tests must cover checkpoint reuse, same-boundary overlap, incremental absence safety, inline query-row hydration, local-first outbound work, and periodic full-reconcile behavior.
 - **R65 Live Notion coverage:** Supported Notion API semantics must have isolated live E2E coverage with creation, mutation, verification, and cleanup.
 - **R66 Guard matrix:** Every problematic edge case must map to a named guard, expected behavior, and at least one unit, fake integration, SQLite, filesystem, daemon, or live E2E test.
 

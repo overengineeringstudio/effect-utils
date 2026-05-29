@@ -946,8 +946,7 @@ const planLocalDelete = ({
     intent.command._tag === 'TrashPageCommand' &&
     (intent.explicitDestructiveIntent === false ||
       intent.policy === 'candidateOnly' ||
-      body?.sidecarIdentityProven !== true ||
-      intent.directRetrieve !== 'accessible')
+      (body?.sidecarIdentityProven !== true && intent.directRetrieve !== 'accessible'))
   ) {
     return {
       _tag: 'AppendEvents',
