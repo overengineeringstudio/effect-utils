@@ -118,6 +118,7 @@ All notable changes to this project will be documented in this file.
 - **nix/oxc-config-plugin**: Refresh the `oxc-config` pnpm fixed-output hash so `oxlint` can build again in CI and `lint` / `devenv-perf` stop failing on the stale dependency boundary.
 
 - **nix packages**: Refresh stale pnpm dependency hashes for the Genie, megarepo, tui-stories, and notion-md CLI packages.
+- **pnpm task**: Bound macOS CI pnpm install heap usage and tolerate Darwin teardown exit 137 only after node_modules materialization is complete.
 - **@overeng/notion-datasource-sync**: Classify full-query absence candidates with direct page retrieval, clear stale watch repair markers after completed cycles, and avoid duplicate public SQLite row-edit CDC so bidirectional row/title sync settles reliably.
 - **@overeng/notion-datasource-sync**: Use gateway-provided `retryAfterMillis` when a watch cycle fails with `NotionGatewayError`, so local daemon backoff and repair state follow API-directed pacing instead of fixed mode backoff for all failures.
 - **@overeng/notion-effect-client**: Parse `retry-after` rate-limit header even when `x-ratelimit-remaining` is absent, so rate-limit retry guidance is preserved whenever headers provide it.

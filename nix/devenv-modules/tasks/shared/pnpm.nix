@@ -314,6 +314,12 @@ let
       echo "[pnpm] Running install; full log: $log_file"
       local rc
       set +e
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+        # GitHub-hosted macOS runners can kill pnpm after APFS materialization
+        # has completed. Bound the node heap like the fixed-output builder does
+        # so teardown pressure does not fail otherwise-complete installs.
+        export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
+      ''}
       pnpm "''${install_args[@]}" > "$log_file" 2>&1
       rc="$?"
       set -e
@@ -349,6 +355,7 @@ let
       fi
 
       echo "[pnpm] Install failed: $classification" >&2
+      echo "[pnpm] Exit code: $rc" >&2
       echo "[pnpm] Workspace: ${lib.escapeShellArg workspaceRootAbs}" >&2
       echo "[pnpm] Log: $log_file" >&2
       if [ -n "$evidence" ]; then
@@ -362,6 +369,7 @@ let
           echo "### pnpm install failed"
           echo ""
           echo "- Classification: $classification"
+          echo "- Exit code: $rc"
           if [ -n "$evidence" ]; then
             echo "- Evidence: \`$evidence\`"
           fi
