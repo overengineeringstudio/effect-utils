@@ -5,7 +5,6 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { fileURLToPath } from 'node:url'
 
 import { FetchHttpClient } from '@effect/platform'
 import { NodeRuntime } from '@effect/platform-node'
@@ -2144,7 +2143,7 @@ const runWithCliSyncProgress = <A, E, R>({
  * Top-level CLI entry point: parses `argv`, rejects unsupported commands early, runs the command,
  * and writes the JSON result to `stdout`. The store is closed via `Effect.ensuring` regardless of outcome.
  *
- * When the module is executed directly (`process.argv[1]` matches), it wires OTel and calls
+ * When the module is executed directly (`import.meta.main`), it wires OTel and calls
  * `NodeRuntime.runMain`, writing errors as JSON to `stderr`.
  */
 export const runCliMain = ({
@@ -2188,7 +2187,7 @@ const serviceNameForArgv = (argv: ReadonlyArray<string>): string => {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   const argv = process.argv.slice(2)
   runCliMain({ argv }).pipe(
     Effect.tapError((error) => Effect.sync(() => process.stderr.write(renderCliErrorJson(error)))),

@@ -10,6 +10,15 @@ bun add @overeng/notion-effect-cli
 
 ## Quick Start
 
+### Umbrella Dispatching
+
+`notion` now dispatches into the two dedicated Notion product CLIs when you use:
+
+- `notion md ...` → invokes `notion-md` command handlers directly in-process
+- `notion sqlite ...` → invokes `notion-datasource-sync` command handlers directly in-process
+
+These are thin wrappers, so all flags, output formats, and behavior remain owned by their respective commands.
+
 ### Prerequisites
 
 1. [Bun](https://bun.sh) runtime (required for TypeScript config loading)

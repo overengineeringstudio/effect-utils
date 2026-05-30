@@ -18,10 +18,14 @@ let
     binaryName = "notion";
     packageDir = "packages/@overeng/notion-cli";
     workspaceRoot = src;
+    smokeTestArgs = [
+      "md"
+      "--help"
+    ];
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-wOiS5V4iTa9QyScBRrGh+I1gOq+aegfkFLRgcCoXcY0=";
+        hash = "sha256-FesW+wcsTSBviQMSpsqnl9mvXnxhuSZNMNXIQCsSk3c=";
       };
     };
     nativeNodePackages = [ opentuiCoreNative ];

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./cli": "./src/cli.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -12,7 +13,8 @@
       "notion-md": "./dist/src/cli.js"
     },
     "exports": {
-      ".": "./dist/src/mod.js"
+      ".": "./dist/src/mod.js",
+      "./cli": "./dist/src/cli.js"
     }
   },
   "scripts": {

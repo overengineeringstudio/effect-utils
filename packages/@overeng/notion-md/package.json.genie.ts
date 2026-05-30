@@ -70,6 +70,7 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       '.': './src/mod.ts',
+      './cli': './src/cli.ts',
     },
     scripts: {
       storybook: 'storybook dev -p 6015',
@@ -83,6 +84,7 @@ export default packageJson(
       },
       exports: {
         '.': './dist/src/mod.js',
+        './cli': './dist/src/cli.js',
       },
     },
   } satisfies PackageJsonData,
