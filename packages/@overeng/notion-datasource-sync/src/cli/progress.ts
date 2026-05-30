@@ -139,8 +139,10 @@ const applyProgressEvent = ({
   }
 }
 
+/** Stateful TUI app contract for sync progress rendering. */
 export type SyncProgressApp = TuiApp<SyncProgressState, SyncProgressAction>
 
+/** Creates the sync progress state machine for one CLI command. */
 export const createSyncProgressApp = (command: string): SyncProgressApp =>
   createTuiApp<SyncProgressState, SyncProgressAction>({
     stateSchema: SyncProgressState,
@@ -179,6 +181,7 @@ const ProgressBar = ({
   )
 }
 
+/** Renders the sync progress TUI for a running progress app. */
 export const createSyncProgressView = (
   app: ReturnType<typeof createSyncProgressApp>,
 ): React.ReactElement => {

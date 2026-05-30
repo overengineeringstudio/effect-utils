@@ -174,6 +174,7 @@ export type NotionDataSourceGatewayLiveOptions = {
   readonly rateLimit?: NotionGatewayRateLimitOptions | false
 }
 
+/** Configures local request pacing for the live Notion gateway. */
 export type NotionGatewayRateLimitOptions = {
   readonly requestsPerSecond?: number
   readonly burst?: number
