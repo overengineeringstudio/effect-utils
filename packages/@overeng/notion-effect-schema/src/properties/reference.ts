@@ -1,6 +1,10 @@
 import { Option, Schema } from 'effect'
 
 import { docsPath, NotionUUID, shouldNeverHappen } from '../common.ts'
+import {
+  ExternalFile as ExternalFileReference,
+  NotionFile as NotionFileReference,
+} from '../objects.ts'
 import { User } from '../users.ts'
 
 // -----------------------------------------------------------------------------
@@ -275,18 +279,14 @@ export const Relation = {
 /**
  * External file object.
  */
-export const ExternalFile = Schema.Struct({
-  type: Schema.Literal('external'),
-  name: Schema.String.annotations({
-    description: 'Name of the file.',
-  }),
-  external: Schema.Struct({
-    url: Schema.String.annotations({
-      description: 'External URL of the file.',
-      examples: ['https://example.com/image.png'],
+export const ExternalFile = Schema.extend(
+  ExternalFileReference,
+  Schema.Struct({
+    name: Schema.String.annotations({
+      description: 'Name of the file.',
     }),
   }),
-}).annotations({
+).annotations({
   identifier: 'Notion.ExternalFile',
   title: 'External File',
   description: 'A file hosted externally.',
@@ -298,20 +298,14 @@ export type ExternalFile = typeof ExternalFile.Type
 /**
  * Notion-hosted file object.
  */
-export const NotionFile = Schema.Struct({
-  type: Schema.Literal('file'),
-  name: Schema.String.annotations({
-    description: 'Name of the file.',
-  }),
-  file: Schema.Struct({
-    url: Schema.String.annotations({
-      description: 'Notion-hosted URL of the file (expires).',
-    }),
-    expiry_time: Schema.String.annotations({
-      description: 'When the URL expires (ISO 8601).',
+export const NotionFile = Schema.extend(
+  NotionFileReference,
+  Schema.Struct({
+    name: Schema.String.annotations({
+      description: 'Name of the file.',
     }),
   }),
-}).annotations({
+).annotations({
   identifier: 'Notion.NotionFile',
   title: 'Notion File',
   description: 'A file hosted on Notion (URL expires).',
