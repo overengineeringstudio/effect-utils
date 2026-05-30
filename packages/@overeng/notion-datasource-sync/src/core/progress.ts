@@ -41,15 +41,18 @@ export type SyncProgressEvent =
       readonly result: string
     }
 
+/** Service contract for publishing best-effort sync progress events. */
 export type SyncProgressReporter = {
   readonly report: (event: SyncProgressEvent) => Effect.Effect<void>
 }
 
+/** Optional Effect service used by CLI/TUI surfaces to observe sync progress. */
 export class SyncProgress extends Context.Tag('@overeng/notion-datasource-sync/SyncProgress')<
   SyncProgress,
   SyncProgressReporter
 >() {}
 
+/** Emits a sync progress event when the optional progress service is available. */
 export const reportSyncProgress = (event: SyncProgressEvent): Effect.Effect<void> =>
   Effect.serviceOption(SyncProgress).pipe(
     Effect.flatMap((service) =>

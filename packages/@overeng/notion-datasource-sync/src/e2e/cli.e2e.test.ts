@@ -957,11 +957,11 @@ describe('CLI command surface', () => {
     let stderr = ''
 
     process.stdout.write = ((chunk: string | Uint8Array) => {
-      stdout += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      stdout += Buffer.isBuffer(chunk) === true ? chunk.toString('utf8') : String(chunk)
       return true
     }) as typeof process.stdout.write
     process.stderr.write = ((chunk: string | Uint8Array) => {
-      stderr += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      stderr += Buffer.isBuffer(chunk) === true ? chunk.toString('utf8') : String(chunk)
       return true
     }) as typeof process.stderr.write
 
@@ -1011,11 +1011,11 @@ describe('CLI command surface', () => {
     let stderr = ''
 
     process.stdout.write = ((chunk: string | Uint8Array) => {
-      stdout += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      stdout += Buffer.isBuffer(chunk) === true ? chunk.toString('utf8') : String(chunk)
       return true
     }) as typeof process.stdout.write
     process.stderr.write = ((chunk: string | Uint8Array) => {
-      stderr += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      stderr += Buffer.isBuffer(chunk) === true ? chunk.toString('utf8') : String(chunk)
       return true
     }) as typeof process.stderr.write
 

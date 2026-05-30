@@ -1,7 +1,9 @@
 import { e2eHarnessScenarios, type ScenarioId } from './scenarios.ts'
 
+/** Execution surface used to prove a bidirectional sync safety scenario. */
 export type BidiSafetyTier = 'fake' | 'replica' | 'daemon' | 'live'
 
+/** Failure mode that a bidirectional sync scenario is intended to cover. */
 export type BidiSafetyRisk =
   | 'false-conflict'
   | 'lost-update'
@@ -11,6 +13,7 @@ export type BidiSafetyRisk =
   | 'global-wedge'
   | 'stale-projection'
 
+/** Canonical scenario row for the bidirectional sync safety matrix. */
 export type BidiSafetyScenario = {
   readonly scenarioId: ScenarioId
   readonly tier: BidiSafetyTier
@@ -196,6 +199,7 @@ export const bidiSafetyScenarios = [
   }),
 ] as const satisfies ReadonlyArray<BidiSafetyScenario>
 
+/** Returns matrix scenarios that do not yet have a registered E2E harness entry. */
 export const bidiSafetyScenarioCoverageGaps = ({
   scenarios = bidiSafetyScenarios,
   registeredScenarioIds = new Set(e2eHarnessScenarios.map((entry) => entry.scenarioId)),
