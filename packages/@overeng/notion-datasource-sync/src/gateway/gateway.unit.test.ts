@@ -7,7 +7,6 @@ import {
   DataSourceId,
   DataSourceSnapshot,
   CommandId,
-  NotionDataSourceGateway,
   PageId,
   PagePropertyItem,
   PageSnapshot,
@@ -15,19 +14,23 @@ import {
   PropertyName,
   QueryContract,
   RowPageSnapshot,
-  canonicalHash,
-  hashStoreBytes,
-  makeFakeNotionDataSourceGatewayLayer,
-  makeNotionDataSourceGatewayFromClient,
-  makeNotionApiContract,
-  pagePropertyPatchToNotion,
-  queryContractHash,
-  schemaPropertyObservationsFromRemoteProperties,
-  type FakeNotionDataSourceGatewayConfig,
-  type NotionGatewayClient,
-  type NotionGatewayPage,
   type QueryContract as QueryContractType,
 } from '../mod.ts'
+import { canonicalHash, queryContractHash } from '../core/canonical.ts'
+import { NotionDataSourceGateway } from '../core/ports.ts'
+import {
+  makeFakeNotionDataSourceGatewayLayer,
+  type FakeNotionDataSourceGatewayConfig,
+} from './fake.ts'
+import { makeNotionApiContract } from './gateway.ts'
+import {
+  makeNotionDataSourceGatewayFromClient,
+  pagePropertyPatchToNotion,
+  schemaPropertyObservationsFromRemoteProperties,
+  type NotionGatewayClient,
+  type NotionGatewayPage,
+} from './notion.ts'
+import { hashStoreBytes } from '../store/projections.ts'
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)

@@ -5,6 +5,7 @@ import {
   ISO8601DateTimeSchema as ISO8601DateTime,
   NotionUUIDSchema as NotionUUID,
 } from '@overeng/notion-effect-schema'
+import { NOTION_API_VERSION } from './config.ts'
 
 /** SHA-256 digest string used for canonical body and file content identity. */
 export const Sha256Digest = Schema.String.pipe(
@@ -384,7 +385,7 @@ export type NmdStorage = typeof NmdStorage.Type
 export const NmdFrontmatterV1 = Schema.Struct({
   notion_md: Schema.Struct({
     version: Schema.Literal(1),
-    api_version: Schema.Literal('2026-03-11'),
+    api_version: Schema.Literal(NOTION_API_VERSION),
     object: Schema.Literal('page'),
     page_id: NotionUUID,
     url: Schema.optional(Schema.String),
@@ -442,7 +443,7 @@ export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
 export const NmdFrontmatterV2 = Schema.Struct({
   notion_md: Schema.Struct({
     version: Schema.Literal(2),
-    api_version: Schema.Literal('2026-03-11'),
+    api_version: Schema.Literal(NOTION_API_VERSION),
     object: Schema.Literal('page'),
     page_id: NotionUUID,
     url: Schema.optional(Schema.String),

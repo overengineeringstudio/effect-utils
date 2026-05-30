@@ -11,7 +11,7 @@ import { FetchHttpClient } from '@effect/platform'
 import { NodeRuntime } from '@effect/platform-node'
 import { Effect, Either, Layer, Redacted, Schema, Stream } from 'effect'
 
-import { NotionConfigLive, parseNotionUuid } from '@overeng/notion-effect-client'
+import { NOTION_API_VERSION, NotionConfigLive, parseNotionUuid } from '@overeng/notion-effect-client'
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
@@ -333,7 +333,7 @@ const fullReplicaQueryContract = (): QueryContract =>
     schema: QueryContract,
     value: {
       _tag: 'QueryContract',
-      apiVersion: '2026-03-11',
+      apiVersion: NOTION_API_VERSION,
       filter: null,
       sorts: [],
       pageSize: 100,

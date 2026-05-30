@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 
 import type { QueryRowsPage } from './commands.ts'
 import type {
@@ -169,10 +170,10 @@ export const blocked = ({
 
 /** Type predicate: returns `true` if `version` is the single supported Notion API version string. */
 export const isSupportedApiVersion = (version: string): version is SupportedNotionApiVersion =>
-  version === '2026-03-11'
+  version === NOTION_API_VERSION
 
 const isFutureApiVersion = (version: string): boolean =>
-  /^\d{4}-\d{2}-\d{2}$/.test(version) && version > '2026-03-11'
+  /^\d{4}-\d{2}-\d{2}$/.test(version) && version > NOTION_API_VERSION
 
 /** Allows the supported API version and future unverified versions (as `ApiVersionUnverified`); blocks all other versions as `ApiVersionUnsupported`. */
 export const guardApiVersion = (version: string): GuardDecision =>

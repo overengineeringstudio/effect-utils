@@ -7,6 +7,7 @@ import { FetchHttpClient, HttpClient } from '@effect/platform'
 import { Chunk, Effect, Layer, Redacted, Schema, Stream } from 'effect'
 
 import {
+  NOTION_API_VERSION,
   NotionConfig,
   NotionBlocks,
   NotionConfigLive,
@@ -69,7 +70,7 @@ export type LiveNotionConfig =
       readonly runId: string
       readonly parentPageId: string
       readonly dataSourceId: string | undefined
-      readonly notionVersion: '2026-03-11'
+      readonly notionVersion: typeof NOTION_API_VERSION
       readonly requiredCapabilities: ReadonlyArray<CapabilityName>
       readonly ledgerPath: string
       readonly e2eLedgerPageId?: string | undefined
@@ -103,7 +104,7 @@ export type LiveFixtureLedgerEntry = {
 /** Append-only run ledger written to disk (and optionally published to Notion) so fixture cleanup state survives test crashes. */
 export type LiveFixtureLedger = {
   readonly runId: string
-  readonly notionVersion: '2026-03-11'
+  readonly notionVersion: typeof NOTION_API_VERSION
   readonly entries: ReadonlyArray<LiveFixtureLedgerEntry>
 }
 
@@ -328,7 +329,7 @@ export const liveNotionConfigFromEnv = (env: LiveNotionEnv): LiveNotionConfig =>
     runId: `notion-ds-sync-${randomUUID()}`,
     parentPageId,
     dataSourceId,
-    notionVersion: '2026-03-11',
+    notionVersion: NOTION_API_VERSION,
     requiredCapabilities: parsedCapabilities.capabilities,
     ledgerPath: env.ledgerPath ?? `tmp/notion-datasource-sync-live/${randomUUID()}.json`,
     e2eLedgerPageId: env.e2eLedgerPageId,
@@ -1273,7 +1274,7 @@ const observeDemoDataSource = ({
     ).filter((property) => spec.schemaPropertyNames.includes(property.name))
     const queryContract: QueryContract = {
       _tag: 'QueryContract',
-      apiVersion: '2026-03-11',
+      apiVersion: NOTION_API_VERSION,
       filter: null,
       sorts: [
         {
@@ -2050,7 +2051,7 @@ export const runLiveNotionPreflight = async ({
           dataSourceId: DataSourceId.make(config.dataSourceId),
           queryContract: {
             _tag: 'QueryContract',
-            apiVersion: '2026-03-11',
+            apiVersion: NOTION_API_VERSION,
             filter: null,
             sorts: [],
             pageSize: 1,

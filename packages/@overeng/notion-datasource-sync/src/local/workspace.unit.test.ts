@@ -7,13 +7,15 @@ import {
   Hash,
   PageId,
   WorkspaceRelativePath,
+} from '../core/domain.ts'
+import {
   bodyPathForRow,
   canonicalizeWorkspaceRelativePath,
   classifyLocalDelete,
   isOwnWriteObservation,
   makeFakeLocalWorkspacePort,
   presentArtifactObservation,
-} from '../mod.ts'
+} from './workspace.ts'
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)

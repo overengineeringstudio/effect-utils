@@ -1,4 +1,5 @@
 import { Effect, Layer, Schema, Stream } from 'effect'
+import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 
 import type {
   RetrievePagePropertyInput,
@@ -39,7 +40,7 @@ import {
 
 /** The Notion API version string that this gateway implementation targets. */
 export const supportedNotionApiVersion: SupportedNotionApiVersionType =
-  SupportedNotionApiVersion.pipe(Schema.decodeSync)('2026-03-11')
+  SupportedNotionApiVersion.pipe(Schema.decodeSync)(NOTION_API_VERSION)
 
 /** The full set of capabilities that a complete gateway implementation should support. */
 export const allGatewayCapabilities = [

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
+import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 
 import { propertySurfaceKey } from '../core/canonical.ts'
 import { RemoteWritePlanPayload, type RemoteWriteCommand } from '../core/commands.ts'
@@ -1328,7 +1329,7 @@ export class NotionSyncStore {
       rootId,
       api: {
         configuredApiVersion:
-          apiRow === undefined ? '2026-03-11' : readString({ row: apiRow, key: 'api_version' }),
+          apiRow === undefined ? NOTION_API_VERSION : readString({ row: apiRow, key: 'api_version' }),
         compatibilityProof: apiRow === undefined ? 'missing' : 'present',
       },
       capabilities: {

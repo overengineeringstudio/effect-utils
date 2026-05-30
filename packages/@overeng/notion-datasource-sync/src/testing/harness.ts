@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { Effect, Schema } from 'effect'
+import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 
 import {
   bodySafetySnapshot,
@@ -445,7 +446,7 @@ export const queryRowsPage = ({
     schema: QueryRowsPage,
     value: {
       _tag: 'QueryRowsPage',
-      apiVersion: '2026-03-11',
+      apiVersion: NOTION_API_VERSION,
       requestId: testIds.requestId,
       queryContractHash: hash('query-contract'),
       rows: rows.map((row) => ({
@@ -464,7 +465,7 @@ export const queryRowsPage = ({
 /** Build a baseline `QueryContract` with no filters, no sorts, a page size of 100, and `all-data-source-rows` membership scope. */
 export const defaultQueryContract = (): QueryContract => ({
   _tag: 'QueryContract',
-  apiVersion: '2026-03-11',
+  apiVersion: NOTION_API_VERSION,
   filter: null,
   sorts: [],
   pageSize: 100,
@@ -480,7 +481,7 @@ export const buildPlannerSnapshot = (
   overrides: Partial<PlannerProjectionSnapshot> = {},
 ): PlannerProjectionSnapshot => ({
   rootId: testIds.rootId,
-  api: { configuredApiVersion: '2026-03-11', compatibilityProof: 'present' },
+  api: { configuredApiVersion: NOTION_API_VERSION, compatibilityProof: 'present' },
   capabilities: {
     required: ['page_property_update'],
     supported: ['page_property_update'],

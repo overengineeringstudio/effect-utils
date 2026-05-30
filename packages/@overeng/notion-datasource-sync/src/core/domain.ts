@@ -1,7 +1,8 @@
 import { Schema } from 'effect'
+import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 
 /** The single Notion API version this package is tested and certified against. */
-export const SupportedNotionApiVersion = Schema.Literal('2026-03-11').annotations({
+export const SupportedNotionApiVersion = Schema.Literal(NOTION_API_VERSION).annotations({
   identifier: 'NotionDatasourceSync.SupportedNotionApiVersion',
 })
 export type SupportedNotionApiVersion = typeof SupportedNotionApiVersion.Type

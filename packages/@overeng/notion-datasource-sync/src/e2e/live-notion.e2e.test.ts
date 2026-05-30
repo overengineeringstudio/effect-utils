@@ -24,32 +24,32 @@ import {
   DataSourceId,
   Hash,
   LocalWorkspacePort,
-  establishFromNotion,
-  makeFilesystemLocalWorkspacePort,
-  makeNotionApiContract,
-  makeNotionDataSourceGatewayFromClient,
-  makeNotionDataSourceGatewayLayer,
-  makeNotionEffectClientGatewayClient,
-  makeNotionMdPageBodySyncPort,
   NotionDataSourceGateway,
-  NotionDataSourceGatewayLive,
-  type NotionGatewayClient,
   type NotionDataSourceGatewayShape,
   PageBodySyncPort,
   PageId,
   PatchDataSourceMetadataCommand,
-  parseCliCommand,
-  parseCliContext,
   PropertyId,
   PropertyName,
-  runCliCommandWithRuntime,
   SchemaPatchOperation,
   type SchemaPropertyObservation,
   SyncRootId,
   WorkspaceRelativePath,
-  openNotionSyncStore,
 } from '../mod.ts'
+import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
+import { parseCliCommand, parseCliContext, runCliCommandWithRuntime } from '../cli/main.ts'
+import { makeNotionApiContract } from '../gateway/gateway.ts'
+import {
+  makeNotionDataSourceGatewayFromClient,
+  makeNotionDataSourceGatewayLayer,
+  makeNotionEffectClientGatewayClient,
+  NotionDataSourceGatewayLive,
+  type NotionGatewayClient,
+} from '../gateway/notion.ts'
+import { makeFilesystemLocalWorkspacePort } from '../local/workspace.ts'
 import { projectReplicaFromSyncStore } from '../replica/replica.ts'
+import { openNotionSyncStore } from '../store/store.ts'
+import { establishFromNotion } from '../sync/sync.ts'
 import { makeFakeGatewayHarness, testIds } from '../testing/harness.ts'
 import {
   emptyLiveFixtureLedger,

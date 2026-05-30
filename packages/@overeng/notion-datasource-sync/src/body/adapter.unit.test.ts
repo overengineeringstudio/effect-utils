@@ -22,16 +22,20 @@ import {
   Hash,
   NotionRequestId,
   PageId,
-  RowObserved,
   WorkspaceRelativePath,
+  type BodySafetySnapshot,
+} from '../core/domain.ts'
+import { RowObserved } from '../core/events.ts'
+import {
   bodySafetySnapshot,
   evaluateBodyAdapterContract,
   makeFakePageBodySyncPort,
+  makeUnsupportedPageBodySyncPort,
+} from './adapter.ts'
+import {
   makeNotionMdMaterializingLocalWorkspacePort,
   makeNotionMdPageBodySyncPort,
-  makeUnsupportedPageBodySyncPort,
-  type BodySafetySnapshot,
-} from '../mod.ts'
+} from './notion-md.ts'
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)
