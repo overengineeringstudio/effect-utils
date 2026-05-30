@@ -4,7 +4,26 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./body": "./src/body/adapter.ts",
+    "./body/notion-md": "./src/body/notion-md.ts",
+    "./cli": "./src/cli/main.ts",
+    "./daemon": "./src/daemon/watch.ts",
+    "./demo": "./src/demo/live-demo.ts",
+    "./gateway": "./src/gateway/gateway.ts",
+    "./gateway/fake": "./src/gateway/fake.ts",
+    "./gateway/notion": "./src/gateway/notion.ts",
+    "./local": "./src/local/workspace.ts",
+    "./observability": "./src/observability/observability.ts",
+    "./replica": "./src/replica/replica.ts",
+    "./store": "./src/store/store.ts",
+    "./store/projections": "./src/store/projections.ts",
+    "./store/schema": "./src/store/schema.ts",
+    "./sync": "./src/sync/sync.ts",
+    "./sync/executor": "./src/sync/executor.ts",
+    "./sync/observation": "./src/sync/observation.ts",
+    "./testing/*": "./src/testing/*.ts",
+    "./webhook": "./src/webhook/mod.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -12,7 +31,26 @@
       "notion-datasource-sync": "./dist/src/cli/main.js"
     },
     "exports": {
-      ".": "./dist/src/mod.js"
+      ".": "./dist/src/mod.js",
+      "./body": "./dist/src/body/adapter.js",
+      "./body/notion-md": "./dist/src/body/notion-md.js",
+      "./cli": "./dist/src/cli/main.js",
+      "./daemon": "./dist/src/daemon/watch.js",
+      "./demo": "./dist/src/demo/live-demo.js",
+      "./gateway": "./dist/src/gateway/gateway.js",
+      "./gateway/fake": "./dist/src/gateway/fake.js",
+      "./gateway/notion": "./dist/src/gateway/notion.js",
+      "./local": "./dist/src/local/workspace.js",
+      "./observability": "./dist/src/observability/observability.js",
+      "./replica": "./dist/src/replica/replica.js",
+      "./store": "./dist/src/store/store.js",
+      "./store/projections": "./dist/src/store/projections.js",
+      "./store/schema": "./dist/src/store/schema.js",
+      "./sync": "./dist/src/sync/sync.js",
+      "./sync/executor": "./dist/src/sync/executor.js",
+      "./sync/observation": "./dist/src/sync/observation.js",
+      "./testing/*": "./dist/src/testing/*.js",
+      "./webhook": "./dist/src/webhook/mod.js"
     }
   },
   "scripts": {
