@@ -1072,6 +1072,10 @@ let
       src = rootDepsSrc;
       sourceRoot = ".";
       lockfilePaths = [ "pnpm-lock.yaml" ];
+      # The staged root workspace is already narrowed to `$genie.workspaceClosureDirs`.
+      # Ask pnpm to materialize the target package's dependency closure, not every
+      # importer visible in that staged workspace.
+      pnpmFilters = [ "${packageJson.name}..." ];
       # Fixed-output dependency preparation must be a pure materialization of
       # the staged manifests and lockfile. Unfrozen installs can rewrite the
       # effective dependency graph and produce hash ping-pong across builders.

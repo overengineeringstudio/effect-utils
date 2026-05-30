@@ -10,7 +10,12 @@
   # graph, so downstream repos should make their root nixpkgs follow
   # `effect-utils/nixpkgs` instead of overriding the input the other way around.
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Track release-26.05: the crates.io importCargoLock UA fix (nixpkgs#524985)
+    # was backported there as nixpkgs#524989 and the branch is Hydra-cached.
+    # nixos-unstable has NOT advanced past the 2026-05-27 fix yet (still pinned
+    # at the pre-fix 2026-05-23 rev), so a lock bump on unstable is a no-op for
+    # the 403. Revisit a return to nixos-unstable once it advances. See #703.
+    nixpkgs.url = "github:NixOS/nixpkgs/release-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     tsgo.url = "github:Effect-TS/tsgo";
   };

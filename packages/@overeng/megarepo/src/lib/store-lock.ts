@@ -20,7 +20,7 @@ import { createHash } from 'node:crypto'
 import { Context, Duration, Effect, Layer, SynchronizedRef } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
-import { DistributedSemaphore, type DistributedSemaphoreBacking } from '@overeng/utils'
+import { DistributedSemaphore, DistributedSemaphoreBacking } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 /** Default TTL for store locks (auto-expires if process crashes) */
@@ -95,6 +95,21 @@ const makeKeyedLock = ({
         })
   })
 
+const withoutPushAcquire = (
+  backingContext: Context.Context<DistributedSemaphoreBacking>,
+): Context.Context<DistributedSemaphoreBacking> => {
+  const backing = Context.get(backingContext, DistributedSemaphoreBacking)
+  const { onPermitsReleased: _onPermitsReleased, ...backingWithoutPush } = backing
+
+  // Store locks are short critical sections; polling is slower but avoids
+  // fs.watch edge cases on transient lock directories in CI and during GC.
+  return Context.add(
+    backingContext,
+    DistributedSemaphoreBacking,
+    backingWithoutPush as DistributedSemaphoreBacking & { readonly onPermitsReleased?: never },
+  )
+}
+
 /**
  * Create the StoreLock layer from an arbitrary DistributedSemaphoreBacking layer.
  * Useful for testing with an in-memory backing.
@@ -105,7 +120,7 @@ export const makeStoreLockLayerFromBacking = (
   Layer.scoped(
     StoreLock,
     Effect.gen(function* () {
-      const backingContext = yield* Layer.build(backingLayer)
+      const backingContext = withoutPushAcquire(yield* Layer.build(backingLayer))
 
       return {
         withRepoLock: yield* makeKeyedLock({ backingContext, namespace: 'repo' }),
@@ -124,7 +139,7 @@ export const makeStoreLockLayer = (basePath: AbsoluteDirPath) =>
     Effect.gen(function* () {
       const lockDir = `${basePath}.locks`
       const lockLayer = FileSystemBacking.layer({ lockDir })
-      const backingContext = yield* Layer.build(lockLayer)
+      const backingContext = withoutPushAcquire(yield* Layer.build(lockLayer))
 
       return {
         withRepoLock: yield* makeKeyedLock({ backingContext, namespace: 'repo' }),

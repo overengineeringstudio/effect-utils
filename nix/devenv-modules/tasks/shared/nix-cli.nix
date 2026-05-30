@@ -342,6 +342,22 @@ let
       };
     };
 
+  # Full hash validation rebuilds whole prepared pnpm dependency roots. Running
+  # every CLI package at once is faster on large Linux builders but can exceed
+  # Darwin runner memory; keep package validation sequential at the aggregate
+  # task while leaving per-package tasks available for targeted checks.
+  sequentialNixCheckScript = pkgs.writeShellScript "nix-check-all" (
+    lib.concatStringsSep "\n" (
+      [
+        "set -euo pipefail"
+      ]
+      ++ map (
+        pkg:
+        "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'"
+      ) cliPackages
+    )
+  );
+
   # Filter packages that have lockfile defined
   packagesWithLockfile = builtins.filter (p: p ? lockfile) cliPackages;
 
@@ -370,7 +386,8 @@ lib.mkIf hasPackages {
 
           "nix:check" = {
             description = "Check if any CLI hashes are stale (for CI, full build)";
-            after = map (p: "nix:check:${p.name}") cliPackages;
+            exec = trace.exec "nix:check" "${sequentialNixCheckScript}";
+            after = lib.optional (packagesWithLockfile != [ ]) "pnpm:install";
           };
 
           "nix:check:quick" = {
