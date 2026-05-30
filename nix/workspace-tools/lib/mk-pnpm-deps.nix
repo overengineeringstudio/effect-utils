@@ -34,6 +34,10 @@
 
 let
   lib = pkgs.lib;
+  # Drive pnpm with an LTS Node runtime even when nixpkgs' default `nodejs`
+  # advances first. pnpm dependency preparation is build tooling, not the app
+  # runtime, and this keeps FOD behavior stable across nixpkgs release bumps.
+  pnpmNodejs = pkgs.nodejs_24 or pkgs.nodejs;
   preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
   nixClosureBytesScript = pkgs.writeText "nix-closure-bytes.cjs" ''
     const fs = require("fs");
@@ -413,6 +417,9 @@ in
   #   lockfilePaths:
   #                   Lockfiles whose directories should be installed within the
   #                   staged tree. Each path is relative to sourceRoot.
+  #   pnpmFilters:
+  #                   Optional pnpm selectors for narrowing a workspace install
+  #                   to the package closure the staged tree is meant to prepare.
   mkDeps =
     {
       name,
@@ -422,6 +429,7 @@ in
       preInstall ? "",
       frozenLockfile ? true,
       lockfilePaths ? [ "pnpm-lock.yaml" ],
+      pnpmFilters ? [ ],
       includeOptionalDependencies ? false,
     }:
     let
@@ -463,20 +471,23 @@ in
         if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy";
       pnpmLockfileModeArg = if frozenLockfile then "--frozen-lockfile" else "--no-frozen-lockfile";
       pnpmOptionalModeArg = if includeOptionalDependencies then "" else "--no-optional";
+      pnpmFilterArgs = builtins.concatStringsSep " " (
+        map (filter: "--filter ${lib.escapeShellArg filter}") pnpmFilters
+      );
     in
     pkgs.stdenvNoCC.mkDerivation {
       # Bump the prepared-workspace artifact version whenever the materialization
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v15";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v17";
       version = "0.0.0";
 
       inherit src sourceRoot;
 
       nativeBuildInputs = [
         pnpm
-        pkgs.nodejs
+        pnpmNodejs
         pkgs.nix
         pkgs.perl
         pkgs.cacert
@@ -514,7 +525,7 @@ in
 
                 file_count() {
                   if [ -d "$1" ]; then
-                    ${pkgs.nodejs}/bin/node ${lib.escapeShellArg fileCountScript} "$1"
+                  ${pnpmNodejs}/bin/node ${lib.escapeShellArg fileCountScript} "$1"
                   else
                     echo 1
                   fi
@@ -583,7 +594,7 @@ in
                 # Self-hosted checkouts and local worktrees can accumulate ignored
                 # install artifacts, and pnpm's symlink layout will then collide
                 # with those preexisting node_modules trees during materialization.
-                ${pkgs.nodejs}/bin/node ${lib.escapeShellArg removeNodeModulesScript} "$SOURCE_DIR"
+                ${pnpmNodejs}/bin/node ${lib.escapeShellArg removeNodeModulesScript} "$SOURCE_DIR"
                 sourceCopyDuration=$(timer_elapsed "$sourceCopyStartedAt")
                 log_prep_phase "stage-source-copy" "duration=''${sourceCopyDuration}s source_root=$sourceRoot"
                 log_prep_event "stage-source-copy" "$sourceCopyDuration" "source_root=$sourceRoot"
@@ -612,6 +623,9 @@ in
                 export NPM_CONFIG_PRODUCTION=false
                 export npm_config_production=false
                 export NODE_ENV=development
+                # Keep pnpm's Node runtime warnings from overwhelming Darwin
+                # builders. pnpm's own install/progress output still reaches logs.
+                export NODE_NO_WARNINGS=1
                 export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
                 export PNPM_MJS=${lib.escapeShellArg "${pnpm}/libexec/pnpm/bin/pnpm.mjs"}
 
@@ -625,13 +639,13 @@ in
                 # live-worktree store/layout policy first so the prepared
                 # artifact does not preserve caller-local paths.
                 if [ -f .npmrc ]; then
-                  ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(store-dir|virtual-store-dir|enable-global-virtual-store|global-virtual-store-dir|state-dir|cache-dir|package-import-method|node-linker|side-effects-cache|side-effects-cache-readonly|verify-store-integrity|strict-store-pkg-content-check|pm-on-fail|verify-deps-before-run)\s*=.*\n//mg' .npmrc
+                  ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(store-dir|virtual-store-dir|enable-global-virtual-store|global-virtual-store-dir|state-dir|cache-dir|package-import-method|node-linker|side-effects-cache|side-effects-cache-readonly|verify-store-integrity|strict-store-pkg-content-check|pm-on-fail|verify-deps-before-run|child-concurrency|network-concurrency)\s*=.*\n//mg' .npmrc
                 fi
                 # Back up scrubbed .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\nchild-concurrency=1\nnetwork-concurrency=4\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
         if [ -f pnpm-workspace.yaml ]; then
-          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|virtualStoreDir|enableGlobalVirtualStore|globalVirtualStoreDir|stateDir|cacheDir|packageImportMethod|nodeLinker|optimisticRepeatInstall|verifyDepsBeforeRun|sideEffectsCache|sideEffectsCacheReadonly|verifyStoreIntegrity|strictStorePkgContentCheck|pmOnFail):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
+          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|virtualStoreDir|enableGlobalVirtualStore|globalVirtualStoreDir|stateDir|cacheDir|packageImportMethod|nodeLinker|optimisticRepeatInstall|verifyDepsBeforeRun|sideEffectsCache|sideEffectsCacheReadonly|verifyStoreIntegrity|strictStorePkgContentCheck|pmOnFail|childConcurrency|networkConcurrency):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
         fi
                 # Keep prepared dependency artifacts platform-neutral. Native
                 # optional packages are owned by the Nix package/build layer so
@@ -673,7 +687,32 @@ in
                   # Keep the frozen invocation literal in-source so downstream
                   # contract checks can verify the strict default install mode:
                   # pnpm install --frozen-lockfile --ignore-scripts
-                  node "$PNPM_MJS" install ${pnpmLockfileModeArg} ${pnpmOptionalModeArg} --ignore-scripts
+                  ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+                    # APFS copy-based materialization of the root workspace can push
+                    # pnpm's node process into kernel kill territory on GitHub macOS.
+                    # The dependency artifact contract is unchanged; this only bounds
+                    # builder resource use for the same platform-neutral prepared tree.
+                    export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
+                  ''}
+                  pnpm_install_log=$(mktemp "$NIX_BUILD_TOP/pnpm-install.XXXXXX.log")
+                  set +e
+                  ${pnpmNodejs}/bin/node "$PNPM_MJS" install ${pnpmLockfileModeArg} ${pnpmOptionalModeArg} --ignore-scripts ${pnpmFilterArgs} 2>&1 | tee "$pnpm_install_log"
+                  pnpm_install_status=''${PIPESTATUS[0]}
+                  set -e
+                  if [ "$pnpm_install_status" -ne 0 ]; then
+                    if [ "$pnpm_install_status" -eq 137 ] \
+                      && [ ${
+                        lib.escapeShellArg (if pkgs.stdenv.hostPlatform.isDarwin then "1" else "0")
+                      } = "1" ] \
+                      && grep -qE 'Progress: .* done$' "$pnpm_install_log" \
+                      && [ -d node_modules/.pnpm ] \
+                      && [ -f node_modules/.modules.yaml ]; then
+                      echo "workspace-prep: pnpm install completed materialization before darwin SIGKILL; continuing after node teardown exit 137"
+                    else
+                      exit "$pnpm_install_status"
+                    fi
+                  fi
+                  rm -f "$pnpm_install_log"
                   popd >/dev/null
                   installDuration=$(timer_elapsed "$installStartedAt")
                   log_prep_phase "install" "install_root=$install_root duration=''${installDuration}s"
@@ -683,7 +722,7 @@ in
 
                 export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
                 rewriteStartedAt=$(timer_now)
-                ${pkgs.nodejs}/bin/node ${lib.escapeShellArg rewritePreparedWorkspaceScript}
+                ${pnpmNodejs}/bin/node ${lib.escapeShellArg rewritePreparedWorkspaceScript}
                 rewriteDuration=$(timer_elapsed "$rewriteStartedAt")
                 log_prep_phase "rewrite" "duration=''${rewriteDuration}s"
                 log_prep_event "rewrite" "$rewriteDuration" "kind=prepared-workspace"
@@ -711,7 +750,7 @@ in
                   -prune -exec rm -rf {} +
                 rm -f .pnpm-install-roots.txt
 
-                ${pkgs.nodejs}/bin/node ${lib.escapeShellArg normalizePreparedTreeScript} .
+                ${pnpmNodejs}/bin/node ${lib.escapeShellArg normalizePreparedTreeScript} .
 
                 leaked_path=$(
                   find "$SOURCE_DIR" \
@@ -842,7 +881,7 @@ in
       export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
 
       ${pkgs.nodejs}/bin/node ${lib.escapeShellArg chmodBinScriptsWritableScript} "$PREPARED_WORKSPACE_TARGET"
-      ${pkgs.nodejs}/bin/node ${lib.escapeShellArg restorePreparedWorkspaceScript}
+          ${pnpmNodejs}/bin/node ${lib.escapeShellArg restorePreparedWorkspaceScript}
 
       restored_payload_bytes=$(restore_path_bytes ${deps})
       echo "workspace-restore: phase=restore label=${label} target=$PREPARED_WORKSPACE_TARGET duration=$(restore_timer_elapsed "$restoreStartedAt")s payload_size=$(restore_format_bytes "$restored_payload_bytes") mode=tar-stream-tree"

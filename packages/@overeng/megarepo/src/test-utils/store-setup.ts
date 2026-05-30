@@ -156,7 +156,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
 
       // Create tags if requested
       for (const tag of repoFixture.tags ?? []) {
-        yield* runGitCommand(sourceRepoPath, 'tag', tag)
+        yield* runGitCommand(sourceRepoPath, 'tag', '--no-sign', tag)
         yield* runGitCommand(sourceRepoPath, 'push', 'origin', tag)
       }
 

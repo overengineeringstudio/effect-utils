@@ -220,7 +220,7 @@ describe('PtySession (server mode)', () => {
     withIsolatedDir(
       Effect.gen(function* () {
         const session = yield* make(
-          PtySpec_.server({ command: 'sh', args: ['-c', 'echo server-ok; sleep 5'] }),
+          PtySpec_.server({ command: 'sh', args: ['-c', 'sleep 0.1; echo server-ok; sleep 5'] }),
         )
         yield* session.attach
         const ss = yield* session.waitForText({ needle: 'server-ok', schedule: fastSchedule })
