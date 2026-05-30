@@ -2,49 +2,64 @@
 
 ## The Problem
 
-**Problem 1:** Notion pages and Notion data sources are separate API surfaces. Page-body sync alone cannot represent table schema, row properties, query membership, row deletion, views, relations, or schema migration intent.
+Notion's UI is excellent for humans working _in Notion_. But once work moves
+local, it is better served by trusted local files — markdown and SQLite — than by
+the live Notion API or CLI.
 
-**Problem 2:** Bidirectional data-source sync can destroy data when it treats coarse page timestamps, query absence, property display names, permission failures, or local file deletion as authoritative facts.
+- **Coding agents** are the primary motivating audience. An agent reasons, diffs,
+  and edits far better over a durable local artifact than over live API calls.
+- **Scripts and tooling** want a stable local data surface they can query and
+  write without re-deriving Notion's API on every run.
+- **Humans working locally** (editor, CLI) are a secondary audience, served the
+  same way.
 
-**Problem 3:** Notion does not expose a durable ordered change stream for local-first sync. Webhooks, workers, timestamps, and queries are useful signals, but correctness still requires reconciliation against current remote state.
-
-**Problem 4:** Agents and humans need a local SQLite replica that is usable as a data API, not only hidden client state. They need to query rows and cells locally, queue edits locally, review planned sync effects, and recover from conflicts without treating sync internals as the user database.
-
-**Problem 5:** The existing Notion libraries in `effect-utils` solve adjacent layers, but the data-source sync concern needs a standalone primitive that composes with them instead of becoming a built-in Notion Markdown feature.
-
-**Problem 6:** Production confidence requires live Notion verification. Schema writes, trash/restore, move semantics, pagination, filtering, permission boundaries, API-version behavior, markdown truncation, and timestamp behavior cannot be trusted from local mocks alone.
+The Notion API and CLI are useful steps toward local work, but a trusted local
+artifact is preferable: it is present, queryable, and diffable without a round
+trip.
 
 ## The Vision
 
-- Datasource sync is a standalone primitive for synchronizing Notion data sources with a user-facing local SQLite replica and a durable internal control plane.
-- `<database-id>.sqlite` is the local data API. Users and tools read current data and write guarded intents there, analogous to how `@overeng/notion-md` users read and write `.nmd` files.
-- The primitive composes with `@overeng/notion-md` for page-body materialization, while keeping page bodies and data-source rows as distinct sync surfaces.
-- Local state is auditable and replayable. Private `_nds_*` state records history and recovery state in the same SQLite file as the public surfaces. Sync decisions are explainable, reproducible, guarded, and repairable.
-- Notion remains authoritative for current remote facts after observation. Local state is authoritative for local intent, conflict records, outbox lifecycle, tombstones, path claims, and migration history.
-- Every unsafe condition has a typed guard. Unknown, lossy, stale, ambiguous, or unsupported state blocks automatic writes instead of falling back to last-writer-wins behavior.
-- Continuous sync uses the same correctness model as one-shot commands, so background operation cannot bypass guards.
-- The Notion library stack remains composable: datasource sync uses adjacent packages without taking ownership of their domains.
-- Every supported behavior has deterministic local coverage and representative live Notion E2E coverage.
+A Notion data source as a **trusted local SQLite file you query and write**. This
+extends the `.nmd` analogy from page bodies to rows, schema, and lifecycle: where
+`@overeng/notion-md` makes a page body a local file you read and edit, datasource
+sync makes a data source a local `<database-id>.sqlite` you read and edit.
+
+- `<database-id>.sqlite` is the local data API. You inspect schema and rows with
+  plain SQL and write supported edits there, and the CLI reconciles them against
+  Notion.
+- "Trusted" is the load-bearing word: the local file is something you can act on
+  with confidence, and sync never silently loses or corrupts data to keep the
+  file and Notion in agreement.
+- Notion stays authoritative for current remote facts after observation. The
+  local file is authoritative for your local intent and the history needed to
+  reconcile it.
+- It composes with `@overeng/notion-md` for page bodies, keeping page bodies and
+  data-source rows as distinct but adjacent local surfaces.
 
 ## What This Is Not
 
-- It is not a built-in feature of `@overeng/notion-md`.
+- It is not a built-in feature of `@overeng/notion-md`. It is a standalone
+  primitive that composes with it.
 - It is not a full offline Notion clone.
 - It is not a last-writer-wins backup tool.
 - It is not an automatic destructive schema migration tool.
 - It is not a replacement for Notion permissions, ownership, or workspace policy.
-- It is not dependent on Notion Workers, webhooks, or any hosted callback path for correctness.
-- It is not a generic relational database replicator for arbitrary SQL schemas.
-- It is not a promise that every object inside `<database-id>.sqlite` is public API; `_nds_*` remains private implementation state.
+- It is not dependent on Notion Workers, webhooks, or any hosted callback path for
+  correctness.
 
 ## Success Criteria
 
-1. A user can bind a Notion data source to a local workspace, inspect schema and rows through `<database-id>.sqlite`, edit supported local data through public SQLite surfaces and page-body files, and push changes without mixing body metadata into data-source state.
-2. Local control-plane state can be replayed to rebuild derived sync state deterministically.
-3. A normal sync refuses stale, ambiguous, lossy, or unsupported writes and reports the exact guard that blocked the operation.
-4. Disjoint local and remote edits merge automatically at the smallest safe sync surface; same-surface edits become durable conflicts with explicit resolution commands.
-5. Schema changes are detected and guarded through property-ID-aware planning. Safe additive schema edits can be explicit intents; destructive or rich schema migrations require follow-up migration workflows with impact reports.
-6. Trash, restore, move-out, move-back, permission loss, and query absence are classified by direct retrieval before any destructive decision.
-7. Continuous local sync can run for long periods, recover after interruption, honor rate limits, avoid concurrent writers, and repair missed changes.
-8. `@overeng/notion-md` can be used as a page-body adapter without depending on datasource-sync internals.
-9. The package ships with unit, fake-service integration, SQLite replay, filesystem, daemon, telemetry, and live Notion E2E tests covering the guard matrix.
+1. A coding agent or human can query the local `<database-id>.sqlite` with plain
+   SQL and safely edit supported data — `UPDATE`/`INSERT`/`DELETE` rows,
+   archive/restore — with the CLI reconciling those edits against Notion.
+2. Page bodies and data-source rows stay distinct: `@overeng/notion-md` supplies
+   page-body files without depending on datasource-sync internals.
+3. A sync never silently loses data: stale, ambiguous, lossy, or unsupported
+   writes are refused with a clear reason rather than overwriting state.
+4. Disjoint local and remote edits merge automatically; conflicting same-surface
+   edits surface explicitly with resolution commands.
+5. Safe additive schema edits are possible as explicit intents; destructive or
+   rich schema migrations require a deliberate migration workflow with an impact
+   report.
+6. Continuous sync can run for long periods, recover after interruption, and
+   repair missed changes without relying on webhooks or Workers for correctness.

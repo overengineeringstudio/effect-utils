@@ -111,6 +111,10 @@ All notable changes to this project will be documented in this file.
 - **nix/workspace-tools**: Tighten pnpm child/network concurrency inside fixed-output pnpm deps builds and cap Darwin Node heap during the install step so macOS CI is less likely to die with an unstructured `Killed: 9` while materializing whole-workspace install roots.
 - **@overeng/pty-effect**: Make the server-mode attach/read integration test wait briefly before emitting its marker so slower Linux CI runners do not miss one-shot startup output during initial attach replay.
 - **@overeng/notion-datasource-sync**: Keep the public `notion.sqlite` replica coherent after direct cell edits by refreshing scalar helper columns/generated view readback, fail closed for invalid or unsupported local changes instead of crashing or marking them planned, and align docs with the shipped replica schema and intent names.
+- **@overeng/notion-datasource-sync**: Add the missing exported API JSDoc and explicit boolean comparisons that kept `lint` and `devenv-perf` red on PR #683.
+
+- **nix/oxc-config-plugin**: Refresh the `oxc-config` pnpm fixed-output hash so `oxlint` can build again in CI and `lint` / `devenv-perf` stop failing on the stale dependency boundary.
+
 - **@overeng/notion-datasource-sync**: Classify full-query absence candidates with direct page retrieval, clear stale watch repair markers after completed cycles, and avoid duplicate public SQLite row-edit CDC so bidirectional row/title sync settles reliably.
 - **@overeng/notion-datasource-sync**: Reduce watch-mode sync latency by reusing complete query high-watermark checkpoints for incremental polling, pushing runnable local SQLite CDC before remote pulls, hydrating row values from data-source query payloads instead of per-row page retrieval when available, and preventing incremental omissions from becoming tombstone evidence.
 - **@overeng/notion-datasource-sync**: Settle explicit public SQLite row archive/restore CDC without duplicate lifecycle changes and allow guarded data-only archive intents to run in `--no-materialize-bodies` watch cycles when the target page identity is directly accessible.
