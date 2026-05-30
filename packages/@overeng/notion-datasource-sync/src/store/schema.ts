@@ -1,5 +1,5 @@
 /** SQLite schema version — incremented when a migration is needed. */
-export const STORE_SCHEMA_VERSION = 5
+export const STORE_SCHEMA_VERSION = 6
 
 /** Opaque identifier stamped into every _nds_projection_metadata row to detect when projections were built by an incompatible projector. */
 export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS _nds_capability (
   request_id TEXT,
   checked_event_id TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  PRIMARY KEY (root_id, capability)
+  PRIMARY KEY (root_id, data_source_id, capability)
 );
 
 CREATE TABLE IF NOT EXISTS _nds_data_source (

@@ -513,6 +513,12 @@ const preflightMigrationSafety = (path: string): void => {
   }
 }
 
+const capabilityProjectionIsScopedByDataSource = (db: DatabaseSync): boolean =>
+  db
+    .prepare(`PRAGMA table_info('_nds_capability')`)
+    .all()
+    .some((row) => row.name === 'data_source_id' && Number(row.pk) > 0)
+
 /**
  * SQLite-backed store for the notion-datasource-sync event log and projections.
  *
@@ -1290,14 +1296,25 @@ export class NotionSyncStore {
          LIMIT 1`,
       )
       .get(rootId)
-    const capabilityRows = this.#db
-      .prepare(
-        `SELECT capability, supported
-         FROM _nds_capability
-         WHERE root_id = ?
-         ORDER BY capability`,
-      )
-      .all(rootId)
+    const binding = this.readWorkspaceBinding(rootId)
+    const capabilityRows =
+      binding === undefined
+        ? this.#db
+            .prepare(
+              `SELECT capability, supported
+               FROM _nds_capability
+               WHERE root_id = ?
+               ORDER BY capability`,
+            )
+            .all(rootId)
+        : this.#db
+            .prepare(
+              `SELECT capability, supported
+               FROM _nds_capability
+               WHERE root_id = ? AND data_source_id = ?
+               ORDER BY capability`,
+            )
+            .all(rootId, binding.dataSourceId)
     const requiredCapabilities = capabilityRows.map((row) =>
       decodeCapabilityName(readString({ row: row, key: 'capability' })),
     )
@@ -1919,12 +1936,46 @@ export class NotionSyncStore {
         }
       }
     }
+    if (capabilityProjectionIsScopedByDataSource(this.#db) === false) {
+      this.#db.exec(`
+CREATE TABLE _nds_capability_v6 (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
+  capability TEXT NOT NULL,
+  data_source_id TEXT NOT NULL,
+  supported INTEGER NOT NULL CHECK (supported IN (0, 1)),
+  request_id TEXT,
+  checked_event_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (root_id, data_source_id, capability)
+);
+INSERT OR REPLACE INTO _nds_capability_v6 (
+  root_id,
+  capability,
+  data_source_id,
+  supported,
+  request_id,
+  checked_event_id,
+  updated_at
+)
+SELECT
+  root_id,
+  capability,
+  data_source_id,
+  supported,
+  request_id,
+  checked_event_id,
+  updated_at
+FROM _nds_capability;
+DROP TABLE _nds_capability;
+ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
+`)
+    }
     this.#db
       .prepare(
         `INSERT OR IGNORE INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       )
-      .run(STORE_SCHEMA_VERSION, 'outbox-retry-after', currentIso(this.#now))
+      .run(STORE_SCHEMA_VERSION, 'capability-data-source-scope', currentIso(this.#now))
   }
 
   #ensureRoot(rootId: SyncRootId): void {
@@ -2342,7 +2393,7 @@ export class NotionSyncStore {
                updated_at
              )
              VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(root_id, capability) DO UPDATE SET
+             ON CONFLICT(root_id, data_source_id, capability) DO UPDATE SET
                data_source_id = excluded.data_source_id,
                supported = excluded.supported,
                request_id = excluded.request_id,

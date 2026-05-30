@@ -363,18 +363,44 @@ const apiContractObserved = (eventId = 'api-event') =>
     },
   })
 
-const capabilityChecked = (eventId: string, capability: string, supported = true) =>
+const syncBindingRecorded = (overrides: {
+  readonly dataSourceId?: string
+  readonly eventId?: string
+  readonly rootId?: SyncRootId
+} = {}) =>
+  decode(SyncEvent, {
+    _tag: 'SyncBindingRecorded',
+    ...eventBase({
+      eventId: overrides.eventId ?? 'binding-event',
+      family: 'SyncRootBound',
+      eventType: 'SyncBindingRecorded',
+      idempotencyKey: `binding:${overrides.eventId ?? 'binding-event'}`,
+      canonicalJson: `{"dataSourceId":"${overrides.dataSourceId ?? 'data-source-1'}"}`,
+      surface: `data-source:${overrides.dataSourceId ?? 'data-source-1'}`,
+      ...(overrides.rootId === undefined ? {} : { rootId: overrides.rootId }),
+    }),
+    dataSourceId: overrides.dataSourceId ?? 'data-source-1',
+    workspaceRoot: '/tmp/notion-sync-store-test',
+    storeIdentity: 'store-1',
+  })
+
+const capabilityChecked = (
+  eventId: string,
+  capability: string,
+  supported = true,
+  dataSourceId = 'data-source-1',
+) =>
   decode(SyncEvent, {
     _tag: 'CapabilityPreflightChecked',
     ...eventBase({
       eventId,
       family: 'CompatibilityChecked',
       eventType: 'CapabilityPreflightChecked',
-      idempotencyKey: `capability:${capability}:${eventId}`,
+      idempotencyKey: `capability:${dataSourceId}:${capability}:${eventId}`,
       canonicalJson: `{"capability":"${capability}"}`,
-      surface: 'data-source:data-source-1',
+      surface: `data-source:${dataSourceId}`,
     }),
-    dataSourceId: 'data-source-1',
+    dataSourceId,
     capability,
     supported,
     requestId: `request-${eventId}`,
@@ -1040,6 +1066,31 @@ describe('Notion sync SQLite store', () => {
       store.rebuildProjections(rootId)
 
       expect(store.readPlannerProjectionSnapshot(rootId)).toEqual(beforeRebuild)
+    })
+  })
+
+  it('scopes capability preflight evidence to the bound data source', () => {
+    withStore((store) => {
+      store.appendEvent(syncBindingRecorded({ dataSourceId: 'data-source-1' }))
+      store.appendEvent(capabilityChecked('event-capability-bound', 'page_property_update', true))
+      store.appendEvent(
+        capabilityChecked('event-capability-other-source', 'page_property_update', false, 'data-source-2'),
+      )
+
+      expect(store.readPlannerProjectionSnapshot(rootId).capabilities).toEqual({
+        required: ['page_property_update'],
+        supported: ['page_property_update'],
+        preflight: 'passed',
+      })
+
+      store.clearProjectionTables()
+      store.rebuildProjections(rootId)
+
+      expect(store.readPlannerProjectionSnapshot(rootId).capabilities).toEqual({
+        required: ['page_property_update'],
+        supported: ['page_property_update'],
+        preflight: 'passed',
+      })
     })
   })
 
