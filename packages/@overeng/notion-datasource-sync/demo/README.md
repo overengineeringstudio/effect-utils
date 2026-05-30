@@ -61,9 +61,20 @@ cardinality through full database replicas only. Per-row property pagination
 and body materialization stay on the smaller sources so the live demo remains
 bounded under Notion API rate limits. The demo does not use filtered or partial
 query-contract replicas.
-No live/synced SQLite databases are checked in. Any fixture checked into this
-directory must be deterministic synthetic metadata, not private Notion content
-or a binary replica.
+
+This directory also commits a small deterministic synthetic replica at
+`workspace/database-1.sqlite`. It is not copied from the live Notion demo and
+does not contain private Notion content; it exists as an inspectable SQLite
+fixture for the public replica/API contract:
+
+```sh
+sqlite3 packages/@overeng/notion-datasource-sync/demo/workspace/database-1.sqlite ".tables"
+sqlite3 packages/@overeng/notion-datasource-sync/demo/workspace/database-1.sqlite \
+  "select _page_id, \"prop-a\" from rows;"
+```
+
+Do not check in SQLite replicas produced from live/private Notion workspaces.
+Any committed replica fixture must stay deterministic and synthetic.
 
 `fixtures.json` records the stable page mapping and the expected automated
 surface. Live E2E scratch ledgers remain in local `tmp/` artifacts and the
