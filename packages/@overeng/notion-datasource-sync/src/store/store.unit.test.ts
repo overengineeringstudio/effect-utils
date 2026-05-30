@@ -363,11 +363,13 @@ const apiContractObserved = (eventId = 'api-event') =>
     },
   })
 
-const syncBindingRecorded = (overrides: {
-  readonly dataSourceId?: string
-  readonly eventId?: string
-  readonly rootId?: SyncRootId
-} = {}) =>
+const syncBindingRecorded = (
+  overrides: {
+    readonly dataSourceId?: string
+    readonly eventId?: string
+    readonly rootId?: SyncRootId
+  } = {},
+) =>
   decode(SyncEvent, {
     _tag: 'SyncBindingRecorded',
     ...eventBase({
@@ -1074,7 +1076,12 @@ describe('Notion sync SQLite store', () => {
       store.appendEvent(syncBindingRecorded({ dataSourceId: 'data-source-1' }))
       store.appendEvent(capabilityChecked('event-capability-bound', 'page_property_update', true))
       store.appendEvent(
-        capabilityChecked('event-capability-other-source', 'page_property_update', false, 'data-source-2'),
+        capabilityChecked(
+          'event-capability-other-source',
+          'page_property_update',
+          false,
+          'data-source-2',
+        ),
       )
 
       expect(store.readPlannerProjectionSnapshot(rootId).capabilities).toEqual({

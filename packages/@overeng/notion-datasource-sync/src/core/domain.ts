@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 
 /** The single Notion API version this package is tested and certified against. */

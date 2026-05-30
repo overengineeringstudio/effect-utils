@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 
 import type { QueryRowsPage } from './commands.ts'

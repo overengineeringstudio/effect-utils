@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 
 import { NotionApiError } from '@overeng/notion-effect-client'
 
+import { canonicalHash, queryContractHash } from '../core/canonical.ts'
+import { NotionDataSourceGateway } from '../core/ports.ts'
 import {
   DataSourceId,
   DataSourceSnapshot,
@@ -16,8 +18,7 @@ import {
   RowPageSnapshot,
   type QueryContract as QueryContractType,
 } from '../mod.ts'
-import { canonicalHash, queryContractHash } from '../core/canonical.ts'
-import { NotionDataSourceGateway } from '../core/ports.ts'
+import { hashStoreBytes } from '../store/projections.ts'
 import {
   makeFakeNotionDataSourceGatewayLayer,
   type FakeNotionDataSourceGatewayConfig,
@@ -30,7 +31,6 @@ import {
   type NotionGatewayClient,
   type NotionGatewayPage,
 } from './notion.ts'
-import { hashStoreBytes } from '../store/projections.ts'
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
   Schema.decodeUnknownSync(schema)(value)

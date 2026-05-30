@@ -17,6 +17,16 @@ import {
 } from '@overeng/notion-effect-client'
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 
+import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
+import { parseCliCommand, parseCliContext, runCliCommandWithRuntime } from '../cli/main.ts'
+import { makeNotionApiContract, makeNotionDataSourceGatewayLayer } from '../gateway/gateway.ts'
+import {
+  makeNotionDataSourceGatewayFromClient,
+  makeNotionEffectClientGatewayClient,
+  NotionDataSourceGatewayLive,
+  type NotionGatewayClient,
+} from '../gateway/notion.ts'
+import { makeFilesystemLocalWorkspacePort } from '../local/workspace.ts'
 import {
   AbsolutePath,
   canonicalHash,
@@ -32,23 +42,12 @@ import {
   PropertyId,
   PropertyName,
   SchemaPatchOperation,
-  type SchemaPropertyObservation,
   SyncRootId,
   WorkspaceRelativePath,
 } from '../mod.ts'
-import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
-import { parseCliCommand, parseCliContext, runCliCommandWithRuntime } from '../cli/main.ts'
-import { makeNotionApiContract } from '../gateway/gateway.ts'
-import {
-  makeNotionDataSourceGatewayFromClient,
-  makeNotionDataSourceGatewayLayer,
-  makeNotionEffectClientGatewayClient,
-  NotionDataSourceGatewayLive,
-  type NotionGatewayClient,
-} from '../gateway/notion.ts'
-import { makeFilesystemLocalWorkspacePort } from '../local/workspace.ts'
 import { projectReplicaFromSyncStore } from '../replica/replica.ts'
 import { openNotionSyncStore } from '../store/store.ts'
+import type { SchemaPropertyObservation } from '../sync/observation.ts'
 import { establishFromNotion } from '../sync/sync.ts'
 import { makeFakeGatewayHarness, testIds } from '../testing/harness.ts'
 import {

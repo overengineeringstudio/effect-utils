@@ -11,7 +11,11 @@ import { FetchHttpClient } from '@effect/platform'
 import { NodeRuntime } from '@effect/platform-node'
 import { Effect, Either, Layer, Redacted, Schema, Stream } from 'effect'
 
-import { NOTION_API_VERSION, NotionConfigLive, parseNotionUuid } from '@overeng/notion-effect-client'
+import {
+  NOTION_API_VERSION,
+  NotionConfigLive,
+  parseNotionUuid,
+} from '@overeng/notion-effect-client'
 import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 

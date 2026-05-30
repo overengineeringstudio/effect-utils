@@ -1,13 +1,7 @@
 import { Effect, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import {
-  AbsolutePath,
-  BodyPointer,
-  Hash,
-  PageId,
-  WorkspaceRelativePath,
-} from '../core/domain.ts'
+import { AbsolutePath, BodyPointer, Hash, PageId, WorkspaceRelativePath } from '../core/domain.ts'
 import {
   bodyPathForRow,
   canonicalizeWorkspaceRelativePath,
