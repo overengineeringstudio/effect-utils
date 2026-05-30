@@ -95,33 +95,26 @@ The durable showcase is documented in
 
 ```sh
 export NOTION_API_TOKEN="<notion-integration-token>"
-export NOTION_DATASOURCE_SYNC_LIVE=1
-export NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID=<demo-page-id>
-export NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID=<demo-page-id>
-
-CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
-  src/e2e/live-notion.e2e.test.ts --config vitest.config.ts \
-  -t 'refreshes the visible demo page with a datasource-sync showcase'
+pnpm --dir packages/@overeng/notion-datasource-sync run demo:verify
 ```
 
-The demo refreshes one durable Notion page, archives stale demo data-source
-blocks, creates multiple current inline data sources with different schemas, and
-includes a 500-row activity source for high-cardinality query pagination.
-Current acceptance proves that each data source/database is represented as its
-own `<database-id>.sqlite` file with realistic schemas/cardinality, bounded
-page-query progress, and capped dry-run behavior. Full streaming projection of
-arbitrarily large `rows` rebuilds is a follow-up once replica rebuilds no longer
-materialize a whole observed batch in memory.
+The default demo verifier is read-only against Notion. It checks the durable
+page and child database mapping from `src/demo/live-demo.ts`, validates live
+schema and row counts for all four data sources, then generates local
+`<database-id>.sqlite` replicas for the three smaller sources and verifies their
+public `rows`, `schema_properties`, private cell shadow, and `sync_status`
+surfaces. The 500-row activity source is validated online in the fast lane and
+can be fully replicated locally with:
 
-Regression follow-up: keep large-replica verification bounded until full
-streaming public-replica rebuilds are proven. Bounded previews and targeted
-scratch-row checks must not be documented or implemented as partial product
-replicas.
+```sh
+export NOTION_API_TOKEN="<notion-integration-token>"
+pnpm --dir packages/@overeng/notion-datasource-sync run demo:verify:full
+```
 
-CI does not run the demo on ordinary PR/push runs. To include it in the Notion
-integration lane, dispatch the CI workflow manually with
-`run_datasource_sync_demo=true` and provide `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID`
-as a repository secret.
+The repo Notion integration task runs the read-only verifier automatically when
+`NOTION_API_TOKEN` and the datasource-sync live parent configuration are
+available. The older `live-notion.e2e.test.ts` showcase remains an explicit
+manual page-refresh path gated by `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID`.
 
 ## Live Write Safety
 

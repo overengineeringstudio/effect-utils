@@ -4,47 +4,44 @@ The durable automated demo page is:
 
 https://www.notion.so/overeng-notion-datasource-sync-demo-automated-36cf141b18dc803b98ebd21f2a243453
 
-Use `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID=36cf141b18dc803b98ebd21f2a243453` when running the credentialed live showcase.
+The checked-in source of truth for the demo is `src/demo/live-demo.ts`. It
+records the page ID, database IDs, data-source IDs, expected property names, and
+row counts for the current online demo. Local SQLite files are generated from
+that page by credentialed automation and are not committed.
+
+Run the read-only verifier and fast local replica proof with a Notion token that
+can read the demo page:
 
 ```sh
-NOTION_DATASOURCE_SYNC_LIVE=1 \
-NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID=36cf141b18dc803b98ebd21f2a243453 \
-NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID=36cf141b18dc803b98ebd21f2a243453 \
-CI=1 pnpm --dir packages/@overeng/notion-datasource-sync exec vitest run \
-  src/e2e/live-notion.e2e.test.ts --config vitest.config.ts
+export NOTION_API_TOKEN="secret_..."
+pnpm --dir packages/@overeng/notion-datasource-sync run demo:verify
 ```
 
-The same showcase runs through the repo task when
-`NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID` is set:
+The same verifier is part of the repo Notion integration task:
 
 ```sh
 dt test:notion-integration:notion-datasource-sync
 ```
 
-The showcase refreshes the demo page, ensures four current inline data sources,
-patches meaningful data-source descriptions through the datasource-sync metadata
-surface, tops them up to the requested row counts, observes them through
-datasource-sync with the live Notion adapter plus NotionMD body adapter, and
-appends a sanitized verification summary. Each data source/database is
-demonstrated as its own `<database-id>.sqlite` artifact with a canonical `rows`
-table rather than as one combined multi-source SQLite database. Filenames use
-the Notion database ID, not the visible database title. The showcase uses
-default schema observation: no schema JSON is supplied, and each artifact derives
-`schema_properties` and `rows` columns from the live Notion properties. Reruns
-reuse the current demo data sources and archive stale extras so the page stays
-bounded without rebuilding hundreds of Notion pages each time.
+The fast verifier checks the live page/database/data-source mapping, validates
+the online schema and row counts for all four data sources, then generates local
+SQLite replicas for the three smaller sources. Each source is represented as its
+own `<database-id>.sqlite` artifact with a canonical `rows` table rather than as
+one combined multi-source SQLite database. Filenames use the Notion database ID,
+not the visible database title. The verifier uses default schema observation:
+no schema JSON is supplied, and each artifact derives `schema_properties` and
+`rows` columns from the live Notion properties.
 
 Current domains and cardinalities:
 
-- Projects DB: 12 rows with body materialization, URL, select, multi-select,
-  date, checkbox, number, and rich text properties. Demonstrates a medium-width
-  operational table and body synchronization.
+- Projects DB: 12 rows with URL, select, multi-select, date, checkbox, number,
+  and rich text properties. Demonstrates a medium-width operational table.
 - Incidents DB: 30 rows with severity, owner/status metadata, timestamps, and
   runbook-style fields. Demonstrates status-heavy incident tracking.
 - Customers DB: 48 rows with email, phone, ARR, renewal, plan, region, and
   health properties. Demonstrates CRM-style scalar diversity.
-- Activity events DB: 500 rows proving high-cardinality paginated observation
-  with bounded live writes. Demonstrates a narrow event-log shape.
+- Activity events DB: 500 rows proving high-cardinality paginated observation.
+  Demonstrates a narrow event-log shape.
 
 Expected local artifact shape:
 
@@ -56,26 +53,18 @@ demo-workspace/
   <activity-events-database-id>.sqlite
 ```
 
-The 500-row activity source proves datasource query pagination and row
-cardinality through full database replicas only. Per-row property pagination
-and body materialization stay on the smaller sources so the live demo remains
-bounded under Notion API rate limits. The demo does not use filtered or partial
-query-contract replicas.
-
-This directory also commits a small deterministic synthetic replica at
-`workspace/database-1.sqlite`. It is not copied from the live Notion demo and
-does not contain private Notion content; it exists as an inspectable SQLite
-fixture for the public replica/API contract:
+The default `demo:verify` lane validates the 500-row activity source online but
+does not generate the full local activity replica, because that path is
+rate-limit-heavy. Run the full local replica proof explicitly:
 
 ```sh
-sqlite3 packages/@overeng/notion-datasource-sync/demo/workspace/database-1.sqlite ".tables"
-sqlite3 packages/@overeng/notion-datasource-sync/demo/workspace/database-1.sqlite \
-  "select _page_id, \"prop-a\" from rows;"
+export NOTION_API_TOKEN="secret_..."
+pnpm --dir packages/@overeng/notion-datasource-sync run demo:verify:full
 ```
 
 Do not check in SQLite replicas produced from live/private Notion workspaces.
-Any committed replica fixture must stay deterministic and synthetic.
+The current demo intentionally commits the manifest and automation only.
 
-`fixtures.json` records the stable page mapping and the expected automated
-surface. Live E2E scratch ledgers remain in local `tmp/` artifacts and the
-configured Notion ledger page.
+`fixtures.json` points to the stable page mapping and manifest source. Live E2E
+scratch ledgers remain in local `tmp/` artifacts and the configured Notion
+ledger page.

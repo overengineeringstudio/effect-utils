@@ -69,7 +69,10 @@ let
     export NOTION_DATASOURCE_SYNC_LEDGER_PATH="''${NOTION_DATASOURCE_SYNC_LEDGER_PATH:-tmp/notion-datasource-sync-live/ci-''${GITHUB_RUN_ID:-local}-''${GITHUB_RUN_ATTEMPT:-0}.json}"
 
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
-    run_package_bin vitest vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts
+    run_package_bin vitest vitest run \
+      src/e2e/live-notion.e2e.test.ts \
+      src/e2e/live-demo-replica.e2e.test.ts \
+      --config vitest.config.ts
   '';
   vitestExec =
     pkg:

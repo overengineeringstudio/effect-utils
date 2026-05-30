@@ -61,6 +61,12 @@ export default packageJson(
     exports: {
       '.': './src/mod.ts',
     },
+    scripts: {
+      'demo:verify':
+        'NOTION_DATASOURCE_SYNC_LIVE=1 vitest run src/e2e/live-demo-replica.e2e.test.ts --config vitest.config.ts',
+      'demo:verify:full':
+        'NOTION_DATASOURCE_SYNC_LIVE=1 NOTION_DATASOURCE_SYNC_FULL_DEMO=1 vitest run src/e2e/live-demo-replica.e2e.test.ts --config vitest.config.ts',
+    },
     engines: {
       node: '>=24.0.0',
     },

@@ -112,6 +112,7 @@ body adapter; without a token or injected body port, body sync fails closed.
 ## Demo
 
 The automated live showcase is documented in [demo/README.md](./demo/README.md).
-It refreshes a dedicated Notion page with multiple realistic data sources and
-treats each one as its own `<database-id>.sqlite` replica artifact, including a
-500-row activity source for high-cardinality observation.
+The package records the durable online demo mapping in `src/demo/live-demo.ts`
+and verifies it with a credentialed read-only E2E lane. The verifier treats each
+live data source as its own `<database-id>.sqlite` replica artifact and keeps the
+500-row activity source as an explicit full-replica opt-in.

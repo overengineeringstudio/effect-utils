@@ -1,0 +1,270 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+
+import { Effect } from 'effect'
+import { describe, expect, it } from 'vitest'
+
+import {
+  parseCliCommand,
+  parseCliContext,
+  resolveCliCommandNotionRefs,
+  runCliCommandWithRuntime,
+} from '../cli/main.ts'
+import {
+  notionDatasourceSyncDemoManifest,
+  notionDatasourceSyncFastDemoDataSources,
+  notionDatasourceSyncFullDemoDataSources,
+  type NotionDatasourceSyncDemoDataSource,
+} from '../demo/live-demo.ts'
+
+const liveToken = process.env.NOTION_API_TOKEN ?? process.env.NOTION_TOKEN
+const liveDemoEnabled = process.env.NOTION_DATASOURCE_SYNC_LIVE === '1' && liveToken !== undefined
+const notionVersion = '2026-03-11'
+const expectedDemoPageId =
+  process.env.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID ?? notionDatasourceSyncDemoManifest.pageId
+
+const normalizeNotionId = (id: string): string => id.replaceAll('-', '').toLowerCase()
+
+const readCount = (database: DatabaseSync, sql: string): number => {
+  const row = database.prepare(sql).get() as { readonly count: number } | undefined
+  if (row === undefined || typeof row.count !== 'number') {
+    throw new Error(`SQLite count query did not return a numeric count: ${sql}`)
+  }
+  return row.count
+}
+
+const notionFetch = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  if (liveToken === undefined) {
+    throw new Error('live Notion demo test requires NOTION_API_TOKEN or NOTION_TOKEN')
+  }
+
+  const response = await fetch(`https://api.notion.com/v1${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${liveToken}`,
+      'Notion-Version': notionVersion,
+      ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...init.headers,
+    },
+  })
+  if (response.ok === false) {
+    const body = await response.text()
+    throw new Error(`Notion API request failed: ${path} ${response.status} ${body.slice(0, 500)}`)
+  }
+  return (await response.json()) as T
+}
+
+type NotionChildrenResponse = {
+  readonly results: ReadonlyArray<{
+    readonly id: string
+    readonly type: string
+    readonly child_database?: { readonly title: string }
+  }>
+  readonly has_more: boolean
+  readonly next_cursor: string | null
+}
+
+type NotionDataSourceResponse = {
+  readonly id: string
+  readonly title?: ReadonlyArray<{ readonly plain_text?: string }>
+  readonly properties: Record<string, unknown>
+}
+
+type NotionQueryResponse = {
+  readonly results: ReadonlyArray<unknown>
+  readonly has_more: boolean
+  readonly next_cursor: string | null
+}
+
+const listDemoPageDatabaseBlocks = async () => {
+  const blocks: Array<NotionChildrenResponse['results'][number]> = []
+  let cursor: string | null = null
+  do {
+    const query = new URLSearchParams({ page_size: '100' })
+    if (cursor !== null) query.set('start_cursor', cursor)
+    // oxlint-disable-next-line no-await-in-loop -- Notion pagination is cursor-serial.
+    const page = await notionFetch<NotionChildrenResponse>(
+      `/blocks/${notionDatasourceSyncDemoManifest.pageId}/children?${query.toString()}`,
+    )
+    blocks.push(...page.results.filter((block) => block.type === 'child_database'))
+    cursor = page.has_more === true ? page.next_cursor : null
+  } while (cursor !== null)
+  return blocks
+}
+
+const countRemoteRows = async (dataSourceId: string): Promise<number> => {
+  let count = 0
+  let cursor: string | null = null
+  do {
+    const body: { readonly page_size: 100; readonly start_cursor?: string } = {
+      page_size: 100,
+      ...(cursor === null ? {} : { start_cursor: cursor }),
+    }
+    // oxlint-disable-next-line no-await-in-loop -- Notion pagination is cursor-serial.
+    const page: NotionQueryResponse = await notionFetch<NotionQueryResponse>(
+      `/data_sources/${dataSourceId}/query`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    )
+    count += page.results.length
+    cursor = page.has_more === true ? page.next_cursor : null
+  } while (cursor !== null)
+  return count
+}
+
+const syncDemoDataSource = async ({
+  dataSource,
+  workspace,
+}: {
+  readonly dataSource: NotionDatasourceSyncDemoDataSource
+  readonly workspace: string
+}) => {
+  if (liveToken === undefined) {
+    throw new Error('live Notion demo sync requires NOTION_API_TOKEN or NOTION_TOKEN')
+  }
+
+  const argv = [
+    'sync',
+    '--from-notion',
+    dataSource.databaseUrl,
+    workspace,
+    '--no-materialize-bodies',
+  ]
+  const parsed = parseCliCommand(argv)
+  const command = await Effect.runPromise(
+    resolveCliCommandNotionRefs({
+      command: parsed,
+      options: { env: { NOTION_API_TOKEN: liveToken } },
+    }),
+  )
+  const context = parseCliContext({ argv, resolvedCommand: command })
+
+  try {
+    await Effect.runPromise(
+      runCliCommandWithRuntime({
+        command,
+        context,
+        options: { env: { NOTION_API_TOKEN: liveToken } },
+      }),
+    )
+  } finally {
+    context.store.close()
+  }
+}
+
+const inspectReplica = ({
+  sqlitePath,
+  dataSource,
+}: {
+  readonly sqlitePath: string
+  readonly dataSource: NotionDatasourceSyncDemoDataSource
+}) => {
+  const database = new DatabaseSync(sqlitePath, { readOnly: true })
+  try {
+    const rowCount = readCount(database, 'SELECT count(*) AS count FROM rows')
+    const propertyCount = readCount(database, 'SELECT count(*) AS count FROM schema_properties')
+    const cellCount = readCount(database, 'SELECT count(*) AS count FROM _nds_property_shadow')
+    const status = database.prepare('SELECT * FROM sync_status').get() as
+      | {
+          readonly rows: number
+          readonly cells: number
+          readonly conflicts_open: number
+          readonly pending_local_changes: number
+          readonly workspace_status: string
+        }
+      | undefined
+    if (status === undefined) {
+      throw new Error(`sync_status did not contain a row for ${dataSource.key}`)
+    }
+    return { rowCount, propertyCount, cellCount, status }
+  } finally {
+    database.close()
+  }
+}
+
+describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contract', () => {
+  it('matches the current public demo page, child data sources, schemas, and row counts', async () => {
+    expect(normalizeNotionId(expectedDemoPageId)).toBe(
+      normalizeNotionId(notionDatasourceSyncDemoManifest.pageId),
+    )
+
+    const childDatabases = await listDemoPageDatabaseBlocks()
+    const childDatabaseById = new Map(
+      childDatabases.map((block) => [normalizeNotionId(block.id), block]),
+    )
+
+    for (const dataSource of notionDatasourceSyncDemoManifest.dataSources) {
+      const childDatabase = childDatabaseById.get(normalizeNotionId(dataSource.databaseId))
+      expect(childDatabase?.child_database?.title).toBe(dataSource.title)
+
+      // oxlint-disable-next-line no-await-in-loop -- sequential requests keep the live demo verifier rate-limit friendly.
+      const remote = await notionFetch<NotionDataSourceResponse>(
+        `/data_sources/${dataSource.dataSourceId}`,
+      )
+      const title = remote.title?.map((part) => part.plain_text ?? '').join('') ?? ''
+      const propertyNames = Object.keys(remote.properties)
+      // oxlint-disable-next-line no-await-in-loop -- sequential requests keep the live demo verifier rate-limit friendly.
+      const rowCount = await countRemoteRows(dataSource.dataSourceId)
+
+      expect(normalizeNotionId(remote.id)).toBe(normalizeNotionId(dataSource.dataSourceId))
+      expect(title).toBe(dataSource.title)
+      expect(propertyNames).toHaveLength(dataSource.expectedPropertyNames.length)
+      expect(propertyNames).toEqual(expect.arrayContaining([...dataSource.expectedPropertyNames]))
+      expect(rowCount).toBe(dataSource.expectedRows)
+    }
+  }, 120_000)
+
+  it('syncs the fast demo data sources into database-id-named SQLite replicas', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-demo-'))
+    try {
+      for (const dataSource of notionDatasourceSyncFastDemoDataSources) {
+        // oxlint-disable-next-line no-await-in-loop -- sequential sync avoids hammering Notion with replica builds.
+        await syncDemoDataSource({ dataSource, workspace })
+        const sqlitePath = join(workspace, `${dataSource.databaseId}.sqlite`)
+        const replica = inspectReplica({ sqlitePath, dataSource })
+
+        expect(replica.rowCount).toBe(dataSource.expectedRows)
+        expect(replica.propertyCount).toBe(dataSource.expectedPropertyNames.length)
+        expect(replica.cellCount).toBe(
+          dataSource.expectedRows * dataSource.expectedPropertyNames.length,
+        )
+        expect(replica.status).toMatchObject({
+          rows: dataSource.expectedRows,
+          cells: dataSource.expectedRows * dataSource.expectedPropertyNames.length,
+          conflicts_open: 0,
+          pending_local_changes: 0,
+          workspace_status: 'bound',
+        })
+      }
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  }, 360_000)
+
+  it.skipIf(process.env.NOTION_DATASOURCE_SYNC_FULL_DEMO !== '1')(
+    'syncs every demo data source including the 500-row activity replica',
+    async () => {
+      const workspace = await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-demo-full-'))
+      try {
+        for (const dataSource of notionDatasourceSyncFullDemoDataSources) {
+          // oxlint-disable-next-line no-await-in-loop -- sequential sync avoids hammering Notion with replica builds.
+          await syncDemoDataSource({ dataSource, workspace })
+          const sqlitePath = join(workspace, `${dataSource.databaseId}.sqlite`)
+          const replica = inspectReplica({ sqlitePath, dataSource })
+
+          expect(replica.rowCount).toBe(dataSource.expectedRows)
+          expect(replica.propertyCount).toBe(dataSource.expectedPropertyNames.length)
+          expect(replica.status.pending_local_changes).toBe(0)
+          expect(replica.status.conflicts_open).toBe(0)
+        }
+      } finally {
+        await rm(workspace, { recursive: true, force: true })
+      }
+    },
+    1_200_000,
+  )
+})
