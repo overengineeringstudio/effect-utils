@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -21,6 +21,9 @@ import {
 
 const liveToken = process.env.NOTION_API_TOKEN ?? process.env.NOTION_TOKEN
 const liveDemoEnabled = process.env.NOTION_DATASOURCE_SYNC_LIVE === '1' && liveToken !== undefined
+const liveExistingBodyRef =
+  process.env.NOTION_DATASOURCE_SYNC_EXISTING_DATABASE_URL ??
+  process.env.NOTION_DATASOURCE_SYNC_EXISTING_DATA_SOURCE_ID
 const notionVersion = '2026-03-11'
 const expectedDemoPageId =
   process.env.NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID ?? notionDatasourceSyncDemoManifest.pageId
@@ -186,6 +189,39 @@ const inspectReplica = ({
   }
 }
 
+const listNmdFiles = async (root: string): Promise<ReadonlyArray<string>> => {
+  const entries = await readdir(root, { withFileTypes: true })
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const path = join(root, entry.name)
+      if (entry.isDirectory() === true) {
+        return listNmdFiles(path)
+      }
+      return entry.isFile() === true && entry.name.endsWith('.nmd') === true ? [path] : []
+    }),
+  )
+  return nested.flat()
+}
+
+const inspectBodyMaterialization = async (workspace: string, sqlitePath: string) => {
+  const nmdFiles = await listNmdFiles(workspace)
+  const contents = await Promise.all(nmdFiles.map((path) => readFile(path, 'utf8')))
+  const database = new DatabaseSync(sqlitePath, { readOnly: true })
+  try {
+    const bodyPointers = readCount(database, 'SELECT count(*) AS count FROM _nds_body_pointer')
+    const lossyBodyPointers = readCount(
+      database,
+      `SELECT count(*) AS count
+       FROM _nds_body_pointer
+       WHERE json_extract(safety_json, '$.truncated') = 1
+          OR json_extract(safety_json, '$.unknownBlockCause') IS NOT NULL`,
+    )
+    return { bodyPointers, lossyBodyPointers, nmdFiles, contents }
+  } finally {
+    database.close()
+  }
+}
+
 describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contract', () => {
   it('matches the current public demo page, child data sources, schemas, and row counts', async () => {
     expect(normalizeNotionId(expectedDemoPageId)).toBe(
@@ -268,3 +304,48 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
     1_200_000,
   )
 })
+
+describe.skipIf(liveDemoEnabled === false || liveExistingBodyRef === undefined)(
+  'credentialed existing Notion datasource body materialization',
+  () => {
+    it('materializes real NotionMD .nmd files through the default CLI runtime', async () => {
+      if (liveToken === undefined || liveExistingBodyRef === undefined) {
+        throw new Error('live existing body materialization test requires token and remote ref')
+      }
+
+      const workspace = await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-existing-body-'))
+      const argv = ['sync', '--from-notion', liveExistingBodyRef, workspace]
+      const parsed = parseCliCommand(argv)
+      const command = await Effect.runPromise(
+        resolveCliCommandNotionRefs({
+          command: parsed,
+          options: { env: { NOTION_API_TOKEN: liveToken } },
+        }),
+      )
+      const context = parseCliContext({ argv, resolvedCommand: command })
+      try {
+        await Effect.runPromise(
+          runCliCommandWithRuntime({
+            command,
+            context,
+            options: { env: { NOTION_API_TOKEN: liveToken } },
+          }),
+        )
+
+        if (context.storePath === undefined || context.storePath === ':memory:') {
+          throw new Error('live existing body materialization test expected a SQLite store path')
+        }
+        const materialization = await inspectBodyMaterialization(workspace, context.storePath)
+        expect(materialization.bodyPointers).toBeGreaterThan(0)
+        expect(materialization.nmdFiles).toHaveLength(materialization.bodyPointers)
+        for (const content of materialization.contents) {
+          expect(content).toContain('"notion_md"')
+          expect(content).not.toContain('notion-datasource-sync body materialization placeholder')
+        }
+      } finally {
+        context.store.close()
+        await rm(workspace, { recursive: true, force: true })
+      }
+    }, 900_000)
+  },
+)

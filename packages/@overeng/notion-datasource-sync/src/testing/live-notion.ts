@@ -682,7 +682,7 @@ const demoRowMarkdown = (input: {
     '',
     '- This body was written through the Notion markdown endpoint.',
     '- datasource-sync observes it through the NotionMD body adapter.',
-    '- The filesystem workspace receives a materialized body placeholder with sidecar identity.',
+    '- The filesystem workspace receives a real NotionMD .nmd body with sidecar identity.',
   ].join('\n')
 
 const demoProjectProperties = (input: { readonly runId: string; readonly index: number }) => {

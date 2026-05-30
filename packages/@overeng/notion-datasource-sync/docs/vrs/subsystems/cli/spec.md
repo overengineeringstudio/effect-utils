@@ -56,6 +56,11 @@ First establishment is a distinct mode:
 9. materialize bodies unless disabled,
 10. report status without scanning local write intents, planning pushes, enqueuing outbox commands, or mutating Notion.
 
+The product CLI's live Notion runtime materializes bodies through the NotionMD-backed
+workspace adapter, so enabled body materialization writes real `.nmd` files plus
+NotionMD/datasource-sync sidecars. Placeholder body files are only the generic
+filesystem workspace behavior for explicitly injected or non-NotionMD adapters.
+
 ## Dry-Run Rules
 
 Mutating commands support `--dry-run`, showing planned events, conflicts, outbox

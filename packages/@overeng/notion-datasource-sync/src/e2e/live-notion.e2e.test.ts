@@ -1414,6 +1414,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           })
           const initialTitle = `sqlite cdc initial ${provisioned.config.runId}`
           const updatedTitle = `sqlite cdc updated ${provisioned.config.runId}`
+          const initialBody = `# Live CLI body\n\nMaterialized through default live CLI ${provisioned.config.runId}\n`
           const page = await runLive(
             env,
             NotionPages.create({
@@ -1425,6 +1426,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 [titlePropertyName]: title(initialTitle),
                 [cdcPropertyName]: { rich_text: [text(initialTitle)] },
               },
+              markdown: initialBody,
             }),
           )
           pageId = page.id
@@ -1454,6 +1456,13 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           })
           const syncArgv = ['sync', workspaceRoot]
           await runLiveCliCommand({ env, argv: syncArgv })
+          const materializedBodyPath = join(workspaceRoot, `page-${livePageId}--${livePageId}.nmd`)
+          const materializedBody = await readFile(materializedBodyPath, 'utf8')
+          expect(materializedBody).toContain(`Materialized through default live CLI`)
+          expect(materializedBody).toContain(provisioned.config.runId)
+          expect(materializedBody).not.toContain(
+            'notion-datasource-sync body materialization placeholder',
+          )
           const writeCellChange = () => {
             const db = new DatabaseSync(replicaPath)
             try {

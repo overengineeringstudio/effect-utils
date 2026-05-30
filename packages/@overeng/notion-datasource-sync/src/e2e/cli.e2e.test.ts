@@ -5,9 +5,21 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
+import { NodeContext } from '@effect/platform-node'
 import { Effect, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import {
+  NmdStateStore,
+  NmdStateStoreLive,
+  type NotionMdGatewayShape,
+  type PullPageResult,
+} from '@overeng/notion-md'
+
+import {
+  makeNotionMdMaterializingLocalWorkspacePort,
+  makeNotionMdPageBodySyncPort,
+} from '../body/notion-md.ts'
 import {
   CliArgumentError,
   parseCliCommand,
@@ -29,6 +41,7 @@ import {
   PageBodySyncPort,
   type LocalWorkspacePortShape,
   type NotionDataSourceGatewayShape,
+  type PageBodySyncPortShape,
 } from '../core/ports.ts'
 import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
 import type { NotionGatewayClient, NotionGatewayPage } from '../gateway/notion.ts'
@@ -261,9 +274,9 @@ const runWithPorts = <TValue, TError>(
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   >,
   input: {
-    readonly gateway: ReturnType<typeof makeFakeGatewayHarness>['gateway']
-    readonly body?: ReturnType<typeof makeHarnessPorts>['body']
-    readonly workspace?: ReturnType<typeof makeHarnessPorts>['workspace']
+    readonly gateway: NotionDataSourceGatewayShape
+    readonly body?: PageBodySyncPortShape
+    readonly workspace?: LocalWorkspacePortShape
   },
 ) =>
   Effect.runPromise(
@@ -272,6 +285,13 @@ const runWithPorts = <TValue, TError>(
       Effect.provideService(PageBodySyncPort, input.body ?? makeHarnessPorts().body),
       Effect.provideService(LocalWorkspacePort, input.workspace ?? makeHarnessPorts().workspace),
     ),
+  )
+
+const runWithNmdStateStore = <TValue, TError>(
+  effect: Effect.Effect<TValue, TError, NmdStateStore>,
+) =>
+  Effect.runPromise(
+    effect.pipe(Effect.provide(NmdStateStoreLive), Effect.provide(NodeContext.layer)),
   )
 
 const createBoundSqlite = async ({
@@ -1056,7 +1076,7 @@ describe('CLI command surface', () => {
     }
   })
 
-  it('wires pull/sync through an injected Notion client, real adapter, and real filesystem workspace', async () => {
+  it('wires pull/sync through an injected Notion client, generic body port, and filesystem workspace', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-runtime-'))
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'file', now: clock.now })
@@ -1100,6 +1120,99 @@ describe('CLI command surface', () => {
       await expect(
         readFile(join(dir, `page-${testIds.pageId}--${testIds.pageId}.nmd`), 'utf8'),
       ).resolves.toContain('notion-datasource-sync body materialization placeholder')
+    } finally {
+      storeFixture.cleanup()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('wires CLI sync through a real NotionMD body adapter and materializing workspace', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-nmd-runtime-'))
+    const root = decode({ schema: AbsolutePath, value: dir })
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const markdown = '# CLI NotionMD body\n\nReal NotionMD CLI body.\n'
+    const pullPageResult: PullPageResult = {
+      page: {
+        id: testIds.pageId,
+        title: 'CLI NotionMD body',
+        title_property_key: 'Name',
+        url: undefined,
+        parent: { type: 'workspace', workspace: true },
+        icon: null,
+        cover: null,
+        in_trash: false,
+        is_locked: false,
+        last_edited_time: fixedObservedAt,
+        properties: {},
+      },
+      markdown: {
+        markdown,
+        truncated: false,
+        unknown_block_ids: [],
+      },
+      storage: {
+        _tag: 'self_contained',
+        unsupported_blocks: [],
+        files: [],
+        comments: [],
+      },
+    }
+    const notionMdGateway: NotionMdGatewayShape = {
+      pullPage: () => Effect.succeed(pullPageResult),
+      updateMarkdown: () => Effect.die('updateMarkdown should not be called by this test'),
+      updatePageProperties: () =>
+        Effect.die('updatePageProperties should not be called by this test'),
+      updatePageMetadata: () => Effect.die('updatePageMetadata should not be called by this test'),
+      listChildPages: () => Effect.succeed([]),
+    }
+
+    try {
+      const stateStore = await runWithNmdStateStore(NmdStateStore)
+      const body = makeNotionMdPageBodySyncPort({ gateway: notionMdGateway })
+      const workspace = makeNotionMdMaterializingLocalWorkspacePort({
+        root,
+        gateway: notionMdGateway,
+        stateStore,
+      })
+      const ctx = context({
+        store: storeFixture.store,
+        clock,
+        workspaceRoot: root,
+        schemaProperties: [],
+      })
+
+      await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'init',
+            dataSourceId: testIds.dataSourceId,
+            workspaceRoot: root,
+          },
+          ctx,
+        ),
+        { gateway: gateway.gateway, body, workspace },
+      )
+
+      const result = await runWithPorts(runCliCommand({ _tag: 'sync' }, ctx), {
+        gateway: gateway.gateway,
+        body,
+        workspace,
+      })
+      const materialized = await readFile(
+        join(dir, `page-${testIds.pageId}--${testIds.pageId}.nmd`),
+        'utf8',
+      )
+
+      expect(result).toMatchObject({
+        _tag: 'CliResultEnvelope',
+        command: 'sync',
+        status: { state: 'clean' },
+      })
+      expect(materialized).toContain('"page_id": "page-1"')
+      expect(materialized).toContain('Real NotionMD CLI body.')
+      expect(materialized).not.toContain('notion-datasource-sync body materialization placeholder')
     } finally {
       storeFixture.cleanup()
       await rm(dir, { recursive: true, force: true })

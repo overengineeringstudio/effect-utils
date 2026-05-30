@@ -7,7 +7,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 import { FetchHttpClient } from '@effect/platform'
-import { NodeRuntime } from '@effect/platform-node'
+import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Effect, Either, Layer, Redacted, Schema, Stream } from 'effect'
 
 import {
@@ -15,11 +15,19 @@ import {
   NotionConfigLive,
   parseNotionUuid,
 } from '@overeng/notion-effect-client'
-import { NotionMdGateway, NotionMdGatewayLive } from '@overeng/notion-md'
+import {
+  NmdStateStore,
+  NmdStateStoreLive,
+  NotionMdGateway,
+  NotionMdGatewayLive,
+} from '@overeng/notion-md'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { makeUnsupportedPageBodySyncPort } from '../body/adapter.ts'
-import { makeNotionMdPageBodySyncPort } from '../body/notion-md.ts'
+import {
+  makeNotionMdMaterializingLocalWorkspacePort,
+  makeNotionMdPageBodySyncPort,
+} from '../body/notion-md.ts'
 import { CanonicalPropertyValue, QueryContract } from '../core/commands.ts'
 import {
   AbsolutePath,
@@ -1962,7 +1970,9 @@ const missingTokenCliGateway: NotionDataSourceGatewayShape = {
  *
  * Gateway priority: explicit `options.gateway` > `options.gatewayClient` > live Notion client
  * (token from env) > stub that returns `CapabilityPreflightFailed` on every call.
- * Body sync defaults to an unsupported stub; workspace defaults to the filesystem adapter.
+ * Body sync and workspace materialization default to the live NotionMD adapters when the CLI
+ * owns the live Notion runtime. Injected gateway/body/workspace ports keep their explicit
+ * test or library semantics.
  */
 export const makeCliRuntimeLayer = ({
   context,
@@ -1984,6 +1994,18 @@ export const makeCliRuntimeLayer = ({
           }),
           FetchHttpClient.layer,
         )
+  const useLiveNotionMdBodyRuntime =
+    liveBaseLayer !== undefined &&
+    options.gateway === undefined &&
+    options.gatewayClient === undefined &&
+    options.body === undefined
+  const notionMdLiveLayer =
+    liveBaseLayer === undefined
+      ? undefined
+      : Layer.mergeAll(
+          NotionMdGatewayLive.pipe(Layer.provide(liveBaseLayer)),
+          NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer)),
+        )
   const gatewayLayer =
     options.gateway !== undefined
       ? Layer.succeed(NotionDataSourceGateway, options.gateway)
@@ -1999,9 +2021,7 @@ export const makeCliRuntimeLayer = ({
   const bodyLayer =
     options.body !== undefined
       ? Layer.succeed(PageBodySyncPort, options.body)
-      : liveBaseLayer === undefined ||
-          options.gateway !== undefined ||
-          options.gatewayClient !== undefined
+      : useLiveNotionMdBodyRuntime === false || notionMdLiveLayer === undefined
         ? Layer.succeed(
             PageBodySyncPort,
             makeUnsupportedPageBodySyncPort({
@@ -2014,15 +2034,27 @@ export const makeCliRuntimeLayer = ({
             NotionMdGateway.pipe(
               Effect.map((gateway) => makeNotionMdPageBodySyncPort({ gateway })),
             ),
-          ).pipe(Layer.provide(NotionMdGatewayLive.pipe(Layer.provide(liveBaseLayer))))
+          ).pipe(Layer.provide(notionMdLiveLayer))
 
-  return Layer.mergeAll(
-    gatewayLayer,
-    bodyLayer,
-    options.workspace === undefined
-      ? filesystemLocalWorkspacePortLayer({ root: context.workspaceRoot })
-      : Layer.succeed(LocalWorkspacePort, options.workspace),
-  )
+  const workspaceLayer =
+    options.workspace !== undefined
+      ? Layer.succeed(LocalWorkspacePort, options.workspace)
+      : useLiveNotionMdBodyRuntime === true && notionMdLiveLayer !== undefined
+        ? Layer.effect(
+            LocalWorkspacePort,
+            Effect.gen(function* () {
+              const gateway = yield* NotionMdGateway
+              const stateStore = yield* NmdStateStore
+              return makeNotionMdMaterializingLocalWorkspacePort({
+                root: context.workspaceRoot,
+                gateway,
+                stateStore,
+              })
+            }),
+          ).pipe(Layer.provide(notionMdLiveLayer))
+        : filesystemLocalWorkspacePortLayer({ root: context.workspaceRoot })
+
+  return Layer.mergeAll(gatewayLayer, bodyLayer, workspaceLayer)
 }
 
 /** Convenience wrapper that runs `runCliCommand` with the runtime layer built by `makeCliRuntimeLayer`. */
