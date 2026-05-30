@@ -101,6 +101,8 @@ const withoutPushAcquire = (
   const backing = Context.get(backingContext, DistributedSemaphoreBacking)
   const { onPermitsReleased: _onPermitsReleased, ...backingWithoutPush } = backing
 
+  // Store locks are short critical sections; polling is slower but avoids
+  // fs.watch edge cases on transient lock directories in CI and during GC.
   return Context.add(
     backingContext,
     DistributedSemaphoreBacking,

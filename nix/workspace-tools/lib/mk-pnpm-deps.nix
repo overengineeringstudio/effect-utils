@@ -676,9 +676,8 @@ in
                   ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
                     # APFS copy-based materialization of the root workspace can push
                     # pnpm's node process into kernel kill territory on GitHub macOS.
-                    # Keep the heap bounded here so the builder fails deterministically
-                    # with a Node error instead of an unstructured SIGKILL when the
-                    # install graph gets large.
+                    # The dependency artifact contract is unchanged; this only bounds
+                    # builder resource use for the same platform-neutral prepared tree.
                     export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
                   ''}
                   node "$PNPM_MJS" install ${pnpmLockfileModeArg} ${pnpmOptionalModeArg} --ignore-scripts

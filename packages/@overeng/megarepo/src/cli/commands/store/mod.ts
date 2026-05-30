@@ -245,6 +245,9 @@ const collectRepoStoreWorktrees = ({
     const result: Array<CollectedWorktree> = []
     const seenPaths = new Set<string>()
 
+    // Git's worktree registry can be stale or incomplete after interrupted
+    // operations. Use it as a fast hint, then merge in the path layout because
+    // the store layout is the durable source of truth for refs/heads|tags|commits.
     const gitWorktreesResult = yield* Git.listWorktrees(bareRepoPath).pipe(
       Effect.tapError((error) =>
         Effect.gen(function* () {
@@ -974,6 +977,8 @@ const storeGcCommand = Cli.Command.make(
           }
         })
 
+      // Final JSON callers want one stable document, not progress states. Run the
+      // GC first and serialize only the final StoreApp state.
       const mode = yield* OutputModeTag.pipe(Effect.provide(outputModeLayer(output as never)))
 
       if (mode._tag === 'json' && mode.timing === 'final') {

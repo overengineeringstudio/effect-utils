@@ -342,6 +342,10 @@ let
       };
     };
 
+  # Full hash validation rebuilds whole prepared pnpm dependency roots. Running
+  # every CLI package at once is faster on large Linux builders but can exceed
+  # Darwin runner memory; keep package validation sequential at the aggregate
+  # task while leaving per-package tasks available for targeted checks.
   sequentialNixCheckScript = pkgs.writeShellScript "nix-check-all" (
     lib.concatStringsSep "\n" (
       [
