@@ -495,6 +495,15 @@ const daemonCycleErrorReason = (cause: unknown): string =>
     ? String(cause._tag)
     : 'unknown-daemon-cycle-error'
 
+const daemonCycleRetryAfterMillis = (cause: unknown): number | undefined =>
+  typeof cause === 'object' &&
+  cause !== null &&
+  '_tag' in cause &&
+  cause._tag === 'NotionGatewayError' &&
+  typeof (cause as { retryAfterMillis?: number }).retryAfterMillis === 'number'
+    ? cause.retryAfterMillis
+    : undefined
+
 /**
  * Executes one full sync cycle under the `notion.datasource.daemon.pass` span.
  *
@@ -686,7 +695,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
                   repair: {
                     _tag: 'retry',
                     reason: daemonCycleErrorReason(cause),
-                    retryAfterMillis: modeBackoffMillis(mode),
+                    retryAfterMillis: daemonCycleRetryAfterMillis(cause) ?? modeBackoffMillis(mode),
                     failedCycle: cycle,
                   },
                 },

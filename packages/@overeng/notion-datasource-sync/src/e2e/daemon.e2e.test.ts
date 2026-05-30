@@ -675,6 +675,75 @@ describe('watch daemon surface', () => {
     }
   })
 
+  it('uses gateway-provided retry-after when a cycle fails with a rate-limited error', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const ports = makeHarnessPorts()
+    const statePath = `${storeFixture.path}.watch.json`
+    const sleeps: number[] = []
+    const retryAfterMillis = 2_500
+    let retrieveAttempts = 0
+    const retryingGateway = {
+      ...gateway.gateway,
+      retrieveDataSource: (
+        dataSourceId: Parameters<typeof gateway.gateway.retrieveDataSource>[0],
+      ) =>
+        retrieveAttempts === 0
+          ? Effect.sync(() => {
+              retrieveAttempts += 1
+            }).pipe(
+              Effect.zipRight(
+                Effect.fail(
+                  makeGatewayError({
+                    operation: 'retrieveDataSource',
+                    dataSourceId,
+                    message: 'rate limited during sync',
+                    retryAfterMillis,
+                  }),
+                ),
+              ),
+            )
+          : gateway.gateway.retrieveDataSource(dataSourceId),
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+
+      const result = await runWithPorts(
+        runWatchDaemon(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            maxCycles: 2,
+            sleep: (millis) =>
+              Effect.sync(() => {
+                sleeps.push(millis)
+              }),
+          }),
+        ),
+        { gateway: retryingGateway, body: ports.body, workspace: ports.workspace },
+      )
+
+      expect(result).toMatchObject({
+        cycles: 2,
+        completed: 1,
+        cancelled: false,
+        state: { repair: { _tag: 'none' } },
+      })
+      expect(sleeps).toEqual([retryAfterMillis])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('clears retry repair state after a completed but blocked cycle', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ now: clock.now })

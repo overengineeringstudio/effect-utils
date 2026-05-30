@@ -46,6 +46,35 @@ Vitest.describe('parseRateLimitHeaders', () => {
       }
     }),
   )
+
+  Vitest.it.effect('parses retry-after when remaining header is absent', () =>
+    Effect.sync(() => {
+      const headers = new Headers({
+        'retry-after': '12',
+      })
+      const result = parseRateLimitHeaders(headers)
+      expect(Option.isSome(result)).toBe(true)
+      if (Option.isSome(result) === true) {
+        expect(result.value.remaining).toBe(0)
+        expect(result.value.resetAfterSeconds).toBe(12)
+      }
+    }),
+  )
+
+  Vitest.it.effect('parses retry-after HTTP date headers', () =>
+    Effect.sync(() => {
+      const headers = new Headers({
+        'retry-after': new Date(Date.now() + 1000 * 15).toUTCString(),
+      })
+      const result = parseRateLimitHeaders(headers)
+      expect(Option.isSome(result)).toBe(true)
+      if (Option.isSome(result) === true) {
+        expect(result.value.remaining).toBe(0)
+        expect(result.value.resetAfterSeconds).toBeGreaterThan(0)
+        expect(result.value.resetAfterSeconds).toBeLessThanOrEqual(20)
+      }
+    }),
+  )
 })
 
 Vitest.describe('buildRequest', () => {

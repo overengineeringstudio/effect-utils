@@ -32,6 +32,31 @@ export interface ExecuteRequestOptions<A, I, R> {
   readonly body?: unknown
 }
 
+const parseNonNegativeInt = (input: string | undefined): number => {
+  if (input === undefined) {
+    return 0
+  }
+  const value = Number.parseInt(input, 10)
+  return Number.isNaN(value) === true ? 0 : Math.max(0, value)
+}
+
+const parseRetryAfterSeconds = (input: string | undefined): number => {
+  if (input === undefined) {
+    return 0
+  }
+  const seconds = Number.parseInt(input, 10)
+  if (Number.isNaN(seconds) === false) {
+    return Math.max(0, seconds)
+  }
+
+  const resetAt = Date.parse(input)
+  if (Number.isNaN(resetAt) === true) {
+    return 0
+  }
+
+  return Math.max(0, Math.ceil((resetAt - Date.now()) / 1000))
+}
+
 /** Options for POST request */
 export interface PostRequestOptions<A, I, R> {
   readonly path: string
@@ -61,21 +86,17 @@ export const parseRateLimitHeaders = (
   }
 
   const remainingRaw = getHeader('x-ratelimit-remaining')
-  if (remainingRaw === undefined) {
+  const retryAfterRaw = getHeader('retry-after')
+  if (remainingRaw === undefined && retryAfterRaw === undefined) {
     return Option.none()
   }
 
-  const remaining = Number.parseInt(remainingRaw, 10)
-  if (Number.isNaN(remaining) === true) {
-    return Option.none()
-  }
-
-  const resetAfterRaw = getHeader('retry-after')
-  const resetAfterSeconds = resetAfterRaw !== undefined ? Number.parseInt(resetAfterRaw, 10) : 0
+  const remaining = parseNonNegativeInt(remainingRaw)
+  const resetAfterSeconds = parseRetryAfterSeconds(retryAfterRaw)
 
   return Option.some({
     remaining,
-    resetAfterSeconds: Number.isNaN(resetAfterSeconds) === true ? 0 : resetAfterSeconds,
+    resetAfterSeconds,
   })
 }
 
