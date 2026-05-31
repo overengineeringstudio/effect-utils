@@ -61,7 +61,7 @@ export type SchemaPropertyObservation = {
   readonly configJson?: string | undefined
 }
 
-/** Configuration for `observeRemoteDataSource`: identifies the data source, the query contract, schema properties to fetch per row, and optional body materialization settings. */
+/** Configuration for `observeRemoteDataSource`: identifies the data source, the query contract, schema properties to fetch per row, and optional body observation/materialization settings. */
 export type RemoteObservationOptions = {
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceIdType
@@ -70,6 +70,7 @@ export type RemoteObservationOptions = {
   readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
+  readonly materializeBodyArtifacts?: boolean
   readonly rowLimit?: number
   readonly bodyPathForPage?: (pageId: PageIdType) => WorkspaceRelativePath
   readonly startCursor?: QueryCursor | null
@@ -965,7 +966,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
               : yield* body.observe({ _tag: 'ObserveBodyInput', pageId: row.pageId })
           const path = (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId)
           const materializeResult =
-            options.materializeBodies === false
+            options.materializeBodies === false || options.materializeBodyArtifacts === false
               ? undefined
               : yield* workspace.materialize({
                   _tag: 'MaterializePlan',

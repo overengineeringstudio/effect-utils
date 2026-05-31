@@ -1,4 +1,5 @@
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 import { Effect, Fiber, Schema, Stream, Tracer } from 'effect'
@@ -2156,6 +2157,110 @@ describe('watch daemon surface', () => {
 
       expect(second.status.state).toBe('clean')
       expect(bodyPushes).toBe(0)
+    } finally {
+      storeFixture.cleanup()
+      await fixture.cleanup()
+    }
+  })
+
+  it('captures an edited .nmd before daemon remote pull can materialize over it', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ now: clock.now })
+    const fixture = await makeTempWorkspace()
+    const statePath = `${storeFixture.path}.watch.json`
+    const initialGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const initialBody = makeFakePageBodySyncPort({ pages: [bodyPage()] })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot: fixture.root,
+        now: clock.now,
+      })
+      const initial = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            workspaceRoot: fixture.root,
+          }),
+        ),
+        {
+          gateway: initialGateway.gateway,
+          body: initialBody,
+          workspace: makeFilesystemLocalWorkspacePort({ root: fixture.root }),
+        },
+      )
+      const materialized = initial.sync.pull.observation.materialized[0]
+      expect(materialized).toBeDefined()
+
+      const localBodyContent = '# Local body edit before remote pull\n'
+      const bodyPath = join(fixture.root, materialized!.path)
+      await writeFile(bodyPath, localBodyContent, 'utf8')
+
+      const calls: string[] = []
+      const planInputs: Array<Parameters<typeof initialBody.planLocalChange>[0]> = []
+      const baseWorkspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
+      const workspace = {
+        ...baseWorkspace,
+        scan: (root: Parameters<typeof baseWorkspace.scan>[0]) => {
+          calls.push('scan')
+          return baseWorkspace.scan(root)
+        },
+        materialize: (plan: Parameters<typeof baseWorkspace.materialize>[0]) =>
+          Effect.sync(() => {
+            calls.push('materialize')
+          }).pipe(Effect.zipRight(baseWorkspace.materialize(plan))),
+      }
+      const remoteGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+      const gateway = {
+        ...remoteGateway.gateway,
+        queryRows: (input: Parameters<typeof remoteGateway.gateway.queryRows>[0]) => {
+          calls.push('query')
+          return remoteGateway.gateway.queryRows(input)
+        },
+      }
+      const remoteBody = makeFakePageBodySyncPort({
+        pages: [bodyPage({ bodyHash: hash('body-remote-drift') })],
+      })
+      const body = {
+        ...remoteBody,
+        planLocalChange: (input: Parameters<typeof remoteBody.planLocalChange>[0]) =>
+          Effect.sync(() => {
+            calls.push('plan-local-body')
+            planInputs.push(input)
+          }).pipe(Effect.zipRight(remoteBody.planLocalChange(input))),
+      }
+
+      const result = await runWithPorts(
+        runWatchDaemonCycle(
+          daemonOptions({
+            store: storeFixture.store,
+            statePath,
+            clock,
+            workspaceRoot: fixture.root,
+            schemaProperties: [],
+          }),
+        ),
+        { gateway, body, workspace },
+      )
+
+      expect(calls).toEqual(['scan', 'plan-local-body', 'query'])
+      expect(planInputs).toEqual([
+        expect.objectContaining({
+          pageId: testIds.pageId,
+          localBodyPath: materialized!.path,
+        }),
+      ])
+      expect(
+        result.sync.push.plan.enqueuedCommands +
+          result.sync.push.plan.conflicts +
+          result.sync.push.plan.blocked,
+      ).toBeGreaterThan(0)
+      expect(await readFile(bodyPath, 'utf8')).toBe(localBodyContent)
     } finally {
       storeFixture.cleanup()
       await fixture.cleanup()

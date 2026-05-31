@@ -100,7 +100,9 @@ export type OneShotSyncOptions = OneShotPullOptions &
   Pick<
     OneShotPushOptions,
     'localIntents' | 'materializeBodies' | 'maxExecutorSteps' | 'leaseToken' | 'leaseDurationMs'
-  >
+  > & {
+    readonly deferLocalPlanningUntilAfterPull?: boolean
+  }
 
 /** Options for first establishment from an existing Notion data source into a local workspace. */
 export type EstablishFromNotionOptions = OneShotPullOptions & OneShotInitOptions
@@ -856,7 +858,7 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
         rootId: options.rootId,
       })
       const prePullPush =
-        localWorkspaceChanged === false
+        localWorkspaceChanged === false || options.deferLocalPlanningUntilAfterPull === true
           ? undefined
           : yield* pushOneShotSync({
               ...options,
@@ -865,11 +867,14 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
             })
       const pull = yield* pullOneShotSync({
         ...options,
-        ...(localWorkspaceChanged === true ? { materializeBodies: false } : {}),
+        ...(localWorkspaceChanged === true ? { materializeBodyArtifacts: false } : {}),
       })
       const pushAfterPull = yield* pushOneShotSync({
         ...options,
-        localWorkspaceObservation: localWorkspaceChanged === true ? { observations: [] } : local,
+        localWorkspaceObservation:
+          localWorkspaceChanged === true && options.deferLocalPlanningUntilAfterPull !== true
+            ? { observations: [] }
+            : local,
       })
       const push =
         prePullPush === undefined

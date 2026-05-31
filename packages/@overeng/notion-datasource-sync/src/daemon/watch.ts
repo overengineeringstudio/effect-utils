@@ -639,6 +639,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           ? {}
           : { materializeBodies: options.materializeBodies }),
         localIntents: fastPush === undefined ? replicaInputs.intents : [],
+        deferLocalPlanningUntilAfterPull: fastPush !== undefined,
         maxExecutorSteps: options.maxExecutorSteps ?? 8,
         leaseToken,
         leaseDurationMs,
