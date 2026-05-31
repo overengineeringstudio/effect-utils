@@ -837,3 +837,14 @@ export const githubRuleset = <const T extends GithubRulesetArgs>(
   data: args,
   stringify: (_ctx) => JSON.stringify(args, null, 2) + '\n',
 })
+
+export {
+  diffGithubRuleset,
+  formatGithubRulesetReport,
+  normalizeGithubRulesetForComparison,
+  reconcileGithubRuleset,
+  type GithubRulesetOptions,
+  type GithubRulesetReport,
+  type RulesetDiff,
+  type RulesetMode,
+} from './reconcile.ts'
