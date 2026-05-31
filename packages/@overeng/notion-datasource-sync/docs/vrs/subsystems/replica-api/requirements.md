@@ -16,4 +16,4 @@ Sub-system slice of [the top-level requirements](../../requirements.md). Serves 
 
 ## Acceptable Tradeoffs
 
-- **REPLICA-T01 Intent-first writes (was T08):** The user-facing SQLite API may require explicit write-intent rows before writable SQL views exist, because every local edit needs reviewable guards, dry-run behavior, and conflict detection.
+- **REPLICA-T01 Intent ledger staging (was T08):** The SQLite API may expose explicit `changes` rows for advanced staging and observability, but ordinary supported row edits must be accepted through writable `rows` so users do not have to operate planner, outbox, or event internals.

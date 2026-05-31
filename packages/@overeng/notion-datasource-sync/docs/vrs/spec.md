@@ -83,20 +83,20 @@ The exact package split may be staged. `@overeng/notion-domain` and `@overeng/no
 
 The authority model is cross-cutting: it pins down which surface owns truth for which fact, so sub-systems can be designed independently without inventing competing sources of truth. The per-sub-system specs deepen each row below.
 
-| Surface                       | Authoritative source                         | Local representation                               | Write rule                                    |
-| ----------------------------- | -------------------------------------------- | -------------------------------------------------- | --------------------------------------------- |
-| Current remote schema         | Notion after observation                     | `schema_projection`                                | Re-read before schema-affecting writes        |
-| Current remote row properties | Notion after observation                     | `row_projection`, `property_shadow`                | Re-read relevant row/properties before writes |
-| Current remote page body      | NotionMD remote observation                  | `body_pointer`                                     | Delegate body guards to `PageBodySyncPort`    |
-| Local page-body desired state | NotionMD `.nmd` capture before materialize   | body local-observation / body intent / conflict    | Preserve before overwrite; plan via body port |
-| Public local replica          | Derived from sync-control events             | `<database-id>.sqlite` public surfaces             | User reads current state and writes intents   |
-| Local sync intent             | Entry: `rows`; ledger: `changes`; authority: SQLite event log | `changes`, `sync_event`, `outbox` | Commit intent before command execution        |
-| Conflicts                     | SQLite event log/projection                  | `conflict_projection`                              | Resolve by appending events                   |
-| Tombstones                    | SQLite event log/projection                  | `tombstone_projection`                             | Create only after direct classification       |
-| File paths                    | SQLite path claims + filesystem              | `path_claim_projection`                            | Never overwrite another page claim            |
-| API/capability contract       | Notion client + live preflight               | `api_contract_projection`, `capability_projection` | Block unsupported version/capability drift    |
-| Query completeness            | Notion query pages after complete scan       | `query_scan_checkpoint`                            | Advance only after terminal page              |
-| Watch ownership               | SQLite lease                                 | `lease_projection`                                 | Fence stale daemons                           |
+| Surface                       | Authoritative source                                          | Local representation                               | Write rule                                    |
+| ----------------------------- | ------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------- |
+| Current remote schema         | Notion after observation                                      | `schema_projection`                                | Re-read before schema-affecting writes        |
+| Current remote row properties | Notion after observation                                      | `row_projection`, `property_shadow`                | Re-read relevant row/properties before writes |
+| Current remote page body      | NotionMD remote observation                                   | `body_pointer`                                     | Delegate body guards to `PageBodySyncPort`    |
+| Local page-body desired state | NotionMD `.nmd` capture before materialize                    | body local-observation / body intent / conflict    | Preserve before overwrite; plan via body port |
+| Public local replica          | Derived from sync-control events                              | `<database-id>.sqlite` public surfaces             | User reads current state and writes intents   |
+| Local sync intent             | Entry: `rows`; ledger: `changes`; authority: SQLite event log | `changes`, `sync_event`, `outbox`                  | Commit intent before command execution        |
+| Conflicts                     | SQLite event log/projection                                   | `conflict_projection`                              | Resolve by appending events                   |
+| Tombstones                    | SQLite event log/projection                                   | `tombstone_projection`                             | Create only after direct classification       |
+| File paths                    | SQLite path claims + filesystem                               | `path_claim_projection`                            | Never overwrite another page claim            |
+| API/capability contract       | Notion client + live preflight                                | `api_contract_projection`, `capability_projection` | Block unsupported version/capability drift    |
+| Query completeness            | Notion query pages after complete scan                        | `query_scan_checkpoint`                            | Advance only after terminal page              |
+| Watch ownership               | SQLite lease                                                  | `lease_projection`                                 | Fence stale daemons                           |
 
 Local authority has three invariants that apply across every sub-system:
 
@@ -165,17 +165,57 @@ Replica E2E must prove:
 - public table/view rebuild from private `_nds_*` state is deterministic,
 - real user database tests remain read-only/downsync and prove representative Notion rows are unchanged.
 
-Bidirectional safety scenarios are defined in [e2e-plan.md](./e2e-plan.md) and
-typed in `src/testing/bidi-safety.ts`. This matrix is the acceptance surface for
-data-loss and liveness risks that span multiple subsystems: false conflicts,
-same-surface races, disjoint merges, lifecycle/edit races, body local-capture
-before materialization, incremental watermark boundaries, incremental absence
-safety, relation pagination failure, ambiguous write idempotency,
-conflict-resolution lifecycle, rebuild/replay safety, local-first slow-pull
-latency, and inline hydration correctness. Each scenario must assert the remote
-mutation ledger, private store, public replica, and rebuild/replay behavior
-where durable state changes. An apparently correct final state is not enough if
-an unsafe local overwrite or remote mutation was attempted.
+Bidirectional safety scenarios are typed in `src/testing/bidi-safety.ts`. This
+matrix is the acceptance surface for data-loss and liveness risks that span
+multiple subsystems:
+
+| Scenario                                              | Tier    | Risk             | Required proof                                                                                     |
+| ----------------------------------------------------- | ------- | ---------------- | -------------------------------------------------------------------------------------------------- |
+| `NDS-L4-bidi-clean-outbound-after-remote-observation` | replica | false conflict   | clean observations advance local bases unless an unresolved local intent pins the property surface |
+| `NDS-L4-bidi-same-property-race-conflict`             | replica | lost update      | same-property races open durable conflicts and issue no stale remote patch                         |
+| `NDS-L4-bidi-disjoint-property-merge`                 | replica | lost update      | disjoint local and remote property edits merge without rollback                                    |
+| `NDS-L4-bidi-archive-edit-race`                       | replica | silent delete    | lifecycle/edit races fail closed and never infer remote trash from ambiguity                       |
+| `NDS-L6-bidi-body-local-capture-first`                | live    | local overwrite  | established `sync` captures changed `.nmd` before remote body materialization can overwrite it     |
+| `NDS-L5-bidi-watermark-boundary-overlap`              | daemon  | missed inbound   | incremental polling drains whole `last_edited_time` boundary buckets before checkpoint advance     |
+| `NDS-L5-bidi-incremental-absence-not-tombstone`       | daemon  | silent delete    | high-watermark omissions create no absence or tombstone evidence                                   |
+| `NDS-L5-bidi-relation-pagination-scoped-block`        | daemon  | global wedge     | incomplete property pagination blocks the affected property, not the whole root                    |
+| `NDS-L3-bidi-ambiguous-write-idempotency`             | fake    | duplicate write  | ambiguous retries reconcile by observation without duplicate remote mutation                       |
+| `NDS-L4-bidi-conflict-resolution-lifecycle`           | replica | stale projection | supported resolutions retire active local changes while preserving audit history                   |
+| `NDS-L4-bidi-rebuild-replay-safety`                   | replica | stale projection | replay preserves tombstones, conflicts, terminal changes, and pinned property bases                |
+| `NDS-L5-bidi-local-first-slow-pull`                   | daemon  | stale projection | eligible local CDC is pushed before slow remote pull completion                                    |
+| `NDS-L5-bidi-inline-hydration-correctness`            | daemon  | missed inbound   | inline query-row values preserve hashes and avoid unnecessary per-row page reads                   |
+| `NDS-L6-tasks-tracker-read-only-downsync`             | live    | user data loss   | existing Tasks Tracker rows are observed/downsynced without any Notion mutation                    |
+| `NDS-L6-tasks-tracker-scratch-row-bidi`               | live    | user data loss   | one allowlisted scratch row proves SQLite property, `.nmd` body, and lifecycle bidi behavior       |
+
+Each scenario must assert the remote mutation ledger, private store, public
+replica, and rebuild/replay behavior where durable state changes. An apparently
+correct final state is not enough if an unsafe local overwrite or remote
+mutation was attempted.
+
+Tasks Tracker live verification has two modes. Read-only downsync samples
+existing non-scratch rows, records `page_id`, `last_edited_time`, `in_trash`,
+and selected stable properties, runs the read-only/downsync command path, then
+proves those rows are unchanged by direct Notion reads and an empty mutation
+ledger. Scratch-row bidi verification creates or uses exactly one row whose
+title contains a unique run marker; the harness records its `page_id`, scopes
+every SQL write with `WHERE _page_id = <scratchPageId>`, allowlists only that
+`page_id` for Notion writes, snapshots non-scratch rows before/after, and fails
+if any non-scratch sampled row changes. Tasks Tracker live tests must never run
+broad `UPDATE rows`, broad `DELETE`, archive, restore, body materialization, or
+cleanup against existing non-scratch rows.
+
+No-data-loss acceptance requires established `sync`, `push`, and `sync --watch`
+to capture SQLite `rows`/`changes` and `.nmd` bodies before local
+materialization that could overwrite them; accepted local intent must be visible
+in `changes` and backed by private `_nds_*` events; malformed or unsupported
+writes must fail atomically; remote writes must execute only from committed
+outbox commands after fresh preflight reads and settle only after
+read-after-write verification; `.nmd` materialization may write only when the
+target is unchanged from captured base or was this process's own
+materialization; changed, uncaptured, ambiguous, or path-colliding bodies must
+be preserved as conflict/repair material; and rebuild/replay must preserve
+pending intents, conflicts, tombstones, settlements, hashes, public visibility,
+and recoverable conflict material.
 
 ## Design Questions
 

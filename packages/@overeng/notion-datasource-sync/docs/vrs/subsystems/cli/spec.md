@@ -12,7 +12,7 @@ and structured output for the datasource-sync CLI and the replica helpers.
 | Command                   | Primary flags                                                                                                                         | Purpose                                                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `sync --from-notion`      | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies`                             | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
-| `sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                                                         | Reconcile an established workspace through local-capture-first planning                                            |
+| `sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                                                         | Reconcile an established workspace through local-capture-first planning                                             |
 | `status <workspace-root>` | `--json`, `--porcelain`                                                                                                               | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
 | `init`                    | `--data-source-id`, `--root`, `--sqlite`                                                                                              | Advanced: bind a local root to a Notion data source without observing it                                            |
 | `pull`                    | `--since`, `--full-scan`, `--dry-run`                                                                                                 | Advanced: observe remote schema/rows/body pointers and materialize local projections                                |
@@ -40,6 +40,12 @@ state. No `.notion-datasource-sync/store.sqlite` or config sidecar is required
 state, and there is no compatibility mode for split-store layouts or partial
 query-contract replicas. If the filename, public `schema` metadata, and private
 `_nds_*` binding disagree, established commands fail closed.
+
+Normal direct editing uses the workspace artifacts: edit database properties and
+lifecycle through the public SQLite `rows` table, and edit page bodies through
+the materialized `.nmd` files. Users do not need to write `_nds_*`, outbox,
+planner, or daemon state directly; `changes` is an advanced public intent ledger
+and observability surface for cases where direct `rows` editing is not enough.
 
 ## Establishment Flow
 

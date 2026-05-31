@@ -167,10 +167,11 @@ recoverable conflict material, or reject materialization with a repair/path
 diagnostic. A projection rebuild may update private base/remote body pointers,
 but it must not make a captured body edit invisible to later scans.
 
-`rows` is the primary writable product API for row data. All ordinary row edit
-use cases are in scope for `rows`; explicit `changes` rows exist for advanced
-intent surfaces and observability, not as a competing primary row API. Schema is
-not a public write surface: `schema`/`schema_properties` are read-only, there is
+`rows` is the primary writable product API for row data. Direct use requires
+editing only `rows` for database properties/lifecycle and `.nmd` files for page
+bodies; explicit `changes` rows exist for advanced intent staging and
+observability, not as a competing primary row API. Schema is not a public write
+surface: `schema`/`schema_properties` are read-only, there is
 no `kind=schema` row in the public `changes` table, and `NotionSchemaChange` is
 not a public write intent. Schema changes are detected, guarded, and applied
 CLI-only through `migrate schema` (see

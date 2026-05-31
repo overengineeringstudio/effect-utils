@@ -173,7 +173,7 @@ This file records evidence used by [spec.md](./spec.md). It is non-normative; th
 
 ## E12 Current Notion API Documentation Review
 
-**Hypothesis:** The datasource-sync verification plan must track current public Notion API compatibility, not only earlier live observations.
+**Hypothesis:** The datasource-sync verification contract must track current public Notion API compatibility, not only earlier live observations.
 
 **Method:** Reviewed Explorer D's current API research at `tmp/ds-sync-vrs-review/notion-current-api-review.md`, backed by official Notion documentation for versioning, data sources, page-property pagination, markdown endpoints, webhooks, request limits, and Workers syncs.
 
@@ -185,7 +185,7 @@ This file records evidence used by [spec.md](./spec.md). It is non-normative; th
 - Markdown update endpoints expose truncation/unknown-block state and can fail or become unsafe for ambiguous replacements, child-page/database deletion, and synced pages.
 - Connection webhooks are aggregated, unordered, potentially stale, and at-most-once signals; Workers syncs currently target Worker-managed databases and are not a correctness replacement for local reconciliation.
 
-**Conclusion:** R67-R73 and the E2E plan should treat API version, capability preflight, decode drift, query completeness, page-property completeness, markdown update guards, webhook signal semantics, and Workers limitations as first-class verification surfaces.
+**Conclusion:** R67-R73 and the E2E verification contract should treat API version, capability preflight, decode drift, query completeness, page-property completeness, markdown update guards, webhook signal semantics, and Workers limitations as first-class verification surfaces.
 
 ## Unresolved Experiment Gaps
 

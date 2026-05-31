@@ -185,7 +185,7 @@ export const e2eHarnessScenarios = [
     guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation', 'DeleteVsEdit'],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L3',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-clean-outbound-after-remote-observation',
@@ -194,7 +194,7 @@ export const e2eHarnessScenarios = [
     guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-same-property-race-conflict',
@@ -203,7 +203,7 @@ export const e2eHarnessScenarios = [
     guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-disjoint-property-merge',
@@ -212,7 +212,7 @@ export const e2eHarnessScenarios = [
     guards: [],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-archive-edit-race',
@@ -221,7 +221,20 @@ export const e2eHarnessScenarios = [
     guards: ['DeleteVsEdit', 'MoveOutNotDelete'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
+  }),
+  scenario({
+    scenarioId: 'NDS-L6-bidi-body-local-capture-first',
+    title: 'established sync captures local .nmd edits before remote body materialization',
+    requirementIds: ['R02', 'R23', 'R24', 'R25', 'R55', 'R61', 'R63', 'R65', 'R66'],
+    guards: [
+      'BodyAdapterConflict',
+      'OwnMaterializationWriteSuppressed',
+      'PendingIntentShadowViolation',
+    ],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L6',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L5-bidi-watermark-boundary-overlap',
@@ -230,7 +243,7 @@ export const e2eHarnessScenarios = [
     guards: ['CursorSameBucketIncomplete', 'PaginationIncomplete', 'PageTimestampWakeupOnly'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L5',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L5-bidi-incremental-absence-not-tombstone',
@@ -239,7 +252,7 @@ export const e2eHarnessScenarios = [
     guards: ['FilteredAbsenceNotProof', 'PaginationIncomplete', 'QueryAbsenceUnclassified'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L5',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L5-bidi-relation-pagination-scoped-block',
@@ -248,7 +261,7 @@ export const e2eHarnessScenarios = [
     guards: ['PropertyValueIncomplete', 'UnavailableRelationTarget'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L5',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L3-bidi-ambiguous-write-idempotency',
@@ -257,7 +270,7 @@ export const e2eHarnessScenarios = [
     guards: ['AmbiguousCommandOutcome', 'OutboxFirstSettlementWins', 'ReadAfterWriteMismatch'],
     lowestPlannerLevel: 'L3',
     highestIntegrationLevel: 'L3',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-conflict-resolution-lifecycle',
@@ -266,7 +279,7 @@ export const e2eHarnessScenarios = [
     guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-rebuild-replay-safety',
@@ -275,7 +288,7 @@ export const e2eHarnessScenarios = [
     guards: ['CheckpointDigestMismatch', 'CompactionUnsafe'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L5-bidi-local-first-slow-pull',
@@ -284,7 +297,7 @@ export const e2eHarnessScenarios = [
     guards: ['QueueBackpressureExceeded'],
     lowestPlannerLevel: 'L3',
     highestIntegrationLevel: 'L5',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L5-bidi-inline-hydration-correctness',
@@ -293,7 +306,25 @@ export const e2eHarnessScenarios = [
     guards: ['PropertyValueIncomplete', 'PaginationIncomplete'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L5',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
+  }),
+  scenario({
+    scenarioId: 'NDS-L6-tasks-tracker-read-only-downsync',
+    title: 'Tasks Tracker downsync observes existing rows without any remote mutation',
+    requirementIds: ['R52', 'R60', 'R61', 'R63', 'R65', 'R66'],
+    guards: ['RawPayloadRetentionUnsafe'],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L6',
+    file: 'docs/vrs/spec.md',
+  }),
+  scenario({
+    scenarioId: 'NDS-L6-tasks-tracker-scratch-row-bidi',
+    title: 'Tasks Tracker scratch row verifies bidi behavior without mutating non-scratch rows',
+    requirementIds: ['R23', 'R24', 'R25', 'R52', 'R60', 'R61', 'R63', 'R65', 'R66'],
+    guards: ['StaleSurfaceBase', 'DeleteVsEdit', 'BodyAdapterConflict'],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L6',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L5-high-cardinality-fake-soak',
@@ -302,7 +333,7 @@ export const e2eHarnessScenarios = [
     guards: ['CursorSameBucketIncomplete', 'PaginationIncomplete', 'QueueBackpressureExceeded'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L5',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L3-property-data-type-matrix',
@@ -317,7 +348,7 @@ export const e2eHarnessScenarios = [
     ],
     lowestPlannerLevel: 'L1',
     highestIntegrationLevel: 'L3',
-    file: 'docs/vrs/e2e-plan.md',
+    file: 'docs/vrs/spec.md',
   }),
   scenario({
     scenarioId: 'NDS-L2-clean-pull-status',

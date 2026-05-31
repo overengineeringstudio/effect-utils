@@ -63,8 +63,8 @@ Disjoint merge is allowed only when all edited surfaces have independent base ha
 
 ## Guard Matrix
 
-This is the master copy of the guard matrix. Every guard must appear in the E2E
-plan with at least one verification level.
+This is the master copy of the guard matrix. Every guard must appear in the
+top-level verification contract with at least one verification level.
 
 | Guard                                | Scenario                                                                       | Behavior                                                                                                                                       | State written                                  |
 | ------------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |

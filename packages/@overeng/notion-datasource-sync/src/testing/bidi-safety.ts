@@ -8,6 +8,8 @@ export type BidiSafetyRisk =
   | 'false-conflict'
   | 'lost-update'
   | 'silent-delete'
+  | 'local-overwrite'
+  | 'user-data-loss'
   | 'missed-inbound'
   | 'duplicate-remote-write'
   | 'global-wedge'
@@ -83,6 +85,21 @@ export const bidiSafetyScenarios = [
       'restore clears tombstones only after observation',
       'a remote edit is not discarded by lifecycle settlement',
       'Notion trash state changes only through explicit lifecycle commands',
+    ],
+  }),
+  bidiScenario({
+    scenarioId: 'NDS-L6-bidi-body-local-capture-first',
+    tier: 'live',
+    risk: 'local-overwrite',
+    initialState:
+      'an established workspace has a materialized .nmd body and remote body observation',
+    localAction: 'edit the .nmd body before established sync observes remote state',
+    remoteAction: 'remote body or property state changes before the next sync cycle',
+    requiredAssertions: [
+      'sync captures the local .nmd content before body materialization',
+      'the local body edit becomes pending body intent or recoverable conflict material',
+      'remote body materialization does not overwrite the edited .nmd',
+      'the mutation ledger contains no non-allowlisted Notion writes',
     ],
   }),
   bidiScenario({
@@ -195,6 +212,34 @@ export const bidiSafetyScenarios = [
       'incomplete or unsupported values trigger scoped hydration or guards',
       'unchanged rows still count as observed for checkpoint completeness',
       'rate-limit or retry responses do not become data facts',
+    ],
+  }),
+  bidiScenario({
+    scenarioId: 'NDS-L6-tasks-tracker-read-only-downsync',
+    tier: 'live',
+    risk: 'user-data-loss',
+    initialState: 'an existing Tasks Tracker database contains non-scratch rows',
+    localAction: 'run read-only/downsync verification against the existing database',
+    remoteAction: 'none',
+    requiredAssertions: [
+      'the remote mutation ledger is empty',
+      'sampled non-scratch page ids keep last_edited_time and in_trash state',
+      'selected stable properties are unchanged by direct Notion reads',
+      'no body materialization or cleanup targets non-scratch rows',
+    ],
+  }),
+  bidiScenario({
+    scenarioId: 'NDS-L6-tasks-tracker-scratch-row-bidi',
+    tier: 'live',
+    risk: 'user-data-loss',
+    initialState: 'one Tasks Tracker scratch row is identified by a unique run marker and page id',
+    localAction: 'edit only the scratch row through SQLite rows and .nmd body content',
+    remoteAction: 'verify or mutate only the allowlisted scratch row for the scenario',
+    requiredAssertions: [
+      'every SQL write is scoped by the scratch row page id',
+      'the Notion mutation ledger targets only the scratch row page id',
+      'sampled non-scratch rows are unchanged before and after the run',
+      'cleanup archives or restores only the scratch row and remains auditable',
     ],
   }),
 ] as const satisfies ReadonlyArray<BidiSafetyScenario>

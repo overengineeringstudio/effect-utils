@@ -42,12 +42,12 @@ workspace is established, all sync modes use the local-capture-first invariant.
 Guarded materialization may write a remote-observed artifact only when one of
 these proofs holds:
 
-| Local target state                                        | Materialization behavior                                      |
-| --------------------------------------------------------- | ------------------------------------------------------------- |
-| target is unchanged from captured/base state              | materialize remote state                                      |
-| target matches this process's own materialization token   | verify/update sidecars without creating a local edit intent   |
-| target contains uncaptured or changed local desired state | preserve it and plan push/conflict/repair; do not overwrite   |
-| target identity/path claim is ambiguous                   | fail closed with repair/path conflict; do not overwrite       |
+| Local target state                                        | Materialization behavior                                    |
+| --------------------------------------------------------- | ----------------------------------------------------------- |
+| target is unchanged from captured/base state              | materialize remote state                                    |
+| target matches this process's own materialization token   | verify/update sidecars without creating a local edit intent |
+| target contains uncaptured or changed local desired state | preserve it and plan push/conflict/repair; do not overwrite |
+| target identity/path claim is ambiguous                   | fail closed with repair/path conflict; do not overwrite     |
 
 The planner decides whether captured local desired state becomes an outbox
 command, a conflict, an unsupported change, or a rejected malformed intent. The
