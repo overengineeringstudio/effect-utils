@@ -86,8 +86,8 @@ let
     "--config.side-effects-cache=false"
     "--config.verify-store-integrity=true"
     "--config.strict-store-pkg-content-check=true"
-    "--config.child-concurrency=1"
-    "--config.network-concurrency=4"
+    "--child-concurrency=1"
+    "--network-concurrency=4"
     "--config.package-import-method=clone-or-copy"
     "--pm-on-fail=ignore"
   ];

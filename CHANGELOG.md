@@ -56,7 +56,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **devenv/tasks/shared/pnpm**: Cap live `pnpm:install` child/network concurrency to match the fixed-output pnpm builder so macOS CI is less likely to die with an unstructured `Killed: 9` during workspace install.
+- **devenv/tasks/shared/pnpm**: Cap live `pnpm:install` child/network concurrency to match the fixed-output pnpm builder so macOS CI is less likely to die with an unstructured `Killed: 9` during workspace install, using pnpm's native numeric flags so pnpm 11 does not parse the network cap as a string.
 - **@overeng/megarepo**: Keep store/test integration fixtures independent of user tag-signing Git config by creating fixture tags with `--no-sign`, avoid slow filesystem-watch semaphore acquisition in store locks, let `mr store gc --output json` take the final-state path directly, merge `git worktree list` with the on-disk store layout so GC never drops real worktrees from discovery, and run the megarepo Vitest suite with file parallelism disabled because the in-process CLI integration harness mutates global `process.env` and stdio.
 - **devenv/tasks/shared/nix-cli**: Run aggregate `nix:check` package hash validations sequentially so CI does not fan out multiple full root-workspace pnpm FOD rebuilds at once on Darwin.
 - **nix/workspace-tools**: Tighten pnpm child/network concurrency inside fixed-output pnpm deps builds and cap Darwin Node heap during the install step so macOS CI is less likely to die with an unstructured `Killed: 9` while materializing whole-workspace install roots.
