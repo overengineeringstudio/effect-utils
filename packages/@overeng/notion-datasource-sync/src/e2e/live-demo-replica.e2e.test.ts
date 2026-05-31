@@ -396,20 +396,27 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
         await rm(workspace, { recursive: true, force: true })
       }
     },
-    1_200_000,
+    1_800_000,
   )
 })
 
-describe.skipIf(liveDemoEnabled === false || liveExistingBodyRef === undefined)(
+describe.skipIf(liveDemoEnabled === false)(
   'credentialed existing Notion datasource body materialization',
   () => {
     it('materializes real NotionMD .nmd files through the default CLI runtime', async () => {
-      if (liveToken === undefined || liveExistingBodyRef === undefined) {
-        throw new Error('live existing body materialization test requires token and remote ref')
+      if (liveToken === undefined) {
+        throw new Error('live existing body materialization test requires token')
       }
 
       const workspace = await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-existing-body-'))
-      const argv = ['sync', '--from-notion', liveExistingBodyRef, workspace]
+      const syntheticBodySource = (await resolveLiveDemoDataSources()).find(
+        (dataSource) => dataSource.key === 'projects',
+      )
+      const bodyRef = liveExistingBodyRef ?? syntheticBodySource?.databaseUrl
+      if (bodyRef === undefined) {
+        throw new Error('live existing body materialization test could not resolve a body fixture')
+      }
+      const argv = ['sync', '--from-notion', bodyRef, workspace]
       const parsed = parseCliCommand(argv)
       const command = await Effect.runPromise(
         resolveCliCommandNotionRefs({

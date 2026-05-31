@@ -4,7 +4,7 @@ import {
   HttpClientRequest,
   type HttpClientResponse,
 } from '@effect/platform'
-import { Duration, Effect, Option, Redacted, Schema } from 'effect'
+import { Context, Duration, Effect, Option, Redacted, Schema } from 'effect'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
@@ -16,6 +16,47 @@ export interface RateLimitInfo {
   /** Seconds until rate limit resets */
   readonly resetAfterSeconds: number
 }
+
+/** Sanitized route metadata used for request tracing, progress, and quota accounting. */
+export interface NotionHttpRouteInfo {
+  readonly route: string
+  readonly operation: string
+  readonly spanLabel: string
+}
+
+/** Structured HTTP event emitted after every Notion API response and retry decision. */
+export type NotionHttpTelemetryEvent =
+  | {
+      readonly _tag: 'response'
+      readonly method: BuildRequestOptions['method']
+      readonly route: string
+      readonly operation: string
+      readonly status: number
+      readonly attempt: number
+      readonly quotaCost: number
+      readonly rateLimit: Option.Option<RateLimitInfo>
+    }
+  | {
+      readonly _tag: 'retry'
+      readonly method: BuildRequestOptions['method']
+      readonly route: string
+      readonly operation: string
+      readonly status: number
+      readonly attempt: number
+      readonly nextAttempt: number
+      readonly delayMs: number
+      readonly rateLimit: Option.Option<RateLimitInfo>
+    }
+
+/** Optional reporter for live Notion HTTP quota/progress consumers such as CLIs. */
+export type NotionHttpTelemetryReporter = {
+  readonly report: (event: NotionHttpTelemetryEvent) => Effect.Effect<void>
+}
+
+/** Optional Effect service used by callers that want realtime HTTP/rate-limit visibility. */
+export class NotionHttpTelemetry extends Context.Tag(
+  '@overeng/notion-effect-client/NotionHttpTelemetry',
+)<NotionHttpTelemetry, NotionHttpTelemetryReporter>() {}
 
 /** Options for building a Notion API request */
 export interface BuildRequestOptions {
@@ -55,6 +96,115 @@ const parseRetryAfterSeconds = (input: string | undefined): number => {
   }
 
   return Math.max(0, Math.ceil((resetAt - Date.now()) / 1000))
+}
+
+const routeTokenForPreviousSegment = (previous: string | undefined): string => {
+  switch (previous) {
+    case 'blocks':
+      return '{block_id}'
+    case 'data_sources':
+      return '{data_source_id}'
+    case 'databases':
+      return '{database_id}'
+    case 'pages':
+      return '{page_id}'
+    case 'properties':
+      return '{property_id}'
+    case 'users':
+      return '{user_id}'
+    case 'views':
+      return '{view_id}'
+    default:
+      return '{id}'
+  }
+}
+
+const isLikelyIdentifierSegment = (segment: string): boolean =>
+  /^[0-9a-f]{32}$/i.test(segment) ||
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment) ||
+  (segment.length >= 16 && /^[A-Za-z0-9_-]+$/.test(segment))
+
+const operationForRoute = (route: string): string => {
+  switch (route) {
+    case '/blocks/{block_id}':
+      return 'blocks.retrieve'
+    case '/blocks/{block_id}/children':
+      return 'blocks.children'
+    case '/comments':
+      return 'comments.create'
+    case '/custom_emojis':
+      return 'custom_emojis.list'
+    case '/data_sources':
+      return 'data_sources.create'
+    case '/data_sources/{data_source_id}':
+      return 'data_sources.object'
+    case '/data_sources/{data_source_id}/query':
+      return 'data_sources.query'
+    case '/databases':
+      return 'databases.create'
+    case '/databases/{database_id}':
+      return 'databases.object'
+    case '/pages':
+      return 'pages.create'
+    case '/pages/{page_id}':
+      return 'pages.object'
+    case '/pages/{page_id}/markdown':
+      return 'pages.markdown'
+    case '/pages/{page_id}/move':
+      return 'pages.move'
+    case '/pages/{page_id}/properties/{property_id}':
+      return 'pages.property'
+    case '/search':
+      return 'search'
+    case '/users/me':
+      return 'users.me'
+    case '/users/{user_id}':
+      return 'users.retrieve'
+    case '/views':
+      return 'views.collection'
+    case '/views/{view_id}':
+      return 'views.object'
+    default:
+      return route.replace(/^\//, '').replaceAll('/', '.')
+  }
+}
+
+const shouldTemplateSegment = ({
+  segment,
+  previous,
+}: {
+  readonly segment: string
+  readonly previous: string | undefined
+}): boolean =>
+  previous !== undefined &&
+  (previous !== 'users' || segment !== 'me') &&
+  (routeTokenForPreviousSegment(previous) !== '{id}' || isLikelyIdentifierSegment(segment))
+
+/** Converts a concrete Notion API path into a stable, non-sensitive route key. */
+export const notionHttpRouteInfo = ({
+  method,
+  path,
+}: {
+  readonly method: BuildRequestOptions['method']
+  readonly path: string
+}): NotionHttpRouteInfo => {
+  const pathname = path.split('?')[0] ?? '/'
+  const segments = pathname
+    .split('/')
+    .filter((segment) => segment.length > 0)
+    .map((segment, index, all) => {
+      const previous = all[index - 1]
+      return shouldTemplateSegment({ segment, previous }) === true
+        ? routeTokenForPreviousSegment(previous)
+        : segment
+    })
+  const route = `/${segments.join('/')}`
+  const operation = operationForRoute(route)
+  return {
+    route,
+    operation,
+    spanLabel: `${method} ${operation}`.slice(0, 39),
+  }
 }
 
 /** Options for POST request */
@@ -99,6 +249,56 @@ export const parseRateLimitHeaders = (
     resetAfterSeconds,
   })
 }
+
+const annotateRateLimitSpan = (input: {
+  readonly method: BuildRequestOptions['method']
+  readonly route: NotionHttpRouteInfo
+  readonly status?: number
+  readonly attempt: number
+  readonly attempts: number
+  readonly retryDelayMs?: number
+  readonly rateLimit: Option.Option<RateLimitInfo>
+}): Effect.Effect<void> =>
+  Effect.annotateCurrentSpan(
+    definedSpanAttributes({
+      'span.label': input.route.spanLabel,
+      'notion.http.method': input.method,
+      'notion.http.route': input.route.route,
+      'notion.http.operation': input.route.operation,
+      'notion.http.status_code': input.status,
+      'notion.http.retry.attempt': input.attempt,
+      'notion.http.retry.attempts': input.attempts,
+      'notion.http.retry.delay_ms': input.retryDelayMs,
+      'notion.quota.cost': input.attempts,
+      'notion.rate_limit.present': Option.isSome(input.rateLimit),
+      'notion.rate_limit.remaining': Option.getOrUndefined(
+        Option.map(input.rateLimit, (rateLimit) => rateLimit.remaining),
+      ),
+      'notion.rate_limit.reset_after_ms': Option.getOrUndefined(
+        Option.map(input.rateLimit, (rateLimit) => rateLimit.resetAfterSeconds * 1000),
+      ),
+    }),
+  )
+
+const reportHttpTelemetry = (event: NotionHttpTelemetryEvent): Effect.Effect<void> =>
+  Effect.serviceOption(NotionHttpTelemetry).pipe(
+    Effect.flatMap((service) =>
+      Option.match(service, {
+        onNone: () => Effect.void,
+        onSome: (telemetry) => telemetry.report(event),
+      }),
+    ),
+  )
+
+const definedSpanAttributes = (
+  attributes: Record<string, string | number | boolean | undefined>,
+): Record<string, string | number | boolean> =>
+  Object.fromEntries(
+    Object.entries(attributes).filter((entry): entry is [string, string | number | boolean] => {
+      const value = entry[1]
+      return value !== undefined
+    }),
+  )
 
 /**
  * Build a Notion API request with proper headers.
@@ -241,50 +441,71 @@ export const executeRequest = <A, I, R>({
     const retryEnabled = config.retryEnabled ?? true
     const maxRetries = config.maxRetries ?? 3
     const retryBaseDelay = config.retryBaseDelay ?? 1000
+    const route = notionHttpRouteInfo({ method, path })
 
-    const makeRequest = Effect.gen(function* () {
-      const request = yield* buildRequest({ method, path, body })
-      const response = yield* client
-        .execute(request)
-        .pipe(Effect.mapError((error) => mapHttpClientError({ error, path, method })))
-
-      if (response.status >= 400) {
-        const error = yield* parseErrorResponse({
-          response,
-          requestUrl: `${NOTION_API_BASE_URL}${path}`,
-          requestMethod: method,
+    const makeRequest = (attempt: number) =>
+      Effect.gen(function* () {
+        const request = yield* buildRequest({ method, path, body })
+        const response = yield* client
+          .execute(request)
+          .pipe(Effect.mapError((error) => mapHttpClientError({ error, path, method })))
+        const rateLimit = parseRateLimitHeaders(response.headers)
+        yield* annotateRateLimitSpan({
+          method,
+          route,
+          status: response.status,
+          attempt,
+          attempts: attempt + 1,
+          rateLimit,
         })
-        return yield* error
-      }
+        yield* reportHttpTelemetry({
+          _tag: 'response',
+          method,
+          route: route.route,
+          operation: route.operation,
+          status: response.status,
+          attempt,
+          quotaCost: 1,
+          rateLimit,
+        })
 
-      const json = yield* response.json.pipe(
-        Effect.mapError((error) => mapHttpClientError({ error, path, method })),
-      )
+        if (response.status >= 400) {
+          const error = yield* parseErrorResponse({
+            response,
+            requestUrl: `${NOTION_API_BASE_URL}${path}`,
+            requestMethod: method,
+          })
+          return yield* error
+        }
 
-      return yield* Schema.decodeUnknown(responseSchema)(json).pipe(
-        Effect.mapError(
-          (parseError) =>
-            new NotionApiError({
-              status: response.status,
-              code: 'invalid_request',
-              message: `Failed to parse response: ${parseError.message}`,
-              retryAfterSeconds: Option.none(),
-              requestId: Option.fromNullable(response.headers['x-request-id']),
-              url: Option.some(`${NOTION_API_BASE_URL}${path}`),
-              method: Option.some(method),
-            }),
-        ),
-      )
-    })
+        const json = yield* response.json.pipe(
+          Effect.mapError((error) => mapHttpClientError({ error, path, method })),
+        )
+
+        return yield* Schema.decodeUnknown(responseSchema)(json).pipe(
+          Effect.mapError(
+            (parseError) =>
+              new NotionApiError({
+                status: response.status,
+                code: 'invalid_request',
+                message: `Failed to parse response: ${parseError.message}`,
+                retryAfterSeconds: Option.none(),
+                requestId: Option.fromNullable(response.headers['x-request-id']),
+                url: Option.some(`${NOTION_API_BASE_URL}${path}`),
+                method: Option.some(method),
+              }),
+          ),
+        )
+      })
 
     if (retryEnabled === false) {
-      return yield* makeRequest
+      return yield* makeRequest(0)
     }
 
     let retries = 0
 
     while (true) {
-      const result = yield* makeRequest.pipe(Effect.either)
+      const result = yield* makeRequest(retries).pipe(Effect.either)
 
       if (result._tag === 'Right') {
         return result.right
@@ -303,6 +524,34 @@ export const executeRequest = <A, I, R>({
 
       const backoffMs = retryBaseDelay * 2 ** retries
       const delayMs = Math.max(backoffMs, retryAfterMs)
+      const rateLimit =
+        error.status === 429 && Option.isSome(error.retryAfterSeconds) === true
+          ? Option.some({
+              remaining: 0,
+              resetAfterSeconds: error.retryAfterSeconds.value,
+            })
+          : Option.none<RateLimitInfo>()
+
+      yield* annotateRateLimitSpan({
+        method,
+        route,
+        status: error.status,
+        attempt: retries,
+        attempts: retries + 1,
+        retryDelayMs: delayMs,
+        rateLimit,
+      })
+      yield* reportHttpTelemetry({
+        _tag: 'retry',
+        method,
+        route: route.route,
+        operation: route.operation,
+        status: error.status,
+        attempt: retries,
+        nextAttempt: retries + 1,
+        delayMs,
+        rateLimit,
+      })
 
       yield* Effect.sleep(Duration.millis(delayMs))
 
@@ -310,7 +559,12 @@ export const executeRequest = <A, I, R>({
     }
   }).pipe(
     Effect.withSpan(`NotionHttp.${method}`, {
-      attributes: { 'notion.path': path },
+      attributes: {
+        'span.label': notionHttpRouteInfo({ method, path }).spanLabel,
+        'notion.http.method': method,
+        'notion.http.route': notionHttpRouteInfo({ method, path }).route,
+        'notion.http.operation': notionHttpRouteInfo({ method, path }).operation,
+      },
     }),
   )
 

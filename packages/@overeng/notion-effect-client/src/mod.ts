@@ -83,6 +83,13 @@ export type { UploadFileOptions } from './files.ts'
 export { NotionFiles } from './files.ts'
 // Pagination utilities
 export type { PaginatedResult, PaginationOptions } from './internal/pagination.ts'
+export type {
+  NotionHttpRouteInfo,
+  NotionHttpTelemetryEvent,
+  NotionHttpTelemetryReporter,
+  RateLimitInfo,
+} from './internal/http.ts'
+export { NotionHttpTelemetry, notionHttpRouteInfo, parseRateLimitHeaders } from './internal/http.ts'
 // Markdown converter
 export type {
   AnyBlockTransformer,

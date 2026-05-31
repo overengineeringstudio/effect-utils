@@ -103,6 +103,12 @@ counters, hydration counters, and executor-step updates render on stderr. This
 preserves shell pipelines and agent consumers while making long Notion scans
 visibly active in both TTY and CI/plain output modes.
 
+The progress side channel also includes sanitized Notion HTTP quota state:
+request count, route-level operation, status, remaining quota when Notion
+returns it, reset timing, and retry delay. Route-level operation names replace
+raw Notion IDs so operators can see where quota is spent without leaking page,
+database, or workspace identifiers.
+
 ## Large-Cardinality Note
 
 Large-cardinality acceptance is bounded by explicit completeness and memory

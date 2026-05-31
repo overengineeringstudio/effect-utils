@@ -27,6 +27,12 @@ const SyncProgressState = Schema.Struct({
   pages: Schema.Number,
   rows: Schema.Number,
   executorSteps: Schema.Number,
+  requests: Schema.Number,
+  rateLimitRemaining: Schema.optional(Schema.Number),
+  rateLimitResetAfterSeconds: Schema.optional(Schema.Number),
+  retryDelayMs: Schema.optional(Schema.Number),
+  httpOperation: Schema.optional(Schema.String),
+  httpStatus: Schema.optional(Schema.Number),
 })
 
 export type SyncProgressState = typeof SyncProgressState.Type
@@ -50,6 +56,7 @@ const initialSyncProgressState = (command: string): SyncProgressState => ({
   pages: 0,
   rows: 0,
   executorSteps: 0,
+  requests: 0,
 })
 
 const phaseProgress: Record<SyncProgressPhase, number> = {
@@ -136,6 +143,20 @@ const applyProgressEvent = ({
         current: Math.max(state.current, phaseProgress.executing),
         executorSteps: event.current,
       }
+    case 'rate-limit':
+      return {
+        ...state,
+        message:
+          event.retryDelayMs === undefined
+            ? state.message
+            : `Rate limited; retrying in ${Math.ceil(event.retryDelayMs / 1000)}s`,
+        requests: state.requests + event.requestCount,
+        rateLimitRemaining: event.remaining,
+        rateLimitResetAfterSeconds: event.resetAfterSeconds,
+        retryDelayMs: event.retryDelayMs,
+        httpOperation: `${event.method} ${event.operation}`,
+        httpStatus: event.status,
+      }
   }
 }
 
@@ -190,6 +211,16 @@ export const createSyncProgressView = (
     const details = [
       state.rows > 0 ? `${state.rows} rows` : undefined,
       state.pages > 0 ? `${state.pages} pages` : undefined,
+      state.requests > 0 ? `${state.requests} requests` : undefined,
+      state.rateLimitRemaining === undefined
+        ? undefined
+        : `${state.rateLimitRemaining} quota remaining`,
+      state.rateLimitResetAfterSeconds === undefined || state.rateLimitResetAfterSeconds <= 0
+        ? undefined
+        : `reset ${state.rateLimitResetAfterSeconds}s`,
+      state.httpOperation === undefined
+        ? undefined
+        : `${state.httpOperation}${state.httpStatus === undefined ? '' : ` ${state.httpStatus}`}`,
       state.executorSteps > 0 ? `${state.executorSteps} write steps` : undefined,
     ].filter((item): item is string => item !== undefined)
 

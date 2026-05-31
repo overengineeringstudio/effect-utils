@@ -8,12 +8,14 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { FetchHttpClient } from '@effect/platform'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Effect, Either, Layer, Redacted, Schema, Stream } from 'effect'
+import { Effect, Either, Layer, Option, Redacted, Schema, Stream } from 'effect'
 
 import {
   NOTION_API_VERSION,
   NotionConfigLive,
+  NotionHttpTelemetry,
   parseNotionUuid,
+  type NotionHttpTelemetryEvent,
 } from '@overeng/notion-effect-client'
 import {
   NmdStateStore,
@@ -53,7 +55,7 @@ import {
   type NotionDataSourceGatewayShape,
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
-import { SyncProgress } from '../core/progress.ts'
+import { SyncProgress, type SyncProgressEvent } from '../core/progress.ts'
 import { readUserActionSurface, type UserActionSurface } from '../core/result-envelope.ts'
 import type { SignalInboxStatus } from '../core/signals.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from '../core/status.ts'
@@ -2164,6 +2166,36 @@ const syncProgressCommandTags = new Set<CliCommand['_tag']>([
 const shouldShowSyncProgress = (command: CliCommand): boolean =>
   syncProgressCommandTags.has(command._tag)
 
+const rateLimitProgressEventFromHttp = (event: NotionHttpTelemetryEvent): SyncProgressEvent => {
+  const rateLimit = Option.getOrUndefined(event.rateLimit)
+  return {
+    _tag: 'rate-limit',
+    operation: event.operation,
+    method: event.method,
+    status: event.status,
+    requestCount: event._tag === 'response' ? event.quotaCost : 0,
+    ...(rateLimit === undefined ? {} : { remaining: rateLimit.remaining }),
+    ...(rateLimit === undefined || rateLimit.resetAfterSeconds <= 0
+      ? {}
+      : { resetAfterSeconds: rateLimit.resetAfterSeconds }),
+    ...(event._tag === 'retry' ? { retryDelayMs: event.delayMs } : {}),
+  }
+}
+
+const renderPlainRateLimitProgress = (event: SyncProgressEvent): string | undefined => {
+  if (event._tag !== 'rate-limit') {
+    return undefined
+  }
+  const details = [
+    `${event.method} ${event.operation}`,
+    `status ${event.status.toString()}`,
+    event.remaining === undefined ? undefined : `${event.remaining.toString()} quota remaining`,
+    event.resetAfterSeconds === undefined ? undefined : `reset ${event.resetAfterSeconds}s`,
+    event.retryDelayMs === undefined ? undefined : `retry ${Math.ceil(event.retryDelayMs / 1000)}s`,
+  ].filter((item): item is string => item !== undefined)
+  return details.join(' · ')
+}
+
 const runWithPlainSyncProgress = <A, E, R>({
   command,
   effect,
@@ -2175,6 +2207,11 @@ const runWithPlainSyncProgress = <A, E, R>({
     Effect.provideService(SyncProgress, {
       report: (event) =>
         Effect.sync(() => {
+          const rateLimit = renderPlainRateLimitProgress(event)
+          if (rateLimit !== undefined) {
+            process.stderr.write(`notion-datasource-sync ${command._tag} rate ${rateLimit}\n`)
+            return
+          }
           const suffix =
             event._tag === 'query-page'
               ? ` ${event.rows.toString()} rows`
@@ -2185,6 +2222,16 @@ const runWithPlainSyncProgress = <A, E, R>({
                   : ''
           const phase = event._tag === 'phase' ? event.phase : event._tag
           process.stderr.write(`notion-datasource-sync ${command._tag} ${phase}${suffix}\n`)
+        }),
+    }),
+    Effect.provideService(NotionHttpTelemetry, {
+      report: (event) =>
+        Effect.sync(() => {
+          const progressEvent = rateLimitProgressEventFromHttp(event)
+          const rateLimit = renderPlainRateLimitProgress(progressEvent)
+          if (rateLimit !== undefined) {
+            process.stderr.write(`notion-datasource-sync ${command._tag} rate ${rateLimit}\n`)
+          }
         }),
     }),
     Effect.tap(() =>
@@ -2231,6 +2278,15 @@ const runWithCliSyncProgress = <A, E, R>({
                 report: (event) =>
                   Effect.sync(() => {
                     tui.dispatch({ _tag: 'ApplyEvent', event })
+                  }),
+              }),
+              Effect.provideService(NotionHttpTelemetry, {
+                report: (event) =>
+                  Effect.sync(() => {
+                    tui.dispatch({
+                      _tag: 'ApplyEvent',
+                      event: rateLimitProgressEventFromHttp(event),
+                    })
                   }),
               }),
               Effect.tap(() =>

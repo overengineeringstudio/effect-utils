@@ -29,6 +29,12 @@ unsupported. They fail before doing work.
 
 Live E2E and demo variables are documented in [Testing And Demo](./testing.md).
 
+Sync-family commands write live progress to stderr and keep the final JSON
+result on stdout. Progress includes sync phase, row/page counts, body hydration,
+remote write steps, and sanitized Notion request/rate-limit state. The rate
+state reports route-level operations such as `data_sources.query`, status code,
+request count, remaining quota when present, reset timing, and retry delay.
+
 ## Shared Flags
 
 | Flag                       | Meaning                                                                                            |

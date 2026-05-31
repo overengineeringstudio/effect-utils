@@ -40,6 +40,16 @@ export type SyncProgressEvent =
       readonly max: number
       readonly result: string
     }
+  | {
+      readonly _tag: 'rate-limit'
+      readonly operation: string
+      readonly method: string
+      readonly status: number
+      readonly requestCount: number
+      readonly remaining?: number
+      readonly resetAfterSeconds?: number
+      readonly retryDelayMs?: number
+    }
 
 /** Service contract for publishing best-effort sync progress events. */
 export type SyncProgressReporter = {

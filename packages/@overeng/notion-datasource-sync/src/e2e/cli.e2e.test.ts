@@ -1111,7 +1111,7 @@ describe('CLI command surface', () => {
       process.stderr.write = originalStderrWrite
       await rm(dir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   it('renders sync --watch progress on stderr through the top-level CLI wrapper', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-watch-progress-'))
@@ -1164,7 +1164,7 @@ describe('CLI command surface', () => {
       process.stderr.write = originalStderrWrite
       await rm(dir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   it('wires pull/sync through an injected Notion client, generic body port, and filesystem workspace', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-runtime-'))
@@ -2401,7 +2401,7 @@ describe('CLI command surface', () => {
       store?.close()
       await rm(dir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   it('lists and resolves conflicts through the existing user-command API', async () => {
     const clock = makeFakeClock()

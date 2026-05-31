@@ -1,5 +1,5 @@
 import type { HttpClientRequest } from '@effect/platform'
-import { Effect, Option, Redacted, Schema } from 'effect'
+import { Effect, Option, Redacted, Schema, Tracer } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
@@ -7,7 +7,65 @@ import { Vitest } from '@overeng/utils-dev/node-vitest'
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError } from '../error.ts'
 import { createTestLayer, sampleResponses } from '../test/test-utils.ts'
-import { buildRequest, get, parseRateLimitHeaders, post } from './http.ts'
+import {
+  buildRequest,
+  get,
+  NotionHttpTelemetry,
+  notionHttpRouteInfo,
+  parseRateLimitHeaders,
+  post,
+  type NotionHttpTelemetryEvent,
+} from './http.ts'
+
+type RecordedSpan = {
+  readonly name: string
+  readonly attributes: Record<string, unknown>
+  ended: boolean
+}
+
+const makeRecordingTracer = (): {
+  readonly tracer: Tracer.Tracer
+  readonly spans: ReadonlyArray<RecordedSpan>
+} => {
+  const spans: RecordedSpan[] = []
+  return {
+    spans,
+    tracer: Tracer.make({
+      span: (name, parent, context, links, startTime, kind, options) => {
+        const attributes = new Map<string, unknown>(Object.entries(options?.attributes ?? {}))
+        const recorded: RecordedSpan = {
+          name,
+          attributes: Object.fromEntries(attributes),
+          ended: false,
+        }
+        spans.push(recorded)
+        return {
+          _tag: 'Span',
+          name,
+          spanId: `span-${spans.length}`,
+          traceId: 'trace-notion-http',
+          parent,
+          context,
+          status: { _tag: 'Started', startTime },
+          attributes,
+          links,
+          sampled: true,
+          kind,
+          end: () => {
+            recorded.ended = true
+          },
+          attribute: (key, value) => {
+            attributes.set(key, value)
+            recorded.attributes[key] = value
+          },
+          event: () => {},
+          addLinks: () => {},
+        }
+      },
+      context: (f) => f(),
+    }),
+  }
+}
 
 Vitest.describe('parseRateLimitHeaders', () => {
   Vitest.it.effect('returns None when headers are missing', () =>
@@ -73,6 +131,33 @@ Vitest.describe('parseRateLimitHeaders', () => {
         expect(result.value.resetAfterSeconds).toBeGreaterThan(0)
         expect(result.value.resetAfterSeconds).toBeLessThanOrEqual(20)
       }
+    }),
+  )
+})
+
+Vitest.describe('notionHttpRouteInfo', () => {
+  Vitest.it.effect('sanitizes IDs while preserving route-level quota keys', () =>
+    Effect.sync(() => {
+      expect(
+        notionHttpRouteInfo({
+          method: 'POST',
+          path: '/data_sources/2d4e3d41-f4a3-8000-bf14-f64cdf1c7501/query?page_size=100',
+        }),
+      ).toEqual({
+        route: '/data_sources/{data_source_id}/query',
+        operation: 'data_sources.query',
+        spanLabel: 'POST data_sources.query',
+      })
+      expect(
+        notionHttpRouteInfo({
+          method: 'GET',
+          path: '/pages/page_1234567890abcdef/properties/title',
+        }),
+      ).toEqual({
+        route: '/pages/{page_id}/properties/{property_id}',
+        operation: 'pages.property',
+        spanLabel: 'GET pages.property',
+      })
     }),
   )
 })
@@ -161,6 +246,84 @@ Vitest.describe('executeRequest', () => {
         createTestLayer(() => ({
           status: 200,
           body: sampleResponses.database,
+        })),
+      ),
+    ),
+  )
+
+  Vitest.it.effect('reports sanitized HTTP telemetry with rate-limit headers', () =>
+    Effect.gen(function* () {
+      const events: NotionHttpTelemetryEvent[] = []
+      const result = yield* get({
+        path: '/databases/1234567890abcdef1234567890abcdef',
+        responseSchema: TestSchema,
+      }).pipe(
+        Effect.provideService(NotionHttpTelemetry, {
+          report: (event) =>
+            Effect.sync(() => {
+              events.push(event)
+            }),
+        }),
+      )
+
+      expect(result.id).toBe('db-123')
+      expect(events).toHaveLength(1)
+      const event = events[0]
+      expect(event).toMatchObject({
+        _tag: 'response',
+        method: 'GET',
+        route: '/databases/{database_id}',
+        operation: 'databases.object',
+        status: 200,
+        attempt: 0,
+        quotaCost: 1,
+      })
+      expect(
+        event === undefined ? undefined : Option.getOrUndefined(event.rateLimit)?.remaining,
+      ).toBe(42)
+    }).pipe(
+      Effect.provide(
+        createTestLayer(() => ({
+          status: 200,
+          body: sampleResponses.database,
+          headers: {
+            'x-ratelimit-remaining': '42',
+            'retry-after': '7',
+          },
+        })),
+      ),
+    ),
+  )
+
+  Vitest.it.effect('annotates NotionHttp spans with sanitized quota attributes', () =>
+    Effect.gen(function* () {
+      const trace = makeRecordingTracer()
+      yield* get({
+        path: '/data_sources/1234567890abcdef1234567890abcdef/query?page_size=100',
+        responseSchema: TestSchema,
+      }).pipe(Effect.withTracer(trace.tracer))
+
+      const span = trace.spans.find((candidate) => candidate.name === 'NotionHttp.GET')
+      expect(span?.attributes).toMatchObject({
+        'span.label': 'GET data_sources.query',
+        'notion.http.method': 'GET',
+        'notion.http.route': '/data_sources/{data_source_id}/query',
+        'notion.http.operation': 'data_sources.query',
+        'notion.http.status_code': 200,
+        'notion.http.retry.attempts': 1,
+        'notion.quota.cost': 1,
+        'notion.rate_limit.remaining': 11,
+        'notion.rate_limit.reset_after_ms': 3000,
+      })
+    }).pipe(
+      Effect.provide(
+        createTestLayer(() => ({
+          status: 200,
+          body: sampleResponses.database,
+          headers: {
+            'x-ratelimit-remaining': '11',
+            'retry-after': '3',
+          },
         })),
       ),
     ),

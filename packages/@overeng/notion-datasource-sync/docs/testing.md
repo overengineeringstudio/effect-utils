@@ -139,8 +139,11 @@ page and child database mapping from `src/demo/live-demo.ts`, validates live
 schema and row counts for all four data sources, then generates local
 `<database-id>.sqlite` replicas for the three smaller sources and verifies their
 public `rows`, `schema_properties`, private cell shadow, and `sync_status`
-surfaces. The 500-row activity source is validated online in the fast lane and
-can be fully replicated locally with:
+surfaces. It also materializes real NotionMD `.nmd` body files from the public
+synthetic projects source through the default CLI runtime. The 500-row activity
+source is validated online in the fast lane and can be fully replicated locally
+with the explicit full verifier; expect that opt-in path to take roughly 20-30
+minutes on shared development infrastructure:
 
 Credential-free unit tests validate the manifest schema, the provisioner lane
 scope, and the durable 500+ row fixture requirement before any live verifier or

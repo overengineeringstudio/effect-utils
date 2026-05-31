@@ -31,7 +31,8 @@ own `<database-id>.sqlite` artifact with a canonical `rows` table rather than as
 one combined multi-source SQLite database. Filenames use the Notion database ID,
 not the visible database title. The verifier uses default schema observation:
 no schema JSON is supplied, and each artifact derives `schema_properties` and
-`rows` columns from the live Notion properties.
+`rows` columns from the live Notion properties. It also materializes the Projects
+row bodies as real NotionMD `.nmd` files through the default CLI runtime.
 
 Current domains and cardinalities:
 
@@ -58,8 +59,8 @@ The default `demo:verify` lane validates the 500-row activity source online but
 does not generate the full local activity replica, because that path is
 rate-limit-heavy. This is the durable read-only fixture contract: a 500+ row
 public synthetic source must stay present in the manifest, and full local
-replication remains an explicit opt-in. Run the full local replica proof
-explicitly:
+replication remains an explicit opt-in. Expect the full proof to take roughly
+20-30 minutes on shared development infrastructure. Run it explicitly:
 
 ```sh
 export NOTION_API_TOKEN="secret_..."
