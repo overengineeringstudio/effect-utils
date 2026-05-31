@@ -77,6 +77,40 @@ Per-property eligibility for direct local writes: `writable`, `computed`
 (read-only), or `unsupported` (fail-closed). Read visibility is broader than
 write eligibility.
 
+**Canonical synthetic live workspace**:
+The deliberately synthetic Notion workspace used for live verification. Stable
+IDs for its zones are configuration/environment values, not committed fixture
+data.
+
+**Durable read-only fixture**:
+A stable synthetic live data source or page used for downsync, dry-run, and
+sampling proof. Runtime tests observe it and prove it did not change.
+
+**Scratch nursery**:
+The dedicated live parent/area where runtime tests create disposable fixtures.
+Writes are legal only for run-created objects or explicitly allowlisted scratch
+page IDs.
+
+**Provisioner lane**:
+The explicit setup/repair path that creates the canonical synthetic workspace,
+rotates fixture IDs, marks deliberately public synthetic fixtures, and emits the
+configuration consumed by runtime verification lanes.
+
+**Write allowlist**:
+The per-run set of page, data-source, block, and ledger-region identities that a
+live scenario may mutate. The remote mutation ledger must contain only
+allowlisted targets.
+
+**Ledger page marker**:
+A harness-owned marker on the live Notion ledger page that bounds where status
+publishing may append or replace content. Whole-page replacement is allowed only
+when the harness created the page.
+
+**Public-repository leak guard**:
+The rule that public docs, issues, PRs, scenario metadata, logs, and fixtures may
+include sanitized counts and deliberately synthetic labels, but not private
+workspace names, private Notion IDs, raw private bodies, tokens, or signed URLs.
+
 ## Local intent and lifecycle
 
 **Change / Intent**:

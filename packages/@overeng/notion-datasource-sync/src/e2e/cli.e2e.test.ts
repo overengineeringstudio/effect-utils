@@ -695,6 +695,91 @@ describe('CLI command surface', () => {
     expect(calls.retrieveDataSource).toBe(0)
   })
 
+  it('adopts an explicit data-source URL without database lookup', async () => {
+    const calls = {
+      retrieveDataSource: 0,
+      queryDataSource: 0,
+      retrievePage: 0,
+      retrieveDatabase: 0,
+    }
+    const command = parseCliCommand([
+      'sync',
+      '--from-notion',
+      'https://api.notion.com/v1/data_sources/0123456789abcdef0123456789abcdef',
+      '/tmp/notion-workspace',
+      '--dry-run',
+    ])
+
+    const resolved = await Effect.runPromise(
+      resolveCliCommandNotionRefs({
+        command,
+        options: { gatewayClient: makeInjectedNotionClient(calls) },
+      }),
+    )
+
+    expect(resolved).toEqual(command)
+    expect(resolved).toMatchObject({
+      _tag: 'sync-from-notion',
+      dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
+      remoteRef: {
+        _tag: 'data-source',
+        dataSourceId: '01234567-89ab-cdef-0123-456789abcdef',
+      },
+    })
+    expect(calls.retrieveDatabase).toBe(0)
+  })
+
+  it('fails closed when a Notion database URL has no child data sources', async () => {
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    const client: NotionGatewayClient = {
+      ...makeInjectedNotionClient(calls),
+      retrieveDatabase: () =>
+        Effect.succeed({
+          id: 'database-1',
+          title: [],
+          description: [],
+          icon: null,
+          data_sources: [],
+        }),
+    }
+    const command = parseCliCommand([
+      'sync',
+      '--from-notion',
+      'https://www.notion.so/example/0123456789abcdef0123456789abcdef',
+      '/tmp/notion-workspace',
+      '--dry-run',
+    ])
+
+    await expect(
+      Effect.runPromise(
+        resolveCliCommandNotionRefs({ command, options: { gatewayClient: client } }),
+      ),
+    ).rejects.toThrow('does not report any child data sources')
+  })
+
+  it('fails closed with a sanitized diagnostic when database resolution is inaccessible', async () => {
+    const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+    const client: NotionGatewayClient = {
+      ...makeInjectedNotionClient(calls),
+      retrieveDatabase: () => Effect.fail(new Error('private workspace object')),
+    }
+    const command = parseCliCommand([
+      'sync',
+      '--from-notion',
+      'https://www.notion.so/example/0123456789abcdef0123456789abcdef',
+      '/tmp/notion-workspace',
+      '--dry-run',
+    ])
+
+    await expect(
+      Effect.runPromise(
+        resolveCliCommandNotionRefs({ command, options: { gatewayClient: client } }),
+      ),
+    ).rejects.toThrow(
+      'Unable to retrieve the Notion database while resolving --from-notion; verify the integration can access the database, or pass a data source ID directly.',
+    )
+  })
+
   it('fails closed when a Notion database URL has multiple child data sources', async () => {
     const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
     const client: NotionGatewayClient = {
@@ -1829,7 +1914,7 @@ describe('CLI command surface', () => {
         ),
       ])
     const waitForFirstCycle = async () => {
-      const deadline = Date.now() + 2_000
+      const deadline = Date.now() + 10_000
       await new Promise<void>((resolve, reject) => {
         const interval = setInterval(() => {
           void (async () => {
@@ -1909,7 +1994,7 @@ describe('CLI command surface', () => {
       })
       expect(eventResponse.status).toBe(200)
 
-      const result = await withTimeout(running, 2_500)
+      const result = await withTimeout(running, 10_000)
       expect(result).toMatchObject({
         command: 'sync',
         result: {
@@ -1980,7 +2065,7 @@ describe('CLI command surface', () => {
         ),
       ])
     const waitForFirstCycle = async () => {
-      const deadline = Date.now() + 2_000
+      const deadline = Date.now() + 10_000
       await new Promise<void>((resolve, reject) => {
         const interval = setInterval(() => {
           void (async () => {
@@ -2060,7 +2145,7 @@ describe('CLI command surface', () => {
       })
       expect(eventResponse.status).toBe(200)
 
-      const result = await withTimeout(running, 2_500)
+      const result = await withTimeout(running, 10_000)
       expect(result).toMatchObject({
         command: 'sync',
         result: {

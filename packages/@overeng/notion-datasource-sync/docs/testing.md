@@ -45,10 +45,31 @@ That task skips when `NOTION_API_TOKEN` is absent. It uses
 `NOTION_TEST_PARENT_PAGE_ID`, then opts into the live suite with
 `NOTION_DATASOURCE_SYNC_LIVE=1`.
 
-The parent page must be a dedicated scratch page shared with the integration.
-Tests create isolated temporary data sources and rows under that parent, record
-all created objects in a local `tmp/` ledger, and archive fixtures during
-cleanup.
+The live workspace has three zones:
+
+| Zone              | Configuration source                                                 | Test behavior                                                                       |
+| ----------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Durable read-only | environment/config IDs for deliberately synthetic data sources/pages | Observe only; use for downsync, large dry-runs, and non-scratch before/after checks |
+| Scratch nursery   | `NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID` or explicit scratch IDs      | Create/mutate/archive only run fixtures or allowlisted scratch page IDs             |
+| Ledger page       | `NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID`                          | Publish sanitized status only inside the harness-owned marker                       |
+
+Stable IDs for these zones are local configuration, not committed fixtures. A
+committed fixture may mention a Notion object only when it is deliberately
+public synthetic data and contains no private row content, private workspace
+names, private IDs, tokens, or signed URLs.
+
+Provisioning the canonical synthetic workspace is an explicit lane, separate
+from runtime tests. The provisioner may create or repair durable read-only
+fixtures, scratch parents, and ledger pages, then emit the environment/config
+values used by CI or local runs. Normal live tests consume those IDs and fail
+closed if the zone marker, write allowlist, or ledger marker is absent.
+
+The scratch parent page must be dedicated to the integration. Runtime tests
+create isolated temporary data sources and rows under that parent, record all
+created objects in a local `tmp/` ledger, and archive fixtures during cleanup.
+Live write lanes must build a write allowlist from the fixture ledger and
+scenario input; every Notion mutation, SQLite write, body materialization, and
+cleanup operation must target an allowlisted fixture.
 
 The live suite includes `sync --from-notion` adoption semantics against a
 disposable database/data source with title, checkbox, rich text, number, select,
@@ -85,8 +106,13 @@ are mutated, no intents settle, no private events append, no outbox commands
 execute, and no body files materialize.
 
 When `NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID` is set, the suite publishes a
-sanitized summary to that Notion page. The ledger must not contain tokens, token
-paths, raw private page bodies, signed URLs, or private workspace URLs.
+sanitized summary to that Notion page. The publisher must locate the
+harness-owned marker and append or replace only that marked ledger block.
+Whole-page replacement is forbidden unless the harness created the ledger page
+for the current run. The ledger must not contain tokens, token paths, raw
+private page bodies, signed URLs, private workspace URLs, or private Notion IDs.
+The ignored local cleanup ledger may contain raw IDs needed for crash recovery;
+published and committed evidence must use aliases or hashes.
 The local cleanup ledger is append-only readiness evidence: before a live write
 lane creates new disposable fixtures, it can replay the latest object state,
 skip objects already marked `verified-cleaned`, retry unverified or
@@ -138,6 +164,21 @@ Real user database checks are read-only/downsync only:
 
 Do not run local write-intent apply tests against real user databases without an
 explicit disposable fixture plan and approval.
+
+Public-repository leak guard applies to every live artifact. Test logs, checked
+fixtures, issue comments, PRs, and docs may report sanitized counts, timings,
+scenario IDs, issue numbers, and synthetic labels. They must not report tokens,
+signed URLs, raw private page bodies, private workspace names, private page or
+database IDs, or private row content.
+
+#715 and #717 use different live lanes. #715 is the production-readiness lane:
+large durable read-only dry-runs, progress/timeout diagnostics, longer bounded
+daemon mutation soaks against scratch fixtures, cleanup-ledger interruption
+recovery, rate-limit/backpressure evidence, and sanitized capability docs. #717
+is the live bidi/body settlement lane: exactly one allowlisted scratch row,
+property-only sync staying property-scoped, `.nmd` body edits settling after
+read-after-write verification, no unrelated body conflicts, and cleanup from a
+snapshot.
 
 ## Traceability
 

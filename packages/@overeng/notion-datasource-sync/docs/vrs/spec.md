@@ -151,6 +151,39 @@ The authoritative verification contract is:
 - live Notion tests for API semantics, capability preflight, current API-version behavior, and completeness boundaries that cannot be proven locally.
 - credential-free readiness tests for live-lane scaffolding, including cleanup ledger replay/resume and scenario metadata traceability, so fixture hygiene can be proven without Notion credentials.
 
+### Canonical Synthetic Live Workspace
+
+Live verification uses a canonical synthetic workspace with three zones. Stable
+Notion IDs for these zones are configuration/environment inputs and must not be
+committed. A fixture may be documented in this public repository only when it is
+deliberately synthetic and carries no private workspace, page, row, or body
+content.
+
+| Zone              | Purpose                                                                                  | Mutation policy                                                                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Durable read-only | Stable data-source and page shapes for downsync, large dry-runs, and regression sampling | Runtime tests may observe only; before/after Notion reads prove sampled rows and bodies are unchanged.                              |
+| Scratch nursery   | Disposable pages/data sources/rows for live write proof                                  | Runtime tests may mutate only run-created fixtures or explicitly allowlisted scratch page IDs.                                      |
+| Ledger page       | Human-visible sanitized run status and cleanup evidence                                  | Harness appends or replaces only its marked ledger block; whole-page replacement is allowed only when the harness created the page. |
+
+The provisioner lane is explicit and separate from runtime verification. It
+creates or repairs the synthetic workspace, rotates stable fixture IDs, marks
+deliberately public synthetic fixtures, and emits the environment/config values
+used by the other lanes. Runtime live lanes fail closed when required zone IDs,
+markers, or allowlists are missing.
+
+Every live write lane carries a write allowlist derived from the scratch
+nursery fixture ledger and the scenario input. Notion writes, SQLite writes, body
+materialization, cleanup, archive/restore, and ledger publication must be
+checked against that allowlist before execution. The remote mutation ledger is
+part of the assertion surface: a correct final state does not pass if any
+non-allowlisted page, data source, block, or ledger region was targeted.
+
+Public-repository leak guard applies to all live evidence. Logs, fixtures,
+scenario metadata, issues, PRs, and docs may include sanitized counts,
+synthetic fixture labels, scenario IDs, and public issue numbers; they must not
+include private page/database IDs, tokens, signed URLs, raw private bodies, or
+private workspace names.
+
 `src/e2e/realistic-workflows.e2e.test.ts` is the credential-free realistic workflow slice. It composes the fake gateway, SQLite store, one-shot sync, body port, and workspace ports to prove initial materialization/idempotency, remote drift plus local write, pending-intent conflict durability, fail-closed capability/schema drift, and local filesystem delete/repair behavior. This slice does not replace L6 live Notion proof for API semantics or the broader daemon and platform filesystem suites.
 
 Replica E2E must prove:
@@ -185,6 +218,7 @@ multiple subsystems:
 | `NDS-L4-bidi-rebuild-replay-safety`                   | replica | stale projection | replay preserves tombstones, conflicts, terminal changes, and pinned property bases                |
 | `NDS-L5-bidi-local-first-slow-pull`                   | daemon  | stale projection | eligible local CDC is pushed before slow remote pull completion                                    |
 | `NDS-L5-bidi-inline-hydration-correctness`            | daemon  | missed inbound   | inline query-row values preserve hashes and avoid unnecessary per-row page reads                   |
+| `NDS-L6-live-workspace-provisioner-lane`              | live    | user data loss   | provisioner owns canonical synthetic workspace creation/repair and never commits stable IDs        |
 | `NDS-L6-live-workspace-read-only-downsync`            | live    | user data loss   | live test workspace rows are observed/downsynced without unintended Notion mutation                |
 | `NDS-L6-live-workspace-scratch-row-bidi`              | live    | user data loss   | one allowlisted scratch row proves SQLite property, `.nmd` body, and lifecycle bidi behavior       |
 
@@ -193,18 +227,20 @@ replica, and rebuild/replay behavior where durable state changes. An apparently
 correct final state is not enough if an unsafe local overwrite or remote
 mutation was attempted.
 
-Live workspace verification has two modes. Read-only downsync samples
-non-scratch rows in a dedicated test data source, records `page_id`,
-`last_edited_time`, `in_trash`, and selected stable properties, runs the
-read-only/downsync command path, then proves those rows are unchanged by direct
-Notion reads and an empty mutation ledger. Scratch-row bidi verification creates
-or uses exactly one row whose title contains a unique run marker; the harness
-records its `page_id`, scopes every SQL write with
-`WHERE _page_id = <scratchPageId>`, allowlists only that `page_id` for Notion
-writes, snapshots non-scratch rows before/after, and fails if any non-scratch
-sampled row changes. Live workspace tests must never run broad `UPDATE rows`,
-broad `DELETE`, archive, restore, body materialization, or cleanup against
-existing non-scratch rows.
+Live workspace runtime verification has two non-provisioner modes. Read-only
+downsync samples non-scratch rows in the durable read-only zone, records
+`page_id`, `last_edited_time`, `in_trash`, and selected stable properties, runs
+the read-only/downsync command path, then proves those rows are unchanged by
+direct Notion reads and an empty mutation ledger. This is the #715 large
+replica/readiness lane when run at production-sized cardinality. Scratch-row
+bidi verification creates or uses exactly one row whose title contains a unique
+run marker in the scratch nursery; the harness records its `page_id`, scopes
+every SQL write with `WHERE _page_id = <scratchPageId>`, allowlists only that
+`page_id` for Notion writes, snapshots non-scratch rows before/after, and fails
+if any non-scratch sampled row changes. This is the #717 live bidi/body
+settlement lane. Live workspace tests must never run broad `UPDATE rows`, broad
+`DELETE`, archive, restore, body materialization, or cleanup against existing
+non-scratch rows.
 
 Live write lanes use an append-only cleanup ledger as their readiness boundary.
 Each disposable fixture object records its latest lifecycle and cleanup state.

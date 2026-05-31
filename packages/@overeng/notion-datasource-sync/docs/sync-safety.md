@@ -137,6 +137,16 @@ If the process stops after a remote attempt but before settlement, restart does
 not blindly retry. It observes the current remote state and either settles the
 command, retries safely, or opens an ambiguous-outcome guard.
 
+Live verification adds a second boundary around the normal remote-write guard.
+Runtime live tests may write only to objects in the scratch nursery that are
+present in the per-run write allowlist. Durable read-only fixtures are
+observation-only, even when they are deliberately synthetic. Ledger publication
+is allowed only inside the harness-owned ledger marker; whole-page replacement
+is forbidden unless the harness created the ledger page. Any attempted Notion
+write, SQLite write, body materialization, cleanup, archive/restore, or ledger
+update outside the allowlist fails the scenario even if the final projection
+looks correct.
+
 ## Query And Pagination
 
 Product replicas use full database membership: no filter, no sort, page size

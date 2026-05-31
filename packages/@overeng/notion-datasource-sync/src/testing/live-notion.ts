@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -465,6 +465,31 @@ export const writeLiveFixtureLedger: WriteLiveFixtureLedger = async (input) => {
   await writeFile(input.path, `${JSON.stringify(input.ledger, null, 2)}\n`, 'utf8')
 }
 
+const ledgerMarkerStart = '<!-- notion-datasource-sync:e2e-ledger:start -->'
+const ledgerMarkerEnd = '<!-- notion-datasource-sync:e2e-ledger:end -->'
+
+const shortHash = (value: string): string =>
+  createHash('sha256').update(value).digest('hex').slice(0, 12)
+
+const replaceMarkedLedgerSection = ({
+  currentMarkdown,
+  nextMarkdown,
+}: {
+  readonly currentMarkdown: string
+  readonly nextMarkdown: string
+}): string => {
+  const startIndex = currentMarkdown.indexOf(ledgerMarkerStart)
+  const endIndex = currentMarkdown.indexOf(ledgerMarkerEnd)
+  if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+    throw new Error(
+      'live Notion ledger page is missing the notion-datasource-sync e2e ledger marker',
+    )
+  }
+
+  const replaceEnd = endIndex + ledgerMarkerEnd.length
+  return `${currentMarkdown.slice(0, startIndex)}${nextMarkdown}${currentMarkdown.slice(replaceEnd)}`
+}
+
 /** Render a `LiveFixtureLedger` as a Markdown string suitable for publishing to a Notion ledger page — includes run metadata, entry list, and a derived status badge. */
 export const formatLiveFixtureLedgerMarkdown = (input: {
   readonly ledger: LiveFixtureLedger
@@ -481,25 +506,35 @@ export const formatLiveFixtureLedgerMarkdown = (input: {
       : latestEntry?.cleanupState === 'verified-cleaned'
         ? 'passed'
         : 'running'
+  const aliasByObjectId = new Map<string, string>()
+  const objectAlias = (entry: LiveFixtureLedgerEntry) => {
+    const existing = aliasByObjectId.get(entry.objectId)
+    if (existing !== undefined) return existing
+    const alias = `${entry.objectType}-${(aliasByObjectId.size + 1).toString()}`
+    aliasByObjectId.set(entry.objectId, alias)
+    return alias
+  }
   const entries =
     input.ledger.entries.length === 0
       ? ['No ledger entries recorded yet.']
       : input.ledger.entries.map(
           (entry) =>
-            `- ${entry.phase}: ${entry.objectType} ${entry.objectId} - ${entry.purpose} - ${entry.cleanupState}`,
+            `- ${entry.phase}: ${objectAlias(entry)} - ${entry.purpose} - ${entry.cleanupState}`,
         )
 
   return [
+    ledgerMarkerStart,
     '# notion datasource sync e2e run ledger',
     '',
     `Latest status: **${status}**`,
     '',
-    `- Run ID: ${input.ledger.runId}`,
+    `- Run alias: run-${shortHash(input.ledger.runId)}`,
     `- Notion API version: ${input.ledger.notionVersion}`,
-    `- Local ledger artifact: ${input.ledgerPath}`,
     `- Git SHA: ${process.env.GITHUB_SHA ?? process.env.GIT_COMMIT ?? 'local'}`,
     `- GitHub run: ${process.env.GITHUB_RUN_ID ?? 'local'}`,
-    ...(input.demoPageId === undefined ? [] : [`- Demo page id: ${input.demoPageId}`]),
+    ...(input.demoPageId === undefined
+      ? []
+      : [`- Demo page alias: page-${shortHash(input.demoPageId)}`]),
     ...(latestEntry === undefined
       ? []
       : [`- Latest entry: ${latestEntry.phase} ${latestEntry.cleanupState}`]),
@@ -510,6 +545,7 @@ export const formatLiveFixtureLedgerMarkdown = (input: {
     '## Ledger entries',
     '',
     ...entries,
+    ledgerMarkerEnd,
   ].join('\n')
 }
 
@@ -528,6 +564,7 @@ export const makeLiveFixtureLedgerWriter = (input: {
     if (input.config.e2eLedgerPageId === undefined) {
       return
     }
+    const ledgerPageId = input.config.e2eLedgerPageId
 
     const markdown = formatLiveFixtureLedgerMarkdown({
       ledger: entry.ledger,
@@ -547,11 +584,23 @@ export const makeLiveFixtureLedgerWriter = (input: {
     }
 
     await Effect.runPromise(
-      NotionPages.updateMarkdown({
-        pageId: input.config.e2eLedgerPageId,
-        type: 'replace_content',
-        new_str: markdown,
-        allow_deleting_content: true,
+      Effect.gen(function* () {
+        const current = yield* NotionPages.getMarkdown({ pageId: ledgerPageId })
+        const nextMarkdown = replaceMarkedLedgerSection({
+          currentMarkdown: current.markdown,
+          nextMarkdown: markdown,
+        })
+        yield* NotionPages.updateMarkdown({
+          pageId: ledgerPageId,
+          type: 'update_content',
+          content_updates: [
+            {
+              old_str: current.markdown,
+              new_str: nextMarkdown,
+            },
+          ],
+          allow_deleting_content: false,
+        })
       }).pipe(Effect.provide(makeNotionLiveLayer({ token: input.env.token }))),
     )
   }

@@ -10,6 +10,7 @@ export type BidiSafetyRisk =
   | 'silent-delete'
   | 'local-overwrite'
   | 'user-data-loss'
+  | 'configuration-drift'
   | 'missed-inbound'
   | 'duplicate-remote-write'
   | 'global-wedge'
@@ -215,25 +216,39 @@ export const bidiSafetyScenarios = [
     ],
   }),
   bidiScenario({
+    scenarioId: 'NDS-L6-live-workspace-provisioner-lane',
+    tier: 'live',
+    risk: 'configuration-drift',
+    initialState: 'canonical synthetic workspace IDs are provided through local configuration',
+    localAction:
+      'run the provisioner lane to create or repair durable read-only, scratch nursery, and ledger zones',
+    remoteAction: 'none outside the provisioner-owned synthetic workspace zones',
+    requiredAssertions: [
+      'stable Notion IDs are emitted as configuration and not committed to the repository',
+      'durable fixtures are explicitly synthetic and marked read-only for runtime lanes',
+      'the scratch nursery and ledger page carry harness-recognizable markers',
+      'runtime lanes fail closed when required zone IDs, markers, or write allowlists are missing',
+    ],
+  }),
+  bidiScenario({
     scenarioId: 'NDS-L6-live-workspace-read-only-downsync',
     tier: 'live',
     risk: 'user-data-loss',
-    initialState: 'a live test workspace data source contains non-scratch rows',
+    initialState: 'the durable read-only zone contains non-scratch synthetic rows',
     localAction: 'run read-only/downsync verification against the live test data source',
     remoteAction: 'none',
     requiredAssertions: [
       'the remote mutation ledger is empty',
       'sampled non-scratch page ids keep last_edited_time and in_trash state',
       'selected stable properties are unchanged by direct Notion reads',
-      'no body materialization or cleanup targets non-scratch rows',
+      'no body materialization, cleanup, or ledger publication targets non-scratch rows',
     ],
   }),
   bidiScenario({
     scenarioId: 'NDS-L6-live-workspace-scratch-row-bidi',
     tier: 'live',
     risk: 'user-data-loss',
-    initialState:
-      'one live test workspace scratch row is identified by a unique run marker and page id',
+    initialState: 'one scratch nursery row is identified by a unique run marker and page id',
     localAction: 'edit only the scratch row through SQLite rows and .nmd body content',
     remoteAction: 'verify or mutate only the allowlisted scratch row for the scenario',
     requiredAssertions: [
@@ -241,6 +256,7 @@ export const bidiSafetyScenarios = [
       'the Notion mutation ledger targets only the scratch row page id',
       'sampled non-scratch rows are unchanged before and after the run',
       'cleanup archives or restores only the scratch row and remains auditable',
+      'ledger publication touches only the harness-owned ledger marker',
     ],
   }),
 ] as const satisfies ReadonlyArray<BidiSafetyScenario>

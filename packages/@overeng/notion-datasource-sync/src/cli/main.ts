@@ -366,9 +366,39 @@ const parseNotionDataSourceRef = (value: string): typeof DataSourceId.Type => {
   return decode({ schema: DataSourceId, value: parseNotionUuid(value) ?? value })
 }
 
+const notionUrlKind = (value: string): 'data-source' | 'database' | undefined => {
+  if (/^https?:\/\//iu.test(value) === false) return undefined
+
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return undefined
+  }
+
+  const pathname = url.pathname.toLowerCase()
+  const searchParams = new Set([...url.searchParams.keys()].map((key) => key.toLowerCase()))
+  if (
+    pathname.includes('/data_sources/') === true ||
+    pathname.includes('/data-source/') === true ||
+    pathname.includes('/datasources/') === true ||
+    searchParams.has('data_source') === true ||
+    searchParams.has('data_source_id') === true
+  ) {
+    return 'data-source'
+  }
+  if (
+    pathname.includes('/databases/') === true ||
+    url.hostname.toLowerCase().endsWith('notion.so') === true
+  ) {
+    return 'database'
+  }
+  return undefined
+}
+
 const parseNotionRemoteRef = (value: string): NotionRemoteRef => {
   const id = parseNotionDataSourceRef(value)
-  if (/^https?:\/\//iu.test(value) === true) {
+  if (notionUrlKind(value) === 'database') {
     return { _tag: 'database', databaseId: id }
   }
   return { _tag: 'data-source', dataSourceId: id }
@@ -1934,7 +1964,8 @@ const resolveDatabaseDataSourceId = ({
     Effect.mapError(
       () =>
         new CliArgumentError({
-          message: `Unable to retrieve Notion database ${databaseId} while resolving --from-notion; pass a data source ID directly if this is not a database URL.`,
+          message:
+            'Unable to retrieve the Notion database while resolving --from-notion; verify the integration can access the database, or pass a data source ID directly.',
         }),
     ),
     Effect.flatMap((database) => {
@@ -1950,8 +1981,8 @@ const resolveDatabaseDataSourceId = ({
         new CliArgumentError({
           message:
             dataSources.length === 0
-              ? `Notion database ${databaseId} does not report any child data sources; pass a data source ID directly.`
-              : `Notion database ${databaseId} has multiple child data sources; pass the desired data source ID explicitly.`,
+              ? 'The Notion database does not report any child data sources; verify the integration can access the database, or pass a data source ID directly.'
+              : 'The Notion database has multiple child data sources; pass the desired data source ID directly.',
         }),
       )
     }),

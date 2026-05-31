@@ -309,8 +309,19 @@ export const e2eHarnessScenarios = [
     file: 'docs/vrs/spec.md',
   }),
   scenario({
+    scenarioId: 'NDS-L6-live-workspace-provisioner-lane',
+    title:
+      'canonical synthetic workspace provisioner owns stable fixture IDs outside the repository',
+    requirementIds: ['R52', 'R60', 'R61', 'R63', 'R65', 'R66'],
+    guards: ['RawPayloadRetentionUnsafe'],
+    lowestPlannerLevel: 'L6',
+    highestIntegrationLevel: 'L6',
+    file: 'docs/vrs/spec.md',
+  }),
+  scenario({
     scenarioId: 'NDS-L6-live-workspace-read-only-downsync',
-    title: 'live test workspace downsync observes existing rows without unintended remote mutation',
+    title:
+      '#715 durable read-only live workspace downsync observes existing synthetic rows without mutation',
     requirementIds: ['R52', 'R60', 'R61', 'R63', 'R65', 'R66'],
     guards: ['RawPayloadRetentionUnsafe'],
     lowestPlannerLevel: 'L3',
@@ -320,7 +331,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L6-live-workspace-scratch-row-bidi',
     title:
-      'live test workspace scratch row verifies bidi behavior without mutating non-scratch rows',
+      '#717 scratch nursery row verifies scoped property and body bidi without mutating non-scratch rows',
     requirementIds: ['R23', 'R24', 'R25', 'R52', 'R60', 'R61', 'R63', 'R65', 'R66'],
     guards: ['StaleSurfaceBase', 'DeleteVsEdit', 'BodyAdapterConflict'],
     lowestPlannerLevel: 'L3',
@@ -577,7 +588,8 @@ export const e2eHarnessScenarios = [
   }),
   scenario({
     scenarioId: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
-    title: 'live Notion skeleton is secret gated and records sanitized cleanup ledger shape',
+    title:
+      'live Notion skeleton is secret gated and records sanitized marker-scoped cleanup ledger shape',
     requirementIds: ['R52', 'R65', 'R67', 'R68', 'R69', 'R70'],
     guards: ['CapabilityPreflightFailed', 'RawPayloadRetentionUnsafe'],
     lowestPlannerLevel: 'L6',
@@ -587,7 +599,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-LIVE-bounded-fixture-soak',
     title:
-      'live Notion bounded fixture soak repeats row property mutation and cleanup against isolated fixtures',
+      '#715 live Notion bounded fixture soak repeats row property mutation and cleanup against isolated scratch fixtures',
     requirementIds: ['R52', 'R65', 'R67', 'R68', 'R69', 'R70'],
     guards: ['CapabilityPreflightFailed', 'RawPayloadRetentionUnsafe'],
     lowestPlannerLevel: 'L6',
@@ -596,7 +608,7 @@ export const e2eHarnessScenarios = [
   }),
   scenario({
     scenarioId: 'NDS-LIVE-cleanup-ledger-resume',
-    title: 'live Notion cleanup ledger replay resumes unverified fixture cleanup locally',
+    title: '#715 live Notion cleanup ledger replay resumes unverified fixture cleanup locally',
     requirementIds: ['R52', 'R65', 'R67', 'R68', 'R69', 'R70'],
     guards: ['RawPayloadRetentionUnsafe'],
     lowestPlannerLevel: 'L6',
@@ -606,7 +618,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-LIVE-public-sqlite-cdc-write',
     title:
-      'live Notion public SQLite CDC applies cell and row lifecycle edits against isolated fixtures',
+      '#717 live Notion public SQLite CDC applies scoped cell body and row lifecycle edits against allowlisted fixtures',
     requirementIds: ['R52', 'R65', 'R67', 'R68', 'R69', 'R70', 'R74', 'R78'],
     guards: ['CapabilityPreflightFailed', 'RawPayloadRetentionUnsafe'],
     lowestPlannerLevel: 'L6',

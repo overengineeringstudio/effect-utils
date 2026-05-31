@@ -73,6 +73,7 @@ import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenario
 
 const processLiveConfig = liveNotionConfigFromEnv(liveNotionEnvFromProcessEnv())
 const implementedLiveScenarioIds = new Set<ScenarioId>([
+  'NDS-L6-live-workspace-provisioner-lane',
   'NDS-LIVE-skeleton-gated-cleanup-ledger',
   'NDS-LIVE-bounded-fixture-soak',
   'NDS-LIVE-cleanup-ledger-resume',
@@ -2861,8 +2862,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
     expect(localWrites).toEqual([ledger])
     expect(published).toHaveLength(1)
     expect(published.at(0)).toMatchObject({ pageId: configured.e2eLedgerPageId })
+    expect(published.at(0)?.markdown).toContain('<!-- notion-datasource-sync:e2e-ledger:start -->')
+    expect(published.at(0)?.markdown).toContain('<!-- notion-datasource-sync:e2e-ledger:end -->')
     expect(published.at(0)?.markdown).toContain('# notion datasource sync e2e run ledger')
-    expect(published.at(0)?.markdown).toContain('36cf141b18dc803b98ebd21f2a243453')
+    expect(published.at(0)?.markdown).toContain('page-1')
+    expect(published.at(0)?.markdown).not.toContain('36cf141b18dc803b98ebd21f2a243453')
+    expect(published.at(0)?.markdown).not.toContain(configured.ledgerPath)
     expect(published.at(0)?.markdown).not.toContain('ntn_super_secret_token_value')
     expect(published.at(0)?.markdown).not.toContain('NOTION_API_TOKEN')
   })
