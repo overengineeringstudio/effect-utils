@@ -24,13 +24,17 @@
  */
 
 import type { GitHubWorkflowArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
-import { defaultRefPolicyCheckStep, type DefaultRefPolicyCheckStepOptions } from './ci-workflow/megarepo.ts'
-import { bashShellDefaults, linuxX64Runner, standardCIEnv } from './ci-workflow/shared.ts'
+import {
+  defaultRefPolicyCheckStep,
+  type DefaultRefPolicyCheckStepOptions,
+} from './ci-workflow/megarepo.ts'
 import { checkoutStep, installNixStep } from './ci-workflow/setup.ts'
+import { bashShellDefaults, linuxX64Runner, standardCIEnv } from './ci-workflow/shared.ts'
 
 type GitHubWorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type GitHubWorkflowStep = GitHubWorkflowJob['steps'][number]
 
+/** Options for wrapping the default-ref policy check in a dedicated CI job. */
 export type DefaultRefPolicyCheckJobOptions = DefaultRefPolicyCheckStepOptions & {
   readonly name?: string
   readonly runsOn?: GitHubWorkflowJob['runs-on']
