@@ -8,8 +8,7 @@
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-  githubRulesetModule =
-    toString ../../../.. + "/packages/@overeng/genie/src/runtime/mod.ts";
+  githubRulesetModule = toString ../../../.. + "/packages/@overeng/genie/src/runtime/mod.ts";
   mkTask =
     mode:
     let
@@ -20,7 +19,9 @@ let
     {
       "${taskName}" = {
         inherit after;
-        description = "${verb} ${file} ${if mode == "apply" then "to" else "against"} the live GitHub ruleset";
+        description = "${verb} ${file} ${
+          if mode == "apply" then "to" else "against"
+        } the live GitHub ruleset";
         exec = trace.exec taskName ''
           set -euo pipefail
           ${pkgs.bun}/bin/bun --eval ${lib.escapeShellArg ''

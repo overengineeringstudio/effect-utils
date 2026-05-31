@@ -1,19 +1,23 @@
 import { readFile } from 'node:fs/promises'
 
+/** Whether to only report drift or update the remote ruleset in place. */
 export type RulesetMode = 'check' | 'apply'
 
+/** One normalized field mismatch between generated and remote ruleset state. */
 export type RulesetDiff = {
   readonly field: string
   readonly desired: unknown
   readonly actual: unknown
 }
 
+/** Inputs required to load and reconcile one repository ruleset. */
 export type GithubRulesetOptions = {
   readonly repo: string
   readonly ruleset: string
   readonly file: string
 }
 
+/** Outcome of reconciling one repository ruleset against generated settings. */
 export type GithubRulesetReport = {
   readonly repo: string
   readonly rulesetName: string
@@ -37,23 +41,25 @@ const controlledFields = [
   'bypass_actors',
 ] as const
 
-export const reconcileGithubRuleset = async (
-  mode: RulesetMode,
-  options: GithubRulesetOptions,
-): Promise<GithubRulesetReport> => {
+/** Reconcile one remote GitHub ruleset with the generated JSON file. */
+export const reconcileGithubRuleset = async ({
+  mode,
+  options,
+}: {
+  readonly mode: RulesetMode
+  readonly options: GithubRulesetOptions
+}): Promise<GithubRulesetReport> => {
   const desired = JSON.parse(await readFile(options.file, 'utf8')) as unknown
-  const summary = await findRuleset(options.repo, options.ruleset)
-  const actual = await ghJson(`repos/${options.repo}/rulesets/${summary.id}`)
+  const summary = await findRuleset({ repo: options.repo, rulesetName: options.ruleset })
+  const actual = await ghJson({ endpoint: `repos/${options.repo}/rulesets/${summary.id}` })
   const diffs = diffGithubRuleset({ desired, actual })
   const applied = mode === 'apply' && diffs.length > 0
 
-  if (applied) {
-    await ghJson(`repos/${options.repo}/rulesets/${summary.id}`, [
-      '--method',
-      'PUT',
-      '--input',
-      options.file,
-    ])
+  if (applied === true) {
+    await ghJson({
+      endpoint: `repos/${options.repo}/rulesets/${summary.id}`,
+      args: ['--method', 'PUT', '--input', options.file],
+    })
   }
 
   return {
@@ -66,19 +72,28 @@ export const reconcileGithubRuleset = async (
   }
 }
 
-export const formatGithubRulesetReport = (mode: RulesetMode, report: GithubRulesetReport): string => {
-  if (!report.changed) {
-    const suffix = mode === 'apply' ? ' already matches generated settings' : ' matches generated settings'
+/** Render a concise CLI summary for one ruleset reconciliation result. */
+export const formatGithubRulesetReport = ({
+  mode,
+  report,
+}: {
+  readonly mode: RulesetMode
+  readonly report: GithubRulesetReport
+}): string => {
+  if (report.changed === false) {
+    const suffix =
+      mode === 'apply' ? ' already matches generated settings' : ' matches generated settings'
     return `ok: ${report.repo} ruleset \`${report.rulesetName}\` (${report.rulesetId})${suffix}`
   }
 
-  const action = report.applied ? 'applied' : 'drift'
+  const action = report.applied === true ? 'applied' : 'drift'
   return [
     `${action}: ${report.repo} ruleset \`${report.rulesetName}\` (${report.rulesetId})`,
     ...report.diffs.map((diff) => `- ${diff.field}`),
   ].join('\n')
 }
 
+/** Diff only the ruleset fields this generator owns. */
 export const diffGithubRuleset = ({
   desired,
   actual,
@@ -90,8 +105,8 @@ export const diffGithubRuleset = ({
   const actualObject = asRecord(actual)
 
   return controlledFields.flatMap((field) => {
-    const desiredValue = normalizeRulesetField(field, desiredObject[field])
-    const actualValue = normalizeRulesetField(field, actualObject[field])
+    const desiredValue = normalizeRulesetField({ field, value: desiredObject[field] })
+    const actualValue = normalizeRulesetField({ field, value: actualObject[field] })
 
     return stableStringify(desiredValue) === stableStringify(actualValue)
       ? []
@@ -99,14 +114,24 @@ export const diffGithubRuleset = ({
   })
 }
 
+/** Normalize a ruleset payload to the owned fields used for equality checks. */
 export const normalizeGithubRulesetForComparison = (value: unknown): Record<string, unknown> => {
   const object = asRecord(value)
   return Object.fromEntries(
-    controlledFields.map((field) => [field, normalizeRulesetField(field, object[field])]),
+    controlledFields.map((field) => [
+      field,
+      normalizeRulesetField({ field, value: object[field] }),
+    ]),
   )
 }
 
-const normalizeRulesetField = (field: (typeof controlledFields)[number], value: unknown): unknown => {
+const normalizeRulesetField = ({
+  field,
+  value,
+}: {
+  readonly field: (typeof controlledFields)[number]
+  readonly value: unknown
+}): unknown => {
   switch (field) {
     case 'bypass_actors':
       return value === undefined || value === null ? [] : deepSort(value)
@@ -118,7 +143,7 @@ const normalizeRulesetField = (field: (typeof controlledFields)[number], value: 
 }
 
 const normalizeRules = (value: unknown): unknown => {
-  if (!Array.isArray(value)) {
+  if (Array.isArray(value) === false) {
     return deepSort(value ?? null)
   }
 
@@ -147,12 +172,12 @@ const normalizeRule = (value: unknown): unknown => {
 }
 
 const asRecord = (value: unknown): Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value)
+  value !== null && typeof value === 'object' && Array.isArray(value) === false
     ? (value as Record<string, unknown>)
     : {}
 
 const deepSort = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
+  if (Array.isArray(value) === true) {
     return value.map(deepSort)
   }
 
@@ -170,9 +195,15 @@ const deepSort = (value: unknown): unknown => {
 
 const stableStringify = (value: unknown): string => JSON.stringify(deepSort(value))
 
-const findRuleset = async (repo: string, rulesetName: string): Promise<RulesetSummary> => {
-  const summaries = await ghJson(`repos/${repo}/rulesets`)
-  if (!Array.isArray(summaries)) {
+const findRuleset = async ({
+  repo,
+  rulesetName,
+}: {
+  readonly repo: string
+  readonly rulesetName: string
+}): Promise<RulesetSummary> => {
+  const summaries = await ghJson({ endpoint: `repos/${repo}/rulesets` })
+  if (Array.isArray(summaries) === false) {
     throw new Error(`expected GitHub rulesets response to be an array for ${repo}`)
   }
 
@@ -188,7 +219,13 @@ const findRuleset = async (repo: string, rulesetName: string): Promise<RulesetSu
   return match
 }
 
-const ghJson = async (endpoint: string, args: ReadonlyArray<string> = []): Promise<unknown> => {
+const ghJson = async ({
+  endpoint,
+  args = [],
+}: {
+  readonly endpoint: string
+  readonly args?: ReadonlyArray<string>
+}): Promise<unknown> => {
   const proc = Bun.spawn(['gh', 'api', endpoint, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
@@ -200,7 +237,9 @@ const ghJson = async (endpoint: string, args: ReadonlyArray<string> = []): Promi
   ])
 
   if (exitCode !== 0) {
-    throw new Error(`gh api ${[endpoint, ...args].join(' ')} failed with exit ${exitCode}\n${stderr.trim()}`)
+    throw new Error(
+      `gh api ${[endpoint, ...args].join(' ')} failed with exit ${exitCode}\n${stderr.trim()}`,
+    )
   }
 
   return stdout.trim() === '' ? undefined : JSON.parse(stdout)

@@ -78,16 +78,17 @@ let
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
-  pureInstallFlags =
-    [ (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile") ]
-    ++ [
-      "--config.confirmModulesPurge=false"
-      "--config.side-effects-cache=false"
-      "--config.verify-store-integrity=true"
-      "--config.strict-store-pkg-content-check=true"
-      "--config.package-import-method=clone-or-copy"
-      "--pm-on-fail=ignore"
-    ];
+  pureInstallFlags = [
+    (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
+  ]
+  ++ [
+    "--config.confirmModulesPurge=false"
+    "--config.side-effects-cache=false"
+    "--config.verify-store-integrity=true"
+    "--config.strict-store-pkg-content-check=true"
+    "--config.package-import-method=clone-or-copy"
+    "--pm-on-fail=ignore"
+  ];
   pureInstallFlagsString = lib.concatStringsSep " " pureInstallFlags;
 
   packageNameToPath = builtins.listToAttrs (
