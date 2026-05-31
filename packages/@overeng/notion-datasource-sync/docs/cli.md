@@ -165,7 +165,7 @@ Stable public surfaces:
 | `rows`              | guarded write | Canonical row surface; Notion property columns first, `_` system columns last                  |
 | `schema`            | read view     | Binding, database/data-source metadata, schema hashes, and sync identity                       |
 | `schema_properties` | read view     | Property ID/name/type/write-class to `rows` column mapping                                     |
-| `changes`           | guarded write | Local edit intents, planner status, settlement status, and unsupported reasons                 |
+| `changes`           | read view     | Local edit intents, planner status, settlement status, and unsupported reasons                 |
 | `conflicts`         | read view     | User-visible conflict records and resolution state                                             |
 | `sync_status`       | read view     | Last sync, pending work, checkpoints, private integrity state, and fail-closed guard summaries |
 
@@ -226,9 +226,10 @@ notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
 notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
-`changes` is the public audit and intent surface. It reports pending,
+`changes` is the public audit ledger. It reports pending,
 unsupported, queued, planned, applied, rejected, and conflict states for direct
-row edits and explicit change requests. Sync reads public changes, validates
+row edits and typed staged requests. Direct public inserts into `changes` are
+not part of the current contract. Sync reads pending local changes, validates
 them against `_nds_*` base hashes, enqueues private outbox commands, executes
 remote writes, then settles only after read-after-write verification.
 

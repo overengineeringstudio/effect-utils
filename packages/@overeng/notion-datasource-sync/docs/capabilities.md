@@ -16,7 +16,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Page-property retrieve | Cursor pagination for truncated property-item values                                                                   |
 | Property writes        | Guarded row property patches for modeled writable values                                                               |
 | Schema command writes  | Dedicated safe add/rename/add-option command path with base schema hash; public SQLite schema CDC remains fail-closed  |
-| Data-source metadata   | Guarded title patches with a separate metadata hash                                                                    |
+| Data-source metadata   | Guarded title/description patches with a separate metadata hash                                                        |
 | Trash/restore          | Explicit command surface with outbox verification                                                                      |
 | Body observation       | Via NotionMD-backed `PageBodySyncPort`                                                                                 |
 | Body materialization   | `.nmd` files plus sidecar identity through the body port                                                               |
@@ -47,22 +47,22 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 
 ## Unsupported Or Deferred
 
-| Notion surface                           | Current policy                                                                                                                                                 |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Data-source views                        | Read-only Notion UI view inventory is projected in `debug_*`; view writes and view-query membership authority are not synced                                   |
-| Database metadata                        | Title/description CDC supported through `changes`; icon/cover/parent/trash/lock remain deferred                                                                |
-| Data-source writable icons               | Deferred until file/custom/external icon identity has complete proof                                                                                           |
-| Database/data-source presentation        | Layout, grouping, sorts, filters, hidden properties, and view settings are not synced                                                                          |
-| File upload/download bytes               | Local-upload lifecycle fields are modeled through guarded `changes`, but upload execution remains fail-closed until retry/expiry/read-after-write proof exists |
-| Destructive schema migrations            | Property delete, type conversion, option removal/rename are blocked                                                                                            |
-| Status schema updates                    | Blocked until Notion behavior is proven for the desired operation                                                                                              |
-| Comments                                 | Out of scope                                                                                                                                                   |
-| Permissions/sharing                      | Out of scope; permission ambiguity blocks affected surfaces                                                                                                    |
-| Webhooks                                 | Optional wakeup hints only; `sync --watch --webhook manual\|tailscale` starts a local receiver, enqueues durable signals, and wakes daemon reconciliation      |
-| Synced pages and unsupported body blocks | Delegated to NotionMD guards and blocked when lossy                                                                                                            |
-| Local-first data-source creation         | Out of scope; create the data source in Notion first, then adopt it locally                                                                                    |
-| Direct updates to generated SQL views    | Deferred; V1 writes use guarded `rows` updates or explicit `changes` rows                                                                                      |
-| Broad schema migrations from SQL edits   | Deferred; schema drift is detected and guarded, rich migration workflows are follow-up                                                                         |
+| Notion surface                           | Current policy                                                                                                                                                   |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Data-source views                        | Read-only Notion UI view inventory is projected in `debug_*`; view writes and view-query membership authority are not synced                                     |
+| Database metadata                        | Title/description CDC supported through typed local staging and surfaced in `changes`; icon/cover/parent/trash/lock remain deferred                              |
+| Data-source writable icons               | Deferred until file/custom/external icon identity has complete proof                                                                                             |
+| Database/data-source presentation        | Layout, grouping, sorts, filters, hidden properties, and view settings are not synced                                                                            |
+| File upload/download bytes               | Local-upload lifecycle fields are modeled through typed local staging, but upload execution remains fail-closed until retry/expiry/read-after-write proof exists |
+| Destructive schema migrations            | Property delete, type conversion, option removal/rename are blocked                                                                                              |
+| Status schema updates                    | Blocked until Notion behavior is proven for the desired operation                                                                                                |
+| Comments                                 | Out of scope                                                                                                                                                     |
+| Permissions/sharing                      | Out of scope; permission ambiguity blocks affected surfaces                                                                                                      |
+| Webhooks                                 | Optional wakeup hints only; `sync --watch --webhook manual\|tailscale` starts a local receiver, enqueues durable signals, and wakes daemon reconciliation        |
+| Synced pages and unsupported body blocks | Delegated to NotionMD guards and blocked when lossy                                                                                                              |
+| Local-first data-source creation         | Out of scope; create the data source in Notion first, then adopt it locally                                                                                      |
+| Direct updates to generated SQL views    | Deferred; V1 writes use guarded `rows` updates and read-only `changes` observability                                                                             |
+| Broad schema migrations from SQL edits   | Deferred; schema drift is detected and guarded, rich migration workflows are follow-up                                                                           |
 
 ## Public Replica Write Coverage
 
@@ -71,13 +71,13 @@ class must have a typed intent and guard model before it mutates Notion.
 
 | Edit class                      | Target state                                                                                                                                       |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Existing row cell edits         | Supported primarily through scalar/property `UPDATE rows SET ...`; explicit `changes` rows are an advanced intent surface                          |
+| Existing row cell edits         | Supported through scalar/property `UPDATE rows SET ...`; `changes` is the read-only intent ledger                                                  |
 | Row creation                    | Supported through `INSERT INTO rows (...)` normalized to row-create CDC with idempotency keys, base schema guards, and returned page-id settlement |
 | Row archive/restore             | Supported through `UPDATE rows SET _in_trash = 1/0` or explicit lifecycle CDC; never inferred from SQL delete                                      |
-| Body edits                      | Supported through NotionMD-backed `changes` rows and body conflict guards                                                                          |
+| Body edits                      | Supported through NotionMD-backed local planning, read-only `changes` rows, and body conflict guards                                               |
 | Data-source metadata edits      | Supported through public metadata CDC for title/description, with owning-database patching and data-source metadata hash verification              |
-| Database metadata edits         | Supported for title/description through `changes` with database authority                                                                          |
-| External URL file attachments   | Supported through explicit `changes` staging for empty writable `files` properties                                                                 |
+| Database metadata edits         | Supported for title/description through typed local staging and read-only `changes` observability with database authority                          |
+| External URL file attachments   | Supported through typed local staging for empty writable `files` properties                                                                        |
 | Notion UI view inventory        | Supported as read-only `debug_*`; view query results are not row-membership authority and local generated SQL views are separate                   |
 | People/file direct cell edits   | Fail closed before visible replica mutation; people requires deterministic user identity proof, files require explicit staging/upload lifecycle    |
 | Safe schema changes             | Dedicated schema command path exists; public SQLite CDC remains blocked until post-write hash proof                                                |

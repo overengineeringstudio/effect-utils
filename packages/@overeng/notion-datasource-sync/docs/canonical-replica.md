@@ -37,7 +37,7 @@ Stable public surfaces:
 | `rows`              | guarded write | One row per Notion page in the database                                 |
 | `schema`            | read view     | Database/data-source binding, metadata, schema hashes, sync identity    |
 | `schema_properties` | read view     | Property id, display name, Notion type, write class, row column mapping |
-| `changes`           | guarded write | Durable local edit intents and settlement status                        |
+| `changes`           | read view     | Durable local edit intents and settlement status                        |
 | `conflicts`         | read view     | User-visible conflicts and resolution state                             |
 | `sync_status`       | read view     | Last sync, pending work, checkpoints, guards, doctor state              |
 

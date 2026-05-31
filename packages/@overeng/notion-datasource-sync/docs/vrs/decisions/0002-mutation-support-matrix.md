@@ -36,23 +36,14 @@ Rationale: keeps property-ID identity authoritative, avoids hidden DDL-trigger
 semantics (SQLite has no DDL triggers), and keeps schema migration's two-phase
 plan/apply auditable.
 
-### `DELETE FROM rows` maps to remote archive
+### SQL row delete is not a remote lifecycle command
 
-`DELETE FROM rows WHERE ...` enqueues a remote **archive** (trash) intent,
-identical to `UPDATE rows SET _in_trash = 1`.
+`DELETE FROM rows WHERE ...` is rejected by the public replica.
 
-- Notion trash is reversible (recoverable), so DELETE maps to the strongest
-  _reversible_ remote op rather than failing closed.
-- This is a deliberate choice of intuitive SQL semantics over fail-closed
-  rejection, accepting Notion trash recoverability as the safety net.
-- `forget` (drop local tracking, no remote effect) stays a CLI-only operation;
-  it is not reachable through SQL, because DELETE now means archive.
-- There is no API path to permanent deletion, so archive is the maximum
-  destructive effect reachable from the file.
-
-Requirements impact: the guard/requirement that rejected `DELETE FROM rows` must
-change to "DELETE FROM rows = archive intent"; the spec's writable-subset prose
-and guard matrix must be updated accordingly.
+- Archive and restore are explicit `_in_trash` edits.
+- `forget` drops local tracking with no remote effect and stays CLI-only.
+- There is no API path to permanent deletion, and SQL delete must not be
+  overloaded to mean local forget, remote archive, or permanent removal.
 
 ## Fail-closed cells (unchanged, documented crisply in the matrix)
 

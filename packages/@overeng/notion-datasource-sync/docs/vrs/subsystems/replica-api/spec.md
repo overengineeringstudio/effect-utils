@@ -169,25 +169,21 @@ but it must not make a captured body edit invisible to later scans.
 
 `rows` is the primary writable product API for row data. Direct use requires
 editing only `rows` for database properties/lifecycle and `.nmd` files for page
-bodies; explicit `changes` rows exist for advanced intent staging and
-observability, not as a competing primary row API. Schema is not a public write
-surface: `schema`/`schema_properties` are read-only, there is
+bodies; `changes` is a read-only ledger for accepted intent lifecycle. Schema
+is not a public write surface: `schema`/`schema_properties` are read-only, there is
 no `kind=schema` row in the public `changes` table, and `NotionSchemaChange` is
 not a public write intent. Schema changes are detected, guarded, and applied
 CLI-only through `migrate schema` (see
 [../schema-migration/spec.md](../schema-migration/spec.md)). The current
 executable subset is scalar/property `UPDATE rows SET ...`, `INSERT INTO rows`
 for row creation, archive/restore through `UPDATE rows SET _in_trash = 1/0`,
-explicit `changes` equivalents, body pushes that pass body-adapter safety and
-content-hash verification, data-source and database title/description metadata
-edits verified by post-write metadata hashes, and conflict-resolution choices
-routed through the store-backed command surface. `DELETE FROM rows` enqueues a
-remote ARCHIVE (trash) intent, identical to `UPDATE rows SET _in_trash = 1`;
-remote destructive lifecycle changes are represented as explicit archive/restore
-intents. Notion trash is reversible, so DELETE maps to the strongest reversible
-remote op rather than failing closed. `forget` (drop local tracking with no
-remote effect) stays CLI-only and is not reachable through SQL, because DELETE
-now means archive. There is no API path to permanent deletion, so archive is the
+body pushes that pass body-adapter safety and content-hash verification,
+data-source and database title/description metadata edits verified by post-write
+metadata hashes, and conflict-resolution choices routed through the
+store-backed command surface. `DELETE FROM rows` is rejected; remote destructive
+lifecycle changes are represented as explicit archive/restore intents. `forget`
+(drop local tracking with no remote effect) stays CLI-only and is not reachable
+through SQL. There is no API path to permanent deletion, so archive is the
 maximum destructive effect reachable from the file. `changes`, `conflicts`, and
 `sync_status` are public observability surfaces for accepted intent, conflict
 state, settlement, guards, and pending work. `_nds_*` remains private
@@ -198,8 +194,8 @@ description, then verifies the resulting data-source metadata hash. Database
 metadata CDC exposes the database/container authority separately through
 private/debug projections and requires `database_id` plus the owning data source
 metadata hash for read-after-write settlement. External URL file attachments are
-supported through explicit `changes` staging for empty writable `files`
-properties; local uploads, signed Notion URLs, replacement, deletion,
+supported through typed staging for empty writable `files` properties; local
+uploads, signed Notion URLs, replacement, deletion,
 preserving existing file arrays, and direct current-state `files` cell edits
 require file-upload lifecycle proof before promotion. Direct `people` cell edits
 also fail closed before visible mutation until deterministic user identity
@@ -214,9 +210,7 @@ Intent lifecycle:
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Pending: insert into changes
   [*] --> Pending: supported rows update / insert / _in_trash change
-  [*] --> Pending: DELETE from rows (archive intent)
   [*] --> Pending: supported public current-state update
   Pending --> Pending: dry-run / planner conversion without durable enqueue
   Pending --> Queued: durable outbox enqueue observed

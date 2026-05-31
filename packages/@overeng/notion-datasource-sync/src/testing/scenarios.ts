@@ -855,11 +855,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'unmapped-requirement',
-    requirementId: 'R55',
-    reason: 'Adapter independence is architecture scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
     requirementId: 'R56',
     reason: 'Worker optionality is future integration scope.',
   },
@@ -877,11 +872,6 @@ export const traceabilityResiduals = [
     _tag: 'unmapped-requirement',
     requirementId: 'R59',
     reason: 'Safe telemetry requires telemetry-specific checks.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R60',
-    reason: 'Unit coverage is tracked outside the fake-service E2E matrix.',
   },
 ] as const satisfies ReadonlyArray<TraceabilityResidual>
 

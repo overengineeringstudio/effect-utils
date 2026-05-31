@@ -181,7 +181,7 @@ rewriting local values or applying broad migrations.
 
 | Property class                              | Local replica policy                                                                                                                                                    |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Title, rich text, number, checkbox          | Writable through `rows` updates or explicit `changes` rows when base hash matches                                                                                       |
+| Title, rich text, number, checkbox          | Writable through `rows` updates when base hash matches                                                                                                                  |
 | Date, select, multi-select, status value    | Writable when option/status value semantics are fully observed and supported                                                                                            |
 | URL, email, phone                           | Writable through scalar cell intents with canonical Notion-shaped JSON                                                                                                  |
 | Relation                                    | Writable for remove/reorder/add from fully paginated bases when each added target is already observed in `debug_*` relation diagnostics; unobserved targets fail closed |

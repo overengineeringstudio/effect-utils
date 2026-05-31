@@ -157,8 +157,8 @@ Replica E2E must prove:
 - establishment without schema JSON creates `<workspace>/<database-id>.sqlite` and projects observed rows/schema/metadata,
 - `rows`, `schema_properties`, `changes`, `conflicts`, `sync_status`, and `debug_*` views agree for sampled rows,
 - `rows` property columns are generated from live schema before `_` columns and never include `schema_json`,
-- local SQL insert/update/archive/restore through `rows` and `changes` produce planner commands in dry-run without settling the public change,
-- `DELETE FROM rows` maps to reversible Archive and never becomes Forget or permanent deletion,
+- local SQL insert/update/archive/restore through `rows` produces planner commands in dry-run without settling the public change,
+- `DELETE FROM rows` is rejected and never becomes Archive, Forget, or permanent deletion,
 - normal sync applies supported intents to disposable fake/live remotes and settles after read-after-write,
 - stale base hashes become conflicts rather than overwrites,
 - schema drift affecting a pending intent is guarded before apply,
@@ -223,4 +223,4 @@ and recoverable conflict material.
 - **DQ2 Workers:** Notion Workers syncs are optional Notion-hosted external-source projections. Current Worker syncs create and manage Worker-owned databases and do not replace arbitrary existing datasource sync, local filesystem reconciliation, SQLite authority, or outbox settlement.
 - **DQ3 Package split staging:** The conceptual `notion-domain` and `notion-sync-core` layers may initially live inside `@overeng/notion-datasource-sync` if APIs remain separated and extractable.
 - **DQ4 File upload support:** Observed Notion file URLs are temporary references. Editable file-byte sync may use durable File Upload API IDs only after additional live E2E proof for upload, expiry, and replacement behavior.
-- **DQ5 Writable debug views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against `debug_*` views may later be implemented with triggers that insert the same `changes` rows. The current public API supports guarded writes through canonical `rows` plus explicit `changes` inserts so write semantics stay visible and testable.
+- **DQ5 Writable debug views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against `debug_*` views may later be implemented with triggers that insert the same typed intent rows that feed `changes`. The current public API supports guarded writes through canonical `rows`; `changes` remains a read-only ledger so write semantics stay visible and testable.

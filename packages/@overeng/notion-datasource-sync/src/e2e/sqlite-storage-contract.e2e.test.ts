@@ -562,6 +562,14 @@ describe('clean-break self-contained SQLite storage contract', () => {
         )
         expect(() =>
           db
+            .prepare(
+              `INSERT INTO changes (change_id, kind, data_source_id)
+               VALUES ('manual-change', 'metadata_patch', ?)`,
+            )
+            .run(testIds.dataSourceId),
+        ).toThrow(/view|read-only|modify/i)
+        expect(() =>
+          db
             .prepare(`UPDATE rows SET _page_id = 'other-page' WHERE _page_id = ?`)
             .run(testIds.pageId),
         ).toThrow(/read-only|system|identity/i)

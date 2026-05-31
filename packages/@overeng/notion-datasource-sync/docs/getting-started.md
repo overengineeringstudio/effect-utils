@@ -135,9 +135,9 @@ set _in_trash = 1
 where _page_id = '11111111-1111-4111-8111-111111111111';
 ```
 
-`DELETE FROM rows` enqueues a remote archive intent (equivalent to
-`UPDATE rows SET _in_trash = 1`). Notion trash is reversible. To drop local
-tracking without remote effect, use the `forget` CLI.
+`DELETE FROM rows` is rejected. Archive or restore through `_in_trash` so the
+remote lifecycle effect is explicit and reversible. To drop local tracking
+without remote effect, use the `forget` CLI.
 
 Review and apply with the CLI:
 
@@ -147,17 +147,17 @@ notion-datasource-sync sync "$PWD/notion-workspace"
 ```
 
 Supported public edits currently include writable scalar/page-property cells,
-row creation, row archive/restore (including `DELETE FROM rows`, which maps to
-a reversible remote archive), body pushes that pass body safety and
-content-hash verification, metadata edits with post-write hash reconciliation,
-and external URL files through explicit staging for currently-empty file
-properties. Schema changes are not expressible through SQL: `schema` and
-`schema_properties` are read-only, `ALTER TABLE rows` is rejected, and there
-is no `kind=schema` write intent in `changes` — use the `migrate schema` CLI
-instead. Conflict resolution is also CLI-only (`nds conflicts resolve`);
-direct writes to `conflicts` are rejected. People writes, local file uploads,
-Notion view writes, computed/generated property writes, `place` cells, and
-internal `_nds_*` edits fail closed.
+row creation, row archive/restore through `_in_trash`, body pushes that pass
+body safety and content-hash verification, metadata edits with post-write hash
+reconciliation, and external URL files through typed staging for
+currently-empty file properties. Schema changes are not expressible through
+SQL: `schema` and `schema_properties` are read-only, `ALTER TABLE rows` is
+rejected, and `changes` is a read-only lifecycle ledger — use the
+`migrate schema` CLI instead. Conflict resolution is also CLI-only
+(`nds conflicts resolve`); direct writes to `conflicts` are rejected. People
+writes, local file uploads, Notion view writes, computed/generated property
+writes, SQL row deletes, `place` cells, and internal `_nds_*` edits fail
+closed.
 
 ## Reconcile Local Changes
 

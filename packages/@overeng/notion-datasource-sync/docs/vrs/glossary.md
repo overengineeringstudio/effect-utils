@@ -92,9 +92,8 @@ A planned remote write derived from an accepted **Intent**, executed outside any
 SQLite transaction and settled only after read-after-write verification.
 
 **Archive**:
-A reversible remote trash of a row. Reached via `UPDATE rows SET _in_trash = 1`
-or `DELETE FROM rows`. Recoverable; the strongest destructive effect available
-through the public API.
+A reversible remote trash of a row. Reached via `UPDATE rows SET _in_trash = 1`.
+Recoverable; the strongest destructive effect available through the public API.
 _Avoid_: "delete" for this — see below.
 
 **Forget**:
@@ -103,8 +102,8 @@ reachable through SQL.
 _Avoid_: conflating with **Archive**.
 
 **Delete**:
-`DELETE FROM rows` — maps to **Archive** (remote trash), not local **Forget** and
-not permanent deletion. There is no permanent-delete path through the API.
+`DELETE FROM rows` is rejected. It does not map to **Archive**, local **Forget**,
+or permanent deletion. There is no permanent-delete path through the API.
 
 **Tombstone**:
 A classification of a row absent from the query, resolved by direct page
