@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -77,6 +77,7 @@ const implementedLiveScenarioIds = new Set<ScenarioId>([
   'NDS-LIVE-bounded-fixture-soak',
   'NDS-LIVE-cleanup-ledger-resume',
   'NDS-LIVE-public-sqlite-cdc-write',
+  'NDS-L6-live-workspace-scratch-row-bidi',
   'NDS-LIVE-notion-view-inventory-read',
 ])
 
@@ -246,6 +247,18 @@ const liveDebugJson = (value: unknown): string =>
 
 const quoteSqlIdentifier = (value: string): string => `"${value.replaceAll('"', '""')}"`
 
+const listNmdFiles = async (root: string): Promise<ReadonlyArray<string>> => {
+  const entries = await readdir(root, { withFileTypes: true })
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const path = join(root, entry.name)
+      if (entry.isDirectory() === true) return listNmdFiles(path)
+      return entry.isFile() === true && entry.name.endsWith('.nmd') === true ? [path] : []
+    }),
+  )
+  return nested.flat()
+}
+
 const cleanBreakSqlitePath = ({
   workspaceRoot,
   databaseId,
@@ -379,6 +392,45 @@ const runLiveCliCommand = async ({
     )
   } finally {
     command.store.close()
+  }
+}
+
+const readReplicaHealth = (replicaPath: string) => {
+  const db = new DatabaseSync(replicaPath, { readOnly: true })
+  try {
+    const status = db.prepare(`SELECT * FROM sync_status`).get() as
+      | {
+          readonly conflicts_open: number
+          readonly pending_local_changes: number
+          readonly workspace_status: string
+        }
+      | undefined
+    const pendingChanges = db
+      .prepare(
+        `SELECT count(*) AS count FROM changes WHERE status IN ('pending', 'queued', 'planned')`,
+      )
+      .get() as { readonly count: number }
+    const openConflicts = db
+      .prepare(`SELECT count(*) AS count FROM conflicts WHERE state = 'open'`)
+      .get() as { readonly count: number }
+    const pendingOutbox = db
+      .prepare(`SELECT count(*) AS count FROM _nds_outbox WHERE state != 'settled'`)
+      .get() as { readonly count: number }
+
+    if (status === undefined) {
+      throw new Error('replica did not expose sync_status')
+    }
+
+    return {
+      conflictsOpen: status.conflicts_open,
+      pendingLocalChanges: status.pending_local_changes,
+      workspaceStatus: status.workspace_status,
+      pendingChanges: pendingChanges.count,
+      openConflicts: openConflicts.count,
+      pendingOutbox: pendingOutbox.count,
+    }
+  } finally {
+    db.close()
   }
 }
 
@@ -1819,6 +1871,223 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               objectId: pageId,
               objectType: 'page',
               purpose: 'live-public-sqlite-cdc-row',
+              cleanupState: 'verified-cleaned',
+            })
+          }
+          await rm(workspaceRoot, { recursive: true, force: true })
+          await provisioned.cleanup(recorder.current())
+        }
+      }, 240_000)
+
+      it('proves one scratch row can sync property-only SQLite edits before a single .nmd body edit', async () => {
+        if (processLiveConfig._tag !== 'configured') return
+
+        const env = liveNotionEnvFromProcessEnv()
+        const provisioned = await provisionLiveNotionDataSourceFixture({
+          env,
+          config: { ...processLiveConfig, dataSourceId: undefined },
+        })
+        const recorder = makeLedgerRecorder(env, provisioned.config, provisioned.ledger)
+        const workspaceRoot = decode(
+          AbsolutePath,
+          await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-bidi-body-')),
+        )
+        let pageId: string | undefined
+
+        try {
+          const initialDataSource = await runLive(
+            env,
+            NotionDataSources.retrieve({ dataSourceId: provisioned.config.dataSourceId }),
+          )
+          const titlePropertyName = liveTitlePropertyName(initialDataSource.properties)
+          const replicaFileId = provisioned.config.dataSourceId
+          const bidiPropertyName = 'Bidi Note'
+          const patchedDataSource = await runLive(
+            env,
+            NotionDataSources.update({
+              dataSourceId: provisioned.config.dataSourceId,
+              properties: {
+                [bidiPropertyName]: { rich_text: {} },
+              },
+            }),
+          )
+          await recorder.record({
+            phase: 'mutate',
+            objectId: provisioned.config.dataSourceId,
+            objectType: 'data_source',
+            purpose: 'live-combined-bidi-schema-fixture',
+            cleanupState: 'mutated',
+          })
+          const notesSchemaProperty = liveSchemaProperty({
+            properties: patchedDataSource.properties,
+            name: bidiPropertyName,
+            type: 'rich_text',
+          })
+          const initialTitle = `combined bidi row ${provisioned.config.runId}`
+          const initialBody = `# Combined Bidi Body\n\nInitial body ${provisioned.config.runId}\n`
+          const page = await runLive(
+            env,
+            NotionPages.create({
+              parent: {
+                type: 'data_source_id',
+                data_source_id: provisioned.config.dataSourceId,
+              },
+              properties: {
+                [titlePropertyName]: title(initialTitle),
+                [bidiPropertyName]: { rich_text: [text('initial property note')] },
+              },
+              markdown: initialBody,
+            }),
+          )
+          pageId = page.id
+          await recorder.record({
+            phase: 'create',
+            objectId: pageId,
+            objectType: 'page',
+            purpose: 'live-combined-bidi-body-row',
+            cleanupState: 'created',
+          })
+
+          await runLiveCliCommand({
+            env,
+            argv: [
+              'sync',
+              '--from-notion',
+              provisioned.config.dataSourceId,
+              workspaceRoot,
+              '--no-materialize-bodies',
+            ],
+          })
+
+          const replicaPath = cleanBreakSqlitePath({
+            workspaceRoot,
+            databaseId: replicaFileId,
+          })
+          expect(await listNmdFiles(workspaceRoot)).toHaveLength(0)
+          expect(readReplicaHealth(replicaPath)).toMatchObject({
+            conflictsOpen: 0,
+            pendingLocalChanges: 0,
+            pendingChanges: 0,
+            openConflicts: 0,
+            pendingOutbox: 0,
+          })
+
+          const propertyOnlyNote = `property-only public sqlite ${provisioned.config.runId}`
+          {
+            const db = new DatabaseSync(replicaPath)
+            try {
+              const notesColumn = db
+                .prepare(
+                  `SELECT column_name
+                   FROM schema_properties
+                   WHERE property_id = ?`,
+                )
+                .get(notesSchemaProperty.propertyId) as { readonly column_name: string } | undefined
+              if (notesColumn === undefined) {
+                throw new Error('combined live bidi test did not project the note column')
+              }
+              db.prepare(
+                `UPDATE rows
+                 SET ${quoteSqlIdentifier(notesColumn.column_name)} = ?
+                 WHERE _page_id = ?`,
+              ).run(propertyOnlyNote, pageId)
+              expect(
+                db
+                  .prepare(
+                    `SELECT kind, status, value_json
+                     FROM changes
+                     WHERE page_id = ? AND property_id = ?`,
+                  )
+                  .get(pageId, notesSchemaProperty.propertyId),
+              ).toMatchObject({
+                kind: 'cell_patch',
+                status: 'pending',
+                value_json: JSON.stringify({ _tag: 'rich_text', plainText: propertyOnlyNote }),
+              })
+            } finally {
+              db.close()
+            }
+          }
+
+          await runLiveCliCommand({
+            env,
+            argv: ['sync', workspaceRoot, '--no-materialize-bodies'],
+          })
+          const afterPropertyOnly = await runLive(env, NotionPages.retrieve({ pageId }))
+          expect(livePropertyPlainText(afterPropertyOnly.properties[bidiPropertyName])).toBe(
+            propertyOnlyNote,
+          )
+          expect(await listNmdFiles(workspaceRoot)).toHaveLength(0)
+          expect(readReplicaHealth(replicaPath)).toMatchObject({
+            conflictsOpen: 0,
+            pendingLocalChanges: 0,
+            pendingChanges: 0,
+            openConflicts: 0,
+            pendingOutbox: 0,
+          })
+
+          await recorder.record({
+            phase: 'mutate',
+            objectId: pageId,
+            objectType: 'page',
+            purpose: 'live-combined-bidi-property-only-sqlite',
+            cleanupState: 'mutated',
+          })
+
+          await runLiveCliCommand({ env, argv: ['sync', workspaceRoot] })
+          const nmdFiles = await listNmdFiles(workspaceRoot)
+          expect(nmdFiles).toHaveLength(1)
+          const nmdPath = nmdFiles[0]
+          if (nmdPath === undefined) {
+            throw new Error('combined live bidi test did not materialize one .nmd file')
+          }
+          const currentNmd = await readFile(nmdPath, 'utf8')
+          expect(currentNmd).toContain(`Initial body ${provisioned.config.runId}`)
+          const localBodyEdit = `Updated body ${provisioned.config.runId}`
+          await writeFile(
+            nmdPath,
+            currentNmd.replace(`Initial body ${provisioned.config.runId}`, localBodyEdit),
+            'utf8',
+          )
+
+          await runLiveCliCommand({ env, argv: ['sync', workspaceRoot] })
+          const remoteMarkdown = await runLive(env, NotionPages.getMarkdown({ pageId }))
+          expect(remoteMarkdown.markdown).toContain(localBodyEdit)
+          expect(readReplicaHealth(replicaPath)).toMatchObject({
+            conflictsOpen: 0,
+            pendingLocalChanges: 0,
+            pendingChanges: 0,
+            openConflicts: 0,
+            pendingOutbox: 0,
+          })
+
+          const noOpSync = await runLiveCliCommand({ env, argv: ['sync', workspaceRoot] })
+          expect(noOpSync.status.state).toBe('clean')
+          expect(noOpSync.status.counts.pending).toBe(0)
+          expect(noOpSync.status.counts.conflict).toBe(0)
+          expect(readReplicaHealth(replicaPath)).toMatchObject({
+            conflictsOpen: 0,
+            pendingLocalChanges: 0,
+            pendingChanges: 0,
+            openConflicts: 0,
+            pendingOutbox: 0,
+          })
+
+          await recorder.record({
+            phase: 'verify',
+            objectId: pageId,
+            objectType: 'page',
+            purpose: 'live-combined-bidi-body-sync-clean',
+            cleanupState: 'verified',
+          })
+        } finally {
+          if (pageId !== undefined) {
+            await runLive(env, NotionPages.archive({ pageId }).pipe(Effect.ignore))
+            await recorder.record({
+              phase: 'trash',
+              objectId: pageId,
+              objectType: 'page',
+              purpose: 'live-combined-bidi-body-row',
               cleanupState: 'verified-cleaned',
             })
           }
