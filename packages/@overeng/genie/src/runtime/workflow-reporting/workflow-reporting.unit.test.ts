@@ -8,6 +8,7 @@ import {
   encodeWorkflowReportBundleJson,
   encodeWorkflowReportRecordLine,
   extractWorkflowReportManagedState,
+  findWorkflowReportManagedCommentId,
   parseMarkedWorkflowReportJsonl,
   renderWorkflowReportCommentBody,
   renderWorkflowReportManagedState,
@@ -127,6 +128,34 @@ describe('managed workflow report comments', () => {
 
     expect(mutatedProjection).toContain('rendered markdown changed')
     expect(extractWorkflowReportManagedState(mutatedProjection)).toEqual(state)
+  })
+
+  it('matches existing managed comments by hidden state ID', () => {
+    const deployState = deriveWorkflowReportManagedState({
+      stateId: 'deploy-preview',
+      entryId: 'commit-a',
+      entryLabel: 'Commit abc1234',
+      createdAtUtc: '2026-05-31T15:02:00Z',
+      records: [sampleRecord],
+    })
+    const measurementsState = deriveWorkflowReportManagedState({
+      stateId: 'ci-measurements',
+      entryId: 'commit-a',
+      entryLabel: 'Commit abc1234',
+      createdAtUtc: '2026-05-31T15:02:00Z',
+      records: [sampleRecord],
+    })
+
+    expect(
+      findWorkflowReportManagedCommentId(
+        [
+          { id: 10, body: renderWorkflowReportManagedState(deployState) },
+          { id: 11, body: renderWorkflowReportManagedState(measurementsState) },
+          { id: 12, body: renderWorkflowReportManagedState(deployState) },
+        ],
+        { stateId: 'deploy-preview' },
+      ),
+    ).toBe('12')
   })
 
   it('keeps current records first while preserving prior record order', () => {

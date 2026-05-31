@@ -57,6 +57,11 @@ export type WorkflowReportManagedState = {
   readonly entries: readonly WorkflowReportManagedEntry[]
 }
 
+export type WorkflowReportManagedComment = {
+  readonly id: string | number
+  readonly body?: string | null
+}
+
 const jsonSchemaDraft = 'http://json-schema.org/draft-07/schema#'
 
 const nonEmptyStringSchema = {
@@ -497,6 +502,21 @@ export const renderWorkflowReportManagedState = (state: WorkflowReportManagedSta
     workflowReportManagedMarker,
     `${workflowReportStatePrefix}${encodeWorkflowReportManagedStateJson(state)}${workflowReportStateSuffix}`,
   ].join('\n')
+
+export const findWorkflowReportManagedCommentId = (
+  comments: readonly WorkflowReportManagedComment[],
+  opts: { readonly stateId: string; readonly marker?: string },
+): string | undefined => {
+  const marker = opts.marker ?? workflowReportManagedMarker
+  const existingComment = comments.toReversed().find((comment) => {
+    if (typeof comment.body !== 'string' || comment.body.includes(marker) === false) {
+      return false
+    }
+    return extractWorkflowReportManagedState(comment.body)?.stateId === opts.stateId
+  })
+
+  return existingComment === undefined ? undefined : String(existingComment.id)
+}
 
 export const deriveWorkflowReportManagedState = (opts: {
   readonly stateId: string

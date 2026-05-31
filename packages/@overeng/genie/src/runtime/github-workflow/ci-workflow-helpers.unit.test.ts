@@ -127,6 +127,12 @@ describe('ci workflow reporting helpers', () => {
     expect(ciWorkflowSource).toContain('workflowReportCollectorStep')
     expect(ciWorkflowSource).toContain('workflowReportPublisherStep')
   })
+
+  it('matches managed PR comments by hidden state ID before patching', () => {
+    expect(ciWorkflowSource).toContain('workflow report comment body is missing managed state')
+    expect(ciWorkflowSource).toContain('targetState.stateId')
+    expect(ciWorkflowSource).toContain('issue comment ${comment.id}')
+  })
 })
 
 describe('ci workflow pnpm cache defaults', () => {
