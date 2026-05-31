@@ -75,20 +75,14 @@ let
   nodeModulesProjectionScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
+  pnpmInstallPolicy = import ../../../workspace-tools/lib/pnpm-install-policy.nix { inherit lib; };
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
   pureInstallFlags = [
     (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
   ]
-  ++ [
-    "--config.confirmModulesPurge=false"
-    "--config.side-effects-cache=false"
-    "--config.verify-store-integrity=true"
-    "--config.strict-store-pkg-content-check=true"
-    "--config.package-import-method=clone-or-copy"
-    "--pm-on-fail=ignore"
-  ];
+  ++ pnpmInstallPolicy.liveInstallPolicyFlags;
   pureInstallFlagsString = lib.concatStringsSep " " pureInstallFlags;
 
   packageNameToPath = builtins.listToAttrs (
@@ -295,10 +289,15 @@ let
     }
 
     run_pnpm_install() {
-      local extra_install_args=("$@")
       local install_args
-      reject_impure_pnpm_install_args "''${extra_install_args[@]}" ${installFlagsString}
-      install_args=(install "''${extra_install_args[@]}" ${installFlagsString} ${pureInstallFlagsString} "--config.store-dir=$npm_config_store_dir")
+      reject_impure_pnpm_install_args "$@" ${installFlagsString}
+      install_args=(install "$@" ${installFlagsString} ${pureInstallFlagsString} "--config.store-dir=$npm_config_store_dir")
+
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+        if [ -n "''${CI:-}" ]; then
+          ${pnpmInstallPolicy.darwinNodeOptionsShell}
+        fi
+      ''}
 
       if [ -z "''${CI:-}" ]; then
         pnpm "''${install_args[@]}"
@@ -321,6 +320,18 @@ let
       if [ "$rc" -eq 0 ]; then
         return
       fi
+
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+        if ${
+          pnpmInstallPolicy.darwinCompletedMaterializationCheckShell {
+            statusVar = "rc";
+            logFileVar = "log_file";
+          }
+        }; then
+          echo "[pnpm] Install completed materialization before darwin install teardown; continuing after node teardown exit $rc" >&2
+          return
+        fi
+      ''}
 
       local classification="pnpm install failure"
       local evidence=""

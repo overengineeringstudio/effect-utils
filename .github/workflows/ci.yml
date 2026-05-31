@@ -2419,17 +2419,17 @@ jobs:
         run: |
           set -euo pipefail
           builder='nix/workspace-tools/lib/mk-pnpm-deps.nix'
+          policy='nix/workspace-tools/lib/pnpm-install-policy.nix'
           if [ ! -f "$builder" ]; then
             echo "::error::missing pnpm deps builder: $builder"
             exit 1
           fi
+          if [ ! -f "$policy" ]; then
+            echo "::error::missing pnpm install policy: $policy"
+            exit 1
+          fi
           for required in \
             'store-dir=%s' \
-            'side-effects-cache=false' \
-            'verify-store-integrity=true' \
-            'package-import-method=%s' \
-            'pm-on-fail=ignore' \
-            'strict-store-pkg-content-check=true' \
             'frozenLockfile ? true' \
             'pnpm install --frozen-lockfile --ignore-scripts'; do
             if ! grep -Fq -- "$required" "$builder"; then
@@ -2437,11 +2437,24 @@ jobs:
               exit 1
             fi
           done
+          for required in \
+            'side-effects-cache=false' \
+            'verify-store-integrity=true' \
+            'package-import-method=${packageImportMethod}' \
+            'pm-on-fail=ignore' \
+            'strict-store-pkg-content-check=true' \
+            'child-concurrency=1' \
+            'network-concurrency=4'; do
+            if ! grep -Fq -- "$required" "$policy"; then
+              echo "::error::missing required pnpm policy contract fragment: $required"
+              exit 1
+            fi
+          done
           for forbidden in \
             'package-import-method=hardlink' \
             'lockfile-only' \
             'pnpm add pnpm@'; do
-            if grep -Fq -- "$forbidden" "$builder"; then
+            if grep -Fq -- "$forbidden" "$builder" "$policy"; then
               echo "::error::forbidden pnpm builder contract fragment present: $forbidden"
               exit 1
             fi

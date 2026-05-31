@@ -23,6 +23,7 @@ extract_task_script() {
   local output_path="$3"
   local module_args="${4:-packages = [ ];}"
   local task_name="${5:-pnpm:install}"
+  local host_is_darwin="${6:-false}"
 
   nix-instantiate --eval --strict --json --expr "
     let
@@ -34,6 +35,11 @@ extract_task_script() {
         # addressable immediately, whereas pkgs.writeText would point at a store
         # path that is only realized when a derivation builds.
         writeText = name: text: builtins.toFile name text;
+        stdenv = pkgs.stdenv // {
+          hostPlatform = pkgs.stdenv.hostPlatform // {
+            isDarwin = ${host_is_darwin};
+          };
+        };
       };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix { ${module_args} }) {
         pkgs = pkgsForTest;
@@ -163,7 +169,7 @@ if [ "${1:-}" = "install" ]; then
     echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
     exit 42
   fi
-  mkdir -p node_modules vendor/pkg-v1
+  mkdir -p node_modules/.pnpm vendor/pkg-v1
   touch node_modules/.install-ok
   printf '{"name":"pkg","version":"1.0.0"}\n' > vendor/pkg-v1/package.json
   ln -snf ../vendor/pkg-v1 node_modules/pkg
@@ -177,6 +183,10 @@ nodeLinker: isolated
 storeDir: /tmp/fake-pnpm-store
 virtualStoreDir: node_modules/.pnpm
 YAML
+  if [ -n "${TEST_PNPM_DARWIN_TEARDOWN_STATUS:-}" ]; then
+    echo "Progress: resolved 777, reused 0, downloaded 777, added 777, done" >&2
+    exit "$TEST_PNPM_DARWIN_TEARDOWN_STATUS"
+  fi
   exit 0
 fi
 echo "unexpected fake pnpm invocation: $*" >&2
@@ -229,6 +239,7 @@ extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages =
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-darwin.exec.sh" 'packages = [ "." ];' "pnpm:install" "true"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--no-frozen-lockfile" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-equals.exec.sh" 'packages = [ "." ]; installFlags = [ "--frozen-lockfile=false" ];' "pnpm:install"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-impure-separated.exec.sh" 'packages = [ "." ]; installFlags = [ "--config.package-import-method" "hardlink" ];' "pnpm:install"
@@ -253,6 +264,7 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-clean.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-flags.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-darwin.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-flags.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-equals.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-separated.exec.sh"
@@ -295,7 +307,7 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
-  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --force --frozen-lockfile --config.confirmModulesPurge=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
 )
@@ -484,7 +496,7 @@ echo "Test 16: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.public-hoist-pattern=* --frozen-lockfile --config.confirmModulesPurge=false --config.side-effects-cache=false --config.verify-store-integrity=true --config.strict-store-pkg-content-check=true --child-concurrency=1 --network-concurrency=4 --config.package-import-method=clone-or-copy --pm-on-fail=ignore --config.store-dir=$workspace/.devenv/pnpm-store-pure-v1" "$tmpdir/pnpm.log"
 )
 
 echo "Test 17: impure no-frozen install flags are rejected before pnpm runs"
@@ -549,7 +561,7 @@ echo "Test 19: impure separated install flags are rejected before pnpm runs"
 
 echo "Test 20: impure separated store-dir flags are rejected before pnpm runs"
 grep -qF -- "--config.store-dir=* | --config.store-dir | --store-dir=* | --store-dir)" "$tmpdir/pnpm-install-impure-store-dir-separated.exec.sh"
-grep -qF -- 'reject_impure_pnpm_install_args "${extra_install_args[@]}" --store-dir /tmp/other-pnpm-store' "$tmpdir/pnpm-install-impure-store-dir-separated.exec.sh"
+grep -qF -- 'reject_impure_pnpm_install_args "$@" --store-dir /tmp/other-pnpm-store' "$tmpdir/pnpm-install-impure-store-dir-separated.exec.sh"
 
 echo "Test 21: impure strict-store flags are rejected before pnpm runs"
 (
@@ -615,21 +627,57 @@ echo "Test 23: CI install failures preserve and classify the pnpm log"
   grep -qF "Socket timeout" <<< "$output"
 )
 
-echo "Test 24: generated test task runs vitest without pnpm exec"
+echo "Test 24: Darwin CI install accepts completed pnpm materialization after teardown abort"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export CI=1
+  export CI_DIAGNOSTICS_DIR="$tmpdir/diagnostics-darwin"
+  export TEST_PNPM_DARWIN_TEARDOWN_STATUS=134
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  rm -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+  output="$(bash "$tmpdir/pnpm-install-darwin.exec.sh" 2>&1)"
+  unset TEST_PNPM_DARWIN_TEARDOWN_STATUS
+  unset CI
+  grep -qF "[pnpm] Install completed materialization before darwin install teardown; continuing after node teardown exit 134" <<< "$output"
+  test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+)
+
+echo "Test 25: Darwin CI install accepts completed pnpm materialization after teardown kill"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export CI=1
+  export CI_DIAGNOSTICS_DIR="$tmpdir/diagnostics-darwin-kill"
+  export TEST_PNPM_DARWIN_TEARDOWN_STATUS=137
+  unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
+  rm -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+  output="$(bash "$tmpdir/pnpm-install-darwin.exec.sh" 2>&1)"
+  unset TEST_PNPM_DARWIN_TEARDOWN_STATUS
+  unset CI
+  grep -qF "[pnpm] Install completed materialization before darwin install teardown; continuing after node teardown exit 137" <<< "$output"
+  test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+)
+
+echo "Test 26: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 25: generated storybook task runs storybook without pnpm exec"
+echo "Test 27: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
   [ "$output" = "storybook-shim:build" ]
 )
 
-echo "Test 26: clean leaves shared GVS links intact"
+echo "Test 28: clean leaves shared GVS links intact"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
