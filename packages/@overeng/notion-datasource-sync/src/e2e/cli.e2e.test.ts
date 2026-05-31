@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
@@ -77,6 +78,8 @@ const webhookSetPathPattern =
 const schemaProperties = [
   {
     propertyId: testIds.propertyA,
+    name: 'Row',
+    type: 'title',
     configHash: hash('config-a'),
     writeClass: 'writable' as const,
   },
@@ -230,6 +233,7 @@ const makeInjectedNotionClient = (calls: {
 
 const context = (input: {
   readonly store: CliContext['store']
+  readonly storePath?: CliContext['storePath']
   readonly clock: ReturnType<typeof makeFakeClock>
   readonly maxExecutorSteps?: number
   readonly workspaceRoot?: CliContext['workspaceRoot']
@@ -242,6 +246,7 @@ const context = (input: {
   readonly webhookReceiverStarted?: CliContext['webhookReceiverStarted']
 }): CliContext => ({
   store: input.store,
+  ...(input.storePath === undefined ? {} : { storePath: input.storePath }),
   rootId: testIds.rootId,
   dataSourceId: testIds.dataSourceId,
   workspaceRoot: input.workspaceRoot ?? workspaceRoot,
@@ -2270,6 +2275,46 @@ describe('CLI command surface', () => {
       expect(gateway.ledger.attemptedRestorePages).toHaveLength(0)
     } finally {
       storeFixture.cleanup()
+    }
+  })
+
+  it('push reads pending public rows changes from the replica SQLite file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-push-rows-'))
+    const sqlitePath = join(dir, 'store.sqlite')
+    const clock = makeFakeClock()
+    let store: NotionSyncStore | undefined
+
+    try {
+      await createBoundSqlite({ path: sqlitePath })
+      const database = new DatabaseSync(sqlitePath)
+      try {
+        database
+          .prepare(`UPDATE rows SET "Row_prop_a" = ? WHERE _page_id = ?`)
+          .run('CLI push row edit', testIds.pageId)
+      } finally {
+        database.close()
+      }
+
+      store = openNotionSyncStore({ path: sqlitePath, now: clock.now })
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+      const result = await runWithPorts(
+        runCliCommand(
+          { _tag: 'push', dryRun: true },
+          context({ store, storePath: sqlitePath, clock }),
+        ),
+        {
+          gateway: gateway.gateway,
+        },
+      )
+
+      expect(result.result).toMatchObject({
+        plan: { decisions: [{ _tag: 'EnqueueCommands' }] },
+        executor: { steps: 0, results: [] },
+      })
+      expect(gateway.ledger.attemptedPatchPageProperties).toEqual([])
+    } finally {
+      store?.close()
+      await rm(dir, { recursive: true, force: true })
     }
   })
 

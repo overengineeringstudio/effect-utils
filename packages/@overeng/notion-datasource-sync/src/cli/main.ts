@@ -813,11 +813,58 @@ const runCliCommandEffect = ({
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
     case 'push':
-      return pushOneShotSync({
-        ...context,
-        ...withOptionalRuntimeOptions(context),
-        ...withOptionalCommandOptions({ command, context }),
-      }).pipe(Effect.map((result) => envelope({ command: command._tag, context, result })))
+      return Effect.sync(() => {
+        const replicaPath = context.storePath
+        if (replicaPath === undefined)
+          return { changes: [] as const, intents: [] as const, replicaPath: ':memory:' }
+        if (existsSync(replicaPath) === false)
+          return { changes: [] as const, intents: [] as const, replicaPath }
+        const changes = readPendingReplicaChanges(replicaPath)
+        applyReplicaConflictResolutions({
+          changes,
+          replicaPath,
+          store: context.store,
+          rootId: context.rootId,
+          ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+        })
+        const intents = replicaChangesToPlannerIntents({
+          changes: changes.filter((change) => change.kind !== 'conflict_resolution'),
+          replicaPath,
+          ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+        })
+        return { changes, intents, replicaPath }
+      }).pipe(
+        Effect.flatMap(({ changes, intents, replicaPath }) =>
+          pushOneShotSync({
+            ...context,
+            ...withOptionalRuntimeOptions(context),
+            ...withOptionalCommandOptions({ command, context }),
+            localIntents: intents,
+          }).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() =>
+                settleReplicaChangesAfterSync({
+                  changes,
+                  replicaPath,
+                  store: context.store,
+                  rootId: context.rootId,
+                  decisions: result.plan.decisions,
+                  ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+                }),
+              ),
+            ),
+          ),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() =>
+            projectReplicaIfWritable({
+              context,
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+            }),
+          ),
+        ),
+        Effect.map((result) => envelope({ command: command._tag, context, result })),
+      )
     case 'sync':
       if (command.watch === true) {
         if (command.dryRun === true) {
