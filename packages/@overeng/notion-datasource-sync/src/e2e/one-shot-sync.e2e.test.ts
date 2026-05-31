@@ -978,6 +978,102 @@ describe('one-shot sync orchestration', () => {
     }
   })
 
+  it('does not treat unchanged materialized bodies as local edits after remote drift', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const initialGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const initialPorts = makeHarnessPorts({
+      bodyPages: [bodyPageFor(testIds.pageId, hash('body-a'))],
+    })
+    const localObservation = presentArtifactObservation({
+      pageId: testIds.pageId,
+      path: decode({ schema: WorkspaceRelativePath, value: 'row--page-1.nmd' }),
+      contentHash: hash('body-a'),
+      observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+    })
+    const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const remoteBody = makeFakePageBodySyncPort({
+      pages: [bodyPageFor(testIds.pageId, hash('body-remote-drift'))],
+    })
+    let bodyPlans = 0
+    let bodyPushes = 0
+    const body = {
+      ...remoteBody,
+      planLocalChange: (input: Parameters<typeof remoteBody.planLocalChange>[0]) =>
+        Effect.sync(() => {
+          bodyPlans += 1
+        }).pipe(Effect.zipRight(remoteBody.planLocalChange(input))),
+      push: (command: Parameters<typeof remoteBody.push>[0]) =>
+        Effect.sync(() => {
+          bodyPushes += 1
+        }).pipe(Effect.zipRight(remoteBody.push(command))),
+    }
+    const workspace = makeFakeLocalWorkspacePort({ observations: [localObservation] })
+    const command = decode({
+      schema: PatchPagePropertiesCommand,
+      value: {
+        _tag: 'PatchPagePropertiesCommand',
+        commandId: testIds.commandId,
+        pageId: testIds.pageId,
+        basePropertiesHash: hash('properties-a'),
+        propertyPatch: { [testIds.propertyA]: propertyPatchValue('Local property edit') },
+      },
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        {
+          gateway: initialGateway.gateway,
+          body: initialPorts.body,
+          workspace: initialPorts.workspace,
+        },
+      )
+
+      const result = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          localIntents: [
+            propertyEditIntent({
+              command,
+              baseHash: hash('property-a-base'),
+              expectedPropertyConfigHash: hash('config-a'),
+            }),
+          ],
+          now: clock.now,
+        }),
+        { gateway: gatewayHarness.gateway, body, workspace },
+      )
+
+      expect(bodyPlans).toBe(0)
+      expect(bodyPushes).toBe(0)
+      expect(gatewayHarness.ledger.successfulPatchPageProperties).toEqual([command])
+      expect(result.status).toMatchObject({ state: 'clean', counts: { pending: 0 } })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('counts only inserted body-conflict events in push summaries', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })

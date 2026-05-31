@@ -872,9 +872,9 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
       const pushAfterPull = yield* pushOneShotSync({
         ...options,
         localWorkspaceObservation:
-          localWorkspaceChanged === true && options.deferLocalPlanningUntilAfterPull !== true
-            ? { observations: [] }
-            : local,
+          localWorkspaceChanged === true && options.deferLocalPlanningUntilAfterPull === true
+            ? local
+            : { observations: [] },
       })
       const push =
         prePullPush === undefined

@@ -35,6 +35,15 @@ base/remote projections before planning, but it must not materialize remote
 body content into `.nmd` paths or otherwise overwrite local artifacts until
 guarded materialization runs after planning.
 
+The normal workspace experience keeps the SQLite replica and Markdown page
+bodies converged together. Users should not have to decide which surface to
+sync: initial adoption and established `sync` materialize `.nmd` artifacts,
+observe row properties, observe bodies, plan local changes, and settle remote
+writes as one reconciliation loop. Selective or suppressed surfaces are
+advanced escape hatches for tests, debugging, or explicit policy boundaries;
+they are not the product default and must not change the normal convergence
+contract.
+
 `sync --from-notion` is the initial adoption exception: it has no established
 local desired state for that workspace and remains remote-to-local only. Once a
 workspace is established, all sync modes use the local-capture-first invariant.
@@ -53,6 +62,13 @@ The planner decides whether captured local desired state becomes an outbox
 command, a conflict, an unsupported change, or a rejected malformed intent. The
 materializer only reflects decisions that have already preserved local content
 or proven it safe to overwrite.
+
+Body conflicts are same-surface conflicts. A sync pass observes every remote
+body, but it may open a body conflict only for a page whose captured local
+`.nmd` desired state differs from its known base, whose body push fails
+read-after-write verification, or whose body adapter reports a body-specific
+guard for that page. Re-observing unchanged or newly materialized body artifacts
+must not create unrelated body conflicts during property/lifecycle sync.
 
 ## Outbox Lifecycle
 

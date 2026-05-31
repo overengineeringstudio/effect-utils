@@ -200,8 +200,8 @@ describe('notion datasource sync OTEL tracing', () => {
         spanAncestors(span).includes(spanNames.syncOneShot),
       )
       expectSpanAttributes(syncPush, {
-        [spanAttr.enqueuedCommands]: 1,
-        [spanAttr.executorSteps]: 2,
+        [spanAttr.enqueuedCommands]: 0,
+        [spanAttr.executorSteps]: 1,
         [spanAttr.maxStepsReached]: false,
         [spanAttr.outboxQueuedCount]: 0,
         [spanAttr.statusState]: 'clean',
@@ -214,12 +214,6 @@ describe('notion datasource sync OTEL tracing', () => {
       )
       expectSpan(trace.spans, spanNames.outboxAttempt, (span) =>
         spanAncestors(span).includes(spanNames.syncPush),
-      )
-      expectSpan(trace.spans, spanNames.outboxObserveSurface, (span) =>
-        spanAncestors(span).includes(spanNames.outboxAttempt),
-      )
-      expectSpan(trace.spans, spanNames.outboxWriteRemote, (span) =>
-        spanAncestors(span).includes(spanNames.outboxAttempt),
       )
 
       for (const span of trace.spans.filter((candidate) => candidate.name.startsWith('notion.'))) {
