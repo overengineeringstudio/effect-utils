@@ -1,34 +1,137 @@
+import { Either, Schema } from 'effect'
+
 /** Stable keys for the durable Notion datasource-sync demo domains. */
+export const NotionDatasourceSyncDemoDataSourceKey = Schema.Literal(
+  'projects',
+  'incidents',
+  'customers',
+  'activity',
+)
+
 export type NotionDatasourceSyncDemoDataSourceKey =
-  | 'projects'
-  | 'incidents'
-  | 'customers'
-  | 'activity'
+  typeof NotionDatasourceSyncDemoDataSourceKey.Type
+
+/** Separates read-only verification from the guarded public synthetic fixture provisioner. */
+export const NotionDatasourceSyncLiveFixtureLane = Schema.Literal(
+  'read-only-verifier',
+  'provisioner',
+)
+
+export type NotionDatasourceSyncLiveFixtureLane = typeof NotionDatasourceSyncLiveFixtureLane.Type
+
+const NotionId = Schema.String.pipe(
+  Schema.pattern(/^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+)
+
+const NotionUrl = Schema.String.pipe(Schema.pattern(/^https:\/\/www\.notion\.so\//))
 
 /** Expected live Notion database/data-source shape for one demo domain. */
-export type NotionDatasourceSyncDemoDataSource = {
-  readonly key: NotionDatasourceSyncDemoDataSourceKey
-  readonly title: string
-  readonly databaseId: string
-  readonly databaseUrl: string
-  readonly dataSourceId: string
-  readonly expectedRows: number
-  readonly expectedPropertyNames: readonly string[]
-  readonly fastReplica: boolean
-}
+export const NotionDatasourceSyncDemoDataSourceSchema = Schema.Struct({
+  key: NotionDatasourceSyncDemoDataSourceKey,
+  title: Schema.NonEmptyTrimmedString,
+  databaseId: NotionId,
+  databaseUrl: NotionUrl,
+  dataSourceId: NotionId,
+  expectedRows: Schema.Number,
+  expectedPropertyNames: Schema.Array(Schema.NonEmptyTrimmedString),
+  fastReplica: Schema.Boolean,
+}).annotations({ identifier: 'NotionDatasourceSync.DemoDataSource' })
+
+export type NotionDatasourceSyncDemoDataSource =
+  typeof NotionDatasourceSyncDemoDataSourceSchema.Type
+
+/** Safety contract for the lane that may write demo fixture IDs back into the public manifest. */
+export const NotionDatasourceSyncDemoProvisionerContractSchema = Schema.Struct({
+  lane: Schema.Literal('provisioner'),
+  ownedBy: Schema.Literal('notion-datasource-sync-demo-provisioner'),
+  writes: Schema.Literal('public-synthetic-fixtures-only'),
+  emittedIds: Schema.Literal('env-or-public-synthetic-manifest'),
+  requiredMarker: Schema.NonEmptyTrimmedString,
+}).annotations({ identifier: 'NotionDatasourceSync.DemoProvisionerContract' })
 
 /** Durable online demo page plus every child data source the package verifies. */
-export type NotionDatasourceSyncDemoManifest = {
-  readonly pageId: string
-  readonly pageUrl: string
-  readonly dataSources: readonly NotionDatasourceSyncDemoDataSource[]
+export const NotionDatasourceSyncDemoManifestSchema = Schema.Struct({
+  apiVersion: Schema.Literal(1),
+  fixtureKind: Schema.Literal('public-synthetic'),
+  pageId: NotionId,
+  pageUrl: NotionUrl,
+  readOnlyContract: Schema.Struct({
+    lane: Schema.Literal('read-only-verifier'),
+    minDurableRows: Schema.Number,
+    localFullReplica: Schema.Literal('explicit-opt-in'),
+  }),
+  provisionerContract: NotionDatasourceSyncDemoProvisionerContractSchema,
+  dataSources: Schema.Array(NotionDatasourceSyncDemoDataSourceSchema),
+}).annotations({ identifier: 'NotionDatasourceSync.DemoManifest' })
+
+export type NotionDatasourceSyncDemoManifest = typeof NotionDatasourceSyncDemoManifestSchema.Type
+
+const NotionApiFailureBodySchema = Schema.Struct({
+  object: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.Number),
+  code: Schema.optional(Schema.String),
+  message: Schema.optional(Schema.String),
+}).annotations({ identifier: 'NotionDatasourceSync.DemoApiFailureBody' })
+
+const decodeNotionApiFailureBody = (
+  body: string | undefined,
+): typeof NotionApiFailureBodySchema.Type | undefined => {
+  if (body === undefined) return undefined
+  const decoded = Schema.decodeUnknownEither(Schema.parseJson(NotionApiFailureBodySchema))(body)
+  return Either.isRight(decoded) === true ? decoded.right : undefined
 }
+
+/** Format live demo access failures without echoing raw Notion response bodies, request IDs, integration IDs, or object IDs. */
+export const formatNotionDatasourceSyncDemoAccessFailure = ({
+  operation,
+  targetAlias,
+  status,
+  body,
+  code,
+}: {
+  readonly operation: string
+  readonly targetAlias: string
+  readonly status?: number | undefined
+  readonly body?: string | undefined
+  readonly code?: string | undefined
+}): string => {
+  const parsed = decodeNotionApiFailureBody(body)
+  const resolvedStatus = status ?? parsed?.status
+  const resolvedCode = code ?? parsed?.code ?? 'unknown'
+  const statusText = resolvedStatus === undefined ? 'unavailable' : resolvedStatus.toString()
+  const sharingHint =
+    resolvedStatus === 404 && resolvedCode === 'object_not_found'
+      ? 'share the durable synthetic demo page and every child database/data source with the configured Notion integration, or update the local demo manifest/config to point at an accessible synthetic fixture'
+      : 'verify the configured Notion integration can read the durable synthetic demo page, child databases, and data sources'
+
+  return [
+    `Notion live demo access check failed: operation=${operation} target=${targetAlias}.`,
+    `status=${statusText} code=${resolvedCode}.`,
+    `blocker=${sharingHint}.`,
+  ].join(' ')
+}
+
+const minimumDurableReadOnlyRows = 500
 
 /** Source-of-truth manifest for the public automated datasource-sync demo page. */
 export const notionDatasourceSyncDemoManifest = {
+  apiVersion: 1,
+  fixtureKind: 'public-synthetic',
   pageId: '36cf141b18dc803b98ebd21f2a243453',
   pageUrl:
     'https://www.notion.so/overeng-notion-datasource-sync-demo-automated-36cf141b18dc803b98ebd21f2a243453',
+  readOnlyContract: {
+    lane: 'read-only-verifier',
+    minDurableRows: minimumDurableReadOnlyRows,
+    localFullReplica: 'explicit-opt-in',
+  },
+  provisionerContract: {
+    lane: 'provisioner',
+    ownedBy: 'notion-datasource-sync-demo-provisioner',
+    writes: 'public-synthetic-fixtures-only',
+    emittedIds: 'env-or-public-synthetic-manifest',
+    requiredMarker: 'notion datasource sync automated demo',
+  },
   dataSources: [
     {
       key: 'projects',
@@ -100,9 +203,68 @@ export const notionDatasourceSyncDemoManifest = {
   ],
 } as const satisfies NotionDatasourceSyncDemoManifest
 
+/** Decode and validate the demo manifest schema without requiring credentials. */
+export const decodeNotionDatasourceSyncDemoManifest = Schema.decodeUnknownSync(
+  NotionDatasourceSyncDemoManifestSchema,
+)
+
+/** Enforce the committed public synthetic fixture contract before any read-only verifier or provisioner lane consumes it. */
+export const assertNotionDatasourceSyncDemoManifestContract = ({
+  value,
+  lane,
+}: {
+  readonly value: unknown
+  readonly lane: NotionDatasourceSyncLiveFixtureLane
+}): NotionDatasourceSyncDemoManifest => {
+  const manifest = decodeNotionDatasourceSyncDemoManifest(value)
+  const keys = manifest.dataSources.map((dataSource) => dataSource.key)
+  const duplicateKey = keys.find((key, index) => keys.indexOf(key) !== index)
+  if (duplicateKey !== undefined) {
+    throw new Error(`notion datasource sync demo manifest has duplicate key ${duplicateKey}`)
+  }
+
+  const durableReadOnlySources = manifest.dataSources.filter(
+    (dataSource) => dataSource.expectedRows >= manifest.readOnlyContract.minDurableRows,
+  )
+  if (durableReadOnlySources.length === 0) {
+    throw new Error(
+      `notion datasource sync demo manifest must include a durable read-only fixture with at least ${manifest.readOnlyContract.minDurableRows.toString()} rows`,
+    )
+  }
+  if (durableReadOnlySources.some((dataSource) => dataSource.fastReplica) === true) {
+    throw new Error('durable read-only 500+ row fixtures must stay out of the fast replica lane')
+  }
+  for (const dataSource of manifest.dataSources) {
+    if (dataSource.expectedRows < 1) {
+      throw new Error(`notion datasource sync demo fixture ${dataSource.key} must have rows`)
+    }
+    if (dataSource.expectedPropertyNames.includes('Name') === false) {
+      throw new Error(`notion datasource sync demo fixture ${dataSource.key} must expose Name`)
+    }
+  }
+
+  if (lane === 'provisioner') {
+    if (manifest.fixtureKind !== 'public-synthetic') {
+      throw new Error('provisioner lane may only consume public synthetic fixture manifests')
+    }
+    if (manifest.provisionerContract.writes !== 'public-synthetic-fixtures-only') {
+      throw new Error('provisioner lane must be scoped to public synthetic fixtures only')
+    }
+  }
+
+  return manifest
+}
+
 /** Demo data sources small enough for the default live local-replica verifier. */
 export const notionDatasourceSyncFastDemoDataSources =
-  notionDatasourceSyncDemoManifest.dataSources.filter((dataSource) => dataSource.fastReplica)
+  assertNotionDatasourceSyncDemoManifestContract({
+    value: notionDatasourceSyncDemoManifest,
+    lane: 'read-only-verifier',
+  }).dataSources.filter((dataSource) => dataSource.fastReplica)
 
 /** All demo data sources, including the opt-in high-cardinality activity replica. */
-export const notionDatasourceSyncFullDemoDataSources = notionDatasourceSyncDemoManifest.dataSources
+export const notionDatasourceSyncFullDemoDataSources =
+  assertNotionDatasourceSyncDemoManifestContract({
+    value: notionDatasourceSyncDemoManifest,
+    lane: 'read-only-verifier',
+  }).dataSources

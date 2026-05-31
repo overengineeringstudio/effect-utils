@@ -1,5 +1,17 @@
 {
   "automatedDemo": {
+    "apiVersion": 1,
+    "fixtureKind": "public-synthetic",
+    "lanes": {
+      "readOnlyVerifier": {
+        "contract": "validate live schema and row counts for all data sources; local 500-row replica is explicit opt-in",
+        "minDurableRows": 500
+      },
+      "provisioner": {
+        "contract": "create or repair only public synthetic demo fixtures and emit stable IDs as env/config or this public manifest",
+        "requiredMarker": "notion datasource sync automated demo"
+      }
+    },
     "pageId": "36cf141b18dc803b98ebd21f2a243453",
     "url": "https://www.notion.so/overeng-notion-datasource-sync-demo-automated-36cf141b18dc803b98ebd21f2a243453",
     "manifestSource": "src/demo/live-demo.ts",

@@ -5,9 +5,10 @@ The durable automated demo page is:
 https://www.notion.so/overeng-notion-datasource-sync-demo-automated-36cf141b18dc803b98ebd21f2a243453
 
 The checked-in source of truth for the demo is `src/demo/live-demo.ts`. It
-records the page ID, database IDs, data-source IDs, expected property names, and
-row counts for the current online demo. Local SQLite files are generated from
-that page by credentialed automation and are not committed.
+records the public synthetic page ID, database IDs, data-source IDs, expected
+property names, row counts, and lane contracts for the current online demo.
+Local SQLite files are generated from that page by credentialed automation and
+are not committed.
 
 Run the read-only verifier and fast local replica proof with a Notion token that
 can read the demo page:
@@ -55,7 +56,10 @@ demo-workspace/
 
 The default `demo:verify` lane validates the 500-row activity source online but
 does not generate the full local activity replica, because that path is
-rate-limit-heavy. Run the full local replica proof explicitly:
+rate-limit-heavy. This is the durable read-only fixture contract: a 500+ row
+public synthetic source must stay present in the manifest, and full local
+replication remains an explicit opt-in. Run the full local replica proof
+explicitly:
 
 ```sh
 export NOTION_API_TOKEN="secret_..."
@@ -63,8 +67,14 @@ pnpm --dir packages/@overeng/notion-datasource-sync run demo:verify:full
 ```
 
 Do not check in SQLite replicas produced from live/private Notion workspaces.
-The current demo intentionally commits the manifest and automation only.
+The current demo intentionally commits the public synthetic manifest and
+automation only.
 
-`fixtures.json` points to the stable page mapping and manifest source. Live E2E
-scratch ledgers remain in local `tmp/` artifacts and the configured Notion
-ledger page.
+Provisioning is a separate lane. A provisioner may create or repair only the
+public synthetic demo fixtures marked by `notion datasource sync automated demo`;
+stable IDs for private or scratch workspaces must remain environment/config
+values and must not be added to the manifest.
+
+`fixtures.json` points to the stable public synthetic page mapping, manifest
+source, and lane contracts. Live E2E scratch ledgers remain in local `tmp/`
+artifacts and the configured Notion ledger page.

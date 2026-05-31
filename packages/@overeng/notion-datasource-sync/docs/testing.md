@@ -59,10 +59,14 @@ public synthetic data and contains no private row content, private workspace
 names, private IDs, tokens, or signed URLs.
 
 Provisioning the canonical synthetic workspace is an explicit lane, separate
-from runtime tests. The provisioner may create or repair durable read-only
-fixtures, scratch parents, and ledger pages, then emit the environment/config
-values used by CI or local runs. Normal live tests consume those IDs and fail
-closed if the zone marker, write allowlist, or ledger marker is absent.
+from runtime tests. The checked-in demo manifest schema models this as the
+`provisioner` lane and only allows public synthetic fixture writes. The
+provisioner may create or repair durable read-only fixtures, scratch parents,
+and ledger pages, then emit the environment/config values used by CI or local
+runs. Stable IDs stay in env/config unless the target is a deliberately public
+synthetic fixture, such as the automated demo manifest. Normal live tests consume
+those IDs and fail closed if the zone marker, write allowlist, or ledger marker
+is absent.
 
 The scratch parent page must be dedicated to the integration. Runtime tests
 create isolated temporary data sources and rows under that parent, record all
@@ -137,6 +141,10 @@ schema and row counts for all four data sources, then generates local
 public `rows`, `schema_properties`, private cell shadow, and `sync_status`
 surfaces. The 500-row activity source is validated online in the fast lane and
 can be fully replicated locally with:
+
+Credential-free unit tests validate the manifest schema, the provisioner lane
+scope, and the durable 500+ row fixture requirement before any live verifier or
+provisioner code consumes the committed manifest.
 
 ```sh
 export NOTION_API_TOKEN="<notion-integration-token>"

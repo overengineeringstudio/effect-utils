@@ -13,6 +13,7 @@ import {
   runCliCommandWithRuntime,
 } from '../cli/main.ts'
 import {
+  formatNotionDatasourceSyncDemoAccessFailure,
   notionDatasourceSyncDemoManifest,
   notionDatasourceSyncFastDemoDataSources,
   notionDatasourceSyncFullDemoDataSources,
@@ -38,7 +39,17 @@ const readCount = (database: DatabaseSync, sql: string): number => {
   return row.count
 }
 
-const notionFetch = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+const notionFetch = async <T>({
+  path,
+  operation,
+  targetAlias,
+  init = {},
+}: {
+  readonly path: string
+  readonly operation: string
+  readonly targetAlias: string
+  readonly init?: RequestInit
+}): Promise<T> => {
   if (liveToken === undefined) {
     throw new Error('live Notion demo test requires NOTION_API_TOKEN or NOTION_TOKEN')
   }
@@ -54,7 +65,14 @@ const notionFetch = async <T>(path: string, init: RequestInit = {}): Promise<T> 
   })
   if (response.ok === false) {
     const body = await response.text()
-    throw new Error(`Notion API request failed: ${path} ${response.status} ${body.slice(0, 500)}`)
+    throw new Error(
+      formatNotionDatasourceSyncDemoAccessFailure({
+        operation,
+        targetAlias,
+        status: response.status,
+        body,
+      }),
+    )
   }
   return (await response.json()) as T
 }
@@ -88,9 +106,11 @@ const listDemoPageDatabaseBlocks = async () => {
     const query = new URLSearchParams({ page_size: '100' })
     if (cursor !== null) query.set('start_cursor', cursor)
     // oxlint-disable-next-line no-await-in-loop -- Notion pagination is cursor-serial.
-    const page = await notionFetch<NotionChildrenResponse>(
-      `/blocks/${notionDatasourceSyncDemoManifest.pageId}/children?${query.toString()}`,
-    )
+    const page = await notionFetch<NotionChildrenResponse>({
+      path: `/blocks/${notionDatasourceSyncDemoManifest.pageId}/children?${query.toString()}`,
+      operation: 'list-demo-page-databases',
+      targetAlias: 'demo-page',
+    })
     blocks.push(...page.results.filter((block) => block.type === 'child_database'))
     cursor = page.has_more === true ? page.next_cursor : null
   } while (cursor !== null)
@@ -106,13 +126,15 @@ const countRemoteRows = async (dataSourceId: string): Promise<number> => {
       ...(cursor === null ? {} : { start_cursor: cursor }),
     }
     // oxlint-disable-next-line no-await-in-loop -- Notion pagination is cursor-serial.
-    const page: NotionQueryResponse = await notionFetch<NotionQueryResponse>(
-      `/data_sources/${dataSourceId}/query`,
-      {
+    const page: NotionQueryResponse = await notionFetch<NotionQueryResponse>({
+      path: `/data_sources/${dataSourceId}/query`,
+      operation: 'query-data-source',
+      targetAlias: 'demo-data-source',
+      init: {
         method: 'POST',
         body: JSON.stringify(body),
       },
-    )
+    })
     count += page.results.length
     cursor = page.has_more === true ? page.next_cursor : null
   } while (cursor !== null)
@@ -138,15 +160,16 @@ const syncDemoDataSource = async ({
     '--no-materialize-bodies',
   ]
   const parsed = parseCliCommand(argv)
-  const command = await Effect.runPromise(
-    resolveCliCommandNotionRefs({
-      command: parsed,
-      options: { env: { NOTION_API_TOKEN: liveToken } },
-    }),
-  )
-  const context = parseCliContext({ argv, resolvedCommand: command })
+  let context: ReturnType<typeof parseCliContext> | undefined
 
   try {
+    const command = await Effect.runPromise(
+      resolveCliCommandNotionRefs({
+        command: parsed,
+        options: { env: { NOTION_API_TOKEN: liveToken } },
+      }),
+    )
+    context = parseCliContext({ argv, resolvedCommand: command })
     await Effect.runPromise(
       runCliCommandWithRuntime({
         command,
@@ -154,8 +177,23 @@ const syncDemoDataSource = async ({
         options: { env: { NOTION_API_TOKEN: liveToken } },
       }),
     )
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith('Notion live demo access check failed:') === true
+    ) {
+      throw error
+    }
+    throw new Error(
+      formatNotionDatasourceSyncDemoAccessFailure({
+        operation: 'sync-data-source',
+        targetAlias: `data-source:${dataSource.key}`,
+        code: 'cli_argument_error',
+      }),
+      { cause: error },
+    )
   } finally {
-    context.store.close()
+    context?.store.close()
   }
 }
 
@@ -238,9 +276,11 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
       expect(childDatabase?.child_database?.title).toBe(dataSource.title)
 
       // oxlint-disable-next-line no-await-in-loop -- sequential requests keep the live demo verifier rate-limit friendly.
-      const remote = await notionFetch<NotionDataSourceResponse>(
-        `/data_sources/${dataSource.dataSourceId}`,
-      )
+      const remote = await notionFetch<NotionDataSourceResponse>({
+        path: `/data_sources/${dataSource.dataSourceId}`,
+        operation: 'retrieve-data-source',
+        targetAlias: `data-source:${dataSource.key}`,
+      })
       const title = remote.title?.map((part) => part.plain_text ?? '').join('') ?? ''
       const propertyNames = Object.keys(remote.properties)
       // oxlint-disable-next-line no-await-in-loop -- sequential requests keep the live demo verifier rate-limit friendly.
