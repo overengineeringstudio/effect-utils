@@ -55,7 +55,8 @@
   },
   "scripts": {
     "demo:verify": "NOTION_DATASOURCE_SYNC_LIVE=1 vitest run src/e2e/live-demo-replica.e2e.test.ts --config vitest.config.ts",
-    "demo:verify:full": "NOTION_DATASOURCE_SYNC_LIVE=1 NOTION_DATASOURCE_SYNC_FULL_DEMO=1 vitest run src/e2e/live-demo-replica.e2e.test.ts --config vitest.config.ts"
+    "demo:verify:full": "NOTION_DATASOURCE_SYNC_LIVE=1 NOTION_DATASOURCE_SYNC_FULL_DEMO=1 vitest run src/e2e/live-demo-replica.e2e.test.ts --config vitest.config.ts",
+    "demo:provision": "NOTION_DATASOURCE_SYNC_LIVE=1 NOTION_DATASOURCE_SYNC_REQUIRED_CAPABILITIES=data_source_retrieve,data_source_query,data_source_metadata_update,page_retrieve,page_property_paginate,page_create vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts -t \"credentialed automated demo showcase\""
   },
   "dependencies": {
     "@overeng/notion-effect-client": "workspace:^",

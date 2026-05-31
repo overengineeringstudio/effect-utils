@@ -144,7 +144,17 @@ can be fully replicated locally with:
 
 Credential-free unit tests validate the manifest schema, the provisioner lane
 scope, and the durable 500+ row fixture requirement before any live verifier or
-provisioner code consumes the committed manifest.
+provisioner code consumes the committed manifest. The live verifier resolves
+provisioned data-source IDs by stable public synthetic database titles, so a
+repaired demo page can be verified through `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID`
+without committing new Notion IDs.
+
+```sh
+export NOTION_API_TOKEN="<notion-integration-token>"
+export NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID="<scratch-parent-page-id>"
+export NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID="<public-synthetic-demo-page-id>"
+pnpm --dir packages/@overeng/notion-datasource-sync run demo:provision
+```
 
 ```sh
 export NOTION_API_TOKEN="<notion-integration-token>"

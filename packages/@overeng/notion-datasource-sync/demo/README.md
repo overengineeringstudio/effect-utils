@@ -75,6 +75,20 @@ public synthetic demo fixtures marked by `notion datasource sync automated demo`
 stable IDs for private or scratch workspaces must remain environment/config
 values and must not be added to the manifest.
 
+Run the provisioner against a writable public synthetic demo page:
+
+```sh
+export NOTION_API_TOKEN="secret_..."
+export NOTION_DATASOURCE_SYNC_PARENT_PAGE_ID="<scratch-parent-page-id>"
+export NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID="<public-synthetic-demo-page-id>"
+pnpm --dir packages/@overeng/notion-datasource-sync run demo:provision
+```
+
+After provisioning, `demo:verify` and `demo:verify:full` resolve the live
+data-source IDs from stable database titles on `NOTION_DATASOURCE_SYNC_DEMO_PAGE_ID`.
+That keeps freshly provisioned IDs out of Git while preserving a full-replica
+verification path.
+
 `fixtures.json` points to the stable public synthetic page mapping, manifest
 source, and lane contracts. Live E2E scratch ledgers remain in local `tmp/`
 artifacts and the configured Notion ledger page.

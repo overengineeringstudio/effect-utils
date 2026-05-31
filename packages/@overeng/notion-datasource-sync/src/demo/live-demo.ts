@@ -66,6 +66,13 @@ export const NotionDatasourceSyncDemoManifestSchema = Schema.Struct({
 
 export type NotionDatasourceSyncDemoManifest = typeof NotionDatasourceSyncDemoManifestSchema.Type
 
+/** Child database identity discovered from a live synthetic demo page before local verification syncs it. */
+export type NotionDatasourceSyncDemoChildDatabase = {
+  readonly databaseId: string
+  readonly title: string
+  readonly dataSourceId: string
+}
+
 const NotionApiFailureBodySchema = Schema.Struct({
   object: Schema.optional(Schema.String),
   status: Schema.optional(Schema.Number),
@@ -254,6 +261,34 @@ export const assertNotionDatasourceSyncDemoManifestContract = ({
 
   return manifest
 }
+
+/** Resolve live demo data-source IDs from stable synthetic database titles without requiring those IDs to be committed. */
+export const resolveNotionDatasourceSyncDemoDataSources = ({
+  manifest,
+  childDatabases,
+}: {
+  readonly manifest: NotionDatasourceSyncDemoManifest
+  readonly childDatabases: ReadonlyArray<NotionDatasourceSyncDemoChildDatabase>
+}): ReadonlyArray<NotionDatasourceSyncDemoDataSource> =>
+  manifest.dataSources.map((expected) => {
+    const matches = childDatabases.filter((database) => database.title === expected.title)
+    if (matches.length === 0) {
+      throw new Error(`live demo page is missing child database ${expected.key}`)
+    }
+    if (matches.length > 1) {
+      throw new Error(`live demo page has duplicate child database ${expected.key}`)
+    }
+    const [database] = matches
+    if (database === undefined) {
+      throw new Error(`live demo page is missing child database ${expected.key}`)
+    }
+    return {
+      ...expected,
+      databaseId: database.databaseId,
+      databaseUrl: `https://www.notion.so/${database.databaseId.replaceAll('-', '')}`,
+      dataSourceId: database.dataSourceId,
+    }
+  })
 
 /** Demo data sources small enough for the default live local-replica verifier. */
 export const notionDatasourceSyncFastDemoDataSources =

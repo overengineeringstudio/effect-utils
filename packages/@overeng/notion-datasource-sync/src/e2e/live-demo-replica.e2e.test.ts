@@ -15,8 +15,7 @@ import {
 import {
   formatNotionDatasourceSyncDemoAccessFailure,
   notionDatasourceSyncDemoManifest,
-  notionDatasourceSyncFastDemoDataSources,
-  notionDatasourceSyncFullDemoDataSources,
+  resolveNotionDatasourceSyncDemoDataSources,
   type NotionDatasourceSyncDemoDataSource,
 } from '../demo/live-demo.ts'
 
@@ -93,13 +92,18 @@ type NotionDataSourceResponse = {
   readonly properties: Record<string, unknown>
 }
 
+type NotionDatabaseResponse = {
+  readonly id: string
+  readonly data_sources?: ReadonlyArray<{ readonly id: string }>
+}
+
 type NotionQueryResponse = {
   readonly results: ReadonlyArray<unknown>
   readonly has_more: boolean
   readonly next_cursor: string | null
 }
 
-const listDemoPageDatabaseBlocks = async () => {
+const listDemoPageDatabaseBlocks = async (pageId: string) => {
   const blocks: Array<NotionChildrenResponse['results'][number]> = []
   let cursor: string | null = null
   do {
@@ -107,7 +111,7 @@ const listDemoPageDatabaseBlocks = async () => {
     if (cursor !== null) query.set('start_cursor', cursor)
     // oxlint-disable-next-line no-await-in-loop -- Notion pagination is cursor-serial.
     const page = await notionFetch<NotionChildrenResponse>({
-      path: `/blocks/${notionDatasourceSyncDemoManifest.pageId}/children?${query.toString()}`,
+      path: `/blocks/${pageId}/children?${query.toString()}`,
       operation: 'list-demo-page-databases',
       targetAlias: 'demo-page',
     })
@@ -117,7 +121,57 @@ const listDemoPageDatabaseBlocks = async () => {
   return blocks
 }
 
-const countRemoteRows = async (dataSourceId: string): Promise<number> => {
+const retrieveDatabaseDataSourceId = async ({
+  databaseId,
+  targetAlias,
+}: {
+  readonly databaseId: string
+  readonly targetAlias: string
+}): Promise<string> => {
+  const database = await notionFetch<NotionDatabaseResponse>({
+    path: `/databases/${databaseId}`,
+    operation: 'retrieve-database',
+    targetAlias,
+  })
+  const dataSourceId = database.data_sources?.[0]?.id
+  if (dataSourceId === undefined) {
+    throw new Error(
+      formatNotionDatasourceSyncDemoAccessFailure({
+        operation: 'retrieve-database',
+        targetAlias,
+        code: 'missing_child_data_source',
+      }),
+    )
+  }
+  return dataSourceId
+}
+
+const resolveLiveDemoDataSources = async (): Promise<
+  ReadonlyArray<NotionDatasourceSyncDemoDataSource>
+> => {
+  const childDatabases = await listDemoPageDatabaseBlocks(expectedDemoPageId)
+  const expectedTitles: ReadonlySet<string> = new Set(
+    notionDatasourceSyncDemoManifest.dataSources.map((dataSource) => dataSource.title),
+  )
+  const childDatabasesWithDataSources = await Promise.all(
+    childDatabases
+      .filter((database) => expectedTitles.has(database.child_database?.title ?? '') === true)
+      .map(async (database) => ({
+        databaseId: database.id,
+        title: database.child_database?.title ?? '',
+        dataSourceId: await retrieveDatabaseDataSourceId({
+          databaseId: database.id,
+          targetAlias: `database:${database.child_database?.title ?? 'unknown'}`,
+        }),
+      })),
+  )
+  return resolveNotionDatasourceSyncDemoDataSources({
+    manifest: notionDatasourceSyncDemoManifest,
+    childDatabases: childDatabasesWithDataSources,
+  })
+}
+
+const countRemoteRows = async (dataSource: NotionDatasourceSyncDemoDataSource): Promise<number> => {
   let count = 0
   let cursor: string | null = null
   do {
@@ -127,9 +181,9 @@ const countRemoteRows = async (dataSourceId: string): Promise<number> => {
     }
     // oxlint-disable-next-line no-await-in-loop -- Notion pagination is cursor-serial.
     const page: NotionQueryResponse = await notionFetch<NotionQueryResponse>({
-      path: `/data_sources/${dataSourceId}/query`,
+      path: `/data_sources/${dataSource.dataSourceId}/query`,
       operation: 'query-data-source',
-      targetAlias: 'demo-data-source',
+      targetAlias: `data-source:${dataSource.key}`,
       init: {
         method: 'POST',
         body: JSON.stringify(body),
@@ -262,16 +316,15 @@ const inspectBodyMaterialization = async (workspace: string, sqlitePath: string)
 
 describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contract', () => {
   it('matches the current public demo page, child data sources, schemas, and row counts', async () => {
-    expect(normalizeNotionId(expectedDemoPageId)).toBe(
-      normalizeNotionId(notionDatasourceSyncDemoManifest.pageId),
-    )
+    expect(normalizeNotionId(expectedDemoPageId)).toHaveLength(32)
 
-    const childDatabases = await listDemoPageDatabaseBlocks()
+    const resolvedDataSources = await resolveLiveDemoDataSources()
+    const childDatabases = await listDemoPageDatabaseBlocks(expectedDemoPageId)
     const childDatabaseById = new Map(
       childDatabases.map((block) => [normalizeNotionId(block.id), block]),
     )
 
-    for (const dataSource of notionDatasourceSyncDemoManifest.dataSources) {
+    for (const dataSource of resolvedDataSources) {
       const childDatabase = childDatabaseById.get(normalizeNotionId(dataSource.databaseId))
       expect(childDatabase?.child_database?.title).toBe(dataSource.title)
 
@@ -284,7 +337,7 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
       const title = remote.title?.map((part) => part.plain_text ?? '').join('') ?? ''
       const propertyNames = Object.keys(remote.properties)
       // oxlint-disable-next-line no-await-in-loop -- sequential requests keep the live demo verifier rate-limit friendly.
-      const rowCount = await countRemoteRows(dataSource.dataSourceId)
+      const rowCount = await countRemoteRows(dataSource)
 
       expect(normalizeNotionId(remote.id)).toBe(normalizeNotionId(dataSource.dataSourceId))
       expect(title).toBe(dataSource.title)
@@ -297,7 +350,8 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
   it('syncs the fast demo data sources into database-id-named SQLite replicas', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-demo-'))
     try {
-      for (const dataSource of notionDatasourceSyncFastDemoDataSources) {
+      const resolvedDataSources = await resolveLiveDemoDataSources()
+      for (const dataSource of resolvedDataSources.filter((source) => source.fastReplica)) {
         // oxlint-disable-next-line no-await-in-loop -- sequential sync avoids hammering Notion with replica builds.
         await syncDemoDataSource({ dataSource, workspace })
         const sqlitePath = join(workspace, `${dataSource.databaseId}.sqlite`)
@@ -326,7 +380,8 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
     async () => {
       const workspace = await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-demo-full-'))
       try {
-        for (const dataSource of notionDatasourceSyncFullDemoDataSources) {
+        const resolvedDataSources = await resolveLiveDemoDataSources()
+        for (const dataSource of resolvedDataSources) {
           // oxlint-disable-next-line no-await-in-loop -- sequential sync avoids hammering Notion with replica builds.
           await syncDemoDataSource({ dataSource, workspace })
           const sqlitePath = join(workspace, `${dataSource.databaseId}.sqlite`)

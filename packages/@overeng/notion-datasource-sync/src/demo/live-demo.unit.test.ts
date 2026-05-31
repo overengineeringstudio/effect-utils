@@ -5,6 +5,7 @@ import {
   formatNotionDatasourceSyncDemoAccessFailure,
   notionDatasourceSyncDemoManifest,
   notionDatasourceSyncFastDemoDataSources,
+  resolveNotionDatasourceSyncDemoDataSources,
 } from './live-demo.ts'
 
 const compactId = (id: string) => id.replaceAll('-', '')
@@ -126,6 +127,61 @@ describe('notion datasource sync live demo manifest', () => {
         lane: 'provisioner',
       }),
     ).toThrow()
+  })
+
+  it('resolves provisioned live data-source IDs by stable synthetic database title', () => {
+    const resolved = resolveNotionDatasourceSyncDemoDataSources({
+      manifest: notionDatasourceSyncDemoManifest,
+      childDatabases: notionDatasourceSyncDemoManifest.dataSources.map((dataSource, index) => ({
+        title: dataSource.title,
+        databaseId: `00000000-0000-0000-0000-00000000000${index.toString()}`,
+        dataSourceId: `10000000-0000-0000-0000-00000000000${index.toString()}`,
+      })),
+    })
+
+    expect(resolved.map((dataSource) => dataSource.key)).toEqual([
+      'projects',
+      'incidents',
+      'customers',
+      'activity',
+    ])
+    expect(resolved[0]).toMatchObject({
+      key: 'projects',
+      databaseId: '00000000-0000-0000-0000-000000000000',
+      databaseUrl: 'https://www.notion.so/00000000000000000000000000000000',
+      dataSourceId: '10000000-0000-0000-0000-000000000000',
+    })
+    expect(resolved[3]).toMatchObject({ expectedRows: 500, fastReplica: false })
+  })
+
+  it('fails closed when title-based provisioned live data-source resolution is ambiguous', () => {
+    const [first] = notionDatasourceSyncDemoManifest.dataSources
+    if (first === undefined) throw new Error('expected demo manifest source')
+
+    expect(() =>
+      resolveNotionDatasourceSyncDemoDataSources({
+        manifest: notionDatasourceSyncDemoManifest,
+        childDatabases: [],
+      }),
+    ).toThrow('missing child database projects')
+
+    expect(() =>
+      resolveNotionDatasourceSyncDemoDataSources({
+        manifest: notionDatasourceSyncDemoManifest,
+        childDatabases: [
+          {
+            title: first.title,
+            databaseId: '00000000-0000-0000-0000-000000000001',
+            dataSourceId: '10000000-0000-0000-0000-000000000001',
+          },
+          {
+            title: first.title,
+            databaseId: '00000000-0000-0000-0000-000000000002',
+            dataSourceId: '10000000-0000-0000-0000-000000000002',
+          },
+        ],
+      }),
+    ).toThrow('duplicate child database projects')
   })
 
   it('formats Notion access failures as sanitized actionable blockers', () => {
