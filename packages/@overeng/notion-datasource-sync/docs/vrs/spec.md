@@ -184,25 +184,26 @@ multiple subsystems:
 | `NDS-L4-bidi-rebuild-replay-safety`                   | replica | stale projection | replay preserves tombstones, conflicts, terminal changes, and pinned property bases                |
 | `NDS-L5-bidi-local-first-slow-pull`                   | daemon  | stale projection | eligible local CDC is pushed before slow remote pull completion                                    |
 | `NDS-L5-bidi-inline-hydration-correctness`            | daemon  | missed inbound   | inline query-row values preserve hashes and avoid unnecessary per-row page reads                   |
-| `NDS-L6-tasks-tracker-read-only-downsync`             | live    | user data loss   | existing Tasks Tracker rows are observed/downsynced without any Notion mutation                    |
-| `NDS-L6-tasks-tracker-scratch-row-bidi`               | live    | user data loss   | one allowlisted scratch row proves SQLite property, `.nmd` body, and lifecycle bidi behavior       |
+| `NDS-L6-live-workspace-read-only-downsync`            | live    | user data loss   | live test workspace rows are observed/downsynced without unintended Notion mutation                |
+| `NDS-L6-live-workspace-scratch-row-bidi`              | live    | user data loss   | one allowlisted scratch row proves SQLite property, `.nmd` body, and lifecycle bidi behavior       |
 
 Each scenario must assert the remote mutation ledger, private store, public
 replica, and rebuild/replay behavior where durable state changes. An apparently
 correct final state is not enough if an unsafe local overwrite or remote
 mutation was attempted.
 
-Tasks Tracker live verification has two modes. Read-only downsync samples
-existing non-scratch rows, records `page_id`, `last_edited_time`, `in_trash`,
-and selected stable properties, runs the read-only/downsync command path, then
-proves those rows are unchanged by direct Notion reads and an empty mutation
-ledger. Scratch-row bidi verification creates or uses exactly one row whose
-title contains a unique run marker; the harness records its `page_id`, scopes
-every SQL write with `WHERE _page_id = <scratchPageId>`, allowlists only that
-`page_id` for Notion writes, snapshots non-scratch rows before/after, and fails
-if any non-scratch sampled row changes. Tasks Tracker live tests must never run
-broad `UPDATE rows`, broad `DELETE`, archive, restore, body materialization, or
-cleanup against existing non-scratch rows.
+Live workspace verification has two modes. Read-only downsync samples
+non-scratch rows in a dedicated test data source, records `page_id`,
+`last_edited_time`, `in_trash`, and selected stable properties, runs the
+read-only/downsync command path, then proves those rows are unchanged by direct
+Notion reads and an empty mutation ledger. Scratch-row bidi verification creates
+or uses exactly one row whose title contains a unique run marker; the harness
+records its `page_id`, scopes every SQL write with
+`WHERE _page_id = <scratchPageId>`, allowlists only that `page_id` for Notion
+writes, snapshots non-scratch rows before/after, and fails if any non-scratch
+sampled row changes. Live workspace tests must never run broad `UPDATE rows`,
+broad `DELETE`, archive, restore, body materialization, or cleanup against
+existing non-scratch rows.
 
 No-data-loss acceptance requires established `sync`, `push`, and `sync --watch`
 to capture SQLite `rows`/`changes` and `.nmd` bodies before local

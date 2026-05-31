@@ -215,11 +215,11 @@ export const bidiSafetyScenarios = [
     ],
   }),
   bidiScenario({
-    scenarioId: 'NDS-L6-tasks-tracker-read-only-downsync',
+    scenarioId: 'NDS-L6-live-workspace-read-only-downsync',
     tier: 'live',
     risk: 'user-data-loss',
-    initialState: 'an existing Tasks Tracker database contains non-scratch rows',
-    localAction: 'run read-only/downsync verification against the existing database',
+    initialState: 'a live test workspace data source contains non-scratch rows',
+    localAction: 'run read-only/downsync verification against the live test data source',
     remoteAction: 'none',
     requiredAssertions: [
       'the remote mutation ledger is empty',
@@ -229,10 +229,11 @@ export const bidiSafetyScenarios = [
     ],
   }),
   bidiScenario({
-    scenarioId: 'NDS-L6-tasks-tracker-scratch-row-bidi',
+    scenarioId: 'NDS-L6-live-workspace-scratch-row-bidi',
     tier: 'live',
     risk: 'user-data-loss',
-    initialState: 'one Tasks Tracker scratch row is identified by a unique run marker and page id',
+    initialState:
+      'one live test workspace scratch row is identified by a unique run marker and page id',
     localAction: 'edit only the scratch row through SQLite rows and .nmd body content',
     remoteAction: 'verify or mutate only the allowlisted scratch row for the scenario',
     requiredAssertions: [

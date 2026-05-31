@@ -309,8 +309,8 @@ export const e2eHarnessScenarios = [
     file: 'docs/vrs/spec.md',
   }),
   scenario({
-    scenarioId: 'NDS-L6-tasks-tracker-read-only-downsync',
-    title: 'Tasks Tracker downsync observes existing rows without any remote mutation',
+    scenarioId: 'NDS-L6-live-workspace-read-only-downsync',
+    title: 'live test workspace downsync observes existing rows without unintended remote mutation',
     requirementIds: ['R52', 'R60', 'R61', 'R63', 'R65', 'R66'],
     guards: ['RawPayloadRetentionUnsafe'],
     lowestPlannerLevel: 'L3',
@@ -318,8 +318,9 @@ export const e2eHarnessScenarios = [
     file: 'docs/vrs/spec.md',
   }),
   scenario({
-    scenarioId: 'NDS-L6-tasks-tracker-scratch-row-bidi',
-    title: 'Tasks Tracker scratch row verifies bidi behavior without mutating non-scratch rows',
+    scenarioId: 'NDS-L6-live-workspace-scratch-row-bidi',
+    title:
+      'live test workspace scratch row verifies bidi behavior without mutating non-scratch rows',
     requirementIds: ['R23', 'R24', 'R25', 'R52', 'R60', 'R61', 'R63', 'R65', 'R66'],
     guards: ['StaleSurfaceBase', 'DeleteVsEdit', 'BodyAdapterConflict'],
     lowestPlannerLevel: 'L3',

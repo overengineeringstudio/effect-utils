@@ -1,6 +1,6 @@
 # Established sync is local-capture-first
 
-Established sync captures local desired state from public SQLite and NotionMD `.nmd` files before any remote materialization can overwrite local artifacts. We reject unconditional pull-then-push ordering because live verification against a scratch Tasks Tracker row showed that it can overwrite local `.nmd` edits before planning, violating the no-unwanted-data-loss invariant.
+Established sync captures local desired state from public SQLite and NotionMD `.nmd` files before any remote materialization can overwrite local artifacts. We reject unconditional pull-then-push ordering because live verification against disposable test workspace fixtures showed that it can overwrite local `.nmd` edits before planning, violating the no-unwanted-data-loss invariant.
 
 **Status**: accepted
 

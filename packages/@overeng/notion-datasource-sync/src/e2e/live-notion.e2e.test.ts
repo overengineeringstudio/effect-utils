@@ -1520,6 +1520,44 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               db.close()
             }
           }
+
+          const remoteUpdatedTitle = `sqlite cdc remote ${provisioned.config.runId}`
+          await runLive(
+            env,
+            NotionPages.update({
+              pageId: livePageId,
+              properties: {
+                [cdcPropertyName]: { rich_text: [text(remoteUpdatedTitle)] },
+              },
+            }),
+          )
+          await runLiveCliCommand({ env, argv: syncArgv })
+          {
+            const db = new DatabaseSync(replicaPath, { readOnly: true })
+            try {
+              const propertyColumn = db
+                .prepare(
+                  `SELECT column_name
+                   FROM schema_properties
+                   WHERE property_id = ?`,
+                )
+                .get(cdcSchemaProperty.propertyId) as { readonly column_name: string } | undefined
+              if (propertyColumn === undefined) {
+                throw new Error('live public SQLite rows test did not project the CDC column')
+              }
+              expect(
+                db
+                  .prepare(
+                    `SELECT ${quoteSqlIdentifier(propertyColumn.column_name)} AS value
+                     FROM rows
+                     WHERE _page_id = ?`,
+                  )
+                  .get(livePageId),
+              ).toMatchObject({ value: remoteUpdatedTitle })
+            } finally {
+              db.close()
+            }
+          }
           await runLiveCliCommand({ env, argv: syncArgv })
 
           {
