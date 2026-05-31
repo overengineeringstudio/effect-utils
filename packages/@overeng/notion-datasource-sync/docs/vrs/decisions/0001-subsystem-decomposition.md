@@ -2,11 +2,10 @@
 
 Status: accepted
 
-The monolithic `spec.md` (~1190 lines) and single numbered `requirements.md`
-(R01–R81, A01–A09, T01–T08) made it hard to find or evolve the contract for any
-one sub-system. We break the VRS into per-sub-system directories under
+The VRS is organized into per-sub-system directories under
 `docs/vrs/subsystems/`, each owning its own `requirements.md` slice and `spec.md`
-slice.
+slice. The top-level requirements document owns global assumptions,
+cross-cutting requirements, and the sub-system trace index.
 
 ## Sub-system list
 
@@ -24,21 +23,19 @@ Each becomes `subsystems/<name>/` with `requirements.md` + `spec.md`:
 10. `watch-daemon` — daemon loop, scheduling, leases (absorbs the webhook receiver as daemon intake)
 11. `cli` — command surface, dry-run, structured output envelope
 
-## Requirements split strategy
+## Requirements ownership
 
-Re-home + namespace per sub-system. Each sub-system owns its requirements under
-a namespaced ID prefix (e.g. `STORE-R*`, `GW-R*`, `REPLICA-R*`). The top-level
-`requirements.md` shrinks to:
+Each sub-system owns its requirements under a namespaced ID prefix (e.g.
+`STORE-R*`, `GW-R*`, `REPLICA-R*`). The top-level `requirements.md` contains:
 
 - genuinely cross-cutting constraints (no-silent-LWW safety doctrine, secret
   safety, observability/telemetry, layer boundaries),
-- domain **Assumptions** (stay global),
+- domain **Assumptions**,
 - a trace index mapping each sub-system to its namespaced requirement range.
 
-Tradeoffs (`T0N`) move to their owning sub-system. This is a one-time renumber
-plus a rewrite of every `Requirement trace:` line, accepted in exchange for
-self-contained, independently evolvable sub-system contracts with single-sourced
-cross-cutting requirements.
+Tradeoffs live in the document that owns the affected sub-system contract.
+This keeps sub-system contracts self-contained and cross-cutting requirements
+single-sourced.
 
 ## Cross-cutting (top-level, not a sub-system dir)
 

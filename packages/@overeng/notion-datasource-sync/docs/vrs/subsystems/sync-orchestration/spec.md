@@ -2,7 +2,7 @@
 
 Sub-system slice of [spec.md](../../spec.md). Serves [requirements](./requirements.md).
 
-Requirement trace: SYNC-R01 (was R23), SYNC-R02 (was R24), XC-R02, XC-R04.
+Requirement trace: SYNC-R01, SYNC-R02, XC-R02, XC-R04.
 
 This sub-system owns established reconciliation and the outbox executor: the
 deterministic, lease-fenced components that capture local desired state, observe

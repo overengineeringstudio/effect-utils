@@ -117,13 +117,11 @@ top-level verification contract with at least one verification level.
 | `QueueBackpressureExceeded`          | Daemon queues exceed configured bound                                          | Pause intake and surface stuck work                                                                                                            | `RepairObserved` or daemon diagnostic          |
 | `RawPayloadRetentionUnsafe`          | Raw payload would persist private body/signed URL                              | Redact or reject retention                                                                                                                     | sanitized retention row or blocked raw capture |
 
-`DeleteFromRowsArchiveIntent` replaces the prior fail-closed rule that rejected
-`DELETE FROM rows`. Notion trash is reversible, so the planner maps SQL row
-deletion to the strongest reversible remote op (archive/trash) rather than
-failing closed. `forget` (drop local tracking, no remote effect) stays a
-CLI-only operation and is not reachable through SQL, because DELETE now means
-archive. There is no API path to permanent deletion, so archive is the maximum
-destructive effect reachable from the file.
+`DeleteFromRowsArchiveIntent` maps SQL row deletion to the strongest reversible
+remote operation: archive/trash. `forget` (drop local tracking, no remote
+effect) stays a CLI-only operation and is not reachable through SQL. There is no
+API path to permanent deletion, so archive is the maximum destructive effect
+reachable from the file.
 
 ## Delete, Move, And Restore Semantics
 

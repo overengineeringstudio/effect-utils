@@ -84,9 +84,9 @@ The supported Notion contract is `Notion-Version: 2026-03-11`.
 | Request version | Every gateway request sends `2026-03-11` and records it in the request span and safe diagnostics.                                |
 | Older versions  | Older versions are unsupported unless an explicit compatibility profile has fake-service coverage and a live smoke proof.        |
 | Newer versions  | Newer versions start blocked by `ApiVersionCompatibilityMissing` until decode and live compatibility proofs are added.           |
-| Trash field     | Canonical lifecycle uses `in_trash`; legacy `archived` is decode drift for supported surfaces.                                   |
-| Meeting notes   | Canonical block/type naming uses `meeting_notes`; legacy `transcription` is decode drift unless a compatibility profile maps it. |
-| Block append    | Gateway command shapes use `position`, not legacy `after`.                                                                       |
+| Trash field     | Canonical lifecycle uses `in_trash`; `archived` is decode drift for supported surfaces.                                          |
+| Meeting notes   | Canonical block/type naming uses `meeting_notes`; `transcription` is decode drift unless a compatibility profile maps it.        |
+| Block append    | Gateway command shapes use `position`, not `after`.                                                                              |
 
 Decode drift is surface-scoped. An unsupported payload for one property, block, or data-source feature blocks that surface and writes a typed guard state without corrupting unrelated projections.
 

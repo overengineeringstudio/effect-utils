@@ -77,8 +77,8 @@ semantics: repeated edits for the same cell coalesce to one effective pending
 change with the latest desired value, and row lifecycle toggles supersede
 earlier pending direct lifecycle changes when the current local row state no
 longer matches them. Invalid direct cell payloads are rejected before `rows`,
-`debug_*`, `_nds_*`, or `changes` state changes. There is no legacy
-local-change compatibility surface in the pre-launch storage contract.
+`debug_*`, `_nds_*`, or `changes` state changes. There is no alternate
+local-change compatibility surface.
 
 Public schema versions are separate:
 

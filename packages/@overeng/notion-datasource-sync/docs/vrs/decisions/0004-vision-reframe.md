@@ -2,9 +2,8 @@
 
 Status: accepted
 
-The original `vision.md` was problem-first and defensive: six "Problem N"
-statements dominated by safety/correctness, plus a vision section leaking
-control-plane internals (`_nds_*`, guards, no-LWW). We reframe it.
+The vision centers the user-facing value: a Notion data source as a trusted
+local file that can be queried, edited, diffed, and reconciled safely.
 
 ## Center
 
@@ -29,17 +28,16 @@ is still preferable.
 ## Safety placement
 
 Safety/correctness hazards (coarse timestamps, query absence, destructive schema
-edits, ambiguous permissions/trash, no durable change stream) are **moved out of
-vision entirely**. The word "trusted" carries their weight in the vision; the
-hazards themselves live in `requirements.md` (cross-cutting + planner-guards) and
-the `planner-guards` spec.
+edits, ambiguous permissions/trash, no durable change stream) live in
+`requirements.md` (cross-cutting + planner-guards) and the `planner-guards`
+spec. The word "trusted" carries their weight in the vision.
 
-## Downstream edits
+## Consequences
 
-- Rewrite "The Vision" to lead with the local-file value and the
-  human-UI-vs-local-work contrast.
-- Rewrite "Success Criteria" so #1 is an agent/human querying and safely editing
-  the local artifact, not a guard-matrix outcome.
-- Keep "What This Is Not" but drop internals-flavored entries; keep the
-  not-an-offline-clone / not-LWW / not-a-notion-md-feature boundaries.
+- "The Vision" leads with local-file value and the human-UI-vs-local-work
+  contrast.
+- "Success Criteria" centers agents and humans querying and safely editing the
+  local artifact.
+- "What This Is Not" keeps the not-an-offline-clone, not-LWW, and
+  not-a-notion-md-feature boundaries.
 - See [[0001-subsystem-decomposition]] and [[0002-mutation-support-matrix]].

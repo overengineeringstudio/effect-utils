@@ -37,7 +37,7 @@ Datasource sync treats public markdown operations as body-adapter internals, but
 
 The body adapter must not set `allow_deleting_content` as part of ordinary sync, conflict resolution, or repair. Destructive body operations are separate explicit commands with dry-run output.
 
-Staging note: the current package has a NotionMD-backed adapter slice for observe, materialize, plan, repair, and guarded body push. It uses NotionMD public APIs to write real `.nmd` files and sidecars, records datasource-sync sidecars for path identity and own-write suppression, and carries local path/content through body push commands. Hash-only commands, absent adapters, stale bases, truncated or unknown-block bodies, and any adapter attempt to mutate non-body surfaces remain unsupported: no body push settlement occurs and no non-body mutation may be inferred from body sync.
+The NotionMD-backed adapter supports observe, materialize, plan, repair, and guarded body push. It uses NotionMD public APIs to write real `.nmd` files and sidecars, records datasource-sync sidecars for path identity and own-write suppression, and carries local path/content through body push commands. Hash-only commands, absent adapters, stale bases, truncated or unknown-block bodies, and any adapter attempt to mutate non-body surfaces remain unsupported: no body push settlement occurs and no non-body mutation may be inferred from body sync.
 
 Body materialization is subordinate to the established sync no-unwanted-data-loss
 invariant. The body adapter may provide materialization mechanics, but

@@ -2,7 +2,7 @@
 
 Sub-system slice of [spec.md](../../spec.md). Serves [requirements](./requirements.md).
 
-Requirement trace: CLI-R01 (was R48), CLI-R02 (was R49), CLI-R03 (was R50), CLI-R04 (was R51), CLI-R05 (was R51a).
+Requirement trace: CLI-R01, CLI-R02, CLI-R03, CLI-R04, CLI-R05.
 
 This sub-system defines the command surface, establishment flow, dry-run rules,
 and structured output for the datasource-sync CLI and the replica helpers.
@@ -105,14 +105,11 @@ visibly active in both TTY and CI/plain output modes.
 
 ## Large-Cardinality Note
 
-Large-cardinality acceptance is currently bounded rather than fully streaming:
-query observation progresses by Notion pages, records capped/incomplete status
-when a limit or API cap prevents completeness, and the demo includes a 500-row
-source. Full streaming public-replica rebuilds remain a follow-up before
-claiming unbounded local projection memory behavior. Regression note: bounded
+Large-cardinality acceptance is bounded by explicit completeness and memory
+claims. Query observation progresses by Notion pages and records
+capped/incomplete status when a limit or API cap prevents completeness. Bounded
 large-database previews and targeted scratch-row checks are verification tools,
-not product modes; they must not reintroduce partial `<database-id>.sqlite`
-replicas.
+not product modes; they must not create partial `<database-id>.sqlite` replicas.
 
 ## Structured Output
 

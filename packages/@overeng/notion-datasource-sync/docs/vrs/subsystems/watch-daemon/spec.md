@@ -2,7 +2,7 @@
 
 Sub-system slice of [spec.md](../../spec.md). Serves [requirements](./requirements.md).
 
-Requirement trace: DAEMON-R01 (was R42), DAEMON-R02 (was R43), DAEMON-R03 (was R44), DAEMON-R04 (was R45), DAEMON-R05 (was R46), DAEMON-R06 (was R47), DAEMON-R07 (was R47a), DAEMON-R08 (was R47b), DAEMON-R09 (was R47c), DAEMON-R10 (was R56).
+Requirement trace: DAEMON-R01, DAEMON-R02, DAEMON-R03, DAEMON-R04, DAEMON-R05, DAEMON-R06, DAEMON-R07, DAEMON-R08, DAEMON-R09, DAEMON-R10.
 
 The daemon backs `sync --watch`. It runs the same planner and executor as
 one-shot commands; watch mode adds scheduling, coalescing, cancellation, and

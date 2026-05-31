@@ -4,5 +4,5 @@ Sub-system slice of [the top-level requirements](../../requirements.md). Serves 
 
 ## Requirements
 
-- **SYNC-R01 Preflight reread (was R23):** Remote writes must re-read the current remote surface and schema before applying when the command can conflict or destroy data.
-- **SYNC-R02 Read-after-write (was R24):** Successful remote writes must be verified by a fresh read and canonical hash comparison before settlement.
+- **SYNC-R01 Preflight reread:** Remote writes must re-read the current remote surface and schema before applying when the command can conflict or destroy data.
+- **SYNC-R02 Read-after-write:** Successful remote writes must be verified by a fresh read and canonical hash comparison before settlement.

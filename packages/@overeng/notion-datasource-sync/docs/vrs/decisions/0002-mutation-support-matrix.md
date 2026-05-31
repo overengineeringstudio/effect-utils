@@ -23,8 +23,8 @@ SQLite write path for schema:
 
 - `schema` and `schema_properties` are read-only in the file.
 - `ALTER TABLE rows ...` (DDL) is rejected.
-- The previously-considered `kind=schema` rows in the public `changes` table are
-  removed; `NotionSchemaChange` is no longer a public write intent.
+- `kind=schema` rows in the public `changes` table are rejected;
+  `NotionSchemaChange` is not a public write intent.
 - The file may surface a read-only migration **preview** (in `sync_status` /
   `debug_*`); apply happens via CLI.
 
@@ -39,8 +39,7 @@ plan/apply auditable.
 ### `DELETE FROM rows` maps to remote archive
 
 `DELETE FROM rows WHERE ...` enqueues a remote **archive** (trash) intent,
-identical to `UPDATE rows SET _in_trash = 1`. This overrides the prior
-"`DELETE FROM rows` is rejected" rule.
+identical to `UPDATE rows SET _in_trash = 1`.
 
 - Notion trash is reversible (recoverable), so DELETE maps to the strongest
   _reversible_ remote op rather than failing closed.

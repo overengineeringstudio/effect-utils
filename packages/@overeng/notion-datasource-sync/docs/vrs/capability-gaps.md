@@ -65,7 +65,7 @@ This matrix is the authoritative user-facing write-support contract for `<databa
 | SQL operation                                      | Support       | Guard if blocked            | Promotion criteria (if fail-closed)                           |
 | -------------------------------------------------- | ------------- | --------------------------- | ------------------------------------------------------------- | ------ | ------------ | --------- | --- | --- |
 | `INSERT INTO changes (kind='cell'                  | 'row_archive' | 'row_restore'               | 'row_create'                                                  | 'body' | 'metadata')` | SUPPORTED | —   | —   |
-| `INSERT INTO changes (kind='schema')`              | REMOVED       | `SchemaChangeIntentRemoved` | No longer a public write intent; use `migrate schema` CLI.    |
+| `INSERT INTO changes (kind='schema')`              | REJECTED      | `SchemaChangeIntentRejected` | Schema writes use `migrate schema` CLI.                       |
 | `INSERT INTO changes (kind='conflict_resolution')` | DEFERRED      | —                           | Conflict resolution is CLI-only; use `nds conflicts resolve`. |
 
 ### D. Conflicts (`conflicts` table)

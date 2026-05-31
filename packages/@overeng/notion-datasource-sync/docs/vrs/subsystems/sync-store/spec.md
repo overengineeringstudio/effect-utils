@@ -8,7 +8,7 @@ Requirement trace: STORE-R01, STORE-R02, STORE-R03, STORE-R04, STORE-R05, STORE-
 
 The private store is embedded in the same `<database-id>.sqlite` file as the
 public replica. All private tables are prefixed `_nds_`; no split store or
-compatibility mode exists for pre-launch storage layouts.
+alternate storage-layout mode exists.
 
 ```
 <database-id>.sqlite private store
