@@ -34,6 +34,7 @@
 
 let
   lib = pkgs.lib;
+  pnpmInstallPolicy = import ./pnpm-install-policy.nix { inherit lib; };
   # Drive pnpm with an LTS Node runtime even when nixpkgs' default `nodejs`
   # advances first. pnpm dependency preparation is build tooling, not the app
   # runtime, and this keeps FOD behavior stable across nixpkgs release bumps.
@@ -639,13 +640,15 @@ in
                 # live-worktree store/layout policy first so the prepared
                 # artifact does not preserve caller-local paths.
                 if [ -f .npmrc ]; then
-                  ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(store-dir|virtual-store-dir|enable-global-virtual-store|global-virtual-store-dir|state-dir|cache-dir|package-import-method|node-linker|side-effects-cache|side-effects-cache-readonly|verify-store-integrity|strict-store-pkg-content-check|pm-on-fail|verify-deps-before-run|child-concurrency|network-concurrency)\s*=.*\n//mg' .npmrc
+                  ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(${lib.concatStringsSep "|" pnpmInstallPolicy.npmrcPolicyKeys})\s*=.*\n//mg' .npmrc
                 fi
                 # Back up scrubbed .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nverify-store-integrity=true\nstrict-store-pkg-content-check=true\nenable-global-virtual-store=false\npm-on-fail=ignore\nverify-deps-before-run=false\nnode-linker=isolated\nchild-concurrency=1\nnetwork-concurrency=4\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+        printf ${
+          lib.escapeShellArg ("store-dir=%s\n" + pnpmInstallPolicy.workspacePrepNpmrc pnpmPackageImportMethod)
+        } "$STORE_PATH" >> .npmrc
         if [ -f pnpm-workspace.yaml ]; then
-          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(storeDir|virtualStoreDir|enableGlobalVirtualStore|globalVirtualStoreDir|stateDir|cacheDir|packageImportMethod|nodeLinker|optimisticRepeatInstall|verifyDepsBeforeRun|sideEffectsCache|sideEffectsCacheReadonly|verifyStoreIntegrity|strictStorePkgContentCheck|pmOnFail|childConcurrency|networkConcurrency):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
+          ${pkgs.perl}/bin/perl -0pi -e 's/^\s*(${lib.concatStringsSep "|" pnpmInstallPolicy.workspaceYamlPolicyKeys}):[^\n]*\n//mg; s/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
         fi
                 # Keep prepared dependency artifacts platform-neutral. Native
                 # optional packages are owned by the Nix package/build layer so
@@ -689,10 +692,10 @@ in
                   # pnpm install --frozen-lockfile --ignore-scripts
                   ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
                     # APFS copy-based materialization of the root workspace can push
-                    # pnpm's node process into kernel kill territory on GitHub macOS.
+                    # pnpm's node process into Darwin teardown failures on GitHub macOS.
                     # The dependency artifact contract is unchanged; this only bounds
                     # builder resource use for the same platform-neutral prepared tree.
-                    export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
+                    ${pnpmInstallPolicy.darwinNodeOptionsShell}
                   ''}
                   pnpm_install_log=$(mktemp "$NIX_BUILD_TOP/pnpm-install.XXXXXX.log")
                   set +e
@@ -700,14 +703,14 @@ in
                   pnpm_install_status=''${PIPESTATUS[0]}
                   set -e
                   if [ "$pnpm_install_status" -ne 0 ]; then
-                    if [ "$pnpm_install_status" -eq 137 ] \
-                      && [ ${
-                        lib.escapeShellArg (if pkgs.stdenv.hostPlatform.isDarwin then "1" else "0")
-                      } = "1" ] \
-                      && grep -qE 'Progress: .* done$' "$pnpm_install_log" \
-                      && [ -d node_modules/.pnpm ] \
-                      && [ -f node_modules/.modules.yaml ]; then
-                      echo "workspace-prep: pnpm install completed materialization before darwin SIGKILL; continuing after node teardown exit 137"
+                    if ${
+                      pnpmInstallPolicy.darwinCompletedMaterializationCheckShell {
+                        statusVar = "pnpm_install_status";
+                        logFileVar = "pnpm_install_log";
+                        isDarwinShell = lib.escapeShellArg (if pkgs.stdenv.hostPlatform.isDarwin then "1" else "0");
+                      }
+                    }; then
+                      echo "workspace-prep: pnpm install completed materialization before darwin install teardown; continuing after node teardown exit $pnpm_install_status"
                     else
                       exit "$pnpm_install_status"
                     fi
