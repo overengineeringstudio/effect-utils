@@ -69,15 +69,16 @@ updates local desired state, and queues a guarded public `changes` row. Remote
 writes must be derived from validated Notion-shaped payloads, not from helper
 columns alone.
 
-Direct current-state edits are captured with local CDC triggers. `changes` is
-the public write log and source of truth for planner conversion. Direct edits
-use final-state semantics, not replay semantics: repeated edits for the same
-cell coalesce to one effective pending change with the latest desired value, and
-row lifecycle toggles supersede earlier pending direct lifecycle changes when
-the current local row state no longer matches them. Invalid direct cell payloads
-are rejected before `rows`, `debug_*`, `_nds_*`, or `changes` state changes.
-There is no legacy local-change compatibility surface in the pre-launch storage
-contract.
+Direct current-state edits are captured with local CDC triggers. `rows` is the
+public intent entry surface, `changes` is the public intent ledger, and the
+private `_nds_*` event log is the durable local authority the planner converts
+into outbox commands. Direct edits use final-state semantics, not replay
+semantics: repeated edits for the same cell coalesce to one effective pending
+change with the latest desired value, and row lifecycle toggles supersede
+earlier pending direct lifecycle changes when the current local row state no
+longer matches them. Invalid direct cell payloads are rejected before `rows`,
+`debug_*`, `_nds_*`, or `changes` state changes. There is no legacy
+local-change compatibility surface in the pre-launch storage contract.
 
 Public schema versions are separate:
 
@@ -157,6 +158,14 @@ type NotionConflictResolution = {
   readonly status: LocalChangeStatus
 }
 ```
+
+Body changes captured from `.nmd` files are first-class local desired state even
+when they were not inserted manually into `changes`. Before any remote body
+materialization can overwrite a changed `.nmd`, datasource-sync must either
+project the body edit into the public intent lifecycle, preserve it as
+recoverable conflict material, or reject materialization with a repair/path
+diagnostic. A projection rebuild may update private base/remote body pointers,
+but it must not make a captured body edit invisible to later scans.
 
 `rows` is the primary writable product API for row data. All ordinary row edit
 use cases are in scope for `rows`; explicit `changes` rows exist for advanced

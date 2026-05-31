@@ -25,6 +25,7 @@ These constraints apply across every sub-system and stay single-sourced here.
 - **XC-R01 Standalone package (was R01):** Datasource sync must be implemented as a standalone package, not as a built-in `@overeng/notion-md` feature.
 - **XC-R02 No silent LWW (was R25):** Last-writer-wins must not be the default behavior for any bidirectional surface. _(Canonical statement; sub-systems reference this rather than copying it, e.g. PLAN-R03.)_
 - **XC-R03 Secret safety (was R52):** CLI, telemetry, fixtures, and errors must never print tokens, signed URLs, full private document bodies, or private workspace identifiers.
+- **XC-R04 No unwanted data loss:** Established sync, daemon cycles, repair, migration, and body materialization must not discard user-authored local or remote content. A destructive, replacing, hiding, or settling action is allowed only after the affected surface has captured local desired state, a known base hash, a fresh counterpart observation, an explicit planner/guard decision, and one of: verified supersession, durable recoverable conflict material, or an explicit approved destructive/reversible intent.
 
 ### Observability
 
@@ -42,6 +43,7 @@ These constraints apply across every sub-system and stay single-sourced here.
 - **VERIFY-R06 Incremental sync coverage (was R64a):** Watch tests must cover checkpoint reuse, same-boundary overlap, incremental absence safety, inline query-row hydration, local-first outbound work, and periodic full-reconcile behavior.
 - **VERIFY-R07 Live Notion coverage (was R65):** Supported Notion API semantics must have isolated live E2E coverage with creation, mutation, verification, and cleanup.
 - **VERIFY-R08 Guard matrix (was R66):** Every problematic edge case must map to a named guard, expected behavior, and at least one unit, fake integration, SQLite, filesystem, daemon, or live E2E test.
+- **VERIFY-R09 No-data-loss acceptance:** Bidirectional safety tests must prove the full chain behind XC-R04: local capture before materialization, explicit base/local/remote planning, guarded outbox writes, read-after-write settlement, guarded materialization, rebuild/replay preservation, and remote mutation-ledger assertions. A correct final projection is insufficient if an unsafe local overwrite or remote mutation was attempted.
 
 ## Acceptable Tradeoffs
 
@@ -66,7 +68,7 @@ Only cross-cutting tradeoffs remain here; the rest moved to their owning sub-sys
 | sync-orchestration       | SYNC-R01–R02                                        | [sync-orchestration/requirements.md](./subsystems/sync-orchestration/requirements.md) |
 | watch-daemon             | DAEMON-R01–R10, DAEMON-T01                          | [watch-daemon/requirements.md](./subsystems/watch-daemon/requirements.md)             |
 | cli                      | CLI-R01–R05                                         | [cli/requirements.md](./subsystems/cli/requirements.md)                               |
-| cross-cutting (this doc) | XC-R01–R03, OBS-R01–R03, VERIFY-R01–R08, VERIFY-T01 | this file                                                                             |
+| cross-cutting (this doc) | XC-R01–R04, OBS-R01–R03, VERIFY-R01–R09, VERIFY-T01 | this file                                                                             |
 
 ### Original id -> new home
 

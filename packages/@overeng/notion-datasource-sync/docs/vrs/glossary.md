@@ -35,10 +35,42 @@ a page body, or the schema. Conflicts and base hashes are per-surface.
 The last-clean canonical hash of a **Surface** that a local edit was made
 against. A write is only safe if the current remote surface still matches it.
 
+**Local desired state**:
+User-authored local content and intents captured from the **Replica** and
+NotionMD `.nmd` files before sync performs remote materialization or writes.
+_Avoid_: treating private projections as desired state.
+
+**Remote observation**:
+A fresh Notion read of properties, lifecycle, schema, or page body state. Remote
+observations update base/remote authority, not local desired state.
+_Also_: Remote observed state.
+
+**Materialization**:
+Writing observed remote state into local artifacts such as `rows`, sidecars, or
+`.nmd` files. Materialization is not planning and must not erase captured local
+desired state.
+
+**Guarded materialization**:
+Materialization that first proves the target artifact is unchanged from base,
+is this process's own write, or has had its local content preserved as a
+recoverable intent/conflict.
+
 **Replica**:
 The user-facing `<database-id>.sqlite` file. Public surfaces (`rows`, `schema`,
 `schema_properties`, `changes`, `conflicts`, `sync_status`, `debug_*`) plus
 private `_nds_*` control plane in the same file.
+
+**Public intent entry surface**:
+The ergonomic local surface where users express row changes, usually `rows`.
+Entry surfaces are validated and converted; they are not durable authority.
+
+**Public intent ledger**:
+The `changes` surface that exposes accepted local intents, planner status, and
+settlement evidence to users.
+
+**Durable local authority**:
+The private append-only `_nds_*` event log that owns accepted local intent,
+outbox state, conflicts, settlements, tombstones, and replay.
 
 **Write class**:
 Per-property eligibility for direct local writes: `writable`, `computed`
@@ -50,6 +82,10 @@ write eligibility.
 **Change / Intent**:
 A durable user-requested local edit, recorded in `changes` (public) and backed by
 a `LocalIntentAccepted` event. Accepted only after its intent event commits.
+
+**Recoverable conflict material**:
+Durable content or references sufficient to inspect, retry, resolve, or restore a
+local desired state after sync detects ambiguity or conflict.
 
 **Outbox command**:
 A planned remote write derived from an accepted **Intent**, executed outside any

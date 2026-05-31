@@ -12,7 +12,7 @@ and structured output for the datasource-sync CLI and the replica helpers.
 | Command                   | Primary flags                                                                                                                         | Purpose                                                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `sync --from-notion`      | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies`                             | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
-| `sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                                                         | Reconcile an established workspace discovered from its self-contained SQLite file                                   |
+| `sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                                                         | Reconcile an established workspace through local-capture-first planning                                            |
 | `status <workspace-root>` | `--json`, `--porcelain`                                                                                                               | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
 | `init`                    | `--data-source-id`, `--root`, `--sqlite`                                                                                              | Advanced: bind a local root to a Notion data source without observing it                                            |
 | `pull`                    | `--since`, `--full-scan`, `--dry-run`                                                                                                 | Advanced: observe remote schema/rows/body pointers and materialize local projections                                |
@@ -71,7 +71,21 @@ preview for large databases: it caps remote rows observed, marks query
 completeness as capped, and cannot be applied as a partial adoption. Established
 sync dry-run suppresses replica mutation, intent settlement, private
 event/outbox/remote writes, and body materialization while using the existing
-database file for read-only planning.
+database file for read-only local capture and planning.
+
+## Established Sync Ordering
+
+Established `sync <workspace-root>` follows
+[sync-orchestration](../sync-orchestration/spec.md): capture local desired state
+from public SQLite and `.nmd` files, observe remote state, plan, execute, then
+guard materialization. It must not run remote body materialization before local
+`.nmd` observations have been captured and either planned or preserved.
+
+`push` is the local-only command mode over the same captured desired-state and
+outbox executor semantics; it may scope remote reads to the surfaces needed for
+preflight, but it must not skip SQLite public CDC or `.nmd` body observations.
+`pull` and remote-only repair modes may update local artifacts only through
+guarded materialization and must preserve pending local desired state.
 
 ## Progress And Output
 

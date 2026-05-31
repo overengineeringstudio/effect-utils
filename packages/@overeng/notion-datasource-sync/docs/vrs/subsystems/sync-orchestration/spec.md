@@ -2,14 +2,57 @@
 
 Sub-system slice of [spec.md](../../spec.md). Serves [requirements](./requirements.md).
 
-Requirement trace: SYNC-R01 (was R23), SYNC-R02 (was R24).
+Requirement trace: SYNC-R01 (was R23), SYNC-R02 (was R24), XC-R02, XC-R04.
 
-This sub-system owns the outbox executor: the deterministic, lease-fenced
-component that turns committed outbox commands into verified remote writes. The
-outbox projection table itself is defined by the sync-store sub-system; see
+This sub-system owns established reconciliation and the outbox executor: the
+deterministic, lease-fenced components that capture local desired state, observe
+remote state, plan base/local/remote decisions, and turn committed outbox
+commands into verified remote writes. The outbox projection table itself is
+defined by the sync-store sub-system; see
 [../sync-store/spec.md](../sync-store/spec.md) for the `outbox` projection
-contract. This document specifies the lifecycle states the executor drives, the
-command shape it consumes, and the read-write-read-settle sequence it follows.
+contract.
+
+## Established Reconciliation
+
+Established commands (`sync`, `push`, and `sync --watch`) are local-capture-first
+to satisfy XC-R04:
+
+```text
+capture local desired state
+-> observe remote state
+-> plan base/local/remote decisions
+-> execute verified outbox commands
+-> guarded materialization
+-> refresh status
+```
+
+Local desired state includes public SQLite `rows`/`changes` intents and
+NotionMD `.nmd` body observations, including path, page identity, base hash,
+local body hash, and local body content or recoverable content reference.
+Capturing local desired state must happen before any operation that can
+overwrite user-authored local artifacts. Remote observation may refresh private
+base/remote projections before planning, but it must not materialize remote
+body content into `.nmd` paths or otherwise overwrite local artifacts until
+guarded materialization runs after planning.
+
+`sync --from-notion` is the initial adoption exception: it has no established
+local desired state for that workspace and remains remote-to-local only. Once a
+workspace is established, all sync modes use the local-capture-first invariant.
+
+Guarded materialization may write a remote-observed artifact only when one of
+these proofs holds:
+
+| Local target state                                        | Materialization behavior                                      |
+| --------------------------------------------------------- | ------------------------------------------------------------- |
+| target is unchanged from captured/base state              | materialize remote state                                      |
+| target matches this process's own materialization token   | verify/update sidecars without creating a local edit intent   |
+| target contains uncaptured or changed local desired state | preserve it and plan push/conflict/repair; do not overwrite   |
+| target identity/path claim is ambiguous                   | fail closed with repair/path conflict; do not overwrite       |
+
+The planner decides whether captured local desired state becomes an outbox
+command, a conflict, an unsupported change, or a rejected malformed intent. The
+materializer only reflects decisions that have already preserved local content
+or proven it safe to overwrite.
 
 ## Outbox Lifecycle
 
