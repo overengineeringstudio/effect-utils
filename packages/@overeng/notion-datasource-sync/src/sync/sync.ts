@@ -9,6 +9,7 @@ import {
 import {
   BodyPointer,
   Hash,
+  type LocalArtifactObservation,
   PageId,
   PropertyId,
   type AbsolutePath,
@@ -57,6 +58,7 @@ import {
   makeSyncBindingRecordedEvent,
   observeLocalWorkspace,
   observeRemoteDataSource,
+  type LocalWorkspaceObservationResult,
   type RemoteObservationOptions,
   type RemoteObservationResult,
 } from './observation.ts'
@@ -83,6 +85,7 @@ export type OneShotPushOptions = {
   readonly store: NotionSyncStore
   readonly rootId: RemoteObservationOptions['rootId']
   readonly workspaceRoot: AbsolutePath
+  readonly localWorkspaceObservation?: LocalWorkspaceObservationResult
   readonly localIntents?: ReadonlyArray<PlannerIntent>
   readonly materializeBodies?: boolean
   readonly maxExecutorSteps?: number
@@ -500,6 +503,23 @@ export const initOneShotSync = (options: OneShotInitOptions): OneShotSyncStatus 
   return readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
 }
 
+const hasLocalWorkspaceChange = ({
+  observations,
+  store,
+  rootId,
+}: {
+  readonly observations: ReadonlyArray<LocalArtifactObservation>
+  readonly store: NotionSyncStore
+  readonly rootId: RemoteObservationOptions['rootId']
+}) => {
+  const snapshot = store.readPlannerProjectionSnapshot(rootId)
+  return observations.some((observation) => {
+    if (observation.state === 'delete-candidate') return true
+    const bodySurface = snapshot.bodies.find((candidate) => candidate.pageId === observation.pageId)
+    return bodySurface !== undefined && bodySurface.currentHash !== observation.contentHash
+  })
+}
+
 /** Observe the remote data source (API, schema, rows, properties, bodies) and persist the resulting events to the local store. Resumes a partial query scan if a checkpoint cursor exists. */
 export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
   (
@@ -626,7 +646,8 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
       const local =
         options.materializeBodies === false
           ? { observations: [] }
-          : yield* observeLocalWorkspace(options.workspaceRoot)
+          : (options.localWorkspaceObservation ??
+            (yield* observeLocalWorkspace(options.workspaceRoot)))
       const summaries: OneShotPlanSummary[] = []
 
       yield* reportSyncProgress({ _tag: 'phase', phase: 'planning' })
@@ -804,7 +825,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
     }),
 )
 
-/** Run a full pull-then-push sync cycle in a single Effect: observe remote, record events, plan local changes, execute outbox. */
+/** Run a full local-capture-first sync cycle in a single Effect: preserve local artifacts, observe remote, plan local changes, execute outbox. */
 export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
   (
     options: OneShotSyncOptions,
@@ -825,8 +846,39 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
           ? {}
           : { leaseDurationMs: options.leaseDurationMs }),
       })
-      const pull = yield* pullOneShotSync(options)
-      const push = yield* pushOneShotSync(options)
+      const local =
+        options.materializeBodies === false
+          ? { observations: [] }
+          : yield* observeLocalWorkspace(options.workspaceRoot)
+      const localWorkspaceChanged = hasLocalWorkspaceChange({
+        observations: local.observations,
+        store: options.store,
+        rootId: options.rootId,
+      })
+      const prePullPush =
+        localWorkspaceChanged === false
+          ? undefined
+          : yield* pushOneShotSync({
+              ...options,
+              localWorkspaceObservation: local,
+              maxExecutorSteps: 0,
+            })
+      const pull = yield* pullOneShotSync({
+        ...options,
+        ...(localWorkspaceChanged === true ? { materializeBodies: false } : {}),
+      })
+      const pushAfterPull = yield* pushOneShotSync({
+        ...options,
+        localWorkspaceObservation: localWorkspaceChanged === true ? { observations: [] } : local,
+      })
+      const push =
+        prePullPush === undefined
+          ? pushAfterPull
+          : {
+              ...pushAfterPull,
+              localObservations: prePullPush.localObservations + pushAfterPull.localObservations,
+              plan: mergePlanSummaries([prePullPush.plan, pushAfterPull.plan]),
+            }
       const status = readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
       yield* reportSyncProgress({ _tag: 'phase', phase: 'complete' })
 

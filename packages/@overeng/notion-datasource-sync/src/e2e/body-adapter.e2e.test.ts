@@ -39,7 +39,7 @@ import {
 } from '../core/ports.ts'
 import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local/workspace.ts'
 import { executeOutboxOnce } from '../sync/executor.ts'
-import { initOneShotSync, pullOneShotSync, pushOneShotSync } from '../sync/sync.ts'
+import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
 import {
   appendPlannedCommand,
   bodyPointer,
@@ -62,6 +62,7 @@ const contentHash = (content: string) =>
   decode({ schema: Hash, value: `sha256:${createHash('sha256').update(content).digest('hex')}` })
 const implementedBodyAdapterScenarioIds = new Set<ScenarioId>([
   'NDS-L2-body-adapter-fail-closed-boundary',
+  'NDS-L6-bidi-body-local-capture-first',
 ])
 
 const runWithPorts = <TValue, TError>(
@@ -222,6 +223,73 @@ describe('body adapter E2E boundary', () => {
         implementedScenarioIds: implementedBodyAdapterScenarioIds,
       }),
     ).toEqual([])
+  })
+
+  it('captures local .nmd edits before established sync can materialize remote bodies', async () => {
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+    const gatewayHarness = makeFakeGatewayHarness()
+    const baseBodyPort = makeHarnessPorts().body
+    const { body } = bodyPortWithPushLedger(baseBodyPort)
+    const baseWorkspace = makeFakeLocalWorkspacePort({
+      observations: [
+        presentArtifactObservation({
+          pageId: testIds.pageId,
+          path: bodyPath,
+          contentHash: hash('body-local-edit'),
+          bodyContent: '# Local edit',
+          observedAt: bodyPointer().observedAt,
+        }),
+      ],
+    })
+    const calls: string[] = []
+    const workspace: LocalWorkspacePortShape = {
+      ...baseWorkspace,
+      scan: (root) => {
+        calls.push('scan')
+        return baseWorkspace.scan(root)
+      },
+      materialize: (plan) =>
+        Effect.sync(() => {
+          calls.push('materialize')
+          return plan
+        }).pipe(Effect.zipRight(baseWorkspace.materialize(plan))),
+    }
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: makeFakeClock().now,
+      })
+      appendObservedBodyProjection(storeFixture.store, bodySafety())
+
+      const result = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: makeFakeClock().now,
+        }),
+        {
+          gateway: gatewayHarness.gateway,
+          body,
+          workspace,
+        },
+      )
+
+      expect(calls).toEqual(['scan'])
+      expect(
+        result.push.plan.enqueuedCommands + result.push.plan.conflicts + result.push.plan.blocked,
+      ).toBeGreaterThan(0)
+      assertNoGatewayMutations(gatewayHarness.ledger)
+    } finally {
+      storeFixture.cleanup()
+    }
   })
 
   it('fails closed before materializing bodies when no NotionMD body adapter is configured', async () => {
