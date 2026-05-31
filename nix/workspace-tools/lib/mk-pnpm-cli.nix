@@ -21,6 +21,7 @@
   smokeTestArgs ? [ "--help" ],
   generateCompletions ? true,
   extraBunBuildArgs ? [ ],
+  installRuntimeWorkspace ? false,
   # Nix-owned native Node packages to link into the restored workspace during
   # CLI bundling. This keeps pnpm dependency preparation platform-neutral while
   # still supporting packages that resolve native bindings by npm package name.
@@ -1456,6 +1457,10 @@ pkgs.stdenv.mkDerivation {
     installStartedAt=$(install_timer_now)
     mkdir -p "$out/bin"
     cp "$NIX_BUILD_TOP/workspace/${packageDir}/output/${binaryName}" "$out/bin/"
+    ${lib.optionalString installRuntimeWorkspace ''
+      mkdir -p "$out/libexec"
+      cp -R "$NIX_BUILD_TOP/workspace" "$out/libexec/workspace"
+    ''}
     installedBytes=$(du --apparent-size -sk "$out/bin/${binaryName}" 2>/dev/null | awk '{print $1 * 1024}')
     installedBytes=''${installedBytes:-0}
     echo "cli-build: phase=install cli=${binaryName} package=${packageDir} duration=$(install_timer_elapsed "$installStartedAt")s installed_size=$(install_format_bytes "$installedBytes")"

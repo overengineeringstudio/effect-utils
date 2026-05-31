@@ -8,11 +8,6 @@ import type { runCliMain as runSqliteCliMain } from '@overeng/notion-datasource-
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 
-import { dbCommand } from './commands/db/mod.ts'
-import { schemaCommand, SchemaDriftDetectedError } from './commands/schema/mod.ts'
-
-// Re-export errors for backwards compatibility
-export { GeneratedSchemaFileParseError, SchemaDriftDetectedError } from './commands/schema/mod.ts'
 export { runNotionCliMain }
 
 // -----------------------------------------------------------------------------
@@ -82,7 +77,22 @@ const runDelegated = async ({
   )
 }
 
-const runRootCli = (argv: ReadonlyArray<string>) => {
+const runRootCli = async (argv: ReadonlyArray<string>) => {
+  const [{ dbCommand }, { schemaCommand }] = await Promise.all([
+    import('./commands/db/mod.ts'),
+    import('./commands/schema/mod.ts'),
+  ])
+  const command = Command.make('notion').pipe(
+    Command.withSubcommands([schemaCommand, dbCommand]),
+    Command.withDescription(
+      'Notion CLI - database operations, schema generation, and Notion ecosystem dispatch',
+    ),
+  )
+  const cli = Command.run(command, {
+    name: 'notion',
+    version: '0.1.0',
+  })
+
   cli(argv).pipe(
     Effect.tapErrorCause((cause) => {
       if (Cause.isInterruptedOnly(cause) === true) {
@@ -104,18 +114,6 @@ const runRootCli = (argv: ReadonlyArray<string>) => {
   )
 }
 
-const command = Command.make('notion').pipe(
-  Command.withSubcommands([schemaCommand, dbCommand]),
-  Command.withDescription(
-    'Notion CLI - database operations, schema generation, and Notion ecosystem dispatch',
-  ),
-)
-
-const cli = Command.run(command, {
-  name: 'notion',
-  version: '0.1.0',
-})
-
 const hasTag = (u: unknown): u is { readonly _tag: string } =>
   typeof u === 'object' &&
   u !== null &&
@@ -133,7 +131,7 @@ const runNotionCliMain = async ({
   if (delegated !== undefined) {
     await runDelegated(delegated)
   } else {
-    runRootCli(rewrittenArgv)
+    await runRootCli(rewrittenArgv)
   }
 }
 

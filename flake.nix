@@ -138,6 +138,8 @@
           notion-cli = cliPackages.notion-cli;
           notion-cli-dirty = cliPackagesDirty.notion-cli;
           "notion-cli-pnpm-deps" = cliPackages.notion-cli.passthru.depsBuildsByInstallRoot.root;
+          notion-datasource-sync = cliPackages.notion-cli.passthru.datasourceSyncRuntime;
+          notion-datasource-sync-dirty = cliPackagesDirty.notion-cli.passthru.datasourceSyncRuntime;
           notion-md = cliPackages.notion-md;
           notion-md-dirty = cliPackagesDirty.notion-md;
           "notion-md-pnpm-deps" = cliPackages.notion-md.passthru.depsBuildsByInstallRoot.root;
@@ -155,6 +157,7 @@
           megarepo = cliPackages.megarepo.outPath;
           tui-stories = cliPackages.tui-stories.outPath;
           notion-cli = cliPackages.notion-cli.outPath;
+          notion-datasource-sync = cliPackages.notion-cli.passthru.datasourceSyncRuntime.outPath;
           notion-md = cliPackages.notion-md.outPath;
         };
         cliOutPathsDirty = {
@@ -162,6 +165,7 @@
           megarepo = cliPackagesDirty.megarepo.outPath;
           tui-stories = cliPackagesDirty.tui-stories.outPath;
           notion-cli = cliPackagesDirty.notion-cli.outPath;
+          notion-datasource-sync = cliPackagesDirty.notion-cli.passthru.datasourceSyncRuntime.outPath;
           notion-md = cliPackagesDirty.notion-md.outPath;
         };
 
