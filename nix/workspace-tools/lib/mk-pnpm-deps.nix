@@ -700,14 +700,14 @@ in
                   pnpm_install_status=''${PIPESTATUS[0]}
                   set -e
                   if [ "$pnpm_install_status" -ne 0 ]; then
-                    if [ "$pnpm_install_status" -eq 137 ] \
+                    if { [ "$pnpm_install_status" -eq 137 ] || [ "$pnpm_install_status" -eq 134 ]; } \
                       && [ ${
                         lib.escapeShellArg (if pkgs.stdenv.hostPlatform.isDarwin then "1" else "0")
                       } = "1" ] \
                       && grep -qE 'Progress: .* done$' "$pnpm_install_log" \
                       && [ -d node_modules/.pnpm ] \
                       && [ -f node_modules/.modules.yaml ]; then
-                      echo "workspace-prep: pnpm install completed materialization before darwin SIGKILL; continuing after node teardown exit 137"
+                      echo "workspace-prep: pnpm install completed materialization before darwin node teardown exit $pnpm_install_status; continuing"
                     else
                       exit "$pnpm_install_status"
                     fi
