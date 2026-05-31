@@ -7971,19 +7971,25 @@ jobs:
             printf '[]' > "$comments_json"
           fi
           cat > /tmp/render-storybook-preview-comment.mjs <<'EOF'
-          import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { resolve } from 'node:path'
+          import { pathToFileURL } from 'node:url'
 
           const commentTitle = "Storybook Previews"
-          const noRowsMessage = "No storybooks were deployed."
-          const managedMarker = "<!-- deploy-preview-comment:managed -->"
-          const statePrefix = "<!-- deploy-preview-comment:state\n"
-          const stateSuffix = "\n-->"
-          const stateTag = 'storybook-preview-comment-state'
-          const schemaVersion = 3
-          const timeZone = 'Europe/Berlin'
-          const maxCommits = 50
+          const noRecordsMessage = "No storybooks were deployed."
+          const stateId = "storybook-preview"
 
           const [commentsPath, commentBodyPath, summaryPath, commentIdPath] = process.argv.slice(2)
+          const runtimeModule = process.env.WORKFLOW_REPORT_RUNTIME_MODULE
+          if (typeof runtimeModule !== "string" || runtimeModule.length === 0) throw new Error("WORKFLOW_REPORT_RUNTIME_MODULE is required")
+          const {
+            decodeWorkflowReportRecord,
+            deriveWorkflowReportManagedState,
+            encodeWorkflowReportRecordLine,
+            findWorkflowReportManagedComment,
+            legacyStorybookPreviewManagedStateMigration,
+            renderWorkflowReportCommentBody,
+          } = await import(pathToFileURL(resolve(runtimeModule)).href)
 
           const fail = (message) => {
             throw new Error(message)
@@ -8010,14 +8016,6 @@ jobs:
             return value
           }
 
-          const expectExactKeys = (record, keys, path) => {
-            const actualKeys = Object.keys(record).sort()
-            const expectedKeys = [...keys].sort()
-            if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
-              fail(`${path} keys must be exactly: ${expectedKeys.join(", ")}`)
-            }
-          }
-
           const expectUrl = (value, path) => {
             const string = expectString(value, path)
             if (!string.startsWith('https://')) {
@@ -8028,37 +8026,14 @@ jobs:
 
           const expectIsoUtc = (value, path) => {
             const string = expectString(value, path)
-            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(string) || Number.isNaN(Date.parse(string))) {
+            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(string) || Number.isNaN(Date.parse(string))) {
               fail(`${path} must be a valid UTC ISO timestamp`)
             }
             return string
           }
 
-          const validatePackageV1 = (value, path) => {
-            const record = expectObject(value, path)
-            expectExactKeys(record, ['packageName', 'url'], path)
-            return {
-              packageName: expectString(record.packageName, `${path}.packageName`),
-              rawDeployUrl: expectUrl(record.url, `${path}.url`),
-              finalUrl: expectUrl(record.url, `${path}.url`),
-              deployedAtUtc: undefined,
-            }
-          }
-
-          const validatePackageV2 = (value, path) => {
-            const record = expectObject(value, path)
-            expectExactKeys(record, ['packageName', 'rawDeployUrl', 'finalUrl'], path)
-            return {
-              packageName: expectString(record.packageName, `${path}.packageName`),
-              rawDeployUrl: expectUrl(record.rawDeployUrl, `${path}.rawDeployUrl`),
-              finalUrl: expectUrl(record.finalUrl, `${path}.finalUrl`),
-              deployedAtUtc: undefined,
-            }
-          }
-
           const validatePackageV3 = (value, path) => {
             const record = expectObject(value, path)
-            expectExactKeys(record, ['packageName', 'rawDeployUrl', 'finalUrl', 'deployedAtUtc'], path)
             return {
               packageName: expectString(record.packageName, `${path}.packageName`),
               rawDeployUrl: expectUrl(record.rawDeployUrl, `${path}.rawDeployUrl`),
@@ -8066,83 +8041,10 @@ jobs:
               deployedAtUtc: expectIsoUtc(record.deployedAtUtc, `${path}.deployedAtUtc`),
             }
           }
-
-          const validateCommit = (value, path) => {
-            const record = expectObject(value, path)
-            expectExactKeys(record, ['commitSha', 'modeLabel', 'deployedAtUtc', 'packages'], path)
-            const packages = expectArray(record.packages, `${path}.packages`).map((pkg, index) => ({ value: pkg, path: `${path}.packages[${index}]` }))
-            return {
-              commitSha: expectString(record.commitSha, `${path}.commitSha`),
-              modeLabel: expectString(record.modeLabel, `${path}.modeLabel`),
-              deployedAtUtc: expectIsoUtc(record.deployedAtUtc, `${path}.deployedAtUtc`),
-              packages,
-            }
-          }
-
-          const validateState = (value) => {
-            const record = expectObject(value, 'state')
-            expectExactKeys(record, ['_tag', 'schemaVersion', 'timeZone', 'packageOrder', 'commits'], 'state')
-            if (record._tag !== stateTag) fail(`state._tag must be ${stateTag}`)
-            if (![1, 2, schemaVersion].includes(record.schemaVersion)) fail(`state.schemaVersion must be 1, 2, or ${schemaVersion}`)
-            if (record.timeZone !== timeZone) fail(`state.timeZone must be ${timeZone}`)
-            const packageOrder = expectArray(record.packageOrder, "state.packageOrder").map((pkg, index) =>
-              expectString(pkg, `state.packageOrder[${index}]`),
-            )
-            const commits = expectArray(record.commits, "state.commits").map((commit, index) => {
-              const validatedCommit = validateCommit(commit, `state.commits[${index}]`)
-              return {
-                ...validatedCommit,
-                packages: validatedCommit.packages.map((pkg, packageIndex) =>
-                  ((validatedPackage) => ({
-                    ...validatedPackage,
-                    deployedAtUtc: validatedPackage.deployedAtUtc ?? validatedCommit.deployedAtUtc,
-                  }))(
-                    record.schemaVersion === 1
-                      ? validatePackageV1(pkg.value, `state.commits[${index}].packages[${packageIndex}]`)
-                      : record.schemaVersion === 2
-                        ? validatePackageV2(pkg.value, `state.commits[${index}].packages[${packageIndex}]`)
-                        : validatePackageV3(pkg.value, `state.commits[${index}].packages[${packageIndex}]`),
-                  ),
-                ),
-              }
-            })
-            return { _tag: stateTag, schemaVersion, timeZone, packageOrder, commits }
-          }
-
-          const formatBerlin = (isoUtc) => {
-            const formatter = new Intl.DateTimeFormat('en-GB', {
-              timeZone,
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false,
-              timeZoneName: 'short',
-            })
-            const parts = Object.fromEntries(
-              formatter.formatToParts(new Date(isoUtc)).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]),
-            )
-            return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} ${parts.timeZoneName}`
-          }
-
-          const extractState = (body) => {
-            const start = body.indexOf(statePrefix)
-            if (start === -1) return undefined
-            const end = body.indexOf(stateSuffix, start + statePrefix.length)
-            if (end === -1) fail("existing managed comment is missing the state suffix marker")
-            const raw = body.slice(start + statePrefix.length, end)
-            return validateState(JSON.parse(raw))
-          }
-
-          const renderHistoryUrl = (pkg) =>
-            pkg.finalUrl === pkg.rawDeployUrl
-              ? pkg.rawDeployUrl
-              : `${pkg.rawDeployUrl}<br><sub>Alias: ${pkg.finalUrl}</sub>`
 
           const rawPackagesJson = process.env.STORYBOOK_PREVIEW_PACKAGES_JSON ?? ""
           if (rawPackagesJson.length === 0) {
-            const msg = "STORYBOOK_PREVIEW_PACKAGES_JSON is empty — the deploy step likely failed before producing output. Check the deploy step logs above."
+            const msg = "STORYBOOK_PREVIEW_PACKAGES_JSON is empty; the deploy step likely failed before producing output. Check the deploy step logs above."
             console.error(msg)
             process.exitCode = 1
             writeFileSync(summaryPath, `## Storybook Previews\n\n> **Deploy failed.** ${msg}\n`)
@@ -8157,98 +8059,77 @@ jobs:
             validatePackageV3(pkg, `currentPackages[${index}]`),
           )
 
-          const deployedAtUtc = currentPackages.reduce(
+          const createdAtUtc = currentPackages.reduce(
             (latest, pkg) => (pkg.deployedAtUtc > latest ? pkg.deployedAtUtc : latest),
             fallbackDeployedAtUtc,
           )
 
-          currentPackages.forEach((pkg, index) => validatePackageV3(pkg, `currentPackages[${index}]`))
+          const reportFromPackage = (pkg) => decodeWorkflowReportRecord({
+            _tag: "WorkflowReportRecord",
+            schemaVersion: 1,
+            id: `deploy-netlify-${pkg.packageName}`,
+            kind: "deploy-preview",
+            subject: { id: pkg.packageName, label: pkg.packageName },
+            status: "success",
+            title: `${pkg.packageName} preview deployed`,
+            summary: "Preview is ready",
+            createdAtUtc: pkg.deployedAtUtc,
+            links: [{ label: "Preview", url: pkg.finalUrl, primary: true }],
+            data: {
+              provider: "netlify",
+              target: pkg.packageName,
+              displayName: pkg.packageName,
+              rawDeployUrl: pkg.rawDeployUrl,
+              finalUrl: pkg.finalUrl,
+              deployedAtUtc: pkg.deployedAtUtc,
+            },
+          })
+
+          const reportsFromPackages = currentPackages.map(reportFromPackage)
+          const rawWorkflowReport = process.env.STORYBOOK_PREVIEW_WORKFLOW_REPORT ?? ""
+          const currentReports = reportsFromPackages.length > 0
+            ? reportsFromPackages
+            : rawWorkflowReport.length > 0
+              ? [decodeWorkflowReportRecord(JSON.parse(rawWorkflowReport))]
+              : []
+
+          for (const report of currentReports) {
+            console.log(encodeWorkflowReportRecordLine(report))
+          }
 
           const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))
           if (!Array.isArray(comments)) fail("comments response must be an array")
 
-          const existingComment = comments
-            .filter(
-              (comment) =>
-                typeof comment?.body === "string" &&
-                (comment.body.includes(managedMarker) || comment.body.startsWith(`## ${commentTitle}`)),
-            )
-            .at(-1)
-
-          const existingState = existingComment ? extractState(existingComment.body) : undefined
-          const priorState = existingState ?? { _tag: stateTag, schemaVersion, timeZone, packageOrder: [], commits: [] }
-
-          if (currentPackages.length === 0) {
-            const visibleBody = `## ${commentTitle}\n\n${noRowsMessage}\n`
-            const hiddenState = `${managedMarker}\n${statePrefix}${JSON.stringify(priorState, null, 2)}${stateSuffix}`
-            writeFileSync(summaryPath, visibleBody)
-            writeFileSync(commentBodyPath, `${visibleBody}\n${hiddenState}\n`)
-            writeFileSync(commentIdPath, existingComment ? String(existingComment.id) : "")
-            process.exit(0)
-          }
-
           const commitSha = expectString(process.env.STORYBOOK_PREVIEW_COMMIT_SHA, "STORYBOOK_PREVIEW_COMMIT_SHA")
           const modeLabel = expectString(process.env.STORYBOOK_PREVIEW_LABEL, "STORYBOOK_PREVIEW_LABEL")
-
-          const nextPackageOrder = [...new Set([...currentPackages.map((pkg) => pkg.packageName), ...priorState.packageOrder])]
-          const nextState = {
-            _tag: stateTag,
-            schemaVersion,
-            timeZone,
-            packageOrder: nextPackageOrder,
-            commits: [
-              { commitSha, modeLabel, deployedAtUtc, packages: currentPackages },
-              ...priorState.commits.filter((commit) => commit.commitSha !== commitSha),
-            ].slice(0, maxCommits),
-          }
-
-          const latestByPackage = new Map()
-          for (const commit of nextState.commits) {
-            for (const pkg of commit.packages) {
-              if (!latestByPackage.has(pkg.packageName)) {
-                latestByPackage.set(pkg.packageName, pkg)
-              }
-            }
-          }
-
-          const visibleLines = [
-            `## ${commentTitle}`,
-            '',
-            `| Package | Latest URL | Last Deploy (Europe/Berlin) |`,
-            `| --- | --- | --- |`,
-            ...nextState.packageOrder.flatMap((packageName) => {
-              const latest = latestByPackage.get(packageName)
-              if (!latest) return []
-              return [`| ${packageName} | ${latest.finalUrl} | ${formatBerlin(latest.deployedAtUtc)} |`]
-            }),
-          ]
-
-          if (nextState.commits.length > 0) {
-            visibleLines.push('', '<details>', '<summary>Per-Commit Deploy History</summary>', '')
-            for (const commit of nextState.commits) {
-              visibleLines.push(`### Commit \`${commit.commitSha.slice(0, 7)}\` · ${formatBerlin(commit.deployedAtUtc)}`)
-              visibleLines.push('', '| Package | URL |', '| --- | --- |')
-              for (const packageName of nextState.packageOrder) {
-                const pkg = commit.packages.find((entry) => entry.packageName === packageName)
-                if (!pkg) continue
-                visibleLines.push(`| ${packageName} | ${renderHistoryUrl(pkg)} |`)
-              }
-              visibleLines.push('')
-            }
-            visibleLines.push('</details>')
-          }
-
-          const body = [
-            ...visibleLines,
-            '',
-            managedMarker,
-            `${statePrefix}${JSON.stringify(nextState, null, 2)}${stateSuffix}`,
-          ].join('\n')
-
-          writeFileSync(commentBodyPath, `${body}\n`)
-          writeFileSync(summaryPath, `${visibleLines.join("\n")}\n`)
-          writeFileSync(commentIdPath, existingComment ? String(existingComment.id) : "")
+          const existingComment = findWorkflowReportManagedComment(comments, {
+            stateId,
+            migrations: [legacyStorybookPreviewManagedStateMigration],
+          })
+          const state = deriveWorkflowReportManagedState({
+            stateId,
+            priorState: existingComment?.state,
+            entryId: commitSha,
+            entryLabel: modeLabel,
+            createdAtUtc,
+            records: currentReports,
+          })
+          const body = renderWorkflowReportCommentBody({ title: commentTitle, noRecordsMessage, state })
+          const visibleBody = body.slice(0, body.indexOf("<!-- workflow-report:managed -->")).trimEnd() + "\n"
+          writeFileSync(commentBodyPath, body)
+          writeFileSync(summaryPath, visibleBody)
+          writeFileSync(commentIdPath, existingComment?.id ?? "")
           EOF
+          if [ -z "${WORKFLOW_REPORT_RUNTIME_MODULE:-}" ]; then
+            if [ -f packages/@overeng/genie/src/runtime/mod.ts ]; then
+              export WORKFLOW_REPORT_RUNTIME_MODULE=packages/@overeng/genie/src/runtime/mod.ts
+            elif [ -f repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts ]; then
+              export WORKFLOW_REPORT_RUNTIME_MODULE=repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts
+            else
+              echo "::error::unable to locate @overeng/genie runtime module for workflow reports"
+              exit 1
+            fi
+          fi
           nix run nixpkgs#bun -- /tmp/render-storybook-preview-comment.mjs "$comments_json" /tmp/storybook-preview-comment.md "$GITHUB_STEP_SUMMARY" /tmp/storybook-preview-comment-id.txt
           comment_id="$(cat /tmp/storybook-preview-comment-id.txt)"
           if [ ! -s /tmp/storybook-preview-comment.md ]; then

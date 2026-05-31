@@ -130,8 +130,8 @@ describe('ci workflow reporting helpers', () => {
 
   it('matches managed PR comments by hidden state ID before patching', () => {
     expect(ciWorkflowSource).toContain('workflow report comment body is missing managed state')
-    expect(ciWorkflowSource).toContain('targetState.stateId')
-    expect(ciWorkflowSource).toContain('issue comment ${comment.id}')
+    expect(ciWorkflowSource).toContain('findWorkflowReportManagedComment')
+    expect(ciWorkflowSource).toContain('WORKFLOW_REPORT_STATE_ID')
   })
 })
 

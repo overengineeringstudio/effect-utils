@@ -62,6 +62,16 @@ export type WorkflowReportManagedComment = {
   readonly body?: string | null
 }
 
+export type WorkflowReportManagedStateMigration = {
+  readonly marker: string
+  readonly extract: (body: string) => WorkflowReportManagedState | undefined
+}
+
+export type WorkflowReportManagedCommentMatch = {
+  readonly id: string
+  readonly state: WorkflowReportManagedState
+}
+
 const jsonSchemaDraft = 'http://json-schema.org/draft-07/schema#'
 
 const nonEmptyStringSchema = {
@@ -476,20 +486,57 @@ export const createWorkflowReportBundle = (opts: {
     records: [...opts.records],
   })
 
+export const collectWorkflowReportBundle = (opts: {
+  readonly bundleId: string
+  readonly generatedAtUtc: string
+  readonly sources: readonly string[]
+  readonly marker?: string
+}): WorkflowReportBundle =>
+  createWorkflowReportBundle({
+    bundleId: opts.bundleId,
+    generatedAtUtc: opts.generatedAtUtc,
+    records: opts.sources.flatMap(
+      (source) =>
+        parseMarkedWorkflowReportJsonl(
+          source,
+          opts.marker === undefined ? {} : { marker: opts.marker },
+        ).records,
+    ),
+  })
+
+const extractDelimitedJson = (
+  body: string,
+  opts: {
+    readonly prefix: string
+    readonly suffix: string
+    readonly missingSuffixMessage: string
+  },
+): string | undefined => {
+  const startIndex = body.indexOf(opts.prefix)
+  if (startIndex === -1) return undefined
+
+  const stateStartIndex = startIndex + opts.prefix.length
+  const endIndex = body.indexOf(opts.suffix, stateStartIndex)
+  if (endIndex === -1) {
+    throw new Error(opts.missingSuffixMessage)
+  }
+
+  return body.slice(stateStartIndex, endIndex)
+}
+
 export const extractWorkflowReportManagedState = (
   body: string,
   opts: { readonly stateId?: string } = {},
 ): WorkflowReportManagedState | undefined => {
-  const startIndex = body.indexOf(workflowReportStatePrefix)
-  if (startIndex === -1) return undefined
+  const rawState = extractDelimitedJson(body, {
+    prefix: workflowReportStatePrefix,
+    suffix: workflowReportStateSuffix,
+    missingSuffixMessage:
+      'Existing workflow report comment is missing the managed state suffix marker',
+  })
+  if (rawState === undefined) return undefined
 
-  const stateStartIndex = startIndex + workflowReportStatePrefix.length
-  const endIndex = body.indexOf(workflowReportStateSuffix, stateStartIndex)
-  if (endIndex === -1) {
-    throw new Error('Existing workflow report comment is missing the managed state suffix marker')
-  }
-
-  const state = decodeWorkflowReportManagedStateJson(body.slice(stateStartIndex, endIndex))
+  const state = decodeWorkflowReportManagedStateJson(rawState)
   if (opts.stateId !== undefined && state.stateId !== opts.stateId) {
     throw new Error(`Expected workflow report stateId ${opts.stateId}, got ${state.stateId}`)
   }
@@ -507,15 +554,36 @@ export const findWorkflowReportManagedCommentId = (
   comments: readonly WorkflowReportManagedComment[],
   opts: { readonly stateId: string; readonly marker?: string },
 ): string | undefined => {
-  const marker = opts.marker ?? workflowReportManagedMarker
-  const existingComment = comments.toReversed().find((comment) => {
-    if (typeof comment.body !== 'string' || comment.body.includes(marker) === false) {
-      return false
-    }
-    return extractWorkflowReportManagedState(comment.body)?.stateId === opts.stateId
-  })
+  const match = findWorkflowReportManagedComment(comments, opts)
+  return match?.id
+}
 
-  return existingComment === undefined ? undefined : String(existingComment.id)
+export const findWorkflowReportManagedComment = (
+  comments: readonly WorkflowReportManagedComment[],
+  opts: {
+    readonly stateId: string
+    readonly marker?: string
+    readonly migrations?: readonly WorkflowReportManagedStateMigration[]
+  },
+): WorkflowReportManagedCommentMatch | undefined => {
+  const marker = opts.marker ?? workflowReportManagedMarker
+  for (const comment of comments.toReversed()) {
+    if (typeof comment.body !== 'string') continue
+
+    if (comment.body.includes(marker) === true) {
+      const state = extractWorkflowReportManagedState(comment.body)
+      if (state?.stateId === opts.stateId) return { id: String(comment.id), state }
+      continue
+    }
+
+    for (const migration of opts.migrations ?? []) {
+      if (comment.body.includes(migration.marker) === false) continue
+      const state = migration.extract(comment.body)
+      if (state?.stateId === opts.stateId) return { id: String(comment.id), state }
+    }
+  }
+
+  return undefined
 }
 
 export const deriveWorkflowReportManagedState = (opts: {
@@ -586,6 +654,236 @@ export const deriveWorkflowReportManagedState = (opts: {
     entries,
   })
 }
+
+const legacyDeployPreviewMarker = '<!-- deploy-preview-comment:managed -->'
+const legacyDeployPreviewStatePrefix = '<!-- deploy-preview-comment:state\n'
+const legacyDeployPreviewStateSuffix = '\n-->'
+
+const legacyStateJson = (body: string) =>
+  extractDelimitedJson(body, {
+    prefix: legacyDeployPreviewStatePrefix,
+    suffix: legacyDeployPreviewStateSuffix,
+    missingSuffixMessage: 'Existing deploy-preview comment is missing the state suffix marker',
+  })
+
+const legacyRecordFromDeployTarget = (opts: {
+  readonly provider: string
+  readonly kind: string
+  readonly entryCreatedAtUtc: string
+  readonly value: unknown
+  readonly path: string
+}): WorkflowReportRecord => {
+  const target = expectRecord(opts.value, opts.path)
+  const subjectId = expectNonEmptyString(target.target, `${opts.path}.target`)
+  const displayName = expectNonEmptyString(target.displayName, `${opts.path}.displayName`)
+  const finalUrl = expectHttpsUrl(target.finalUrl, `${opts.path}.finalUrl`)
+  const rawDeployUrl = expectHttpsUrl(target.rawDeployUrl, `${opts.path}.rawDeployUrl`)
+  const deployedAtUtc =
+    target.deployedAtUtc === undefined
+      ? opts.entryCreatedAtUtc
+      : expectIsoUtc(target.deployedAtUtc, `${opts.path}.deployedAtUtc`)
+
+  return decodeWorkflowReportRecord({
+    _tag: 'WorkflowReportRecord',
+    schemaVersion: 1,
+    id: `deploy-${opts.provider}-${subjectId}`,
+    kind: opts.kind,
+    subject: { id: subjectId, label: displayName },
+    status: 'success',
+    title: `${displayName} preview deployed`,
+    summary: 'Preview is ready',
+    createdAtUtc: deployedAtUtc,
+    links: [{ label: 'Preview', url: finalUrl, primary: true }],
+    data: {
+      provider: opts.provider,
+      target: subjectId,
+      displayName,
+      rawDeployUrl,
+      finalUrl,
+      deployedAtUtc,
+    },
+  })
+}
+
+const legacyRecordFromStorybookPackage = (opts: {
+  readonly value: unknown
+  readonly path: string
+  readonly entryCreatedAtUtc: string
+}): WorkflowReportRecord => {
+  const pkg = expectRecord(opts.value, opts.path)
+  const packageName = expectNonEmptyString(pkg.packageName, `${opts.path}.packageName`)
+  const finalUrl =
+    typeof pkg.finalUrl === 'string'
+      ? expectHttpsUrl(pkg.finalUrl, `${opts.path}.finalUrl`)
+      : expectHttpsUrl(pkg.url, `${opts.path}.url`)
+  const rawDeployUrl =
+    typeof pkg.rawDeployUrl === 'string'
+      ? expectHttpsUrl(pkg.rawDeployUrl, `${opts.path}.rawDeployUrl`)
+      : finalUrl
+  const deployedAtUtc =
+    typeof pkg.deployedAtUtc === 'string'
+      ? expectIsoUtc(pkg.deployedAtUtc, `${opts.path}.deployedAtUtc`)
+      : opts.entryCreatedAtUtc
+
+  return decodeWorkflowReportRecord({
+    _tag: 'WorkflowReportRecord',
+    schemaVersion: 1,
+    id: `deploy-netlify-${packageName}`,
+    kind: 'deploy-preview',
+    subject: { id: packageName, label: packageName },
+    status: 'success',
+    title: `${packageName} preview deployed`,
+    summary: 'Preview is ready',
+    createdAtUtc: deployedAtUtc,
+    links: [{ label: 'Preview', url: finalUrl, primary: true }],
+    data: {
+      provider: 'netlify',
+      target: packageName,
+      displayName: packageName,
+      rawDeployUrl,
+      finalUrl,
+      deployedAtUtc,
+    },
+  })
+}
+
+export const legacyDeployPreviewManagedStateMigration = {
+  marker: legacyDeployPreviewMarker,
+  extract: (body: string): WorkflowReportManagedState | undefined => {
+    const rawState = legacyStateJson(body)
+    if (rawState === undefined) return undefined
+
+    const legacyState = expectRecord(
+      parseJson(rawState, 'LegacyDeployPreviewState'),
+      'LegacyDeployPreviewState',
+    )
+    if (legacyState._tag !== 'deploy-preview-comment-state') return undefined
+
+    const timeZone = expectNonEmptyString(legacyState.timeZone, 'LegacyDeployPreviewState.timeZone')
+    const targetOrder = expectArray(
+      legacyState.targetOrder,
+      'LegacyDeployPreviewState.targetOrder',
+    ).map((target, index) =>
+      expectNonEmptyString(target, `LegacyDeployPreviewState.targetOrder[${index}]`),
+    )
+    const entries = expectArray(legacyState.commits, 'LegacyDeployPreviewState.commits').map(
+      (commit, commitIndex) => {
+        const entry = expectRecord(commit, `LegacyDeployPreviewState.commits[${commitIndex}]`)
+        const entryId = expectNonEmptyString(
+          entry.commitSha,
+          `LegacyDeployPreviewState.commits[${commitIndex}].commitSha`,
+        )
+        const label = expectNonEmptyString(
+          entry.modeLabel,
+          `LegacyDeployPreviewState.commits[${commitIndex}].modeLabel`,
+        )
+        const records = expectArray(
+          entry.targets,
+          `LegacyDeployPreviewState.commits[${commitIndex}].targets`,
+        ).map((target, targetIndex) =>
+          legacyRecordFromDeployTarget({
+            provider: 'vercel',
+            kind: 'deploy-preview',
+            entryCreatedAtUtc: new Date(0).toISOString(),
+            value: target,
+            path: `LegacyDeployPreviewState.commits[${commitIndex}].targets[${targetIndex}]`,
+          }),
+        )
+        const createdAtUtc =
+          records
+            .map((record) => record.createdAtUtc)
+            .toSorted((left, right) => Date.parse(right) - Date.parse(left))[0] ??
+          new Date(0).toISOString()
+
+        return {
+          _tag: 'WorkflowReportManagedEntry' as const,
+          entryId,
+          label,
+          createdAtUtc,
+          records,
+        }
+      },
+    )
+
+    return decodeWorkflowReportManagedState({
+      _tag: 'WorkflowReportManagedState',
+      schemaVersion: 1,
+      stateId: 'deploy-preview',
+      timeZone,
+      recordOrder: targetOrder,
+      entries,
+    })
+  },
+} satisfies WorkflowReportManagedStateMigration
+
+export const legacyStorybookPreviewManagedStateMigration = {
+  marker: legacyDeployPreviewMarker,
+  extract: (body: string): WorkflowReportManagedState | undefined => {
+    const rawState = legacyStateJson(body)
+    if (rawState === undefined) return undefined
+
+    const legacyState = expectRecord(
+      parseJson(rawState, 'LegacyStorybookPreviewState'),
+      'LegacyStorybookPreviewState',
+    )
+    if (legacyState._tag !== 'storybook-preview-comment-state') return undefined
+
+    const timeZone = expectNonEmptyString(
+      legacyState.timeZone,
+      'LegacyStorybookPreviewState.timeZone',
+    )
+    const packageOrder = expectArray(
+      legacyState.packageOrder,
+      'LegacyStorybookPreviewState.packageOrder',
+    ).map((pkg, index) =>
+      expectNonEmptyString(pkg, `LegacyStorybookPreviewState.packageOrder[${index}]`),
+    )
+    const entries = expectArray(legacyState.commits, 'LegacyStorybookPreviewState.commits').map(
+      (commit, commitIndex) => {
+        const entry = expectRecord(commit, `LegacyStorybookPreviewState.commits[${commitIndex}]`)
+        const entryId = expectNonEmptyString(
+          entry.commitSha,
+          `LegacyStorybookPreviewState.commits[${commitIndex}].commitSha`,
+        )
+        const label = expectNonEmptyString(
+          entry.modeLabel,
+          `LegacyStorybookPreviewState.commits[${commitIndex}].modeLabel`,
+        )
+        const entryCreatedAtUtc = expectIsoUtc(
+          entry.deployedAtUtc,
+          `LegacyStorybookPreviewState.commits[${commitIndex}].deployedAtUtc`,
+        )
+        const records = expectArray(
+          entry.packages,
+          `LegacyStorybookPreviewState.commits[${commitIndex}].packages`,
+        ).map((pkg, packageIndex) =>
+          legacyRecordFromStorybookPackage({
+            value: pkg,
+            path: `LegacyStorybookPreviewState.commits[${commitIndex}].packages[${packageIndex}]`,
+            entryCreatedAtUtc,
+          }),
+        )
+
+        return {
+          _tag: 'WorkflowReportManagedEntry' as const,
+          entryId,
+          label,
+          createdAtUtc: entryCreatedAtUtc,
+          records,
+        }
+      },
+    )
+
+    return decodeWorkflowReportManagedState({
+      _tag: 'WorkflowReportManagedState',
+      schemaVersion: 1,
+      stateId: 'storybook-preview',
+      timeZone,
+      recordOrder: packageOrder,
+      entries,
+    })
+  },
+} satisfies WorkflowReportManagedStateMigration
 
 const escapeMarkdownTableCell = (value: string) =>
   value.replaceAll('\\', '\\\\').replaceAll('|', '\\|').replaceAll('\n', '<br>')
