@@ -948,47 +948,42 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                 })
           const bodyPointer =
             options.materializeBodies === false
-              ? Schema.decodeUnknownSync(BodyPointer)({
-                  _tag: 'BodyPointer',
-                  pageId: row.pageId,
-                  bodyHash: hashStoreBytes(`body:not-materialized:${row.pageId}`),
-                  observedAt: now().toISOString(),
-                  safety: {
-                    truncated: false,
-                    unknownBlockCause: undefined,
-                    selection: 'safe',
-                    wouldDeleteChildren: false,
-                    syncedPageUnsupported: false,
-                    adapterConflict: false,
-                    adapterMutationSurfaces: [],
-                  },
-                })
+              ? undefined
               : yield* body.observe({ _tag: 'ObserveBodyInput', pageId: row.pageId })
-          const path = (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId)
+          const path =
+            bodyPointer === undefined
+              ? undefined
+              : (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId)
           const materializeResult =
-            options.materializeBodies === false || options.materializeBodyArtifacts === false
+            bodyPointer === undefined || options.materializeBodyArtifacts === false
               ? undefined
               : yield* workspace.materialize({
                   _tag: 'MaterializePlan',
                   pageId: row.pageId,
-                  path,
+                  path: (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId),
                   bodyPointer,
                 })
 
           if (materializeResult !== undefined) {
             materialized.push(materializeResult)
           }
-          const rowPayload = {
-            bodyPath: path,
-            sidecarIdentityProven: materializeResult !== undefined,
-            ownWriteMaterializationIds:
-              materializeResult === undefined ? [] : [materializeResult.ownWriteSuppressionToken],
-            safety: bodyPointer.safety,
-          }
+          const rowPayload =
+            bodyPointer === undefined
+              ? {}
+              : {
+                  bodyPath: path,
+                  sidecarIdentityProven: materializeResult !== undefined,
+                  ownWriteMaterializationIds:
+                    materializeResult === undefined
+                      ? []
+                      : [materializeResult.ownWriteSuppressionToken],
+                  safety: bodyPointer.safety,
+                }
           const rowPayloadHash = rowProjectionPayloadHash({
             inTrash: page.inTrash,
             payload: rowPayload,
           })
+          const bodyHashPart = bodyPointer === undefined ? 'no-body' : bodyPointer.bodyHash
 
           events.push(
             decode({
@@ -997,10 +992,10 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                 _tag: 'RowObserved',
                 ...eventBase({
                   rootId: options.rootId,
-                  eventId: `row:${eventIdPart(row.pageId)}:${page.propertiesHash}:${bodyPointer.bodyHash}:${rowPayloadHash}`,
+                  eventId: `row:${eventIdPart(row.pageId)}:${page.propertiesHash}:${bodyHashPart}:${rowPayloadHash}`,
                   family: 'RemoteObserved',
                   eventType: 'RowObserved',
-                  idempotencyKey: `row:${row.pageId}:${page.propertiesHash}:${bodyPointer.bodyHash}:${rowPayloadHash}`,
+                  idempotencyKey: `row:${row.pageId}:${page.propertiesHash}:${bodyHashPart}:${rowPayloadHash}`,
                   surface: pageSurfaceKey(row.pageId),
                   payload: rowPayload,
                   now,
@@ -1008,7 +1003,9 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                 dataSourceId: page.dataSourceId ?? options.dataSourceId,
                 pageId: row.pageId,
                 propertiesHash: page.propertiesHash,
-                bodyPointer: Schema.encodeSync(BodyPointer)(bodyPointer),
+                ...(bodyPointer === undefined
+                  ? {}
+                  : { bodyPointer: Schema.encodeSync(BodyPointer)(bodyPointer) }),
                 inTrash: page.inTrash,
               },
             }),

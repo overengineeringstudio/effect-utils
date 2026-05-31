@@ -8,8 +8,10 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  NotionMdGateway,
   NmdStateStore,
   NmdStateStoreLive,
+  statusPage,
   type NotionMdGatewayShape,
   type PullPageResult,
 } from '@overeng/notion-md'
@@ -540,7 +542,11 @@ describe('body adapter E2E boundary', () => {
 
     try {
       const stateStore = await runWithNmdStateStore(NmdStateStore)
-      const body = makeNotionMdPageBodySyncPort({ gateway: notionMdGateway })
+      const body = makeNotionMdPageBodySyncPort({
+        root,
+        gateway: notionMdGateway,
+        stateStore,
+      })
       const workspace = makeNotionMdMaterializingLocalWorkspacePort({
         root,
         gateway: notionMdGateway,
@@ -578,10 +584,13 @@ describe('body adapter E2E boundary', () => {
       )
 
       const result = await runWithPorts(
-        pushOneShotSync({
+        syncOneShot({
           store: storeFixture.store,
           rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
           workspaceRoot: root,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
           now: makeFakeClock().now,
         }),
         {
@@ -591,9 +600,9 @@ describe('body adapter E2E boundary', () => {
         },
       )
 
-      expect(result.localObservations).toBe(1)
-      expect(result.plan.enqueuedCommands).toBe(1)
-      expect(result.executor.results).toEqual([
+      expect(result.push.localObservations).toBe(1)
+      expect(result.push.plan.enqueuedCommands).toBe(1)
+      expect(result.push.executor.results).toEqual([
         {
           _tag: 'settled',
           commandId: expect.any(String),
@@ -621,6 +630,52 @@ describe('body adapter E2E boundary', () => {
           desiredHash: contentHash(localMarkdown),
         },
       ])
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).bodies).toMatchObject(
+        [
+          {
+            pageId: testIds.pageId,
+            baseHash: contentHash(localMarkdown),
+            currentHash: contentHash(localMarkdown),
+          },
+        ],
+      )
+      expect(result.status).toMatchObject({
+        state: 'clean',
+        counts: {
+          conflict: 0,
+          outbox: { queued: 0, running: 0, retryable: 0 },
+        },
+      })
+      const nmdStatus = await Effect.runPromise(
+        statusPage({ path: absoluteBodyPath }).pipe(
+          Effect.provideService(NotionMdGateway, notionMdGateway),
+          Effect.provideService(NmdStateStore, stateStore),
+        ),
+      )
+      expect(nmdStatus.localChanged).toBe(false)
+      expect(nmdStatus.remoteChanged).toBe(false)
+
+      const second = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot: root,
+          queryContract: defaultQueryContract(),
+          schemaProperties: [],
+          now: makeFakeClock().now,
+        }),
+        {
+          gateway: gatewayHarness.gateway,
+          body,
+          workspace,
+        },
+      )
+
+      expect(second.push.plan.enqueuedCommands).toBe(0)
+      expect(second.push.executor.results).toEqual([{ _tag: 'idle' }])
+      expect(second.status.state).toBe('clean')
+      expect(updates).toHaveLength(1)
       assertNoGatewayMutations(gatewayHarness.ledger)
     } finally {
       storeFixture.cleanup()

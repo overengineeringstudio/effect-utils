@@ -2745,6 +2745,31 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
                  AND settlement_event_id IS NULL`,
             )
             .run(event.eventId, event.eventId, currentIso(this.#now), event.rootId, event.commandId)
+
+          if (event.commandTag === 'BodyPush' && event.surface !== null) {
+            const match = /^page:(?<pageId>.+):body$/u.exec(event.surface)
+            const pageId = match?.groups?.pageId
+            if (pageId !== undefined) {
+              this.#db
+                .prepare(
+                  `UPDATE _nds_body_pointer
+                   SET base_hash = ?,
+                       current_hash = ?,
+                       observed_event_id = ?,
+                       updated_at = ?
+                   WHERE root_id = ?
+                     AND page_id = ?`,
+                )
+                .run(
+                  event.observedHash,
+                  event.observedHash,
+                  event.eventId,
+                  currentIso(this.#now),
+                  event.rootId,
+                  decodePageId(pageId),
+                )
+            }
+          }
         }
         break
       }

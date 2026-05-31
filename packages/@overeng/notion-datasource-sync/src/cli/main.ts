@@ -2078,9 +2078,15 @@ export const makeCliRuntimeLayer = ({
           )
         : Layer.effect(
             PageBodySyncPort,
-            NotionMdGateway.pipe(
-              Effect.map((gateway) => makeNotionMdPageBodySyncPort({ gateway })),
-            ),
+            Effect.gen(function* () {
+              const gateway = yield* NotionMdGateway
+              const stateStore = yield* NmdStateStore
+              return makeNotionMdPageBodySyncPort({
+                root: context.workspaceRoot,
+                gateway,
+                stateStore,
+              })
+            }),
           ).pipe(Layer.provide(notionMdLiveLayer))
 
   const workspaceLayer =

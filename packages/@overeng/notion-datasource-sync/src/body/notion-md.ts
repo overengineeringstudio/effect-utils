@@ -40,9 +40,11 @@ import {
   withBodyAdapterContract,
 } from './adapter.ts'
 
-/** Configuration for the NotionMD-backed `PageBodySyncPort`: just the upstream NotionMD gateway client. */
+/** Configuration for the NotionMD-backed `PageBodySyncPort`. */
 export type NotionMdPageBodySyncPortInput = {
   readonly gateway: NotionMdGatewayShape
+  readonly root?: AbsolutePath
+  readonly stateStore?: NmdStateStoreShape
 }
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>({
@@ -87,11 +89,12 @@ const bodyPointerFromMarkdown = (input: {
  * Build a `PageBodySyncPort` implementation backed by the NotionMD gateway.
  *
  * Wraps the gateway with the body-adapter contract so guards (lossy, unknown blocks,
- * conflict surfaces) fire before any markdown reaches the sync engine. `repair` is wired
- * but `push` falls back to the contract default until the NotionMD push surface lands.
+ * conflict surfaces) fire before any markdown reaches the sync engine.
  */
 export const makeNotionMdPageBodySyncPort = ({
   gateway,
+  root,
+  stateStore,
 }: NotionMdPageBodySyncPortInput): PageBodySyncPortShape =>
   withBodyAdapterContract({
     observe: (input: ObserveBodyInput) =>
@@ -219,6 +222,96 @@ export const makeNotionMdPageBodySyncPort = ({
           truncated: updated.markdown.truncated,
           unknownBlockIds: updated.markdown.unknown_block_ids,
         })
+
+        if (root !== undefined && stateStore !== undefined) {
+          const absolutePath = join(root, command.localBodyPath)
+          const currentContent = yield* Effect.tryPromise({
+            try: () => readFile(absolutePath, 'utf8'),
+            catch: (cause) =>
+              new BodySyncError({
+                operation: 'push',
+                pageId: command.pageId,
+                message: `Failed to read local NotionMD body file ${command.localBodyPath}`,
+                cause,
+              }),
+          })
+          const parsed = yield* parseNmdFile({
+            path: command.localBodyPath,
+            content: currentContent,
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new BodySyncError({
+                  operation: 'push',
+                  pageId: command.pageId,
+                  message: `Failed to parse local NotionMD body file ${command.localBodyPath}`,
+                  cause,
+                }),
+            ),
+          )
+
+          if (sha256Hash(parsed.body) !== command.nextBodyHash) {
+            return yield* new BodySyncError({
+              operation: 'push',
+              pageId: command.pageId,
+              message:
+                'Local NotionMD body changed while settling a verified body push; refusing to overwrite the newer local edit',
+            })
+          }
+
+          yield* pullPage({ pageId: command.pageId, outPath: absolutePath }).pipe(
+            Effect.provideService(NotionMdGateway, gateway),
+            Effect.provideService(NmdStateStore, stateStore),
+            Effect.mapError(
+              (cause) =>
+                new BodySyncError({
+                  operation: 'push',
+                  pageId: command.pageId,
+                  message: 'Failed to settle local NotionMD base after body push',
+                  cause,
+                }),
+            ),
+          )
+
+          const settledContent = yield* Effect.tryPromise({
+            try: () => readFile(absolutePath, 'utf8'),
+            catch: (cause) =>
+              new BodySyncError({
+                operation: 'push',
+                pageId: command.pageId,
+                message: `Failed to read settled NotionMD body file ${command.localBodyPath}`,
+                cause,
+              }),
+          })
+          const token = ownWriteSuppressionToken({
+            pageId: command.pageId,
+            path: command.localBodyPath,
+            bodyHash: bodyPointer.bodyHash,
+          })
+          const sidecar: FilesystemWorkspaceSidecar = {
+            version: 1,
+            pageId: command.pageId,
+            path: command.localBodyPath,
+            bodyHash: bodyPointer.bodyHash,
+            materializedContentHash: sha256Hash(settledContent),
+            ownWriteSuppressionToken: token,
+            observedAt: new Date().toISOString(),
+          }
+          const sidecarPath = filesystemWorkspacePageSidecarPath({ root, pageId: command.pageId })
+          yield* Effect.tryPromise({
+            try: async () => {
+              await mkdir(dirname(sidecarPath), { recursive: true })
+              await writeFile(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8')
+            },
+            catch: (cause) =>
+              new BodySyncError({
+                operation: 'push',
+                pageId: command.pageId,
+                message: 'Failed to settle local datasource-sync body sidecar after body push',
+                cause,
+              }),
+          })
+        }
 
         return {
           _tag: 'BodyPushResult' as const,

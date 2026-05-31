@@ -1074,6 +1074,134 @@ describe('one-shot sync orchestration', () => {
     }
   })
 
+  it('leaves existing body projection untouched when bodies are disabled', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const initialGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const initialPorts = makeHarnessPorts({
+      bodyPages: [bodyPageFor(testIds.pageId, hash('body-a'))],
+    })
+    const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const remoteBody = makeFakePageBodySyncPort({
+      pages: [bodyPageFor(testIds.pageId, hash('body-remote-drift'))],
+    })
+    let observedBodies = 0
+    const body = {
+      ...remoteBody,
+      observe: (input: Parameters<typeof remoteBody.observe>[0]) =>
+        Effect.sync(() => {
+          observedBodies += 1
+        }).pipe(Effect.zipRight(remoteBody.observe(input))),
+    }
+    const baseWorkspace = makeHarnessPorts().workspace
+    const materializedPlans: MaterializePlan[] = []
+    const workspace = {
+      ...baseWorkspace,
+      materialize: (plan: MaterializePlan) =>
+        baseWorkspace
+          .materialize(plan)
+          .pipe(Effect.tap(() => Effect.sync(() => materializedPlans.push(plan)))),
+    }
+    const command = decode({
+      schema: PatchPagePropertiesCommand,
+      value: {
+        _tag: 'PatchPagePropertiesCommand',
+        commandId: testIds.commandId,
+        pageId: testIds.pageId,
+        basePropertiesHash: hash('properties-a'),
+        propertyPatch: { [testIds.propertyA]: propertyPatchValue('Local property edit') },
+      },
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        {
+          gateway: initialGateway.gateway,
+          body: initialPorts.body,
+          workspace: initialPorts.workspace,
+        },
+      )
+
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          materializeBodies: false,
+          now: clock.now,
+        }),
+        { gateway: gatewayHarness.gateway, body, workspace },
+      )
+
+      expect(observedBodies).toBe(0)
+      expect(materializedPlans).toEqual([])
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).bodies).toEqual([
+        expect.objectContaining({
+          pageId: testIds.pageId,
+          baseHash: hash('body-a'),
+          currentHash: hash('body-a'),
+        }),
+      ])
+
+      const result = await runWithPorts(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          materializeBodies: false,
+          localIntents: [
+            propertyEditIntent({
+              command,
+              baseHash: hash('property-a-base'),
+              expectedPropertyConfigHash: hash('config-a'),
+            }),
+          ],
+          now: clock.now,
+        }),
+        { gateway: gatewayHarness.gateway, body, workspace },
+      )
+
+      expect(observedBodies).toBe(0)
+      expect(materializedPlans).toEqual([])
+      expect(gatewayHarness.ledger.successfulPatchPageProperties).toEqual([command])
+      expect(result.status).toMatchObject({
+        state: 'clean',
+        counts: { conflict: 0, pending: 0 },
+      })
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).bodies).toEqual([
+        expect.objectContaining({
+          pageId: testIds.pageId,
+          baseHash: hash('body-a'),
+          currentHash: hash('body-a'),
+        }),
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('counts only inserted body-conflict events in push summaries', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })

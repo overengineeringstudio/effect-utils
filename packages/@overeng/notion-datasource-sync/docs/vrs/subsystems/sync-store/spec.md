@@ -116,6 +116,12 @@ Projection rebuild is the test oracle: dropping every projection table and repla
 
 Pending local intent shadows remote observations. A `RemoteObserved` event may update `remoteHash`, move the surface into conflict, or prove the pending intent already landed remotely, but it must not overwrite, drop, or mutate the pending local target hash. Pending local target state changes only through `CommandSettled`, `ConflictResolved`, explicit abandonment, or a new accepted local intent that supersedes the prior one.
 
+Body projection facts are updated only by real body observations or verified body
+settlement. A row observation that suppresses body observation leaves the
+`body_pointer` projection unchanged. A settled `BodyPush` command advances both
+`base_hash` and `current_hash` to the verified body hash so replay and subsequent
+local scans agree on the clean body base.
+
 ## Outbox Projection And State Model
 
 The `outbox` projection is the durable record of pending/attempted/settled

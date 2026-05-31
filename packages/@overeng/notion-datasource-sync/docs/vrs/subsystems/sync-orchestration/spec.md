@@ -44,6 +44,12 @@ advanced escape hatches for tests, debugging, or explicit policy boundaries;
 they are not the product default and must not change the normal convergence
 contract.
 
+When body observation is explicitly suppressed, the sync pass treats the body
+surface as absent. It may still observe and reconcile row properties and
+lifecycle state, but it must not invent placeholder body hashes or mutate the
+existing body projection. A suppressed body lane preserves the last real body
+fact until a later body-observing sync replaces it.
+
 `sync --from-notion` is the initial adoption exception: it has no established
 local desired state for that workspace and remains remote-to-local only. Once a
 workspace is established, all sync modes use the local-capture-first invariant.
@@ -128,6 +134,13 @@ schema and validates `baseHash` before any write that could conflict or destroy
 data. Steps 6-7 satisfy SYNC-R02: a successful write is settled only after a
 fresh read and canonical hash comparison prove the remote state equals
 `desiredHash`.
+
+For body pushes, the body adapter returns the verified post-write body pointer.
+The executor settles only against that verified body hash, and the store advances
+the body projection base/current hash to the same value. If a local `.nmd` file
+is present, the NotionMD-backed adapter also refreshes its clean base/sidecar
+after confirming the file still matches the pushed desired body, so the next
+sync observes a clean no-op instead of re-planning the same body edit.
 
 ## Ambiguous Command Handling
 
