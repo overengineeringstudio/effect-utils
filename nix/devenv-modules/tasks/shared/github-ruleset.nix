@@ -30,12 +30,18 @@ let
               reconcileGithubRuleset,
             } from '${githubRulesetModule}'
 
-            const report = await reconcileGithubRuleset(${builtins.toJSON mode}, {
-              repo: ${builtins.toJSON repo},
-              ruleset: ${builtins.toJSON ruleset},
-              file: ${builtins.toJSON file},
+            const report = await reconcileGithubRuleset({
+              mode: ${builtins.toJSON mode},
+              options: {
+                repo: ${builtins.toJSON repo},
+                ruleset: ${builtins.toJSON ruleset},
+                file: ${builtins.toJSON file},
+              },
             })
-            console.log(formatGithubRulesetReport(${builtins.toJSON mode}, report))
+            console.log(formatGithubRulesetReport({
+              mode: ${builtins.toJSON mode},
+              report,
+            }))
             ${exitOnDrift}
           ''}
         '';
