@@ -60,6 +60,7 @@ import {
   makeLiveFixtureLedgerWriter,
   makeLiveNotionFixtureLifecycleClient,
   provisionLiveNotionDataSourceFixture,
+  resumeLiveFixtureCleanupFromLedger,
   runLiveFixtureLifecycle,
   runLiveFixtureSoak,
   runLiveNotionDemoShowcase,
@@ -74,6 +75,7 @@ const processLiveConfig = liveNotionConfigFromEnv(liveNotionEnvFromProcessEnv())
 const implementedLiveScenarioIds = new Set<ScenarioId>([
   'NDS-LIVE-skeleton-gated-cleanup-ledger',
   'NDS-LIVE-bounded-fixture-soak',
+  'NDS-LIVE-cleanup-ledger-resume',
   'NDS-LIVE-public-sqlite-cdc-write',
   'NDS-LIVE-notion-view-inventory-read',
 ])
@@ -2408,6 +2410,86 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
       ),
     ).toHaveLength(2)
     expect(ledgers.at(-1)).toEqual(ledger)
+  })
+
+  it('replays the cleanup ledger and resumes only unverified fixture cleanup locally', async () => {
+    const configured = {
+      _tag: 'configured' as const,
+      runId: 'notion-ds-sync-fixture-resume-test',
+      parentPageId: '00000000000000000000000000000001',
+      dataSourceId: '00000000000000000000000000000002',
+      notionVersion: '2026-03-11' as const,
+      requiredCapabilities: defaultLivePreflightCapabilities,
+      ledgerPath: 'tmp/notion-datasource-sync-live/fixture-resume-test.json',
+    }
+    const initialLedger: LiveFixtureLedger = {
+      ...emptyLiveFixtureLedger(configured),
+      entries: [
+        ledgerEntry({
+          phase: 'create',
+          objectId: 'fixture-page-cleaned',
+          objectType: 'page',
+          purpose: 'already-cleaned',
+          cleanupState: 'created',
+        }),
+        ledgerEntry({
+          phase: 'trash',
+          objectId: 'fixture-page-cleaned',
+          objectType: 'page',
+          purpose: 'already-cleaned',
+          cleanupState: 'verified-cleaned',
+        }),
+        ledgerEntry({
+          phase: 'mutate',
+          objectId: 'fixture-page-pending',
+          objectType: 'page',
+          purpose: 'pending-page-cleanup',
+          cleanupState: 'mutated',
+        }),
+        ledgerEntry({
+          phase: 'trash',
+          objectId: 'fixture-database-retry',
+          objectType: 'database',
+          purpose: 'retry-database-cleanup',
+          cleanupState: 'cleanup-failed',
+        }),
+      ],
+    }
+    const trashed: string[] = []
+    const writes: LiveFixtureLedger[] = []
+
+    const resumedLedger = await resumeLiveFixtureCleanupFromLedger({
+      config: configured,
+      ledger: initialLedger,
+      trash: async (target) => {
+        trashed.push(`${target.objectType}:${target.objectId}:${target.cleanupState}`)
+      },
+      writeLedger: async ({ ledger }) => {
+        writes.push(ledger)
+      },
+    })
+
+    expect(trashed).toEqual([
+      'page:fixture-page-pending:mutated',
+      'database:fixture-database-retry:cleanup-failed',
+    ])
+    expect(resumedLedger.entries.slice(-2)).toEqual([
+      ledgerEntry({
+        phase: 'trash',
+        objectId: 'fixture-page-pending',
+        objectType: 'page',
+        purpose: 'pending-page-cleanup',
+        cleanupState: 'verified-cleaned',
+      }),
+      ledgerEntry({
+        phase: 'trash',
+        objectId: 'fixture-database-retry',
+        objectType: 'database',
+        purpose: 'retry-database-cleanup',
+        cleanupState: 'verified-cleaned',
+      }),
+    ])
+    expect(writes.at(-1)).toEqual(resumedLedger)
   })
 
   it('keeps the local JSON ledger artifact when using the default writer', async () => {

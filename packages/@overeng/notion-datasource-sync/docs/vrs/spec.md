@@ -149,6 +149,7 @@ The authoritative verification contract is:
 - filesystem tests for local paths, sidecars, object storage, and deletion semantics,
 - daemon tests for local and remote event coalescing,
 - live Notion tests for API semantics, capability preflight, current API-version behavior, and completeness boundaries that cannot be proven locally.
+- credential-free readiness tests for live-lane scaffolding, including cleanup ledger replay/resume and scenario metadata traceability, so fixture hygiene can be proven without Notion credentials.
 
 `src/e2e/realistic-workflows.e2e.test.ts` is the credential-free realistic workflow slice. It composes the fake gateway, SQLite store, one-shot sync, body port, and workspace ports to prove initial materialization/idempotency, remote drift plus local write, pending-intent conflict durability, fail-closed capability/schema drift, and local filesystem delete/repair behavior. This slice does not replace L6 live Notion proof for API semantics or the broader daemon and platform filesystem suites.
 
@@ -204,6 +205,14 @@ writes, snapshots non-scratch rows before/after, and fails if any non-scratch
 sampled row changes. Live workspace tests must never run broad `UPDATE rows`,
 broad `DELETE`, archive, restore, body materialization, or cleanup against
 existing non-scratch rows.
+
+Live write lanes use an append-only cleanup ledger as their readiness boundary.
+Each disposable fixture object records its latest lifecycle and cleanup state.
+Resume logic replays the ledger, ignores objects whose latest state is
+`verified-cleaned`, retries unverified or `cleanup-failed` objects, and appends
+the resumed cleanup result. The replay/resume algorithm is tested locally with
+injected cleanup callbacks; live Notion tests are reserved for API semantics and
+real fixture archive/restore behavior.
 
 No-data-loss acceptance requires established `sync`, `push`, and `sync --watch`
 to capture SQLite `rows`/`changes` and `.nmd` bodies before local

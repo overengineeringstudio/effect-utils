@@ -87,6 +87,12 @@ execute, and no body files materialize.
 When `NOTION_DATASOURCE_SYNC_E2E_LEDGER_PAGE_ID` is set, the suite publishes a
 sanitized summary to that Notion page. The ledger must not contain tokens, token
 paths, raw private page bodies, signed URLs, or private workspace URLs.
+The local cleanup ledger is append-only readiness evidence: before a live write
+lane creates new disposable fixtures, it can replay the latest object state,
+skip objects already marked `verified-cleaned`, retry unverified or
+`cleanup-failed` objects, and append the resumed cleanup result. This replay
+path is covered by a credential-free helper test so cleanup-resume behavior does
+not depend on live Notion availability.
 
 ## Automated Demo
 
@@ -138,6 +144,9 @@ explicit disposable fixture plan and approval.
 Scenario metadata lives in `src/testing/scenarios.ts`. The VRS E2E plan maps
 requirements and guards to verification levels. Add or update scenario metadata
 when adding a new guard, supported surface, or live proof.
+Readiness lanes that are live in production but fake/local in CI must still have
+scenario metadata, a deterministic local assertion, and docs explaining which
+live behavior remains outside the fake proof.
 
 Bidirectional safety scenarios live in `src/testing/bidi-safety.ts` and are
 registered in `src/testing/scenarios.ts`. They are the required structure for

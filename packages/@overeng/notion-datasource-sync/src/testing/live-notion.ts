@@ -152,6 +152,11 @@ export type LiveFixtureLifecycleOptions = {
   readonly initialLedger?: LiveFixtureLedger
 }
 
+/** Latest unclean ledger object that a resumed run should clean before starting new live fixture work. */
+export type LiveFixtureCleanupResumeTarget = LiveFixtureObject & {
+  readonly cleanupState: Exclude<LiveFixtureLedgerEntry['cleanupState'], 'verified-cleaned'>
+}
+
 /** Thrown when a fixture trash or restore step fails; carries the final ledger state so the caller can persist or report partial cleanup. */
 export class LiveFixtureCleanupError extends Error {
   readonly phase: 'trash' | 'restore'
@@ -365,6 +370,82 @@ const appendLedgerEntry = ({
   ...ledger,
   entries: [...ledger.entries, entry],
 })
+
+/** Replay the append-only cleanup ledger and return objects whose latest state still needs cleanup. */
+export const liveFixtureCleanupResumeTargets = (
+  ledger: LiveFixtureLedger,
+): ReadonlyArray<LiveFixtureCleanupResumeTarget> => {
+  const latestByObject = new Map<string, LiveFixtureLedgerEntry>()
+
+  for (const entry of ledger.entries) {
+    latestByObject.set(`${entry.objectType}:${entry.objectId}`, entry)
+  }
+
+  return [...latestByObject.values()]
+    .filter(
+      (entry): entry is LiveFixtureLedgerEntry & LiveFixtureCleanupResumeTarget =>
+        entry.cleanupState !== 'verified-cleaned',
+    )
+    .map((entry) => ({
+      objectId: entry.objectId,
+      objectType: entry.objectType,
+      purpose: entry.purpose,
+      cleanupState: entry.cleanupState,
+    }))
+}
+
+/** Resume cleanup from a prior ledger snapshot and persist a verified-cleaned or cleanup-failed entry for each target. */
+export const resumeLiveFixtureCleanupFromLedger = async ({
+  config,
+  ledger,
+  trash,
+  writeLedger = writeLiveFixtureLedger,
+}: {
+  readonly config: ConfiguredLiveNotionConfig
+  readonly ledger: LiveFixtureLedger
+  readonly trash: (target: LiveFixtureCleanupResumeTarget) => Promise<void>
+  readonly writeLedger?: WriteLiveFixtureLedger
+}): Promise<LiveFixtureLedger> => {
+  let resumedLedger = ledger
+  const persist = async () => {
+    await writeLedger({ path: config.ledgerPath, ledger: resumedLedger })
+  }
+  const record = async (entry: LiveFixtureLedgerEntry) => {
+    resumedLedger = appendLedgerEntry({ ledger: resumedLedger, entry })
+    await persist()
+  }
+
+  for (const target of liveFixtureCleanupResumeTargets(ledger)) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop
+      await trash(target)
+      // oxlint-disable-next-line no-await-in-loop
+      await record(
+        ledgerEntry({
+          phase: 'trash',
+          objectId: target.objectId,
+          objectType: target.objectType,
+          purpose: target.purpose,
+          cleanupState: 'verified-cleaned',
+        }),
+      )
+    } catch (cause) {
+      // oxlint-disable-next-line no-await-in-loop
+      await record(
+        ledgerEntry({
+          phase: 'trash',
+          objectId: target.objectId,
+          objectType: target.objectType,
+          purpose: target.purpose,
+          cleanupState: 'cleanup-failed',
+        }),
+      )
+      throw new LiveFixtureCleanupError({ phase: 'trash', cause, ledger: resumedLedger })
+    }
+  }
+
+  return resumedLedger
+}
 
 /** Callback signature for persisting a `LiveFixtureLedger` to a path — the default impl writes JSON; tests may inject an in-memory variant. */
 export type WriteLiveFixtureLedger = (input: {

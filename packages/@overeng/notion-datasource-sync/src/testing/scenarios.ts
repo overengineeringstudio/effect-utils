@@ -595,6 +595,15 @@ export const e2eHarnessScenarios = [
     file: 'src/e2e/live-notion.e2e.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-LIVE-cleanup-ledger-resume',
+    title: 'live Notion cleanup ledger replay resumes unverified fixture cleanup locally',
+    requirementIds: ['R52', 'R65', 'R67', 'R68', 'R69', 'R70'],
+    guards: ['RawPayloadRetentionUnsafe'],
+    lowestPlannerLevel: 'L6',
+    highestIntegrationLevel: 'L6',
+    file: 'src/e2e/live-notion.e2e.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-LIVE-public-sqlite-cdc-write',
     title:
       'live Notion public SQLite CDC applies cell and row lifecycle edits against isolated fixtures',
