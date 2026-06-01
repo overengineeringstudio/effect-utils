@@ -211,7 +211,6 @@ export {
 } from './ci-workflow/merge-queue.ts'
 export {
   deployCommentPermissions,
-  deployCommentStep,
   deployModeScript,
   dispatchAlignmentStep,
   netlifyDeployStep,

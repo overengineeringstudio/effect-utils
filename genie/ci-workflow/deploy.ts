@@ -9,7 +9,7 @@ import {
 } from '../deploy-preview/vercel.ts'
 import { bashShellDefaults, linuxX64Runner, runDevenvTasksBefore } from './shared.ts'
 
-/** Job-level permissions required by `deployCommentStep` to post/edit PR comments. */
+/** Job-level permissions required by deploy preview helpers to post/edit PR comments. */
 export const deployCommentPermissions = {
   contents: 'read',
   'pull-requests': 'write',
@@ -25,67 +25,6 @@ export const deployModeScript = [
   '  exit 0',
   'fi',
 ].join('\n')
-
-/**
- * Reusable step that writes a deployment summary and upserts a PR comment.
- *
- * The consuming job must include `permissions: deployCommentPermissions` (or equivalent)
- * so that `github.token` can read/write PR comments.
- *
- * The provided scripts run in order and must:
- * - `modeScript`: set `label` (or `exit 0` for unsupported events)
- * - `rowsScript`: set `rows` as markdown table rows (`| a | b |\n`)
- */
-export const deployCommentStep = (opts: {
-  summaryTitle: string
-  tableHeaders: readonly [string, string]
-  modeScript: string
-  rowsScript: string
-  noRowsMessage: string
-  commentTitle?: string
-  if?: string
-}) => ({
-  name: 'Post deploy URLs',
-  if: opts.if ?? 'always() && !cancelled()',
-  shell: 'bash' as const,
-  env: {
-    GH_TOKEN: '${{ github.token }}',
-    GH_REPO: '${{ github.repository }}',
-  },
-  run: [
-    opts.modeScript,
-    '',
-    opts.rowsScript,
-    '',
-    'if [ -z "$rows" ]; then',
-    `  echo "${opts.noRowsMessage}" >> "$GITHUB_STEP_SUMMARY"`,
-    '  exit 0',
-    'fi',
-    '',
-    '# Write job summary',
-    '{',
-    `  echo "## ${opts.summaryTitle} ($label)"`,
-    '  echo ""',
-    `  echo "| ${opts.tableHeaders[0]} | ${opts.tableHeaders[1]} |"`,
-    '  echo "| --- | --- |"',
-    '  echo -e "$rows"',
-    '} >> "$GITHUB_STEP_SUMMARY"',
-    '',
-    '# Post/update PR comment',
-    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-    '  {',
-    `    echo "## ${opts.commentTitle ?? opts.summaryTitle}"`,
-    '    echo ""',
-    `    echo "| ${opts.tableHeaders[0]} | ${opts.tableHeaders[1]} |"`,
-    '    echo "| --- | --- |"',
-    '    echo -e "$rows"',
-    '  } > /tmp/comment.md',
-    '  export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$\'\\n\'}access-tokens = github.com=${GH_TOKEN}"',
-    '  nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \\',
-    '    || nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md',
-    'fi',
-  ].join('\n'),
-})
 
 /**
  * Step that dispatches `upstream-changed` repository_dispatch to a target repo.
@@ -186,7 +125,7 @@ export const vercelDeployJobs = (opts: {
   /** Whether to add a combined deploy comment job. Default: true. */
   includeComment?: boolean
   commentTitle?: string
-  noRowsMessage?: string
+  noRecordsMessage?: string
   deployStepDecorator?: (
     step: Record<string, unknown>,
     project: VercelProject,
@@ -215,43 +154,6 @@ export const netlifyDeployStep = () => buildNetlifyDeployStep(runDevenvTasksBefo
 
 /**
  * Combined deploy comment step for Netlify storybook previews.
- *
- * When `packages` is provided, constructs preview URLs directly from the known package list.
- * This works regardless of whether the deploy task emits metadata markers, making it suitable
- * for repos that pin an older effect-utils version for Nix while using the latest for genie.
- *
- * When omitted, uses the metadata-based approach that reads deploy output from the deploy step.
- *
- * The `packages` shape matches the Nix `taskModules.netlify` / `taskModules.storybook` config:
- * `{ path: "flakes/oi", name: "flakes-oi" }` where `name` is the Netlify deploy alias.
  */
-export const netlifyStorybookCommentStep = (
-  site: string,
-  opts?: { packages?: ReadonlyArray<{ path: string; name: string }> },
-) => {
-  if (!opts?.packages) {
-    return buildNetlifyStorybookCommentStep(site, deployModeScript)
-  }
-
-  return deployCommentStep({
-    summaryTitle: 'Storybook Previews',
-    tableHeaders: ['Package', 'URL'],
-    noRowsMessage: 'No storybooks were deployed.',
-    modeScript: [
-      `site="${site}"`,
-      deployModeScript,
-      '# Set Netlify branch-deploy suffix based on mode',
-      'if [ "$label" = "prod" ]; then suffix=""; else suffix="-pr-${{ github.event.pull_request.number }}"; fi',
-    ].join('\n'),
-    rowsScript: [
-      'rows=""',
-      ...opts.packages.map((pkg) =>
-        [
-          `if [ -d "${pkg.path}/storybook-static" ]; then`,
-          `  rows="\${rows}| ${pkg.name} | https://${pkg.name}\${suffix}--\${site}.netlify.app |\\n"`,
-          'fi',
-        ].join('\n'),
-      ),
-    ].join('\n'),
-  })
-}
+export const netlifyStorybookCommentStep = (site: string) =>
+  buildNetlifyStorybookCommentStep(site, deployModeScript)

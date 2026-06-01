@@ -7987,7 +7987,6 @@ jobs:
             deriveWorkflowReportManagedState,
             encodeWorkflowReportRecordLine,
             findWorkflowReportManagedComment,
-            legacyStorybookPreviewManagedStateMigration,
             renderWorkflowReportCommentBody,
           } = await import(pathToFileURL(resolve(runtimeModule)).href)
 
@@ -8104,7 +8103,6 @@ jobs:
           const modeLabel = expectString(process.env.STORYBOOK_PREVIEW_LABEL, "STORYBOOK_PREVIEW_LABEL")
           const existingComment = findWorkflowReportManagedComment(comments, {
             stateId,
-            migrations: [legacyStorybookPreviewManagedStateMigration],
           })
           const state = deriveWorkflowReportManagedState({
             stateId,

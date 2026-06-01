@@ -127,7 +127,7 @@ export const vercelDeployStep = (
 
 export const vercelDeployCommentStep = (opts: {
   commentTitle: string
-  noRowsMessage: string
+  noRecordsMessage: string
   projects: readonly Pick<VercelProject, 'name' | 'label'>[]
   deployModeScript: string
 }) => {
@@ -145,7 +145,7 @@ export const vercelDeployCommentStep = (opts: {
     "import { pathToFileURL } from 'node:url'",
     '',
     `const commentTitle = ${JSON.stringify(opts.commentTitle)}`,
-    `const noRecordsMessage = ${JSON.stringify(opts.noRowsMessage)}`,
+    `const noRecordsMessage = ${JSON.stringify(opts.noRecordsMessage)}`,
     `const projects = ${JSON.stringify(projects)}`,
     `const workflowReportKind = ${JSON.stringify(workflowReportKind)}`,
     'const stateId = "deploy-preview"',
@@ -158,7 +158,6 @@ export const vercelDeployCommentStep = (opts: {
     '  deriveWorkflowReportManagedState,',
     '  encodeWorkflowReportRecordLine,',
     '  findWorkflowReportManagedComment,',
-    '  legacyDeployPreviewManagedStateMigration,',
     '  renderWorkflowReportCommentBody,',
     '} = await import(pathToFileURL(resolve(runtimeModule)).href)',
     '',
@@ -250,7 +249,6 @@ export const vercelDeployCommentStep = (opts: {
     'const modeLabel = expectString(process.env.DEPLOY_LABEL, "DEPLOY_LABEL")',
     'const existingComment = findWorkflowReportManagedComment(comments, {',
     '  stateId,',
-    '  migrations: [legacyDeployPreviewManagedStateMigration],',
     '})',
     'const createdAtUtc = currentReports',
     '  .map((report) => report.createdAtUtc)',
@@ -347,7 +345,7 @@ export const vercelDeployJobs = (opts: {
   deployCondition?: string
   includeComment?: boolean
   commentTitle?: string
-  noRowsMessage?: string
+  noRecordsMessage?: string
   runDevenvTasksBefore: (...tasks: [string, ...string[]]) => string
   deployModeScript: string
   deployCommentPermissions: Record<string, string>
@@ -411,7 +409,7 @@ export const vercelDeployJobs = (opts: {
       vercelDeployCommentStep({
         commentTitle: opts.commentTitle ?? 'Deploy Preview',
         projects: opts.projects,
-        noRowsMessage: opts.noRowsMessage ?? 'No deploy URLs detected.',
+        noRecordsMessage: opts.noRecordsMessage ?? 'No deploy URLs detected.',
         deployModeScript: opts.deployModeScript,
       }),
     ],
