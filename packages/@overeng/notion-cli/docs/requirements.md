@@ -2,7 +2,7 @@
 
 ## Context
 
-This document defines package-level requirements for `@overeng/notion-cli`. It is constrained by the datasource-sync VRS decisions in [../notion-datasource-sync/docs/vrs/decisions/0008-single-database-cli-surface.md](../../notion-datasource-sync/docs/vrs/decisions/0008-single-database-cli-surface.md) and [../notion-datasource-sync/docs/vrs/decisions/0007-replica-export-replaces-raw-dump.md](../../notion-datasource-sync/docs/vrs/decisions/0007-replica-export-replaces-raw-dump.md).
+This document defines package-level requirements for `@overeng/notion-cli`. It is constrained by the datasource-sync CLI and export contracts in [../notion-datasource-sync/docs/vrs/subsystems/cli/spec.md](../../notion-datasource-sync/docs/vrs/subsystems/cli/spec.md).
 
 ## Assumptions
 

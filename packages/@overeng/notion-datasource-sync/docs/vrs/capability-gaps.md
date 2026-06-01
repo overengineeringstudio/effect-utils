@@ -1,11 +1,8 @@
 # Notion Datasource Sync Capability Gaps
 
-This checklist records the current `@overeng/notion-datasource-sync` capability boundary against the public Notion API, verified against official Notion documentation on 2026-05-26.
+This document records the current `@overeng/notion-datasource-sync` capability boundary against the public Notion API, verified against official Notion documentation on 2026-05-26.
 
-It is a release-readiness aid, not a task plan. The sync package should keep unsupported surfaces fail-closed until they have canonical models, deterministic fake-service coverage, and live Notion evidence.
-
-Actionable follow-up work for feasible gaps is tracked in
-[GitHub issue #698](https://github.com/overengineeringstudio/effect-utils/issues/698).
+Unsupported surfaces stay fail-closed until they have canonical models, deterministic fake-service coverage, and live Notion evidence.
 
 ## Official Docs Consulted
 
@@ -57,8 +54,8 @@ This matrix is the authoritative user-facing write-support contract for `<databa
 
 | SQL operation                                                 | Support  | Guard if blocked         | Promotion criteria (if fail-closed)  |
 | ------------------------------------------------------------- | -------- | ------------------------ | ------------------------------------ |
-| `UPDATE`/`INSERT`/`DELETE` on `schema` or `schema_properties` | REJECTED | `SchemaTableReadOnly`    | Read-only; use `migrate schema` CLI. |
-| `ALTER TABLE rows ADD`/`RENAME`/`DROP COLUMN`                 | REJECTED | `AlterTableRowsRejected` | Use `migrate schema` CLI.            |
+| `UPDATE`/`INSERT`/`DELETE` on `schema` or `schema_properties` | REJECTED | `SchemaTableReadOnly`    | Read-only; no public schema mutation workflow is promoted. |
+| `ALTER TABLE rows ADD`/`RENAME`/`DROP COLUMN`                 | REJECTED | `AlterTableRowsRejected` | No public schema mutation workflow is promoted.            |
 
 ### C. Intent ledger (`changes`)
 
@@ -154,7 +151,7 @@ The following sections (`Current Support`, `Fail-Closed Or Intentionally Unsuppo
 | Rate-limit-sensitive wide scans         | Bounded and serial in live tests; not promoted to unbounded production readiness.                                                        | Notion documents an average request rate limit and variable future limits.                                                                                                                                                     |
 | Writable generated SQL views            | Explicit write-intent rows are the supported public write model first.                                                                   | Direct SQL triggers on generated views are possible later, but hidden trigger behavior would make dry-run, audit, and conflict semantics harder to prove.                                                                      |
 
-### Missing But Feasible Next
+### Unsupported But Feasible
 
 | Gap                                               | Why feasible                                                                                                                            | Required proof before support                                                                                                                                                                         |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -186,31 +183,3 @@ The following sections (`Current Support`, `Fail-Closed Or Intentionally Unsuppo
 | Lossless support for unsupported block types              | Unsupported block types are surfaced as unsupported objects. Datasource-sync cannot safely render/edit them without NotionMD preserving identity and content.        |
 | Moving existing blocks with append API                    | The append endpoint can insert new children but does not move existing blocks.                                                                                       |
 | Appending more than 100 block children in one request     | Official request limits require chunked writes.                                                                                                                      |
-
-## Release Checklist
-
-This checklist is a release-readiness boundary, not an implementation queue.
-Feasible gaps that lack the proof named below stay fail-closed.
-
-### Requested Remaining-Work Closure
-
-The following rows map the recent five-item closure set from issue #698
-comments to the current implementation and acceptance evidence.
-
-| Item                                   | Current e2e acceptance decision                                                                                                                                                                 | Evidence                                                                                                                                                                                                          |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Row creation                           | Implemented now through `INSERT INTO rows`; direct SQL `DELETE FROM rows` remains fail-closed.                                                                                                  | `src/e2e/sqlite-storage-contract.e2e.test.ts` covers pending row-create visibility, `sync --watch` settlement, status non-clean while pending, and SQL delete rejection.                                          |
-| Data-source title/description metadata | Implemented through the metadata planner/gateway path; direct public `INSERT INTO changes` remains fail-closed until public insert triggers exist.                                              | `src/planner/planner.unit.test.ts`, `src/gateway/gateway.unit.test.ts`, and `src/e2e/live-notion.e2e.test.ts` cover metadata planning, owning-database update payloads, and disposable live description mutation. |
-| Database title/description metadata    | Implemented as a separate database metadata authority in the replica/planner path; icon/cover/parent/trash/lock remain fail-closed.                                                             | `src/replica/replica.ts` has `database-metadata-edit` conversion and fail-closed branches for unsupported metadata resources; issue #698 records focused fake/CLI/live evidence.                                  |
-| Files                                  | External URL attach for empty files properties is promoted through typed staging; local uploads, replacement, deletion, existing-file preservation, and signed URL identity remain fail-closed. | `src/replica/replica.ts` accepts only `attach_external_url` with an empty canonical files cell and marks local-upload actions unsupported.                                                                        |
-| Views                                  | Read-only view inventory is promoted; view create/update/delete/query membership and local view-write CDC execution remain fail-closed.                                                         | `src/replica/replica.ts` projects `debug_views` and marks `view_change` unsupported before planner intents.                                                                                                       |
-
-- [ ] Treat view APIs as their own authority surface, not as implicit data-source membership.
-- [x] Add a metadata surface for data-source title/description sync.
-- [ ] Extend metadata surfaces before syncing data-source icons, parent, trash, or database container attributes.
-- [x] Promote the safe external URL file attach subset through explicit public staging tables.
-- [ ] Promote local file uploads and broader files replacement only after durable file-upload identity and attachment lifecycle are modeled.
-- [ ] Keep computed/generated values (`formula`, `rollup`, audit fields, `unique_id`) read-only unless Notion documents a write path.
-- [ ] Keep `place`, linked data sources, unsupported blocks, and incomplete property pagination fail-closed.
-- [ ] Add relation-sharing diagnostics before considering an empty relation, rollup, or formula value authoritative.
-- [ ] Keep all live high-cardinality/demo scenarios serial, rate-limited, and cleanup-ledger backed.

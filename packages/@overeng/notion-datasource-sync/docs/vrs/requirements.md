@@ -2,7 +2,7 @@
 
 ## Context
 
-These requirements serve [vision.md](./vision.md). They define the production constraints for a standalone Notion data-source sync primitive that composes with the existing Notion packages in `effect-utils`. Per [decision 0001](./decisions/0001-subsystem-decomposition.md), subsystem-specific requirements live under [`subsystems/`](./subsystems/); this top-level document keeps only the global assumptions, the genuinely cross-cutting requirements, and the authoritative trace index.
+These requirements serve [vision.md](./vision.md). They define the production constraints for a standalone Notion data-source sync primitive that composes with the existing Notion packages in `effect-utils`. Subsystem-specific requirements live under [`subsystems/`](./subsystems/); this top-level document keeps only the global assumptions, the genuinely cross-cutting requirements, and the authoritative trace index.
 
 ## Assumptions
 
