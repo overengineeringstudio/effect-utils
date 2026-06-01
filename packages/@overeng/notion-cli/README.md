@@ -15,9 +15,17 @@ bun add @overeng/notion-effect-cli
 `notion` now dispatches into the two dedicated Notion product CLIs when you use:
 
 - `notion md ...` → invokes `notion-md` command handlers directly in-process
-- `notion sqlite ...` → invokes `notion-datasource-sync` command handlers directly in-process
+- `notion sqlite ...` → invokes the packaged Node-backed `notion-datasource-sync` runtime in Nix/devenv builds
 
 These are thin wrappers, so all flags, output formats, and behavior remain owned by their respective commands.
+
+For markdown/SQLite workflows, use the packaged Nix/devenv binary:
+
+```bash
+notion sqlite --help
+```
+
+Direct Bun/source execution of `notion sqlite ...` is unsupported because the SQLite sync runtime imports `node:sqlite`. Unsupported source paths fail closed with guidance to use the packaged Node-backed entrypoint.
 
 ### Prerequisites
 

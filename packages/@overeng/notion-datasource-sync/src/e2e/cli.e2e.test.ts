@@ -25,6 +25,7 @@ import {
   CliArgumentError,
   parseCliCommand,
   parseCliContext,
+  renderCliHelpText,
   renderCliResultJson,
   resolveCliCommandNotionRefs,
   runCliCommand,
@@ -339,6 +340,19 @@ const createBoundSqlite = async ({
 }
 
 describe('CLI command surface', () => {
+  it('prints sqlite help without opening a store', async () => {
+    const { stdout, stderr } = await execFileAsync(cliPath, ['--help'], {
+      cwd: packageDir,
+      timeout: cliTestTimeoutMs,
+    })
+
+    expect(stdout).toBe(renderCliHelpText())
+    expect(stdout).toContain('notion sqlite')
+    expect(stdout).toContain('Packaged Node-backed entrypoint')
+    expect(stdout).toContain('sync')
+    expect(stderr).not.toContain('CliErrorEnvelope')
+  })
+
   it(
     'runs the source CLI through its shebang runtime with node:sqlite available',
     async () => {

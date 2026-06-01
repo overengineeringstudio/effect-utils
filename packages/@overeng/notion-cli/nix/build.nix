@@ -52,7 +52,7 @@ pkgs.runCommand "notion-cli"
       --run 'if [ "$#" -gt 0 ] && [ "$1" = sqlite ]; then shift; exec ${datasourceSyncRuntime}/bin/notion-datasource-sync "$@"; fi'
 
     sqlite_output="$($out/bin/notion sqlite 2>&1 || true)"
-    if ! printf '%s\n' "$sqlite_output" | grep -q 'Expected one of: init, pull, push, sync, status'; then
+    if ! printf '%s\n' "$sqlite_output" | grep -q 'SQLite-backed Notion data source sync'; then
       printf '%s\n' "$sqlite_output" >&2
       echo "notion sqlite smoke test failed" >&2
       exit 1

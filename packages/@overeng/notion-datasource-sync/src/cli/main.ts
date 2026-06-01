@@ -1212,8 +1212,47 @@ export const renderCliErrorJson = (error: unknown): string => {
   return `${JSON.stringify(errorEnvelope, cliJsonReplacer, 2)}\n`
 }
 
+/** Render the top-level help text for the Node-backed `notion sqlite` command surface. */
+export const renderCliHelpText = (): string => `notion sqlite
+
+SQLite-backed Notion data source sync.
+
+Supported runtime:
+  notion sqlite ...        Packaged Node-backed entrypoint from Nix/devenv
+
+Commands:
+  init                    Initialize a local SQLite sync store
+  pull                    Pull remote Notion changes into SQLite
+  push                    Push accepted local SQLite changes to Notion
+  sync                    Run pull and push, or adopt from Notion with --from-notion
+  status                  Print workspace sync status
+  conflicts list          List unresolved conflicts
+  conflicts resolve       Resolve a conflict
+  forget                  Archive/forget a page locally
+  restore                 Restore a forgotten page locally
+  migrate store           Reserved; currently fails closed
+  migrate schema          Reserved; currently fails closed
+  repair                  Reserved; currently fails closed
+  doctor                  Print diagnostics
+
+Common options:
+  --sqlite <path>         SQLite store path
+  --root-id <id>          Sync root id
+  --data-source-id <id>   Notion data source id
+  --workspace-root <dir>  Local workspace root
+  --dry-run               Validate without mutating local or remote state
+  --help                  Show this help
+
+Unsupported source/Bun execution is expected to fail closed. Use the packaged
+Node-backed notion sqlite path for markdown/sqlite workflows.
+`
+
+const isHelpArgv = (argv: ReadonlyArray<string>): boolean =>
+  argv.length === 0 || argv.includes('--help') || argv.includes('-h')
+
 const booleanFlags = new Set([
   'dry-run',
+  'help',
   'no-materialize-bodies',
   'non-interactive',
   'watch',
@@ -2326,6 +2365,11 @@ export const runCliMain = ({
   readonly options?: CliRuntimeOptions
 }) =>
   Effect.gen(function* () {
+    if (isHelpArgv(argv) === true) {
+      yield* Effect.sync(() => process.stdout.write(renderCliHelpText()))
+      return
+    }
+
     const command = yield* Effect.try({
       try: () => parseCliCommand(argv),
       catch: (cause) => cause,

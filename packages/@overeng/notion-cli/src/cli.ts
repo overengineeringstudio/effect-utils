@@ -61,7 +61,7 @@ const runDelegated = async ({
     sqliteCli = await import(sqliteCliEntry)
   } catch {
     process.stderr.write(
-      'notion sqlite dispatch is unavailable in this build. Use a Node-based runtime to run notion sqlite.\n',
+      'notion sqlite dispatch is unavailable in this build. Use the packaged Nix/devenv Node-backed `notion sqlite ...` runtime.\n',
     )
     process.exitCode = 1
     return
