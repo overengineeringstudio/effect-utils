@@ -7,7 +7,8 @@
 }:
 let
   repoFlake = builtins.getFlake (toString ./.);
-  flakePkgs = import repoFlake.inputs.nixpkgs { inherit (pkgs) system; };
+  currentSystem = pkgs.stdenv.hostPlatform.system;
+  flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
@@ -397,7 +398,7 @@ in
   ];
 
   packages = [
-    inputs.tsgo.packages.${pkgs.system}.effect-tsgo
+    inputs.tsgo.packages.${currentSystem}.effect-tsgo
     (import ./nix/pnpm.nix { inherit pkgs; })
     pkgs.nodejs_24
     pkgs.bun
@@ -405,6 +406,8 @@ in
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
     oxlintWithPlugins
     pkgs.oxfmt
+    # Use the packaged wrapper so `notion sqlite ...` runs on Node 24 with node:sqlite.
+    repoFlake.packages.${currentSystem}.notion-cli
     (mkSourceCli {
       name = "genie";
       entry = "packages/@overeng/genie/bin/genie.tsx";
