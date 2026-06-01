@@ -132,9 +132,11 @@ export {
   type SourceShapeMeasurementStepOptions,
 } from './ci-workflow/measurements.ts'
 export {
+  workflowReportCommentBodyStep,
   workflowReportCollectorStep,
   workflowReportProducerStep,
   workflowReportPublisherStep,
+  type WorkflowReportCommentBodyStepOptions,
   type WorkflowReportCollectorStepOptions,
   type WorkflowReportProducerStepOptions,
   type WorkflowReportPublisherStepOptions,
@@ -213,8 +215,9 @@ export {
   deployCommentPermissions,
   deployModeScript,
   dispatchAlignmentStep,
+  deployPreviewWorkflowReportOutputName,
+  deployPreviewWorkflowReportPathOutputName,
   netlifyDeployStep,
-  netlifyStorybookCommentStep,
   notifyAlignmentJob,
   vercelDeployJobs,
   vercelDeployStep,

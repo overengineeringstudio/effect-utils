@@ -42,6 +42,24 @@ export type WorkflowReportPublisherStepOptions = {
   readonly if?: string
 }
 
+export type WorkflowReportCommentBodyStepOptions = {
+  readonly bundlePath: string
+  readonly commentBodyPath: string
+  readonly title: string
+  readonly noRecordsMessage: string
+  readonly stateId: string
+  readonly entryId: string
+  readonly entryLabel: string
+  readonly createdAtUtc?: string
+  readonly summaryPath?: string
+  readonly timeZone?: string
+  readonly runtimeModulePath?: string
+  readonly id?: string
+  readonly name?: string
+  readonly marker?: string
+  readonly if?: string
+}
+
 export const workflowReportProducerStep = (
   opts: WorkflowReportProducerStepOptions,
 ): GitHubWorkflowStep => {
@@ -124,6 +142,100 @@ export const workflowReportCollectorStep = (
     ...(opts.outputName === undefined
       ? []
       : [`echo "${opts.outputName}=${opts.outputPath}" >> "$GITHUB_OUTPUT"`]),
+  ].join('\n'),
+})
+
+export const workflowReportCommentBodyStep = (
+  opts: WorkflowReportCommentBodyStepOptions,
+): GitHubWorkflowStep => ({
+  ...(opts.id === undefined ? {} : { id: opts.id }),
+  name: opts.name ?? 'Render workflow report comment',
+  ...(opts.if === undefined ? {} : { if: opts.if }),
+  shell: 'bash',
+  env: {
+    GH_TOKEN: '${{ github.token }}',
+    GH_REPO: '${{ github.repository }}',
+    WORKFLOW_REPORT_BUNDLE_PATH: opts.bundlePath,
+    WORKFLOW_REPORT_COMMENT_BODY_PATH: opts.commentBodyPath,
+    WORKFLOW_REPORT_SUMMARY_PATH: opts.summaryPath ?? opts.commentBodyPath,
+    WORKFLOW_REPORT_TITLE: opts.title,
+    WORKFLOW_REPORT_NO_RECORDS_MESSAGE: opts.noRecordsMessage,
+    WORKFLOW_REPORT_STATE_ID: opts.stateId,
+    WORKFLOW_REPORT_ENTRY_ID: opts.entryId,
+    WORKFLOW_REPORT_ENTRY_LABEL: opts.entryLabel,
+    WORKFLOW_REPORT_CREATED_AT_UTC: opts.createdAtUtc ?? '',
+    WORKFLOW_REPORT_TIME_ZONE: opts.timeZone ?? 'UTC',
+    WORKFLOW_REPORT_MANAGED_MARKER: opts.marker ?? workflowReportManagedMarker,
+  },
+  run: [
+    ...workflowReportRuntimeModuleSetup(opts.runtimeModulePath),
+    'comments_json="$(mktemp)"',
+    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
+    `  export NIX_CONFIG="\${NIX_CONFIG:+$NIX_CONFIG$'\\n'}access-tokens = github.com=\${GH_TOKEN}"`,
+    '  nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"',
+    'else',
+    '  printf \'[]\' > "$comments_json"',
+    'fi',
+    '',
+    'nix run nixpkgs#bun -- - "$comments_json" <<\'EOF\'',
+    [
+      "import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'",
+      "import { dirname, resolve } from 'node:path'",
+      "import { pathToFileURL } from 'node:url'",
+      '',
+      'const [commentsPath] = process.argv.slice(2)',
+      'const runtimeModule = process.env.WORKFLOW_REPORT_RUNTIME_MODULE',
+      'if (typeof runtimeModule !== "string" || runtimeModule.length === 0) throw new Error("WORKFLOW_REPORT_RUNTIME_MODULE is required")',
+      'const {',
+      '  decodeWorkflowReportBundleJson,',
+      '  deriveWorkflowReportManagedState,',
+      '  findWorkflowReportManagedComment,',
+      '  renderWorkflowReportCommentBody,',
+      '} = await import(pathToFileURL(resolve(runtimeModule)).href)',
+      '',
+      'const expectString = (value, path) =>',
+      '  typeof value === "string" && value.length > 0 ? value : (() => { throw new Error(`${path} must be a non-empty string`) })()',
+      '',
+      'const optionalString = (value) => (typeof value === "string" && value.length > 0 ? value : undefined)',
+      'const latestCreatedAtUtc = (records, fallback) =>',
+      '  records.reduce((latest, record) => (record.createdAtUtc > latest ? record.createdAtUtc : latest), fallback)',
+      '',
+      'const bundlePath = expectString(process.env.WORKFLOW_REPORT_BUNDLE_PATH, "WORKFLOW_REPORT_BUNDLE_PATH")',
+      'const commentBodyPath = expectString(process.env.WORKFLOW_REPORT_COMMENT_BODY_PATH, "WORKFLOW_REPORT_COMMENT_BODY_PATH")',
+      'const summaryPath = expectString(process.env.WORKFLOW_REPORT_SUMMARY_PATH, "WORKFLOW_REPORT_SUMMARY_PATH")',
+      'const title = expectString(process.env.WORKFLOW_REPORT_TITLE, "WORKFLOW_REPORT_TITLE")',
+      'const noRecordsMessage = expectString(process.env.WORKFLOW_REPORT_NO_RECORDS_MESSAGE, "WORKFLOW_REPORT_NO_RECORDS_MESSAGE")',
+      'const stateId = expectString(process.env.WORKFLOW_REPORT_STATE_ID, "WORKFLOW_REPORT_STATE_ID")',
+      'const entryId = expectString(process.env.WORKFLOW_REPORT_ENTRY_ID, "WORKFLOW_REPORT_ENTRY_ID")',
+      'const entryLabel = expectString(process.env.WORKFLOW_REPORT_ENTRY_LABEL, "WORKFLOW_REPORT_ENTRY_LABEL")',
+      'const timeZone = expectString(process.env.WORKFLOW_REPORT_TIME_ZONE, "WORKFLOW_REPORT_TIME_ZONE")',
+      'const marker = expectString(process.env.WORKFLOW_REPORT_MANAGED_MARKER, "WORKFLOW_REPORT_MANAGED_MARKER")',
+      '',
+      'const bundle = decodeWorkflowReportBundleJson(readFileSync(bundlePath, "utf8"))',
+      'const comments = JSON.parse(readFileSync(commentsPath, "utf8"))',
+      'if (!Array.isArray(comments)) throw new Error("comments response must be an array")',
+      '',
+      'const existingComment = findWorkflowReportManagedComment(comments, { stateId, marker })',
+      'const createdAtUtc = optionalString(process.env.WORKFLOW_REPORT_CREATED_AT_UTC) ?? latestCreatedAtUtc(bundle.records, bundle.generatedAtUtc)',
+      'const state = deriveWorkflowReportManagedState({',
+      '  stateId,',
+      '  timeZone,',
+      '  priorState: existingComment?.state,',
+      '  entryId,',
+      '  entryLabel,',
+      '  createdAtUtc,',
+      '  records: bundle.records,',
+      '})',
+      'const body = renderWorkflowReportCommentBody({ title, noRecordsMessage, state })',
+      'const markerIndex = body.indexOf(marker)',
+      'const visibleBody = markerIndex === -1 ? body : `${body.slice(0, markerIndex).trimEnd()}\\n`',
+      '',
+      'mkdirSync(dirname(commentBodyPath), { recursive: true })',
+      'mkdirSync(dirname(summaryPath), { recursive: true })',
+      'writeFileSync(commentBodyPath, body)',
+      'writeFileSync(summaryPath, visibleBody)',
+    ].join('\n'),
+    'EOF',
   ].join('\n'),
 })
 

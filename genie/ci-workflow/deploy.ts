@@ -1,13 +1,15 @@
-import {
-  netlifyDeployStep as buildNetlifyDeployStep,
-  netlifyStorybookCommentStep as buildNetlifyStorybookCommentStep,
-} from '../deploy-preview/netlify.ts'
+import { netlifyDeployStep as buildNetlifyDeployStep } from '../deploy-preview/netlify.ts'
 import {
   type VercelProject,
   vercelDeployJobs as buildVercelDeployJobs,
   vercelDeployStep as buildVercelDeployStep,
 } from '../deploy-preview/vercel.ts'
 import { bashShellDefaults, linuxX64Runner, runDevenvTasksBefore } from './shared.ts'
+
+export {
+  workflowReportOutputName as deployPreviewWorkflowReportOutputName,
+  workflowReportPathOutputName as deployPreviewWorkflowReportPathOutputName,
+} from '../deploy-preview/shared.ts'
 
 /** Job-level permissions required by deploy preview helpers to post/edit PR comments. */
 export const deployCommentPermissions = {
@@ -151,9 +153,3 @@ export const vercelDeployJobs = (opts: {
  * Gracefully skips if NETLIFY_AUTH_TOKEN is not available.
  */
 export const netlifyDeployStep = () => buildNetlifyDeployStep(runDevenvTasksBefore)
-
-/**
- * Combined deploy comment step for Netlify storybook previews.
- */
-export const netlifyStorybookCommentStep = (site: string) =>
-  buildNetlifyStorybookCommentStep(site, deployModeScript)
