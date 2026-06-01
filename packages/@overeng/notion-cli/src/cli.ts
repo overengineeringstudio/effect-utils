@@ -4,12 +4,14 @@ import { Command } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Layer, Option } from 'effect'
 
+import { notionSqliteCommand } from '@overeng/notion-datasource-sync/cli/effect-command'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 export { runNotionCliMain }
+export { makeNotionRootCommand }
 
 // -----------------------------------------------------------------------------
 // Main CLI
@@ -26,17 +28,40 @@ const isRootVersionArgv = (argv: ReadonlyArray<string>): boolean => {
   return rawArgs.length === 1 && rawArgs[0] === '--version'
 }
 
-const isSqliteArgv = (args: ReadonlyArray<string>): boolean => {
-  const [, , ...rawArgs] = args
-  return rawArgs[0] === 'sqlite'
-}
-
-const writeSqliteRuntimeUnavailable = () => {
-  process.stderr.write(
-    'notion sqlite requires the packaged Nix/devenv Node-backed runtime because the SQLite sync implementation imports node:sqlite. Use `devenv shell` or the flake-built `notion` binary.\n',
+/** Composes the root Notion Effect CLI command from package-owned command trees. */
+const makeNotionRootCommand = <
+  SchemaName extends string,
+  SchemaRequirements,
+  SchemaError,
+  SchemaConfig,
+  DbName extends string,
+  DbRequirements,
+  DbError,
+  DbConfig,
+  MdName extends string,
+  MdRequirements,
+  MdError,
+  MdConfig,
+>({
+  schemaCommand,
+  dbCommand,
+  notionMdDispatchCommand,
+}: {
+  readonly schemaCommand: Command.Command<SchemaName, SchemaRequirements, SchemaError, SchemaConfig>
+  readonly dbCommand: Command.Command<DbName, DbRequirements, DbError, DbConfig>
+  readonly notionMdDispatchCommand: Command.Command<MdName, MdRequirements, MdError, MdConfig>
+}) =>
+  Command.make('notion').pipe(
+    Command.withSubcommands([
+      schemaCommand,
+      dbCommand,
+      notionMdDispatchCommand,
+      notionSqliteCommand,
+    ]),
+    Command.withDescription(
+      'Notion CLI - database operations, schema generation, and markdown sync',
+    ),
   )
-  process.exitCode = 1
-}
 
 const runRootCli = async (argv: ReadonlyArray<string>) => {
   const [{ notionMdDispatchCommand }, { dbCommand }, { schemaCommand }] = await Promise.all([
@@ -44,12 +69,11 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
     import('./commands/db/mod.ts'),
     import('./commands/schema/mod.ts'),
   ])
-  const command = Command.make('notion').pipe(
-    Command.withSubcommands([schemaCommand, dbCommand, notionMdDispatchCommand]),
-    Command.withDescription(
-      'Notion CLI - database operations, schema generation, and markdown sync',
-    ),
-  )
+  const command = makeNotionRootCommand({
+    schemaCommand,
+    dbCommand,
+    notionMdDispatchCommand,
+  })
   const cli = Command.run(command, {
     name: 'notion',
     version,
@@ -101,12 +125,6 @@ const runNotionCliMain = async ({
   }
 
   const rewrittenArgv = rewriteHelpSubcommand(argv)
-
-  if (isSqliteArgv(rewrittenArgv) === true) {
-    writeSqliteRuntimeUnavailable()
-    return
-  }
-
   await runRootCli(rewrittenArgv)
 }
 

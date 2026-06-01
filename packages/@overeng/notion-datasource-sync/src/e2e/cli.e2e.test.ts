@@ -373,6 +373,18 @@ describe('CLI command surface', () => {
     expect(stderr).not.toContain('CliErrorEnvelope')
   })
 
+  it('prints shell completions from the import-safe Effect command tree', async () => {
+    const { stdout, stderr } = await execFileAsync(cliPath, ['--completions', 'bash'], {
+      cwd: packageDir,
+      timeout: cliTestTimeoutMs,
+    })
+
+    expect(stdout).toContain('sync')
+    expect(stdout).toContain('status')
+    expect(stdout).toContain('conflicts')
+    expect(stderr).not.toContain('CliErrorEnvelope')
+  })
+
   it(
     'runs the source CLI through its shebang runtime with node:sqlite available',
     async () => {

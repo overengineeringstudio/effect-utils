@@ -136,6 +136,7 @@ import {
   type TailscaleProcessRunner,
   type WebhookRelayExposure,
 } from '../webhook/tailscale.ts'
+import { renderDatasourceSyncCompletions, type CompletionShell } from './effect-command.ts'
 
 const buildStamp = '__CLI_BUILD_STAMP__'
 const cliVersion = resolveCliVersion({
@@ -1261,6 +1262,22 @@ const isHelpArgv = (argv: ReadonlyArray<string>): boolean =>
 const isVersionArgv = (argv: ReadonlyArray<string>): boolean =>
   argv.length === 1 && argv[0] === '--version'
 
+const completionShells = new Set<CompletionShell>(['bash', 'fish', 'sh', 'zsh'])
+
+const parseCompletionShell = (value: string | undefined): CompletionShell | undefined => {
+  if (value === undefined) return undefined
+  return completionShells.has(value as CompletionShell) === true
+    ? (value as CompletionShell)
+    : undefined
+}
+
+const completionShellFromArgv = (argv: ReadonlyArray<string>): CompletionShell | undefined => {
+  const [first, second] = argv
+  if (first === '--completions') return parseCompletionShell(second)
+  if (first === 'completion') return parseCompletionShell(second)
+  return undefined
+}
+
 const booleanFlags = new Set([
   'dry-run',
   'help',
@@ -2376,6 +2393,16 @@ export const runCliMain = ({
   readonly options?: CliRuntimeOptions
 }) =>
   Effect.gen(function* () {
+    const completionShell = completionShellFromArgv(argv)
+    if (completionShell !== undefined) {
+      const completions = yield* renderDatasourceSyncCompletions({
+        programName: 'notion-datasource-sync',
+        shell: completionShell,
+      })
+      yield* Effect.sync(() => process.stdout.write(completions))
+      return
+    }
+
     if (isVersionArgv(argv) === true) {
       yield* Effect.sync(() => process.stdout.write(`${cliVersion}\n`))
       return
