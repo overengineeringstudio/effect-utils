@@ -134,6 +134,7 @@ All notable changes to this project will be documented in this file.
 - **nix/workspace-tools**: Tighten pnpm child/network concurrency inside fixed-output pnpm deps builds and cap Darwin Node heap during the install step so macOS CI is less likely to die with an unstructured `Killed: 9` while materializing whole-workspace install roots.
 - **@overeng/pty-effect**: Make the server-mode attach/read integration test wait briefly before emitting its marker so slower Linux CI runners do not miss one-shot startup output during initial attach replay.
 - **@overeng/notion-datasource-sync**: Keep the public `notion.sqlite` replica coherent after direct cell edits by refreshing scalar helper columns/generated view readback, fail closed for invalid or unsupported local changes instead of crashing or marking them planned, and align docs with the shipped replica schema and intent names.
+- **@overeng/notion-datasource-sync**: Queue public `rows` scalar updates through the canonical cell CDC trigger so `changes`, `_nds_replica_local_changes`, and `_nds_replica_cell_changes` share one change identity.
 - **@overeng/notion-datasource-sync**: Add the missing exported API JSDoc and explicit boolean comparisons that kept `lint` and `devenv-perf` red on PR #683.
 
 - **nix/oxc-config-plugin**: Refresh the `oxc-config` pnpm fixed-output hash so `oxlint` can build again in CI and `lint` / `devenv-perf` stop failing on the stale dependency boundary.

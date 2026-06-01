@@ -2617,28 +2617,28 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
         propertyType: readString({ row: property, key: 'property_type' }),
       })
       const changed = `${rowsValueReference({ scope: 'NEW', columnName })} IS NOT ${rowsValueReference({ scope: 'OLD', columnName })}`
-      return `INSERT INTO _nds_replica_local_changes (
-                change_id, kind, data_source_id, page_id, property_id, value_json, base_hash
+      return `UPDATE _nds_replica_cells
+              SET value_json = ${valueExpression}
+              WHERE page_id = OLD.${quoteIdentifier('_page_id')}
+                AND property_id = ${quoteStringLiteral(propertyId)}
+                AND ${changed};
+              INSERT INTO _nds_replica_cell_changes (
+                change_id, data_source_id, page_id, property_id, value_json, base_hash
               )
               SELECT
-                'rows:cell:' || OLD.${quoteIdentifier('_page_id')} || ':' || ${quoteStringLiteral(propertyId)} || ':' || lower(hex(randomblob(8))),
-                'cell_patch',
+                'cell:' || OLD.${quoteIdentifier('_page_id')} || ':' || ${quoteStringLiteral(propertyId)} || ':' || lower(hex(randomblob(8))),
                 ${quoteStringLiteral(dataSourceId)},
                 OLD.${quoteIdentifier('_page_id')},
                 ${quoteStringLiteral(propertyId)},
                 ${valueExpression},
-                (
-                  SELECT base_hash
+                NULL
+              WHERE ${changed}
+                AND NOT EXISTS (
+                  SELECT 1
                   FROM _nds_replica_cells
                   WHERE page_id = OLD.${quoteIdentifier('_page_id')}
                     AND property_id = ${quoteStringLiteral(propertyId)}
-                )
-              WHERE ${changed};
-              UPDATE _nds_replica_cells
-              SET value_json = ${valueExpression}
-              WHERE page_id = OLD.${quoteIdentifier('_page_id')}
-                AND property_id = ${quoteStringLiteral(propertyId)}
-                AND ${changed};`
+                );`
     })
   const insertPropertyGuards = plannedProperties.map((property) => {
     const columnName = readString({ row: property, key: 'column_name' })

@@ -15,7 +15,7 @@ import {
 import { PagePropertyItemPage } from '../core/commands.ts'
 import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
-import { markReplicaChangeStatus } from '../replica/replica.ts'
+import { markReplicaChangeStatus, readPendingReplicaChanges } from '../replica/replica.ts'
 import {
   decode,
   fixedObservedAt,
@@ -632,6 +632,48 @@ describe('clean-break self-contained SQLite storage contract', () => {
           status: 'pending',
         })
       })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'public rows scalar UPDATE queues one mirrored cell change identity',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+
+      updatePublicRowsTitle({ sqlitePath, title: 'Single mirrored change' })
+
+      openReadOnly(sqlitePath, (db) => {
+        const localChange = row(
+          db,
+          `SELECT change_id, kind, property_id, status
+           FROM _nds_replica_local_changes
+           WHERE kind = 'cell_patch'`,
+        )
+        const cellChange = row(
+          db,
+          `SELECT change_id, property_id, status
+           FROM _nds_replica_cell_changes`,
+        )
+
+        expect(localChange).toMatchObject({
+          kind: 'cell_patch',
+          property_id: testIds.propertyA,
+          status: 'pending',
+        })
+        expect(cellChange).toMatchObject({
+          property_id: testIds.propertyA,
+          status: 'pending',
+        })
+        expect(localChange?.change_id).toBe(cellChange?.change_id)
+        expect(row(db, `SELECT count(*) AS count FROM changes WHERE kind = 'cell_patch'`)).toEqual({
+          count: 1,
+        })
+        expect(syncStatus(db)).toMatchObject({ pending_local_changes: 1 })
+      })
+
+      expect(readPendingReplicaChanges(sqlitePath)).toHaveLength(1)
     },
     sqliteContractTimeoutMs,
   )
