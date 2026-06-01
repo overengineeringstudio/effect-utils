@@ -15,7 +15,7 @@ A database-ID-named file is always the full Notion database replica. Filtered
 query contracts and subset membership are not product replica modes.
 
 ```sh
-notion-datasource-sync sync --from-notion <data-source-id-or-database-url> ./workspace
+notion db sync --from-notion <data-source-id-or-database-url> ./workspace
 sqlite3 ./workspace/<database-id>.sqlite
 ```
 
@@ -140,8 +140,8 @@ local desired state, and records a durable row in `changes`. The SQL write does
 not call Notion. Run:
 
 ```sh
-notion-datasource-sync sync ./workspace --dry-run
-notion-datasource-sync sync ./workspace
+notion db sync ./workspace --dry-run
+notion db sync ./workspace
 ```
 
 Supported scalar/property classes include title, rich text, number, checkbox,

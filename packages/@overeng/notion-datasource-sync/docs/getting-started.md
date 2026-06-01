@@ -1,6 +1,6 @@
 # Getting Started
 
-`notion-datasource-sync` syncs a Notion database with a local SQLite replica.
+`notion db` syncs a Notion database with a local SQLite replica.
 By default, one `<workspace>/<database-id>.sqlite` file maps to one Notion
 database. The filename uses the Notion database ID, not the display name.
 
@@ -26,7 +26,7 @@ as incomplete or ambiguous.
 Start from an existing Notion data source or database URL:
 
 ```sh
-notion-datasource-sync sync --from-notion \
+notion db sync --from-notion \
   00000000000040008000000000000001 \
   "$PWD/notion-workspace"
 ```
@@ -52,7 +52,7 @@ Preview establishment without writing SQLite files, body files, or Notion
 state:
 
 ```sh
-notion-datasource-sync sync --from-notion \
+notion db sync --from-notion \
   <database-url-or-data-source-id> \
   "$PWD/notion-workspace" \
   --dry-run
@@ -61,7 +61,7 @@ notion-datasource-sync sync --from-notion \
 For large existing databases, cap the no-write preview:
 
 ```sh
-notion-datasource-sync sync --from-notion \
+notion db sync --from-notion \
   <database-url-or-data-source-id> \
   "$PWD/notion-workspace" \
   --dry-run \
@@ -142,8 +142,8 @@ without remote effect, use the `forget` CLI.
 Review and apply with the CLI:
 
 ```sh
-notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
-notion-datasource-sync sync "$PWD/notion-workspace"
+notion db sync "$PWD/notion-workspace" --dry-run
+notion db sync "$PWD/notion-workspace"
 ```
 
 Supported public edits currently include writable scalar/page-property cells,
@@ -162,7 +162,7 @@ closed.
 ## Reconcile Local Changes
 
 ```sh
-notion-datasource-sync sync "$PWD/notion-workspace"
+notion db sync "$PWD/notion-workspace"
 ```
 
 Established `sync` discovers database files in the workspace, observes remote
@@ -174,14 +174,14 @@ Use dry-run to observe and plan without appending events, settling intents,
 executing the outbox, mutating Notion, or materializing bodies:
 
 ```sh
-notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
+notion db sync "$PWD/notion-workspace" --dry-run
 ```
 
 Inspect state:
 
 ```sh
-notion-datasource-sync status "$PWD/notion-workspace"
-notion-datasource-sync doctor "$PWD/notion-workspace/<database-id>.sqlite"
+notion db status "$PWD/notion-workspace"
+notion db doctor "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 `doctor` verifies public/private schema integrity, `_nds_*` digests, SQLite
@@ -212,7 +212,7 @@ Conflicts are visible in the database file and through the CLI:
 sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" \
   "select conflict_id, page_id, property_id, state from conflicts;"
 
-notion-datasource-sync conflicts list "$PWD/notion-workspace/<database-id>.sqlite"
+notion db conflicts list "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 Resolve conflicts with explicit CLI commands. Do not update `_nds_*` tables or

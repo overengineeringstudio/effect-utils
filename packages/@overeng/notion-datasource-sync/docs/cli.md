@@ -1,19 +1,21 @@
 # CLI Reference
 
-The binary is `notion-datasource-sync`.
+The public command surface is `notion db ...` through the umbrella Notion CLI.
+The datasource-sync package remains a library/package boundary; it does not
+publish a standalone user-facing binary.
 
 ```sh
-notion-datasource-sync sync --from-notion <data-source-id-or-database-url> <workspace-root> [--dry-run] [--limit <rows>] [--no-materialize-bodies]
-notion-datasource-sync sync <workspace-root> [--dry-run]
-notion-datasource-sync sync --watch <workspace-root> [--state <path>] [--max-cycles <n>] [--mode <development|normal|low-priority>] [--webhook <none|tailscale|manual>] [--webhook-required]
-notion-datasource-sync status <workspace-root>
-notion-datasource-sync doctor <workspace-root>/<database-id>.sqlite
+notion db sync --from-notion <data-source-id-or-database-url> <workspace-root> [--dry-run] [--limit <rows>] [--no-materialize-bodies]
+notion db sync <workspace-root> [--dry-run]
+notion db sync --watch <workspace-root> [--state <path>] [--max-cycles <n>] [--mode <development|normal|low-priority>] [--webhook <none|tailscale|manual>] [--webhook-required]
+notion db status <workspace-root>
+notion db doctor <workspace-root>/<database-id>.sqlite
 sqlite3 <workspace-root>/<database-id>.sqlite
 
-notion-datasource-sync conflicts list <workspace-root>/<database-id>.sqlite
-notion-datasource-sync conflicts resolve <workspace-root>/<database-id>.sqlite --conflict-id <id> --strategy <keep-remote|keep-local|manual> [--value-json <json>] [--dry-run]
-notion-datasource-sync forget <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
-notion-datasource-sync restore <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
+notion db conflicts list <workspace-root>/<database-id>.sqlite
+notion db conflicts resolve <workspace-root>/<database-id>.sqlite --conflict-id <id> --strategy <keep-remote|keep-local|manual> [--value-json <json>] [--dry-run]
+notion db forget <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
+notion db restore <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
 ```
 
 `migrate store`, `migrate schema`, and `repair` are parsed but currently
@@ -142,7 +144,7 @@ multiple child data sources fail closed; pass the exact data-source ID instead.
 Use a bounded no-write preview before adopting large existing databases:
 
 ```sh
-notion-datasource-sync sync --from-notion <database-url> <workspace-root> --dry-run --limit 25
+notion db sync --from-notion <database-url> <workspace-root> --dry-run --limit 25
 ```
 
 `--limit` and `--max-rows` are aliases and are intentionally dry-run-only. They
@@ -228,8 +230,8 @@ delete or from missing local files.
 Review and apply:
 
 ```sh
-notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
-notion-datasource-sync sync "$PWD/notion-workspace"
+notion db sync "$PWD/notion-workspace" --dry-run
+notion db sync "$PWD/notion-workspace"
 ```
 
 `changes` is the public audit ledger. It reports pending,

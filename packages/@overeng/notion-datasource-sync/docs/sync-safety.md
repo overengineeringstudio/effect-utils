@@ -81,7 +81,7 @@ CDC processing.
 The normal onboarding command is:
 
 ```sh
-notion-datasource-sync sync --from-notion <data-source-id-or-url> <workspace-root>
+notion db sync --from-notion <data-source-id-or-url> <workspace-root>
 ```
 
 Establishment validates the existing Notion database/data source, creates

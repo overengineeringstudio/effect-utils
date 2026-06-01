@@ -64,14 +64,14 @@ reports the database as unsafe instead of inferring remote writes.
 ## CLI Shape
 
 ```sh
-notion-datasource-sync sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
-notion-datasource-sync sync --from-notion <database-url> "$PWD/notion-workspace" --dry-run --limit 25
-notion-datasource-sync sync "$PWD/notion-workspace"
-notion-datasource-sync sync --watch "$PWD/notion-workspace"
-notion-datasource-sync status "$PWD/notion-workspace"
+notion db sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
+notion db sync --from-notion <database-url> "$PWD/notion-workspace" --dry-run --limit 25
+notion db sync "$PWD/notion-workspace"
+notion db sync --watch "$PWD/notion-workspace"
+notion db status "$PWD/notion-workspace"
 
 sqlite3 "$PWD/notion-workspace/<database-id>.sqlite"
-notion-datasource-sync doctor "$PWD/notion-workspace/<database-id>.sqlite"
+notion db doctor "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 The sync-first form writes `<workspace>/<database-id>.sqlite`. First

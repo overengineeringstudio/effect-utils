@@ -46,7 +46,7 @@ Symptom:
 Fix:
 
 ```sh
-notion-datasource-sync sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
+notion db sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
 ```
 
 `sync <workspace-root>` only works after establishment has written
@@ -96,8 +96,8 @@ sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" \
 Then run:
 
 ```sh
-notion-datasource-sync sync "$PWD/notion-workspace" --dry-run
-notion-datasource-sync sync "$PWD/notion-workspace"
+notion db sync "$PWD/notion-workspace" --dry-run
+notion db sync "$PWD/notion-workspace"
 ```
 
 If the dry-run reports a stale base, read-only property, unsupported property
@@ -174,8 +174,8 @@ should retry, or needs user action.
 Run:
 
 ```sh
-notion-datasource-sync doctor "$PWD/notion-workspace/<database-id>.sqlite"
-notion-datasource-sync conflicts list "$PWD/notion-workspace/<database-id>.sqlite"
+notion db doctor "$PWD/notion-workspace/<database-id>.sqlite"
+notion db conflicts list "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 ## Live E2E Leaves Fixtures Behind

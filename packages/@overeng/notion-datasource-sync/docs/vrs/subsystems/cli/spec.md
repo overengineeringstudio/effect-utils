@@ -4,21 +4,22 @@ Sub-system slice of [spec.md](../../spec.md). Serves [requirements](./requiremen
 
 Requirement trace: CLI-R01, CLI-R02, CLI-R03, CLI-R04, CLI-R05.
 
-This sub-system defines the command surface, establishment flow, dry-run rules,
-and structured output for the datasource-sync CLI and the replica helpers.
+This sub-system defines the `notion db` command surface, establishment flow,
+dry-run rules, and structured output for datasource-sync workflows.
 
 ## Commands
 
 | Command                   | Primary flags                                                                                                                         | Purpose                                                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `sync --from-notion`      | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies`                             | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
-| `sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                                                         | Reconcile an established workspace through local-capture-first planning                                             |
-| `status <workspace-root>` | `--json`, `--porcelain`                                                                                                               | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
+| `notion db sync --from-notion`      | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies`                             | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
+| `notion db sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                                                         | Reconcile an established workspace through local-capture-first planning                                             |
+| `notion db status <workspace-root>` | `--json`, `--porcelain`                                                                                                               | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
 | `init`                    | `--data-source-id`, `--root`, `--sqlite`                                                                                              | Advanced: bind a local root to a Notion data source without observing it                                            |
 | `pull`                    | `--since`, `--full-scan`, `--dry-run`                                                                                                 | Advanced: observe remote schema/rows/body pointers and materialize local projections                                |
 | `status`                  | `--json`, `--porcelain`                                                                                                               | Show local edits, remote drift, conflicts, tombstones, outbox state                                                 |
 | `push`                    | `--dry-run`, `--conflict-policy`                                                                                                      | Plan and apply local intents to Notion with guards                                                                  |
 | `sync`                    | `--dry-run`, `--max-attempts`, `--watch`, `--state`, `--max-cycles`, `--mode`, `--webhook`, `--webhook-required`, `--non-interactive` | Pull, plan, push, settle, refresh, or run the local daemon for established replicas                                 |
+| `export`                  | `--from-notion`, `--format`, `--output`, `--dry-run`                                                                                  | Export from the established replica contract after optional pull/project-only refresh                               |
 | `conflicts list`          | `--json`                                                                                                                              | List open conflicts                                                                                                 |
 | `conflicts resolve`       | `--strategy`, `--manual-value`                                                                                                        | Append conflict resolution events and follow-up commands                                                            |
 | `migrate store`           | `--to`, `--dry-run`                                                                                                                   | Execute forward-only SQLite migrations                                                                              |
@@ -28,10 +29,14 @@ and structured output for the datasource-sync CLI and the replica helpers.
 | `forget`                  | `--page-id`, `--path`, `--dry-run`                                                                                                    | Remove local tracking without remote mutation                                                                       |
 | `restore`                 | `--page-id`, `--dry-run`                                                                                                              | Restore trashed/moved state when supported and verified                                                             |
 
-The command set spans init, pull, status, push, sync, `sync --watch`,
-conflicts, migrate, doctor, repair, forget, and restore (CLI-R01). There is no
-standalone user-facing `watch` command; the daemon is reached through
-`sync --watch` (see [../watch-daemon/spec.md](../watch-daemon/spec.md)).
+The public command set is rooted at `notion db` and spans sync,
+`sync --watch`, status, doctor, conflicts, forget, restore, and export. Advanced
+init, pull, push, migrate, and repair workflows may be promoted under the same
+root when they are ready (CLI-R01). There is no standalone user-facing `watch`
+command; the daemon is reached through `sync --watch` (see
+[../watch-daemon/spec.md](../watch-daemon/spec.md)). Retired legacy namespaces
+and raw export paths are governed by [decision 0007](../../decisions/0007-replica-export-replaces-raw-dump.md)
+and [decision 0008](../../decisions/0008-single-database-cli-surface.md).
 
 Workspace establishment writes `<workspace>/<database-id>.sqlite` under the
 workspace root. The database file is named with the Notion database ID, not the
@@ -140,22 +145,13 @@ Human output is a rendering of this envelope; it is not a separate source of
 truth. It provides concise human-readable explanations for conflicts, blocked
 guards, retries, tombstones, and migrations (CLI-R04).
 
-## Replica CLI Helpers
+## Replica Operations
 
-Replica-specific CLI helpers are wrappers around the same public SQLite API
-defined in [../replica-api/spec.md](../replica-api/spec.md):
-
-| Command                 | Purpose                                                                          |
-| ----------------------- | -------------------------------------------------------------------------------- |
-| `replica schema`        | Print the stable `<database-id>.sqlite` table/view/intent contract               |
-| `replica changes`       | List pending local intents and their guard status                                |
-| `replica rebuild`       | Rebuild public tables/views from private `_nds_*` sync-control state             |
-| `replica clear-applied` | Remove or compact settled local intent rows after they are represented by events |
-
-These helpers may be staged after the generic tables exist, but they must not
-define a separate write path. They read or write the same public tables that
-users can inspect directly. Local deletion and tombstone semantics referenced by
-these helpers are owned by [../replica-api/spec.md](../replica-api/spec.md).
+Replica remains the domain term for the local `<database-id>.sqlite` artifact,
+but it is not a public command namespace. Public inspection and repair commands
+must stay under `notion db` and operate on the same public SQLite API defined in
+[../replica-api/spec.md](../replica-api/spec.md). They must not define a
+separate write path.
 
 ## Doctor Capabilities
 

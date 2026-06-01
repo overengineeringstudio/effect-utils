@@ -406,7 +406,7 @@ in
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
     oxlintWithPlugins
     pkgs.oxfmt
-    # Use the packaged wrapper so `notion sqlite ...` runs on Node 24 with node:sqlite.
+    # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoFlake.packages.${currentSystem}.notion-cli
     (mkSourceCli {
       name = "genie";
