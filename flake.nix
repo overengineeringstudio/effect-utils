@@ -197,6 +197,7 @@
           lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
+          changesets = import ./nix/devenv-modules/tasks/shared/changesets.nix;
           github-ruleset = import ./nix/devenv-modules/tasks/shared/github-ruleset.nix;
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
           nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
