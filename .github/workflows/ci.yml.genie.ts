@@ -30,8 +30,11 @@ import {
   sourceShapeMeasurementStep,
   validateColdPnpmDepsStep,
   nixDiagnosticsArtifactStep,
+  workflowReportCommentBodyStep,
+  workflowReportCollectorStep,
+  workflowReportPublisherStep,
+  deployPreviewWorkflowReportPathOutputName,
   netlifyDeployStep,
-  netlifyStorybookCommentStep,
   pnpmStateSetupStep,
   validateNixStoreStep,
   defaultRefPolicyCheckJob,
@@ -84,6 +87,13 @@ const failureReminderStep = {
     'echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"',
   ].join('\n'),
 } as const
+
+const storybookPreviewBundlePath =
+  '${{ runner.temp }}/workflow-reports/storybook-preview-bundle.json'
+const storybookPreviewCommentBodyPath =
+  '${{ runner.temp }}/workflow-reports/storybook-preview-comment.md'
+const storybookPreviewSummaryPath =
+  '${{ runner.temp }}/workflow-reports/storybook-preview-summary.md'
 
 /**
  * Verify the lock-pinned devenv rev emits OTEL shell-entry messages under a real PTY.
@@ -278,7 +288,6 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
   }),
 }
 
-const NETLIFY_SITE = 'overeng-utils'
 const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'
 const nixClosureMeasurementsDir = 'tmp/nix-closure-ci'
 const ciMeasurementReportDir = 'tmp/ci-measurement-report'
@@ -673,7 +682,29 @@ const deployJobs: Record<string, any> = {
     steps: [
       ...baseSteps,
       netlifyDeployStep(),
-      netlifyStorybookCommentStep(NETLIFY_SITE),
+      workflowReportCollectorStep({
+        bundleId: 'storybook-preview',
+        inputPaths: [`\${{ steps.deploy.outputs.${deployPreviewWorkflowReportPathOutputName} }}`],
+        outputPath: storybookPreviewBundlePath,
+        allowMissingInput: true,
+      }),
+      workflowReportCommentBodyStep({
+        bundlePath: storybookPreviewBundlePath,
+        commentBodyPath: storybookPreviewCommentBodyPath,
+        summaryPath: storybookPreviewSummaryPath,
+        title: 'Storybook Previews',
+        noRecordsMessage: 'No storybooks were deployed.',
+        stateId: 'storybook-preview',
+        entryId:
+          '${{ github.event_name == \'pull_request\' && github.event.pull_request.head.sha || github.sha }}',
+        entryLabel:
+          '${{ github.event_name == \'pull_request\' && format(\'PR {0}\', github.event.pull_request.number) || \'prod\' }}',
+      }),
+      workflowReportPublisherStep({
+        commentBodyPath: storybookPreviewCommentBodyPath,
+        summaryPath: storybookPreviewSummaryPath,
+        stateId: 'storybook-preview',
+      }),
       savePnpmStateStep(),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),

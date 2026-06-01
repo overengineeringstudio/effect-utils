@@ -7,6 +7,7 @@ const ciWorkflowSource = [
   'ci-workflow/shared.ts',
   'ci-workflow/setup.ts',
   'ci-workflow/measurements.ts',
+  'ci-workflow/reporting.ts',
   'ci-workflow/megarepo.ts',
   'ci-workflow/merge-queue.ts',
   'ci-workflow/deploy.ts',
@@ -116,6 +117,21 @@ describe('ci workflow retry helpers', () => {
     expect(ciWorkflowSource).toContain('run_nix_gc_race_retry')
     expect(nixGcRaceRetryScriptSource).toContain("tr '\\r\\n' '  ' < \"$log\"")
     expect(nixGcRaceRetryScriptSource).not.toContain("awk 'BEGIN { ORS=")
+  })
+})
+
+describe('ci workflow reporting helpers', () => {
+  it('keeps structured workflow report records on the marked JSONL path', () => {
+    expect(ciWorkflowSource).toContain('encodeWorkflowReportRecordLine')
+    expect(ciWorkflowSource).toContain('workflowReportProducerStep')
+    expect(ciWorkflowSource).toContain('workflowReportCollectorStep')
+    expect(ciWorkflowSource).toContain('workflowReportPublisherStep')
+  })
+
+  it('matches managed PR comments by hidden state ID before patching', () => {
+    expect(ciWorkflowSource).toContain('workflow report comment body is missing managed state')
+    expect(ciWorkflowSource).toContain('findWorkflowReportManagedComment')
+    expect(ciWorkflowSource).toContain('WORKFLOW_REPORT_STATE_ID')
   })
 })
 

@@ -34,7 +34,6 @@ import { bashShellDefaults, linuxX64Runner, standardCIEnv } from './ci-workflow/
 type GitHubWorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type GitHubWorkflowStep = GitHubWorkflowJob['steps'][number]
 
-/** Options for wrapping the default-ref policy check in a dedicated CI job. */
 export type DefaultRefPolicyCheckJobOptions = DefaultRefPolicyCheckStepOptions & {
   readonly name?: string
   readonly runsOn?: GitHubWorkflowJob['runs-on']
@@ -133,6 +132,16 @@ export {
   type SourceShapeMeasurementStepOptions,
 } from './ci-workflow/measurements.ts'
 export {
+  workflowReportCommentBodyStep,
+  workflowReportCollectorStep,
+  workflowReportProducerStep,
+  workflowReportPublisherStep,
+  type WorkflowReportCommentBodyStepOptions,
+  type WorkflowReportCollectorStepOptions,
+  type WorkflowReportProducerStepOptions,
+  type WorkflowReportPublisherStepOptions,
+} from './ci-workflow/reporting.ts'
+export {
   appendGitHubAccessTokenToNixConfigStep,
   cachixCliBuildStep,
   cachixStep,
@@ -204,11 +213,11 @@ export {
 } from './ci-workflow/merge-queue.ts'
 export {
   deployCommentPermissions,
-  deployCommentStep,
   deployModeScript,
   dispatchAlignmentStep,
+  deployPreviewWorkflowReportOutputName,
+  deployPreviewWorkflowReportPathOutputName,
   netlifyDeployStep,
-  netlifyStorybookCommentStep,
   notifyAlignmentJob,
   vercelDeployJobs,
   vercelDeployStep,

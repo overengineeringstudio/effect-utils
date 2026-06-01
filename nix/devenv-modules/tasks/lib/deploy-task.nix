@@ -85,6 +85,48 @@ let
         --arg deployedAtUtc "$deployed_at_utc" \
         '{provider: $provider, target: $target, displayName: $displayName, rawDeployUrl: $rawDeployUrl, finalUrl: $finalUrl, deployedAtUtc: $deployedAtUtc}')"
 
+      workflow_report_json="$(${pkgs.jq}/bin/jq -cn \
+        --argjson schemaVersion 1 \
+        --arg tag 'WorkflowReportRecord' \
+        --arg id 'deploy-${provider}-${target}' \
+        --arg kind 'deploy-preview' \
+        --arg status 'success' \
+        --arg provider '${provider}' \
+        --arg target '${target}' \
+        --arg displayName '${displayName}' \
+        --arg rawDeployUrl "$raw_deploy_url" \
+        --arg finalUrl "$final_url" \
+        --arg deployedAtUtc "$deployed_at_utc" \
+        '{
+          _tag: $tag,
+          schemaVersion: $schemaVersion,
+          id: $id,
+          kind: $kind,
+          subject: {
+            id: $target,
+            label: $displayName
+          },
+          status: $status,
+          title: ($displayName + " preview deployed"),
+          summary: "Preview is ready",
+          createdAtUtc: $deployedAtUtc,
+          links: [
+            {
+              label: "Preview",
+              url: $finalUrl,
+              primary: true
+            }
+          ],
+          data: {
+            provider: $provider,
+            target: $target,
+            displayName: $displayName,
+            rawDeployUrl: $rawDeployUrl,
+            finalUrl: $finalUrl,
+            deployedAtUtc: $deployedAtUtc
+          }
+        }')"
+
       if [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
         ${pkgs.jq}/bin/jq -n \
           --arg genericFinalKey "DEPLOY_FINAL_URL" \
@@ -122,10 +164,16 @@ let
           }' > "$DEVENV_TASK_OUTPUT_FILE"
       fi
 
+      if [ -n "''${WORKFLOW_REPORT_OUTPUT_FILE:-}" ]; then
+        mkdir -p "$(dirname "$WORKFLOW_REPORT_OUTPUT_FILE")"
+        printf '%s\n' "$workflow_report_json" >> "$WORKFLOW_REPORT_OUTPUT_FILE"
+      fi
+
       echo "${providerLabel} raw deploy URL: $raw_deploy_url"
       echo "${providerLabel} deploy URL: $final_url"
       echo "${providerLabel} deployed at UTC: $deployed_at_utc"
       echo "DEPLOY_TASK_METADATA: $deploy_metadata_json"
+      echo "WORKFLOW_REPORT_V1: $workflow_report_json"
       ${
         if legacyMetadataPrefix == null then
           ""

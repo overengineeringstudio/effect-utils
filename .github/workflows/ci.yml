@@ -7629,7 +7629,28 @@ jobs:
         run: |
           tmp_log="/tmp/netlify-storybook-deploy.log"
           rm -f "$tmp_log"
+          workflow_report_dir="${RUNNER_TEMP:-/tmp}/workflow-reports"
+          mkdir -p "$workflow_report_dir"
+          workflow_report_path="$(mktemp "$workflow_report_dir/netlify-storybooks.XXXXXX.jsonl")"
+          export WORKFLOW_REPORT_OUTPUT_FILE="$workflow_report_path"
           if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
+            deployed_at_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            workflow_report_json="$(jq -cn \
+              --argjson schemaVersion 1 \
+              --arg tag WorkflowReportRecord \
+              --arg id deploy-netlify-storybooks \
+              --arg kind "deploy-preview" \
+              --arg status skipped \
+              --arg provider netlify \
+              --arg target storybooks \
+              --arg displayName "Storybooks" \
+              --arg deployedAtUtc "$deployed_at_utc" \
+              --arg message "Skipping Netlify deploy because NETLIFY_AUTH_TOKEN is not available." \
+              '{_tag: $tag, schemaVersion: $schemaVersion, id: $id, kind: $kind, subject: {id: $target, label: $displayName}, status: $status, title: ($displayName + " preview not deployed"), summary: $message, createdAtUtc: $deployedAtUtc, data: {provider: $provider, target: $target, displayName: $displayName, reason: $message}}')"
+            printf "%s\n" "$workflow_report_json" > "$workflow_report_path"
+            echo "WORKFLOW_REPORT_V1: $workflow_report_json"
+            echo "workflow_report_path=$workflow_report_path" >> "$GITHUB_OUTPUT"
+            printf 'workflow_report=%s\n' "$workflow_report_json" >> "$GITHUB_OUTPUT"
             echo "::notice::Skipping Netlify deploy (NETLIFY_AUTH_TOKEN not available)"
             exit 0
           fi
@@ -7862,357 +7883,233 @@ jobs:
           fi
           deploy_exit=${PIPESTATUS[0]}
           if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi
-          cat > /tmp/extract-netlify-preview-packages.mjs <<'EOF'
-          import { readFileSync } from 'node:fs'
+          workflow_report_json=""
+          if [ -s "$workflow_report_path" ]; then
+            workflow_report_json="$(tail -n 1 "$workflow_report_path")"
+          fi
+          if [ -z "$workflow_report_json" ]; then
+            workflow_report_json=$(grep -F "WORKFLOW_REPORT_V1: " "$tmp_log" | sed 's/^.*WORKFLOW_REPORT_V1: //' | tail -n 1 || true)
+          fi
+          if [ -n "$workflow_report_json" ]; then
+            workflow_report_json="$(printf "%s" "$workflow_report_json" | jq -c '.')"
+            printf "%s\n" "$workflow_report_json" > "$workflow_report_path"
+            echo "WORKFLOW_REPORT_V1: $workflow_report_json"
+            printf 'workflow_report=%s\n' "$workflow_report_json" >> "$GITHUB_OUTPUT"
+          fi
+          echo "workflow_report_path=$workflow_report_path" >> "$GITHUB_OUTPUT"
+      - name: Collect workflow report bundle
+        shell: bash
+        env:
+          WORKFLOW_REPORT_BUNDLE_ID: storybook-preview
+          WORKFLOW_REPORT_INPUT_PATHS_JSON: '["${{ steps.deploy.outputs.workflow_report_path }}"]'
+          WORKFLOW_REPORT_OUTPUT_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-bundle.json'
+          WORKFLOW_REPORT_RECORD_MARKER: 'WORKFLOW_REPORT_V1: '
+          WORKFLOW_REPORT_ALLOW_MISSING_INPUT: '1'
+        run: |
+          if [ -z "${WORKFLOW_REPORT_RUNTIME_MODULE:-}" ]; then
+            if [ -f packages/@overeng/genie/src/runtime/mod.ts ]; then
+              export WORKFLOW_REPORT_RUNTIME_MODULE=packages/@overeng/genie/src/runtime/mod.ts
+            elif [ -f repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts ]; then
+              export WORKFLOW_REPORT_RUNTIME_MODULE=repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts
+            else
+              echo "::error::unable to locate @overeng/genie runtime module for workflow reports"
+              exit 1
+            fi
+          fi
+          cat > /tmp/collect-workflow-report-bundle.mjs <<'EOF'
+          import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+          import { dirname, resolve } from 'node:path'
+          import { pathToFileURL } from 'node:url'
 
-          const [logPath] = process.argv.slice(2)
-          const prefixes = ["DEPLOY_TASK_METADATA: ", "NETLIFY_DEPLOY_METADATA: "]
-          const packages = readFileSync(logPath, "utf8")
-            .split("\n")
-            .flatMap((line) => {
-              const prefix = prefixes.find((candidate) => line.includes(candidate))
-              if (!prefix) return []
-              const rawRecord = JSON.parse(line.slice(line.indexOf(prefix) + prefix.length))
-              if (rawRecord.provider === "netlify") {
-                return [{
-                  packageName: rawRecord.displayName ?? rawRecord.target,
-                  rawDeployUrl: rawRecord.rawDeployUrl,
-                  finalUrl: rawRecord.finalUrl,
-                  deployedAtUtc: rawRecord.deployedAtUtc,
-                }]
-              }
-              if ("packageName" in rawRecord) return [rawRecord]
-              return []
-            })
-          const dedupedPackages = [...new Map(packages.map((pkg) => [pkg.packageName, pkg])).values()]
-          process.stdout.write(JSON.stringify(dedupedPackages))
+          const runtimeModule = process.env.WORKFLOW_REPORT_RUNTIME_MODULE
+          if (typeof runtimeModule !== "string" || runtimeModule.length === 0) throw new Error("WORKFLOW_REPORT_RUNTIME_MODULE is required")
+          const { collectWorkflowReportBundle, encodeWorkflowReportBundleJson } = await import(pathToFileURL(resolve(runtimeModule)).href)
+
+          const expectString = (value, path) =>
+            typeof value === "string" && value.length > 0 ? value : (() => { throw new Error(`${path} must be a non-empty string`) })()
+
+          const marker = expectString(process.env.WORKFLOW_REPORT_RECORD_MARKER, "WORKFLOW_REPORT_RECORD_MARKER")
+          const inputPaths = JSON.parse(expectString(process.env.WORKFLOW_REPORT_INPUT_PATHS_JSON, "WORKFLOW_REPORT_INPUT_PATHS_JSON"))
+          const outputPath = expectString(process.env.WORKFLOW_REPORT_OUTPUT_PATH, "WORKFLOW_REPORT_OUTPUT_PATH")
+          const bundleId = expectString(process.env.WORKFLOW_REPORT_BUNDLE_ID, "WORKFLOW_REPORT_BUNDLE_ID")
+          const allowMissingInput = process.env.WORKFLOW_REPORT_ALLOW_MISSING_INPUT === "1"
+
+          const sources = []
+          for (const path of inputPaths) {
+            if (!existsSync(path)) {
+              if (allowMissingInput) continue
+              throw new Error(`workflow report input file does not exist: ${path}`)
+            }
+            sources.push(readFileSync(path, "utf8"))
+          }
+
+          const bundle = collectWorkflowReportBundle({ bundleId, generatedAtUtc: new Date().toISOString(), sources, marker })
+
+          mkdirSync(dirname(outputPath), { recursive: true })
+          writeFileSync(outputPath, encodeWorkflowReportBundleJson(bundle))
           EOF
-          packages_json="$(nix run nixpkgs#bun -- /tmp/extract-netlify-preview-packages.mjs "$tmp_log")"
-          printf 'packages_json<<__NETLIFY_PACKAGES__\n%s\n__NETLIFY_PACKAGES__\n' "$packages_json" >> "$GITHUB_OUTPUT"
-      - name: Post storybook preview comment
-        if: ${{ !cancelled() }}
+          nix run nixpkgs#bun -- /tmp/collect-workflow-report-bundle.mjs
+      - name: Render workflow report comment
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          STORYBOOK_PREVIEW_PACKAGES_JSON: ${{ steps.deploy.outputs.packages_json }}
+          WORKFLOW_REPORT_BUNDLE_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-bundle.json'
+          WORKFLOW_REPORT_COMMENT_BODY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-comment.md'
+          WORKFLOW_REPORT_SUMMARY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-summary.md'
+          WORKFLOW_REPORT_TITLE: Storybook Previews
+          WORKFLOW_REPORT_NO_RECORDS_MESSAGE: No storybooks were deployed.
+          WORKFLOW_REPORT_STATE_ID: storybook-preview
+          WORKFLOW_REPORT_ENTRY_ID: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          WORKFLOW_REPORT_ENTRY_LABEL: ${{ github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.number) || 'prod' }}
+          WORKFLOW_REPORT_CREATED_AT_UTC: ''
+          WORKFLOW_REPORT_TIME_ZONE: UTC
+          WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
         run: |
-          site="overeng-utils"
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            label="prod"
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            label="PR #${{ github.event.pull_request.number }}"
-          else
-            exit 0
+          if [ -z "${WORKFLOW_REPORT_RUNTIME_MODULE:-}" ]; then
+            if [ -f packages/@overeng/genie/src/runtime/mod.ts ]; then
+              export WORKFLOW_REPORT_RUNTIME_MODULE=packages/@overeng/genie/src/runtime/mod.ts
+            elif [ -f repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts ]; then
+              export WORKFLOW_REPORT_RUNTIME_MODULE=repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts
+            else
+              echo "::error::unable to locate @overeng/genie runtime module for workflow reports"
+              exit 1
+            fi
           fi
-          if [ "$label" = "prod" ]; then suffix=""; else suffix="-pr-${{ github.event.pull_request.number }}"; fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            commit_sha="${{ github.event.pull_request.head.sha }}"
-          else
-            commit_sha="${{ github.sha }}"
-          fi
-          export STORYBOOK_PREVIEW_LABEL="$label"
-          export STORYBOOK_PREVIEW_COMMIT_SHA="$commit_sha"
-          export STORYBOOK_PREVIEW_SITE="$site"
-          export STORYBOOK_PREVIEW_SUFFIX="$suffix"
-          export STORYBOOK_PREVIEW_DEPLOYED_AT_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          comments_json="/tmp/storybook-preview-comments.json"
+          comments_json="$(mktemp)"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$'\n'}access-tokens = github.com=${GH_TOKEN}"
             nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"
           else
             printf '[]' > "$comments_json"
           fi
-          cat > /tmp/render-storybook-preview-comment.mjs <<'EOF'
-          import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 
-          const commentTitle = "Storybook Previews"
-          const noRowsMessage = "No storybooks were deployed."
-          const managedMarker = "<!-- deploy-preview-comment:managed -->"
-          const statePrefix = "<!-- deploy-preview-comment:state\n"
-          const stateSuffix = "\n-->"
-          const stateTag = 'storybook-preview-comment-state'
-          const schemaVersion = 3
-          const timeZone = 'Europe/Berlin'
-          const maxCommits = 50
+          nix run nixpkgs#bun -- - "$comments_json" <<'EOF'
+          import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+          import { dirname, resolve } from 'node:path'
+          import { pathToFileURL } from 'node:url'
 
-          const [commentsPath, commentBodyPath, summaryPath, commentIdPath] = process.argv.slice(2)
+          const [commentsPath] = process.argv.slice(2)
+          const runtimeModule = process.env.WORKFLOW_REPORT_RUNTIME_MODULE
+          if (typeof runtimeModule !== "string" || runtimeModule.length === 0) throw new Error("WORKFLOW_REPORT_RUNTIME_MODULE is required")
+          const {
+            decodeWorkflowReportBundleJson,
+            deriveWorkflowReportManagedState,
+            findWorkflowReportManagedComment,
+            renderWorkflowReportCommentBody,
+          } = await import(pathToFileURL(resolve(runtimeModule)).href)
 
-          const fail = (message) => {
-            throw new Error(message)
-          }
+          const expectString = (value, path) =>
+            typeof value === "string" && value.length > 0 ? value : (() => { throw new Error(`${path} must be a non-empty string`) })()
 
-          const expectObject = (value, path) => {
-            if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-              fail(`${path} must be an object`)
-            }
-            return value
-          }
+          const optionalString = (value) => (typeof value === "string" && value.length > 0 ? value : undefined)
+          const latestCreatedAtUtc = (records, fallback) =>
+            records.reduce((latest, record) => (record.createdAtUtc > latest ? record.createdAtUtc : latest), fallback)
 
-          const expectArray = (value, path) => {
-            if (!Array.isArray(value)) {
-              fail(`${path} must be an array`)
-            }
-            return value
-          }
+          const bundlePath = expectString(process.env.WORKFLOW_REPORT_BUNDLE_PATH, "WORKFLOW_REPORT_BUNDLE_PATH")
+          const commentBodyPath = expectString(process.env.WORKFLOW_REPORT_COMMENT_BODY_PATH, "WORKFLOW_REPORT_COMMENT_BODY_PATH")
+          const summaryPath = expectString(process.env.WORKFLOW_REPORT_SUMMARY_PATH, "WORKFLOW_REPORT_SUMMARY_PATH")
+          const title = expectString(process.env.WORKFLOW_REPORT_TITLE, "WORKFLOW_REPORT_TITLE")
+          const noRecordsMessage = expectString(process.env.WORKFLOW_REPORT_NO_RECORDS_MESSAGE, "WORKFLOW_REPORT_NO_RECORDS_MESSAGE")
+          const stateId = expectString(process.env.WORKFLOW_REPORT_STATE_ID, "WORKFLOW_REPORT_STATE_ID")
+          const entryId = expectString(process.env.WORKFLOW_REPORT_ENTRY_ID, "WORKFLOW_REPORT_ENTRY_ID")
+          const entryLabel = expectString(process.env.WORKFLOW_REPORT_ENTRY_LABEL, "WORKFLOW_REPORT_ENTRY_LABEL")
+          const timeZone = expectString(process.env.WORKFLOW_REPORT_TIME_ZONE, "WORKFLOW_REPORT_TIME_ZONE")
+          const marker = expectString(process.env.WORKFLOW_REPORT_MANAGED_MARKER, "WORKFLOW_REPORT_MANAGED_MARKER")
 
-          const expectString = (value, path) => {
-            if (typeof value !== 'string' || value.length === 0) {
-              fail(`${path} must be a non-empty string`)
-            }
-            return value
-          }
+          const bundle = decodeWorkflowReportBundleJson(readFileSync(bundlePath, "utf8"))
+          const comments = JSON.parse(readFileSync(commentsPath, "utf8"))
+          if (!Array.isArray(comments)) throw new Error("comments response must be an array")
 
-          const expectExactKeys = (record, keys, path) => {
-            const actualKeys = Object.keys(record).sort()
-            const expectedKeys = [...keys].sort()
-            if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
-              fail(`${path} keys must be exactly: ${expectedKeys.join(", ")}`)
-            }
-          }
-
-          const expectUrl = (value, path) => {
-            const string = expectString(value, path)
-            if (!string.startsWith('https://')) {
-              fail(`${path} must start with https://`)
-            }
-            return string
-          }
-
-          const expectIsoUtc = (value, path) => {
-            const string = expectString(value, path)
-            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(string) || Number.isNaN(Date.parse(string))) {
-              fail(`${path} must be a valid UTC ISO timestamp`)
-            }
-            return string
-          }
-
-          const validatePackageV1 = (value, path) => {
-            const record = expectObject(value, path)
-            expectExactKeys(record, ['packageName', 'url'], path)
-            return {
-              packageName: expectString(record.packageName, `${path}.packageName`),
-              rawDeployUrl: expectUrl(record.url, `${path}.url`),
-              finalUrl: expectUrl(record.url, `${path}.url`),
-              deployedAtUtc: undefined,
-            }
-          }
-
-          const validatePackageV2 = (value, path) => {
-            const record = expectObject(value, path)
-            expectExactKeys(record, ['packageName', 'rawDeployUrl', 'finalUrl'], path)
-            return {
-              packageName: expectString(record.packageName, `${path}.packageName`),
-              rawDeployUrl: expectUrl(record.rawDeployUrl, `${path}.rawDeployUrl`),
-              finalUrl: expectUrl(record.finalUrl, `${path}.finalUrl`),
-              deployedAtUtc: undefined,
-            }
-          }
-
-          const validatePackageV3 = (value, path) => {
-            const record = expectObject(value, path)
-            expectExactKeys(record, ['packageName', 'rawDeployUrl', 'finalUrl', 'deployedAtUtc'], path)
-            return {
-              packageName: expectString(record.packageName, `${path}.packageName`),
-              rawDeployUrl: expectUrl(record.rawDeployUrl, `${path}.rawDeployUrl`),
-              finalUrl: expectUrl(record.finalUrl, `${path}.finalUrl`),
-              deployedAtUtc: expectIsoUtc(record.deployedAtUtc, `${path}.deployedAtUtc`),
-            }
-          }
-
-          const validateCommit = (value, path) => {
-            const record = expectObject(value, path)
-            expectExactKeys(record, ['commitSha', 'modeLabel', 'deployedAtUtc', 'packages'], path)
-            const packages = expectArray(record.packages, `${path}.packages`).map((pkg, index) => ({ value: pkg, path: `${path}.packages[${index}]` }))
-            return {
-              commitSha: expectString(record.commitSha, `${path}.commitSha`),
-              modeLabel: expectString(record.modeLabel, `${path}.modeLabel`),
-              deployedAtUtc: expectIsoUtc(record.deployedAtUtc, `${path}.deployedAtUtc`),
-              packages,
-            }
-          }
-
-          const validateState = (value) => {
-            const record = expectObject(value, 'state')
-            expectExactKeys(record, ['_tag', 'schemaVersion', 'timeZone', 'packageOrder', 'commits'], 'state')
-            if (record._tag !== stateTag) fail(`state._tag must be ${stateTag}`)
-            if (![1, 2, schemaVersion].includes(record.schemaVersion)) fail(`state.schemaVersion must be 1, 2, or ${schemaVersion}`)
-            if (record.timeZone !== timeZone) fail(`state.timeZone must be ${timeZone}`)
-            const packageOrder = expectArray(record.packageOrder, "state.packageOrder").map((pkg, index) =>
-              expectString(pkg, `state.packageOrder[${index}]`),
-            )
-            const commits = expectArray(record.commits, "state.commits").map((commit, index) => {
-              const validatedCommit = validateCommit(commit, `state.commits[${index}]`)
-              return {
-                ...validatedCommit,
-                packages: validatedCommit.packages.map((pkg, packageIndex) =>
-                  ((validatedPackage) => ({
-                    ...validatedPackage,
-                    deployedAtUtc: validatedPackage.deployedAtUtc ?? validatedCommit.deployedAtUtc,
-                  }))(
-                    record.schemaVersion === 1
-                      ? validatePackageV1(pkg.value, `state.commits[${index}].packages[${packageIndex}]`)
-                      : record.schemaVersion === 2
-                        ? validatePackageV2(pkg.value, `state.commits[${index}].packages[${packageIndex}]`)
-                        : validatePackageV3(pkg.value, `state.commits[${index}].packages[${packageIndex}]`),
-                  ),
-                ),
-              }
-            })
-            return { _tag: stateTag, schemaVersion, timeZone, packageOrder, commits }
-          }
-
-          const formatBerlin = (isoUtc) => {
-            const formatter = new Intl.DateTimeFormat('en-GB', {
-              timeZone,
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false,
-              timeZoneName: 'short',
-            })
-            const parts = Object.fromEntries(
-              formatter.formatToParts(new Date(isoUtc)).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]),
-            )
-            return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} ${parts.timeZoneName}`
-          }
-
-          const extractState = (body) => {
-            const start = body.indexOf(statePrefix)
-            if (start === -1) return undefined
-            const end = body.indexOf(stateSuffix, start + statePrefix.length)
-            if (end === -1) fail("existing managed comment is missing the state suffix marker")
-            const raw = body.slice(start + statePrefix.length, end)
-            return validateState(JSON.parse(raw))
-          }
-
-          const renderHistoryUrl = (pkg) =>
-            pkg.finalUrl === pkg.rawDeployUrl
-              ? pkg.rawDeployUrl
-              : `${pkg.rawDeployUrl}<br><sub>Alias: ${pkg.finalUrl}</sub>`
-
-          const rawPackagesJson = process.env.STORYBOOK_PREVIEW_PACKAGES_JSON ?? ""
-          if (rawPackagesJson.length === 0) {
-            const msg = "STORYBOOK_PREVIEW_PACKAGES_JSON is empty — the deploy step likely failed before producing output. Check the deploy step logs above."
-            console.error(msg)
-            process.exitCode = 1
-            writeFileSync(summaryPath, `## Storybook Previews\n\n> **Deploy failed.** ${msg}\n`)
-            writeFileSync(commentBodyPath, '')
-            writeFileSync(commentIdPath, '')
-            process.exit(1)
-          }
-          const currentPackagesJson = rawPackagesJson
-          const fallbackDeployedAtUtc = expectIsoUtc(process.env.STORYBOOK_PREVIEW_DEPLOYED_AT_UTC, "STORYBOOK_PREVIEW_DEPLOYED_AT_UTC")
-
-          const currentPackages = expectArray(JSON.parse(currentPackagesJson), "currentPackages").map((pkg, index) =>
-            validatePackageV3(pkg, `currentPackages[${index}]`),
-          )
-
-          const deployedAtUtc = currentPackages.reduce(
-            (latest, pkg) => (pkg.deployedAtUtc > latest ? pkg.deployedAtUtc : latest),
-            fallbackDeployedAtUtc,
-          )
-
-          currentPackages.forEach((pkg, index) => validatePackageV3(pkg, `currentPackages[${index}]`))
-
-          if (currentPackages.length === 0) {
-            writeFileSync(summaryPath, `## ${commentTitle}\n\n${noRowsMessage}\n`)
-            writeFileSync(commentBodyPath, '')
-            writeFileSync(commentIdPath, '')
-            process.exit(0)
-          }
-
-          const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))
-          if (!Array.isArray(comments)) fail("comments response must be an array")
-
-          const existingComment = comments
-            .filter(
-              (comment) =>
-                typeof comment?.body === "string" &&
-                (comment.body.includes(managedMarker) || comment.body.startsWith(`## ${commentTitle}`)),
-            )
-            .at(-1)
-
-          const existingState = existingComment ? extractState(existingComment.body) : undefined
-          const priorState = existingState ?? { _tag: stateTag, schemaVersion, timeZone, packageOrder: [], commits: [] }
-
-          const commitSha = expectString(process.env.STORYBOOK_PREVIEW_COMMIT_SHA, "STORYBOOK_PREVIEW_COMMIT_SHA")
-          const modeLabel = expectString(process.env.STORYBOOK_PREVIEW_LABEL, "STORYBOOK_PREVIEW_LABEL")
-
-          const nextPackageOrder = [...new Set([...currentPackages.map((pkg) => pkg.packageName), ...priorState.packageOrder])]
-          const nextState = {
-            _tag: stateTag,
-            schemaVersion,
+          const existingComment = findWorkflowReportManagedComment(comments, { stateId, marker })
+          const createdAtUtc = optionalString(process.env.WORKFLOW_REPORT_CREATED_AT_UTC) ?? latestCreatedAtUtc(bundle.records, bundle.generatedAtUtc)
+          const state = deriveWorkflowReportManagedState({
+            stateId,
             timeZone,
-            packageOrder: nextPackageOrder,
-            commits: [
-              { commitSha, modeLabel, deployedAtUtc, packages: currentPackages },
-              ...priorState.commits.filter((commit) => commit.commitSha !== commitSha),
-            ].slice(0, maxCommits),
-          }
+            priorState: existingComment?.state,
+            entryId,
+            entryLabel,
+            createdAtUtc,
+            records: bundle.records,
+          })
+          const body = renderWorkflowReportCommentBody({ title, noRecordsMessage, state })
+          const markerIndex = body.indexOf(marker)
+          const visibleBody = markerIndex === -1 ? body : `${body.slice(0, markerIndex).trimEnd()}\n`
 
-          const latestByPackage = new Map()
-          for (const commit of nextState.commits) {
-            for (const pkg of commit.packages) {
-              if (!latestByPackage.has(pkg.packageName)) {
-                latestByPackage.set(pkg.packageName, pkg)
-              }
-            }
-          }
-
-          const visibleLines = [
-            `## ${commentTitle}`,
-            '',
-            `| Package | Latest URL | Last Deploy (Europe/Berlin) |`,
-            `| --- | --- | --- |`,
-            ...nextState.packageOrder.flatMap((packageName) => {
-              const latest = latestByPackage.get(packageName)
-              if (!latest) return []
-              return [`| ${packageName} | ${latest.finalUrl} | ${formatBerlin(latest.deployedAtUtc)} |`]
-            }),
-          ]
-
-          if (nextState.commits.length > 0) {
-            visibleLines.push('', '<details>', '<summary>Per-Commit Deploy History</summary>', '')
-            for (const commit of nextState.commits) {
-              visibleLines.push(`### Commit \`${commit.commitSha.slice(0, 7)}\` · ${formatBerlin(commit.deployedAtUtc)}`)
-              visibleLines.push('', '| Package | URL |', '| --- | --- |')
-              for (const packageName of nextState.packageOrder) {
-                const pkg = commit.packages.find((entry) => entry.packageName === packageName)
-                if (!pkg) continue
-                visibleLines.push(`| ${packageName} | ${renderHistoryUrl(pkg)} |`)
-              }
-              visibleLines.push('')
-            }
-            visibleLines.push('</details>')
-          }
-
-          const body = [
-            ...visibleLines,
-            '',
-            managedMarker,
-            `${statePrefix}${JSON.stringify(nextState, null, 2)}${stateSuffix}`,
-          ].join('\n')
-
-          writeFileSync(commentBodyPath, `${body}\n`)
-          writeFileSync(summaryPath, `${visibleLines.join("\n")}\n`)
-          writeFileSync(commentIdPath, existingComment ? String(existingComment.id) : "")
+          mkdirSync(dirname(commentBodyPath), { recursive: true })
+          mkdirSync(dirname(summaryPath), { recursive: true })
+          writeFileSync(commentBodyPath, body)
+          writeFileSync(summaryPath, visibleBody)
           EOF
-          nix run nixpkgs#bun -- /tmp/render-storybook-preview-comment.mjs "$comments_json" /tmp/storybook-preview-comment.md "$GITHUB_STEP_SUMMARY" /tmp/storybook-preview-comment-id.txt
-          comment_id="$(cat /tmp/storybook-preview-comment-id.txt)"
-          if [ ! -s /tmp/storybook-preview-comment.md ]; then
-            exit 0
+      - name: Publish workflow report
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW_REPORT_STATE_ID: storybook-preview
+          WORKFLOW_REPORT_COMMENT_BODY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-comment.md'
+          WORKFLOW_REPORT_SUMMARY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-summary.md'
+          WORKFLOW_REPORT_MANAGED_MARKER: '<!-- workflow-report:managed -->'
+        run: |
+          if [ -z "${WORKFLOW_REPORT_RUNTIME_MODULE:-}" ]; then
+            if [ -f packages/@overeng/genie/src/runtime/mod.ts ]; then
+              export WORKFLOW_REPORT_RUNTIME_MODULE=packages/@overeng/genie/src/runtime/mod.ts
+            elif [ -f repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts ]; then
+              export WORKFLOW_REPORT_RUNTIME_MODULE=repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts
+            else
+              echo "::error::unable to locate @overeng/genie runtime module for workflow reports"
+              exit 1
+            fi
           fi
-          node -e "const fs=require('node:fs'); fs.writeFileSync(process.argv[2], JSON.stringify({ body: fs.readFileSync(process.argv[1], 'utf8') }))" /tmp/storybook-preview-comment.md /tmp/storybook-preview-comment-payload.json
-          export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$'\n'}access-tokens = github.com=${GH_TOKEN}"
+          if [ -s "$WORKFLOW_REPORT_SUMMARY_PATH" ]; then
+            cat "$WORKFLOW_REPORT_SUMMARY_PATH" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             exit 0
           fi
+
+          if [ ! -s "$WORKFLOW_REPORT_COMMENT_BODY_PATH" ]; then
+            echo "::notice::workflow report comment body is empty; skipping PR comment"
+            exit 0
+          fi
+
+          comments_json="$(mktemp)"
+          comment_id_file="$(mktemp)"
+          export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$'\n'}access-tokens = github.com=${GH_TOKEN}"
+          nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"
+          nix run nixpkgs#bun -- - "$comments_json" "$comment_id_file" <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { resolve } from 'node:path'
+          import { pathToFileURL } from 'node:url'
+
+          const [commentsPath, commentIdPath] = process.argv.slice(2)
+          const runtimeModule = process.env.WORKFLOW_REPORT_RUNTIME_MODULE
+          if (typeof runtimeModule !== "string" || runtimeModule.length === 0) throw new Error("WORKFLOW_REPORT_RUNTIME_MODULE is required")
+          const { extractWorkflowReportManagedState, findWorkflowReportManagedComment } = await import(pathToFileURL(resolve(runtimeModule)).href)
+          const stateId = process.env.WORKFLOW_REPORT_STATE_ID
+          if (typeof stateId !== "string" || stateId.length === 0) throw new Error("WORKFLOW_REPORT_STATE_ID is required")
+          const marker = process.env.WORKFLOW_REPORT_MANAGED_MARKER
+          if (typeof marker !== "string" || marker.length === 0) throw new Error("WORKFLOW_REPORT_MANAGED_MARKER is required")
+          const commentBodyPath = process.env.WORKFLOW_REPORT_COMMENT_BODY_PATH
+          if (typeof commentBodyPath !== "string" || commentBodyPath.length === 0) throw new Error("WORKFLOW_REPORT_COMMENT_BODY_PATH is required")
+          const targetState = extractWorkflowReportManagedState(readFileSync(commentBodyPath, "utf8"), { stateId })
+          if (targetState === undefined) throw new Error("workflow report comment body is missing managed state")
+          const comments = JSON.parse(readFileSync(commentsPath, "utf8"))
+          if (!Array.isArray(comments)) throw new Error("comments response must be an array")
+          const existingComment = findWorkflowReportManagedComment(comments, { stateId: targetState.stateId, marker })
+          writeFileSync(commentIdPath, existingComment?.id ?? "")
+          EOF
+
+          comment_id="$(cat "$comment_id_file")"
           if [ -n "$comment_id" ]; then
-            nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/comments/$comment_id" --method PATCH --input /tmp/storybook-preview-comment-payload.json >/dev/null
+            nix run nixpkgs#gh -- api \
+              --method PATCH \
+              "repos/$GH_REPO/issues/comments/$comment_id" \
+              --field body=@"$WORKFLOW_REPORT_COMMENT_BODY_PATH" >/dev/null
           else
-            nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --method POST --input /tmp/storybook-preview-comment-payload.json >/dev/null
+            nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file "$WORKFLOW_REPORT_COMMENT_BODY_PATH"
           fi
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
