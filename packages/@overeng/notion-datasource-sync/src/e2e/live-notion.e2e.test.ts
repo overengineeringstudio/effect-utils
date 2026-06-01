@@ -1894,6 +1894,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await mkdtemp(join(tmpdir(), 'notion-ds-sync-live-bidi-body-')),
         )
         let pageId: string | undefined
+        let controlPageId: string | undefined
 
         try {
           const initialDataSource = await runLive(
@@ -1948,6 +1949,30 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             purpose: 'live-combined-bidi-body-row',
             cleanupState: 'created',
           })
+          const controlInitialTitle = `combined bidi control ${provisioned.config.runId}`
+          const controlInitialBody = `# Combined Bidi Control\n\nControl body ${provisioned.config.runId}\n`
+          const controlPage = await runLive(
+            env,
+            NotionPages.create({
+              parent: {
+                type: 'data_source_id',
+                data_source_id: provisioned.config.dataSourceId,
+              },
+              properties: {
+                [titlePropertyName]: title(controlInitialTitle),
+                [bidiPropertyName]: { rich_text: [text('control property note')] },
+              },
+              markdown: controlInitialBody,
+            }),
+          )
+          controlPageId = controlPage.id
+          await recorder.record({
+            phase: 'create',
+            objectId: controlPageId,
+            objectType: 'page',
+            purpose: 'live-combined-bidi-control-row',
+            cleanupState: 'created',
+          })
 
           await runLiveCliCommand({
             env,
@@ -1973,6 +1998,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             pendingOutbox: 0,
           })
 
+          const controlBeforePropertyWatch = await runLive(
+            env,
+            NotionPages.retrieve({ pageId: controlPageId }),
+          )
           const propertyOnlyNote = `property-only public sqlite ${provisioned.config.runId}`
           {
             const db = new DatabaseSync(replicaPath)
@@ -2010,14 +2039,39 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             }
           }
 
-          await runLiveCliCommand({
+          const propertyWatch = await runLiveCliCommand({
             env,
-            argv: ['sync', workspaceRoot, '--no-materialize-bodies'],
+            argv: [
+              'sync',
+              '--watch',
+              workspaceRoot,
+              '--max-cycles',
+              '2',
+              '--state',
+              join(workspaceRoot, 'live-property-watch.json'),
+              '--no-materialize-bodies',
+            ],
+          })
+          expect(propertyWatch.status.state).toBe('clean')
+          expect(propertyWatch.result).toMatchObject({
+            _tag: 'WatchDaemonRunResult',
+            cycles: 2,
+            completed: 2,
           })
           const afterPropertyOnly = await runLive(env, NotionPages.retrieve({ pageId }))
           expect(livePropertyPlainText(afterPropertyOnly.properties[bidiPropertyName])).toBe(
             propertyOnlyNote,
           )
+          const controlAfterPropertyWatch = await runLive(
+            env,
+            NotionPages.retrieve({ pageId: controlPageId }),
+          )
+          expect(controlAfterPropertyWatch.last_edited_time).toBe(
+            controlBeforePropertyWatch.last_edited_time,
+          )
+          expect(
+            livePropertyPlainText(controlAfterPropertyWatch.properties[bidiPropertyName]),
+          ).toBe('control property note')
           expect(await listNmdFiles(workspaceRoot)).toHaveLength(0)
           expect(readReplicaHealth(replicaPath)).toMatchObject({
             conflictsOpen: 0,
@@ -2037,12 +2091,22 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
 
           await runLiveCliCommand({ env, argv: ['sync', workspaceRoot] })
           const nmdFiles = await listNmdFiles(workspaceRoot)
-          expect(nmdFiles).toHaveLength(1)
-          const nmdPath = nmdFiles[0]
-          if (nmdPath === undefined) {
-            throw new Error('combined live bidi test did not materialize one .nmd file')
+          expect(nmdFiles).toHaveLength(2)
+          const nmdCandidates = await Promise.all(
+            nmdFiles.map(async (path) => ({ path, content: await readFile(path, 'utf8') })),
+          )
+          const targetNmd = nmdCandidates.find((candidate) =>
+            candidate.content.includes(`Initial body ${provisioned.config.runId}`),
+          )
+          const controlNmd = nmdCandidates.find((candidate) =>
+            candidate.content.includes(`Control body ${provisioned.config.runId}`),
+          )
+          expect(controlNmd?.content).toContain(`Control body ${provisioned.config.runId}`)
+          if (targetNmd === undefined) {
+            throw new Error('combined live bidi test did not materialize the target .nmd file')
           }
-          const currentNmd = await readFile(nmdPath, 'utf8')
+          const nmdPath = targetNmd.path
+          const currentNmd = targetNmd.content
           expect(currentNmd).toContain(`Initial body ${provisioned.config.runId}`)
           const localBodyEdit = `Updated body ${provisioned.config.runId}`
           await writeFile(
@@ -2066,6 +2130,21 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           const noOpSync = await runLiveCliCommand({ env, argv: ['sync', workspaceRoot] })
           const afterNoOpPage = await runLive(env, NotionPages.retrieve({ pageId }))
           expect(afterNoOpPage.last_edited_time).toBe(beforeNoOpPage.last_edited_time)
+          const controlAfterBodySync = await runLive(
+            env,
+            NotionPages.retrieve({ pageId: controlPageId }),
+          )
+          expect(controlAfterBodySync.last_edited_time).toBe(
+            controlBeforePropertyWatch.last_edited_time,
+          )
+          expect(livePropertyPlainText(controlAfterBodySync.properties[bidiPropertyName])).toBe(
+            'control property note',
+          )
+          const controlMarkdown = await runLive(
+            env,
+            NotionPages.getMarkdown({ pageId: controlPageId }),
+          )
+          expect(controlMarkdown.markdown).toContain(`Control body ${provisioned.config.runId}`)
           expect(noOpSync.status.state).toBe('clean')
           expect(noOpSync.status.counts.pending).toBe(0)
           expect(noOpSync.status.counts.conflict).toBe(0)
@@ -2085,6 +2164,16 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             cleanupState: 'verified',
           })
         } finally {
+          if (controlPageId !== undefined) {
+            await runLive(env, NotionPages.archive({ pageId: controlPageId }).pipe(Effect.ignore))
+            await recorder.record({
+              phase: 'trash',
+              objectId: controlPageId,
+              objectType: 'page',
+              purpose: 'live-combined-bidi-control-row',
+              cleanupState: 'verified-cleaned',
+            })
+          }
           if (pageId !== undefined) {
             await runLive(env, NotionPages.archive({ pageId }).pipe(Effect.ignore))
             await recorder.record({
