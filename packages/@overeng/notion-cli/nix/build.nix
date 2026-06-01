@@ -33,13 +33,13 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-7iysbl02Z47vQbbw6Fmaj/rlI04jCuQucKUFcqd2giY=";
+        hash = "sha256-ADVnqRI3WdgWsSmrSik0TJR+1HTSdTU7+VX7okoCgEY=";
       };
     };
     nativeNodePackages = [ opentuiCoreNative ];
     inherit gitRev commitTs dirty;
   };
-  datasourceSyncRuntime = pkgs.writeShellScriptBin "notion-datasource-sync" ''
+  notionDbRuntime = pkgs.writeShellScriptBin "notion-db-runtime" ''
     export CLI_BUILD_STAMP=${pkgs.lib.escapeShellArg datasourceSyncBuildStamp}
     exec ${nodejs}/bin/node ${unwrapped}/libexec/workspace/packages/@overeng/notion-datasource-sync/src/cli/main.ts "$@"
   '';
@@ -50,13 +50,12 @@ pkgs.runCommand "notion-cli"
     meta.mainProgram = "notion";
     passthru = {
       inherit (unwrapped.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
-      inherit datasourceSyncRuntime;
     };
   }
   ''
     mkdir -p $out/bin
     makeWrapper ${unwrapped}/bin/notion $out/bin/notion \
-      --run 'if [ "$#" -gt 1 ] && [ "$1" = db ]; then case "$2" in init|pull|push|sync|export|status|conflicts|forget|restore|migrate|repair|doctor) shift; exec ${datasourceSyncRuntime}/bin/notion-datasource-sync "$@";; esac; fi'
+      --run 'if [ "$#" -gt 1 ] && [ "$1" = db ]; then case "$2" in init|pull|push|sync|export|status|conflicts|forget|restore|doctor) shift; exec ${notionDbRuntime}/bin/notion-db-runtime "$@";; esac; fi'
 
     db_output="$($out/bin/notion db sync --help 2>&1 || true)"
     if ! printf '%s\n' "$db_output" | grep -q 'Run pull and push, or adopt from Notion with --from-notion'; then

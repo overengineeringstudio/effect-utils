@@ -163,24 +163,6 @@ export const makeDatasourceDbSubcommands = (
     Command.withDescription('Inspect and resolve SQLite sync conflicts'),
   )
 
-  const migrateCommand = Command.make('migrate').pipe(
-    Command.withSubcommands([
-      leafCommand({
-        name: 'store',
-        description: 'Reserved; currently fails closed',
-        handler,
-        extraConfig: { dryRun: dryRunOption },
-      }),
-      leafCommand({
-        name: 'schema',
-        description: 'Reserved; currently fails closed',
-        handler,
-        extraConfig: { dryRun: dryRunOption },
-      }),
-    ]),
-    Command.withDescription('Reserved SQLite migration commands'),
-  )
-
   return [
     initCommand,
     leafCommand({
@@ -251,13 +233,6 @@ export const makeDatasourceDbSubcommands = (
         ),
         dryRun: dryRunOption,
       },
-    }),
-    migrateCommand,
-    leafCommand({
-      name: 'repair',
-      description: 'Reserved; currently fails closed',
-      handler,
-      extraConfig: { dryRun: dryRunOption },
     }),
     leafCommand({
       name: 'doctor',

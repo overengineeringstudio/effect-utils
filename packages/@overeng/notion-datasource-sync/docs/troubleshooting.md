@@ -174,8 +174,8 @@ should retry, or needs user action.
 Run:
 
 ```sh
-notion db doctor "$PWD/notion-workspace/<database-id>.sqlite"
-notion db conflicts list "$PWD/notion-workspace/<database-id>.sqlite"
+notion db doctor --sqlite "$PWD/notion-workspace/<database-id>.sqlite"
+notion db conflicts list --sqlite "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 ## Live E2E Leaves Fixtures Behind

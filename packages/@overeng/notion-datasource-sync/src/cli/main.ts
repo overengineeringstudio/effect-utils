@@ -223,9 +223,6 @@ export type CliCommand =
       readonly pageId: typeof PageId.Type
       readonly dryRun?: boolean
     }
-  | { readonly _tag: 'migrate-store'; readonly dryRun?: boolean }
-  | { readonly _tag: 'migrate-schema'; readonly dryRun?: boolean }
-  | { readonly _tag: 'repair'; readonly dryRun?: boolean }
   | { readonly _tag: 'doctor' }
 
 /**
@@ -513,24 +510,6 @@ export class CliArgumentError extends Schema.TaggedError<CliArgumentError>()('Cl
   message: Schema.String,
 }) {}
 
-/** Raised when the user invokes a recognized but not-yet-implemented command (e.g. `migrate-store`, `repair`). */
-export class CliUnsupportedCommandError extends Schema.TaggedError<CliUnsupportedCommandError>()(
-  'CliUnsupportedCommandError',
-  {
-    command: Schema.String,
-    message: Schema.String,
-  },
-) {}
-
-const makeUnsupportedCommandError = (command: CliCommand['_tag']): CliUnsupportedCommandError =>
-  new CliUnsupportedCommandError({
-    command,
-    message: `${command} is not implemented yet; refusing to run without an explicit implementation.`,
-  })
-
-const isUnsupportedCommand = (command: CliCommand): boolean =>
-  command._tag === 'migrate-store' || command._tag === 'migrate-schema' || command._tag === 'repair'
-
 const isWatchCommand = (command: CliCommand): boolean =>
   command._tag === 'sync' && command.watch === true
 
@@ -803,7 +782,6 @@ type CliCommandRuntimeError =
   | LocalStorageError
   | ReplicaExportError
   | CliArgumentError
-  | CliUnsupportedCommandError
 
 const runCliCommandEffect = ({
   command,
@@ -1168,10 +1146,6 @@ const runCliCommandEffect = ({
           }),
         }),
       )
-    case 'migrate-store':
-    case 'migrate-schema':
-    case 'repair':
-      return Effect.fail(makeUnsupportedCommandError(command._tag))
     case 'doctor':
       return Effect.sync(() => {
         const status = readOneShotSyncStatus({ store: context.store, rootId: context.rootId })
@@ -1300,9 +1274,6 @@ Commands:
   conflicts resolve       Resolve a conflict
   forget                  Archive/forget a page locally
   restore                 Restore a forgotten page locally
-  migrate store           Reserved; currently fails closed
-  migrate schema          Reserved; currently fails closed
-  repair                  Reserved; currently fails closed
   doctor                  Print diagnostics
 
 Common options:
@@ -1737,18 +1708,12 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
         pageId: decode({ schema: PageId, value: requiredFlag({ flags, name: 'page-id' }) }),
         dryRun: flags.has('dry-run'),
       }
-    case 'migrate':
-      if (subcommand === 'store') return { _tag: 'migrate-store', dryRun: flags.has('dry-run') }
-      if (subcommand === 'schema') return { _tag: 'migrate-schema', dryRun: flags.has('dry-run') }
-      break
-    case 'repair':
-      return { _tag: 'repair', dryRun: flags.has('dry-run') }
     case 'doctor':
       return { _tag: 'doctor' }
   }
   throw new CliArgumentError({
     message:
-      'Expected one of: init, pull, push, sync, export, status, conflicts list, conflicts resolve, forget, restore, migrate store, migrate schema, repair, doctor',
+      'Expected one of: init, pull, push, sync, export, status, conflicts list, conflicts resolve, forget, restore, doctor',
   })
 }
 
@@ -2612,9 +2577,6 @@ export const runCliMain = ({
       try: () => parseCliCommand(argv),
       catch: (cause) => cause,
     })
-    if (isUnsupportedCommand(command) === true) {
-      return yield* Effect.fail(makeUnsupportedCommandError(command._tag))
-    }
 
     const resolvedCommand = yield* resolveCliCommandNotionRefs({ command, options })
     const context = yield* Effect.try({

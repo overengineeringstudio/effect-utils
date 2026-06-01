@@ -46,14 +46,14 @@ changes, conflicts, sync status, and private sync-control state.
 
 For a human, the main surfaces are:
 
-| Surface             | How to think about it                                        |
-| ------------------- | ------------------------------------------------------------ |
-| `rows`              | The spreadsheet-like table you read and edit                 |
-| `schema`            | Which Notion database/data source this file represents       |
-| `schema_properties` | How Notion properties map to SQL columns                     |
-| `changes`           | Local edits that have not fully settled yet                  |
-| `conflicts`         | Places where sync needs an explicit choice                   |
-| `sync_status`       | Whether the replica is clean, pending, blocked, or degraded  |
+| Surface             | How to think about it                                       |
+| ------------------- | ----------------------------------------------------------- |
+| `rows`              | The spreadsheet-like table you read and edit                |
+| `schema`            | Which Notion database/data source this file represents      |
+| `schema_properties` | How Notion properties map to SQL columns                    |
+| `changes`           | Local edits that have not fully settled yet                 |
+| `conflicts`         | Places where sync needs an explicit choice                  |
+| `sync_status`       | Whether the replica is clean, pending, blocked, or degraded |
 
 Private `_nds_*` tables are the machinery that makes the file trustworthy. They
 are not extension points.

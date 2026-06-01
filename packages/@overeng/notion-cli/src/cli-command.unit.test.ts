@@ -27,7 +27,7 @@ describe('notion root command composition', () => {
 })
 
 describe('notion db command composition', () => {
-  it('keeps info and replica commands while removing dump', async () => {
+  it('keeps promoted db commands while excluding retired namespaces', async () => {
     const completions = await Effect.runPromise(Command.getBashCompletions(dbCommand, 'notion db'))
     const completionText = completions.join('\n')
 
@@ -36,5 +36,8 @@ describe('notion db command composition', () => {
     expect(completionText).toContain('export')
     expect(completionText).toContain('status')
     expect(completionText).not.toContain('dump')
+    expect(completionText).not.toContain('replica')
+    expect(completionText).not.toContain('migrate')
+    expect(completionText).not.toContain('repair')
   })
 })

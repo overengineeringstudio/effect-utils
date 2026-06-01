@@ -638,18 +638,6 @@ describe('CLI command surface', () => {
       pageId: testIds.pageId,
       dryRun: true,
     })
-    expect(parseCliCommand(['migrate', 'store', '--dry-run'])).toEqual({
-      _tag: 'migrate-store',
-      dryRun: true,
-    })
-    expect(parseCliCommand(['migrate', 'schema', '--dry-run'])).toEqual({
-      _tag: 'migrate-schema',
-      dryRun: true,
-    })
-    expect(parseCliCommand(['repair', '--dry-run'])).toEqual({
-      _tag: 'repair',
-      dryRun: true,
-    })
   })
 
   it('parses sync-first establishment and established workspace forms', () => {
@@ -937,34 +925,14 @@ describe('CLI command surface', () => {
   })
 
   it.each([
-    { command: { _tag: 'migrate-store' as const, dryRun: true }, expected: 'migrate-store' },
-    { command: { _tag: 'migrate-schema' as const, dryRun: true }, expected: 'migrate-schema' },
-    { command: { _tag: 'repair' as const, dryRun: true }, expected: 'repair' },
-  ])('fails closed for unsupported $expected command execution', async ({ command, expected }) => {
-    const clock = makeFakeClock()
-    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
-    const ctx = context({ store: storeFixture.store, clock })
-
-    try {
-      await expect(
-        runWithPorts(runCliCommand(command, ctx), {
-          gateway: makeFakeGatewayHarness().gateway,
-        }),
-      ).rejects.toThrow(`${expected} is not implemented yet`)
-    } finally {
-      storeFixture.cleanup()
-    }
-  })
-
-  it.each([
-    { argv: ['migrate', 'store'] as const, expected: 'migrate-store' },
-    { argv: ['migrate', 'schema'] as const, expected: 'migrate-schema' },
-    { argv: ['repair'] as const, expected: 'repair' },
+    { argv: ['migrate', 'store'] as const, expected: 'Expected one of:' },
+    { argv: ['migrate', 'schema'] as const, expected: 'Expected one of:' },
+    { argv: ['repair'] as const, expected: 'Expected one of:' },
   ])(
-    'fails closed for unsupported $expected with an explicit self-contained SQLite file',
+    'rejects removed command $argv before opening an explicit SQLite file',
     async ({ argv, expected }) => {
       const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-unsupported-'))
-      const storePath = join(dir, `${expected}.sqlite`)
+      const storePath = join(dir, 'store.sqlite')
       try {
         await createBoundSqlite({ path: storePath })
         await expect(
@@ -985,7 +953,7 @@ describe('CLI command surface', () => {
           ),
         ).rejects.toMatchObject({
           code: 1,
-          stderr: expect.stringContaining(`${expected} is not implemented yet`),
+          stderr: expect.stringContaining(expected),
         })
       } finally {
         await rm(dir, { recursive: true, force: true })

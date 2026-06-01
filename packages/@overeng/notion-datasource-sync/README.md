@@ -71,7 +71,7 @@ notion db sync --watch "$PWD/notion-workspace"
 notion db status "$PWD/notion-workspace"
 
 sqlite3 "$PWD/notion-workspace/<database-id>.sqlite"
-notion db doctor "$PWD/notion-workspace/<database-id>.sqlite"
+notion db doctor --sqlite "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 The sync-first form writes `<workspace>/<database-id>.sqlite`. First

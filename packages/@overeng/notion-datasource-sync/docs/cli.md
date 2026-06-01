@@ -9,17 +9,17 @@ notion db sync --from-notion <data-source-id-or-database-url> <workspace-root> [
 notion db sync <workspace-root> [--dry-run]
 notion db sync --watch <workspace-root> [--state <path>] [--max-cycles <n>] [--mode <development|normal|low-priority>] [--webhook <none|tailscale|manual>] [--webhook-required]
 notion db status <workspace-root>
-notion db doctor <workspace-root>/<database-id>.sqlite
+notion db doctor --sqlite <workspace-root>/<database-id>.sqlite
 sqlite3 <workspace-root>/<database-id>.sqlite
 
-notion db conflicts list <workspace-root>/<database-id>.sqlite
-notion db conflicts resolve <workspace-root>/<database-id>.sqlite --conflict-id <id> --strategy <keep-remote|keep-local|manual> [--value-json <json>] [--dry-run]
-notion db forget <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
-notion db restore <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
+notion db conflicts list --sqlite <workspace-root>/<database-id>.sqlite
+notion db conflicts resolve --sqlite <workspace-root>/<database-id>.sqlite --conflict-id <id> --strategy <keep-remote|keep-local|manual> [--value-json <json>] [--dry-run]
+notion db forget --sqlite <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
+notion db restore --sqlite <workspace-root>/<database-id>.sqlite --page-id <id> [--dry-run]
 ```
 
-`migrate store`, `migrate schema`, and `repair` are parsed but currently
-unsupported. They fail before doing work.
+`migrate`, `repair`, `dump`, `replica`, and standalone
+`notion-datasource-sync` commands are not public CLI surfaces.
 
 ## Environment
 

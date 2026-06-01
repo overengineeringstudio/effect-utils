@@ -193,8 +193,8 @@ editing only `rows` for database properties/lifecycle and `.nmd` files for page
 bodies; `changes` is a read-only ledger for accepted intent lifecycle. Schema
 is not a public write surface: `schema`/`schema_properties` are read-only, there is
 no `kind=schema` row in the public `changes` table, and `NotionSchemaChange` is
-not a public write intent. Schema changes are detected, guarded, and applied
-CLI-only through `migrate schema` (see
+not a public write intent. Schema changes are detected and guarded; applying schema changes is not a current
+public CLI workflow (see
 [../schema-migration/spec.md](../schema-migration/spec.md)). The current
 executable subset is scalar/property `UPDATE rows SET ...`, `INSERT INTO rows`
 for row creation, archive/restore through `UPDATE rows SET _in_trash = 1/0`,

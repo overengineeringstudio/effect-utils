@@ -5,18 +5,19 @@ Sub-system slice of [spec.md](../../spec.md). Serves [requirements](./requiremen
 Requirement trace: SCHEMA-R01-SCHEMA-R06, SCHEMA-T01.
 
 This slice specifies schema semantics: the change-policy table, the additive
-subset, schema ownership, and the two-phase plan/apply contract. All schema
-mutation is CLI-only; the SQLite file never accepts schema-mutating SQL. The
+subset, schema ownership, and the future two-phase plan/apply contract. Schema
+mutation is not a public workflow in the current CLI; the SQLite file never accepts schema-mutating SQL. The
 read-only schema surfaces (`schema`, `schema_properties`) are specified in
 [../replica-api/spec.md](../replica-api/spec.md), and the schema-affecting
 guards (`SchemaDriftAffectsIntent`, `DestructiveSchemaMigrationRequired`,
 `OptionDeletionLosesValues`) are defined in the master guard matrix in
 [../planner-guards/spec.md](../planner-guards/spec.md).
 
-## CLI-Only Schema Mutation
+## Schema Mutation Boundary
 
-Schema is changed only through `migrate schema --plan/--apply`. There is no
-SQLite write path for schema:
+The current public CLI does not expose schema mutation. When schema mutation is
+promoted, it must use an explicit two-phase command flow rather than a SQLite
+write path:
 
 - `schema` and `schema_properties` are read-only in the file (see
   [../replica-api/spec.md](../replica-api/spec.md)).
@@ -26,9 +27,9 @@ SQLite write path for schema:
 - There is no `kind=schema` row in the public `changes` table; schema is not a
   public SQL write intent.
 - The file may surface a read-only migration preview (in `sync_status` /
-  `debug_*`); apply happens via CLI.
+  `debug_*`); apply happens only through an explicit command.
 
-Routing all schema change through the CLI keeps property-ID identity
+Routing all schema change through an explicit command keeps property-ID identity
 authoritative and preserves an auditable two-phase plan/apply trail.
 
 ## Change Policy
@@ -64,7 +65,7 @@ Schema ownership is explicit per binding:
 
 | Ownership     | Schema write policy                                                                                                           |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `userManaged` | Never automatically converge schema. Local schema changes require explicit migration commands.                                |
+| `userManaged` | Never automatically converge schema. Local schema changes require explicit future migration commands.                         |
 | `appOwned`    | Additive convergence may be automatic only when the current schema hash matches the expected base and all schema guards pass. |
 
 Automatic schema convergence is allowed only for `appOwned` sources and only
@@ -73,14 +74,14 @@ created for an existing data source.
 
 ## Two-Phase Plan/Apply
 
-Schema migration commands have two phases:
+Promoted schema migration commands must have two phases:
 
 | Phase | Event/command                                | Required contents                                                                           |
 | ----- | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Plan  | `LocalIntentAccepted.SchemaMigrationPlanned` | current schema hash, desired schema hash, affected property IDs, row impact summary         |
 | Apply | `CommandEnqueued.PatchDataSourceSchema`      | Notion patch, base schema hash, desired schema hash, destructive approval token when needed |
 
-`migrate schema --plan` records the planned intent; `migrate schema --apply`
-enqueues the patch command. The row impact summary must be computed from fresh
+The plan phase records the planned intent; the apply phase enqueues the patch
+command. The row impact summary must be computed from fresh
 observations for destructive changes. If any affected row is unavailable, the
 migration is blocked rather than estimated.

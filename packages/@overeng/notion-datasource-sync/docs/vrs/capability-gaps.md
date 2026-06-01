@@ -52,8 +52,8 @@ This matrix is the authoritative user-facing write-support contract for `<databa
 
 ### B. Schema (`schema`, `schema_properties`)
 
-| SQL operation                                                 | Support  | Guard if blocked         | Promotion criteria (if fail-closed)  |
-| ------------------------------------------------------------- | -------- | ------------------------ | ------------------------------------ |
+| SQL operation                                                 | Support  | Guard if blocked         | Promotion criteria (if fail-closed)                        |
+| ------------------------------------------------------------- | -------- | ------------------------ | ---------------------------------------------------------- |
 | `UPDATE`/`INSERT`/`DELETE` on `schema` or `schema_properties` | REJECTED | `SchemaTableReadOnly`    | Read-only; no public schema mutation workflow is promoted. |
 | `ALTER TABLE rows ADD`/`RENAME`/`DROP COLUMN`                 | REJECTED | `AlterTableRowsRejected` | No public schema mutation workflow is promoted.            |
 

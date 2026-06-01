@@ -23,7 +23,7 @@ This document defines package-level requirements for `@overeng/notion-cli`. It i
 - **R01 Root command:** The public executable name must be `notion`.
 - **R02 Command namespaces:** The root command must expose `md`, `schema`, and `db` as the supported first-level namespaces.
 - **R03 No legacy aliases:** The root command must not expose `sqlite`, `notion-datasource-sync`, `db dump`, or `db replica` as public compatibility surfaces.
-- **R04 Database namespace:** Database metadata, replica sync, status, conflict, repair, and export workflows must live under `notion db`.
+- **R04 Database namespace:** Database metadata, replica sync, status, conflict, diagnostics, and export workflows must live under `notion db`.
 - **R05 Markdown namespace:** Markdown page workflows must live under `notion md` and be composed from `@overeng/notion-md`.
 - **R06 Schema namespace:** Schema generation, introspection, config generation, and drift detection must live under `notion schema`.
 

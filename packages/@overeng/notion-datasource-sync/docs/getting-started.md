@@ -150,11 +150,10 @@ Supported public edits currently include writable scalar/page-property cells,
 row creation, row archive/restore through `_in_trash`, body pushes that pass
 body safety and content-hash verification, metadata edits with post-write hash
 reconciliation, and external URL files through typed staging for
-currently-empty file properties. Schema changes are not expressible through
-SQL: `schema` and `schema_properties` are read-only, `ALTER TABLE rows` is
-rejected, and `changes` is a read-only lifecycle ledger — use the
-`migrate schema` CLI instead. Conflict resolution is also CLI-only
-(`nds conflicts resolve`); direct writes to `conflicts` are rejected. People
+currently-empty file properties. Schema changes are not a public CLI workflow:
+`schema` and `schema_properties` are read-only, `ALTER TABLE rows` is rejected,
+and `changes` is a read-only lifecycle ledger. Conflict resolution is CLI-only
+through `notion db conflicts resolve`; direct writes to `conflicts` are rejected. People
 writes, local file uploads, Notion view writes, computed/generated property
 writes, SQL row deletes, `place` cells, and internal `_nds_*` edits fail
 closed.
@@ -181,7 +180,7 @@ Inspect state:
 
 ```sh
 notion db status "$PWD/notion-workspace"
-notion db doctor "$PWD/notion-workspace/<database-id>.sqlite"
+notion db doctor --sqlite "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 `doctor` verifies public/private schema integrity, `_nds_*` digests, SQLite
@@ -212,7 +211,7 @@ Conflicts are visible in the database file and through the CLI:
 sqlite3 "$PWD/notion-workspace/<database-id>.sqlite" \
   "select conflict_id, page_id, property_id, state from conflicts;"
 
-notion db conflicts list "$PWD/notion-workspace/<database-id>.sqlite"
+notion db conflicts list --sqlite "$PWD/notion-workspace/<database-id>.sqlite"
 ```
 
 Resolve conflicts with explicit CLI commands. Do not update `_nds_*` tables or
