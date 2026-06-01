@@ -99,7 +99,18 @@ export { utilsPatches }
 /**
  * Common pnpm workspace data for effect-utils workspaces.
  *
- * Extends `commonPnpmPolicySettings` with effect-utils-specific patch metadata.
+ * Extends `commonPnpmPolicySettings` with effect-utils-specific patch metadata
+ * and `injectWorkspacePackages: true`.
+ *
+ * `injectWorkspacePackages: true` is required for effect-utils' pure Nix/FOD
+ * package closure model: a package-local dependency build must hash every
+ * workspace package it consumes as dependency input, not accidentally reach
+ * outside the staged closure through a live symlink. It is intentionally
+ * NOT part of `commonPnpmPolicySettings` because downstream consumers without
+ * a Nix/FOD closure model lose their workspace `devDependencies` /
+ * `peerDependencies` at type-check time when injection rewrites the
+ * resolution graph (see livestorejs/livestore#1271).
+ *
  * All effect-utils workspaces share the same `patchedDependencies` and `allowUnusedPatches`
  * so that internal package-closure projections and the aggregate root stay on
  * the same patch metadata.
@@ -113,6 +124,7 @@ export { utilsPatches }
  */
 export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
+  injectWorkspacePackages: true as const,
   patchedDependencies: { ...utilsPatches },
   allowUnusedPatches: true as const,
   peerDependencyRules: {
