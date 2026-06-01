@@ -2054,6 +2054,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await runLiveCliCommand({ env, argv: ['sync', workspaceRoot] })
           const remoteMarkdown = await runLive(env, NotionPages.getMarkdown({ pageId }))
           expect(remoteMarkdown.markdown).toContain(localBodyEdit)
+          const beforeNoOpPage = await runLive(env, NotionPages.retrieve({ pageId }))
           expect(readReplicaHealth(replicaPath)).toMatchObject({
             conflictsOpen: 0,
             pendingLocalChanges: 0,
@@ -2063,6 +2064,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           })
 
           const noOpSync = await runLiveCliCommand({ env, argv: ['sync', workspaceRoot] })
+          const afterNoOpPage = await runLive(env, NotionPages.retrieve({ pageId }))
+          expect(afterNoOpPage.last_edited_time).toBe(beforeNoOpPage.last_edited_time)
           expect(noOpSync.status.state).toBe('clean')
           expect(noOpSync.status.counts.pending).toBe(0)
           expect(noOpSync.status.counts.conflict).toBe(0)

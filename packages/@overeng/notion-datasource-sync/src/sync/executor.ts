@@ -1,13 +1,7 @@
 import { Chunk, Effect, Schema, Stream } from 'effect'
 
 import type { PatchPagePropertiesCommand, RemoteWriteCommand } from '../core/commands.ts'
-import {
-  PropertyId,
-  type BodyPointer,
-  type Hash,
-  type NotionRequestId,
-  type PageId,
-} from '../core/domain.ts'
+import { PropertyId, type Hash, type NotionRequestId, type PageId } from '../core/domain.ts'
 import { LocalStoreError, NotionGatewayError, type BodySyncError } from '../core/errors.ts'
 import { IdempotencyKey } from '../core/events.ts'
 import type { GuardName } from '../core/guards.ts'
@@ -64,7 +58,6 @@ type RemoteWriteResult = {
   readonly requestId: NotionRequestId
   readonly createdPageId?: PageId
   readonly createdPropertiesHash?: Hash
-  readonly bodyPointer?: BodyPointer
 }
 
 const relationPatchVerificationHash = (
@@ -321,7 +314,7 @@ const executeRemoteWrite = (
       case 'BodyPushCommand': {
         const body = yield* PageBodySyncPort
         const result = yield* body.push(command)
-        return { requestId: result.requestId, bodyPointer: result.bodyPointer }
+        return { requestId: result.requestId }
       }
     }
   }).pipe(
@@ -608,23 +601,17 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
               verificationHash: writeResult.createdPropertiesHash,
               requestId: writeResult.requestId,
             }
-          : command._tag === 'BodyPushCommand' && writeResult.bodyPointer !== undefined
-            ? {
-                baseHash: writeResult.bodyPointer.bodyHash,
-                verificationHash: writeResult.bodyPointer.bodyHash,
-                requestId: writeResult.requestId,
-              }
-            : yield* observeCurrentSurface(command).pipe(
-                Effect.catchAll((error) =>
-                  recordAttemptState({
-                    options,
-                    claimed,
-                    attemptState: 'retryable',
-                    guard: guardFromWriteError(error),
-                    ...retryAfterFromWriteError(error),
-                  }),
-                ),
-              )
+          : yield* observeCurrentSurface(command).pipe(
+              Effect.catchAll((error) =>
+                recordAttemptState({
+                  options,
+                  claimed,
+                  attemptState: 'retryable',
+                  guard: guardFromWriteError(error),
+                  ...retryAfterFromWriteError(error),
+                }),
+              ),
+            )
 
       if ('_tag' in after) {
         yield* annotateOutboxResult(after)

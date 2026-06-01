@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { pageSurfaceKey } from '../core/canonical.ts'
+import { bodySurfaceKey, pageSurfaceKey } from '../core/canonical.ts'
 import { RestorePageCommand } from '../core/commands.ts'
 import {
   NotionDataSourceGateway,
@@ -14,6 +14,7 @@ import { planIntent, type OutboxCommandEnvelope } from '../planner/planner.ts'
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import {
   appendPlannedCommand,
+  bodyPointer,
   buildPlannerSnapshot,
   decode,
   hash,
@@ -197,6 +198,70 @@ describe('outbox executor', () => {
       })
 
       expect(gatewayHarness.ledger.attemptedPatchPageProperties).toHaveLength(1)
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        { commandId: testIds.commandId, state: 'retryable', settlementEventId: undefined },
+      ])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('verifies body pushes with an independent read-after-write observation', async () => {
+    const basePointer = bodyPointer()
+    const nextBodyHash = hash('body-next')
+    const command = {
+      _tag: 'BodyPushCommand' as const,
+      commandId: testIds.commandId,
+      pageId: testIds.pageId,
+      baseBodyPointer: basePointer,
+      nextBodyHash,
+    }
+    const planned: OutboxCommandEnvelope = {
+      commandId: testIds.commandId,
+      commandKey: testIds.commandKey,
+      rootId: testIds.rootId,
+      intentEventId: testIds.intentEventId,
+      surface: bodySurfaceKey(testIds.pageId),
+      command,
+      baseHash: basePointer.bodyHash,
+      desiredHash: nextBodyHash,
+      preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'BodyAdapterConflict'],
+    }
+    const gatewayHarness = makeFakeGatewayHarness()
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+    let pushAttempts = 0
+    const body: PageBodySyncPortShape = {
+      observe: () => Effect.succeed(basePointer),
+      planLocalChange: () => Effect.die(new Error('unexpected planLocalChange')),
+      push: () =>
+        Effect.sync(() => {
+          pushAttempts += 1
+          return {
+            _tag: 'BodyPushResult' as const,
+            pageId: testIds.pageId,
+            requestId: testIds.requestId,
+            bodyPointer: bodyPointer(nextBodyHash),
+          }
+        }),
+      repair: () => Effect.die(new Error('unexpected repair')),
+    }
+
+    try {
+      appendPlannedCommand({ store: storeFixture.store, command: planned })
+
+      await expect(
+        runExecutor({
+          gateway: gatewayHarness.gateway,
+          body,
+          store: storeFixture.store,
+        }),
+      ).resolves.toMatchObject({
+        _tag: 'failed',
+        attemptState: 'retryable',
+        guard: 'ReadAfterWriteMismatch',
+      })
+
+      expect(pushAttempts).toBe(1)
       expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
         { commandId: testIds.commandId, state: 'retryable', settlementEventId: undefined },
       ])
