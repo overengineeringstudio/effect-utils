@@ -183,7 +183,7 @@ const schemaPropertiesViewName = 'schema_properties'
 const changesViewName = 'changes'
 const conflictsViewName = 'conflicts'
 const syncStatusViewName = 'sync_status'
-const pendingReplicaChangeStatusesSql = "'pending', 'queued', 'planned', 'needs_reconciliation'"
+const pendingReplicaChangeStatusesSql = "'pending', 'queued', 'planned'"
 const pendingReplicaChangesCountSql = `(SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status IN (${pendingReplicaChangeStatusesSql}))`
 const openReplicaConflictsCountSql = `(SELECT count(*) FROM _nds_replica_conflicts WHERE state = 'open')`
 
@@ -1011,21 +1011,64 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       SELECT * FROM _nds_replica_conflicts;
 
     CREATE VIEW IF NOT EXISTS ${quoteIdentifier(syncStatusViewName)} AS
+      WITH status_counts AS (
+        SELECT
+          status.root_id,
+          status.data_sources,
+          status.rows,
+          status.cells,
+          status.bodies,
+          ${openReplicaConflictsCountSql} AS conflicts_open,
+          ${pendingReplicaChangesCountSql} AS pending_local_changes,
+          (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'conflict') AS conflicted_local_changes,
+          (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'unsupported') AS unsupported_local_changes,
+          (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'needs_reconciliation') AS reconciliation_local_changes,
+          (SELECT count(*) FROM _nds_outbox WHERE root_id = status.root_id AND state IN ('queued', 'running', 'retryable')) AS pending_outbox,
+          (SELECT count(*) FROM _nds_outbox WHERE root_id = status.root_id AND state IN ('blocked', 'fenced', 'ambiguous')) AS blocked_outbox,
+          (SELECT count(*) FROM _nds_guard_block WHERE root_id = status.root_id) AS guard_blocks,
+          (SELECT count(*) FROM _nds_tombstone WHERE root_id = status.root_id AND classification = 'unclassified') AS unclassified_tombstones,
+          (SELECT count(*) FROM _nds_capability WHERE root_id = status.root_id AND supported = 0) AS unsupported_capabilities,
+          (
+            (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND complete = 0)
+            + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND capped_at_limit = 1)
+            + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND contract_changed = 1)
+            + (SELECT count(*) FROM _nds_page_property_checkpoint WHERE root_id = status.root_id AND complete = 0)
+          ) AS incomplete_hydration,
+          status.updated_at
+        FROM _nds_replica_sync_status status
+      )
       SELECT
         status.root_id,
         status.data_sources,
         status.rows,
         status.cells,
         status.bodies,
-        ${openReplicaConflictsCountSql} AS conflicts_open,
-        ${pendingReplicaChangesCountSql} AS pending_local_changes,
+        status.conflicts_open,
+        status.pending_local_changes,
+        status.conflicted_local_changes,
+        status.unsupported_local_changes,
+        status.reconciliation_local_changes,
+        status.pending_outbox,
+        status.blocked_outbox,
+        status.guard_blocks,
+        status.unclassified_tombstones,
+        status.unsupported_capabilities,
+        status.incomplete_hydration,
+        CASE
+          WHEN status.conflicts_open + status.conflicted_local_changes > 0 THEN 'conflicted'
+          WHEN status.unsupported_local_changes + status.unsupported_capabilities > 0 THEN 'unsupported'
+          WHEN status.reconciliation_local_changes + status.blocked_outbox + status.guard_blocks + status.unclassified_tombstones > 0 THEN 'degraded'
+          WHEN status.incomplete_hydration > 0 THEN 'incomplete'
+          WHEN status.pending_local_changes + status.pending_outbox > 0 THEN 'pending'
+          ELSE 'clean'
+        END AS state,
         status.updated_at,
         CASE
           WHEN binding.workspace_root IS NULL THEN 'unbound'
           WHEN database_list.file LIKE binding.workspace_root || '/%' THEN 'bound'
           ELSE 'moved'
         END AS workspace_status
-      FROM _nds_replica_sync_status status
+      FROM status_counts status
       LEFT JOIN _nds_workspace_binding binding ON binding.root_id = status.root_id
       JOIN pragma_database_list AS database_list ON database_list.name = 'main';
 

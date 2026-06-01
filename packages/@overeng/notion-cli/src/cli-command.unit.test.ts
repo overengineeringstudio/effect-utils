@@ -3,12 +3,13 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { makeNotionRootCommand } from './cli.ts'
+import { dbCommand } from './commands/db/mod.ts'
 
 const placeholderCommand = (name: string) =>
   Command.make(name, {}, () => Effect.void).pipe(Command.withDescription(`${name} command`))
 
 describe('notion root command composition', () => {
-  it('includes sqlite in the Effect CLI command tree used for completions', async () => {
+  it('does not expose the removed root sqlite command', async () => {
     const command = makeNotionRootCommand({
       schemaCommand: placeholderCommand('schema'),
       dbCommand: placeholderCommand('db'),
@@ -21,6 +22,19 @@ describe('notion root command composition', () => {
     expect(completionText).toContain('schema')
     expect(completionText).toContain('db')
     expect(completionText).toContain('md')
-    expect(completionText).toContain('sqlite')
+    expect(completionText).not.toContain('sqlite')
+  })
+})
+
+describe('notion db command composition', () => {
+  it('keeps info and replica commands while removing dump', async () => {
+    const completions = await Effect.runPromise(Command.getBashCompletions(dbCommand, 'notion db'))
+    const completionText = completions.join('\n')
+
+    expect(completionText).toContain('info')
+    expect(completionText).toContain('sync')
+    expect(completionText).toContain('export')
+    expect(completionText).toContain('status')
+    expect(completionText).not.toContain('dump')
   })
 })

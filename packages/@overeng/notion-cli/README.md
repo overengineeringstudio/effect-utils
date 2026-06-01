@@ -17,8 +17,9 @@ the runtime supports it:
 
 - `notion md ...` → reuses the `notion-md` Effect command tree directly
 - `notion db ...` and `notion schema ...` → run the native umbrella Effect commands
-- `notion sqlite ...` → appears in the root Effect CLI help/completions through an
-  import-safe datasource-sync command tree and enters the packaged Node-backed
+- `notion db info ...` → stays in the Bun-compiled umbrella CLI
+- `notion db sync/export/status/pull/push/...` → appears under `notion db` through an
+  import-safe descriptor and enters the packaged Node-backed
   `notion-datasource-sync` runtime in Nix/devenv builds
 
 The SQLite runtime boundary is intentional: datasource-sync imports
@@ -27,10 +28,10 @@ The SQLite runtime boundary is intentional: datasource-sync imports
 For markdown/SQLite workflows, use the packaged Nix/devenv binary:
 
 ```bash
-notion sqlite --help
+notion db sync --help
 ```
 
-Direct Bun/source execution of `notion sqlite ...` is unsupported because the SQLite sync runtime imports `node:sqlite`. Unsupported source paths fail closed with guidance to use the packaged Node-backed entrypoint.
+Direct Bun/source execution of `notion db` replica commands is unsupported because the SQLite sync runtime imports `node:sqlite`. Unsupported source paths fail closed with guidance to use the packaged Node-backed entrypoint.
 
 ### Prerequisites
 

@@ -2,20 +2,12 @@ import { Args, Command, Options } from '@effect/cli'
 import { Effect } from 'effect'
 
 /** Handler used by the import-safe command descriptor for executable leaf commands. */
-export type SqliteCommandHandler = (command: string) => Effect.Effect<void>
+export type DatasourceDbCommandHandler = (command: string) => Effect.Effect<void>
 
 /** Shells supported by Effect CLI completion generation for datasource-sync. */
 export type CompletionShell = 'bash' | 'fish' | 'sh' | 'zsh'
 
-const defaultHandler: SqliteCommandHandler = () => Effect.void
-
-const runtimeUnavailableHandler: SqliteCommandHandler = () =>
-  Effect.sync(() => {
-    process.stderr.write(
-      'notion sqlite requires the packaged Nix/devenv Node-backed runtime because the SQLite sync implementation imports node:sqlite. Use `devenv shell` or the flake-built `notion` binary.\n',
-    )
-    process.exitCode = 1
-  })
+const defaultHandler: DatasourceDbCommandHandler = () => Effect.void
 
 const workspaceRootArg = Args.text({ name: 'workspace-root' }).pipe(
   Args.withDescription('Workspace root or SQLite replica path'),
@@ -25,6 +17,11 @@ const workspaceRootArg = Args.text({ name: 'workspace-root' }).pipe(
 const dryRunOption = Options.boolean('dry-run').pipe(
   Options.withDescription('Validate without mutating local or remote state'),
   Options.withDefault(false),
+)
+
+const outputOption = Options.file('output').pipe(
+  Options.withDescription('Export output path'),
+  Options.optional,
 )
 
 const sqliteOption = Options.file('sqlite').pipe(
@@ -67,24 +64,18 @@ const leafCommand = ({
 }: {
   readonly name: string
   readonly description: string
-  readonly handler: SqliteCommandHandler
+  readonly handler: DatasourceDbCommandHandler
   readonly extraConfig?: {}
 }) =>
   Command.make(name, { ...commonOptions, ...extraConfig }, () => handler(name)).pipe(
     Command.withDescription(description),
   )
 
-/**
- * Builds the datasource-sync CLI command tree without importing the Node-only
- * runtime modules that reach `node:sqlite`.
- */
-export const makeDatasourceSyncCommand = ({
-  name = 'notion-datasource-sync',
-  handler = defaultHandler,
-}: {
-  readonly name?: 'notion-datasource-sync' | 'sqlite'
-  readonly handler?: SqliteCommandHandler
-} = {}) => {
+/** Builds the import-safe `notion db` subcommands shared by the root CLI and Node runtime. */
+// oxlint-disable-next-line overeng/exports-first -- command builders depend on local option descriptors.
+export const makeDatasourceDbSubcommands = (
+  handler: DatasourceDbCommandHandler = defaultHandler,
+) => {
   const initCommand = leafCommand({
     name: 'init',
     description: 'Initialize a local SQLite sync store',
@@ -190,83 +181,113 @@ export const makeDatasourceSyncCommand = ({
     Command.withDescription('Reserved SQLite migration commands'),
   )
 
+  return [
+    initCommand,
+    leafCommand({
+      name: 'pull',
+      description: 'Pull remote Notion changes into SQLite',
+      handler,
+    }),
+    leafCommand({
+      name: 'push',
+      description: 'Push accepted local SQLite changes to Notion',
+      handler,
+      extraConfig: {
+        dryRun: dryRunOption,
+      },
+    }),
+    syncCommand,
+    Command.make(
+      'export',
+      {
+        ...commonOptions,
+        workspaceRoot: workspaceRootArg,
+        output: outputOption,
+        fromNotion: Options.text('from-notion').pipe(
+          Options.withDescription('Refresh from a Notion data source/database URL before export'),
+          Options.optional,
+        ),
+        format: Options.choice('format', ['ndjson', 'json']).pipe(
+          Options.withDescription('Export file format'),
+          Options.optional,
+        ),
+        requireClean: Options.boolean('require-clean').pipe(
+          Options.withDescription('Fail if the replica has pending local changes or conflicts'),
+          Options.withDefault(false),
+        ),
+        noMaterializeBodies: noMaterializeBodiesOption,
+      },
+      () => handler('export'),
+    ).pipe(Command.withDescription('Export rows, schema, and sync metadata from SQLite')),
+    leafCommand({
+      name: 'status',
+      description: 'Print workspace sync status',
+      handler,
+      extraConfig: {
+        workspaceRoot: workspaceRootArg,
+      },
+    }),
+    conflictsCommand,
+    leafCommand({
+      name: 'forget',
+      description: 'Archive or forget a page locally',
+      handler,
+      extraConfig: {
+        pageId: Options.text('page-id').pipe(
+          Options.withDescription('Notion page id'),
+          Options.optional,
+        ),
+        dryRun: dryRunOption,
+      },
+    }),
+    leafCommand({
+      name: 'restore',
+      description: 'Restore a forgotten page locally',
+      handler,
+      extraConfig: {
+        pageId: Options.text('page-id').pipe(
+          Options.withDescription('Notion page id'),
+          Options.optional,
+        ),
+        dryRun: dryRunOption,
+      },
+    }),
+    migrateCommand,
+    leafCommand({
+      name: 'repair',
+      description: 'Reserved; currently fails closed',
+      handler,
+      extraConfig: { dryRun: dryRunOption },
+    }),
+    leafCommand({
+      name: 'doctor',
+      description: 'Print diagnostics',
+      handler,
+    }),
+  ] as const
+}
+
+/** Builds the datasource-sync CLI command tree without importing Node-only runtime modules. */
+// oxlint-disable-next-line overeng/exports-first -- command builders depend on local option descriptors.
+export const makeDatasourceSyncCommand = ({
+  name = 'notion-db-runtime',
+  handler = defaultHandler,
+}: {
+  readonly name?: 'notion-db-runtime' | 'db'
+  readonly handler?: DatasourceDbCommandHandler
+} = {}) => {
   return Command.make(name).pipe(
-    Command.withSubcommands([
-      initCommand,
-      leafCommand({
-        name: 'pull',
-        description: 'Pull remote Notion changes into SQLite',
-        handler,
-      }),
-      leafCommand({
-        name: 'push',
-        description: 'Push accepted local SQLite changes to Notion',
-        handler,
-        extraConfig: {
-          dryRun: dryRunOption,
-        },
-      }),
-      syncCommand,
-      leafCommand({
-        name: 'status',
-        description: 'Print workspace sync status',
-        handler,
-        extraConfig: {
-          workspaceRoot: workspaceRootArg,
-        },
-      }),
-      conflictsCommand,
-      leafCommand({
-        name: 'forget',
-        description: 'Archive or forget a page locally',
-        handler,
-        extraConfig: {
-          pageId: Options.text('page-id').pipe(
-            Options.withDescription('Notion page id'),
-            Options.optional,
-          ),
-          dryRun: dryRunOption,
-        },
-      }),
-      leafCommand({
-        name: 'restore',
-        description: 'Restore a forgotten page locally',
-        handler,
-        extraConfig: {
-          pageId: Options.text('page-id').pipe(
-            Options.withDescription('Notion page id'),
-            Options.optional,
-          ),
-          dryRun: dryRunOption,
-        },
-      }),
-      migrateCommand,
-      leafCommand({
-        name: 'repair',
-        description: 'Reserved; currently fails closed',
-        handler,
-        extraConfig: { dryRun: dryRunOption },
-      }),
-      leafCommand({
-        name: 'doctor',
-        description: 'Print diagnostics',
-        handler,
-      }),
-    ]),
-    Command.withDescription('SQLite-backed Notion data source sync'),
+    Command.withSubcommands(makeDatasourceDbSubcommands(handler)),
+    Command.withDescription('Notion database replica sync'),
   )
 }
 
-/** Standalone datasource-sync command descriptor for help and completion rendering. */
+/** Internal Node-backed datasource-sync command descriptor for help and completion rendering. */
+// oxlint-disable-next-line overeng/exports-first -- command descriptor depends on the local builder.
 export const datasourceSyncCommand = makeDatasourceSyncCommand()
 
-/** Root `notion sqlite` command descriptor that fails closed outside the packaged Node runtime. */
-export const notionSqliteCommand = makeDatasourceSyncCommand({
-  name: 'sqlite',
-  handler: runtimeUnavailableHandler,
-})
-
-/** Renders standalone datasource-sync shell completions from the shared command tree. */
+/** Renders datasource-sync shell completions from the shared command tree. */
+// oxlint-disable-next-line overeng/exports-first -- completion rendering depends on the local descriptor.
 export const renderDatasourceSyncCompletions = ({
   programName,
   shell,

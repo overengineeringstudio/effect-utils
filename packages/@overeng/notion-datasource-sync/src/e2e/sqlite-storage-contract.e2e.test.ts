@@ -15,6 +15,7 @@ import {
 import { PagePropertyItemPage } from '../core/commands.ts'
 import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
+import { markReplicaChangeStatus } from '../replica/replica.ts'
 import {
   decode,
   fixedObservedAt,
@@ -144,6 +145,12 @@ const rows = (db: DatabaseSync, sql: string, ...params: readonly SqlParam[]): re
 
 const row = (db: DatabaseSync, sql: string, ...params: readonly SqlParam[]): SqlRow | undefined =>
   db.prepare(sql).get(...params) as SqlRow | undefined
+
+const syncStatus = (db: DatabaseSync): SqlRow => {
+  const status = row(db, `SELECT * FROM sync_status LIMIT 1`)
+  if (status === undefined) throw new Error('sync_status did not contain a row')
+  return status
+}
 
 const tableColumns = (db: DatabaseSync, table: string): readonly string[] =>
   rows(db, `PRAGMA table_xinfo(${JSON.stringify(table)})`).map((entry) => String(entry.name))
@@ -716,6 +723,174 @@ describe('clean-break self-contained SQLite storage contract', () => {
           clean: 0,
         },
       })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'sync_status exposes explicit public state buckets without treating unsupported or incomplete hydration as pending local work',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+
+      openReadOnly(sqlitePath, (db) => {
+        expect(syncStatus(db)).toMatchObject({
+          state: 'clean',
+          pending_local_changes: 0,
+          conflicts_open: 0,
+          unsupported_local_changes: 0,
+          incomplete_hydration: 0,
+        })
+      })
+
+      updatePublicRowsTitle({ sqlitePath, title: 'Pending status bucket' })
+      const pendingChangeId = openReadOnly(sqlitePath, (db) => {
+        expect(syncStatus(db)).toMatchObject({
+          state: 'pending',
+          pending_local_changes: 1,
+        })
+        return String(
+          row(
+            db,
+            `SELECT change_id
+             FROM changes
+             WHERE kind = 'cell_patch'
+             ORDER BY created_at DESC
+             LIMIT 1`,
+          )?.change_id,
+        )
+      })
+
+      markReplicaChangeStatus({
+        replicaPath: sqlitePath,
+        changeId: pendingChangeId,
+        status: 'unsupported',
+        unsupportedReason: 'test unsupported write class',
+      })
+      openReadOnly(sqlitePath, (db) => {
+        expect(syncStatus(db)).toMatchObject({
+          state: 'unsupported',
+          pending_local_changes: 0,
+          unsupported_local_changes: 1,
+        })
+      })
+
+      const db = new DatabaseSync(sqlitePath)
+      try {
+        const identity = row(db, `SELECT root_id, data_source_id FROM _nds_data_source LIMIT 1`)
+        expect(identity).toMatchObject({
+          root_id: expect.any(String),
+          data_source_id: expect.any(String),
+        })
+        const rootId = String(identity?.root_id)
+        const dataSourceId = String(identity?.data_source_id)
+        db.prepare(
+          `UPDATE _nds_replica_local_changes
+           SET status = 'applied', unsupported_reason = NULL
+           WHERE change_id = ?`,
+        ).run(pendingChangeId)
+        db.prepare(
+          `UPDATE _nds_replica_cell_changes
+           SET status = 'applied', unsupported_reason = NULL
+           WHERE change_id = ?`,
+        ).run(pendingChangeId)
+        db.prepare(
+          `INSERT INTO _nds_query_scan_checkpoint (
+             root_id,
+             data_source_id,
+             query_contract_hash,
+             next_cursor,
+             complete,
+             capped_at_limit,
+             contract_changed,
+             high_watermark,
+             event_id,
+             updated_at
+           ) VALUES (?, ?, ?, NULL, 0, 0, 0, NULL, ?, ?)`,
+        ).run(
+          rootId,
+          dataSourceId,
+          hash('contract-incomplete-status'),
+          'event-incomplete-status',
+          fixedObservedAt,
+        )
+        expect(syncStatus(db)).toMatchObject({
+          state: 'incomplete',
+          pending_local_changes: 0,
+          incomplete_hydration: 1,
+        })
+        db.prepare(
+          `DELETE FROM _nds_query_scan_checkpoint
+           WHERE root_id = ? AND query_contract_hash = ?`,
+        ).run(rootId, hash('contract-incomplete-status'))
+        db.prepare(
+          `INSERT INTO _nds_outbox (
+             root_id,
+             command_id,
+             command_key,
+             intent_event_id,
+             surface,
+             command_tag,
+             state,
+             base_hash,
+             desired_hash,
+             preflight_json,
+             attempt_count,
+             lease_token,
+             settlement_event_id,
+             retry_after_millis,
+             retry_after_at,
+             last_event_id,
+             updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, 'blocked', NULL, ?, '{}', 0, NULL, NULL, NULL, NULL, ?, ?)`,
+        ).run(
+          rootId,
+          'cmd-degraded-status',
+          'cmd-key-degraded-status',
+          'intent-degraded-status',
+          `property:${testIds.pageId}:${testIds.propertyA}`,
+          'PatchPageProperties',
+          hash('desired-degraded-status'),
+          'event-degraded-status',
+          fixedObservedAt,
+        )
+        expect(syncStatus(db)).toMatchObject({
+          state: 'degraded',
+          blocked_outbox: 1,
+        })
+        db.prepare(`UPDATE _nds_outbox SET state = 'settled' WHERE command_id = ?`).run(
+          'cmd-degraded-status',
+        )
+        db.prepare(
+          `INSERT INTO _nds_replica_conflicts (
+             conflict_id,
+             page_id,
+             property_id,
+             state,
+             base_hash,
+             local_hash,
+             remote_hash,
+             opened_event_id,
+             resolution_event_id,
+             updated_at
+           ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, NULL, ?)`,
+        ).run(
+          'conflict-status',
+          testIds.pageId,
+          testIds.propertyA,
+          hash('base-conflict-status'),
+          hash('local-conflict-status'),
+          hash('remote-conflict-status'),
+          'event-conflict-status',
+          fixedObservedAt,
+        )
+        expect(syncStatus(db)).toMatchObject({
+          state: 'conflicted',
+          conflicts_open: 1,
+        })
+      } finally {
+        db.close()
+      }
     },
     sqliteContractTimeoutMs,
   )

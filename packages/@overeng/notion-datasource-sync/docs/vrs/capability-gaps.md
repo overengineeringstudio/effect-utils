@@ -73,17 +73,24 @@ public `INSERT INTO changes` is not part of the current e2e acceptance surface.
 
 ### D. Conflicts (`conflicts` table)
 
-| SQL operation            | Support  | Guard if blocked         | Promotion criteria (if fail-closed)                 |
-| ------------------------ | -------- | ------------------------ | --------------------------------------------------- |
-| Any write on `conflicts` | REJECTED | `ConflictsTableReadOnly` | Read-only; resolve via `nds conflicts resolve` CLI. |
+| SQL operation            | Support  | Guard if blocked         | Promotion criteria (if fail-closed)                       |
+| ------------------------ | -------- | ------------------------ | --------------------------------------------------------- |
+| Any write on `conflicts` | REJECTED | `ConflictsTableReadOnly` | Read-only; resolve via `notion db conflicts resolve` CLI. |
 
-### E. Private store (`_nds_*`)
+### E. Status (`sync_status`)
+
+| SQL operation                               | Support   | Guard if blocked     | Promotion criteria (if fail-closed) |
+| ------------------------------------------- | --------- | -------------------- | ----------------------------------- |
+| `SELECT ... FROM sync_status`               | SUPPORTED | -                    | -                                   |
+| `INSERT`/`UPDATE`/`DELETE` on `sync_status` | REJECTED  | `SyncStatusReadOnly` | Read-only aggregate state.          |
+
+### F. Private store (`_nds_*`)
 
 | SQL operation         | Support  | Guard if blocked            | Promotion criteria (if fail-closed)                 |
 | --------------------- | -------- | --------------------------- | --------------------------------------------------- |
 | Any write on `_nds_*` | REJECTED | `PrivateStoreWriteRejected` | Private implementation state; no public write path. |
 
-### F. Multi-data-source databases
+### G. Multi-data-source databases
 
 | Operation                                                                | Support     | Guard if blocked             | Promotion criteria (if fail-closed)                                             |
 | ------------------------------------------------------------------------ | ----------- | ---------------------------- | ------------------------------------------------------------------------------- |

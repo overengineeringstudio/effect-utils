@@ -340,7 +340,7 @@ const createBoundSqlite = async ({
 }
 
 describe('CLI command surface', () => {
-  it('prints sqlite version from the shared CLI build stamp contract', async () => {
+  it('prints db runtime version from the shared CLI build stamp contract', async () => {
     const { stdout, stderr } = await execFileAsync(cliPath, ['--version'], {
       cwd: packageDir,
       env: {
@@ -360,14 +360,14 @@ describe('CLI command surface', () => {
     expect(stderr).not.toContain('CliErrorEnvelope')
   })
 
-  it('prints sqlite help without opening a store', async () => {
+  it('prints db runtime help without opening a store', async () => {
     const { stdout, stderr } = await execFileAsync(cliPath, ['--help'], {
       cwd: packageDir,
       timeout: cliTestTimeoutMs,
     })
 
     expect(stdout).toBe(renderCliHelpText())
-    expect(stdout).toContain('notion sqlite')
+    expect(stdout).toContain('notion db')
     expect(stdout).toContain('Packaged Node-backed entrypoint')
     expect(stdout).toContain('sync')
     expect(stderr).not.toContain('CliErrorEnvelope')
@@ -696,8 +696,28 @@ describe('CLI command surface', () => {
       workspaceRoot: '/tmp/notion-workspace',
       dryRun: true,
     })
+    expect(
+      parseCliCommand([
+        'export',
+        '/tmp/notion-workspace',
+        '--output',
+        '/tmp/export.ndjson',
+        '--format',
+        'json',
+        '--require-clean',
+      ]),
+    ).toEqual({
+      _tag: 'export',
+      workspaceRoot: '/tmp/notion-workspace',
+      outputPath: '/tmp/export.ndjson',
+      format: 'json',
+      requireClean: true,
+    })
     expect(() => parseCliCommand(['sync', '--from-notion'])).toThrow(CliArgumentError)
     expect(() => parseCliCommand(['sync', '/tmp/a', '/tmp/b'])).toThrow(CliArgumentError)
+    expect(() => parseCliCommand(['export', '--format', 'csv', '--output', '/tmp/a'])).toThrow(
+      CliArgumentError,
+    )
     expect(() =>
       parseCliCommand([
         'sync',
@@ -1149,7 +1169,7 @@ describe('CLI command surface', () => {
         command: 'pull',
         ok: true,
       })
-      expect(stderr).toContain('notion-datasource-sync')
+      expect(stderr).toContain('notion db')
       expect(stderr).toContain('pull')
       expect(stderr).toContain('100%')
     } finally {
@@ -1202,7 +1222,7 @@ describe('CLI command surface', () => {
         command: 'sync',
         ok: true,
       })
-      expect(stderr).toContain('notion-datasource-sync')
+      expect(stderr).toContain('notion db')
       expect(stderr).toContain('sync')
       expect(stderr).toContain('100%')
     } finally {
@@ -2443,6 +2463,137 @@ describe('CLI command surface', () => {
         executor: { steps: 0, results: [] },
       })
       expect(gateway.ledger.attemptedPatchPageProperties).toEqual([])
+    } finally {
+      store?.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('exports rows, schema, sync status, and pending metadata from the replica', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-export-'))
+    const sqlitePath = join(dir, 'store.sqlite')
+    const outputPath = join(dir, 'export.ndjson')
+    const clock = makeFakeClock()
+    let store: NotionSyncStore | undefined
+
+    try {
+      await createBoundSqlite({ path: sqlitePath })
+      const database = new DatabaseSync(sqlitePath)
+      try {
+        database
+          .prepare(`UPDATE rows SET "Row_prop_a" = ? WHERE _page_id = ?`)
+          .run('Pending export edit', testIds.pageId)
+      } finally {
+        database.close()
+      }
+
+      store = openNotionSyncStore({ path: sqlitePath, now: clock.now })
+      const result = await runWithPorts(
+        runCliCommand(
+          {
+            _tag: 'export',
+            outputPath: decode({ schema: AbsolutePath, value: outputPath }),
+            format: 'ndjson',
+          },
+          context({ store, storePath: sqlitePath, clock }),
+        ),
+        { gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway },
+      )
+
+      expect(result.command).toBe('export')
+      expect(result.result).toMatchObject({
+        _tag: 'ReplicaExportResult',
+        clean: false,
+        counts: { rows: 1, pendingChanges: 1 },
+      })
+      const lines = (await readFile(outputPath, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      expect(lines.map((line) => line.type)).toEqual(
+        expect.arrayContaining(['metadata', 'sync_status', 'schema', 'schema_property', 'row']),
+      )
+      expect(lines).toContainEqual(
+        expect.objectContaining({
+          type: 'pending_change',
+          record: expect.objectContaining({ status: 'pending' }),
+        }),
+      )
+
+      await expect(
+        runWithPorts(
+          runCliCommand(
+            {
+              _tag: 'export',
+              outputPath: decode({ schema: AbsolutePath, value: join(dir, 'clean.ndjson') }),
+              format: 'ndjson',
+              requireClean: true,
+            },
+            context({ store, storePath: sqlitePath, clock }),
+          ),
+          { gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway },
+        ),
+      ).rejects.toThrow('Replica has pending local changes or open conflicts')
+    } finally {
+      store?.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('refreshes export --from-notion by pull only and never invokes remote writes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-cli-export-refresh-'))
+    const sqlitePath = join(dir, 'store.sqlite')
+    const outputPath = join(dir, 'export.json')
+    const clock = makeFakeClock()
+    let store: NotionSyncStore | undefined
+
+    try {
+      await createBoundSqlite({ path: sqlitePath })
+      store = openNotionSyncStore({ path: sqlitePath, now: clock.now })
+      const calls = { retrieveDataSource: 0, queryDataSource: 0, retrievePage: 0 }
+      const client = {
+        ...makeInjectedNotionClient(calls),
+        updatePage: () => {
+          throw new Error('export must not update pages')
+        },
+        createPage: () => {
+          throw new Error('export must not create pages')
+        },
+        updateDataSource: () => {
+          throw new Error('export must not update data sources')
+        },
+        updateDatabase: () => {
+          throw new Error('export must not update databases')
+        },
+      } satisfies NotionGatewayClient
+
+      await runCliCommandWithRuntime({
+        command: {
+          _tag: 'export',
+          outputPath: decode({ schema: AbsolutePath, value: outputPath }),
+          fromNotion: {
+            dataSourceId: testIds.dataSourceId,
+            remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
+          },
+          format: 'json',
+        },
+        context: context({
+          store,
+          storePath: sqlitePath,
+          clock,
+          materializeBodies: false,
+        }),
+        options: { gatewayClient: client },
+      }).pipe(Effect.runPromise)
+
+      expect(calls.retrieveDataSource).toBeGreaterThan(0)
+      expect(calls.queryDataSource).toBeGreaterThan(0)
+      const exported = JSON.parse(await readFile(outputPath, 'utf8'))
+      expect(exported).toMatchObject({
+        _tag: 'NotionDatasourceReplicaExport',
+        sync: { status: expect.any(Object) },
+      })
+      expect(exported).not.toHaveProperty('bodies')
     } finally {
       store?.close()
       await rm(dir, { recursive: true, force: true })

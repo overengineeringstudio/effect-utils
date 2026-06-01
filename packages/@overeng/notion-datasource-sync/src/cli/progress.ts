@@ -230,7 +230,7 @@ export const createSyncProgressView = (
       h(
         Box,
         { flexDirection: 'row' },
-        h(Text, { bold: true }, 'notion-datasource-sync '),
+        h(Text, { bold: true }, 'notion db '),
         h(Text, { color: state.phase === 'complete' ? 'green' : 'cyan' }, state.command),
         h(Text, { dim: true }, ` ${state.phase}`),
       ),

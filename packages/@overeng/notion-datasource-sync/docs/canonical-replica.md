@@ -39,7 +39,7 @@ Stable public surfaces:
 | `schema_properties` | read view     | Property id, display name, Notion type, write class, row column mapping |
 | `changes`           | read view     | Durable local edit intents and settlement status                        |
 | `conflicts`         | read view     | User-visible conflicts and resolution state                             |
-| `sync_status`       | read view     | Last sync, pending work, checkpoints, guards, doctor state              |
+| `sync_status`       | read view     | Aggregate state, pending work, checkpoints, guards, doctor state        |
 
 Debug surfaces are read-only views named `debug_*`. They expose canonical JSON,
 hashes, pagination evidence, outbox state, and projection diagnostics for
@@ -51,9 +51,16 @@ integrity digests. Users and automation must not edit `_nds_*`. If private
 state is corrupt, missing, or tampered with, `doctor` fails closed and sync
 does not infer remote writes from public rows alone.
 
-`sync` and `sync --watch` consume the same public SQLite CDC contract. A supported
-`rows` edit must remain visible through `changes` until it is planned,
-executed, verified, and settled; watch mode is not remote-only polling.
+`sync_status` is an aggregate read model, not an intent surface. Its `state`
+distinguishes `clean`, `pending`, `conflicted`, `unsupported`, `degraded`, and
+`incomplete`. Unsupported or incomplete hydration blocks confidence in the
+affected surface but is not dirty local work unless a user-authored change is
+pending.
+
+`sync` and `sync --watch` consume the same public SQLite CDC contract. A
+supported `rows` edit remains visible through `changes` as a lifecycle row after
+it is planned, executed, verified, and settled; watch mode is not remote-only
+polling.
 
 ## Row Shape
 

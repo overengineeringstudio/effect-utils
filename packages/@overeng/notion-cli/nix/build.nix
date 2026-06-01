@@ -33,7 +33,7 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-79OpcqaqIDGz8hLUO269y2c4jQ8opMgApSzOL8l//y8=";
+        hash = "sha256-7iysbl02Z47vQbbw6Fmaj/rlI04jCuQucKUFcqd2giY=";
       };
     };
     nativeNodePackages = [ opentuiCoreNative ];
@@ -56,12 +56,12 @@ pkgs.runCommand "notion-cli"
   ''
     mkdir -p $out/bin
     makeWrapper ${unwrapped}/bin/notion $out/bin/notion \
-      --run 'if [ "$#" -gt 0 ] && [ "$1" = sqlite ]; then shift; exec ${datasourceSyncRuntime}/bin/notion-datasource-sync "$@"; fi'
+      --run 'if [ "$#" -gt 1 ] && [ "$1" = db ]; then case "$2" in init|pull|push|sync|export|status|conflicts|forget|restore|migrate|repair|doctor) shift; exec ${datasourceSyncRuntime}/bin/notion-datasource-sync "$@";; esac; fi'
 
-    sqlite_output="$($out/bin/notion sqlite 2>&1 || true)"
-    if ! printf '%s\n' "$sqlite_output" | grep -q 'SQLite-backed Notion data source sync'; then
-      printf '%s\n' "$sqlite_output" >&2
-      echo "notion sqlite smoke test failed" >&2
+    db_output="$($out/bin/notion db sync --help 2>&1 || true)"
+    if ! printf '%s\n' "$db_output" | grep -q 'Run pull and push, or adopt from Notion with --from-notion'; then
+      printf '%s\n' "$db_output" >&2
+      echo "notion db sync smoke test failed" >&2
       exit 1
     fi
   ''

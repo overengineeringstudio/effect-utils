@@ -80,6 +80,25 @@ longer matches them. Invalid direct cell payloads are rejected before `rows`,
 `debug_*`, `_nds_*`, or `changes` state changes. There is no alternate
 local-change compatibility surface.
 
+`sync_status` is the public aggregate health surface for the replica. It derives
+state from `changes`, `conflicts`, `_nds_outbox`, guards, tombstones,
+capability checks, and scan checkpoints; users do not write it directly. The
+public `state` values are:
+
+| State         | Meaning                                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `clean`       | No pending public work, open conflicts, unsupported work, degraded guards, or incomplete scans  |
+| `pending`     | User-authored local work or durable outbox work is waiting to be planned, executed, or settled  |
+| `conflicted`  | Open conflicts or local changes settled as conflicts require explicit resolution                |
+| `unsupported` | A local change or observed capability is known unsupported and must not be retried as pending   |
+| `degraded`    | Reconciliation, blocked/fenced/ambiguous outbox, guards, or unclassified tombstones need repair |
+| `incomplete`  | Query or page-property hydration is incomplete, capped, or based on a changed query contract    |
+
+Priority order is `conflicted` > `unsupported` > `degraded` > `incomplete` >
+`pending` > `clean`. Unsupported and incomplete hydration are confidence
+signals, not dirty local work: they do not increment `pending_local_changes`
+unless a user-authored change is actually pending.
+
 Public schema versions are separate:
 
 | Version                     | Scope                                            |
@@ -96,8 +115,10 @@ rows alone.
 
 ## Write Intent Contract
 
-Users write desired data changes by mutating `rows` or by inserting explicit
-rows into `changes`. Local SQL writes never call Notion directly.
+Users write desired data changes by mutating supported product surfaces such as
+`rows`. Local SQL writes never call Notion directly. `changes` is a read-only
+public lifecycle ledger for accepted intents unless a future VRS change
+promotes explicit public `changes` triggers.
 
 ```ts
 type NotionCellChange = {

@@ -4,7 +4,6 @@ import { Command } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Layer, Option } from 'effect'
 
-import { notionSqliteCommand } from '@overeng/notion-datasource-sync/cli/effect-command'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
@@ -52,12 +51,7 @@ const makeNotionRootCommand = <
   readonly notionMdDispatchCommand: Command.Command<MdName, MdRequirements, MdError, MdConfig>
 }) =>
   Command.make('notion').pipe(
-    Command.withSubcommands([
-      schemaCommand,
-      dbCommand,
-      notionMdDispatchCommand,
-      notionSqliteCommand,
-    ]),
+    Command.withSubcommands([schemaCommand, dbCommand, notionMdDispatchCommand]),
     Command.withDescription(
       'Notion CLI - database operations, schema generation, and markdown sync',
     ),
