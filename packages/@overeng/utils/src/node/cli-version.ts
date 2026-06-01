@@ -226,6 +226,17 @@ const renderNixVersion = ({ stamp, now }: { stamp: NixStamp; now: number }): str
   return `${versionStr} — committed ${timeAgo}${dirtyNote}`
 }
 
+const nixBuildIdentity = ({ stamp, now }: { stamp: NixStamp; now: number }): CliBuildIdentity => ({
+  baseVersion: stamp.version,
+  displayVersion: renderNixVersion({ stamp, now }),
+  machineVersion: nixMachineVersion(stamp),
+  sourceKind: 'nix',
+  rev: stamp.rev,
+  dirty: stamp.dirty,
+  commitTs: stamp.commitTs,
+  ...(stamp.buildTs === undefined ? {} : { buildTs: stamp.buildTs }),
+})
+
 /**
  * Resolve the full CLI build identity from the embedded build stamp and optional runtime stamp.
  */
@@ -246,16 +257,7 @@ export const resolveCliBuildIdentity = (options: {
   const buildTimeStamp = parseCliBuildStamp(buildStamp)
 
   if (buildTimeStamp?.type === 'nix') {
-    return {
-      baseVersion,
-      displayVersion: renderNixVersion({ stamp: buildTimeStamp, now }),
-      machineVersion: nixMachineVersion(buildTimeStamp),
-      sourceKind: 'nix',
-      rev: buildTimeStamp.rev,
-      dirty: buildTimeStamp.dirty,
-      commitTs: buildTimeStamp.commitTs,
-      ...(buildTimeStamp.buildTs === undefined ? {} : { buildTs: buildTimeStamp.buildTs }),
-    }
+    return nixBuildIdentity({ stamp: buildTimeStamp, now })
   }
 
   const runtimeStampRaw = env[runtimeStampEnvVar]?.trim()
@@ -274,6 +276,10 @@ export const resolveCliBuildIdentity = (options: {
       dirty: runtimeStamp.dirty,
       buildTs: runtimeStamp.ts,
     }
+  }
+
+  if (runtimeStamp?.type === 'nix') {
+    return nixBuildIdentity({ stamp: runtimeStamp, now })
   }
 
   return {

@@ -340,6 +340,26 @@ const createBoundSqlite = async ({
 }
 
 describe('CLI command surface', () => {
+  it('prints sqlite version from the shared CLI build stamp contract', async () => {
+    const { stdout, stderr } = await execFileAsync(cliPath, ['--version'], {
+      cwd: packageDir,
+      env: {
+        ...process.env,
+        CLI_BUILD_STAMP: JSON.stringify({
+          type: 'local',
+          rev: 'abc123',
+          ts: 1_764_590_000,
+          dirty: true,
+        }),
+      },
+      timeout: cliTestTimeoutMs,
+    })
+
+    expect(stdout).toContain('0.1.0 — running from local source (abc123,')
+    expect(stdout).toContain('with uncommitted changes')
+    expect(stderr).not.toContain('CliErrorEnvelope')
+  })
+
   it('prints sqlite help without opening a store', async () => {
     const { stdout, stderr } = await execFileAsync(cliPath, ['--help'], {
       cwd: packageDir,

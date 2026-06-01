@@ -7,12 +7,24 @@ import { Cause, Effect, Layer, Option } from 'effect'
 import type { runCliMain as runSqliteCliMain } from '@overeng/notion-datasource-sync/cli'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
+import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 export { runNotionCliMain }
 
 // -----------------------------------------------------------------------------
 // Main CLI
 // -----------------------------------------------------------------------------
+
+const buildStamp = '__CLI_BUILD_STAMP__'
+const version = resolveCliVersion({
+  baseVersion: '0.1.0',
+  buildStamp,
+})
+
+const isRootVersionArgv = (argv: ReadonlyArray<string>): boolean => {
+  const [, , ...rawArgs] = argv
+  return rawArgs.length === 1 && rawArgs[0] === '--version'
+}
 
 type DispatchAlias = 'md' | 'sqlite'
 type SqliteCliModule = {
@@ -90,7 +102,7 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
   )
   const cli = Command.run(command, {
     name: 'notion',
-    version: '0.1.0',
+    version,
   })
 
   cli(argv).pipe(
@@ -109,6 +121,8 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
         },
       })
     }),
+    CliVersion.enrichErrors,
+    Effect.provideService(CliVersion, { name: 'notion', version }),
     Effect.provide(Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )
@@ -125,6 +139,11 @@ const runNotionCliMain = async ({
 }: {
   readonly argv?: ReadonlyArray<string>
 } = {}) => {
+  if (isRootVersionArgv(argv) === true) {
+    process.stdout.write(`${version}\n`)
+    return
+  }
+
   const rewrittenArgv = rewriteHelpSubcommand(argv)
   const delegated = resolveDispatchSpec(rewrittenArgv)
 

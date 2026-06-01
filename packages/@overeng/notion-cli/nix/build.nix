@@ -13,6 +13,12 @@ let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
   nodejs = pkgs.nodejs_24 or pkgs.nodejs;
+  datasourceSyncBuildStamp = builtins.toJSON {
+    type = "nix";
+    version = "0.1.0";
+    rev = gitRev;
+    inherit commitTs dirty;
+  };
   unwrapped = mkPnpmCli {
     name = "notion-cli-unwrapped";
     entry = "packages/@overeng/notion-cli/src/cli.ts";
@@ -34,6 +40,7 @@ let
     inherit gitRev commitTs dirty;
   };
   datasourceSyncRuntime = pkgs.writeShellScriptBin "notion-datasource-sync" ''
+    export CLI_BUILD_STAMP=${pkgs.lib.escapeShellArg datasourceSyncBuildStamp}
     exec ${nodejs}/bin/node ${unwrapped}/libexec/workspace/packages/@overeng/notion-datasource-sync/src/cli/main.ts "$@"
   '';
 in

@@ -23,6 +23,7 @@ import {
   NotionMdGateway,
   NotionMdGatewayLive,
 } from '@overeng/notion-md'
+import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { makeUnsupportedPageBodySyncPort } from '../body/adapter.ts'
@@ -135,6 +136,12 @@ import {
   type TailscaleProcessRunner,
   type WebhookRelayExposure,
 } from '../webhook/tailscale.ts'
+
+const buildStamp = '__CLI_BUILD_STAMP__'
+const cliVersion = resolveCliVersion({
+  baseVersion: '0.1.0',
+  buildStamp,
+})
 
 const remoteObservationContext = (context: CliContext) => ({
   ...(context.requiredCapabilities === undefined
@@ -1242,6 +1249,7 @@ Common options:
   --workspace-root <dir>  Local workspace root
   --dry-run               Validate without mutating local or remote state
   --help                  Show this help
+  --version               Show build/version identity
 
 Unsupported source/Bun execution is expected to fail closed. Use the packaged
 Node-backed notion sqlite path for markdown/sqlite workflows.
@@ -1249,6 +1257,9 @@ Node-backed notion sqlite path for markdown/sqlite workflows.
 
 const isHelpArgv = (argv: ReadonlyArray<string>): boolean =>
   argv.length === 0 || argv.includes('--help') || argv.includes('-h')
+
+const isVersionArgv = (argv: ReadonlyArray<string>): boolean =>
+  argv.length === 1 && argv[0] === '--version'
 
 const booleanFlags = new Set([
   'dry-run',
@@ -2365,6 +2376,11 @@ export const runCliMain = ({
   readonly options?: CliRuntimeOptions
 }) =>
   Effect.gen(function* () {
+    if (isVersionArgv(argv) === true) {
+      yield* Effect.sync(() => process.stdout.write(`${cliVersion}\n`))
+      return
+    }
+
     if (isHelpArgv(argv) === true) {
       yield* Effect.sync(() => process.stdout.write(renderCliHelpText()))
       return

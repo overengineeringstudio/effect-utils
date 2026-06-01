@@ -110,6 +110,25 @@ Vitest.describe('resolveCliBuildIdentity', () => {
     })
   })
 
+  Vitest.it('resolves nix runtime identity from CLI_BUILD_STAMP', () => {
+    expect(
+      resolveCliBuildIdentity({
+        baseVersion: '0.1.0',
+        buildStamp: placeholder,
+        env: { CLI_BUILD_STAMP: nixStamp },
+        now,
+      }),
+    ).toEqual({
+      baseVersion: '0.1.0',
+      displayVersion: `0.1.0+def456 ${dash} committed 3 days ago`,
+      machineVersion: '0.1.0+def456',
+      sourceKind: 'nix',
+      rev: 'def456',
+      dirty: false,
+      commitTs: threeDaysAgo,
+    })
+  })
+
   Vitest.it('resolves nix identity from embedded stamps and ignores runtime env', () => {
     expect(
       resolveCliBuildIdentity({
