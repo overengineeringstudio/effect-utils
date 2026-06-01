@@ -223,3 +223,8 @@ export {
   vercelDeployStep,
   vercelGitAuthorStep,
 } from './ci-workflow/deploy.ts'
+export {
+  releaseWorkflow,
+  type ReleaseChannel,
+  type ReleaseWorkflowOptions,
+} from './ci-workflow/release.ts'
