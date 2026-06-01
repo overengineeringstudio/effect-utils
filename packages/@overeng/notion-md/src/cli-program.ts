@@ -474,11 +474,17 @@ const syncCommand = Command.make(
   ),
 )
 
+const makeNotionMdCommand = (name: 'md' | 'notion-md') =>
+  Command.make(name).pipe(
+    Command.withSubcommands([statusCommand, syncCommand]),
+    Command.withDescription('Two-way Notion enhanced Markdown sync'),
+  )
+
 /** Effect CLI command tree for the notion-md binary. */
-export const notionMdCommand = Command.make('notion-md').pipe(
-  Command.withSubcommands([statusCommand, syncCommand]),
-  Command.withDescription('Two-way Notion enhanced Markdown sync'),
-)
+export const notionMdCommand = makeNotionMdCommand('notion-md')
+
+/** Effect CLI command tree for the umbrella notion binary. */
+export const notionMdDispatchCommand = makeNotionMdCommand('md')
 
 /** Process argv runner for the notion-md command tree. */
 export const cli = Command.run(notionMdCommand, {

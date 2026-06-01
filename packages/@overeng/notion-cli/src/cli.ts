@@ -4,10 +4,10 @@ import { Command } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Layer, Option } from 'effect'
 
-import type { runCliMain as runSqliteCliMain } from '@overeng/notion-datasource-sync/cli'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
+import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 export { runNotionCliMain }
 
@@ -26,78 +26,28 @@ const isRootVersionArgv = (argv: ReadonlyArray<string>): boolean => {
   return rawArgs.length === 1 && rawArgs[0] === '--version'
 }
 
-type DispatchAlias = 'md' | 'sqlite'
-type SqliteCliModule = {
-  readonly runCliMain: typeof runSqliteCliMain
-  readonly renderCliErrorJson: (error: unknown) => string
-}
-
-const resolveDispatchSpec = (
-  args: ReadonlyArray<string>,
-): { alias: DispatchAlias; passthroughArgs: ReadonlyArray<string> } | undefined => {
+const isSqliteArgv = (args: ReadonlyArray<string>): boolean => {
   const [, , ...rawArgs] = args
-  const [alias, ...passthroughArgs] = rawArgs
-  if (alias !== 'md' && alias !== 'sqlite') {
-    return undefined
-  }
-
-  return { alias, passthroughArgs }
+  return rawArgs[0] === 'sqlite'
 }
 
-const runDelegated = async ({
-  alias,
-  passthroughArgs,
-}: {
-  readonly alias: DispatchAlias
-  readonly passthroughArgs: ReadonlyArray<string>
-}) => {
-  if (alias === 'md') {
-    try {
-      const { runCliMain } = await import('@overeng/notion-md/cli')
-      runCliMain({ args: passthroughArgs }).pipe(
-        NodeRuntime.runMain({ disableErrorReporting: true }),
-      )
-    } catch (error) {
-      process.stderr.write(`notion md dispatch failed: ${String(error)}\n`)
-      process.exitCode = 1
-    }
-    return
-  }
-
-  // Keep this as a composed specifier so Bun's static analyzer does not eagerly
-  // bundle the full sqlite CLI dependency when producing the compiled artifact.
-  const sqliteCliEntry = `@overeng/${'notion-datasource-sync'}/cli`
-  let sqliteCli: SqliteCliModule
-  try {
-    // oxlint-disable-next-line eslint-plugin-import(no-dynamic-require) -- composed specifier intentionally keeps Bun from eagerly bundling sqlite.
-    sqliteCli = await import(sqliteCliEntry)
-  } catch {
-    process.stderr.write(
-      'notion sqlite dispatch is unavailable in this build. Use the packaged Nix/devenv Node-backed `notion sqlite ...` runtime.\n',
-    )
-    process.exitCode = 1
-    return
-  }
-
-  sqliteCli.runCliMain({ argv: passthroughArgs }).pipe(
-    Effect.tapError((error) =>
-      Effect.sync(() => {
-        process.stderr.write(sqliteCli.renderCliErrorJson(error))
-      }),
-    ),
-    NodeRuntime.runMain({ disableErrorReporting: true }),
+const writeSqliteRuntimeUnavailable = () => {
+  process.stderr.write(
+    'notion sqlite requires the packaged Nix/devenv Node-backed runtime because the SQLite sync implementation imports node:sqlite. Use `devenv shell` or the flake-built `notion` binary.\n',
   )
+  process.exitCode = 1
 }
 
 const runRootCli = async (argv: ReadonlyArray<string>) => {
-  const [{ dbCommand }, { schemaCommand }] = await Promise.all([
+  const [{ notionMdDispatchCommand }, { dbCommand }, { schemaCommand }] = await Promise.all([
+    import('@overeng/notion-md/cli-program'),
     import('./commands/db/mod.ts'),
     import('./commands/schema/mod.ts'),
   ])
   const command = Command.make('notion').pipe(
-    Command.withSubcommands([schemaCommand, dbCommand]),
+    Command.withSubcommands([schemaCommand, dbCommand, notionMdDispatchCommand]),
     Command.withDescription(
-      'Notion CLI - database operations, schema generation, and Notion ecosystem dispatch',
+      'Notion CLI - database operations, schema generation, and markdown sync',
     ),
   )
   const cli = Command.run(command, {
@@ -123,7 +73,13 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
     }),
     CliVersion.enrichErrors,
     Effect.provideService(CliVersion, { name: 'notion', version }),
-    Effect.provide(Layer.mergeAll(NodeContext.layer, CurrentWorkingDirectory.live)),
+    Effect.provide(
+      Layer.mergeAll(
+        NodeContext.layer,
+        CurrentWorkingDirectory.live,
+        makeOtelCliLayer({ serviceName: 'notion-cli' }),
+      ),
+    ),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )
 }
@@ -145,13 +101,13 @@ const runNotionCliMain = async ({
   }
 
   const rewrittenArgv = rewriteHelpSubcommand(argv)
-  const delegated = resolveDispatchSpec(rewrittenArgv)
 
-  if (delegated !== undefined) {
-    await runDelegated(delegated)
-  } else {
-    await runRootCli(rewrittenArgv)
+  if (isSqliteArgv(rewrittenArgv) === true) {
+    writeSqliteRuntimeUnavailable()
+    return
   }
+
+  await runRootCli(rewrittenArgv)
 }
 
 if (import.meta.main) {

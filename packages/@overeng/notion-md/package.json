@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",
-    "./cli": "./src/cli.ts"
+    "./cli": "./src/cli.ts",
+    "./cli-program": "./src/cli-program.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -14,7 +15,8 @@
     },
     "exports": {
       ".": "./dist/src/mod.js",
-      "./cli": "./dist/src/cli.js"
+      "./cli": "./dist/src/cli.js",
+      "./cli-program": "./dist/src/cli-program.js"
     }
   },
   "scripts": {
