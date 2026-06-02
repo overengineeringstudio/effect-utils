@@ -35,41 +35,47 @@ export const toPlainText = (richText: RichTextArray): string =>
   richText.map((rt) => rt.plain_text).join('')
 
 // -----------------------------------------------------------------------------
+// Annotation Ordering
+// -----------------------------------------------------------------------------
+
+/**
+ * A single annotation wrapping step. `active` decides whether the step applies;
+ * `wrap` nests the accumulated result one level outward. Steps are applied in
+ * order, so the first active step ends up innermost.
+ */
+type AnnotationStep = { readonly active: boolean; readonly wrap: (inner: string) => string }
+
+/**
+ * Shared annotation-ordering combinator for the markdown and html targets.
+ *
+ * Both targets share the same structure — conditionally nest formatting from
+ * innermost to outermost — but differ in their wrappers and ordering. Each
+ * target expresses itself as an ordered list of {@link AnnotationStep}s.
+ */
+const applyAnnotations = (opts: { text: string; steps: readonly AnnotationStep[] }): string => {
+  const { text, steps } = opts
+  if (text === '') return text
+  return steps.reduce((result, step) => (step.active === true ? step.wrap(result) : result), text)
+}
+
+// -----------------------------------------------------------------------------
 // Markdown Conversion
 // -----------------------------------------------------------------------------
 
 /** Apply markdown formatting based on annotations */
 const applyMarkdownAnnotations = (opts: { text: string; annotations: TextAnnotations }): string => {
   const { text, annotations } = opts
-  if (text === '') return text
-
-  let result = text
-
-  // Apply code first (innermost)
-  if (annotations.code === true) {
-    result = `\`${result}\``
-  }
-
-  // Apply other formatting
-  if (annotations.strikethrough === true) {
-    result = `~~${result}~~`
-  }
-
-  if (annotations.italic === true) {
-    result = `*${result}*`
-  }
-
-  if (annotations.bold === true) {
-    result = `**${result}**`
-  }
-
-  // Note: Markdown doesn't have native underline support
-  // We use HTML for underline if needed
-  if (annotations.underline === true) {
-    result = `<u>${result}</u>`
-  }
-
-  return result
+  return applyAnnotations({
+    text,
+    steps: [
+      { active: annotations.code, wrap: (s) => `\`${s}\`` },
+      { active: annotations.strikethrough, wrap: (s) => `~~${s}~~` },
+      { active: annotations.italic, wrap: (s) => `*${s}*` },
+      { active: annotations.bold, wrap: (s) => `**${s}**` },
+      // Markdown has no native underline; fall back to HTML.
+      { active: annotations.underline, wrap: (s) => `<u>${s}</u>` },
+    ],
+  })
 }
 
 /** Convert a single text rich text element to markdown */
@@ -185,38 +191,18 @@ const getColorStyle = (color: TextAnnotations['color']): string | undefined => {
 /** Apply HTML formatting based on annotations */
 const applyHtmlAnnotations = (opts: { text: string; annotations: TextAnnotations }): string => {
   const { text, annotations } = opts
-  if (text === '') return text
-
-  let result = text
-
-  // Apply formatting tags (innermost first)
-  if (annotations.code === true) {
-    result = `<code>${result}</code>`
-  }
-
-  if (annotations.strikethrough === true) {
-    result = `<del>${result}</del>`
-  }
-
-  if (annotations.underline === true) {
-    result = `<u>${result}</u>`
-  }
-
-  if (annotations.italic === true) {
-    result = `<em>${result}</em>`
-  }
-
-  if (annotations.bold === true) {
-    result = `<strong>${result}</strong>`
-  }
-
-  // Apply color via span
   const colorStyle = getColorStyle(annotations.color)
-  if (colorStyle !== undefined) {
-    result = `<span style="${colorStyle}">${result}</span>`
-  }
-
-  return result
+  return applyAnnotations({
+    text,
+    steps: [
+      { active: annotations.code, wrap: (s) => `<code>${s}</code>` },
+      { active: annotations.strikethrough, wrap: (s) => `<del>${s}</del>` },
+      { active: annotations.underline, wrap: (s) => `<u>${s}</u>` },
+      { active: annotations.italic, wrap: (s) => `<em>${s}</em>` },
+      { active: annotations.bold, wrap: (s) => `<strong>${s}</strong>` },
+      { active: colorStyle !== undefined, wrap: (s) => `<span style="${colorStyle}">${s}</span>` },
+    ],
+  })
 }
 
 /** Convert a single text rich text element to HTML */

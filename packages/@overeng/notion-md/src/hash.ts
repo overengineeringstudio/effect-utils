@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto'
-
 import type { Sha256Digest } from '@overeng/notion-effect-client'
+import { sha256Hex } from '@overeng/utils'
 
 /**
  * Lightweight line-ending normalizer for body hashing and on-disk storage.
@@ -16,4 +15,4 @@ export const normalizeMarkdownLineEndings = (markdown: string): string =>
 
 /** Compute the canonical body hash used by `.nmd` conflict guards. */
 export const sha256Digest = (value: string): Sha256Digest =>
-  `sha256:${createHash('sha256').update(value).digest('hex')}` as Sha256Digest
+  `sha256:${sha256Hex(value)}` as Sha256Digest

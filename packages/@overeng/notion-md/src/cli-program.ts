@@ -2,21 +2,9 @@ import { basename, dirname, resolve } from 'node:path'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
-import {
-  Cause,
-  Config,
-  Console,
-  Duration,
-  Effect,
-  Layer,
-  Option,
-  Queue,
-  Redacted,
-  Schema,
-  Stream,
-} from 'effect'
+import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream } from 'effect'
 
-import { NotionConfigLive } from '@overeng/notion-effect-client'
+import { NotionConfigLive, resolveNotionToken } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
@@ -114,14 +102,7 @@ const cliVersion = resolveCliVersion({
   buildStamp,
 })
 
-const resolveToken = Config.redacted('NOTION_API_TOKEN').pipe(
-  Effect.filterOrFail(
-    (token) => Redacted.value(token).length > 0,
-    () =>
-      new NmdTokenMissingError({
-        message: 'NOTION_API_TOKEN is required',
-      }),
-  ),
+const resolveToken = resolveNotionToken().pipe(
   Effect.mapError(
     () =>
       new NmdTokenMissingError({

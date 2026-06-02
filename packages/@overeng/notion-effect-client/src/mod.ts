@@ -34,8 +34,11 @@ export { NotionComments } from './comments.ts'
 export {
   NOTION_API_BASE_URL,
   NOTION_API_VERSION,
+  NOTION_TOKEN_ENV_VARS,
   type NotionClientConfig,
   NotionConfig,
+  NotionTokenMissing,
+  resolveNotionToken,
 } from './config.ts'
 export type {
   ArchiveDatabaseOptions,

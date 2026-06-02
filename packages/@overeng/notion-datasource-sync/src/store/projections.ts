@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto'
-
 import { Schema } from 'effect'
+
+import { sha256Hex } from '@overeng/utils'
 
 import { QueryMembershipScope } from '../core/commands.ts'
 import { BodySafetySnapshot, DataSourceId, Hash, PageId, PropertyId } from '../core/domain.ts'
@@ -29,7 +29,7 @@ export type ProjectionDigestInput = {
 
 /** Compute a `sha256:`-prefixed `Hash` from an arbitrary UTF-8 string. */
 export const hashStoreBytes = (value: string): Hash =>
-  Schema.decodeSync(Hash)(`sha256:${createHash('sha256').update(value).digest('hex')}`)
+  Schema.decodeSync(Hash)(`sha256:${sha256Hex(value)}`)
 
 /** Stable hash encoding a page's trash state, used for stale-base detection on `trashPage` / `restorePage`. */
 export const pageLifecycleHash = ({

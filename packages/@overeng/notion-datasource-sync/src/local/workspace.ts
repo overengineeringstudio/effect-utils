@@ -4,6 +4,8 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { Effect, Layer, Schema, Stream } from 'effect'
 
+import { titleSlug } from '@overeng/utils'
+
 import {
   AbsolutePath,
   Hash,
@@ -90,8 +92,6 @@ const pathEscapesRoot = (message: string): WorkspacePathDecision => ({
   guard: 'PathEscapesRoot',
   message,
 })
-
-const generatedTitleSlugMaxLength = 120
 
 const normalizeForPolicy = ({
   value,
@@ -199,24 +199,6 @@ export const canonicalizeWorkspaceRelativePath = ({
     _tag: 'allowed',
     path: decode({ schema: WorkspaceRelativePath, value: relativePath }),
   }
-}
-
-/**
- * Converts a Notion page title into a URL-safe lowercase slug (max 120 chars).
- *
- * Non-alphanumeric runs become single hyphens; leading/trailing hyphens are trimmed.
- * Returns `"untitled"` for blank or all-punctuation titles.
- */
-export const titleSlug = (title: string): string => {
-  const slug = title
-    .normalize('NFC')
-    .toLocaleLowerCase('en-US')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, generatedTitleSlugMaxLength)
-    .replace(/-+$/g, '')
-
-  return slug.length > 0 ? slug : 'untitled'
 }
 
 /**

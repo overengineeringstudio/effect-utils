@@ -11,7 +11,12 @@ import { Effect, Layer, Option, Redacted, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
+import {
+  NotionConfig,
+  NotionDatabases,
+  NotionDataSources,
+  resolveNotionToken as resolveNotionTokenFromEnv,
+} from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'
 import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
@@ -62,13 +67,6 @@ export class SchemaDriftDetectedError extends Schema.TaggedError<SchemaDriftDete
 
 const GeneratorPackageJsonSchema = Schema.Struct({ version: Schema.String })
 
-class NotionTokenMissingError extends Schema.TaggedError<NotionTokenMissingError>()(
-  'NotionTokenMissingError',
-  {
-    message: Schema.String,
-  },
-) {}
-
 const getGeneratorVersion = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const pkgJsonPath = fileURLToPath(new URL('../../../package.json', import.meta.url))
@@ -77,21 +75,11 @@ const getGeneratorVersion = Effect.gen(function* () {
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
 
-/** Resolve the Notion API token from CLI option or `NOTION_API_TOKEN`. */
+/** Resolve the Notion API token as a `Redacted` value from the CLI option or the environment. */
 export const resolveNotionToken = (token: Option.Option<string>) =>
-  Effect.sync(() =>
-    Option.isSome(token) === true ? token.value : process.env.NOTION_API_TOKEN,
-  ).pipe(
-    Effect.flatMap((t) =>
-      t !== undefined
-        ? Effect.succeed(t)
-        : Effect.fail(
-            new NotionTokenMissingError({
-              message: 'NOTION_API_TOKEN env var or --token is required',
-            }),
-          ),
-    ),
-  )
+  Option.isSome(token) === true
+    ? Effect.succeed(Redacted.make(token.value))
+    : resolveNotionTokenFromEnv()
 
 /** CLI option for providing a Notion API token (defaults to `NOTION_API_TOKEN`). */
 export const tokenOption = Options.text('token').pipe(
@@ -224,7 +212,7 @@ const generateCommand = Command.make(
       }
 
       const configLayer = Layer.succeed(NotionConfig, {
-        authToken: Redacted.make(resolvedToken),
+        authToken: resolvedToken,
       })
 
       yield* run(
@@ -338,7 +326,7 @@ const introspectCommand = Command.make(
       const resolvedToken = yield* resolveNotionToken(token)
 
       const configLayer = Layer.succeed(NotionConfig, {
-        authToken: Redacted.make(resolvedToken),
+        authToken: resolvedToken,
       })
 
       yield* run(
@@ -448,7 +436,7 @@ const generateFromConfigCommand = Command.make(
       const generatorVersion = yield* getGeneratorVersion
 
       const configLayer = Layer.succeed(NotionConfig, {
-        authToken: Redacted.make(resolvedToken),
+        authToken: resolvedToken,
       })
 
       yield* run(
@@ -580,7 +568,7 @@ const diffCommand = Command.make(
       const fs = yield* FileSystem.FileSystem
 
       const configLayer = Layer.succeed(NotionConfig, {
-        authToken: Redacted.make(resolvedToken),
+        authToken: resolvedToken,
       })
 
       yield* run(

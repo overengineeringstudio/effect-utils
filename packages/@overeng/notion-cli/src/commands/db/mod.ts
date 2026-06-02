@@ -4,7 +4,7 @@
 
 import { Args, Command } from '@effect/cli'
 import { FetchHttpClient } from '@effect/platform'
-import { Effect, Layer, Redacted } from 'effect'
+import { Effect, Layer } from 'effect'
 import type { Cause, Channel, Sink, Stream } from 'effect'
 import type { NodeInspectSymbol } from 'effect/Inspectable'
 import React from 'react'
@@ -48,7 +48,7 @@ const infoCommand = Command.make(
       const resolvedToken = yield* resolveNotionToken(token)
 
       const configLayer = Layer.succeed(NotionConfig, {
-        authToken: Redacted.make(resolvedToken),
+        authToken: resolvedToken,
       })
 
       yield* run(

@@ -12,6 +12,7 @@ import { Effect, Either, Layer, Option, Redacted, Schema, Stream } from 'effect'
 
 import {
   NOTION_API_VERSION,
+  NOTION_TOKEN_ENV_VARS,
   NotionConfigLive,
   NotionHttpTelemetry,
   parseNotionUuid,
@@ -2130,11 +2131,11 @@ const cliGatewayConfigurationError = (operation: GatewayOperation) =>
   })
 
 const tokenFromEnv = (env: CliRuntimeEnv): string | undefined => {
-  if (env.NOTION_API_TOKEN !== undefined && env.NOTION_API_TOKEN.length > 0) {
-    return env.NOTION_API_TOKEN
-  }
-  if (env.NOTION_TOKEN !== undefined && env.NOTION_TOKEN.length > 0) {
-    return env.NOTION_TOKEN
+  for (const name of NOTION_TOKEN_ENV_VARS) {
+    const value = env[name]
+    if (value !== undefined && value.length > 0) {
+      return value
+    }
   }
   return undefined
 }
