@@ -1,6 +1,11 @@
 import { Schema } from 'effect'
 
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
+import {
+  PageId as SchemaPageId,
+  PropertyId as SchemaPropertyId,
+  PropertyName as SchemaPropertyName,
+} from '@overeng/notion-effect-schema'
 
 /** The single Notion API version this package is tested and certified against. */
 export const SupportedNotionApiVersion = Schema.Literal(NOTION_API_VERSION).annotations({
@@ -29,18 +34,21 @@ export const DatabaseId = Schema.NonEmptyTrimmedString.pipe(
 )
 export type DatabaseId = typeof DatabaseId.Type
 
-/** Branded Notion page ID, used throughout sync events, commands, and projections. */
-export const PageId = Schema.NonEmptyTrimmedString.pipe(
-  Schema.brand('NotionDatasourceSync.PageId'),
-  Schema.annotations({ identifier: 'NotionDatasourceSync.PageId' }),
-)
+/**
+ * Branded Notion page ID, used throughout sync events, commands, and projections.
+ *
+ * Owned by `@overeng/notion-effect-schema` (the canonical property-value union
+ * carries it directly); aliased here so all datasource-sync call sites share the
+ * one brand and the codec needs no re-brand mirror.
+ */
+export const PageId = SchemaPageId
 export type PageId = typeof PageId.Type
 
-/** Branded Notion property ID (stable identifier within a database schema). */
-export const PropertyId = Schema.NonEmptyTrimmedString.pipe(
-  Schema.brand('NotionDatasourceSync.PropertyId'),
-  Schema.annotations({ identifier: 'NotionDatasourceSync.PropertyId' }),
-)
+/**
+ * Branded Notion property ID (stable identifier within a database schema).
+ * Owned by `@overeng/notion-effect-schema`; aliased here (see {@link PageId}).
+ */
+export const PropertyId = SchemaPropertyId
 export type PropertyId = typeof PropertyId.Type
 
 /** Branded Notion view ID, distinct from local generated SQLite projection views. */
@@ -50,11 +58,11 @@ export const ViewId = Schema.NonEmptyTrimmedString.pipe(
 )
 export type ViewId = typeof ViewId.Type
 
-/** Branded human-readable Notion property name (mutable; distinct from the stable PropertyId). */
-export const PropertyName = Schema.NonEmptyTrimmedString.pipe(
-  Schema.brand('NotionDatasourceSync.PropertyName'),
-  Schema.annotations({ identifier: 'NotionDatasourceSync.PropertyName' }),
-)
+/**
+ * Branded human-readable Notion property name (mutable; distinct from the stable PropertyId).
+ * Owned by `@overeng/notion-effect-schema`; aliased here (see {@link PageId}).
+ */
+export const PropertyName = SchemaPropertyName
 export type PropertyName = typeof PropertyName.Type
 
 /** Branded ID that uniquely identifies a remote-write command in the outbox. */

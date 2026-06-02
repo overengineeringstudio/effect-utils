@@ -8,7 +8,11 @@ import {
   encodeCanonicalPatch,
   makeCanonicalCodec,
 } from './canonical-codec.ts'
-import { type CanonicalPropertyValue, propertyWriteClassFromType } from './canonical.ts'
+import {
+  type CanonicalPropertyValue,
+  type PageId,
+  propertyWriteClassFromType,
+} from './canonical.ts'
 
 /**
  * Replica of the consuming sync package's `canonicalHash` (stableStringify +
@@ -427,7 +431,10 @@ describe('canonical encode (Notion write-payload matrix)', () => {
           options: [opt('Backend'), opt('API', { id: 'opt-2', color: 'blue' })],
         },
         status: { _tag: 'status', option: opt('In progress') },
-        relation: { _tag: 'relation', pageIds: ['related-page-1', 'related-page-2'] },
+        relation: {
+          _tag: 'relation',
+          pageIds: ['related-page-1', 'related-page-2'].map((id) => id as PageId),
+        },
         people: { _tag: 'people', userIds: ['user-1', 'user-2'] },
         email: { _tag: 'email', value: 'ada@example.com' },
         url: { _tag: 'url', value: 'https://developers.notion.com/' },

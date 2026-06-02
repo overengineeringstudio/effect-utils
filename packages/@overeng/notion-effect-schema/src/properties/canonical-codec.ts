@@ -23,6 +23,7 @@ import {
   type CanonicalFileValue,
   type CanonicalOptionValue,
   type CanonicalPropertyValue,
+  type PageId,
 } from './canonical.ts'
 
 /** A raw Notion property value could not be projected to canonical form. */
@@ -150,7 +151,7 @@ const decodeCanonicalPropertyValueWith =
             Array.isArray(property.relation) === true
               ? property.relation.flatMap((relation) =>
                   isRecord(relation) === true && typeof relation.id === 'string'
-                    ? [relation.id]
+                    ? [relation.id as PageId]
                     : [],
                 )
               : [],

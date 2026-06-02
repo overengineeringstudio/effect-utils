@@ -6,15 +6,42 @@
  * for change detection, so its `JSON.stringify` byte layout (key order, optional
  * omission, `_tag` placement) is a hard contract — see `canonical-codec.ts`.
  *
- * Brands are deliberately stripped here (strategy A): this package holds plain
- * `Schema.String`/`NonEmptyTrimmedString` and the consuming package re-brands
- * id/name/hash fields at its own boundary. The hash *values* are computed by the
- * caller (the codec takes an injected `hash`), never by this package.
+ * The Notion-identity brands (`PropertyId`/`PageId`/`PropertyName`) are owned
+ * here (strategy B): the canonical union carries them directly and the consuming
+ * sync package aliases them, so there is no re-brand mirror layer. Brands erase
+ * at runtime, so the `JSON.stringify` byte layout is unaffected.
+ *
+ * Hashing stays out of this package: `CanonicalHash` is an unbranded string and
+ * the hash *values* are computed by the caller (the codec takes an injected
+ * `hash`), never here. The consuming package keeps its own `sha256:`-validating
+ * `Hash` brand for store/projection digests; the canonical hash fields stay
+ * unbranded because no consumer reads them as a typed hash.
  *
  * @module
  */
 
 import { Schema } from 'effect'
+
+/** Branded Notion property ID (stable identifier within a database schema). */
+export const PropertyId = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('Notion.PropertyId'),
+  Schema.annotations({ identifier: 'Notion.PropertyId' }),
+)
+export type PropertyId = typeof PropertyId.Type
+
+/** Branded human-readable Notion property name (mutable; distinct from the stable `PropertyId`). */
+export const PropertyName = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('Notion.PropertyName'),
+  Schema.annotations({ identifier: 'Notion.PropertyName' }),
+)
+export type PropertyName = typeof PropertyName.Type
+
+/** Branded Notion page ID. */
+export const PageId = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('Notion.PageId'),
+  Schema.annotations({ identifier: 'Notion.PageId' }),
+)
+export type PageId = typeof PageId.Type
 
 /** Opaque content-hash string (e.g. `sha256:…`). Computed by the caller, not here. */
 export const CanonicalHash = Schema.String.annotations({ identifier: 'Notion.Canonical.Hash' })
@@ -22,8 +49,8 @@ export type CanonicalHash = typeof CanonicalHash.Type
 
 /** Canonical select/multi-select/status option, normalized for stable hash comparison. */
 export const CanonicalOptionValue = Schema.TaggedStruct('CanonicalOptionValue', {
-  id: Schema.optional(Schema.String),
-  name: Schema.NonEmptyTrimmedString,
+  id: Schema.optional(PropertyId),
+  name: PropertyName,
   color: Schema.optional(Schema.NonEmptyTrimmedString),
 }).annotations({ identifier: 'Notion.Canonical.OptionValue' })
 export type CanonicalOptionValue = typeof CanonicalOptionValue.Type
@@ -65,7 +92,7 @@ export const CanonicalPropertyValue = Schema.Union(
     option: Schema.NullOr(CanonicalOptionValue),
   }),
   Schema.TaggedStruct('relation', {
-    pageIds: Schema.Array(Schema.String),
+    pageIds: Schema.Array(PageId),
   }),
   Schema.TaggedStruct('people', {
     userIds: Schema.Array(Schema.NonEmptyTrimmedString),
