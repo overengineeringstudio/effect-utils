@@ -261,7 +261,7 @@ export const workflowReportCommand = (opts: {
   const args = opts.args.join(' ')
   return [
     `workflow_report_flake_ref="\${WORKFLOW_REPORT_FLAKE_REF:-${defaultWorkflowReportFlakeRef}}"`,
-    `if command -v workflow-report >/dev/null 2>&1; then workflow-report ${args}; else nix run "$workflow_report_flake_ref" -- ${args}; fi`,
+    `nix run "$workflow_report_flake_ref" -- ${args}`,
   ].join('\n')
 }
 
