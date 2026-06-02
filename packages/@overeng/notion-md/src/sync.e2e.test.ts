@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { NodeContext } from '@effect/platform-node'
-import { Effect, Fiber, Layer } from 'effect'
+import { Deferred, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type { NmdPageState, NmdStorage, NmdSyncStateV1 } from '@overeng/notion-effect-client'
@@ -38,6 +38,19 @@ const compareStrings = new Intl.Collator().compare
 
 const pageId = '00000000-0000-4000-8000-000000000001'
 const secondPageId = '00000000-0000-4000-8000-000000000011'
+
+const isPushedSyncEvent = (
+  event: unknown,
+): event is { readonly event: 'sync'; readonly result: { readonly _tag: 'pushed' } } =>
+  typeof event === 'object' &&
+  event !== null &&
+  'event' in event &&
+  event.event === 'sync' &&
+  'result' in event &&
+  typeof event.result === 'object' &&
+  event.result !== null &&
+  '_tag' in event.result &&
+  event.result._tag === 'pushed'
 const blockId = '00000000-0000-4000-8000-000000000002'
 const fileBlockId = '00000000-0000-4000-8000-000000000003'
 const hash = `sha256:${'a'.repeat(64)}` as const
@@ -488,14 +501,18 @@ describe('notion-md e2e prototype', () => {
       await runWithFake(
         Effect.scoped(
           Effect.gen(function* () {
+            const pushed = yield* Deferred.make<void>()
             const fiber = yield* Effect.fork(
               runWatch({
                 syncOptions: { path },
                 pollIntervalMs: 10_000,
-                emit: () => Effect.void,
+                emit: (event) =>
+                  isPushedSyncEvent(event) === true
+                    ? Deferred.succeed(pushed, undefined).pipe(Effect.asVoid)
+                    : Effect.void,
               }),
             )
-            yield* Effect.sleep('500 millis')
+            yield* Deferred.await(pushed)
             yield* Fiber.interrupt(fiber)
           }),
         ),

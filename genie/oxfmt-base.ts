@@ -31,6 +31,7 @@ export const baseOxfmtIgnorePatterns = [
   '**/dist/**',
   '**/storybook-static/**',
   '**/.turbo/**',
+  '**/tmp/**',
   // Generated code files
   '**/*.gen.ts',
   '**/*.gen.tsx',

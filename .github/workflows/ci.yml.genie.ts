@@ -42,6 +42,9 @@ import {
 import { type CIJobName } from '../../genie/ci.ts'
 import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
+const workflowReportFlakeRef =
+  "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#workflow-report"
+
 const baseSteps = [
   checkoutStep(),
   ciMeasurementBaselineCheckoutStep,
@@ -683,12 +686,14 @@ const deployJobs: Record<string, any> = {
       ...baseSteps,
       netlifyDeployStep(),
       workflowReportCollectorStep({
+        workflowReportFlakeRef,
         bundleId: 'storybook-preview',
         inputPaths: [`\${{ steps.deploy.outputs.${deployPreviewWorkflowReportPathOutputName} }}`],
         outputPath: storybookPreviewBundlePath,
         allowMissingInput: true,
       }),
       workflowReportCommentBodyStep({
+        workflowReportFlakeRef,
         bundlePath: storybookPreviewBundlePath,
         commentBodyPath: storybookPreviewCommentBodyPath,
         summaryPath: storybookPreviewSummaryPath,
@@ -701,6 +706,7 @@ const deployJobs: Record<string, any> = {
           '${{ github.event_name == \'pull_request\' && format(\'PR {0}\', github.event.pull_request.number) || \'prod\' }}',
       }),
       workflowReportPublisherStep({
+        workflowReportFlakeRef,
         commentBodyPath: storybookPreviewCommentBodyPath,
         summaryPath: storybookPreviewSummaryPath,
         stateId: 'storybook-preview',

@@ -242,7 +242,6 @@ let
             provider = "netlify";
             providerLabel = "Netlify";
             target = name;
-            legacyMetadataPrefix = "NETLIFY_DEPLOY_METADATA";
           }}
           rm -f "$deploy_json_file" "$deploy_stderr_file" "$auth_user_file" "$auth_site_file"
         '';

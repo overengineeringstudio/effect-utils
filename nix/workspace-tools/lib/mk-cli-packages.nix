@@ -31,4 +31,13 @@ in
       ;
     src = workspaceRoot;
   };
+  workflow-report = import (workspaceRootPath + "/packages/@overeng/workflow-report/nix/build.nix") {
+    inherit
+      pkgs
+      gitRev
+      commitTs
+      dirty
+      ;
+    src = workspaceRoot;
+  };
 }

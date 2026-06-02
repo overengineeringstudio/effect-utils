@@ -120,6 +120,7 @@ let
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
     "packages/@overeng/tui-stories"
+    "packages/@overeng/workflow-report"
     "context/opentui"
     "context/effect/socket"
   ];
@@ -199,6 +200,10 @@ let
     {
       path = "packages/@overeng/utils";
       name = "utils";
+    }
+    {
+      path = "packages/@overeng/workflow-report";
+      name = "workflow-report";
     }
   ];
 

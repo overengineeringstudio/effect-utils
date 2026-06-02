@@ -26,6 +26,7 @@ import tuiReactPkg from './packages/@overeng/tui-react/package.json.genie.ts'
 import tuiStoriesPkg from './packages/@overeng/tui-stories/package.json.genie.ts'
 import utilsDevPkg from './packages/@overeng/utils-dev/package.json.genie.ts'
 import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
+import workflowReportPkg from './packages/@overeng/workflow-report/package.json.genie.ts'
 
 /** All package.json genie definitions that belong to the root pnpm workspace */
 export const rootWorkspacePackages = [
@@ -56,6 +57,7 @@ export const rootWorkspacePackages = [
   tuiStoriesPkg,
   utilsPkg,
   utilsDevPkg,
+  workflowReportPkg,
 ] as const
 
 const rootWorkspace = packageJson.aggregateFromPackages({
