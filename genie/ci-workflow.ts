@@ -214,7 +214,6 @@ export {
 } from './ci-workflow/merge-queue.ts'
 export {
   deployCommentPermissions,
-  deployModeScript,
   dispatchAlignmentStep,
   deployPreviewWorkflowReportOutputName,
   deployPreviewWorkflowReportPathOutputName,

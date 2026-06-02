@@ -22,7 +22,6 @@ import { type GenieEvent, GenieEventBus } from '../core/events.ts'
 import { generateFile } from '../core/generation.ts'
 import { createInitialGenieState, type GenieSummary, type GenieMode } from '../core/schema.ts'
 import { GenieApp } from './app.ts'
-import type { GenieCommandConfig, GenieCommandEnv, GenieCommandError } from './types.ts'
 import { GenieView } from './view.tsx'
 
 export {
@@ -62,12 +61,7 @@ const dispatchEvent = (tui: { dispatch: (action: any) => void }, event: GenieEve
 }
 
 /** Genie CLI command - generates files from .genie.ts source files */
-export const genieCommand: Cli.Command.Command<
-  'genie',
-  GenieCommandEnv,
-  GenieCommandError,
-  GenieCommandConfig
-> = Cli.Command.make(
+export const genieCommand = Cli.Command.make(
   'genie',
   {
     cwd: Cli.Options.text('cwd').pipe(

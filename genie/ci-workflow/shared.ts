@@ -242,22 +242,28 @@ export const resolveDevenvFnScript = `resolve_devenv() {
 
 export const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
 
-export const workflowReportRuntimeModuleSetup = (runtimeModulePath?: string) => [
-  ...(runtimeModulePath === undefined
-    ? [
-        'if [ -z "${WORKFLOW_REPORT_RUNTIME_MODULE:-}" ]; then',
-        '  if [ -f packages/@overeng/genie/src/runtime/mod.ts ]; then',
-        '    export WORKFLOW_REPORT_RUNTIME_MODULE=packages/@overeng/genie/src/runtime/mod.ts',
-        '  elif [ -f repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts ]; then',
-        '    export WORKFLOW_REPORT_RUNTIME_MODULE=repos/effect-utils/packages/@overeng/genie/src/runtime/mod.ts',
-        '  else',
-        '    echo "::error::unable to locate @overeng/genie runtime module for workflow reports"',
-        '    exit 1',
-        '  fi',
-        'fi',
-      ]
-    : [`export WORKFLOW_REPORT_RUNTIME_MODULE=${shellSingleQuote(runtimeModulePath)}`]),
+export const defaultWorkflowReportFlakeRef =
+  'github:overengineeringstudio/effect-utils/main#workflow-report'
+
+export const workflowReportEnv = (opts?: { readonly workflowReportFlakeRef?: string }) => ({
+  WORKFLOW_REPORT_FLAKE_REF: opts?.workflowReportFlakeRef ?? defaultWorkflowReportFlakeRef,
+})
+
+export const workflowReportNixTokenSetup = [
+  'if [ -n "${GH_TOKEN:-}" ]; then',
+  `  export NIX_CONFIG="\${NIX_CONFIG:+$NIX_CONFIG$'\\n'}access-tokens = github.com=\${GH_TOKEN}"`,
+  'fi',
 ]
+
+export const workflowReportCommand = (opts: {
+  readonly args: readonly string[]
+}) => {
+  const args = opts.args.join(' ')
+  return [
+    `workflow_report_flake_ref="\${WORKFLOW_REPORT_FLAKE_REF:-${defaultWorkflowReportFlakeRef}}"`,
+    `nix run "$workflow_report_flake_ref" -- ${args}`,
+  ].join('\n')
+}
 
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */
 export const nixExtraConf = (opts: NixConfigOptions = {}) =>

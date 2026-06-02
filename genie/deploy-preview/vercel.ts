@@ -1,14 +1,16 @@
 import {
   deployTargetEnvSuffix,
-  workflowReportEnvKey,
   workflowReportKind,
   workflowReportMarker,
   workflowReportOutputName,
-  workflowReportPathEnvKey,
   workflowReportPathOutputName,
-  workflowReportRuntimeModuleSetup,
   workflowReportSchemaVersion,
 } from './shared.ts'
+import {
+  workflowReportCollectorStep,
+  workflowReportCommentBodyStep,
+  workflowReportPublisherStep,
+} from '../ci-workflow/reporting.ts'
 
 type StepRecord = Record<string, unknown>
 
@@ -48,11 +50,17 @@ export const vercelDeployStep = (
       'fi',
       'deploy_exit=${PIPESTATUS[0]}',
       'if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi',
-      `metadata_json=$(grep -F 'DEPLOY_TASK_METADATA: ' "$tmp_log" | sed 's/^.*DEPLOY_TASK_METADATA: //' | tail -n 1 || true)`,
-      'if [ -n "$metadata_json" ]; then',
-      '  final_url=$(printf "%s" "$metadata_json" | jq -r \'.finalUrl // empty\')',
-      '  raw_deploy_url=$(printf "%s" "$metadata_json" | jq -r \'.rawDeployUrl // empty\')',
-      '  deployed_at_utc=$(printf "%s" "$metadata_json" | jq -r \'.deployedAtUtc // empty\')',
+      'workflow_report_json=""',
+      'if [ -s "$workflow_report_path" ]; then',
+      '  workflow_report_json="$(tail -n 1 "$workflow_report_path")"',
+      'fi',
+      'if [ -z "$workflow_report_json" ]; then',
+      `  workflow_report_json=$(grep -F ${JSON.stringify(workflowReportMarker)} "$tmp_log" | sed 's/^.*${workflowReportMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}//' | tail -n 1 || true)`,
+      'fi',
+      'if [ -n "$workflow_report_json" ]; then',
+      '  final_url=$(printf "%s" "$workflow_report_json" | jq -r \'.data.finalUrl // (.links[]? | select(.primary == true) | .url) // empty\' | head -n 1)',
+      '  raw_deploy_url=$(printf "%s" "$workflow_report_json" | jq -r \'.data.rawDeployUrl // empty\')',
+      '  deployed_at_utc=$(printf "%s" "$workflow_report_json" | jq -r \'.data.deployedAtUtc // .createdAtUtc // empty\')',
       'else',
       '  final_url=""',
       '  raw_deploy_url=""',
@@ -69,13 +77,6 @@ export const vercelDeployStep = (
       'fi',
       'if [ -z "$deployed_at_utc" ]; then',
       '  deployed_at_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"',
-      'fi',
-      'workflow_report_json=""',
-      'if [ -s "$workflow_report_path" ]; then',
-      '  workflow_report_json="$(tail -n 1 "$workflow_report_path")"',
-      'fi',
-      'if [ -z "$workflow_report_json" ]; then',
-      `  workflow_report_json=$(grep -F ${JSON.stringify(workflowReportMarker)} "$tmp_log" | sed 's/^.*${workflowReportMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}//' | tail -n 1 || true)`,
       'fi',
       'if [ -z "$workflow_report_json" ] && [ -n "$final_url" ]; then',
       '  workflow_report_json="$(jq -cn \\',
@@ -125,214 +126,52 @@ export const vercelDeployStep = (
   }
 }
 
-export const vercelDeployCommentStep = (opts: {
+const vercelDeployReportSteps = (opts: {
   commentTitle: string
   noRecordsMessage: string
   projects: readonly Pick<VercelProject, 'name' | 'label'>[]
-  deployModeScript: string
-}) => {
-  const projects = opts.projects.map((project) => ({
-    name: project.name,
-    displayName: project.label ?? project.name,
-    envSuffix: deployTargetEnvSuffix(project.name),
-    reportEnvKey: workflowReportEnvKey(project.name),
-    reportPathEnvKey: workflowReportPathEnvKey(project.name),
-  }))
+  workflowReportFlakeRef?: string
+}): readonly StepRecord[] => {
+  const bundlePath = '${{ runner.temp }}/workflow-reports/deploy-preview-bundle.json'
+  const commentBodyPath = '${{ runner.temp }}/workflow-reports/deploy-preview-comment.md'
+  const summaryPath = '${{ runner.temp }}/workflow-reports/deploy-preview-summary.md'
+  const ifPredicate =
+    "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}"
 
-  const renderCommentScript = [
-    "import { readFileSync, writeFileSync } from 'node:fs'",
-    "import { resolve } from 'node:path'",
-    "import { pathToFileURL } from 'node:url'",
-    '',
-    `const commentTitle = ${JSON.stringify(opts.commentTitle)}`,
-    `const noRecordsMessage = ${JSON.stringify(opts.noRecordsMessage)}`,
-    `const projects = ${JSON.stringify(projects)}`,
-    `const workflowReportKind = ${JSON.stringify(workflowReportKind)}`,
-    'const stateId = "deploy-preview"',
-    '',
-    'const [commentsPath, commentBodyPath, summaryPath, commentIdPath] = process.argv.slice(2)',
-    'const runtimeModule = process.env.WORKFLOW_REPORT_RUNTIME_MODULE',
-    'if (typeof runtimeModule !== "string" || runtimeModule.length === 0) throw new Error("WORKFLOW_REPORT_RUNTIME_MODULE is required")',
-    'const {',
-    '  decodeWorkflowReportRecord,',
-    '  deriveWorkflowReportManagedState,',
-    '  encodeWorkflowReportRecordLine,',
-    '  findWorkflowReportManagedComment,',
-    '  renderWorkflowReportCommentBody,',
-    '} = await import(pathToFileURL(resolve(runtimeModule)).href)',
-    '',
-    'const fail = (message) => {',
-    '  throw new Error(message)',
-    '}',
-    '',
-    'const expectObject = (value, path) => {',
-    "  if (typeof value !== 'object' || value === null || Array.isArray(value)) {",
-    '    fail(`${path} must be an object`)',
-    '  }',
-    '  return value',
-    '}',
-    '',
-    'const expectString = (value, path) => {',
-    "  if (typeof value !== 'string' || value.length === 0) {",
-    '    fail(`${path} must be a non-empty string`)',
-    '  }',
-    '  return value',
-    '}',
-    '',
-    'const expectUrl = (value, path) => {',
-    '  const string = expectString(value, path)',
-    "  if (!string.startsWith('https://')) {",
-    '    fail(`${path} must start with https://`)',
-    '  }',
-    '  return string',
-    '}',
-    '',
-    'const reportFromLegacyOutputs = (project) => {',
-    '  const finalUrl = process.env[`DEPLOY_FINAL_URL_${project.envSuffix}`] ?? ""',
-    '  const rawDeployUrl = process.env[`DEPLOY_RAW_DEPLOY_URL_${project.envSuffix}`] ?? finalUrl',
-    '  const deployedAtUtc = process.env[`DEPLOYED_AT_UTC_${project.envSuffix}`] ?? ""',
-    '  if (finalUrl.length > 0 && deployedAtUtc.length > 0) {',
-    '    return decodeWorkflowReportRecord({',
-    '      _tag: "WorkflowReportRecord",',
-    '      schemaVersion: 1,',
-    '      id: `deploy-vercel-${project.name}`,',
-    '      kind: workflowReportKind,',
-    '      subject: { id: project.name, label: project.displayName },',
-    '      status: "success",',
-    '      title: `${project.displayName} preview deployed`,',
-    '      summary: "Preview is ready",',
-    '      createdAtUtc: deployedAtUtc,',
-    '      links: [{ label: "Preview", url: finalUrl, primary: true }],',
-    '      data: {',
-    '        provider: "vercel",',
-    '        target: project.name,',
-    '        displayName: project.displayName,',
-    '        finalUrl,',
-    '        rawDeployUrl: rawDeployUrl.length === 0 ? finalUrl : rawDeployUrl,',
-    '        deployedAtUtc,',
-    '      },',
-    '    })',
-    '  }',
-    '  return decodeWorkflowReportRecord({',
-    '    _tag: "WorkflowReportRecord",',
-    '    schemaVersion: 1,',
-    '    id: `deploy-vercel-${project.name}`,',
-    '    kind: workflowReportKind,',
-    '    subject: { id: project.name, label: project.displayName },',
-    '    status: "skipped",',
-    '    title: `${project.displayName} preview not deployed`,',
-    '    summary: "No Vercel deploy URL detected.",',
-    '    createdAtUtc: deployedAtUtc.length === 0 ? new Date().toISOString().replace(/\\.\\d{3}Z$/, "Z") : deployedAtUtc,',
-    '    data: {',
-    '      provider: "vercel",',
-    '      target: project.name,',
-    '      displayName: project.displayName,',
-    '      reason: "No Vercel deploy URL detected.",',
-    '    },',
-    '  })',
-    '}',
-    '',
-    'const currentReports = projects.map((project, index) => {',
-    '  const rawReport = process.env[project.reportEnvKey] ?? ""',
-    '  if (rawReport.length === 0) return reportFromLegacyOutputs(project)',
-    '  return decodeWorkflowReportRecord(JSON.parse(rawReport), `workflowReports[${index}]`)',
-    '})',
-    '',
-    'for (const report of currentReports) {',
-    '  console.log(encodeWorkflowReportRecordLine(report))',
-    '}',
-    '',
-    "const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))",
-    'if (!Array.isArray(comments)) fail("comments response must be an array")',
-    '',
-    'const commitSha = expectString(process.env.DEPLOY_COMMIT_SHA, "DEPLOY_COMMIT_SHA")',
-    'const modeLabel = expectString(process.env.DEPLOY_LABEL, "DEPLOY_LABEL")',
-    'const existingComment = findWorkflowReportManagedComment(comments, {',
-    '  stateId,',
-    '})',
-    'const createdAtUtc = currentReports',
-    '  .map((report) => report.createdAtUtc)',
-    '  .toSorted((left, right) => Date.parse(right) - Date.parse(left))[0] ?? new Date().toISOString()',
-    'const state = deriveWorkflowReportManagedState({',
-    '  stateId,',
-    '  priorState: existingComment?.state,',
-    '  entryId: commitSha,',
-    '  entryLabel: modeLabel,',
-    '  createdAtUtc,',
-    '  records: currentReports,',
-    '})',
-    'const body = renderWorkflowReportCommentBody({ title: commentTitle, noRecordsMessage, state })',
-    'const visibleBody = body.slice(0, body.indexOf("<!-- workflow-report:managed -->")).trimEnd() + "\\n"',
-    'writeFileSync(summaryPath, visibleBody)',
-    'writeFileSync(commentBodyPath, body)',
-    "writeFileSync(commentIdPath, existingComment?.id ?? '')",
-    '',
-  ].join('\n')
-
-  return {
-    name: 'Post deploy URLs',
-    if: 'always() && !cancelled()',
-    shell: 'bash' as const,
-    env: {
-      GH_TOKEN: '${{ github.token }}',
-      GH_REPO: '${{ github.repository }}',
-      ...Object.fromEntries(
-        projects.flatMap((project) => [
-          [
-            `DEPLOY_FINAL_URL_${project.envSuffix}`,
-            `\${{ needs.deploy-${project.name}.outputs.final_url }}`,
-          ],
-          [
-            `DEPLOY_RAW_DEPLOY_URL_${project.envSuffix}`,
-            `\${{ needs.deploy-${project.name}.outputs.raw_deploy_url }}`,
-          ],
-          [
-            `DEPLOYED_AT_UTC_${project.envSuffix}`,
-            `\${{ needs.deploy-${project.name}.outputs.deployed_at_utc }}`,
-          ],
-          [
-            project.reportEnvKey,
-            `\${{ needs.deploy-${project.name}.outputs.${workflowReportOutputName} }}`,
-          ],
-          [
-            project.reportPathEnvKey,
-            `\${{ needs.deploy-${project.name}.outputs.${workflowReportPathOutputName} }}`,
-          ],
-        ]),
+  return [
+    workflowReportCollectorStep({
+      bundleId: 'deploy-preview',
+      inputPaths: opts.projects.map(
+        (project) => `\${{ needs.deploy-${project.name}.outputs.${workflowReportPathOutputName} }}`,
       ),
-    },
-    run: [
-      opts.deployModeScript,
-      ...workflowReportRuntimeModuleSetup,
-      'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-      '  commit_sha="${{ github.event.pull_request.head.sha }}"',
-      'else',
-      '  commit_sha="${{ github.sha }}"',
-      'fi',
-      'export DEPLOY_LABEL="$label"',
-      'export DEPLOY_COMMIT_SHA="$commit_sha"',
-      'comments_json="/tmp/deploy-comments.json"',
-      'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-      '  export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$\'\\n\'}access-tokens = github.com=${GH_TOKEN}"',
-      '  nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"',
-      'else',
-      '  printf \'[]\' > "$comments_json"',
-      'fi',
-      "cat > /tmp/render-deploy-comment.mjs <<'EOF'",
-      renderCommentScript,
-      'EOF',
-      'nix run nixpkgs#nodejs_24 -- /tmp/render-deploy-comment.mjs "$comments_json" /tmp/comment.md /tmp/summary.md /tmp/comment-id.txt',
-      'cat /tmp/summary.md >> "$GITHUB_STEP_SUMMARY"',
-      'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-      '  comment_id="$(cat /tmp/comment-id.txt)"',
-      '  if [ -n "$comment_id" ]; then',
-      '    nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/comments/$comment_id" --method PATCH --field body="$(cat /tmp/comment.md)" > /dev/null',
-      '  else',
-      '    nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --method POST --field body="$(cat /tmp/comment.md)" > /dev/null',
-      '  fi',
-      'fi',
-    ].join('\n'),
-  }
+      outputPath: bundlePath,
+      marker: workflowReportMarker,
+      allowMissingInput: true,
+      workflowReportFlakeRef: opts.workflowReportFlakeRef,
+      if: ifPredicate,
+    }),
+    workflowReportCommentBodyStep({
+      bundlePath,
+      commentBodyPath,
+      summaryPath,
+      title: opts.commentTitle,
+      noRecordsMessage: opts.noRecordsMessage,
+      stateId: 'deploy-preview',
+      entryId: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+      entryLabel:
+        "${{ github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.number) || 'prod' }}",
+      timeZone: 'Europe/Berlin',
+      workflowReportFlakeRef: opts.workflowReportFlakeRef,
+      if: ifPredicate,
+    }),
+    workflowReportPublisherStep({
+      commentBodyPath,
+      summaryPath,
+      stateId: 'deploy-preview',
+      workflowReportFlakeRef: opts.workflowReportFlakeRef,
+      if: ifPredicate,
+    }),
+  ]
 }
 
 export const vercelDeployJobs = (opts: {
@@ -347,10 +186,10 @@ export const vercelDeployJobs = (opts: {
   commentTitle?: string
   noRecordsMessage?: string
   runDevenvTasksBefore: (...tasks: [string, ...string[]]) => string
-  deployModeScript: string
   deployCommentPermissions: Record<string, string>
   bashShellDefaults: { run: { shell: string } }
   commentRunner: readonly string[]
+  workflowReportFlakeRef?: string
   deployStepDecorator?: (step: StepRecord, project: VercelProject) => StepRecord
 }) => {
   const deployCondition =
@@ -406,11 +245,11 @@ export const vercelDeployJobs = (opts: {
     permissions: opts.deployCommentPermissions,
     'runs-on': [...opts.commentRunner],
     steps: [
-      vercelDeployCommentStep({
+      ...vercelDeployReportSteps({
         commentTitle: opts.commentTitle ?? 'Deploy Preview',
         projects: opts.projects,
         noRecordsMessage: opts.noRecordsMessage ?? 'No deploy URLs detected.',
-        deployModeScript: opts.deployModeScript,
+        workflowReportFlakeRef: opts.workflowReportFlakeRef,
       }),
     ],
   }

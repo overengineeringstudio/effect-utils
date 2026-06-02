@@ -30,6 +30,7 @@ packages:
   - packages/@overeng/tui-stories
   - packages/@overeng/utils
   - packages/@overeng/utils-dev
+  - packages/@overeng/workflow-report
 
 patchedDependencies:
   '@effect/platform@0.96.1': packages/@overeng/utils/patches/@effect__platform@0.96.0.patch

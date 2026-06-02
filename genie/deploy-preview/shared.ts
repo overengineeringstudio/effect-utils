@@ -1,5 +1,9 @@
-import { workflowReportRecordLineMarker } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { workflowReportRuntimeModuleSetup as sharedWorkflowReportRuntimeModuleSetup } from '../ci-workflow/shared.ts'
+import { workflowReportRecordLineMarker } from '../../packages/@overeng/workflow-report/src/mod.ts'
+export {
+  workflowReportCommand,
+  workflowReportEnv,
+  workflowReportNixTokenSetup,
+} from '../ci-workflow/shared.ts'
 
 export const deployTargetEnvSuffix = (name: string) =>
   name
@@ -12,11 +16,3 @@ export const workflowReportSchemaVersion = 1
 export const workflowReportKind = 'deploy-preview'
 export const workflowReportOutputName = 'workflow_report'
 export const workflowReportPathOutputName = 'workflow_report_path'
-
-export const workflowReportEnvKey = (name: string) =>
-  `WORKFLOW_REPORT_${deployTargetEnvSuffix(name)}`
-
-export const workflowReportPathEnvKey = (name: string) =>
-  `WORKFLOW_REPORT_PATH_${deployTargetEnvSuffix(name)}`
-
-export const workflowReportRuntimeModuleSetup = sharedWorkflowReportRuntimeModuleSetup()

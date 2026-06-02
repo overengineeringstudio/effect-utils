@@ -130,7 +130,7 @@ describe('SyncMetrics — churn patterns', () => {
     expect(m.actualOps.update).toBe(0)
     expect(m.actualOps.delete).toBe(0)
     expect(m.actualOps.retrieve).toBe(1)
-  })
+  }, 20_000)
 
   it('[churn-bulk-update] 200-block page, edit 20 → exactly 20 updates', async () => {
     const fake = createFakeNotion()

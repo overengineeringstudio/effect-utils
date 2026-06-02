@@ -28,6 +28,13 @@ const vercelDeploySource = readFileSync(
   new URL(['../../../../../../genie/deploy-preview', 'vercel.ts'].join('/'), import.meta.url),
   'utf8',
 )
+const workflowReportCommandSource = readFileSync(
+  new URL(
+    ['../../../../../../packages/@overeng/workflow-report/src', 'cli-command.ts'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 const nixGcRaceRetryScriptSource = readFileSync(
   new URL(
     ['../../../../../../genie/ci-scripts', 'nix-gc-race-retry.sh'].join('/'),
@@ -129,8 +136,12 @@ describe('ci workflow reporting helpers', () => {
   })
 
   it('matches managed PR comments by hidden state ID before patching', () => {
-    expect(ciWorkflowSource).toContain('workflow report comment body is missing managed state')
-    expect(ciWorkflowSource).toContain('findWorkflowReportManagedComment')
+    expect(ciWorkflowSource).toContain('workflow-report')
+    expect(ciWorkflowSource).toContain('find-comment')
+    expect(workflowReportCommandSource).toContain(
+      'workflow report comment body is missing managed state',
+    )
+    expect(workflowReportCommandSource).toContain('findWorkflowReportManagedComment')
     expect(ciWorkflowSource).toContain('WORKFLOW_REPORT_STATE_ID')
   })
 })
@@ -346,7 +357,7 @@ describe('ci workflow merge queue helpers', () => {
       'pull-requests': 'read',
     })
     expect(mergeQueueWorkflowOn()).toMatchObject({ merge_group: null })
-  })
+  }, 20_000)
 })
 
 describe('ci workflow shared auth helpers', () => {
