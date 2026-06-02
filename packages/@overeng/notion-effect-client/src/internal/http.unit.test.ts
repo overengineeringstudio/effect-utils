@@ -1,12 +1,12 @@
 import type { HttpClientRequest } from '@effect/platform'
-import { Effect, Option, Redacted, Schema, Tracer } from 'effect'
+import { Effect, Fiber, Option, Redacted, Schema, TestClock, Tracer } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError } from '../error.ts'
-import { createTestLayer, sampleResponses } from '../test/test-utils.ts'
+import { createTestLayer, type MockResponse, sampleResponses } from '../test/test-utils.ts'
 import {
   buildRequest,
   get,
@@ -451,6 +451,118 @@ Vitest.describe('executeRequest', () => {
         })),
       ),
     ),
+  )
+})
+
+Vitest.describe('executeRequest retry schedule', () => {
+  const TestSchema = Schema.Struct({
+    object: Schema.Literal('database'),
+    id: Schema.String,
+  })
+
+  const retryConfig = {
+    authToken: Redacted.make('test-token'),
+    retryEnabled: true,
+    maxRetries: 3,
+    retryBaseDelay: 1000,
+  } as const
+
+  /**
+   * Drives a retrying request under TestClock, returning the recorded retry
+   * telemetry once the request settles. `responses` is the per-attempt
+   * response sequence; the harness advances virtual time generously so the
+   * schedule's sleeps elapse without depending on wall-clock.
+   */
+  const runWithRetries = (responses: ReadonlyArray<MockResponse>) =>
+    Effect.gen(function* () {
+      let call = 0
+      const events: NotionHttpTelemetryEvent[] = []
+
+      const fiber = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+        Effect.either,
+        Effect.provideService(NotionHttpTelemetry, {
+          report: (event) =>
+            Effect.sync(() => {
+              events.push(event)
+            }),
+        }),
+        Effect.provide(
+          createTestLayer(() => {
+            const response = responses[Math.min(call, responses.length - 1)]
+            call += 1
+            return response ?? { status: 200, body: sampleResponses.database }
+          }, retryConfig),
+        ),
+        Effect.fork,
+      )
+
+      // Enough virtual time for all exponential + Retry-After sleeps to fire.
+      yield* TestClock.adjust('60 seconds')
+      const result = yield* Fiber.join(fiber)
+
+      const retryEvents = events.filter(
+        (event): event is Extract<NotionHttpTelemetryEvent, { _tag: 'retry' }> =>
+          event._tag === 'retry',
+      )
+      const responseEvents = events.filter((event) => event._tag === 'response')
+      return { result, retryEvents, responseEvents, calls: call }
+    })
+
+  Vitest.it.scoped(
+    'floors exponential backoff with Retry-After (max(backoff, Retry-After)) then succeeds',
+    () =>
+      Effect.gen(function* () {
+        // Attempt 0: 429 retry-after=5s ⇒ delay = max(1000, 5000) = 5000.
+        // Attempt 1: 503 no retry-after ⇒ delay = max(2000, 0) = 2000.
+        // Attempt 2: success.
+        const { result, retryEvents, responseEvents, calls } = yield* runWithRetries([
+          {
+            status: 429,
+            body: sampleResponses.error(429, 'rate_limited', 'Rate limited'),
+            headers: { 'retry-after': '5', 'x-ratelimit-remaining': '0' },
+          },
+          {
+            status: 503,
+            body: sampleResponses.error(503, 'service_unavailable', 'Unavailable'),
+          },
+          { status: 200, body: sampleResponses.database },
+        ])
+
+        expect(result._tag).toBe('Right')
+        expect(calls).toBe(3)
+        expect(retryEvents.map((event) => event.attempt)).toEqual([0, 1])
+        expect(retryEvents.map((event) => event.delayMs)).toEqual([5000, 2000])
+        // Response telemetry reports the live attempt index per try.
+        expect(responseEvents.map((event) => event.attempt)).toEqual([0, 1, 2])
+      }),
+  )
+
+  Vitest.it.scoped('stops after maxRetries with pure exponential backoff', () =>
+    Effect.gen(function* () {
+      const { result, retryEvents, calls } = yield* runWithRetries([
+        { status: 500, body: sampleResponses.error(500, 'internal_server_error', 'Boom') },
+      ])
+
+      // Initial attempt + 3 retries = 4 calls; delays 1000, 2000, 4000.
+      expect(result._tag).toBe('Left')
+      expect(calls).toBe(4)
+      expect(retryEvents.map((event) => event.delayMs)).toEqual([1000, 2000, 4000])
+      if (result._tag === 'Left') {
+        expect(result.left.code).toBe('internal_server_error')
+      }
+    }),
+  )
+
+  Vitest.it.scoped('does not retry non-retryable errors', () =>
+    Effect.gen(function* () {
+      const { result, retryEvents, calls } = yield* runWithRetries([
+        { status: 404, body: sampleResponses.error(404, 'object_not_found', 'Missing') },
+      ])
+
+      expect(result._tag).toBe('Left')
+      expect(calls).toBe(1)
+      expect(retryEvents).toHaveLength(0)
+    }),
   )
 })
 

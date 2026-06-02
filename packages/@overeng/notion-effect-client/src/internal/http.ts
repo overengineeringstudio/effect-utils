@@ -4,7 +4,16 @@ import {
   HttpClientRequest,
   type HttpClientResponse,
 } from '@effect/platform'
-import { Context, Duration, Effect, Option, Redacted, Schema } from 'effect'
+import {
+  Context,
+  Effect,
+  Option,
+  Redacted,
+  Schedule,
+  ScheduleDecision,
+  ScheduleInterval,
+  Schema,
+} from 'effect'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
@@ -444,8 +453,16 @@ export const executeRequest = <A, I, R>({
     const retryBaseDelay = config.retryBaseDelay ?? 1000
     const route = notionHttpRouteInfo({ method, path })
 
-    const makeRequest = (attempt: number) =>
+    /**
+     * Single attempt. The zero-based attempt index is read from the retry
+     * schedule's iteration metadata (`recurrence`), which the retry driver
+     * increments after each retry decision. On the first run (and when retries
+     * are disabled) the default metadata yields `recurrence === 0`, matching
+     * the legacy loop's initial `attempt`.
+     */
+    const makeRequest = () =>
       Effect.gen(function* () {
+        const attempt = (yield* Schedule.CurrentIterationMetadata).recurrence
         const request = yield* buildRequest({ method, path, body })
         const response = yield* client
           .execute(request)
@@ -500,71 +517,81 @@ export const executeRequest = <A, I, R>({
       })
 
     /**
-     * One logical request: the full reactive retry loop. Wrapped (when a
+     * Per-attempt delay matching the legacy loop: the exponential backoff for
+     * this attempt index, floored by any server-advised `Retry-After`. The
+     * `attempt` here is the zero-based index of the attempt that just failed
+     * (equivalently, the number of retries already performed).
+     */
+    const retryDelayMs = (opts: { error: NotionApiError; attempt: number }): number => {
+      const backoffMs = retryBaseDelay * 2 ** opts.attempt
+      const retryAfterMs = Option.getOrElse(opts.error.retryAfterMillis, () => 0)
+      return Math.max(backoffMs, retryAfterMs)
+    }
+
+    const retryRateLimit = (error: NotionApiError): Option.Option<RateLimitInfo> =>
+      error.status === 429 && Option.isSome(error.retryAfterSeconds) === true
+        ? Option.some({ remaining: 0, resetAfterSeconds: error.retryAfterSeconds.value })
+        : Option.none()
+
+    /**
+     * Retry schedule whose input is the failing `NotionApiError`. Stock
+     * combinators cannot express `max(backoff, Retry-After)` because the delay
+     * depends on the error, so we build the schedule explicitly: the state is
+     * the zero-based attempt index, the decision continues only for retryable
+     * errors under the `maxRetries` bound, and the chosen interval is the
+     * floored backoff. Telemetry/span annotation are emitted here — exactly
+     * once per retry decision with the exact delay — preserving the legacy
+     * loop's observable behavior. The schedule output is the delay in ms.
+     */
+    const retrySchedule = Schedule.makeWithState<number, NotionApiError, number>(
+      0,
+      (now, error, attempt) => {
+        if (error.isRetryable === false || attempt >= maxRetries) {
+          return Effect.succeed([attempt, 0, ScheduleDecision.done] as const)
+        }
+
+        const delayMs = retryDelayMs({ error, attempt })
+        const rateLimit = retryRateLimit(error)
+
+        return Effect.as(
+          Effect.zipRight(
+            annotateRateLimitSpan({
+              method,
+              route,
+              status: error.status,
+              attempt,
+              attempts: attempt + 1,
+              retryDelayMs: delayMs,
+              rateLimit,
+            }),
+            reportHttpTelemetry({
+              _tag: 'retry',
+              method,
+              route: route.route,
+              operation: route.operation,
+              status: error.status,
+              attempt,
+              nextAttempt: attempt + 1,
+              delayMs,
+              rateLimit,
+            }),
+          ),
+          [
+            attempt + 1,
+            delayMs,
+            ScheduleDecision.continueWith(ScheduleInterval.after(now + delayMs)),
+          ] as const,
+        )
+      },
+    )
+
+    /**
+     * One logical request: the retry-wrapped single attempt. Wrapped (when a
      * throttle is bound) so a single throttle token is consumed per logical
      * request rather than per retry attempt.
      */
-    const runOnce = Effect.gen(function* () {
-      if (retryEnabled === false) {
-        return yield* makeRequest(0)
-      }
-
-      let retries = 0
-
-      while (true) {
-        const result = yield* makeRequest(retries).pipe(Effect.either)
-
-        if (result._tag === 'Right') {
-          return result.right
-        }
-
-        const error = result.left
-
-        if (error.isRetryable === false || retries >= maxRetries) {
-          return yield* error
-        }
-
-        const retryAfterMs = Option.match(error.retryAfterSeconds, {
-          onNone: () => 0,
-          onSome: (s) => s * 1000,
-        })
-
-        const backoffMs = retryBaseDelay * 2 ** retries
-        const delayMs = Math.max(backoffMs, retryAfterMs)
-        const rateLimit =
-          error.status === 429 && Option.isSome(error.retryAfterSeconds) === true
-            ? Option.some({
-                remaining: 0,
-                resetAfterSeconds: error.retryAfterSeconds.value,
-              })
-            : Option.none<RateLimitInfo>()
-
-        yield* annotateRateLimitSpan({
-          method,
-          route,
-          status: error.status,
-          attempt: retries,
-          attempts: retries + 1,
-          retryDelayMs: delayMs,
-          rateLimit,
-        })
-        yield* reportHttpTelemetry({
-          _tag: 'retry',
-          method,
-          route: route.route,
-          operation: route.operation,
-          status: error.status,
-          attempt: retries,
-          nextAttempt: retries + 1,
-          delayMs,
-          rateLimit,
-        })
-
-        yield* Effect.sleep(Duration.millis(delayMs))
-
-        retries++
-      }
-    })
+    const runOnce =
+      retryEnabled === false ? makeRequest() : Effect.retry(makeRequest(), retrySchedule)
 
     const throttle = yield* Effect.serviceOption(NotionThrottle)
     return yield* Option.match(throttle, {
