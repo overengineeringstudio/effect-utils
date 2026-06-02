@@ -245,6 +245,10 @@ export const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"
 export const defaultWorkflowReportFlakeRef =
   'github:overengineeringstudio/effect-utils/main#workflow-report'
 
+export const workflowReportEnv = (opts?: { readonly workflowReportFlakeRef?: string }) => ({
+  WORKFLOW_REPORT_FLAKE_REF: opts?.workflowReportFlakeRef ?? defaultWorkflowReportFlakeRef,
+})
+
 export const workflowReportNixTokenSetup = [
   'if [ -n "${GH_TOKEN:-}" ]; then',
   `  export NIX_CONFIG="\${NIX_CONFIG:+$NIX_CONFIG$'\\n'}access-tokens = github.com=\${GH_TOKEN}"`,
@@ -253,11 +257,12 @@ export const workflowReportNixTokenSetup = [
 
 export const workflowReportCommand = (opts: {
   readonly args: readonly string[]
-  readonly workflowReportFlakeRef?: string
 }) => {
   const args = opts.args.join(' ')
-  const flakeRef = shellSingleQuote(opts.workflowReportFlakeRef ?? defaultWorkflowReportFlakeRef)
-  return `if command -v workflow-report >/dev/null 2>&1; then workflow-report ${args}; else nix run ${flakeRef} -- ${args}; fi`
+  return [
+    `workflow_report_flake_ref="\${WORKFLOW_REPORT_FLAKE_REF:-${defaultWorkflowReportFlakeRef}}"`,
+    `if command -v workflow-report >/dev/null 2>&1; then workflow-report ${args}; else nix run "$workflow_report_flake_ref" -- ${args}; fi`,
+  ].join('\n')
 }
 
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */

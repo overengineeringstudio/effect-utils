@@ -7901,6 +7901,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPORT_FLAKE_REF: "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#workflow-report"
           WORKFLOW_REPORT_BUNDLE_ID: storybook-preview
           WORKFLOW_REPORT_INPUT_PATHS_JSON: '["${{ steps.deploy.outputs.workflow_report_path }}"]'
           WORKFLOW_REPORT_OUTPUT_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-bundle.json'
@@ -7910,12 +7911,14 @@ jobs:
           if [ -n "${GH_TOKEN:-}" ]; then
             export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$'\n'}access-tokens = github.com=${GH_TOKEN}"
           fi
-          if command -v workflow-report >/dev/null 2>&1; then workflow-report collect-bundle --bundle-id "$WORKFLOW_REPORT_BUNDLE_ID" --input-paths-json "$WORKFLOW_REPORT_INPUT_PATHS_JSON" --output-path "$WORKFLOW_REPORT_OUTPUT_PATH" --record-marker "$WORKFLOW_REPORT_RECORD_MARKER" --allow-missing-input; else nix run 'github:overengineeringstudio/effect-utils/main#workflow-report' -- collect-bundle --bundle-id "$WORKFLOW_REPORT_BUNDLE_ID" --input-paths-json "$WORKFLOW_REPORT_INPUT_PATHS_JSON" --output-path "$WORKFLOW_REPORT_OUTPUT_PATH" --record-marker "$WORKFLOW_REPORT_RECORD_MARKER" --allow-missing-input; fi
+          workflow_report_flake_ref="${WORKFLOW_REPORT_FLAKE_REF:-github:overengineeringstudio/effect-utils/main#workflow-report}"
+          if command -v workflow-report >/dev/null 2>&1; then workflow-report collect-bundle --bundle-id "$WORKFLOW_REPORT_BUNDLE_ID" --input-paths-json "$WORKFLOW_REPORT_INPUT_PATHS_JSON" --output-path "$WORKFLOW_REPORT_OUTPUT_PATH" --record-marker "$WORKFLOW_REPORT_RECORD_MARKER" --allow-missing-input; else nix run "$workflow_report_flake_ref" -- collect-bundle --bundle-id "$WORKFLOW_REPORT_BUNDLE_ID" --input-paths-json "$WORKFLOW_REPORT_INPUT_PATHS_JSON" --output-path "$WORKFLOW_REPORT_OUTPUT_PATH" --record-marker "$WORKFLOW_REPORT_RECORD_MARKER" --allow-missing-input; fi
       - name: Render workflow report comment
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          WORKFLOW_REPORT_FLAKE_REF: "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#workflow-report"
           WORKFLOW_REPORT_BUNDLE_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-bundle.json'
           WORKFLOW_REPORT_COMMENT_BODY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-comment.md'
           WORKFLOW_REPORT_SUMMARY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-summary.md'
@@ -7938,13 +7941,15 @@ jobs:
             printf '[]' > "$comments_json"
           fi
 
-          if command -v workflow-report >/dev/null 2>&1; then workflow-report render-comment-body --bundle-path "$WORKFLOW_REPORT_BUNDLE_PATH" --comments-path "$comments_json" --comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH" --summary-path "$WORKFLOW_REPORT_SUMMARY_PATH" --title "$WORKFLOW_REPORT_TITLE" --no-records-message "$WORKFLOW_REPORT_NO_RECORDS_MESSAGE" --state-id "$WORKFLOW_REPORT_STATE_ID" --entry-id "$WORKFLOW_REPORT_ENTRY_ID" --entry-label "$WORKFLOW_REPORT_ENTRY_LABEL" --created-at-utc "$WORKFLOW_REPORT_CREATED_AT_UTC" --time-zone "$WORKFLOW_REPORT_TIME_ZONE" --managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"; else nix run 'github:overengineeringstudio/effect-utils/main#workflow-report' -- render-comment-body --bundle-path "$WORKFLOW_REPORT_BUNDLE_PATH" --comments-path "$comments_json" --comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH" --summary-path "$WORKFLOW_REPORT_SUMMARY_PATH" --title "$WORKFLOW_REPORT_TITLE" --no-records-message "$WORKFLOW_REPORT_NO_RECORDS_MESSAGE" --state-id "$WORKFLOW_REPORT_STATE_ID" --entry-id "$WORKFLOW_REPORT_ENTRY_ID" --entry-label "$WORKFLOW_REPORT_ENTRY_LABEL" --created-at-utc "$WORKFLOW_REPORT_CREATED_AT_UTC" --time-zone "$WORKFLOW_REPORT_TIME_ZONE" --managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"; fi
+          workflow_report_flake_ref="${WORKFLOW_REPORT_FLAKE_REF:-github:overengineeringstudio/effect-utils/main#workflow-report}"
+          if command -v workflow-report >/dev/null 2>&1; then workflow-report render-comment-body --bundle-path "$WORKFLOW_REPORT_BUNDLE_PATH" --comments-path "$comments_json" --comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH" --summary-path "$WORKFLOW_REPORT_SUMMARY_PATH" --title "$WORKFLOW_REPORT_TITLE" --no-records-message "$WORKFLOW_REPORT_NO_RECORDS_MESSAGE" --state-id "$WORKFLOW_REPORT_STATE_ID" --entry-id "$WORKFLOW_REPORT_ENTRY_ID" --entry-label "$WORKFLOW_REPORT_ENTRY_LABEL" --created-at-utc "$WORKFLOW_REPORT_CREATED_AT_UTC" --time-zone "$WORKFLOW_REPORT_TIME_ZONE" --managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"; else nix run "$workflow_report_flake_ref" -- render-comment-body --bundle-path "$WORKFLOW_REPORT_BUNDLE_PATH" --comments-path "$comments_json" --comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH" --summary-path "$WORKFLOW_REPORT_SUMMARY_PATH" --title "$WORKFLOW_REPORT_TITLE" --no-records-message "$WORKFLOW_REPORT_NO_RECORDS_MESSAGE" --state-id "$WORKFLOW_REPORT_STATE_ID" --entry-id "$WORKFLOW_REPORT_ENTRY_ID" --entry-label "$WORKFLOW_REPORT_ENTRY_LABEL" --created-at-utc "$WORKFLOW_REPORT_CREATED_AT_UTC" --time-zone "$WORKFLOW_REPORT_TIME_ZONE" --managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"; fi
       - name: Publish workflow report
         if: always() && !cancelled()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          WORKFLOW_REPORT_FLAKE_REF: "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#workflow-report"
           WORKFLOW_REPORT_STATE_ID: storybook-preview
           WORKFLOW_REPORT_COMMENT_BODY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-comment.md'
           WORKFLOW_REPORT_SUMMARY_PATH: '${{ runner.temp }}/workflow-reports/storybook-preview-summary.md'
@@ -7969,7 +7974,8 @@ jobs:
           comments_json="$(mktemp)"
           comment_id_file="$(mktemp)"
           nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"
-          if command -v workflow-report >/dev/null 2>&1; then workflow-report find-comment --comments-path "$comments_json" --comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH" --comment-id-path "$comment_id_file" --state-id "$WORKFLOW_REPORT_STATE_ID" --managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"; else nix run 'github:overengineeringstudio/effect-utils/main#workflow-report' -- find-comment --comments-path "$comments_json" --comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH" --comment-id-path "$comment_id_file" --state-id "$WORKFLOW_REPORT_STATE_ID" --managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"; fi
+          workflow_report_flake_ref="${WORKFLOW_REPORT_FLAKE_REF:-github:overengineeringstudio/effect-utils/main#workflow-report}"
+          if command -v workflow-report >/dev/null 2>&1; then workflow-report find-comment --comments-path "$comments_json" --comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH" --comment-id-path "$comment_id_file" --state-id "$WORKFLOW_REPORT_STATE_ID" --managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"; else nix run "$workflow_report_flake_ref" -- find-comment --comments-path "$comments_json" --comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH" --comment-id-path "$comment_id_file" --state-id "$WORKFLOW_REPORT_STATE_ID" --managed-marker "$WORKFLOW_REPORT_MANAGED_MARKER"; fi
 
           comment_id="$(cat "$comment_id_file")"
           if [ -n "$comment_id" ]; then

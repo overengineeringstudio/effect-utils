@@ -2,6 +2,7 @@ import {
   deployTargetEnvSuffix,
   workflowReportEnvKey,
   workflowReportCommand,
+  workflowReportEnv,
   workflowReportKind,
   workflowReportMarker,
   workflowReportNixTokenSetup,
@@ -148,6 +149,7 @@ export const vercelDeployCommentStep = (opts: {
     env: {
       GH_TOKEN: '${{ github.token }}',
       GH_REPO: '${{ github.repository }}',
+      ...workflowReportEnv({ workflowReportFlakeRef: opts.workflowReportFlakeRef }),
       WORKFLOW_REPORT_MARKER: workflowReportMarker,
       ...Object.fromEntries(
         projects.flatMap((project) => [
@@ -196,7 +198,6 @@ export const vercelDeployCommentStep = (opts: {
           `if [ -n "\${${project.reportEnvKey}:-}" ]; then printf '%s%s\\n' ${JSON.stringify(workflowReportMarker)} "\${${project.reportEnvKey}}" >> "$reports_jsonl"; fi`,
       ),
       workflowReportCommand({
-        workflowReportFlakeRef: opts.workflowReportFlakeRef,
         args: [
           'collect-bundle',
           '--bundle-id deploy-preview',
@@ -211,7 +212,6 @@ export const vercelDeployCommentStep = (opts: {
       '  printf \'[]\' > "$comments_json"',
       'fi',
       workflowReportCommand({
-        workflowReportFlakeRef: opts.workflowReportFlakeRef,
         args: [
           'render-comment-body',
           '--bundle-path "$bundle_json"',
@@ -229,7 +229,6 @@ export const vercelDeployCommentStep = (opts: {
       'cat "$summary_body" >> "$GITHUB_STEP_SUMMARY"',
       'if [ "${{ github.event_name }}" = "pull_request" ]; then',
       `  ${workflowReportCommand({
-        workflowReportFlakeRef: opts.workflowReportFlakeRef,
         args: [
           'find-comment',
           '--comments-path "$comments_json"',

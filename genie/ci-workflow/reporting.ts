@@ -5,7 +5,12 @@ import {
   workflowReportRecordLineMarker,
   type WorkflowReportRecord,
 } from '../../packages/@overeng/workflow-report/src/mod.ts'
-import { shellSingleQuote, workflowReportCommand, workflowReportNixTokenSetup } from './shared.ts'
+import {
+  shellSingleQuote,
+  workflowReportCommand,
+  workflowReportEnv,
+  workflowReportNixTokenSetup,
+} from './shared.ts'
 
 type GitHubWorkflowStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 
@@ -97,6 +102,7 @@ export const workflowReportCollectorStep = (
   shell: 'bash',
   env: {
     GH_TOKEN: '${{ github.token }}',
+    ...workflowReportEnv({ workflowReportFlakeRef: opts.workflowReportFlakeRef }),
     WORKFLOW_REPORT_BUNDLE_ID: opts.bundleId,
     WORKFLOW_REPORT_INPUT_PATHS_JSON: JSON.stringify(opts.inputPaths),
     WORKFLOW_REPORT_OUTPUT_PATH: opts.outputPath,
@@ -106,7 +112,6 @@ export const workflowReportCollectorStep = (
   run: [
     ...workflowReportNixTokenSetup,
     workflowReportCommand({
-      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       args: [
         'collect-bundle',
         '--bundle-id "$WORKFLOW_REPORT_BUNDLE_ID"',
@@ -132,6 +137,7 @@ export const workflowReportCommentBodyStep = (
   env: {
     GH_TOKEN: '${{ github.token }}',
     GH_REPO: '${{ github.repository }}',
+    ...workflowReportEnv({ workflowReportFlakeRef: opts.workflowReportFlakeRef }),
     WORKFLOW_REPORT_BUNDLE_PATH: opts.bundlePath,
     WORKFLOW_REPORT_COMMENT_BODY_PATH: opts.commentBodyPath,
     WORKFLOW_REPORT_SUMMARY_PATH: opts.summaryPath ?? opts.commentBodyPath,
@@ -154,7 +160,6 @@ export const workflowReportCommentBodyStep = (
     'fi',
     '',
     workflowReportCommand({
-      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       args: [
         'render-comment-body',
         '--bundle-path "$WORKFLOW_REPORT_BUNDLE_PATH"',
@@ -184,6 +189,7 @@ export const workflowReportPublisherStep = (
   env: {
     GH_TOKEN: '${{ github.token }}',
     GH_REPO: '${{ github.repository }}',
+    ...workflowReportEnv({ workflowReportFlakeRef: opts.workflowReportFlakeRef }),
     WORKFLOW_REPORT_STATE_ID: opts.stateId,
     WORKFLOW_REPORT_COMMENT_BODY_PATH: opts.commentBodyPath,
     WORKFLOW_REPORT_SUMMARY_PATH: opts.summaryPath ?? opts.commentBodyPath,
@@ -208,7 +214,6 @@ export const workflowReportPublisherStep = (
     'comment_id_file="$(mktemp)"',
     'nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"',
     workflowReportCommand({
-      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       args: [
         'find-comment',
         '--comments-path "$comments_json"',

@@ -1,5 +1,9 @@
 import { workflowReportRecordLineMarker } from '../../packages/@overeng/workflow-report/src/mod.ts'
-export { workflowReportCommand, workflowReportNixTokenSetup } from '../ci-workflow/shared.ts'
+export {
+  workflowReportCommand,
+  workflowReportEnv,
+  workflowReportNixTokenSetup,
+} from '../ci-workflow/shared.ts'
 
 export const deployTargetEnvSuffix = (name: string) =>
   name
