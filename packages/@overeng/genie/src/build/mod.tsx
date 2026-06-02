@@ -23,7 +23,6 @@ import { generateFile } from '../core/generation.ts'
 import { createInitialGenieState, type GenieSummary, type GenieMode } from '../core/schema.ts'
 import { GenieApp } from './app.ts'
 import { GenieView } from './view.tsx'
-import { workflowReportCommand } from './workflow-report-command.ts'
 
 export {
   GenieCheckError,
@@ -294,4 +293,4 @@ export const genieCommand = Cli.Command.make(
 
     return handler
   },
-).pipe(Cli.Command.withSubcommands([workflowReportCommand]))
+)

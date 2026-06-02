@@ -15,19 +15,19 @@ import {
   workflowReportManagedMarker,
   workflowReportRecordLineMarker,
   type WorkflowReportManagedComment,
-} from '../runtime/mod.ts'
+} from './mod.ts'
 
-const nonEmptyTextOption = (name: string, description: string) =>
-  Options.text(name).pipe(Options.withDescription(description))
+const nonEmptyTextOption = (opts: { readonly name: string; readonly description: string }) =>
+  Options.text(opts.name).pipe(Options.withDescription(opts.description))
 
-const optionalTextOption = (name: string, description: string) =>
-  Options.text(name).pipe(Options.withDescription(description), Options.withDefault(''))
+const optionalTextOption = (opts: { readonly name: string; readonly description: string }) =>
+  Options.text(opts.name).pipe(Options.withDescription(opts.description), Options.withDefault(''))
 
-const expectString = (value: unknown, path: string) => {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`${path} must be a non-empty string`)
+const expectString = (opts: { readonly value: unknown; readonly path: string }) => {
+  if (typeof opts.value !== 'string' || opts.value.length === 0) {
+    throw new Error(`${opts.path} must be a non-empty string`)
   }
-  return value
+  return opts.value
 }
 
 const optionalString = (value: string) => (value.length === 0 ? undefined : value)
@@ -43,37 +43,45 @@ const readInputPaths = (inputPathsJson: string) => {
   if (Array.isArray(inputPaths) === false) {
     throw new Error('input paths JSON must decode to an array')
   }
-  return inputPaths.map((path, index) => expectString(path, `inputPaths[${index}]`))
+  return inputPaths.map((path, index) =>
+    expectString({ value: path, path: `inputPaths[${index}]` }),
+  )
 }
 
-const latestCreatedAtUtc = (
-  records: readonly { readonly createdAtUtc: string }[],
-  fallback: string,
-) =>
-  records.reduce(
+const latestCreatedAtUtc = (opts: {
+  readonly records: readonly { readonly createdAtUtc: string }[]
+  readonly fallback: string
+}) =>
+  opts.records.reduce(
     (latest, record) => (record.createdAtUtc > latest ? record.createdAtUtc : latest),
-    fallback,
+    opts.fallback,
   )
 
-const visibleWorkflowReportBody = (body: string, marker: string) => {
-  const markerIndex = body.indexOf(marker)
-  return markerIndex === -1 ? body : `${body.slice(0, markerIndex).trimEnd()}\n`
+const visibleWorkflowReportBody = (opts: { readonly body: string; readonly marker: string }) => {
+  const markerIndex = opts.body.indexOf(opts.marker)
+  return markerIndex === -1 ? opts.body : `${opts.body.slice(0, markerIndex).trimEnd()}\n`
 }
 
-const writeTextFile = (path: string, text: string) => {
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, text)
+const writeTextFile = (opts: { readonly path: string; readonly text: string }) => {
+  mkdirSync(dirname(opts.path), { recursive: true })
+  writeFileSync(opts.path, opts.text)
 }
 
 const collectBundleCommand = Command.make(
   'collect-bundle',
   {
-    bundleId: nonEmptyTextOption('bundle-id', 'Workflow report bundle identifier'),
-    inputPathsJson: nonEmptyTextOption(
-      'input-paths-json',
-      'JSON array of marked JSONL input file paths',
-    ),
-    outputPath: nonEmptyTextOption('output-path', 'Path that receives the encoded bundle JSON'),
+    bundleId: nonEmptyTextOption({
+      name: 'bundle-id',
+      description: 'Workflow report bundle identifier',
+    }),
+    inputPathsJson: nonEmptyTextOption({
+      name: 'input-paths-json',
+      description: 'JSON array of marked JSONL input file paths',
+    }),
+    outputPath: nonEmptyTextOption({
+      name: 'output-path',
+      description: 'Path that receives the encoded bundle JSON',
+    }),
     recordMarker: Options.text('record-marker').pipe(
       Options.withDescription('Line marker prefix for workflow report records'),
       Options.withDefault(workflowReportRecordLineMarker),
@@ -100,32 +108,53 @@ const collectBundleCommand = Command.make(
         sources,
         marker: recordMarker,
       })
-      writeTextFile(outputPath, encodeWorkflowReportBundleJson(bundle))
+      writeTextFile({ path: outputPath, text: encodeWorkflowReportBundleJson(bundle) })
     }),
 ).pipe(Command.withDescription('Collect marked workflow report records into a bundle'))
 
 const renderCommentBodyCommand = Command.make(
   'render-comment-body',
   {
-    bundlePath: nonEmptyTextOption('bundle-path', 'Path to a workflow report bundle JSON file'),
-    commentsPath: nonEmptyTextOption('comments-path', 'Path to a GitHub issue comments JSON array'),
-    commentBodyPath: nonEmptyTextOption(
-      'comment-body-path',
-      'Path that receives the full managed comment body',
-    ),
-    summaryPath: nonEmptyTextOption('summary-path', 'Path that receives the visible summary body'),
-    title: nonEmptyTextOption('title', 'Markdown title for the report comment'),
-    noRecordsMessage: nonEmptyTextOption(
-      'no-records-message',
-      'Message rendered when the report bundle has no records',
-    ),
-    stateId: nonEmptyTextOption('state-id', 'Stable managed state identifier'),
-    entryId: nonEmptyTextOption('entry-id', 'Current report history entry identifier'),
-    entryLabel: nonEmptyTextOption('entry-label', 'Current report history entry label'),
-    createdAtUtc: optionalTextOption(
-      'created-at-utc',
-      'Current report history entry timestamp, defaults to latest record timestamp',
-    ),
+    bundlePath: nonEmptyTextOption({
+      name: 'bundle-path',
+      description: 'Path to a workflow report bundle JSON file',
+    }),
+    commentsPath: nonEmptyTextOption({
+      name: 'comments-path',
+      description: 'Path to a GitHub issue comments JSON array',
+    }),
+    commentBodyPath: nonEmptyTextOption({
+      name: 'comment-body-path',
+      description: 'Path that receives the full managed comment body',
+    }),
+    summaryPath: nonEmptyTextOption({
+      name: 'summary-path',
+      description: 'Path that receives the visible summary body',
+    }),
+    title: nonEmptyTextOption({
+      name: 'title',
+      description: 'Markdown title for the report comment',
+    }),
+    noRecordsMessage: nonEmptyTextOption({
+      name: 'no-records-message',
+      description: 'Message rendered when the report bundle has no records',
+    }),
+    stateId: nonEmptyTextOption({
+      name: 'state-id',
+      description: 'Stable managed state identifier',
+    }),
+    entryId: nonEmptyTextOption({
+      name: 'entry-id',
+      description: 'Current report history entry identifier',
+    }),
+    entryLabel: nonEmptyTextOption({
+      name: 'entry-label',
+      description: 'Current report history entry label',
+    }),
+    createdAtUtc: optionalTextOption({
+      name: 'created-at-utc',
+      description: 'Current report history entry timestamp, defaults to latest record timestamp',
+    }),
     timeZone: Options.text('time-zone').pipe(
       Options.withDescription('IANA time zone for rendered timestamps'),
       Options.withDefault('UTC'),
@@ -163,26 +192,39 @@ const renderCommentBodyCommand = Command.make(
         entryId,
         entryLabel,
         createdAtUtc:
-          optionalString(createdAtUtc) ?? latestCreatedAtUtc(bundle.records, bundle.generatedAtUtc),
+          optionalString(createdAtUtc) ??
+          latestCreatedAtUtc({ records: bundle.records, fallback: bundle.generatedAtUtc }),
         records: bundle.records,
       })
       const body = renderWorkflowReportCommentBody({ title, noRecordsMessage, state })
 
-      writeTextFile(commentBodyPath, body)
-      writeTextFile(summaryPath, visibleWorkflowReportBody(body, managedMarker))
+      writeTextFile({ path: commentBodyPath, text: body })
+      writeTextFile({
+        path: summaryPath,
+        text: visibleWorkflowReportBody({ body, marker: managedMarker }),
+      })
     }),
 ).pipe(Command.withDescription('Render a managed workflow report comment body'))
 
 const findCommentCommand = Command.make(
   'find-comment',
   {
-    commentsPath: nonEmptyTextOption('comments-path', 'Path to a GitHub issue comments JSON array'),
-    commentBodyPath: nonEmptyTextOption('comment-body-path', 'Path to the target comment body'),
-    commentIdPath: nonEmptyTextOption(
-      'comment-id-path',
-      'Path that receives the existing managed comment id, or an empty string',
-    ),
-    stateId: nonEmptyTextOption('state-id', 'Stable managed state identifier'),
+    commentsPath: nonEmptyTextOption({
+      name: 'comments-path',
+      description: 'Path to a GitHub issue comments JSON array',
+    }),
+    commentBodyPath: nonEmptyTextOption({
+      name: 'comment-body-path',
+      description: 'Path to the target comment body',
+    }),
+    commentIdPath: nonEmptyTextOption({
+      name: 'comment-id-path',
+      description: 'Path that receives the existing managed comment id, or an empty string',
+    }),
+    stateId: nonEmptyTextOption({
+      name: 'state-id',
+      description: 'Stable managed state identifier',
+    }),
     managedMarker: Options.text('managed-marker').pipe(
       Options.withDescription('Managed comment marker'),
       Options.withDefault(workflowReportManagedMarker),
@@ -200,10 +242,11 @@ const findCommentCommand = Command.make(
         stateId: targetState.stateId,
         marker: managedMarker,
       })
-      writeTextFile(commentIdPath, existingComment?.id ?? '')
+      writeTextFile({ path: commentIdPath, text: existingComment?.id ?? '' })
     }),
 ).pipe(Command.withDescription('Find the existing managed workflow report comment'))
 
+/** CLI command for collecting bundles and rendering managed workflow report comments. */
 export const workflowReportCommand = Command.make('workflow-report').pipe(
   Command.withSubcommands([collectBundleCommand, renderCommentBodyCommand, findCommentCommand]),
   Command.withDescription('Workflow report bundle, render, and comment-state helpers'),

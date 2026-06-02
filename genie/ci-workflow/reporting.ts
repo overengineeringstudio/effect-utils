@@ -4,8 +4,8 @@ import {
   workflowReportManagedMarker,
   workflowReportRecordLineMarker,
   type WorkflowReportRecord,
-} from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { shellSingleQuote, workflowReportGenieCommand, workflowReportNixTokenSetup } from './shared.ts'
+} from '../../packages/@overeng/workflow-report/src/mod.ts'
+import { shellSingleQuote, workflowReportCommand, workflowReportNixTokenSetup } from './shared.ts'
 
 type GitHubWorkflowStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 
@@ -22,7 +22,7 @@ export type WorkflowReportCollectorStepOptions = {
   readonly bundleId: string
   readonly inputPaths: readonly string[]
   readonly outputPath: string
-  readonly genieFlakeRef?: string
+  readonly workflowReportFlakeRef?: string
   readonly id?: string
   readonly name?: string
   readonly marker?: string
@@ -35,7 +35,7 @@ export type WorkflowReportPublisherStepOptions = {
   readonly commentBodyPath: string
   readonly summaryPath?: string
   readonly stateId: string
-  readonly genieFlakeRef?: string
+  readonly workflowReportFlakeRef?: string
   readonly id?: string
   readonly name?: string
   readonly marker?: string
@@ -53,7 +53,7 @@ export type WorkflowReportCommentBodyStepOptions = {
   readonly createdAtUtc?: string
   readonly summaryPath?: string
   readonly timeZone?: string
-  readonly genieFlakeRef?: string
+  readonly workflowReportFlakeRef?: string
   readonly id?: string
   readonly name?: string
   readonly marker?: string
@@ -105,10 +105,9 @@ export const workflowReportCollectorStep = (
   },
   run: [
     ...workflowReportNixTokenSetup,
-    workflowReportGenieCommand({
-      genieFlakeRef: opts.genieFlakeRef,
+    workflowReportCommand({
+      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       args: [
-        'workflow-report',
         'collect-bundle',
         '--bundle-id "$WORKFLOW_REPORT_BUNDLE_ID"',
         '--input-paths-json "$WORKFLOW_REPORT_INPUT_PATHS_JSON"',
@@ -154,10 +153,9 @@ export const workflowReportCommentBodyStep = (
     '  printf \'[]\' > "$comments_json"',
     'fi',
     '',
-    workflowReportGenieCommand({
-      genieFlakeRef: opts.genieFlakeRef,
+    workflowReportCommand({
+      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       args: [
-        'workflow-report',
         'render-comment-body',
         '--bundle-path "$WORKFLOW_REPORT_BUNDLE_PATH"',
         '--comments-path "$comments_json"',
@@ -209,10 +207,9 @@ export const workflowReportPublisherStep = (
     'comments_json="$(mktemp)"',
     'comment_id_file="$(mktemp)"',
     'nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --paginate > "$comments_json"',
-    workflowReportGenieCommand({
-      genieFlakeRef: opts.genieFlakeRef,
+    workflowReportCommand({
+      workflowReportFlakeRef: opts.workflowReportFlakeRef,
       args: [
-        'workflow-report',
         'find-comment',
         '--comments-path "$comments_json"',
         '--comment-body-path "$WORKFLOW_REPORT_COMMENT_BODY_PATH"',

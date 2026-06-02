@@ -30,7 +30,7 @@ const vercelDeploySource = readFileSync(
 )
 const workflowReportCommandSource = readFileSync(
   new URL(
-    ['../../../../../../packages/@overeng/genie/src/build', 'workflow-report-command.ts'].join('/'),
+    ['../../../../../../packages/@overeng/workflow-report/src', 'cli-command.ts'].join('/'),
     import.meta.url,
   ),
   'utf8',

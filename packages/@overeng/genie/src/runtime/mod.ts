@@ -9,7 +9,6 @@ export * from './megarepo-config/mod.ts'
 export * from './oxfmt-config/mod.ts'
 export * from './oxlint-config/mod.ts'
 export * from './repo-context/mod.ts'
-export * from './workflow-reporting/mod.ts'
 export {
   CatalogConflictError,
   OverrideConflictError,

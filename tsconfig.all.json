@@ -83,6 +83,9 @@
     },
     {
       "path": "./packages/@overeng/utils-dev"
+    },
+    {
+      "path": "./packages/@overeng/workflow-report"
     }
   ]
 }

@@ -242,8 +242,8 @@ export const resolveDevenvFnScript = `resolve_devenv() {
 
 export const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
 
-export const defaultWorkflowReportGenieFlakeRef =
-  'github:overengineeringstudio/effect-utils/main#genie'
+export const defaultWorkflowReportFlakeRef =
+  'github:overengineeringstudio/effect-utils/main#workflow-report'
 
 export const workflowReportNixTokenSetup = [
   'if [ -n "${GH_TOKEN:-}" ]; then',
@@ -251,13 +251,13 @@ export const workflowReportNixTokenSetup = [
   'fi',
 ]
 
-export const workflowReportGenieCommand = (opts: {
+export const workflowReportCommand = (opts: {
   readonly args: readonly string[]
-  readonly genieFlakeRef?: string
+  readonly workflowReportFlakeRef?: string
 }) => {
   const args = opts.args.join(' ')
-  const flakeRef = shellSingleQuote(opts.genieFlakeRef ?? defaultWorkflowReportGenieFlakeRef)
-  return `if command -v genie >/dev/null 2>&1; then genie ${args}; else nix run ${flakeRef} -- ${args}; fi`
+  const flakeRef = shellSingleQuote(opts.workflowReportFlakeRef ?? defaultWorkflowReportFlakeRef)
+  return `if command -v workflow-report >/dev/null 2>&1; then workflow-report ${args}; else nix run ${flakeRef} -- ${args}; fi`
 }
 
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */

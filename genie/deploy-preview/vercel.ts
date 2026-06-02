@@ -1,7 +1,7 @@
 import {
   deployTargetEnvSuffix,
   workflowReportEnvKey,
-  workflowReportGenieCommand,
+  workflowReportCommand,
   workflowReportKind,
   workflowReportMarker,
   workflowReportNixTokenSetup,
@@ -131,7 +131,7 @@ export const vercelDeployCommentStep = (opts: {
   noRecordsMessage: string
   projects: readonly Pick<VercelProject, 'name' | 'label'>[]
   deployModeScript: string
-  genieFlakeRef?: string
+  workflowReportFlakeRef?: string
 }) => {
   const projects = opts.projects.map((project) => ({
     name: project.name,
@@ -195,10 +195,9 @@ export const vercelDeployCommentStep = (opts: {
         (project) =>
           `if [ -n "\${${project.reportEnvKey}:-}" ]; then printf '%s%s\\n' ${JSON.stringify(workflowReportMarker)} "\${${project.reportEnvKey}}" >> "$reports_jsonl"; fi`,
       ),
-      workflowReportGenieCommand({
-        genieFlakeRef: opts.genieFlakeRef,
+      workflowReportCommand({
+        workflowReportFlakeRef: opts.workflowReportFlakeRef,
         args: [
-          'workflow-report',
           'collect-bundle',
           '--bundle-id deploy-preview',
           '--input-paths-json "[\\"$reports_jsonl\\"]"',
@@ -211,10 +210,9 @@ export const vercelDeployCommentStep = (opts: {
       'else',
       '  printf \'[]\' > "$comments_json"',
       'fi',
-      workflowReportGenieCommand({
-        genieFlakeRef: opts.genieFlakeRef,
+      workflowReportCommand({
+        workflowReportFlakeRef: opts.workflowReportFlakeRef,
         args: [
-          'workflow-report',
           'render-comment-body',
           '--bundle-path "$bundle_json"',
           '--comments-path "$comments_json"',
@@ -230,10 +228,9 @@ export const vercelDeployCommentStep = (opts: {
       }),
       'cat "$summary_body" >> "$GITHUB_STEP_SUMMARY"',
       'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-      `  ${workflowReportGenieCommand({
-        genieFlakeRef: opts.genieFlakeRef,
+      `  ${workflowReportCommand({
+        workflowReportFlakeRef: opts.workflowReportFlakeRef,
         args: [
-          'workflow-report',
           'find-comment',
           '--comments-path "$comments_json"',
           '--comment-body-path "$comment_body"',
@@ -268,7 +265,7 @@ export const vercelDeployJobs = (opts: {
   deployCommentPermissions: Record<string, string>
   bashShellDefaults: { run: { shell: string } }
   commentRunner: readonly string[]
-  workflowReportGenieFlakeRef?: string
+  workflowReportFlakeRef?: string
   deployStepDecorator?: (step: StepRecord, project: VercelProject) => StepRecord
 }) => {
   const deployCondition =
@@ -329,7 +326,7 @@ export const vercelDeployJobs = (opts: {
         projects: opts.projects,
         noRecordsMessage: opts.noRecordsMessage ?? 'No deploy URLs detected.',
         deployModeScript: opts.deployModeScript,
-        genieFlakeRef: opts.workflowReportGenieFlakeRef,
+        workflowReportFlakeRef: opts.workflowReportFlakeRef,
       }),
     ],
   }
