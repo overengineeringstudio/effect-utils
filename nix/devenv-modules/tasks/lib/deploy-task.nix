@@ -52,13 +52,7 @@ let
       export ${exportName}="''${!local_name}"
     '';
 
-  # Emit one strict metadata record that every deploy provider must satisfy.
-  # CI consumes this contract instead of scraping provider-specific log lines.
-  #
-  # We intentionally write both:
-  # - generic keys, so higher-level CI logic can stay provider-agnostic
-  # - provider-scoped keys, so existing tasks and ad-hoc debugging stay usable
-  #
+  # Emit one strict workflow-report record that every deploy provider must satisfy.
   # `raw_deploy_url` is the unique deploy artifact URL.
   # `final_url` is the user-facing URL after aliasing, if any.
   mkDeployMetadataEmitter =
@@ -67,7 +61,6 @@ let
       providerLabel,
       target,
       displayName ? target,
-      legacyMetadataPrefix ? null,
     }:
     let
       providerUpper = lib.toUpper provider;
@@ -75,15 +68,6 @@ let
     ''
       deployed_at_utc="''${deployed_at_utc:-$(${pkgs.coreutils}/bin/date -u +%Y-%m-%dT%H:%M:%SZ)}"
       deploy_key_suffix="$(printf '%s' '${target}' | tr '[:lower:]-' '[:upper:]_' | tr -cd 'A-Z0-9_')"
-
-      deploy_metadata_json="$(${pkgs.jq}/bin/jq -cn \
-        --arg provider '${provider}' \
-        --arg target '${target}' \
-        --arg displayName '${displayName}' \
-        --arg rawDeployUrl "$raw_deploy_url" \
-        --arg finalUrl "$final_url" \
-        --arg deployedAtUtc "$deployed_at_utc" \
-        '{provider: $provider, target: $target, displayName: $displayName, rawDeployUrl: $rawDeployUrl, finalUrl: $finalUrl, deployedAtUtc: $deployedAtUtc}')"
 
       workflow_report_json="$(${pkgs.jq}/bin/jq -cn \
         --argjson schemaVersion 1 \
@@ -172,14 +156,7 @@ let
       echo "${providerLabel} raw deploy URL: $raw_deploy_url"
       echo "${providerLabel} deploy URL: $final_url"
       echo "${providerLabel} deployed at UTC: $deployed_at_utc"
-      echo "DEPLOY_TASK_METADATA: $deploy_metadata_json"
       echo "WORKFLOW_REPORT_V1: $workflow_report_json"
-      ${
-        if legacyMetadataPrefix == null then
-          ""
-        else
-          ''echo "${legacyMetadataPrefix}: $deploy_metadata_json"''
-      }
     '';
   # Shared alias-name resolver for static-directory deploys (Netlify drafts /
   # Vercel previews are aliased the same way: prod → `<prefix>[-<suffix>]`,

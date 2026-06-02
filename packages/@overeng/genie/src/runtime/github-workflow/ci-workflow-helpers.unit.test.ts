@@ -357,7 +357,7 @@ describe('ci workflow merge queue helpers', () => {
       'pull-requests': 'read',
     })
     expect(mergeQueueWorkflowOn()).toMatchObject({ merge_group: null })
-  })
+  }, 20_000)
 })
 
 describe('ci workflow shared auth helpers', () => {

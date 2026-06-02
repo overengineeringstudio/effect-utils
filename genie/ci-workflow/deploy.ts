@@ -17,17 +17,6 @@ export const deployCommentPermissions = {
   'pull-requests': 'write',
 } as const
 
-/** Shared mode detection script for deploy comments. Sets `label` based on event type. */
-export const deployModeScript = [
-  'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-  '  label="prod"',
-  'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-  '  label="PR #${{ github.event.pull_request.number }}"',
-  'else',
-  '  exit 0',
-  'fi',
-].join('\n')
-
 /**
  * Step that dispatches `upstream-changed` repository_dispatch to a target repo.
  * Add this to upstream CI workflows so merges to main trigger downstream alignment.
@@ -136,7 +125,6 @@ export const vercelDeployJobs = (opts: {
   return buildVercelDeployJobs({
     ...opts,
     runDevenvTasksBefore,
-    deployModeScript,
     deployCommentPermissions,
     bashShellDefaults,
     commentRunner: linuxX64Runner,

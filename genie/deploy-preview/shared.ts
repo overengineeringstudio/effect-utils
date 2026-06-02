@@ -16,9 +16,3 @@ export const workflowReportSchemaVersion = 1
 export const workflowReportKind = 'deploy-preview'
 export const workflowReportOutputName = 'workflow_report'
 export const workflowReportPathOutputName = 'workflow_report_path'
-
-export const workflowReportEnvKey = (name: string) =>
-  `WORKFLOW_REPORT_${deployTargetEnvSuffix(name)}`
-
-export const workflowReportPathEnvKey = (name: string) =>
-  `WORKFLOW_REPORT_PATH_${deployTargetEnvSuffix(name)}`

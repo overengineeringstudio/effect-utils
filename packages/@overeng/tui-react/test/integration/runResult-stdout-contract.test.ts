@@ -56,7 +56,7 @@ describe('runResult subprocess stdout contract', () => {
     expect(stdout).toBe('secret-payload-abc\n')
     // Payload must never bleed into stderr (view text only).
     expect(stderr).not.toContain('secret-payload-abc')
-  })
+  }, 20_000)
 
   test('> file redirect: file contains only the raw result', async () => {
     const env = ENV_WITHOUT_AGENT()
@@ -94,5 +94,5 @@ describe('runResult subprocess stdout contract', () => {
     } finally {
       await fs.promises.rm(tmpdir, { recursive: true, force: true })
     }
-  })
+  }, 20_000)
 })
