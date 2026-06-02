@@ -15,6 +15,12 @@ import {
   type NotionPagePropertyItem,
   type PaginatedResult,
 } from '@overeng/notion-effect-client'
+import {
+  type CanonicalEncodeError,
+  makeCanonicalCodec,
+  propertyWriteClassFromType as propertyWriteClassFromTypeSchema,
+  richTextPlainText,
+} from '@overeng/notion-effect-schema'
 
 import { canonicalHash, dataSourceMetadataHash, queryContractHash } from '../core/canonical.ts'
 import type {
@@ -333,15 +339,6 @@ const gatewayGuardError = (input: {
 const optionalDataSourceIdFromPage = (page: NotionGatewayPage): DataSourceId | undefined =>
   page.parent.type === 'data_source_id' ? DataSourceId.make(page.parent.data_source_id) : undefined
 
-const richTextPlainText = (value: readonly unknown[]): string =>
-  value
-    .map((part) =>
-      typeof part === 'object' && part !== null && 'plain_text' in part
-        ? String((part as { readonly plain_text: unknown }).plain_text)
-        : '',
-    )
-    .join('')
-
 const canonicalIconFromRemote = (
   icon: NotionGatewayDataSource['icon'],
 ): CanonicalDataSourceIcon => {
@@ -410,36 +407,9 @@ const richTextWrite = (plainText: string): ReadonlyArray<unknown> => [
   { type: 'text', text: { content: plainText } },
 ]
 
-const propertyWriteClassFromType = (propertyType: string): PropertyWriteClass => {
-  switch (propertyType) {
-    case 'formula':
-    case 'rollup':
-    case 'created_time':
-    case 'created_by':
-    case 'last_edited_time':
-    case 'last_edited_by':
-    case 'unique_id':
-    case 'verification':
-      return 'computed'
-    case 'title':
-    case 'rich_text':
-    case 'number':
-    case 'checkbox':
-    case 'date':
-    case 'select':
-    case 'multi_select':
-    case 'status':
-    case 'email':
-    case 'url':
-    case 'phone_number':
-    case 'relation':
-    case 'people':
-    case 'files':
-      return 'writable'
-    default:
-      return 'unsupported'
-  }
-}
+/** Property write-class taxonomy, owned by `@overeng/notion-effect-schema`. */
+const propertyWriteClassFromType = (propertyType: string): PropertyWriteClass =>
+  propertyWriteClassFromTypeSchema(propertyType)
 
 const schemaPropertiesFromRemote = (
   properties: Record<string, unknown>,
@@ -467,127 +437,22 @@ const schemaPropertiesFromRemote = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
-const canonicalOptionFromRemote = (option: unknown): CanonicalOptionValue | null =>
-  isRecord(option) === false
-    ? null
-    : {
-        _tag: 'CanonicalOptionValue',
-        ...(typeof option.id === 'string' ? { id: PropertyId.make(option.id) } : {}),
-        name: PropertyName.make(String(option.name ?? '')),
-        ...(typeof option.color === 'string' ? { color: option.color } : {}),
-      }
+/**
+ * Canonical property-value codec, owned by `@overeng/notion-effect-schema`.
+ *
+ * The hashing policy stays in datasource-sync: the codec's `computed` /
+ * `files[].identityHash` branches use the injected `canonicalHash`.
+ */
+const canonicalCodec = makeCanonicalCodec({ hash: canonicalHash })
 
-const canonicalFileFromRemote = (file: unknown) => {
-  if (isRecord(file) === false || typeof file.name !== 'string' || file.name.length === 0) {
-    return undefined
-  }
-  const externalUrl =
-    isRecord(file.external) === true && typeof file.external.url === 'string'
-      ? file.external.url
-      : undefined
-  return {
-    _tag: 'CanonicalFileValue' as const,
-    name: file.name,
-    identityHash: canonicalHash(file),
-    ...(externalUrl === undefined ? {} : { externalUrl }),
-  }
-}
-
-const canonicalPropertyValueJsonFromPageProperty = (property: unknown): string | undefined => {
-  if (isRecord(property) === false || typeof property.type !== 'string') return undefined
-
-  switch (property.type) {
-    case 'title':
-    case 'rich_text':
-      return Array.isArray(property[property.type]) === true
-        ? JSON.stringify({
-            _tag: property.type,
-            plainText: richTextPlainText(property[property.type] as readonly unknown[]),
-          })
-        : undefined
-    case 'number':
-      return typeof property.number === 'number'
-        ? JSON.stringify({ _tag: 'number', value: property.number })
-        : JSON.stringify({ _tag: 'empty' })
-    case 'checkbox':
-      return JSON.stringify({ _tag: 'checkbox', checked: property.checkbox === true })
-    case 'date':
-      return isRecord(property.date) === true && typeof property.date.start === 'string'
-        ? JSON.stringify({
-            _tag: 'date',
-            start: property.date.start,
-            end: typeof property.date.end === 'string' ? property.date.end : null,
-          })
-        : JSON.stringify({ _tag: 'empty' })
-    case 'select':
-    case 'status':
-      return JSON.stringify({
-        _tag: property.type,
-        option: canonicalOptionFromRemote(property[property.type]),
-      })
-    case 'multi_select':
-      return JSON.stringify({
-        _tag: 'multi_select',
-        options:
-          Array.isArray(property.multi_select) === true
-            ? property.multi_select.flatMap((option) => {
-                const canonical = canonicalOptionFromRemote(option)
-                return canonical === null ? [] : [canonical]
-              })
-            : [],
-      })
-    case 'relation':
-      return JSON.stringify({
-        _tag: 'relation',
-        pageIds:
-          Array.isArray(property.relation) === true
-            ? property.relation.flatMap((relation) =>
-                isRecord(relation) === true && typeof relation.id === 'string'
-                  ? [PageId.make(relation.id)]
-                  : [],
-              )
-            : [],
-      })
-    case 'people':
-      return JSON.stringify({
-        _tag: 'people',
-        userIds:
-          Array.isArray(property.people) === true
-            ? property.people.flatMap((person) =>
-                isRecord(person) === true && typeof person.id === 'string' ? [person.id] : [],
-              )
-            : [],
-      })
-    case 'files':
-      return JSON.stringify({
-        _tag: 'files',
-        files:
-          Array.isArray(property.files) === true
-            ? property.files.flatMap((file) => {
-                const canonical = canonicalFileFromRemote(file)
-                return canonical === undefined ? [] : [canonical]
-              })
-            : [],
-      })
-    case 'email':
-    case 'url':
-    case 'phone_number':
-      return JSON.stringify({
-        _tag: property.type,
-        value: typeof property[property.type] === 'string' ? property[property.type] : null,
-      })
-    case 'formula':
-    case 'rollup':
-    case 'created_time':
-    case 'created_by':
-    case 'last_edited_time':
-    case 'last_edited_by':
-      return JSON.stringify({ _tag: 'computed', valueHash: canonicalHash(property[property.type]) })
-    default:
-      return undefined
-  }
-}
-
+/**
+ * Project a remote page's properties into canonical JSON keyed by `PropertyId`.
+ *
+ * The value codec lives in the schema package; the `PropertyId` keying (with
+ * fallback to the raw property key) is datasource-sync domain logic and stays
+ * here. The decoder drops unsupported/malformed entries, so the resulting map
+ * matches the historical bytes exactly (see the codec's golden tests).
+ */
 const propertyValuesJsonFromRemotePage = (
   properties: NotionGatewayPage['properties'],
 ): Record<PropertyId, string> =>
@@ -595,8 +460,10 @@ const propertyValuesJsonFromRemotePage = (
     Object.entries(properties).flatMap(([fallbackName, property]) => {
       const record = isRecord(property) === true ? property : {}
       const propertyId = typeof record.id === 'string' ? record.id : fallbackName
-      const valueJson = canonicalPropertyValueJsonFromPageProperty(property)
-      return valueJson === undefined ? [] : [[PropertyId.make(propertyId), valueJson] as const]
+      return Option.match(canonicalCodec.decodeSync(property), {
+        onNone: () => [],
+        onSome: (value) => [[PropertyId.make(propertyId), JSON.stringify(value)] as const],
+      })
     }),
   ) as Record<PropertyId, string>
 
@@ -704,105 +571,36 @@ const optionValue = (option: CanonicalOptionValue) => ({
 const encodeDateTimeUtc = (value: typeof Schema.DateTimeUtc.Type): string =>
   Schema.encodeSync(Schema.DateTimeUtc)(value)
 
-const propertyValueToNotion = (
-  value: CanonicalPropertyValue,
-): Effect.Effect<unknown, NotionGatewayError> => {
-  switch (value._tag) {
-    case 'title':
-      return Effect.succeed({
-        title: [{ type: 'text', text: { content: value.plainText } }],
+/**
+ * Map a schema-package `CanonicalEncodeError` back onto the gateway's
+ * `NotionGatewayError` guards, restoring the `patchPageProperties` operation and
+ * `page_property_update` capability context the codec does not know about.
+ */
+const canonicalEncodeErrorToGatewayError = (error: CanonicalEncodeError): NotionGatewayError =>
+  error.reason === 'computed'
+    ? gatewayGuardError({
+        operation: 'patchPageProperties',
+        guard: 'ComputedPropertyWrite',
+        message: error.message,
       })
-    case 'rich_text':
-      return Effect.succeed({
-        rich_text: [{ type: 'text', text: { content: value.plainText } }],
+    : unsupportedOperation({
+        operation: 'patchPageProperties',
+        capability: 'page_property_update',
+        message: error.message,
       })
-    case 'number':
-      return Effect.succeed({ number: value.value })
-    case 'checkbox':
-      return Effect.succeed({ checkbox: value.checked })
-    case 'date':
-      return Effect.succeed({
-        date: {
-          start: encodeDateTimeUtc(value.start),
-          ...(value.end === null ? {} : { end: encodeDateTimeUtc(value.end) }),
-        },
-      })
-    case 'select':
-      return Effect.succeed({
-        select: value.option === null ? null : optionValue(value.option),
-      })
-    case 'multi_select':
-      return Effect.succeed({
-        multi_select: value.options.map(optionValue),
-      })
-    case 'status':
-      return Effect.succeed({
-        status: value.option === null ? null : optionValue(value.option),
-      })
-    case 'relation':
-      return Effect.succeed({
-        relation: value.pageIds.map((pageId) => ({ id: pageId })),
-      })
-    case 'people':
-      return Effect.succeed({
-        people: value.userIds.map((id) => ({ id })),
-      })
-    case 'email':
-      return Effect.succeed({ email: value.value })
-    case 'url':
-      return Effect.succeed({ url: value.value })
-    case 'phone_number':
-      return Effect.succeed({ phone_number: value.value })
-    case 'files':
-      return value.files.length > 0 &&
-        value.files.every((file) => file.externalUrl !== undefined) === true
-        ? Effect.succeed({
-            files: value.files.map((file) => ({
-              type: 'external',
-              name: file.name,
-              external: { url: file.externalUrl },
-            })),
-          })
-        : Effect.fail(
-            unsupportedOperation({
-              operation: 'patchPageProperties',
-              capability: 'page_property_update',
-              message:
-                'Files property writes require explicit external URL or modeled file_upload identity for every file',
-            }),
-          )
-    case 'empty':
-      return Effect.fail(
-        unsupportedOperation({
-          operation: 'patchPageProperties',
-          capability: 'page_property_update',
-          message: `Canonical ${value._tag} property writes need additional remote shape information`,
-        }),
-      )
-    case 'computed':
-      return Effect.fail(
-        gatewayGuardError({
-          operation: 'patchPageProperties',
-          guard: 'ComputedPropertyWrite',
-          message: 'Computed Notion properties cannot be written',
-        }),
-      )
-  }
-}
 
 /**
  * Convert a `CanonicalPropertyValue` patch into the Notion API's property update payload.
  *
- * Fails with the corresponding `NotionGatewayError` guard (e.g. `ComputedPropertyWrite`,
- * `UnsupportedRemoteShape`) when a value cannot be expressed in the Notion property model,
- * so the caller can reject before issuing the request.
+ * The value encoding lives in `@overeng/notion-effect-schema`; this adapter maps
+ * its `CanonicalEncodeError`s back onto the gateway guards (`ComputedPropertyWrite`,
+ * `UnsupportedRemoteShape`) with the operation/capability context, so the caller
+ * can reject before issuing the request.
  */
 export const pagePropertyPatchToNotion = (
   patch: Readonly<Record<string, CanonicalPropertyValue>>,
 ): Effect.Effect<Record<string, unknown>, NotionGatewayError> =>
-  Effect.forEach(Object.entries(patch), ([propertyId, value]) =>
-    propertyValueToNotion(value).pipe(Effect.map((notionValue) => [propertyId, notionValue])),
-  ).pipe(Effect.map((entries) => Object.fromEntries(entries)))
+  canonicalCodec.encodePatch(patch).pipe(Effect.mapError(canonicalEncodeErrorToGatewayError))
 
 type AddPropertyDefinitionRuntime = (SchemaPatchOperation & { _tag: 'AddProperty' })['definition']
 

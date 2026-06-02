@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "@overeng/notion-effect-client": "workspace:^",
+    "@overeng/notion-effect-schema": "workspace:^",
     "@overeng/notion-md": "workspace:^",
     "@overeng/tui-react": "workspace:^",
     "@overeng/utils": "workspace:^",

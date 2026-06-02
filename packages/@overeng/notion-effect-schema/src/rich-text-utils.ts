@@ -34,6 +34,22 @@ import type {
 export const toPlainText = (richText: RichTextArray): string =>
   richText.map((rt) => rt.plain_text).join('')
 
+/**
+ * Plain-text extraction over an *untyped* Notion rich-text array.
+ *
+ * Unlike {@link toPlainText}, this tolerates raw `unknown[]` payloads (as
+ * received directly from the Notion API before decoding) and treats any element
+ * without a `plain_text` field as the empty string. Used by the canonical codec.
+ */
+export const richTextPlainText = (value: readonly unknown[]): string =>
+  value
+    .map((part) =>
+      typeof part === 'object' && part !== null && 'plain_text' in part
+        ? String((part as { readonly plain_text: unknown }).plain_text)
+        : '',
+    )
+    .join('')
+
 // -----------------------------------------------------------------------------
 // Annotation Ordering
 // -----------------------------------------------------------------------------
@@ -322,6 +338,7 @@ export const toHtml = (richText: RichTextArray): string =>
  */
 export const RichTextUtils = {
   toPlainText,
+  richTextPlainText,
   toMarkdown,
   toHtml,
 } as const

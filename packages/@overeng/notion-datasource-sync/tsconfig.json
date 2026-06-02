@@ -49,6 +49,9 @@
       "path": "../notion-effect-client"
     },
     {
+      "path": "../notion-effect-schema"
+    },
+    {
       "path": "../notion-md"
     },
     {

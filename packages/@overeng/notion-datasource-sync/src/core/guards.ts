@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
+import type { PropertyWriteClassType } from '@overeng/notion-effect-schema'
 
 import type { QueryRowsPage } from './commands.ts'
 import type {
@@ -95,8 +96,8 @@ export type CapabilityPreflightSnapshot = {
   readonly preflight: 'passed' | 'failed'
 }
 
-/** Classifies whether a property can be written: `writable` allows the write, `computed` and `unsupported` block it. */
-export type PropertyWriteClass = 'writable' | 'computed' | 'unsupported'
+/** Classifies whether a property can be written: `writable` allows the write, `computed` and `unsupported` block it. Owned by `@overeng/notion-effect-schema`; re-exported here for datasource-sync call sites. */
+export type PropertyWriteClass = PropertyWriteClassType
 
 /** Availability status of a property value; used by `guardPropertyAvailability` to block writes when data is incomplete or inaccessible. */
 export type PropertyAvailability =

@@ -1,5 +1,11 @@
 import { Schema } from 'effect'
 
+import type {
+  CanonicalFileValueType as SchemaCanonicalFileValueType,
+  CanonicalOptionValueType as SchemaCanonicalOptionValueType,
+  CanonicalPropertyValueType as SchemaCanonicalPropertyValueType,
+} from '@overeng/notion-effect-schema'
+
 import {
   BodyPointer,
   CommandId,
@@ -31,7 +37,15 @@ export const CanonicalNotionSort = Schema.TaggedStruct('CanonicalNotionSort', {
 }).annotations({ identifier: 'NotionDatasourceSync.CanonicalNotionSort' })
 export type CanonicalNotionSort = typeof CanonicalNotionSort.Type
 
-/** Canonical representation of a select/multi-select/status option, normalized for stable hash comparison. */
+/**
+ * Canonical select/multi-select/status option.
+ *
+ * The structural shape is owned by `@overeng/notion-effect-schema`
+ * ({@link SchemaCanonicalOptionValueType}); this re-brands the unbranded `id`/`name`
+ * strings to the datasource-sync brands so the exported type stays identical for
+ * downstream call sites. Structure (and therefore canonical JSON bytes) is
+ * unchanged.
+ */
 export const CanonicalOptionValue = Schema.TaggedStruct('CanonicalOptionValue', {
   id: Schema.optional(PropertyId),
   name: PropertyName,
@@ -39,7 +53,11 @@ export const CanonicalOptionValue = Schema.TaggedStruct('CanonicalOptionValue', 
 }).annotations({ identifier: 'NotionDatasourceSync.CanonicalOptionValue' })
 export type CanonicalOptionValue = typeof CanonicalOptionValue.Type
 
-/** Canonical file attachment value: name plus a stable identity hash used for change detection. */
+/**
+ * Canonical file attachment value. Re-brands the schema-package shape
+ * ({@link SchemaCanonicalFileValueType}): `identityHash` becomes the datasource-sync
+ * `Hash` brand. Structure is unchanged.
+ */
 export const CanonicalFileValue = Schema.TaggedStruct('CanonicalFileValue', {
   name: Schema.NonEmptyTrimmedString,
   identityHash: Hash,
@@ -47,7 +65,17 @@ export const CanonicalFileValue = Schema.TaggedStruct('CanonicalFileValue', {
 }).annotations({ identifier: 'NotionDatasourceSync.CanonicalFileValue' })
 export type CanonicalFileValue = typeof CanonicalFileValue.Type
 
-/** Normalized representation of any Notion property value type; the `_tag` discriminates the variant. Computed properties carry only their hash. */
+/**
+ * Normalized representation of any Notion property value type; the `_tag`
+ * discriminates the variant. Computed properties carry only their hash.
+ *
+ * The structural union is owned by `@overeng/notion-effect-schema`
+ * ({@link SchemaCanonicalPropertyValueType}); this is the datasource-sync re-brand:
+ * `relation.pageIds` use the `PageId` brand, options/files re-brand their
+ * id/name/hash fields, and `computed.valueHash` uses the `Hash` brand. The
+ * unbranded structure is identical, so canonical JSON serialization is
+ * byte-for-byte preserved (see the codec's golden tests).
+ */
 export const CanonicalPropertyValue = Schema.Union(
   Schema.TaggedStruct('empty', {}),
   Schema.TaggedStruct('title', {
@@ -98,6 +126,24 @@ export const CanonicalPropertyValue = Schema.Union(
   }),
 ).annotations({ identifier: 'NotionDatasourceSync.CanonicalPropertyValue' })
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
+
+/**
+ * Compile-time guard that the datasource-sync re-brand stays structurally in
+ * sync with the schema-package source of truth. The branded datasource-sync
+ * types must remain assignable to the unbranded schema types (brands erase to
+ * their base); a structural drift — an added/removed/renamed field in either
+ * package — breaks this assignment and fails `dt ts:check`.
+ */
+type AssertExtends<A extends B, B> = A
+type _CanonicalOptionStructuralGuard = AssertExtends<
+  CanonicalOptionValue,
+  SchemaCanonicalOptionValueType
+>
+type _CanonicalFileStructuralGuard = AssertExtends<CanonicalFileValue, SchemaCanonicalFileValueType>
+type _CanonicalPropertyValueStructuralGuard = AssertExtends<
+  CanonicalPropertyValue,
+  SchemaCanonicalPropertyValueType
+>
 
 /** Stable data-source icon identity; transient Notion-hosted signed URLs are intentionally excluded from the canonical surface. */
 export const CanonicalDataSourceIcon = Schema.Union(

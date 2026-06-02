@@ -766,6 +766,9 @@ importers:
       '@overeng/notion-effect-client':
         specifier: workspace:^
         version: link:../notion-effect-client
+      '@overeng/notion-effect-schema':
+        specifier: workspace:^
+        version: link:../notion-effect-schema
       '@overeng/notion-md':
         specifier: workspace:^
         version: link:../notion-md

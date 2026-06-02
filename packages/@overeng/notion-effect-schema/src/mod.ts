@@ -278,8 +278,37 @@ export {
   UserMention as UserMentionSchema,
 } from './rich-text.ts'
 
+// Canonical property-value shape, write-class taxonomy, and bidirectional codec
+export {
+  CanonicalDecodeError,
+  CanonicalEncodeError,
+  CanonicalFileValue,
+  type CanonicalFileValueType,
+  CanonicalHash,
+  type CanonicalHashType,
+  CanonicalOptionValue,
+  type CanonicalOptionValueType,
+  CanonicalPropertyValue,
+  type CanonicalPropertyValueType,
+  encodeCanonicalPatch,
+  encodeCanonicalPropertyValue,
+  makeCanonicalCodec,
+  NotionPropertyType,
+  type NotionPropertyTypeType,
+  PropertyWriteClass,
+  type PropertyWriteClassType,
+  propertyWriteClassFromType,
+} from './properties/mod.ts'
+export type { CanonicalCodecDeps } from './properties/mod.ts'
+
 // Rich text utilities
-export { RichTextUtils, toHtml, toMarkdown, toPlainText } from './rich-text-utils.ts'
+export {
+  RichTextUtils,
+  richTextPlainText,
+  toHtml,
+  toMarkdown,
+  toPlainText,
+} from './rich-text-utils.ts'
 
 // User schemas
 export {
