@@ -85,7 +85,14 @@ export { NotionApiError, NotionErrorCode, NotionErrorResponse } from './error.ts
 export type { UploadFileOptions } from './files.ts'
 export { NotionFiles } from './files.ts'
 // Pagination utilities
-export type { PaginatedResult, PaginationOptions } from './internal/pagination.ts'
+export type {
+  FetchPage,
+  PaginateEmit,
+  PaginateOptions,
+  PaginatedResult,
+  PaginationOptions,
+} from './internal/pagination.ts'
+export { paginate } from './internal/pagination.ts'
 export type {
   NotionHttpRouteInfo,
   NotionHttpTelemetryEvent,
@@ -93,6 +100,9 @@ export type {
   RateLimitInfo,
 } from './internal/http.ts'
 export { NotionHttpTelemetry, notionHttpRouteInfo, parseRateLimitHeaders } from './internal/http.ts'
+// Request throttle
+export type { NotionThrottleOptions } from './internal/throttle.ts'
+export { NotionThrottle, NotionThrottleLive } from './internal/throttle.ts'
 // Markdown converter
 export type {
   AnyBlockTransformer,

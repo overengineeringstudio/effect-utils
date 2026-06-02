@@ -20,40 +20,6 @@ export type PaginatedResponse<A> = {
 }
 
 /**
- * Create a paginated stream from a cursor-based API endpoint.
- *
- * Uses Stream.unfoldEffect to automatically fetch all pages.
- *
- * @param fetchPage - Function that fetches a single page given an optional cursor
- * @returns Stream of all items across all pages
- */
-export const paginatedStream = <A, E, R>(
-  fetchPage: (cursor: Option.Option<string>) => Effect.Effect<PaginatedResponse<A>, E, R>,
-): Stream.Stream<A, E, R> =>
-  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
-    Option.match(maybeNextCursor, {
-      // No more pages - signal end
-      onNone: () => Effect.succeed(Option.none()),
-      // Fetch the page with the given cursor
-      onSome: (cursor) =>
-        fetchPage(cursor).pipe(
-          Effect.map((response) => {
-            const items = response.results as A[]
-            const chunk = Chunk.fromIterable(items)
-
-            if (response.has_more === false || response.next_cursor === null) {
-              // Last page - emit items and signal no more pages
-              return Option.some([chunk, Option.none()] as const)
-            }
-
-            // More pages - emit items and set next cursor
-            return Option.some([chunk, Option.some(Option.some(response.next_cursor))] as const)
-          }),
-        ),
-    }),
-  )
-
-/**
  * Helper to build query parameters for pagination.
  */
 export const paginationParams = (opts: {
@@ -103,3 +69,63 @@ export const toPaginatedResult = <A>(response: PaginatedResponse<A>): PaginatedR
   nextCursor: Option.fromNullable(response.next_cursor),
   hasMore: response.has_more,
 })
+
+/**
+ * Fetch one page in the mapped `PaginatedResult` shape, keyed by cursor.
+ *
+ * `Page` may be a structural superset of `PaginatedResult<…>` (e.g. carrying
+ * an extra `propertyItem` field), so the `'page'` emit mapper sees the concrete
+ * fetched result, not just the base pagination envelope.
+ */
+export type FetchPage<Page extends PaginatedResult<unknown>, E, R> = (
+  cursor: Option.Option<string>,
+) => Effect.Effect<Page, E, R>
+
+/** How each fetched page becomes stream output. */
+export type PaginateEmit<Page extends PaginatedResult<unknown>, Out> =
+  | { readonly _tag: 'items' }
+  | { readonly _tag: 'page'; readonly map: (page: Page) => Out }
+
+/** Options controlling cursor seeding and per-page emit granularity for {@link paginate}. */
+export interface PaginateOptions<Page extends PaginatedResult<unknown>, Out> {
+  /** Cursor to begin from. Default: `Option.none()` (start from the beginning). */
+  readonly startCursor?: Option.Option<string>
+  /**
+   * How each page becomes stream output:
+   * - `{ _tag: 'items' }` flattens `page.results` (`Out = Page['results'][number]`).
+   * - `{ _tag: 'page', map }` emits one `Out` per page via `map`.
+   */
+  readonly emit: PaginateEmit<Page, Out>
+}
+
+/**
+ * Stream every page of a cursor-paginated Notion endpoint, built on the mapped
+ * `PaginatedResult` shape. Supports an optional initial cursor and either
+ * flatten-items or emit-one-value-per-page output.
+ */
+// oxlint-disable-next-line overeng/named-args -- primary fetch function plus pagination options.
+export const paginate = <Page extends PaginatedResult<unknown>, Out, E, R>(
+  fetchPage: FetchPage<Page, E, R>,
+  options: PaginateOptions<Page, Out>,
+): Stream.Stream<Out, E, R> =>
+  Stream.unfoldChunkEffect(Option.some(options.startCursor ?? Option.none<string>()), (state) =>
+    Option.match(state, {
+      onNone: () => Effect.succeed(Option.none()),
+      onSome: (cursor) =>
+        fetchPage(cursor).pipe(
+          Effect.map((page) => {
+            const chunk =
+              options.emit._tag === 'items'
+                ? // In 'items' mode `Out` is the page's element type, but the
+                  // tag union prevents TS from narrowing it here.
+                  (Chunk.fromIterable(page.results) as unknown as Chunk.Chunk<Out>)
+                : Chunk.of(options.emit.map(page))
+            const done = page.hasMore === false || Option.isNone(page.nextCursor) === true
+            return Option.some([
+              chunk,
+              done === true ? Option.none() : Option.some(Option.some(page.nextCursor.value)),
+            ] as const)
+          }),
+        ),
+    }),
+  )

@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { Chunk, Effect, Option, type Schema, Stream } from 'effect'
+import { Effect, Option, type Schema, Stream } from 'effect'
 
 import type { DataSourceSchema, Page } from '@overeng/notion-effect-schema'
 import {
@@ -12,6 +12,7 @@ import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { get, patch, post } from './internal/http.ts'
 import {
+  paginate,
   PaginatedResponse,
   type PaginatedResult,
   type PaginationOptions,
@@ -401,30 +402,13 @@ export function queryStream<TProperties, I, R>(
   NotionApiError | PageDecodeError,
   NotionConfig | HttpClient.HttpClient | R
 > {
-  // Use queryRaw with Stream.unfoldChunkEffect for pagination
   const baseStream: Stream.Stream<Page, NotionApiError, NotionConfig | HttpClient.HttpClient> =
-    Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
-      Option.match(maybeNextCursor, {
-        onNone: () => Effect.succeed(Option.none()),
-        onSome: (cursor) => {
-          const queryOpts: QueryDatabaseOptionsBase =
-            Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
-          return queryRaw(queryOpts).pipe(
-            Effect.map((result) => {
-              const chunk = Chunk.fromIterable(result.results)
-
-              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-                return Option.some([chunk, Option.none()] as const)
-              }
-
-              return Option.some([
-                chunk,
-                Option.some(Option.some(result.nextCursor.value)),
-              ] as const)
-            }),
-          )
-        },
-      }),
+    paginate(
+      (cursor) =>
+        queryRaw(
+          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts },
+        ),
+      { emit: { _tag: 'items' } },
     )
 
   if (opts.schema !== undefined) {

@@ -1041,47 +1041,26 @@ describe('Notion data source gateway real adapter boundary', () => {
     expect(requestId).toBe('notion-client-success-request-id-unavailable')
   })
 
-  it('paces live adapter requests through a shared limiter and honors Retry-After pauses', async () => {
-    let now = 0
-    const sleeps: number[] = []
-    let retrieveAttempts = 0
+  it('maps a 429 client error to a gateway error carrying the Retry-After backoff', async () => {
+    // Request pacing now lives in the client's `NotionThrottle` layer (covered by
+    // notion-effect-client's throttle unit test); the gateway only translates the
+    // already-mapped `NotionApiError` into a `NotionGatewayError`, preserving the
+    // Retry-After backoff as `retryAfterMillis`.
     const client = makeClient({
       retrieveDataSource: () =>
-        Effect.sync(() => {
-          retrieveAttempts += 1
-          return retrieveAttempts
-        }).pipe(
-          Effect.flatMap((attempt) =>
-            attempt === 1
-              ? Effect.fail(
-                  new NotionApiError({
-                    status: 429,
-                    code: 'rate_limited',
-                    message: 'rate limited',
-                    retryAfterSeconds: Option.some(2),
-                    requestId: Option.some('notion-request-rate-limit'),
-                    url: Option.none(),
-                    method: Option.some('GET'),
-                  }),
-                )
-              : Effect.succeed(remoteDataSource),
-          ),
+        Effect.fail(
+          new NotionApiError({
+            status: 429,
+            code: 'rate_limited',
+            message: 'rate limited',
+            retryAfterSeconds: Option.some(2),
+            requestId: Option.some('notion-request-rate-limit'),
+            url: Option.none(),
+            method: Option.some('GET'),
+          }),
         ),
     })
-    const gateway = makeNotionDataSourceGatewayFromClient({
-      client,
-      options: {
-        rateLimit: {
-          requestsPerSecond: 1_000,
-          now: () => now,
-          sleep: (millis) =>
-            Effect.sync(() => {
-              sleeps.push(millis)
-              now += millis
-            }),
-        },
-      },
-    })
+    const gateway = makeNotionDataSourceGatewayFromClient({ client })
 
     const rateLimited = await Effect.runPromiseExit(gateway.retrieveDataSource(dataSourceId))
     expect(rateLimited._tag).toBe('Failure')
@@ -1092,13 +1071,6 @@ describe('Notion data source gateway real adapter boundary', () => {
         retryAfterMillis: 2_000,
       })
     }
-
-    await expect(
-      Effect.runPromise(gateway.retrieveDataSource(dataSourceId)),
-    ).resolves.toMatchObject({
-      dataSourceId,
-    })
-    expect(sleeps).toEqual([2_000])
   })
 
   it('preserves paginated page-property list metadata separately from relation item count', async () => {

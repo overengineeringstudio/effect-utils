@@ -23,6 +23,7 @@ import { makeNotionApiContract, makeNotionDataSourceGatewayLayer } from '../gate
 import {
   makeNotionDataSourceGatewayFromClient,
   makeNotionEffectClientGatewayClient,
+  makeThrottledProvideClientEnv,
   NotionDataSourceGatewayLive,
   type NotionGatewayClient,
 } from '../gateway/notion.ts'
@@ -2380,29 +2381,35 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             throw new Error('live page-property pagination test requires a token')
           }
           const token = env.token
-          const baseClient = makeNotionEffectClientGatewayClient(
-            <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>) =>
-              effect.pipe(Effect.provide(liveLayer(token))),
-          )
-          const gateway = makeNotionDataSourceGatewayFromClient({
-            client: {
-              ...baseClient,
-              retrievePageProperty: (input) =>
-                baseClient.retrievePageProperty({ ...input, pageSize: 15 }),
-            },
-          })
           const pages = await Effect.runPromise(
-            gateway
-              .retrievePageProperty({
-                _tag: 'RetrievePagePropertyInput',
-                pageId: decode(PageId, fixture.sourcePage.id),
-                propertyId: relatedPropertyId,
-                startCursor: null,
+            Effect.gen(function* () {
+              /* Explicit ~3 rps throttle so this live path mirrors production pacing. */
+              const withThrottle = yield* makeThrottledProvideClientEnv()
+              const baseClient = makeNotionEffectClientGatewayClient(
+                withThrottle(
+                  <A, E>(effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>) =>
+                    effect.pipe(Effect.provide(liveLayer(token))),
+                ),
+              )
+              const gateway = makeNotionDataSourceGatewayFromClient({
+                client: {
+                  ...baseClient,
+                  retrievePageProperty: (input) =>
+                    baseClient.retrievePageProperty({ ...input, pageSize: 15 }),
+                },
               })
-              .pipe(
-                Stream.runCollect,
-                Effect.map((chunk) => Array.from(chunk)),
-              ),
+              return yield* gateway
+                .retrievePageProperty({
+                  _tag: 'RetrievePagePropertyInput',
+                  pageId: decode(PageId, fixture.sourcePage.id),
+                  propertyId: relatedPropertyId,
+                  startCursor: null,
+                })
+                .pipe(
+                  Stream.runCollect,
+                  Effect.map((chunk) => Array.from(chunk)),
+                )
+            }).pipe(Effect.scoped),
           )
 
           expect(pages.length).toBeGreaterThan(1)

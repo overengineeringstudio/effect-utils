@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
 
 /**
  * Notion API error codes.
@@ -57,6 +57,16 @@ export class NotionApiError extends Schema.TaggedError<NotionApiError>()('Notion
       this.code === 'database_connection_unavailable' ||
       this.code === 'gateway_timeout'
     )
+  }
+
+  /** True for 429 / rate_limited responses. */
+  get isRateLimited(): boolean {
+    return this.status === 429 || this.code === 'rate_limited'
+  }
+
+  /** Server-advised backoff in milliseconds, if present. */
+  get retryAfterMillis(): Option.Option<number> {
+    return Option.map(this.retryAfterSeconds, (seconds) => seconds * 1000)
   }
 }
 

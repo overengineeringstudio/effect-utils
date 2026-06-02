@@ -8,6 +8,7 @@ import { Context, Duration, Effect, Option, Redacted, Schema } from 'effect'
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
+import { NotionThrottle } from './throttle.ts'
 
 /** Rate limit info extracted from response headers */
 export interface RateLimitInfo {
@@ -498,65 +499,78 @@ export const executeRequest = <A, I, R>({
         )
       })
 
-    if (retryEnabled === false) {
-      return yield* makeRequest(0)
-    }
-
-    let retries = 0
-
-    while (true) {
-      const result = yield* makeRequest(retries).pipe(Effect.either)
-
-      if (result._tag === 'Right') {
-        return result.right
+    /**
+     * One logical request: the full reactive retry loop. Wrapped (when a
+     * throttle is bound) so a single throttle token is consumed per logical
+     * request rather than per retry attempt.
+     */
+    const runOnce = Effect.gen(function* () {
+      if (retryEnabled === false) {
+        return yield* makeRequest(0)
       }
 
-      const error = result.left
+      let retries = 0
 
-      if (error.isRetryable === false || retries >= maxRetries) {
-        return yield* error
+      while (true) {
+        const result = yield* makeRequest(retries).pipe(Effect.either)
+
+        if (result._tag === 'Right') {
+          return result.right
+        }
+
+        const error = result.left
+
+        if (error.isRetryable === false || retries >= maxRetries) {
+          return yield* error
+        }
+
+        const retryAfterMs = Option.match(error.retryAfterSeconds, {
+          onNone: () => 0,
+          onSome: (s) => s * 1000,
+        })
+
+        const backoffMs = retryBaseDelay * 2 ** retries
+        const delayMs = Math.max(backoffMs, retryAfterMs)
+        const rateLimit =
+          error.status === 429 && Option.isSome(error.retryAfterSeconds) === true
+            ? Option.some({
+                remaining: 0,
+                resetAfterSeconds: error.retryAfterSeconds.value,
+              })
+            : Option.none<RateLimitInfo>()
+
+        yield* annotateRateLimitSpan({
+          method,
+          route,
+          status: error.status,
+          attempt: retries,
+          attempts: retries + 1,
+          retryDelayMs: delayMs,
+          rateLimit,
+        })
+        yield* reportHttpTelemetry({
+          _tag: 'retry',
+          method,
+          route: route.route,
+          operation: route.operation,
+          status: error.status,
+          attempt: retries,
+          nextAttempt: retries + 1,
+          delayMs,
+          rateLimit,
+        })
+
+        yield* Effect.sleep(Duration.millis(delayMs))
+
+        retries++
       }
+    })
 
-      const retryAfterMs = Option.match(error.retryAfterSeconds, {
-        onNone: () => 0,
-        onSome: (s) => s * 1000,
-      })
-
-      const backoffMs = retryBaseDelay * 2 ** retries
-      const delayMs = Math.max(backoffMs, retryAfterMs)
-      const rateLimit =
-        error.status === 429 && Option.isSome(error.retryAfterSeconds) === true
-          ? Option.some({
-              remaining: 0,
-              resetAfterSeconds: error.retryAfterSeconds.value,
-            })
-          : Option.none<RateLimitInfo>()
-
-      yield* annotateRateLimitSpan({
-        method,
-        route,
-        status: error.status,
-        attempt: retries,
-        attempts: retries + 1,
-        retryDelayMs: delayMs,
-        rateLimit,
-      })
-      yield* reportHttpTelemetry({
-        _tag: 'retry',
-        method,
-        route: route.route,
-        operation: route.operation,
-        status: error.status,
-        attempt: retries,
-        nextAttempt: retries + 1,
-        delayMs,
-        rateLimit,
-      })
-
-      yield* Effect.sleep(Duration.millis(delayMs))
-
-      retries++
-    }
+    const throttle = yield* Effect.serviceOption(NotionThrottle)
+    return yield* Option.match(throttle, {
+      onNone: () => runOnce,
+      onSome: (service) => service.apply(runOnce),
+    })
   }).pipe(
     Effect.withSpan(`NotionHttp.${method}`, {
       attributes: {

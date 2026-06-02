@@ -1,5 +1,5 @@
 import { HttpClient } from '@effect/platform'
-import { Chunk, Duration, Effect, Layer, Option, Schema, Stream } from 'effect'
+import { Effect, Layer, Option, Schema, type Scope, Stream } from 'effect'
 
 import {
   type DatabaseFilter,
@@ -8,6 +8,10 @@ import {
   NotionDataSources,
   NotionDatabases,
   NotionPages,
+  NotionThrottle,
+  NotionThrottleLive,
+  type NotionThrottleOptions,
+  paginate,
   SchemaHelpers,
   NotionViews,
   type NotionApiError,
@@ -177,16 +181,45 @@ export class UnsupportedAdapterOperation extends Schema.TaggedError<UnsupportedA
 export type NotionDataSourceGatewayLiveOptions = {
   readonly configuredApiVersion?: string
   readonly clientVersion?: string
-  readonly rateLimit?: NotionGatewayRateLimitOptions | false
 }
 
-/** Configures local request pacing for the live Notion gateway. */
-export type NotionGatewayRateLimitOptions = {
-  readonly requestsPerSecond?: number
-  readonly burst?: number
-  readonly now?: () => number
-  readonly sleep?: (millis: number) => Effect.Effect<void>
+/**
+ * Default request throttle for live Notion gateway wiring (~3 rps).
+ *
+ * Wired explicitly at every production site so the live gateway keeps the
+ * same pacing the previously-default gateway limiter applied; the client's
+ * throttle layer is opt-in, so an absent layer means no throttling.
+ */
+export const DEFAULT_NOTION_GATEWAY_THROTTLE: NotionThrottleOptions = {
+  requestsPerSecond: 3,
 }
+
+/**
+ * Build a scoped `provideClientEnv` transformer that injects the shared
+ * {@link NotionThrottle} service into every client effect, so one token bucket
+ * paces all Notion API calls made through it for the gateway's lifetime.
+ *
+ * Returns a function that wraps a base `provideClientEnv` (which discharges
+ * `NotionConfig` + `HttpClient`) so the resulting runner additionally provides
+ * the throttle service.
+ */
+export const makeThrottledProvideClientEnv = (
+  options: NotionThrottleOptions = DEFAULT_NOTION_GATEWAY_THROTTLE,
+): Effect.Effect<
+  (
+    base: <A, E>(
+      effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
+    ) => Effect.Effect<A, E>,
+  ) => <A, E>(
+    effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
+  ) => Effect.Effect<A, E>,
+  never,
+  Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const throttle = yield* NotionThrottle.pipe(Effect.provide(NotionThrottleLive(options)))
+    return (base) => (effect) => base(Effect.provideService(effect, NotionThrottle, throttle))
+  })
 
 const supportedNotionEffectClientCapabilities: ReadonlyArray<CapabilityName> = [
   'data_source_retrieve',
@@ -225,49 +258,6 @@ const isPermissionAmbiguous = (error: NotionApiError): boolean =>
   error.code === 'restricted_resource' ||
   error.code === 'object_not_found'
 
-const notionRetryAfterMillis = (error: NotionApiError): number | undefined =>
-  Option.getOrUndefined(error.retryAfterSeconds.pipe(Option.map((seconds) => seconds * 1000)))
-
-const isRateLimited = (error: NotionApiError): boolean =>
-  error.status === 429 || error.code === 'rate_limited'
-
-const makeNotionGatewayRateLimiter = (
-  options: NotionGatewayRateLimitOptions | false | undefined,
-) => {
-  if (options === false) {
-    return {
-      acquire: () => Effect.void,
-      pauseFor: (_millis: number) => Effect.void,
-    }
-  }
-
-  const requestsPerSecond = options?.requestsPerSecond ?? 3
-  const burst = Math.max(1, options?.burst ?? 1)
-  const spacingMillis = Math.ceil(1000 / requestsPerSecond)
-  const now = options?.now ?? (() => Date.now())
-  const sleep =
-    options?.sleep ?? ((millis: number) => Effect.sleep(Duration.millis(Math.max(0, millis))))
-  let nextAvailableAt = 0
-
-  return {
-    acquire: (): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const current = now()
-        const burstWindow = spacingMillis * (burst - 1)
-        nextAvailableAt = Math.max(nextAvailableAt, current - burstWindow)
-        const waitMillis = Math.max(0, nextAvailableAt - current)
-        nextAvailableAt = Math.max(current, nextAvailableAt) + spacingMillis
-        if (waitMillis > 0) {
-          yield* sleep(waitMillis)
-        }
-      }),
-    pauseFor: (millis: number): Effect.Effect<void> =>
-      Effect.sync(() => {
-        nextAvailableAt = Math.max(nextAvailableAt, now() + millis)
-      }),
-  }
-}
-
 const mapClientError =
   (input: {
     readonly operation: GatewayOperation
@@ -293,8 +283,8 @@ const mapClientError =
       ...input,
       ...(requestId === undefined ? {} : { requestId }),
       ...(isPermissionAmbiguous(cause) === true ? { guard: 'PermissionAmbiguous' } : {}),
-      ...(isRateLimited(cause) === true
-        ? { retryAfterMillis: notionRetryAfterMillis(cause) ?? 1_000 }
+      ...(cause.isRateLimited === true
+        ? { retryAfterMillis: Option.getOrUndefined(cause.retryAfterMillis) ?? 1_000 }
         : {}),
       message: cause.message,
       cause,
@@ -1125,28 +1115,17 @@ export const makeNotionEffectClientGatewayClient = (
     ),
   retrieveDatabase: ({ databaseId }) => provideClientEnv(NotionDatabases.retrieve({ databaseId })),
   listViews: ({ databaseId, dataSourceId }) =>
-    Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
-      Option.match(maybeNextCursor, {
-        onNone: () => Effect.succeed(Option.none()),
-        onSome: (cursor) =>
-          provideClientEnv(
-            NotionViews.list({
-              databaseId,
-              dataSourceId,
-              pageSize: 100,
-              ...(Option.isSome(cursor) === true ? { startCursor: cursor.value } : {}),
-            }),
-          ).pipe(
-            Effect.map((page) =>
-              Option.some([
-                Chunk.fromIterable(page.results as ReadonlyArray<unknown>),
-                page.hasMore === true && Option.isSome(page.nextCursor) === true
-                  ? Option.some(Option.some(page.nextCursor.value))
-                  : Option.none(),
-              ] as const),
-            ),
-          ),
-      }),
+    paginate(
+      (cursor) =>
+        provideClientEnv(
+          NotionViews.list({
+            databaseId,
+            dataSourceId,
+            pageSize: 100,
+            ...(Option.isSome(cursor) === true ? { startCursor: cursor.value } : {}),
+          }),
+        ),
+      { emit: { _tag: 'items' } },
     ),
   updatePage: ({ pageId, properties, inTrash }) =>
     provideClientEnv(
@@ -1200,37 +1179,10 @@ export const makeNotionDataSourceGatewayFromClient = ({
     clientVersion: options.clientVersion ?? 'notion-effect-client:0.1.0',
     supportedCapabilities: supportedNotionEffectClientCapabilities,
   })
-  const limiter = makeNotionGatewayRateLimiter(options.rateLimit)
-  const rateLimitFailure = (cause: unknown): Effect.Effect<void> =>
-    isNotionApiError(cause) === true && isRateLimited(cause) === true
-      ? limiter.pauseFor(notionRetryAfterMillis(cause) ?? 1_000)
-      : Effect.void
-  const runClient = <A>(effect: Effect.Effect<A, unknown>): Effect.Effect<A, unknown> =>
-    limiter.acquire().pipe(Effect.zipRight(effect), Effect.tapError(rateLimitFailure))
-  const client: NotionGatewayClient = {
-    ...rawClient,
-    retrieveDataSource: (input) => runClient(rawClient.retrieveDataSource(input)),
-    queryDataSource: (input) => runClient(rawClient.queryDataSource(input)),
-    retrievePage: (input) => runClient(rawClient.retrievePage(input)),
-    retrievePageProperty: (input) => runClient(rawClient.retrievePageProperty(input)),
-    retrieveDatabase: (input) => runClient(rawClient.retrieveDatabase(input)),
-    ...(rawClient.listViews === undefined
-      ? {}
-      : {
-          listViews: (input) =>
-            Stream.unwrap(
-              limiter
-                .acquire()
-                .pipe(
-                  Effect.as(rawClient.listViews!(input).pipe(Stream.tapError(rateLimitFailure))),
-                ),
-            ),
-        }),
-    updatePage: (input) => runClient(rawClient.updatePage(input)),
-    createPage: (input) => runClient(rawClient.createPage(input)),
-    updateDatabase: (input) => runClient(rawClient.updateDatabase(input)),
-    updateDataSource: (input) => runClient(rawClient.updateDataSource(input)),
-  }
+  /* Request pacing now lives in the client's optional `NotionThrottle` layer,
+     wired into `provideClientEnv` at the live wiring sites; the gateway is a
+     pure domain adapter and no longer owns a hand-rolled limiter. */
+  const client = rawClient
 
   return makeNotionDataSourceGateway({
     configuredApiVersion: options.configuredApiVersion ?? supportedNotionApiVersion,
@@ -1257,37 +1209,27 @@ export const makeNotionDataSourceGatewayFromClient = ({
         queryFilterToNotion(input).pipe(
           Effect.zipWith(querySortsToNotion(input), (filter, sorts) => ({ filter, sorts })),
           Effect.map(({ filter, sorts }) =>
-            Stream.unfoldChunkEffect(Option.some(input.startCursor), (cursor) =>
-              Option.match(cursor, {
-                onNone: () => Effect.succeed(Option.none()),
-                onSome: (startCursor) =>
-                  client
-                    .queryDataSource({
-                      dataSourceId: input.dataSourceId,
-                      pageSize: input.queryContract.pageSize,
-                      startCursor: startCursor ?? undefined,
-                      filter,
-                      sorts,
-                    })
-                    .pipe(
-                      Effect.map((result) =>
-                        Option.some([
-                          Chunk.of(
-                            queryRowsPageFromRemote({ queryInput: input, apiContract, result }),
-                          ),
-                          result.hasMore === false || Option.isNone(result.nextCursor) === true
-                            ? Option.none<QueryCursor | null>()
-                            : Option.some(paginatedResultNextCursor(result)),
-                        ] as const),
-                      ),
-                      Effect.mapError(
-                        mapClientError({
-                          operation: 'queryRows',
-                          dataSourceId: input.dataSourceId,
-                        }),
-                      ),
-                    ),
-              }),
+            paginate(
+              (cursor) =>
+                client.queryDataSource({
+                  dataSourceId: input.dataSourceId,
+                  pageSize: input.queryContract.pageSize,
+                  startCursor: Option.getOrUndefined(cursor),
+                  filter,
+                  sorts,
+                }),
+              {
+                startCursor: Option.fromNullable(input.startCursor),
+                emit: {
+                  _tag: 'page',
+                  map: (result) =>
+                    queryRowsPageFromRemote({ queryInput: input, apiContract, result }),
+                },
+              },
+            ).pipe(
+              Stream.mapError(
+                mapClientError({ operation: 'queryRows', dataSourceId: input.dataSourceId }),
+              ),
             ),
           ),
         ),
@@ -1300,42 +1242,26 @@ export const makeNotionDataSourceGatewayFromClient = ({
           Effect.mapError(mapClientError({ operation: 'retrievePage', pageId: id })),
         ),
     retrievePageProperty: (input) =>
-      Stream.unfoldChunkEffect(Option.some(input.startCursor), (cursor) =>
-        Option.match(cursor, {
-          onNone: () => Effect.succeed(Option.none()),
-          onSome: (startCursor) =>
-            client
-              .retrievePageProperty({
-                pageId: input.pageId,
-                propertyId: input.propertyId,
-                pageSize: 100,
-                startCursor: startCursor ?? undefined,
-              })
-              .pipe(
-                Effect.map((result) =>
-                  Option.some([
-                    Chunk.of(
-                      pagePropertyItemsPageFromRemote({
-                        propertyInput: input,
-                        apiContract,
-                        result,
-                      }),
-                    ),
-                    result.hasMore === false || Option.isNone(result.nextCursor) === true
-                      ? Option.none<QueryCursor | null>()
-                      : Option.some(
-                          Option.match(result.nextCursor, {
-                            onNone: () => null,
-                            onSome: (nextCursor) => QueryCursor.make(nextCursor),
-                          }),
-                        ),
-                  ] as const),
-                ),
-                Effect.mapError(
-                  mapClientError({ operation: 'retrievePageProperty', pageId: input.pageId }),
-                ),
-              ),
-        }),
+      paginate(
+        (cursor) =>
+          client.retrievePageProperty({
+            pageId: input.pageId,
+            propertyId: input.propertyId,
+            pageSize: 100,
+            startCursor: Option.getOrUndefined(cursor),
+          }),
+        {
+          startCursor: Option.fromNullable(input.startCursor),
+          emit: {
+            _tag: 'page',
+            map: (result) =>
+              pagePropertyItemsPageFromRemote({ propertyInput: input, apiContract, result }),
+          },
+        },
+      ).pipe(
+        Stream.mapError(
+          mapClientError({ operation: 'retrievePageProperty', pageId: input.pageId }),
+        ),
       ),
     ...(client.listViews === undefined
       ? {}
@@ -1633,7 +1559,7 @@ export const NotionDataSourceGatewayLive: Layer.Layer<
   NotionDataSourceGateway,
   never,
   NotionConfig | HttpClient.HttpClient
-> = Layer.effect(
+> = Layer.scoped(
   NotionDataSourceGateway,
   Effect.gen(function* () {
     const config = yield* NotionConfig
@@ -1646,8 +1572,13 @@ export const NotionDataSourceGatewayLive: Layer.Layer<
         Effect.provideService(HttpClient.HttpClient, httpClient),
       )
 
+    /* Explicit ~3 rps throttle so the live gateway keeps the pacing the
+       previously-default gateway limiter applied (the client throttle is
+       opt-in). */
+    const withThrottle = yield* makeThrottledProvideClientEnv()
+
     return makeNotionDataSourceGatewayFromClient({
-      client: makeNotionEffectClientGatewayClient(provideClientEnv),
+      client: makeNotionEffectClientGatewayClient(withThrottle(provideClientEnv)),
     })
   }),
 )

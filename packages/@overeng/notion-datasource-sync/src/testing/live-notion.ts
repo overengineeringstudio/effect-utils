@@ -33,6 +33,7 @@ import { readOnlyGatewayCapabilities } from '../gateway/gateway.ts'
 import {
   makeNotionDataSourceGatewayFromClient,
   makeNotionEffectClientGatewayClient,
+  makeThrottledProvideClientEnv,
   NotionDataSourceGatewayLive,
   schemaPropertyObservationsFromRemoteProperties,
 } from '../gateway/notion.ts'
@@ -1249,8 +1250,10 @@ const patchDemoDataSourceMetadata = ({
         Effect.provideService(NotionConfig, notionConfig),
         Effect.provideService(HttpClient.HttpClient, httpClient),
       )
+    /* Explicit ~3 rps throttle so this live path mirrors production pacing. */
+    const withThrottle = yield* makeThrottledProvideClientEnv()
     const gateway = makeNotionDataSourceGatewayFromClient({
-      client: makeNotionEffectClientGatewayClient(provideClientEnv),
+      client: makeNotionEffectClientGatewayClient(withThrottle(provideClientEnv)),
     })
     const metadata = yield* gateway.retrieveDataSource(DataSourceId.make(dataSourceId))
     if (metadata.metadataHash === undefined) {
@@ -1265,7 +1268,7 @@ const patchDemoDataSourceMetadata = ({
         metadataPatch: { descriptionPlainText: spec.description },
       }),
     )
-  })
+  }).pipe(Effect.scoped)
 
 const createDemoDatabase = ({
   demoPageId,
