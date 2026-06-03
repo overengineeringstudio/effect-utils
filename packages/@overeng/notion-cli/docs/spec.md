@@ -47,15 +47,15 @@ notion
 
 Retired surfaces are absent from the root command tree and packaged wrapper:
 
-| Retired surface             | Replacement                                 |
-| --------------------------- | ------------------------------------------- |
-| `notion sqlite ...`         | `notion db ...`                             |
-| `notion-datasource-sync`    | packaged `notion db ...`                    |
-| `notion db dump ...`        | `notion db export ...`                      |
-| `notion db replica ...`     | public SQLite surfaces plus `notion db ...` |
-| raw Notion dump checkpoints | datasource-sync replica status and metadata |
+| Retired surface             | Replacement                                     |
+| --------------------------- | ----------------------------------------------- |
+| `notion sqlite ...`         | `notion db ...`                                 |
+| `notion-datasource-sync`    | packaged `notion db ...`                        |
+| `notion db dump ...`        | `notion db export ...`                          |
+| `notion db replica ...`     | public SQLite surfaces plus `notion db ...`     |
+| raw Notion dump checkpoints | datasource-sync replica status and metadata     |
 | `notion db migrate ...`     | internal store migrations, not a public command |
-| `notion db repair ...`      | guarded sync/status/doctor workflows |
+| `notion db repair ...`      | guarded sync/status/doctor workflows            |
 
 ## Root Command Composition
 

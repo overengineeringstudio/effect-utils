@@ -179,13 +179,13 @@ Property IDs must be preserved when available. Display names are for readability
 The page metadata surface covers page state that is not part of the Markdown
 body and is not a data-source property.
 
-| Field       | Local form                              | Push encoding              |
-| ----------- | --------------------------------------- | -------------------------- |
-| `title`     | string                                  | page title property        |
-| `icon`      | null, emoji, native icon, external file | page `icon`                |
-| `cover`     | null, external or Notion-hosted file    | external/null cover        |
-| `in_trash`  | boolean                                 | page `in_trash`            |
-| `is_locked` | boolean                                 | page `is_locked`           |
+| Field       | Local form                              | Push encoding       |
+| ----------- | --------------------------------------- | ------------------- |
+| `title`     | string                                  | page title property |
+| `icon`      | null, emoji, native icon, external file | page `icon`         |
+| `cover`     | null, external or Notion-hosted file    | external/null cover |
+| `in_trash`  | boolean                                 | page `in_trash`     |
+| `is_locked` | boolean                                 | page `is_locked`    |
 
 Strict frontmatter accepts the read shapes Notion can return. The write planner
 only emits page metadata patches for shapes Notion's page update API accepts:
@@ -229,16 +229,16 @@ The implementation currently supports self-contained storage and content-address
 
 Requirement trace: R01-R05, R11-R15.
 
-| Surface            | Local state                    | Pull API                   | Push API                    | Conflict unit      | Current status            |
-| ------------------ | ------------------------------ | -------------------------- | --------------------------- | ------------------ | ------------------------- |
-| Body               | `.nmd` body + `base_snapshot`  | `GET /pages/{id}/markdown` | Markdown update endpoint    | canonical Markdown | implemented               |
+| Surface            | Local state                    | Pull API                   | Push API                    | Conflict unit      | Current status              |
+| ------------------ | ------------------------------ | -------------------------- | --------------------------- | ------------------ | --------------------------- |
+| Body               | `.nmd` body + `base_snapshot`  | `GET /pages/{id}/markdown` | Markdown update endpoint    | canonical Markdown | implemented                 |
 | Page metadata      | frontmatter page fields        | `GET /pages/{id}`          | `PATCH /pages/{id}`         | field              | title/lock/trash/icon/cover |
-| Properties         | frontmatter property map       | `GET /pages/{id}`          | `PATCH /pages/{id}`         | property           | modeled writable forms    |
-| Unsupported blocks | frontmatter/object storage     | Markdown + block API       | preserve or explicit delete | block id           | guard + preserve metadata |
-| Data-source schema | external datasource-sync state | datasource-sync package    | datasource-sync package     | schema hash        | owned by datasource sync  |
-| Comments           | future comment payload         | comments API               | comments API                | discussion/comment | designed, not implemented |
-| Files              | future file payload            | block/file APIs            | file upload APIs            | content hash       | modeled, not implemented  |
-| Review             | Roughdraft local markup        | local only or comments API | explicit bridge only        | review id          | guard implemented         |
+| Properties         | frontmatter property map       | `GET /pages/{id}`          | `PATCH /pages/{id}`         | property           | modeled writable forms      |
+| Unsupported blocks | frontmatter/object storage     | Markdown + block API       | preserve or explicit delete | block id           | guard + preserve metadata   |
+| Data-source schema | external datasource-sync state | datasource-sync package    | datasource-sync package     | schema hash        | owned by datasource sync    |
+| Comments           | future comment payload         | comments API               | comments API                | discussion/comment | designed, not implemented   |
+| Files              | future file payload            | block/file APIs            | file upload APIs            | content hash       | modeled, not implemented    |
+| Review             | Roughdraft local markup        | local only or comments API | explicit bridge only        | review id          | guard implemented           |
 
 Body conflicts do not block property-only pushes. Property-only pushes across a concurrent remote body edit patch properties, then refresh the local `.nmd` body and base from the current remote state.
 

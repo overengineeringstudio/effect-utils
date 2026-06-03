@@ -473,8 +473,8 @@ Third-party backends (SQLite, Redis, …) implement `NotionCache` directly
 | Trigger                                              | Behaviour                                                      | `fallbackReason`        |
 | ---------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
 | No cache file                                        | Cold diff against empty tree                                   | `"cold-cache"`          |
-| `FsCache` persisted schema mismatch                  | `FsCache.load` returns `undefined`; sync runs cold diff         | `"cold-cache"`          |
-| Prior tree `schemaVersion !== CACHE_SCHEMA_VERSION`  | Abort stale-tree diff from backends that return old trees       | `"schema-mismatch"`     |
+| `FsCache` persisted schema mismatch                  | `FsCache.load` returns `undefined`; sync runs cold diff        | `"cold-cache"`          |
+| Prior tree `schemaVersion !== CACHE_SCHEMA_VERSION`  | Abort stale-tree diff from backends that return old trees      | `"schema-mismatch"`     |
 | Cache `rootId !== opts.pageId`                       | Cold diff against empty tree                                   | `"page-id-drift"`       |
 | `NotionBlocks.update` returns 404/archived           | Emit structural rebuild of that subtree                        | `"block-missing"`       |
 | Cached page id → `pages.retrieve` 404                | Drop cached subtree, recreate if JSX has it, else no-op        | `"page-missing"`        |
