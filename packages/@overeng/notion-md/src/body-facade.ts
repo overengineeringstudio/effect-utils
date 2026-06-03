@@ -138,7 +138,7 @@ export const replaceRemoteBodyVerified = (opts: {
     }
   })
 
-/** Re-check local body stability, then observe the settled remote body after a verified push. */
+/** Re-check local body stability, then refresh the local materialization after a verified push. */
 export const settleVerifiedBodyPush = (opts: {
   readonly pageId: string
   readonly path: string
@@ -161,13 +161,13 @@ export const settleVerifiedBodyPush = (opts: {
       })
     }
 
-    const remote = yield* observeRemoteBody({ pageId: opts.pageId })
+    const materialized = yield* materializeBody({ pageId: opts.pageId, outPath: opts.path })
     return {
       pageId: opts.pageId,
       path: opts.path,
-      localBodyHash: local.bodyHash,
-      localFileContentHash: local.fileContentHash,
-      remoteBodyHash: remote.bodyHash,
-      remoteMarkdown: remote.markdown,
+      localBodyHash: materialized.bodyHash,
+      localFileContentHash: materialized.fileContentHash,
+      remoteBodyHash: materialized.bodyHash,
+      remoteMarkdown: materialized.markdown,
     }
   })

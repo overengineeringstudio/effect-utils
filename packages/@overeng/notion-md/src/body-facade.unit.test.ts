@@ -138,6 +138,7 @@ class FakeStore {
 
 class FakeGateway {
   private markdown: string
+  readonly pullPageCalls: Array<{ readonly pageId: string }> = []
   readonly updateMarkdownCalls: Array<{
     readonly pageId: string
     readonly command: MarkdownUpdateCommand
@@ -150,7 +151,11 @@ class FakeGateway {
   }
 
   readonly layer = Layer.succeed(NotionMdGateway, {
-    pullPage: () => Effect.sync(() => pullResult(this.markdown)),
+    pullPage: ({ pageId: id }) =>
+      Effect.sync(() => {
+        this.pullPageCalls.push({ pageId: id })
+        return pullResult(this.markdown)
+      }),
     updateMarkdown: ({ pageId: id, command, allowDeletingContent }) =>
       Effect.sync(() => {
         this.updateMarkdownCalls.push({ pageId: id, command, allowDeletingContent })
@@ -257,7 +262,42 @@ describe('notion-md body facade', () => {
     expect(gateway.updateMarkdownCalls).toEqual([])
   })
 
-  it('refuses settlement when the local body changed', async () => {
+  it('settles verified push through the existing pullPage materialization path', async () => {
+    const body = normalizeMarkdownLineEndings('Pushed body\n')
+    const content = renderNmdFile({
+      frontmatter: frontmatter('Local title'),
+      body,
+    })
+    const gateway = new FakeGateway(body)
+    const store = new FakeStore(new Map([[path, content]]))
+    const expectedLocalBodyHash = sha256Digest(body)
+
+    const settled = await runWithGatewayAndStore(
+      settleVerifiedBodyPush({ pageId, path, expectedLocalBodyHash }),
+      gateway,
+      store,
+    )
+
+    expect(settled).toMatchObject({
+      pageId,
+      path,
+      localBodyHash: expectedLocalBodyHash,
+      remoteBodyHash: expectedLocalBodyHash,
+      remoteMarkdown: body,
+    })
+    expect(settled.localFileContentHash).toBe(
+      sha256Digest(store.writeNmdFileCalls[0]?.content ?? ''),
+    )
+    expect(gateway.pullPageCalls).toEqual([{ pageId }])
+    expect(store.writeBaseSnapshotCalls).toHaveLength(1)
+    expect(store.writeSyncStateCalls).toHaveLength(1)
+    expect(store.writeNmdFileCalls).toHaveLength(1)
+    expect(store.writeNmdFileCalls[0]?.content).toContain(body)
+    expect(gateway.updateMarkdownCalls).toEqual([])
+    expect(gateway.metadataUpdateCalls).toEqual([])
+  })
+
+  it('refuses settlement without writing when the local body changed', async () => {
     const content = renderNmdFile({
       frontmatter: frontmatter('Local title'),
       body: 'Changed local body\n',
@@ -273,5 +313,9 @@ describe('notion-md body facade', () => {
     )
 
     expect(error).toBeInstanceOf(NotionMdBodyConflictError)
+    expect(gateway.pullPageCalls).toEqual([])
+    expect(store.writeBaseSnapshotCalls).toEqual([])
+    expect(store.writeSyncStateCalls).toEqual([])
+    expect(store.writeNmdFileCalls).toEqual([])
   })
 })
