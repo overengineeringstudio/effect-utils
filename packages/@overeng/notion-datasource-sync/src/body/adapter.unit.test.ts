@@ -474,7 +474,7 @@ describe('body adapter contract', () => {
     })
   })
 
-  it('observes NotionMD markdown through the public gateway and derives fail-closed safety', async () => {
+  it('observes NotionMD markdown through the body facade and keeps a body-only mutation surface', async () => {
     const markdown = '# Adapter page\n\nBody from NotionMD.\n'
     const port = makeNotionMdPageBodySyncPort({
       gateway: fakeNotionMdGateway(
@@ -497,14 +497,28 @@ describe('body adapter contract', () => {
       pageId: nmdPageId,
       bodyHash: contentHash(markdown),
       safety: {
-        unknownBlockCause: 'unknown',
         adapterMutationSurfaces: ['body'],
       },
     })
     expect(evaluateBodyAdapterContract(observed.safety ?? bodySafetySnapshot())).toMatchObject({
-      _tag: 'blocked',
-      guard: 'MarkdownUnknownBlocksAmbiguous',
+      _tag: 'body-only',
+      safety: {
+        adapterMutationSurfaces: ['body'],
+      },
     })
+  })
+
+  it('does not wire NotionMD implementation internals directly in the datasource adapter', async () => {
+    const source = await readFile(new URL('./notion-md.ts', import.meta.url), 'utf8')
+
+    expect(source).not.toContain('parseNmdFile')
+    expect(source).not.toContain('pullPage')
+    expect(source).not.toContain('sha256Digest')
+    expect(source).toContain('observeRemoteBody')
+    expect(source).toContain('readLocalBody')
+    expect(source).toContain('materializeBody')
+    expect(source).toContain('replaceRemoteBodyVerified')
+    expect(source).toContain('settleVerifiedBodyPush')
   })
 
   it('materializes real .nmd files and notion-md sidecars through the NotionMD adapter', async () => {

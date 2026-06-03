@@ -1,14 +1,17 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import { Effect, Layer, Schema, Stream } from 'effect'
 
 import {
+  materializeBody,
   NotionMdGateway,
+  NotionMdBodyConflictError,
   NmdStateStore,
-  parseNmdFile,
-  pullPage,
-  sha256Digest,
+  observeRemoteBody,
+  readLocalBody,
+  replaceRemoteBodyVerified,
+  settleVerifiedBodyPush,
   type NotionMdGatewayShape,
   type NmdStateStoreShape,
 } from '@overeng/notion-md'
@@ -20,6 +23,7 @@ import {
   NotionRequestId,
   type AbsolutePath,
   type PageId,
+  type WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { BodySyncError, LocalStoreError } from '../core/errors.ts'
 import {
@@ -31,9 +35,8 @@ import {
 import {
   filesystemWorkspacePageSidecarPath,
   makeFilesystemLocalWorkspacePort,
-  ownWriteSuppressionToken,
-  type FilesystemWorkspaceSidecar,
 } from '../local/workspace.ts'
+import { makeFilesystemWorkspaceSidecar } from '../local/sidecar.ts'
 import {
   bodySafetySnapshot,
   evaluateBodyAdapterContract,
@@ -55,35 +58,85 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: unknown
 }): typeof schema.Type => Schema.decodeUnknownSync(schema)(value)
 
-const sha256Hash = (value: string): Hash => decode({ schema: Hash, value: sha256Digest(value) })
+const hashFromNotionMdDigest = (value: string): Hash => decode({ schema: Hash, value })
 
 const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date().toISOString() })
 
-const bodyPointerFromMarkdown = (input: {
+const bodyPointerFromRemoteBody = (input: {
   readonly pageId: PageId
-  readonly markdown: string
-  readonly truncated: boolean
-  readonly unknownBlockIds: readonly string[]
+  readonly bodyHash: string
 }): typeof BodyPointer.Type => {
-  const unknownBlockCause =
-    input.truncated === true
-      ? 'truncation'
-      : input.unknownBlockIds.length > 0
-        ? 'unknown'
-        : undefined
-
   return BodyPointer.make({
     _tag: 'BodyPointer',
     pageId: input.pageId,
-    bodyHash: sha256Hash(input.markdown),
+    bodyHash: hashFromNotionMdDigest(input.bodyHash),
     observedAt: observedAtNow(),
     safety: bodySafetySnapshot({
-      truncated: input.truncated,
-      unknownBlockCause,
       adapterMutationSurfaces: ['body'],
     }),
   })
 }
+
+const provideNotionMdGateway =
+  (gateway: NotionMdGatewayShape) =>
+  <TValue, TError>(effect: Effect.Effect<TValue, TError, NotionMdGateway>) =>
+    effect.pipe(Effect.provideService(NotionMdGateway, gateway))
+
+const provideNotionMdStateStore =
+  (stateStore: NmdStateStoreShape) =>
+  <TValue, TError>(effect: Effect.Effect<TValue, TError, NmdStateStore>) =>
+    effect.pipe(Effect.provideService(NmdStateStore, stateStore))
+
+const provideNotionMdGatewayAndStateStore =
+  (input: {
+    readonly gateway: NotionMdGatewayShape
+    readonly stateStore: NmdStateStoreShape
+  }) =>
+  <TValue, TError>(effect: Effect.Effect<TValue, TError, NotionMdGateway | NmdStateStore>) =>
+    effect.pipe(
+      Effect.provideService(NotionMdGateway, input.gateway),
+      Effect.provideService(NmdStateStore, input.stateStore),
+    )
+
+const writeJsonFile = ({
+  path,
+  value,
+}: {
+  readonly path: string
+  readonly value: unknown
+}) =>
+  Effect.tryPromise({
+    try: async () => {
+      await mkdir(dirname(path), { recursive: true })
+      const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`
+      await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+      await rename(temporaryPath, path)
+    },
+    catch: (cause) => cause,
+  })
+
+const writeDatasourceSyncBodySidecar = ({
+  root,
+  pageId,
+  path,
+  bodyHash,
+  materializedContentHash,
+}: {
+  readonly root: AbsolutePath
+  readonly pageId: PageId
+  readonly path: WorkspaceRelativePath
+  readonly bodyHash: Hash
+  readonly materializedContentHash: Hash
+}) =>
+  writeJsonFile({
+    path: filesystemWorkspacePageSidecarPath({ root, pageId }),
+    value: makeFilesystemWorkspaceSidecar({
+      pageId,
+      path,
+      bodyHash,
+      materializedContentHash,
+    }),
+  })
 
 /**
  * Build a `PageBodySyncPort` implementation backed by the NotionMD gateway.
@@ -98,13 +151,12 @@ export const makeNotionMdPageBodySyncPort = ({
 }: NotionMdPageBodySyncPortInput): PageBodySyncPortShape =>
   withBodyAdapterContract({
     observe: (input: ObserveBodyInput) =>
-      gateway.pullPage({ pageId: input.pageId }).pipe(
-        Effect.map((page) =>
-          bodyPointerFromMarkdown({
+      observeRemoteBody({ pageId: input.pageId }).pipe(
+        provideNotionMdGateway(gateway),
+        Effect.map((body) =>
+          bodyPointerFromRemoteBody({
             pageId: input.pageId,
-            markdown: page.markdown.markdown,
-            truncated: page.markdown.truncated,
-            unknownBlockIds: page.markdown.unknown_block_ids,
+            bodyHash: body.bodyHash,
           }),
         ),
         Effect.mapError(
@@ -118,13 +170,12 @@ export const makeNotionMdPageBodySyncPort = ({
         ),
       ),
     planLocalChange: (input: BodyLocalChangeInput) =>
-      gateway.pullPage({ pageId: input.pageId }).pipe(
-        Effect.map((page) => {
-          const remote = bodyPointerFromMarkdown({
+      observeRemoteBody({ pageId: input.pageId }).pipe(
+        provideNotionMdGateway(gateway),
+        Effect.map((body) => {
+          const remote = bodyPointerFromRemoteBody({
             pageId: input.pageId,
-            markdown: page.markdown.markdown,
-            truncated: page.markdown.truncated,
-            unknownBlockIds: page.markdown.unknown_block_ids,
+            bodyHash: body.bodyHash,
           })
           const contract = evaluateBodyAdapterContract(remote.safety ?? bodySafetySnapshot())
 
@@ -184,133 +235,40 @@ export const makeNotionMdPageBodySyncPort = ({
           })
         }
 
-        const remoteBefore = yield* gateway.pullPage({ pageId: command.pageId })
-        const beforePointer = bodyPointerFromMarkdown({
+        const replaced = yield* replaceRemoteBodyVerified({
           pageId: command.pageId,
-          markdown: remoteBefore.markdown.markdown,
-          truncated: remoteBefore.markdown.truncated,
-          unknownBlockIds: remoteBefore.markdown.unknown_block_ids,
-        })
-        const contract = evaluateBodyAdapterContract(beforePointer.safety ?? bodySafetySnapshot())
-        if (contract._tag === 'blocked') {
-          return yield* new BodySyncError({
-            operation: 'push',
-            pageId: command.pageId,
-            message: `${contract.guard}: ${contract.message}`,
-          })
-        }
-
-        if (beforePointer.bodyHash !== command.baseBodyPointer.bodyHash) {
-          return yield* new BodySyncError({
-            operation: 'push',
-            pageId: command.pageId,
-            message: 'StaleSurfaceBase: local body base does not match the current NotionMD body',
-          })
-        }
-
-        const updated = yield* gateway.updateMarkdown({
+          baseBodyHash: command.baseBodyPointer.bodyHash,
+          markdown: command.localBodyContent,
+        }).pipe(provideNotionMdGateway(gateway))
+        const bodyPointer = bodyPointerFromRemoteBody({
           pageId: command.pageId,
-          command: {
-            _tag: 'replace_content',
-            markdown: command.localBodyContent,
-          },
-          allowDeletingContent: false,
-        })
-        const bodyPointer = bodyPointerFromMarkdown({
-          pageId: command.pageId,
-          markdown: updated.markdown.markdown,
-          truncated: updated.markdown.truncated,
-          unknownBlockIds: updated.markdown.unknown_block_ids,
+          bodyHash: replaced.bodyHash,
         })
 
         if (root !== undefined && stateStore !== undefined) {
           const absolutePath = join(root, command.localBodyPath)
-          const currentContent = yield* Effect.tryPromise({
-            try: () => readFile(absolutePath, 'utf8'),
-            catch: (cause) =>
-              new BodySyncError({
-                operation: 'push',
-                pageId: command.pageId,
-                message: `Failed to read local NotionMD body file ${command.localBodyPath}`,
-                cause,
-              }),
-          })
-          const parsed = yield* parseNmdFile({
+          const settled = yield* settleVerifiedBodyPush({
+            pageId: command.pageId,
+            path: absolutePath,
+            expectedLocalBodyHash: command.nextBodyHash,
+          }).pipe(provideNotionMdGatewayAndStateStore({ gateway, stateStore }))
+          yield* writeDatasourceSyncBodySidecar({
+            root,
+            pageId: command.pageId,
             path: command.localBodyPath,
-            content: currentContent,
+            bodyHash: hashFromNotionMdDigest(settled.remoteBodyHash),
+            materializedContentHash: hashFromNotionMdDigest(settled.localFileContentHash),
           }).pipe(
             Effect.mapError(
               (cause) =>
                 new BodySyncError({
                   operation: 'push',
                   pageId: command.pageId,
-                  message: `Failed to parse local NotionMD body file ${command.localBodyPath}`,
+                  message: 'Failed to settle local datasource-sync body sidecar after body push',
                   cause,
                 }),
             ),
           )
-
-          if (sha256Hash(parsed.body) !== command.nextBodyHash) {
-            return yield* new BodySyncError({
-              operation: 'push',
-              pageId: command.pageId,
-              message:
-                'Local NotionMD body changed while settling a verified body push; refusing to overwrite the newer local edit',
-            })
-          }
-
-          yield* pullPage({ pageId: command.pageId, outPath: absolutePath }).pipe(
-            Effect.provideService(NotionMdGateway, gateway),
-            Effect.provideService(NmdStateStore, stateStore),
-            Effect.mapError(
-              (cause) =>
-                new BodySyncError({
-                  operation: 'push',
-                  pageId: command.pageId,
-                  message: 'Failed to settle local NotionMD base after body push',
-                  cause,
-                }),
-            ),
-          )
-
-          const settledContent = yield* Effect.tryPromise({
-            try: () => readFile(absolutePath, 'utf8'),
-            catch: (cause) =>
-              new BodySyncError({
-                operation: 'push',
-                pageId: command.pageId,
-                message: `Failed to read settled NotionMD body file ${command.localBodyPath}`,
-                cause,
-              }),
-          })
-          const token = ownWriteSuppressionToken({
-            pageId: command.pageId,
-            path: command.localBodyPath,
-            bodyHash: bodyPointer.bodyHash,
-          })
-          const sidecar: FilesystemWorkspaceSidecar = {
-            version: 1,
-            pageId: command.pageId,
-            path: command.localBodyPath,
-            bodyHash: bodyPointer.bodyHash,
-            materializedContentHash: sha256Hash(settledContent),
-            ownWriteSuppressionToken: token,
-            observedAt: new Date().toISOString(),
-          }
-          const sidecarPath = filesystemWorkspacePageSidecarPath({ root, pageId: command.pageId })
-          yield* Effect.tryPromise({
-            try: async () => {
-              await mkdir(dirname(sidecarPath), { recursive: true })
-              await writeFile(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8')
-            },
-            catch: (cause) =>
-              new BodySyncError({
-                operation: 'push',
-                pageId: command.pageId,
-                message: 'Failed to settle local datasource-sync body sidecar after body push',
-                cause,
-              }),
-          })
         }
 
         return {
@@ -323,6 +281,16 @@ export const makeNotionMdPageBodySyncPort = ({
         Effect.mapError((cause) =>
           cause instanceof BodySyncError
             ? cause
+            : cause instanceof NotionMdBodyConflictError
+              ? new BodySyncError({
+                  operation: 'push',
+                  pageId: command.pageId,
+                  message:
+                    cause.operation === 'replace_remote_body_verified'
+                      ? 'StaleSurfaceBase: local body base does not match the current NotionMD body'
+                      : 'Local NotionMD body changed while settling a verified body push; refusing to overwrite the newer local edit',
+                  cause,
+                })
             : new BodySyncError({
                 operation: 'push',
                 pageId: command.pageId,
@@ -332,13 +300,12 @@ export const makeNotionMdPageBodySyncPort = ({
         ),
       ),
     repair: (input: BodyRepairInput) =>
-      gateway.pullPage({ pageId: input.pageId }).pipe(
-        Effect.map((page) =>
-          bodyPointerFromMarkdown({
+      observeRemoteBody({ pageId: input.pageId }).pipe(
+        provideNotionMdGateway(gateway),
+        Effect.map((body) =>
+          bodyPointerFromRemoteBody({
             pageId: input.pageId,
-            markdown: page.markdown.markdown,
-            truncated: page.markdown.truncated,
-            unknownBlockIds: page.markdown.unknown_block_ids,
+            bodyHash: body.bodyHash,
           }),
         ),
         Effect.mapError(
@@ -388,21 +355,13 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
 
           const absolutePath = join(root, observation.path)
           return Effect.gen(function* () {
-            const content = yield* Effect.tryPromise({
-              try: () => readFile(absolutePath, 'utf8'),
-              catch: (cause) =>
-                new LocalStoreError({
-                  operation: 'scan',
-                  message: `Failed to read NotionMD body file ${observation.path}`,
-                  cause,
-                }),
-            })
-            const parsed = yield* parseNmdFile({ path: observation.path, content }).pipe(
+            const local = yield* readLocalBody({ path: absolutePath }).pipe(
+              provideNotionMdStateStore(stateStore),
               Effect.mapError(
                 (cause) =>
                   new LocalStoreError({
                     operation: 'scan',
-                    message: `Failed to parse NotionMD body file ${observation.path}`,
+                    message: `Failed to read NotionMD body file ${observation.path}`,
                     cause,
                   }),
               ),
@@ -410,8 +369,8 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
 
             return {
               ...observation,
-              contentHash: sha256Hash(parsed.body),
-              bodyContent: parsed.body,
+              contentHash: hashFromNotionMdDigest(local.bodyHash),
+              bodyContent: local.markdown,
             }
           })
         }),
@@ -421,9 +380,11 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
       Effect.gen(function* () {
         const absolutePath = join(root, plan.path)
 
-        yield* pullPage({ pageId: plan.pageId, outPath: absolutePath }).pipe(
-          Effect.provideService(NotionMdGateway, gateway),
-          Effect.provideService(NmdStateStore, stateStore),
+        const materialized = yield* materializeBody({
+          pageId: plan.pageId,
+          outPath: absolutePath,
+        }).pipe(
+          provideNotionMdGatewayAndStateStore({ gateway, stateStore }),
           Effect.mapError(
             (cause) =>
               new LocalStoreError({
@@ -434,27 +395,24 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
           ),
         )
 
-        const content = yield* Effect.promise(() => readFile(absolutePath, 'utf8'))
-        const materializedContentHash = sha256Hash(content)
-        const token = ownWriteSuppressionToken({
+        const sidecar = makeFilesystemWorkspaceSidecar({
           pageId: plan.pageId,
           path: plan.path,
           bodyHash: plan.bodyPointer.bodyHash,
+          materializedContentHash: hashFromNotionMdDigest(materialized.fileContentHash),
         })
-        const sidecar: FilesystemWorkspaceSidecar = {
-          version: 1,
-          pageId: plan.pageId,
-          path: plan.path,
-          bodyHash: plan.bodyPointer.bodyHash,
-          materializedContentHash,
-          ownWriteSuppressionToken: token,
-          observedAt: new Date().toISOString(),
-        }
-        const sidecarPath = filesystemWorkspacePageSidecarPath({ root, pageId: plan.pageId })
-
-        yield* Effect.promise(() => mkdir(dirname(sidecarPath), { recursive: true }))
-        yield* Effect.promise(() =>
-          writeFile(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8'),
+        yield* writeJsonFile({
+          path: filesystemWorkspacePageSidecarPath({ root, pageId: plan.pageId }),
+          value: sidecar,
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new LocalStoreError({
+                operation: 'materialize',
+                message: 'Failed to write datasource-sync body sidecar after NotionMD materialize',
+                cause,
+              }),
+          ),
         )
 
         return {
@@ -462,7 +420,7 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
           pageId: plan.pageId,
           path: plan.path,
           bodyHash: plan.bodyPointer.bodyHash,
-          ownWriteSuppressionToken: token,
+          ownWriteSuppressionToken: sidecar.ownWriteSuppressionToken,
         }
       }),
   }
