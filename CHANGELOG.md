@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Notion docs**: Align VRS specs with current Notion package implementation reality, including NotionMD V2 sidecars, datasource-sync domain/gateway boundaries, CLI command/output contracts, Notion React page ops/cache behavior, and open architecture questions for shared Notion domain/transport reuse.
 - **@overeng/workflow-report**: Refresh the pinned pnpm dependency fixed-output hash so PR-local `workflow-report` builds keep `deploy-storybooks` green after repo-root lockfile changes.
 - **devenv-modules/tasks/changesets**: New shared task module providing `release:changeset:check-bodies`, which rejects malformed Changesets where the YAML frontmatter has no package bumps **and** the body is empty. Catches `changeset add --empty` invocations whose `---\n---\n` placeholder was never filled in. Consume via `(inputs.effect-utils.devenvModules.tasks.changesets { })` in `devenv.nix`. Ported from livestorejs/livestore#1269.
 - **@overeng/notion-cli**: Consolidate Node-backed datasource-sync replica commands under `notion db` and replace the legacy raw exporter with replica-derived export while keeping `notion db info`.

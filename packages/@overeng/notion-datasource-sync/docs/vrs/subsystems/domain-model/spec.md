@@ -6,6 +6,12 @@ Requirement trace: DOMAIN-R01, DOMAIN-R02, DOMAIN-R03, DOMAIN-R04, DOMAIN-R05, D
 
 The canonical domain model defines data-source, schema, row, property, body-pointer, and file types that are independent from local file layout. Sync identity is keyed by stable Notion IDs and canonical value hashes, never by display names.
 
+Notion object identity is not datasource-sync-local domain. Datasource-sync
+already aliases shared `PageId`, `PropertyId`, and `PropertyName` schemas from
+`@overeng/notion-effect-schema` where the canonical property model carries them.
+Package-local brands are reserved for local concepts such as sync roots, command
+IDs, event IDs, leases, path claims, and store artifacts.
+
 ```ts
 type DataSourceBinding = {
   readonly dataSourceId: DataSourceId
@@ -70,4 +76,9 @@ Relation, people, rich-text, title, and rollup values are hashable only after th
 
 Body pointers preserve public markdown endpoint safety metadata. `unknownBlockCause` remains `unknown` unless the adapter can prove truncation, permission loss, or an unsupported block type; ambiguous unknown blocks block body writes.
 
-The completeness proofs that gate property hashing are specified in [../notion-gateway/spec.md](../notion-gateway/spec.md). Wire schemas and canonicalizers behind these types are shared across datasource-sync, NotionMD, Notion React, and CLI tooling.
+The completeness proofs that gate property hashing are specified in
+[../notion-gateway/spec.md](../notion-gateway/spec.md). Wire schemas and
+canonical property codecs behind these types are shared across datasource-sync,
+NotionMD, Notion React, and CLI tooling where those contracts already exist.
+Datasource-sync owns byte-stable sync hashes and event payload identity for its
+SQLite control plane.

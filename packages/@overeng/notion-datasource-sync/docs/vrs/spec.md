@@ -56,28 +56,32 @@ It does not define:
 
 ```
 @overeng/notion-effect-schema
-  raw wire schemas, exact decoders, branded IDs
+  raw wire schemas, exact decoders, branded Notion IDs,
+  canonical property values
 
 @overeng/notion-effect-client
-  versioned Notion API gateway, pagination, retries, rate limits
-
-@overeng/notion-domain
-  canonical domain types and hashers shared by sync packages
-
-@overeng/notion-sync-core
-  SQLite event log, projections, outbox, conflicts, leases, migrations
+  versioned Notion API gateway, pagination, retries, rate limits,
+  NMD wire adapters
 
 @overeng/notion-md
   .nmd page-body adapter implementing PageBodySyncPort
 
 @overeng/notion-datasource-sync
-  data-source binding, planner, daemon, CLI commands, Notion gateway adapter
+  data-source binding, canonical hashes, SQLite event log, projections,
+  outbox, conflicts, leases, migrations, planner, daemon, CLI commands,
+  Notion gateway adapter
 
 @overeng/notion-cli
   raw/debug/schema/codegen commands and datasource-sync command surface
 ```
 
-The exact package split may be staged. `@overeng/notion-domain` and `@overeng/notion-sync-core` may start as internal modules of `@overeng/notion-datasource-sync`, but their public imports must already follow the extractable boundaries above. Datasource sync must not depend on private NotionMD internals.
+The exact package split may be staged. The current implementation keeps the
+sync-core event store, projections, outbox, conflicts, leases, migrations, and
+canonical datasource-sync hash helpers inside `@overeng/notion-datasource-sync`.
+Their module boundaries must remain extractable. Shared Notion concepts that are
+already centralized, such as canonical property values and the Notion ID aliases
+used by datasource-sync, are imported from `@overeng/notion-effect-schema`.
+Datasource sync must not depend on private NotionMD internals.
 
 ## Authority Model
 
@@ -117,7 +121,7 @@ All spans use safe, low-cardinality names, concise `span.label` values, and an a
 | `notion.datasource.cli`                      | span.label, command, process.role, root_id, data_source_id, dry_run, max_cycles, status.state, result                                                                                                                                       |
 | `notion.datasource.sync.init`                | span.label, process.role, operation, root_id, data_source_id, dry_run                                                                                                                                                                       |
 | `notion.datasource.sync.pull`                | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, query_page_count, row_count, event_count, appended_events, status.state                                                                              |
-| `notion.datasource.sync.establishFromNotion` | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, row_count, appended_events, status.state                                                                                                             |
+| `notion.datasource.sync.establish-from-notion` | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, row_count, appended_events, status.state                                                                                                             |
 | `notion.datasource.sync.push`                | span.label, process.role, operation, root_id, dry_run, max_executor_steps, lease_duration_ms, local_observation_count, enqueued_commands, executor_steps, status.state                                                                      |
 | `notion.datasource.sync.one-shot`            | span.label, process.role, operation, root_id, data_source_id, max_executor_steps, lease_duration_ms, query_complete, row_count, enqueued_commands, executor_steps, status.state                                                             |
 | `notion.datasource.observation.remote`       | span.label, process.role, operation                                                                                                                                                                                                         |
@@ -268,6 +272,6 @@ and recoverable conflict material.
 
 - **DQ1 Connection webhooks:** Hosted Notion connection webhooks may feed dirty entity hints into daemon intake. Because delivery is at-most-once, aggregated, unordered, and possibly stale, every hint must be followed by fresh API reads before planning.
 - **DQ2 Workers:** Notion Workers syncs are optional Notion-hosted external-source projections. Current Worker syncs create and manage Worker-owned databases and do not replace arbitrary existing datasource sync, local filesystem reconciliation, SQLite authority, or outbox settlement.
-- **DQ3 Package split staging:** The conceptual `notion-domain` and `notion-sync-core` layers may initially live inside `@overeng/notion-datasource-sync` if APIs remain separated and extractable.
+- **DQ3 Package split staging:** The sync-core store/planner/replica layers currently live inside `@overeng/notion-datasource-sync`. They may remain there if APIs stay separated and extractable. Open design work remains for whether additional shared Notion identity, property capability, block support, and transport contracts should move upstream into `@overeng/notion-effect-schema` and `@overeng/notion-effect-client`.
 - **DQ4 File upload support:** Observed Notion file URLs are temporary references. Editable file-byte sync may use durable File Upload API IDs only after additional live E2E proof for upload, expiry, and replacement behavior.
 - **DQ5 Writable debug views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against `debug_*` views may later be implemented with triggers that insert the same typed intent rows that feed `changes`. The current public API supports guarded writes through canonical `rows`; `changes` remains a read-only ledger so write semantics stay visible and testable.

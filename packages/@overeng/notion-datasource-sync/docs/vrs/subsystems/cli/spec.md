@@ -12,18 +12,18 @@ dry-run rules, and structured output for datasource-sync workflows.
 | Command                             | Primary flags                                                                                                                         | Purpose                                                                                                             |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `notion db sync --from-notion`      | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies`                             | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
-| `notion db sync <workspace-root>`   | `--dry-run`, `--max-attempts`                                                                                                         | Reconcile an established workspace through local-capture-first planning                                             |
-| `notion db status <workspace-root>` | `--json`, `--porcelain`                                                                                                               | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
-| `init`                              | `--data-source-id`, `--root`, `--sqlite`                                                                                              | Advanced: bind a local root to a Notion data source without observing it                                            |
-| `pull`                              | `--since`, `--full-scan`, `--dry-run`                                                                                                 | Advanced: observe remote schema/rows/body pointers and materialize local projections                                |
-| `status`                            | `--json`, `--porcelain`                                                                                                               | Show local edits, remote drift, conflicts, tombstones, outbox state                                                 |
-| `push`                              | `--dry-run`, `--conflict-policy`                                                                                                      | Plan and apply local intents to Notion with guards                                                                  |
-| `sync`                              | `--dry-run`, `--max-attempts`, `--watch`, `--state`, `--max-cycles`, `--mode`, `--webhook`, `--webhook-required`, `--non-interactive` | Pull, plan, push, settle, refresh, or run the local daemon for established replicas                                 |
+| `notion db sync <workspace-root>`   | `--dry-run`                                                                                                                           | Reconcile an established workspace through local-capture-first planning                                             |
+| `notion db status <workspace-root>` | common store/root/data-source/workspace options                                                                                        | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
+| `init`                              | `--data-source-id`, `--workspace-root`, `--dry-run`, common store/root/data-source/workspace options                                  | Advanced: bind a local root to a Notion data source without observing it                                            |
+| `pull`                              | common store/root/data-source/workspace options                                                                                        | Advanced: observe remote schema/rows/body pointers and materialize local projections                                |
+| `status`                            | common store/root/data-source/workspace options                                                                                        | Show local edits, remote drift, conflicts, tombstones, outbox state                                                 |
+| `push`                              | `--dry-run`, common store/root/data-source/workspace options                                                                          | Plan and apply local intents to Notion with guards                                                                  |
+| `sync`                              | `--dry-run`, `--watch`, `--state`, `--max-cycles`, `--mode`, `--webhook`, `--webhook-required`, `--non-interactive`                  | Pull, plan, push, settle, refresh, or run the local daemon for established replicas                                 |
 | `export`                            | `--from-notion`, `--format`, `--output`, `--require-clean`                                                                            | Export from the established replica contract after optional pull/project-only refresh                               |
-| `conflicts list`                    | `--json`                                                                                                                              | List open conflicts                                                                                                 |
-| `conflicts resolve`                 | `--strategy`, `--manual-value`                                                                                                        | Append conflict resolution events and follow-up commands                                                            |
-| `doctor`                            | `--json`, `--capabilities`                                                                                                            | Verify store health, API contract, capabilities, query checkpoints, projections, path claims, leases, and artifacts |
-| `forget`                            | `--page-id`, `--path`, `--dry-run`                                                                                                    | Remove local tracking without remote mutation                                                                       |
+| `conflicts list`                    | common store/root/data-source/workspace options                                                                                        | List open conflicts                                                                                                 |
+| `conflicts resolve`                 | `--conflict-id`, `--strategy`, `--value-json`, `--dry-run`                                                                            | Append conflict resolution events and follow-up commands                                                            |
+| `doctor`                            | common store/root/data-source/workspace options                                                                                        | Verify store health, API contract, capabilities, query checkpoints, projections, path claims, leases, and artifacts |
+| `forget`                            | `--page-id`, `--dry-run`                                                                                                              | Remove local tracking without remote mutation                                                                       |
 | `restore`                           | `--page-id`, `--dry-run`                                                                                                              | Restore trashed/moved state when supported and verified                                                             |
 
 The public command set is rooted at `notion db` and spans sync,
@@ -111,6 +111,11 @@ returns it, reset timing, and retry delay. Route-level operation names replace
 raw Notion IDs so operators can see where quota is spent without leaking page,
 database, or workspace identifiers.
 
+Human-readable final-result rendering is the desired presentation layer over the
+same structured result envelope, not a separate planner or status source. Until
+that renderer is wired into the Node-backed runtime, final results remain JSON
+and tests treat the JSON envelope as the compatibility contract.
+
 ## Large-Cardinality Note
 
 Large-cardinality acceptance is bounded by explicit completeness and memory
@@ -142,6 +147,11 @@ Human output is a rendering of this envelope; it is not a separate source of
 truth. It provides concise human-readable explanations for conflicts, blocked
 guards, retries, tombstones, and migrations (CLI-R04).
 
+The import-safe Effect CLI descriptor is the current shared source for root
+help/completions and packaged runtime routing. The Node runtime still contains a
+bespoke parser/help path; the principled target is to generate or validate that
+path from the same descriptor so flags cannot drift silently.
+
 ## Replica Operations
 
 Replica remains the domain term for the local `<database-id>.sqlite` artifact,
@@ -160,8 +170,9 @@ Export must not execute outbox commands, run planner intents, or mutate Notion.
 
 ## Doctor Capabilities
 
-`doctor --capabilities` performs read, query, update, schema, trash, restore,
-parent-access, markdown, and page-property pagination preflights against
-disposable or explicitly selected test objects. Until capability preflight
-passes, 403/404/update failures are reported as capability failures rather than
-delete, move, or conflict facts.
+`doctor` reports local store, projection, binding, and runtime diagnostics. A
+future capability-preflight mode may perform read, query, update, schema, trash,
+restore, parent-access, markdown, and page-property pagination preflights against
+disposable or explicitly selected test objects. Until such a mode exists,
+capability assertions come from sync preflight and gateway tests rather than a
+public `doctor --capabilities` flag.

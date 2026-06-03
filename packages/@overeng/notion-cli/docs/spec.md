@@ -42,8 +42,6 @@ notion
     ├── pull / push / init    # advanced Node-backed leaves
     ├── conflicts ...
     ├── forget / restore
-    ├── migrate ...
-    ├── repair
     └── doctor
 ```
 
@@ -56,6 +54,8 @@ Retired surfaces are absent from the root command tree and packaged wrapper:
 | `notion db dump ...`        | `notion db export ...`                      |
 | `notion db replica ...`     | public SQLite surfaces plus `notion db ...` |
 | raw Notion dump checkpoints | datasource-sync replica status and metadata |
+| `notion db migrate ...`     | internal store migrations, not a public command |
+| `notion db repair ...`      | guarded sync/status/doctor workflows |
 
 ## Root Command Composition
 
@@ -107,7 +107,7 @@ packaged notion
       exec Bun root binary unchanged
 ```
 
-The wrapper must route these `db` leaves to Node: `init`, `pull`, `push`, `sync`, `export`, `status`, `conflicts`, `forget`, `restore`, `migrate`, `repair`, and `doctor`. It must not route `db info`, because that command is owned by the Bun root CLI.
+The wrapper must route these `db` leaves to Node: `init`, `pull`, `push`, `sync`, `export`, `status`, `conflicts`, `forget`, `restore`, and `doctor`. It must not route `db info`, because that command is owned by the Bun root CLI.
 
 The Nix package smoke test runs `notion db sync --help` through the wrapper. A missing datasource-sync runtime module, stale workspace filter, or wrong dispatch case fails the package build.
 

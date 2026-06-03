@@ -6,7 +6,19 @@ Requirement trace: GW-R01, GW-R02, GW-R03, GW-R04, GW-R05, GW-R06, GW-R07, GW-R0
 
 ## Gateway Port
 
-Raw Notion HTTP access stays in the API-client layer. Datasource sync consumes the typed `NotionDataSourceGateway` port. Ports return decoded domain values, not raw JSON. Raw Notion payloads may be retained only through the store retention policy.
+Raw Notion HTTP access stays in the API-client layer. Datasource sync consumes
+the typed `NotionDataSourceGateway` port. Ports return decoded domain values,
+not raw JSON. Raw Notion payloads may be retained only through the store
+retention policy.
+
+The live gateway adapter is the error-mapping boundary over
+`@overeng/notion-effect-client`. Current client failures are intentionally
+received as `unknown` at this adapter boundary and mapped into
+`NotionGatewayError` with operation context. A stricter typed lower-boundary
+transport/decode/API error contract is a follow-up design and implementation
+target; until then, unknown causes must stay contained at the adapter and must
+not leak into planner/store contracts. The adapter reuses shared Notion ID and
+property schemas where those contracts already exist.
 
 ```ts
 type NotionDataSourceGateway = {
