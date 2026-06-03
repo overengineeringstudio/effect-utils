@@ -50,6 +50,12 @@ Requirement trace: R01-R05, R16-R24.
 
 The system treats Notion enhanced Markdown as one sync surface, not the whole page. The body surface is stock Notion enhanced Markdown. Local metadata, page properties, unsupported block preservation, files, comments, and review state are modeled outside the body so they are never silently sent as Notion Markdown.
 
+The public body facade exposes body-only observe, local read, materialize,
+verified remote replace, and clean-base settlement operations for adapters that
+compose with `.nmd` files. The facade depends on `NotionMdGateway` and
+`NmdStateStore`; it does not expose sync coordinator decisions or page metadata
+mutation as an adapter surface.
+
 Batch and folder support do not change the ownership unit: one `.nmd` file maps
 to one Notion page, and every mutation still passes through the same page-local
 guards. The batch layer only owns target discovery, duplicate page-id preflight,

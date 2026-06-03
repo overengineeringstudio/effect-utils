@@ -68,7 +68,8 @@ It does not define:
   and API error mapping
 
 @overeng/notion-md
-  .nmd page-body adapter implementing PageBodySyncPort
+  .nmd page-body implementation and public body-only facade consumed by
+  the NotionMD-backed PageBodySyncPort adapter
 
 @overeng/notion-datasource-sync
   data-source binding, canonical hashes, SQLite event log, projections,
@@ -88,8 +89,10 @@ facades. `@overeng/notion-effect-client` owns the HTTP API service boundary.
 Datasource-sync keeps the sync-core event store, projections, outbox, conflicts,
 leases, migrations, and datasource-sync hash helpers inside
 `@overeng/notion-datasource-sync`. Their module boundaries must remain
-extractable. Page-body sync remains behind the NotionMD body boundary, and
-datasource sync must not depend on private NotionMD internals.
+extractable. Page-body sync remains behind the NotionMD body boundary:
+datasource sync consumes the public body-only facade and owns its own
+datasource sidecars, path claims, outbox, and settlement events. It must not
+depend on private NotionMD internals.
 
 ## Authority Model
 

@@ -49,3 +49,9 @@ Default local path derivation is stable and row-identity preserving:
 | symlinks        | materialization and scans must not follow symlinks outside `localRoot`                                        |
 
 Path claims, not file names, are the source of truth. Renames append path-claim events; they do not change row identity. The `path_claim` projection enforces at most one active owner per relative path; the planner guards `PathClaimCollision` and `PathEscapesRoot` (see [spec.md](../../spec.md)) consume these observations.
+
+Datasource-sync sidecars under `.notion-datasource-sync/pages/*.json` are owned
+by the local workspace subsystem. They capture datasource path identity,
+own-write suppression tokens, and last materialized body hashes for replica
+planning. They are separate from NotionMD's `.notion-md/sync/{page_id}.json`
+clean-base state, which remains owned by `@overeng/notion-md`.
