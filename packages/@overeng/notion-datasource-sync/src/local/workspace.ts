@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
@@ -8,15 +7,12 @@ import { titleSlug } from '@overeng/utils'
 
 import {
   AbsolutePath,
-  Hash,
   MaterializeResult,
-  OwnWriteSuppressionToken,
   PageId,
   WorkspaceRelativePath,
   type Hash as HashType,
   type LocalArtifactObservation as LocalArtifactObservationType,
   type MaterializePlan,
-  type OwnWriteSuppressionToken as OwnWriteSuppressionTokenType,
   type PageId as PageIdType,
   type PathClaimResult,
   type PathClaimPlan,
@@ -25,6 +21,27 @@ import {
 import { LocalStoreError } from '../core/errors.ts'
 import type { GuardName } from '../core/guards.ts'
 import { LocalWorkspacePort, type LocalWorkspacePortShape } from '../core/ports.ts'
+import {
+  datasourceSyncContentHash,
+  FilesystemWorkspaceSidecar as FilesystemWorkspaceSidecarSchema,
+  filesystemWorkspacePageSidecarPath,
+  isOwnWriteObservation,
+  makeFilesystemWorkspaceSidecar,
+  metadataDirectoryName,
+  ownWriteSuppressionToken,
+  pageSidecarDirectoryName,
+  type FilesystemWorkspaceSidecar as FilesystemWorkspaceSidecarType,
+} from './sidecar.ts'
+
+export {
+  datasourceSyncContentHash,
+  filesystemWorkspacePageSidecarPath,
+  isOwnWriteObservation,
+  ownWriteSuppressionToken,
+} from './sidecar.ts'
+
+export const FilesystemWorkspaceSidecar = FilesystemWorkspaceSidecarSchema
+export type FilesystemWorkspaceSidecar = FilesystemWorkspaceSidecarType
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>({
   schema,
@@ -34,8 +51,6 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
   readonly value: unknown
 }) => Schema.decodeUnknownSync(schema)(value)
 
-const metadataDirectoryName = '.notion-datasource-sync'
-const pageSidecarDirectoryName = 'pages'
 const pathClaimsFileName = 'path-claims.json'
 
 /** Controls how workspace body file paths are derived from page titles and IDs. */
@@ -246,55 +261,7 @@ export const classifyLocalDelete = ({
   remoteTrash: 'blocked-by-default',
 })
 
-/**
- * Derives the own-write suppression token for a materialized body file.
- *
- * The token encodes `pageId`, `bodyHash`, and `path` so the file-watcher can
- * distinguish daemon-originated writes from genuine user edits and suppress
- * spurious outbox entries.
- */
-export const ownWriteSuppressionToken = ({
-  pageId,
-  path,
-  bodyHash,
-}: {
-  readonly pageId: PageIdType
-  readonly path: WorkspaceRelativePathType
-  readonly bodyHash: HashType
-}): OwnWriteSuppressionTokenType =>
-  decode({ schema: OwnWriteSuppressionToken, value: `materialize:${pageId}:${bodyHash}:${path}` })
-
-/** Returns `true` when a local observation matches a known daemon-issued write token and should be suppressed. */
-export const isOwnWriteObservation = ({
-  observation,
-  token,
-}: {
-  readonly observation: LocalArtifactObservationType
-  readonly token: OwnWriteSuppressionTokenType
-}): boolean => observation.ownWriteSuppressionToken === token
-
-const sha256Hash = (value: string): HashType =>
-  decode({ schema: Hash, value: `sha256:${createHash('sha256').update(value).digest('hex')}` })
-
 const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date().toISOString() })
-
-/**
- * Persisted JSON sidecar written alongside each materialized body file.
- *
- * Tracks the `pageId`, canonical `path`, `bodyHash`, materialized content hash,
- * own-write suppression token, and observation timestamp so the scan can detect
- * whether a file has been edited by the user since the last materialization.
- */
-export const FilesystemWorkspaceSidecar = Schema.Struct({
-  version: Schema.Literal(1),
-  pageId: PageId,
-  path: WorkspaceRelativePath,
-  bodyHash: Hash,
-  materializedContentHash: Hash,
-  ownWriteSuppressionToken: OwnWriteSuppressionToken,
-  observedAt: Schema.String,
-}).annotations({ identifier: 'NotionDatasourceSync.FilesystemWorkspaceSidecar' })
-export type FilesystemWorkspaceSidecar = typeof FilesystemWorkspaceSidecar.Type
 
 const FilesystemPathClaim = Schema.Struct({
   pageId: PageId,
@@ -311,16 +278,6 @@ export type FilesystemLocalWorkspaceInput = {
   readonly root: AbsolutePath
   readonly policy?: WorkspacePolicy
 }
-
-/** Returns the absolute filesystem path for a page's JSON sidecar file under the workspace metadata directory. */
-export const filesystemWorkspacePageSidecarPath = ({
-  root,
-  pageId,
-}: {
-  readonly root: AbsolutePath
-  readonly pageId: PageIdType
-}): string =>
-  join(root, metadataDirectoryName, pageSidecarDirectoryName, `${encodeURIComponent(pageId)}.json`)
 
 const pathClaimsPath = (root: AbsolutePath): string =>
   join(root, metadataDirectoryName, pathClaimsFileName)
@@ -532,7 +489,7 @@ const readFilesystemSidecars = async ({
 }: {
   readonly root: AbsolutePath
   readonly operation: string
-}): Promise<ReadonlyArray<FilesystemWorkspaceSidecar>> => {
+}): Promise<ReadonlyArray<FilesystemWorkspaceSidecarType>> => {
   const sidecarDirectory = join(root, metadataDirectoryName, pageSidecarDirectoryName)
   const entries = await readdir(sidecarDirectory, { withFileTypes: true }).catch(
     (cause: unknown) => {
@@ -561,7 +518,7 @@ const readFilesystemSidecars = async ({
       ),
   )
 
-  const seenPaths = new Map<WorkspaceRelativePathType, FilesystemWorkspaceSidecar>()
+  const seenPaths = new Map<WorkspaceRelativePathType, FilesystemWorkspaceSidecarType>()
   for (const sidecar of sidecars) {
     const existing = seenPaths.get(sidecar.path)
     if (existing !== undefined) {
@@ -611,7 +568,7 @@ const pathClaimConflict = ({
 }: {
   readonly pageId: PageIdType
   readonly path: WorkspaceRelativePathType
-  readonly sidecars: ReadonlyArray<FilesystemWorkspaceSidecar>
+  readonly sidecars: ReadonlyArray<FilesystemWorkspaceSidecarType>
   readonly claims: ReadonlyArray<FilesystemPathClaim>
 }): PageIdType | undefined => {
   const sidecarConflict = sidecars.find(
@@ -634,7 +591,7 @@ const assertSafeMaterializeTarget = async ({
   readonly relativePath: WorkspaceRelativePathType
   readonly pageId: PageIdType
   readonly targetContentHash: HashType
-  readonly sidecars: ReadonlyArray<FilesystemWorkspaceSidecar>
+  readonly sidecars: ReadonlyArray<FilesystemWorkspaceSidecarType>
   readonly claims: ReadonlyArray<FilesystemPathClaim>
 }): Promise<void> => {
   const stats = await lstat(absolutePath).catch((cause: unknown) => {
@@ -676,7 +633,7 @@ const assertSafeMaterializeTarget = async ({
       cause,
     })
   })
-  const existingContentHash = sha256Hash(existingContent)
+  const existingContentHash = datasourceSyncContentHash(existingContent)
   if (existingContentHash === targetContentHash) return
   if (
     samePageSidecar !== undefined &&
@@ -783,7 +740,7 @@ const scanFilesystemWorkspace = async ({
             cause,
           })
         })
-        const contentHash = sha256Hash(content)
+        const contentHash = datasourceSyncContentHash(content)
         const ownWriteSuppressed = contentHash === sidecar.materializedContentHash
         return [
           {
@@ -952,21 +909,14 @@ export const makeFilesystemLocalWorkspacePort = ({
           pageId: plan.pageId,
           bodyHash: plan.bodyPointer.bodyHash,
         })
-        const materializedContentHash = sha256Hash(content)
-        const token = ownWriteSuppressionToken({
-          pageId: plan.pageId,
-          path: relativePath,
-          bodyHash: plan.bodyPointer.bodyHash,
-        })
-        const sidecar: FilesystemWorkspaceSidecar = {
-          version: 1,
+        const materializedContentHash = datasourceSyncContentHash(content)
+        const sidecar = makeFilesystemWorkspaceSidecar({
           pageId: plan.pageId,
           path: relativePath,
           bodyHash: plan.bodyPointer.bodyHash,
           materializedContentHash,
-          ownWriteSuppressionToken: token,
-          observedAt: new Date().toISOString(),
-        }
+        })
+        const token = sidecar.ownWriteSuppressionToken
 
         await assertSafeMaterializeTarget({
           absolutePath,
