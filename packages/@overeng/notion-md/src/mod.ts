@@ -83,3 +83,18 @@ export type {
   SyncManyOptions,
   WatchReason,
 } from './batch.ts'
+export {
+  materializeBody,
+  NotionMdBodyConflictError,
+  observeRemoteBody,
+  readLocalBody,
+  replaceRemoteBodyVerified,
+  settleVerifiedBodyPush,
+} from './body-facade.ts'
+export type {
+  NotionMdBodySnapshot,
+  NotionMdLocalBodySnapshot,
+  NotionMdMaterializedBody,
+  NotionMdSettledBodyPush,
+  NotionMdVerifiedRemoteReplaceResult,
+} from './body-facade.ts'
