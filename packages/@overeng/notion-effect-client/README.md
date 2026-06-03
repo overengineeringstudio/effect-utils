@@ -11,20 +11,10 @@ rate-limit handling, and API error mapping. It consumes Notion wire schemas from
 data sources, databases, pages, blocks, comments, files, search, users, and
 views.
 
-Milestone 1 uses the Option B split:
-
-- `@overeng/notion-core` is the intended home for pure dependency-free Notion
-  primitives, helpers, tuple builders, and classifiers when that package is
-  introduced.
-- `@overeng/notion-effect-schema` owns Effect Schema wire schemas and facades.
-- `@overeng/notion-effect-client` owns HTTP API services.
-
-Non-goals for this milestone:
-
-- Do not import Effect from `@overeng/notion-core`.
-- Do not move `.nmd` contracts into `@overeng/notion-core`; page-body sync stays
-  owned by the NotionMD boundary.
-- Do not move canonical codecs yet; existing codec ownership remains staged.
+Shared pure Notion primitives live in `@overeng/notion-core`. Effect Schema wire
+schemas and schema facades live in `@overeng/notion-effect-schema`. This package
+keeps the HTTP service boundary and preserves stable public API constants by
+re-exporting the shared core values from the client entrypoint.
 
 ## Installation
 

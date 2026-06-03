@@ -79,20 +79,17 @@ It does not define:
   raw/debug/schema/codegen commands and datasource-sync command surface
 ```
 
-The exact package split may be staged. The current implementation keeps the
-sync-core event store, projections, outbox, conflicts, leases, migrations, and
-canonical datasource-sync hash helpers inside `@overeng/notion-datasource-sync`.
-Their module boundaries must remain extractable.
-
-Milestone 1 follows the Option B package boundary. `@overeng/notion-core` is the
-target package for pure dependency-free Notion primitives, helpers, tuple
-builders, and classifiers. It must not import Effect.
+The package split is an ownership boundary, not just a publishing layout.
+`@overeng/notion-core` stays dependency-free and contains only pure Notion
+primitives, helpers, tuple builders, and classifiers.
 `@overeng/notion-effect-schema` owns Effect Schema wire schemas and schema
 facades. `@overeng/notion-effect-client` owns the HTTP API service boundary.
-`.nmd` contracts do not move into `@overeng/notion-core` in this milestone;
-page-body sync remains behind the NotionMD body boundary. Canonical codecs do
-not move yet; their current ownership remains staged until a later extraction.
-Datasource sync must not depend on private NotionMD internals.
+
+Datasource-sync keeps the sync-core event store, projections, outbox, conflicts,
+leases, migrations, and datasource-sync hash helpers inside
+`@overeng/notion-datasource-sync`. Their module boundaries must remain
+extractable. Page-body sync remains behind the NotionMD body boundary, and
+datasource sync must not depend on private NotionMD internals.
 
 ## Authority Model
 

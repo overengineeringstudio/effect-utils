@@ -5,24 +5,15 @@ Effect schemas for the Notion API.
 ## Boundary
 
 `@overeng/notion-effect-schema` owns Effect Schema representations of Notion
-wire payloads and the facades that make those schemas ergonomic to consume.
-It depends on Effect and may expose decoders, encoders, schema transforms, and
+wire payloads and the facades that make those schemas ergonomic to consume. It
+depends on Effect and exposes decoders, encoders, schema transforms, and
 schema-oriented helpers.
 
-Milestone 1 uses the Option B split:
-
-- `@overeng/notion-core` is the intended home for pure dependency-free Notion
-  primitives, helpers, tuple builders, and classifiers when that package is
-  introduced.
-- `@overeng/notion-effect-schema` owns Effect Schema wire schemas and facades.
-- `@overeng/notion-effect-client` owns HTTP API services, pagination, retries,
-  rate-limit handling, and API error mapping.
-
-Non-goals for this milestone:
-
-- Do not import Effect from `@overeng/notion-core`.
-- Do not move `.nmd` contracts into `@overeng/notion-core`.
-- Do not move canonical codecs yet; existing codec ownership remains staged.
+Shared pure Notion primitives live in `@overeng/notion-core`. This package uses
+those primitives to build Effect Schema contracts while preserving schema-owned
+annotations, transforms, canonical codecs, and wire payload definitions. `.nmd`
+file and sidecar contracts belong to the NotionMD boundary, not the core or
+schema packages.
 
 ## Design Decisions
 
