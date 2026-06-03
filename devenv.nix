@@ -111,6 +111,7 @@ let
     "packages/@overeng/kdl-effect"
     "packages/@overeng/megarepo"
     "packages/@overeng/notion-cli"
+    "packages/@overeng/notion-core"
     "packages/@overeng/notion-datasource-sync"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
