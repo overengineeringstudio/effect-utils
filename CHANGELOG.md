@@ -65,6 +65,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **CI / Nix packages**: Refresh stale pnpm fixed-output hashes for `oxc-config`, `genie`, `notion-cli`, `notion-md`, `megarepo`, `workflow-report`, and `tui-stories`; register `notion-core` in workspace checks; format PR-touched files and keep oxlint fatal for error-level diagnostics while the existing warning backlog is tracked separately.
+- **secretspec**: Keep the public repository secretspec limited to environment variable declarations by removing machine-specific secret locator metadata.
 - **genie/ci-workflow**: Match managed workflow report PR comments by hidden `stateId` before patching so independent reports sharing the default marker cannot overwrite each other.
 - **devenv/tasks/shared/pnpm**: Share live and fixed-output pnpm install policy, cap live install concurrency to match the prepared-workspace builder, and accept Darwin pnpm teardown exits only after materialization is proven complete.
 - **@overeng/megarepo**: Keep store/test integration fixtures independent of user tag-signing Git config by creating fixture tags with `--no-sign`, avoid slow filesystem-watch semaphore acquisition in store locks, let `mr store gc --output json` take the final-state path directly, merge `git worktree list` with the on-disk store layout so GC never drops real worktrees from discovery, and run the megarepo Vitest suite with file parallelism disabled because the in-process CLI integration harness mutates global `process.env` and stdio.
