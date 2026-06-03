@@ -7,13 +7,21 @@
 # The bash is wrapped in `pkgs.writeShellApplication` so shellcheck runs at
 # build time and `gh` / `jq` are pinned via `runtimeInputs` instead of relying
 # on the ambient devenv PATH at task-exec time.
+#
+# Usage in devenv.nix:
+#   imports = [
+#     (import ./nix/devenv-modules/gh-labels.nix { repo = "owner/name"; })
+#   ];
+{
+  # Target GitHub repository in `owner/name` form. Required so downstream
+  # consumers (e.g. schickling/dotfiles) can reuse this module without forking.
+  repo,
+}:
 {
   pkgs,
   ...
 }:
 let
-  repo = "overengineeringstudio/effect-utils";
-
   apply = pkgs.writeShellApplication {
     name = "gh-apply-labels";
     runtimeInputs = [
