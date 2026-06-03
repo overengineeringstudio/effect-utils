@@ -2,6 +2,16 @@
 
 Effect schemas for the Notion API.
 
+## What It Provides
+
+- Effect Schema definitions for Notion wire payloads.
+- Ergonomic property transforms through `NotionSchema`.
+- Rich-text, user, object, page, block, property, and data-source schemas.
+- Canonical property value schemas and codecs for sync-safe projections.
+- Notion documentation annotations for schema metadata.
+
+See [docs/spec.md](./docs/spec.md) for package-boundary details.
+
 ## Design Decisions
 
 | Aspect          | Decision                                                                                                   |

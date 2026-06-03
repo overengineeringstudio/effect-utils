@@ -54,6 +54,37 @@ export {
   type CheckboxWrite as CheckboxWriteType,
   CheckboxWriteFromBoolean,
 } from './boolean.ts'
+// Canonical property-value shape + write-class taxonomy
+export {
+  CanonicalFileValue,
+  type CanonicalFileValue as CanonicalFileValueType,
+  CanonicalHash,
+  type CanonicalHash as CanonicalHashType,
+  CanonicalOptionValue,
+  type CanonicalOptionValue as CanonicalOptionValueType,
+  CanonicalPropertyValue,
+  type CanonicalPropertyValue as CanonicalPropertyValueType,
+  NotionPropertyType,
+  type NotionPropertyType as NotionPropertyTypeType,
+  PageId,
+  type PageId as PageIdType,
+  PropertyId,
+  type PropertyId as PropertyIdType,
+  PropertyName,
+  type PropertyName as PropertyNameType,
+  PropertyWriteClass,
+  type PropertyWriteClass as PropertyWriteClassType,
+  propertyWriteClassFromType,
+} from './canonical.ts'
+// Bidirectional canonical property-value codec
+export {
+  type CanonicalCodecDeps,
+  CanonicalDecodeError,
+  CanonicalEncodeError,
+  encodeCanonicalPatch,
+  encodeCanonicalPropertyValue,
+  makeCanonicalCodec,
+} from './canonical-codec.ts'
 // Common types shared across property modules
 export {
   SelectOption,

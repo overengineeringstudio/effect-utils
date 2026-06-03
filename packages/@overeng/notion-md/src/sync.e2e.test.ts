@@ -24,6 +24,7 @@ import {
   NmdStateStoreLive,
   objectPath,
   objectRelativePath,
+  syncStatePath,
   type NmdStateStore,
 } from './state-store.ts'
 import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
@@ -396,10 +397,8 @@ const parseFile = async (path: string) => {
  */
 const readSyncStateFile = async (path: string): Promise<NmdSyncStateV1> => {
   const parsed = await parseFile(path)
-  const filePageId = parsed.frontmatter.notion_md.page_id
-  const baseName = path.split(/[\\/]/u).at(-1) ?? path
-  const root = path.slice(0, Math.max(0, path.length - baseName.length))
-  const sidecarPath = `${root}.notion-md/sync/${filePageId}.json`
+  const parsedPageId = parsed.frontmatter.notion_md.page_id
+  const sidecarPath = syncStatePath({ path, pageId: parsedPageId })
   return JSON.parse(await readFile(sidecarPath, 'utf8')) as NmdSyncStateV1
 }
 
@@ -2052,8 +2051,7 @@ describe('notion-md e2e prototype', () => {
        * Tamper the sidecar inventory directly — the engine validates it
        * against the storage payload before status can pass.
        */
-      const sidecarRoot = path.slice(0, Math.max(0, path.length - 'volatile.nmd'.length))
-      const sidecarPath = `${sidecarRoot}.notion-md/sync/${pageId}.json`
+      const sidecarPath = syncStatePath({ path, pageId })
       await writeFile(
         sidecarPath,
         JSON.stringify(
@@ -2105,8 +2103,7 @@ describe('notion-md e2e prototype', () => {
        * Point the sidecar at the legacy v1 base snapshot blob; the engine
        * must reject it (no silent migration of content-addressed objects).
        */
-      const sidecarRoot = path.slice(0, Math.max(0, path.length - 'probe.nmd'.length))
-      const sidecarPath = `${sidecarRoot}.notion-md/sync/${pageId}.json`
+      const sidecarPath = syncStatePath({ path, pageId })
       await writeFile(
         sidecarPath,
         JSON.stringify(

@@ -34,8 +34,11 @@ export { NotionComments } from './comments.ts'
 export {
   NOTION_API_BASE_URL,
   NOTION_API_VERSION,
+  NOTION_TOKEN_ENV_VARS,
   type NotionClientConfig,
   NotionConfig,
+  NotionTokenMissing,
+  resolveNotionToken,
 } from './config.ts'
 export type {
   ArchiveDatabaseOptions,
@@ -61,6 +64,19 @@ export type {
   UpdateDataSourceOptions,
 } from './data-sources.ts'
 export { NotionDataSources } from './data-sources.ts'
+// Schema-backed Notion wire objects surfaced by the client boundary.
+export type {
+  DatabaseSchema as NotionDatabase,
+  DataSourceSchema as NotionDataSource,
+  Page as NotionPage,
+  PagePropertyItem as NotionPagePropertyItem,
+} from '@overeng/notion-effect-schema'
+export {
+  compactNotionUuid,
+  formatNotionUuid,
+  notionObjectUrl,
+  parseNotionUuid,
+} from '@overeng/notion-effect-schema'
 // Services
 export { NotionDatabases } from './databases.ts'
 // Error
@@ -69,7 +85,24 @@ export { NotionApiError, NotionErrorCode, NotionErrorResponse } from './error.ts
 export type { UploadFileOptions } from './files.ts'
 export { NotionFiles } from './files.ts'
 // Pagination utilities
-export type { PaginatedResult, PaginationOptions } from './internal/pagination.ts'
+export type {
+  FetchPage,
+  PaginateEmit,
+  PaginateOptions,
+  PaginatedResult,
+  PaginationOptions,
+} from './internal/pagination.ts'
+export { paginate } from './internal/pagination.ts'
+export type {
+  NotionHttpRouteInfo,
+  NotionHttpTelemetryEvent,
+  NotionHttpTelemetryReporter,
+  RateLimitInfo,
+} from './internal/http.ts'
+export { NotionHttpTelemetry, notionHttpRouteInfo, parseRateLimitHeaders } from './internal/http.ts'
+// Request throttle
+export type { NotionThrottleOptions } from './internal/throttle.ts'
+export { NotionThrottle, NotionThrottleLive } from './internal/throttle.ts'
 // Markdown converter
 export type {
   AnyBlockTransformer,
@@ -128,6 +161,15 @@ export {
   decodeNmdFrontmatterV2,
   decodeNmdFrontmatterV2Sync,
   decodeNmdSyncStateV1,
+  makeNmdObjectRef,
+  NMD_LARGE_STORAGE_BYTES,
+  NMD_OBJECT_DIRECTORY,
+  NMD_SMALL_STORAGE_BYTES,
+  NMD_STATE_DIRECTORY,
+  NMD_SYNC_DIRECTORY,
+  nmdObjectRelativePath,
+  nmdSha256Hex,
+  nmdSyncStateRelativePath,
   NmdBodyState as NmdBodyStateSchema,
   NmdCommentUnit as NmdCommentUnitSchema,
   NmdDataSourceBinding as NmdDataSourceBindingSchema,
@@ -158,6 +200,8 @@ export type {
   PageParent,
   RetrievePageOptions,
   RetrievePageOptionsBase,
+  RetrievePagePropertyOptions,
+  RetrievePagePropertyResult,
   RetrievePageWithSchemaOptions,
   UpdateMarkdownOptions,
   UpdatePageOptions,

@@ -4,6 +4,7 @@ import {
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
+import notionCorePkg from '../notion-core/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -11,7 +12,7 @@ import utilsPkg from '../utils/package.json.genie.ts'
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-client' }),
   dependencies: {
-    workspace: [notionEffectSchemaPkg],
+    workspace: [notionCorePkg, notionEffectSchemaPkg],
   },
   devDependencies: {
     workspace: [utilsDevPkg, utilsPkg],

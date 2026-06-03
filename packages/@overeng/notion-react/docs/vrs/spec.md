@@ -4,11 +4,8 @@ This document specifies how `@overeng/notion-react` renders JSX trees into
 Notion block pages incrementally. It builds on
 [requirements.md](./requirements.md).
 
-**Status:** Draft — core block reconciler + LCS diff landed (Phases 1–2);
-page-ops layer (R24–R30) in design on branch
-`schickling/2026-04-23-notion-react-followup2` (issue #618). Nested
-children support inside TEXT_LEAF containers and Suspense uploads still
-open.
+**Status:** Draft — core block reconciler, LCS diff, cache v3, and page-op
+reconciliation are implemented. Suspense uploads remain open.
 
 ## Scope
 
@@ -102,15 +99,16 @@ See `src/components/` (`blocks.tsx`, `inline.tsx`, `h.ts`).
 ### Block components (R01)
 
 Each block component is a thin wrapper around a host element whose tag is
-the Notion block type (`paragraph`, `heading_1` … `heading_4`, `toggle`,
-`to_do`, `bulleted_list_item`, `numbered_list_item`, `callout`, `quote`,
-`code`, `divider`, `image`, `video`, `audio`, `file`, `pdf`, `bookmark`,
-`embed`, `equation`, `link_to_page`, `child_page`, `table_row`). Props
-carried on the host are consumed by the host-config `blockProps`
-projection.
+the Notion block type (`page`, `paragraph`, `heading_1` … `heading_4`,
+`toggle`, `to_do`, `bulleted_list_item`, `numbered_list_item`, `callout`,
+`quote`, `code`, `divider`, `image`, `video`, `audio`, `file`, `pdf`,
+`bookmark`, `embed`, `equation`, `link_to_page`, `child_page`, `table`,
+`table_row`, `column_list`, `column`, `table_of_contents`). Props carried
+on the host are consumed by the host-config `blockProps` projection.
 
-Escape hatch: `<Raw content={...} />` emits a host of type `raw` with a
-freeform `content` payload for block types the library doesn't yet model.
+Escape hatches and passthrough wrappers (`Raw` and related low-level
+components) emit freeform or lightly modeled payloads for block types the
+library does not yet model as first-class props.
 
 ### Inline components (R02)
 
@@ -178,13 +176,12 @@ exactly and is op-optimal on the benchmark scenarios.
 ### `TEXT_LEAF` and block-children
 
 `TEXT_LEAF` blocks (`paragraph`, `heading_*`, `quote`, `callout`, `code`,
-list-item variants, `to_do`, `table_row`) treat their React children as
-rich text (R02). Their children are _not_ reconciled as fiber children
-for v0.1 — this implies that block-nested blocks inside a callout /
-list-item / to-do are out of scope for v0.1 and tracked as a follow-up
-(v0.2, pixeltrail issue #62). `toggle` is the exception: its header is
-supplied via the `title` prop and its `children` are reconciled as
-nested blocks.
+list-item variants, `to_do`) treat primitive and inline React children as
+rich text (R02). Host block children nested under these parents are
+reconciled as Notion block children where the Notion API supports that
+shape. `table_row` is not a text leaf; its cells are projected through
+the table-row payload model. `toggle` supplies its header via the `title`
+prop and reconciles nested block children below that header.
 
 ### `blockProps` projection
 
@@ -243,7 +240,9 @@ subtrees per R26/R30):
 {
   "schemaVersion": 3,
   "rootId": "<page uuid>",
-  "rootPage": { "titleHash": "...", "iconHash": "...", "coverHash": "..." },
+  "rootTitleHash": "...",
+  "rootIconHash": "...",
+  "rootCoverHash": "...",
   "children": [ CacheNode, ... ]
 }
 ```
@@ -253,9 +252,11 @@ additionally carry `titleHash`, `iconHash`, `coverHash` (djb2 of
 response-normalized projections per A07) and recurse into their own
 `children` with their own key namespace.
 
-Schema mismatches fall through to a cold-start diff — the stale tree is
-still used for matching when keys line up (no data corruption), and the
-sync sets `fallbackReason = "schema-mismatch"`.
+`FsCache` treats missing files, malformed payloads, and schema mismatches as
+cache misses by returning `undefined` from `load`. The sync driver then runs a
+cold diff against an empty tree. Cache backends that can retain old payloads for
+diagnostics may report richer mismatch information, but they must not feed
+stale cache entries into mutation planning without an explicit migration.
 
 ### Key derivation (R07)
 
@@ -472,7 +473,8 @@ Third-party backends (SQLite, Redis, …) implement `NotionCache` directly
 | Trigger                                              | Behaviour                                                      | `fallbackReason`        |
 | ---------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
 | No cache file                                        | Cold diff against empty tree                                   | `"cold-cache"`          |
-| Cache `schemaVersion !== CACHE_SCHEMA_VERSION`       | Diff against stale tree, still reuses keys                     | `"schema-mismatch"`     |
+| `FsCache` persisted schema mismatch                  | `FsCache.load` returns `undefined`; sync runs cold diff        | `"cold-cache"`          |
+| Prior tree `schemaVersion !== CACHE_SCHEMA_VERSION`  | Abort stale-tree diff from backends that return old trees      | `"schema-mismatch"`     |
 | Cache `rootId !== opts.pageId`                       | Cold diff against empty tree                                   | `"page-id-drift"`       |
 | `NotionBlocks.update` returns 404/archived           | Emit structural rebuild of that subtree                        | `"block-missing"`       |
 | Cached page id → `pages.retrieve` 404                | Drop cached subtree, recreate if JSX has it, else no-op        | `"page-missing"`        |

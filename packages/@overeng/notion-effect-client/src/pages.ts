@@ -1,12 +1,19 @@
 import type { HttpClient } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
-import { type Page, PageMarkdownSchema, PageSchema } from '@overeng/notion-effect-schema'
+import {
+  type Page,
+  PageMarkdownSchema,
+  type PagePropertyItem,
+  PagePropertyItemResponseSchema,
+  PageSchema,
+} from '@overeng/notion-effect-schema'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { NotionApiError as NotionApiErrorClass } from './error.ts'
 import { get, patch, post } from './internal/http.ts'
+import { type PaginatedResult, toPaginatedResult } from './internal/pagination.ts'
 import { decodePage, type PageDecodeError, type TypedPage } from './typed-page.ts'
 
 // -----------------------------------------------------------------------------
@@ -23,6 +30,19 @@ export type PageParent =
 export interface RetrievePageOptionsBase {
   /** Page ID to retrieve */
   readonly pageId: string
+}
+
+/** Inputs for retrieving a single page property — `startCursor`/`pageSize` paginate list-shaped properties. */
+export interface RetrievePagePropertyOptions {
+  readonly pageId: string
+  readonly propertyId: string
+  readonly startCursor?: string
+  readonly pageSize?: number
+}
+
+/** Result of retrieving a page property — paginated items plus an optional `propertyItem` for non-paginated single-value responses. */
+export interface RetrievePagePropertyResult extends PaginatedResult<PagePropertyItem> {
+  readonly propertyItem?: unknown
 }
 
 /** Options for retrieving a page (without schema = raw Page result) */
@@ -216,6 +236,40 @@ export function retrieve<TProperties, I, R>(
   )
 }
 
+/** Retrieve a single page property by id — handles both single-value and paginated list-shaped property responses (`GET /v1/pages/{page_id}/properties/{property_id}`). */
+export const retrieveProperty = Effect.fn('NotionPages.retrieveProperty')(function* (
+  opts: RetrievePagePropertyOptions,
+) {
+  const params = new URLSearchParams()
+  if (opts.startCursor !== undefined) {
+    params.set('start_cursor', opts.startCursor)
+  }
+  if (opts.pageSize !== undefined) {
+    params.set('page_size', String(opts.pageSize))
+  }
+
+  const query = params.size === 0 ? '' : `?${params.toString()}`
+  const response = yield* get({
+    path: `/pages/${opts.pageId}/properties/${opts.propertyId}${query}`,
+    responseSchema: PagePropertyItemResponseSchema,
+  })
+
+  if (response.object === 'list') {
+    const result: RetrievePagePropertyResult = {
+      ...toPaginatedResult(response),
+      propertyItem: response.property_item,
+    }
+    return result
+  }
+
+  const result: RetrievePagePropertyResult = {
+    results: [response],
+    nextCursor: Option.none(),
+    hasMore: false,
+  }
+  return result
+})
+
 /**
  * Create a new page.
  *
@@ -363,6 +417,7 @@ export const move = Effect.fn('NotionPages.move')(function* (opts: MovePageOptio
 /** Notion Pages API */
 export const NotionPages = {
   retrieve,
+  retrieveProperty,
   create,
   update,
   archive,

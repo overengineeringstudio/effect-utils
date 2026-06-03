@@ -17,7 +17,7 @@ export const debugCatch = <T>(try_: () => T): T => {
   try {
     return try_()
   } catch (e: any) {
-    // oxlint-disable-next-line eslint(no-debugger) -- intentional for dev debugging
+    // oxlint-disable-next-line no-debugger -- intentional for dev debugging
     debugger
     throw e
   }
@@ -81,7 +81,7 @@ export const capitalizeFirstLetter = (str: string): string =>
 /** Asserts exhaustive handling of union members at end of if-else chains */
 // oxlint-disable-next-line func-style
 export function casesHandled(unexpectedCase: never): never {
-  // oxlint-disable-next-line eslint(no-debugger) -- intentional for dev debugging
+  // oxlint-disable-next-line no-debugger -- intentional for dev debugging
   debugger
   throw new Error(
     `A case was not handled for value: ${truncate({ str: objectToString(unexpectedCase), length: 1000 })}`,
@@ -98,7 +98,7 @@ export const assertNever = ({
 }): void => {
   if (condition === false) {
     const msg_ = typeof msg === 'function' ? msg() : msg
-    // oxlint-disable-next-line eslint(no-debugger) -- intentional for dev debugging
+    // oxlint-disable-next-line no-debugger -- intentional for dev debugging
     debugger
     throw new Error(`This should never happen ${msg_}`)
   }
@@ -106,7 +106,7 @@ export const assertNever = ({
 
 /** Identity function that triggers debugger breakpoint for pipeline debugging */
 export const debuggerPipe = <T>(val: T): T => {
-  // oxlint-disable-next-line eslint(no-debugger) -- intentional for dev debugging
+  // oxlint-disable-next-line no-debugger -- intentional for dev debugging
   debugger
   return val
 }
@@ -125,7 +125,7 @@ export const truncate = ({ str, length }: { str: string; length: number }): stri
 
 /** Throws a "not yet implemented" error with optional message and debugger breakpoint */
 export const notYetImplemented = (msg?: string): never => {
-  // oxlint-disable-next-line eslint(no-debugger) -- intentional for dev debugging
+  // oxlint-disable-next-line no-debugger -- intentional for dev debugging
   debugger
   throw new Error(`Not yet implemented ${msg}`)
 }

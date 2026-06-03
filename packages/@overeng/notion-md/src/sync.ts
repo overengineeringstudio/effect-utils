@@ -2,13 +2,14 @@ import { basename } from 'node:path'
 
 import { Effect } from 'effect'
 
-import type {
-  NmdFrontmatterV2,
-  NmdObjectRef,
-  NmdParentRef,
-  NmdStorage,
-  NmdSyncStateV1,
-  NmdWritablePropertyValue,
+import {
+  NOTION_API_VERSION,
+  type NmdFrontmatterV2,
+  type NmdObjectRef,
+  type NmdParentRef,
+  type NmdStorage,
+  type NmdSyncStateV1,
+  type NmdWritablePropertyValue,
 } from '@overeng/notion-effect-client'
 
 import {
@@ -417,7 +418,7 @@ ${fence}
 const buildFrontmatterV2 = (opts: { readonly page: RemotePageSnapshot }): NmdFrontmatterV2 => ({
   notion_md: {
     version: 2,
-    api_version: '2026-03-11',
+    api_version: NOTION_API_VERSION,
     object: 'page',
     page_id: opts.page.id,
     url: opts.page.url,

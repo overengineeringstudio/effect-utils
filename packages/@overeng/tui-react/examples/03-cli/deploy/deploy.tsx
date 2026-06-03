@@ -137,7 +137,8 @@ export const runDeploy = (
     DeployApp,
     (tui) =>
       Effect.gen(function* () {
-        const { services, environment, dryRun = false } = options
+        const { services, environment } = options
+        const dryRun = options.dryRun ?? false
 
         const logs: LogEntry[] = []
         const log = (entry: { level: LogEntry['level']; message: string; service?: string }) => {

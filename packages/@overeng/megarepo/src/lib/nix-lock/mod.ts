@@ -42,7 +42,6 @@ import {
 } from './input-discovery.ts'
 import { matchLockedInputToMember, needsRevUpdate, urlsMatch } from './matcher.ts'
 import {
-  FlakeLock,
   updateLockedInputRev,
   convertLockedInputToGitHub,
   type NixFlakeMetadata,

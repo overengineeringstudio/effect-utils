@@ -302,6 +302,44 @@ export const Page = Schema.Struct({
 
 export type Page = typeof Page.Type
 
+/** Single property item returned by `GET /v1/pages/{page_id}/properties/{property_id}` — schema mirrors the Notion API page-property item object. */
+export const PagePropertyItem = Schema.extend(
+  Schema.Struct({
+    object: Schema.Literal('property_item'),
+    id: Schema.String,
+    type: Schema.String,
+  }),
+  Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+).annotations({
+  identifier: 'Notion.PagePropertyItem',
+  [docsPath]: 'page-property-item',
+})
+export type PagePropertyItem = typeof PagePropertyItem.Type
+
+/** Paginated list response for page-property retrieval — wraps multiple `PagePropertyItem` entries returned by Notion. */
+export const PagePropertyItemList = Schema.Struct({
+  object: Schema.Literal('list'),
+  type: Schema.Literal('property_item'),
+  property_item: Schema.Unknown,
+  results: Schema.Array(PagePropertyItem),
+  next_cursor: Schema.NullOr(Schema.String),
+  has_more: Schema.Boolean,
+}).annotations({
+  identifier: 'Notion.PagePropertyItemList',
+  [docsPath]: 'retrieve-a-page-property',
+})
+export type PagePropertyItemList = typeof PagePropertyItemList.Type
+
+/** Tagged union covering both shapes the page-property endpoint can return — a single `PagePropertyItem` or a paginated `PagePropertyItemList`. */
+export const PagePropertyItemResponse = Schema.Union(
+  PagePropertyItem,
+  PagePropertyItemList,
+).annotations({
+  identifier: 'Notion.PagePropertyItemResponse',
+  [docsPath]: 'retrieve-a-page-property',
+})
+export type PagePropertyItemResponse = typeof PagePropertyItemResponse.Type
+
 // -----------------------------------------------------------------------------
 // Block Types
 // -----------------------------------------------------------------------------
@@ -484,22 +522,24 @@ export type ViewType = typeof ViewType.Type
 export const View = Schema.Struct({
   object: Schema.Literal('view'),
   id: NotionUUID,
-  parent: Schema.Struct({
-    type: Schema.Literal('database_id'),
-    database_id: NotionUUID,
-  }),
-  data_source_id: NotionUUID,
-  name: Schema.String,
-  type: ViewType,
-  created_time: Schema.NullOr(ISO8601DateTime),
-  created_by: Schema.NullOr(PartialUser),
-  last_edited_time: Schema.NullOr(ISO8601DateTime),
-  last_edited_by: Schema.NullOr(PartialUser),
-  url: Schema.String,
-  filter: Schema.NullOr(Schema.Unknown),
-  sorts: Schema.NullOr(Schema.Unknown),
-  quick_filters: Schema.NullOr(Schema.Unknown),
-  configuration: Schema.Unknown,
+  parent: Schema.optional(
+    Schema.Struct({
+      type: Schema.Literal('database_id'),
+      database_id: NotionUUID,
+    }),
+  ),
+  data_source_id: Schema.optional(NotionUUID),
+  name: Schema.optional(Schema.String),
+  type: Schema.optional(ViewType),
+  created_time: Schema.optional(Schema.NullOr(ISO8601DateTime)),
+  created_by: Schema.optional(Schema.NullOr(PartialUser)),
+  last_edited_time: Schema.optional(Schema.NullOr(ISO8601DateTime)),
+  last_edited_by: Schema.optional(Schema.NullOr(PartialUser)),
+  url: Schema.optional(Schema.String),
+  filter: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  sorts: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  quick_filters: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  configuration: Schema.optional(Schema.Unknown),
 }).annotations({
   identifier: 'Notion.View',
   [docsPath]: 'view-object',

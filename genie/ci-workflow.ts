@@ -34,6 +34,7 @@ import { bashShellDefaults, linuxX64Runner, standardCIEnv } from './ci-workflow/
 type GitHubWorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type GitHubWorkflowStep = GitHubWorkflowJob['steps'][number]
 
+/** Options for wrapping the default-ref policy check in a dedicated CI job. */
 export type DefaultRefPolicyCheckJobOptions = DefaultRefPolicyCheckStepOptions & {
   readonly name?: string
   readonly runsOn?: GitHubWorkflowJob['runs-on']

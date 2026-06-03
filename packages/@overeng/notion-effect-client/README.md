@@ -2,6 +2,16 @@
 
 Effect-native HTTP client for the Notion API.
 
+## What It Provides
+
+- Effect-native Notion API services.
+- Request construction and configured transport.
+- Pagination, retries, rate-limit handling, and API error mapping.
+- Resource modules for data sources, databases, pages, blocks, comments, files,
+  search, users, and views.
+
+See [docs/spec.md](./docs/spec.md) for package-boundary details.
+
 ## Installation
 
 ```bash

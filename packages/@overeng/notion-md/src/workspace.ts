@@ -4,6 +4,8 @@ import type { Path } from '@effect/platform'
 import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
+import { titleSlug } from '@overeng/utils'
+
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
 import { NotionMdGateway } from './model.ts'
@@ -73,15 +75,6 @@ const makeFsError = (opts: {
     message: opts.message,
   })
 
-const slugify = (title: string): string => {
-  const slug = title
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, '-')
-    .replace(/^-|-$/gu, '')
-  return slug === '' ? 'untitled' : slug
-}
-
 const shortPageId = (pageId: string): string => pageId.replaceAll('-', '').slice(-6)
 
 const uniquePath = (opts: {
@@ -90,8 +83,8 @@ const uniquePath = (opts: {
   readonly segments: readonly string[]
   readonly pageId: string
 }): string => {
-  const parentSegments = opts.segments.slice(0, -1).map(slugify)
-  const base = slugify(opts.segments.at(-1) ?? 'index')
+  const parentSegments = opts.segments.slice(0, -1).map(titleSlug)
+  const base = titleSlug(opts.segments.at(-1) ?? 'index')
   const candidate = resolve(opts.root, ...parentSegments, `${base}.nmd`)
   if (opts.used.has(candidate) === false) {
     opts.used.add(candidate)
@@ -365,7 +358,7 @@ export const statusWorkspace = (opts: {
     const missing: Array<{ readonly pageId: string; readonly path: string }> = []
     const statuses: StatusResult[] = []
     for (const page of remotePages) {
-      const path = resolve(root, planned.pages[page.pageId] ?? `${slugify(page.title)}.nmd`)
+      const path = resolve(root, planned.pages[page.pageId] ?? `${titleSlug(page.title)}.nmd`)
       const exists = yield* fs.exists(path).pipe(
         Effect.mapError((cause) =>
           makeFsError({
@@ -457,7 +450,7 @@ export const syncWorkspace = (opts: {
     })
     if (previousManifest === undefined) {
       for (const page of remotePages) {
-        const path = resolve(root, manifest.pages[page.pageId] ?? `${slugify(page.title)}.nmd`)
+        const path = resolve(root, manifest.pages[page.pageId] ?? `${titleSlug(page.title)}.nmd`)
         const exists = yield* fs.exists(path).pipe(
           Effect.mapError((cause) =>
             makeFsError({
@@ -480,7 +473,7 @@ export const syncWorkspace = (opts: {
     const materialized: PullResult[] = []
     const synced: SyncResult[] = []
     for (const page of remotePages) {
-      const path = resolve(root, manifest.pages[page.pageId] ?? `${slugify(page.title)}.nmd`)
+      const path = resolve(root, manifest.pages[page.pageId] ?? `${titleSlug(page.title)}.nmd`)
       const exists = yield* fs.exists(path).pipe(
         Effect.mapError((cause) =>
           makeFsError({

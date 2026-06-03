@@ -6,7 +6,12 @@
 
 import { Effect } from 'effect'
 
-import { type Block, type RichTextArray, RichTextUtils } from '@overeng/notion-effect-schema'
+import {
+  type Block,
+  notionObjectUrl,
+  type RichTextArray,
+  RichTextUtils,
+} from '@overeng/notion-effect-schema'
 
 import {
   type BlockTree,
@@ -416,7 +421,7 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
   link_to_page: (block) => {
     const typeData = block[block.type] as { page_id?: string; database_id?: string } | undefined
     const pageId = typeData?.page_id ?? typeData?.database_id ?? ''
-    return `[Link to page](https://notion.so/${pageId.replace(/-/g, '')})`
+    return `[Link to page](${notionObjectUrl(pageId)})`
   },
 
   tab: (_, children) => children,

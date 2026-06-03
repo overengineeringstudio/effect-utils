@@ -2,21 +2,10 @@ import { basename, dirname, resolve } from 'node:path'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
-import {
-  Cause,
-  Config,
-  Console,
-  Duration,
-  Effect,
-  Layer,
-  Option,
-  Queue,
-  Redacted,
-  Schema,
-  Stream,
-} from 'effect'
+import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream } from 'effect'
 
-import { NotionConfigLive } from '@overeng/notion-effect-client'
+import { NotionConfigLive, resolveNotionToken } from '@overeng/notion-effect-client'
+import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import {
@@ -113,14 +102,7 @@ const cliVersion = resolveCliVersion({
   buildStamp,
 })
 
-const resolveToken = Config.redacted('NOTION_API_TOKEN').pipe(
-  Effect.filterOrFail(
-    (token) => Redacted.value(token).length > 0,
-    () =>
-      new NmdTokenMissingError({
-        message: 'NOTION_API_TOKEN is required',
-      }),
-  ),
+const resolveToken = resolveNotionToken().pipe(
   Effect.mapError(
     () =>
       new NmdTokenMissingError({
@@ -153,19 +135,7 @@ const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 const logJson = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value, null, 2))
 
-const parseNotionPageRef = (value: string): string | undefined => {
-  const compact = value.replaceAll('-', '')
-  const direct = /^[0-9a-f]{32}$/iu.test(compact) === true ? compact : undefined
-  const fromUrl = direct ?? value.match(/[0-9a-f]{32}/iu)?.[0]
-  if (fromUrl === undefined) return undefined
-  return [
-    fromUrl.slice(0, 8),
-    fromUrl.slice(8, 12),
-    fromUrl.slice(12, 16),
-    fromUrl.slice(16, 20),
-    fromUrl.slice(20),
-  ].join('-')
-}
+const parseNotionPageRef = (value: string): string | undefined => parseNotionUuid(value)
 
 const safeJsonError = (error: unknown): Record<string, unknown> => {
   if (typeof error === 'object' && error !== null && '_tag' in error) {
@@ -485,11 +455,17 @@ const syncCommand = Command.make(
   ),
 )
 
+const makeNotionMdCommand = (name: 'md' | 'notion-md') =>
+  Command.make(name).pipe(
+    Command.withSubcommands([statusCommand, syncCommand]),
+    Command.withDescription('Two-way Notion enhanced Markdown sync'),
+  )
+
 /** Effect CLI command tree for the notion-md binary. */
-export const notionMdCommand = Command.make('notion-md').pipe(
-  Command.withSubcommands([statusCommand, syncCommand]),
-  Command.withDescription('Two-way Notion enhanced Markdown sync'),
-)
+export const notionMdCommand = makeNotionMdCommand('notion-md')
+
+/** Effect CLI command tree for the umbrella notion binary. */
+export const notionMdDispatchCommand = makeNotionMdCommand('md')
 
 /** Process argv runner for the notion-md command tree. */
 export const cli = Command.run(notionMdCommand, {

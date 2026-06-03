@@ -1,4 +1,9 @@
 import {
+  workflowReportCollectorStep,
+  workflowReportCommentBodyStep,
+  workflowReportPublisherStep,
+} from '../ci-workflow/reporting.ts'
+import {
   deployTargetEnvSuffix,
   workflowReportKind,
   workflowReportMarker,
@@ -6,11 +11,6 @@ import {
   workflowReportPathOutputName,
   workflowReportSchemaVersion,
 } from './shared.ts'
-import {
-  workflowReportCollectorStep,
-  workflowReportCommentBodyStep,
-  workflowReportPublisherStep,
-} from '../ci-workflow/reporting.ts'
 
 type StepRecord = Record<string, unknown>
 
@@ -157,7 +157,8 @@ const vercelDeployReportSteps = (opts: {
       title: opts.commentTitle,
       noRecordsMessage: opts.noRecordsMessage,
       stateId: 'deploy-preview',
-      entryId: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+      entryId:
+        "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
       entryLabel:
         "${{ github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.number) || 'prod' }}",
       timeZone: 'Europe/Berlin',

@@ -5,11 +5,15 @@ import {
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import notionCorePkg from '../notion-core/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const peerDepNames = ['effect'] as const
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-schema' }),
+  dependencies: {
+    workspace: [notionCorePkg],
+  },
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {

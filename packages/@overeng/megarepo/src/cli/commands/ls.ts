@@ -34,7 +34,7 @@ import type { MemberInfo } from '../renderers/LsOutput/schema.ts'
  */
 const scanMembersRecursive = ({
   megarepoRoot,
-  ownerPath = undefined,
+  ownerPath,
   visited = new Set<string>(),
   all,
 }: {

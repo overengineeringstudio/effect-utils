@@ -77,9 +77,9 @@ const normalizeDatabasePropertyDefinition = (args: {
  * Parse raw database properties into typed PropertySchema array.
  * Unknown or invalid properties are filtered out.
  */
-export const getProperties = (args: { schema: SchemaSource }): PropertySchema[] => {
-  const { schema } = args
-  const rawProperties = schema.properties ?? {}
+export const getPropertiesFromRecord = (
+  rawProperties: Readonly<Record<string, unknown>>,
+): PropertySchema[] => {
   const results: PropertySchema[] = []
 
   for (const [name, rawValue] of Object.entries(rawProperties)) {
@@ -104,6 +104,13 @@ export const getProperties = (args: { schema: SchemaSource }): PropertySchema[] 
     Order.mapInput(Order.string, (p: PropertySchema) => p.name),
   )
 }
+
+/**
+ * Parse raw database properties into typed PropertySchema array.
+ * Unknown or invalid properties are filtered out.
+ */
+export const getProperties = (args: { schema: SchemaSource }): PropertySchema[] =>
+  getPropertiesFromRecord(args.schema.properties ?? {})
 
 /**
  * Get a single property by name.
@@ -449,6 +456,7 @@ export const getUniqueIdPrefix = (args: {
 
 /** Helpers for working with database schema metadata */
 export const SchemaHelpers = {
+  getPropertiesFromRecord,
   getProperties,
   getProperty,
   getPropertyByTag,

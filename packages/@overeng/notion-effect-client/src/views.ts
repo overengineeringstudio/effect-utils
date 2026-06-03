@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import { Effect, Option, Schema, type Stream } from 'effect'
 
 import { type View, type ViewType, ViewSchema } from '@overeng/notion-effect-schema'
 
@@ -7,6 +7,7 @@ import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { del, get, patch, post } from './internal/http.ts'
 import {
+  paginate,
   PaginatedResponse,
   type PaginatedResult,
   type PaginationOptions,
@@ -88,25 +89,12 @@ export const list = (
 export const listStream = (
   opts: Omit<ListViewsOptions, 'startCursor'>,
 ): Stream.Stream<View, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
-  Stream.unfoldChunkEffect(Option.some(Option.none<string>()), (maybeNextCursor) =>
-    Option.match(maybeNextCursor, {
-      onNone: () => Effect.succeed(Option.none()),
-      onSome: (cursor) => {
-        const listOpts: ListViewsOptions =
-          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
-        return listRaw(listOpts).pipe(
-          Effect.map((result) => {
-            const chunk = Chunk.fromIterable(result.results)
-
-            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
-              return Option.some([chunk, Option.none()] as const)
-            }
-
-            return Option.some([chunk, Option.some(Option.some(result.nextCursor.value))] as const)
-          }),
-        )
-      },
-    }),
+  paginate(
+    (cursor) =>
+      listRaw(
+        Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts },
+      ),
+    { emit: { _tag: 'items' } },
   )
 
 // -----------------------------------------------------------------------------

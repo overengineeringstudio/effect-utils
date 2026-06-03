@@ -5,7 +5,8 @@ import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import {
   type PaginatedResponse,
-  paginatedStream,
+  type PaginatedResult,
+  paginate,
   paginationParams,
   toPaginatedResult,
 } from './pagination.ts'
@@ -104,21 +105,27 @@ Vitest.describe('toPaginatedResult', () => {
   )
 })
 
-Vitest.describe('paginatedStream', () => {
-  Vitest.it.scoped('fetches single page when has_more is false', () =>
+const pageResult = <A>(input: {
+  results: readonly A[]
+  nextCursor?: string
+}): PaginatedResult<A> => ({
+  results: input.results,
+  nextCursor: Option.fromNullable(input.nextCursor),
+  hasMore: input.nextCursor !== undefined,
+})
+
+Vitest.describe('paginate (items mode)', () => {
+  Vitest.it.scoped('fetches single page when hasMore is false', () =>
     Effect.gen(function* () {
       let fetchCount = 0
 
-      const stream = paginatedStream((_cursor) =>
-        Effect.sync(() => {
-          fetchCount++
-          return {
-            object: 'list' as const,
-            results: [{ id: '1' }, { id: '2' }],
-            has_more: false,
-            next_cursor: null,
-          }
-        }),
+      const stream = paginate(
+        (_cursor) =>
+          Effect.sync(() => {
+            fetchCount++
+            return pageResult({ results: [{ id: '1' }, { id: '2' }] })
+          }),
+        { emit: { _tag: 'items' } },
       )
 
       const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
@@ -128,42 +135,29 @@ Vitest.describe('paginatedStream', () => {
     }),
   )
 
-  Vitest.it.scoped('fetches multiple pages with cursor', () =>
+  Vitest.it.scoped('flattens multiple pages and threads the cursor', () =>
     Effect.gen(function* () {
       const cursors: Option.Option<string>[] = []
 
-      const stream = paginatedStream((cursor) =>
-        Effect.sync(() => {
-          cursors.push(cursor)
-
-          if (Option.isNone(cursor) === true) {
-            // First page
-            return {
-              object: 'list' as const,
-              results: [{ id: '1' }, { id: '2' }],
-              has_more: true,
-              next_cursor: 'cursor-page-2',
+      const stream = paginate(
+        (cursor) =>
+          Effect.sync(() => {
+            cursors.push(cursor)
+            if (Option.isNone(cursor) === true) {
+              return pageResult({
+                results: [{ id: '1' }, { id: '2' }],
+                nextCursor: 'cursor-page-2',
+              })
             }
-          }
-
-          if (cursor.value === 'cursor-page-2') {
-            // Second page
-            return {
-              object: 'list' as const,
-              results: [{ id: '3' }, { id: '4' }],
-              has_more: true,
-              next_cursor: 'cursor-page-3',
+            if (cursor.value === 'cursor-page-2') {
+              return pageResult({
+                results: [{ id: '3' }, { id: '4' }],
+                nextCursor: 'cursor-page-3',
+              })
             }
-          }
-
-          // Last page
-          return {
-            object: 'list' as const,
-            results: [{ id: '5' }],
-            has_more: false,
-            next_cursor: null,
-          }
-        }),
+            return pageResult({ results: [{ id: '5' }] })
+          }),
+        { emit: { _tag: 'items' } },
       )
 
       const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
@@ -176,27 +170,31 @@ Vitest.describe('paginatedStream', () => {
     }),
   )
 
-  Vitest.it.effect('handles empty first page', () =>
+  Vitest.it.scoped('seeds the first fetch with the provided start cursor', () =>
     Effect.gen(function* () {
-      const stream = paginatedStream((_cursor) =>
-        Effect.sync(() => ({
-          object: 'list' as const,
-          results: [] as { id: string }[],
-          has_more: false,
-          next_cursor: null,
-        })),
+      const cursors: Option.Option<string>[] = []
+
+      const stream = paginate(
+        (cursor) =>
+          Effect.sync(() => {
+            cursors.push(cursor)
+            return pageResult({ results: [{ id: 'a' }] })
+          }),
+        { startCursor: Option.some('seed-cursor'), emit: { _tag: 'items' } },
       )
 
       const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
 
-      expect(items).toEqual([])
+      expect(items).toEqual([{ id: 'a' }])
+      expect(Option.getOrNull(cursors[0] ?? Option.none())).toBe('seed-cursor')
     }),
   )
 
-  Vitest.it.effect('propagates errors from fetch function', () =>
+  Vitest.it.effect('propagates errors from the fetch function', () =>
     Effect.gen(function* () {
-      const stream = paginatedStream((_cursor) =>
-        Effect.fail(new PaginationNetworkError({ message: 'Network error' })),
+      const stream = paginate(
+        (_cursor) => Effect.fail(new PaginationNetworkError({ message: 'Network error' })),
+        { emit: { _tag: 'items' } },
       )
 
       const result = yield* Stream.runCollect(stream).pipe(Effect.flip)
@@ -205,38 +203,24 @@ Vitest.describe('paginatedStream', () => {
       expect(result.message).toBe('Network error')
     }),
   )
+})
 
-  Vitest.it.scoped('stops fetching after last page with items', () =>
+Vitest.describe('paginate (page mode)', () => {
+  Vitest.it.scoped('emits one mapped value per page without flattening', () =>
     Effect.gen(function* () {
-      let fetchCount = 0
-
-      const stream = paginatedStream((cursor) =>
-        Effect.sync(() => {
-          fetchCount++
-
-          if (Option.isNone(cursor) === true) {
-            return {
-              object: 'list' as const,
-              results: [{ id: '1' }],
-              has_more: true,
-              next_cursor: 'cursor-2',
-            }
-          }
-
-          // Last page - has items but no more pages
-          return {
-            object: 'list' as const,
-            results: [{ id: '2' }],
-            has_more: false,
-            next_cursor: null,
-          }
-        }),
+      const stream = paginate(
+        (cursor) =>
+          Effect.sync(() =>
+            Option.isNone(cursor) === true
+              ? pageResult({ results: [{ id: '1' }, { id: '2' }], nextCursor: 'cursor-2' })
+              : pageResult({ results: [{ id: '3' }] }),
+          ),
+        { emit: { _tag: 'page', map: (page) => page.results.length } },
       )
 
-      const items = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
+      const pages = yield* Stream.runCollect(stream).pipe(Effect.map(Chunk.toReadonlyArray))
 
-      expect(items).toEqual([{ id: '1' }, { id: '2' }])
-      expect(fetchCount).toBe(2)
+      expect(pages).toEqual([2, 1])
     }),
   )
 })

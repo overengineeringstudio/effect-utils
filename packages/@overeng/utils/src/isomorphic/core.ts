@@ -23,7 +23,7 @@ export const isDevEnv = (): boolean => {
 export const shouldNeverHappen = (msg?: string, ...args: any[]): never => {
   console.error(msg, ...args)
   if (isDevEnv() === true) {
-    // oxlint-disable-next-line eslint(no-debugger) -- intentional breakpoint for impossible states during development
+    // oxlint-disable-next-line no-debugger -- intentional breakpoint for impossible states during development
     debugger
   }
 

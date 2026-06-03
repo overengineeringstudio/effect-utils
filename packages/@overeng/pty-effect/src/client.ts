@@ -10,10 +10,8 @@
 
 import {
   type EventRecord,
-  type ProcessResources,
   type SessionConnectionOptions,
   type SessionInfo,
-  type SessionMetadata,
   type SpawnDaemonOptions,
   type StatsResult,
   EventFollower,

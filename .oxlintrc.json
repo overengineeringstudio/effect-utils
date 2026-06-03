@@ -175,7 +175,8 @@
         "unicorn/consistent-function-scoping": "off",
         "import/no-named-as-default": "off",
         "overeng/exports-first": "off",
-        "overeng/jsdoc-require-exports": "off"
+        "overeng/jsdoc-require-exports": "off",
+        "typescript/no-useless-default-assignment": "off"
       }
     },
     {

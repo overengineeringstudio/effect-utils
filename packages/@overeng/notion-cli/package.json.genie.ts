@@ -5,8 +5,10 @@ import {
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
+import notionDatasourceSyncPkg from '../notion-datasource-sync/package.json.genie.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
+import notionMdPkg from '../notion-md/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -19,6 +21,8 @@ const runtimeDeps = catalog.compose({
   dependencies: {
     workspace: [
       effectPathPkg,
+      notionDatasourceSyncPkg,
+      notionMdPkg,
       notionEffectClientPkg,
       notionEffectSchemaPkg,
       tuiCorePkg,

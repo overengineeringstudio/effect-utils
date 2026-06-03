@@ -15,6 +15,8 @@ export default tsconfigJson({
   references: [
     { path: '../effect-path' },
     { path: '../notion-effect-client' },
+    { path: '../notion-datasource-sync' },
+    { path: '../notion-md' },
     { path: '../notion-effect-schema' },
     { path: '../tui-core' },
     { path: '../tui-react' },

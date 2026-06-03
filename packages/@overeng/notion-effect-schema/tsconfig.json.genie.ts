@@ -10,5 +10,5 @@ export default tsconfigJson({
     ...packageTsconfigCompilerOptions,
   },
   include: ['src/**/*'],
-  references: [{ path: '../utils-dev' }],
+  references: [{ path: '../notion-core' }, { path: '../utils-dev' }],
 } satisfies TSConfigArgs)

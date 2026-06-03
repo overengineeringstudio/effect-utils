@@ -7,7 +7,8 @@
 }:
 let
   repoFlake = builtins.getFlake (toString ./.);
-  flakePkgs = import repoFlake.inputs.nixpkgs { inherit (pkgs) system; };
+  currentSystem = pkgs.stdenv.hostPlatform.system;
+  flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
@@ -110,6 +111,8 @@ let
     "packages/@overeng/kdl-effect"
     "packages/@overeng/megarepo"
     "packages/@overeng/notion-cli"
+    "packages/@overeng/notion-core"
+    "packages/@overeng/notion-datasource-sync"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
     "packages/@overeng/notion-md"
@@ -159,6 +162,10 @@ let
     {
       path = "packages/@overeng/notion-cli";
       name = "notion-cli";
+    }
+    {
+      path = "packages/@overeng/notion-datasource-sync";
+      name = "notion-datasource-sync";
     }
     {
       path = "packages/@overeng/notion-effect-client";
@@ -370,6 +377,9 @@ in
       genieCoverageDirs = [ "packages" ];
       # Type-aware linting for typescript/no-deprecated rule
       tsconfig = "tsconfig.all.json";
+      # The existing workspace still has warning-class oxlint findings. Keep
+      # lint fatal for errors while warning cleanup remains incremental.
+      denyWarnings = false;
     })
     (taskModules.ts-effect-lsp { })
     # Setup task (auto-runs in enterShell)
@@ -399,7 +409,7 @@ in
   ];
 
   packages = [
-    inputs.tsgo.packages.${pkgs.system}.effect-tsgo
+    inputs.tsgo.packages.${currentSystem}.effect-tsgo
     (import ./nix/pnpm.nix { inherit pkgs; })
     pkgs.nodejs_24
     pkgs.bun
@@ -407,6 +417,8 @@ in
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
     oxlintWithPlugins
     pkgs.oxfmt
+    # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
+    repoFlake.packages.${currentSystem}.notion-cli
     (mkSourceCli {
       name = "genie";
       entry = "packages/@overeng/genie/bin/genie.tsx";

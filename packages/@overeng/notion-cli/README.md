@@ -10,6 +10,29 @@ bun add @overeng/notion-effect-cli
 
 ## Quick Start
 
+### Umbrella Dispatching
+
+`notion` composes the Notion command surfaces as Effect CLI command trees where
+the runtime supports it:
+
+- `notion md ...` → reuses the `notion-md` Effect command tree directly
+- `notion db ...` and `notion schema ...` → run the native umbrella Effect commands
+- `notion db info ...` → stays in the Bun-compiled umbrella CLI
+- `notion db sync/export/status/pull/push/...` → appears under `notion db` through an
+  import-safe descriptor and enters the packaged Node-backed
+  `notion-datasource-sync` runtime in Nix/devenv builds
+
+The SQLite runtime boundary is intentional: datasource-sync imports
+`node:sqlite`, which is unavailable to the Bun-compiled root CLI.
+
+For markdown/SQLite workflows, use the packaged Nix/devenv binary:
+
+```bash
+notion db sync --help
+```
+
+Direct Bun/source execution of `notion db` replica commands is unsupported because the SQLite sync runtime imports `node:sqlite`. Unsupported source paths fail closed with guidance to use the packaged Node-backed entrypoint.
+
 ### Prerequisites
 
 1. [Bun](https://bun.sh) runtime (required for TypeScript config loading)

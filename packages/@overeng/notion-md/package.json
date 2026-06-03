@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./cli": "./src/cli.ts",
+    "./cli-program": "./src/cli-program.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -12,7 +14,9 @@
       "notion-md": "./dist/src/cli.js"
     },
     "exports": {
-      ".": "./dist/src/mod.js"
+      ".": "./dist/src/mod.js",
+      "./cli": "./dist/src/cli.js",
+      "./cli-program": "./dist/src/cli-program.js"
     }
   },
   "scripts": {
@@ -75,6 +79,7 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
+      "packages/@overeng/notion-core",
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",
       "packages/@overeng/notion-md",
