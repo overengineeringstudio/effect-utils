@@ -18,9 +18,9 @@ describe('richTextPlainText', () => {
   })
 
   it('stringifies present non-string plain_text values', () => {
-    expect(richTextPlainText([{ plain_text: 1 }, { plain_text: false }, { plain_text: null }])).toBe(
-      '1falsenull',
-    )
+    expect(
+      richTextPlainText([{ plain_text: 1 }, { plain_text: false }, { plain_text: null }]),
+    ).toBe('1falsenull')
   })
 
   it('returns an empty string for non-array inputs', () => {

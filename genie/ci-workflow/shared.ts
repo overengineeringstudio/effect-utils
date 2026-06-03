@@ -255,9 +255,7 @@ export const workflowReportNixTokenSetup = [
   'fi',
 ]
 
-export const workflowReportCommand = (opts: {
-  readonly args: readonly string[]
-}) => {
+export const workflowReportCommand = (opts: { readonly args: readonly string[] }) => {
   const args = opts.args.join(' ')
   return [
     `workflow_report_flake_ref="\${WORKFLOW_REPORT_FLAKE_REF:-${defaultWorkflowReportFlakeRef}}"`,

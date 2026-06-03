@@ -25,7 +25,6 @@ import {
   datasourceSyncContentHash,
   FilesystemWorkspaceSidecar as FilesystemWorkspaceSidecarSchema,
   filesystemWorkspacePageSidecarPath,
-  isOwnWriteObservation,
   makeFilesystemWorkspaceSidecar,
   metadataDirectoryName,
   ownWriteSuppressionToken,

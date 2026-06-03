@@ -239,7 +239,10 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
     defaults: bashShellDefaults,
     steps: [
       ...opts.setupSteps,
-      { name: 'Select release plan for validation (placeholder)', run: placeholderRun('select release plan') },
+      {
+        name: 'Select release plan for validation (placeholder)',
+        run: placeholderRun('select release plan'),
+      },
       ...opts.validateSteps,
     ],
   }
@@ -273,7 +276,11 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
 
   return githubWorkflow({
     name: opts.name ?? 'Release',
-    ...(opts.actionlint === false ? {} : opts.actionlint !== undefined ? { actionlint: opts.actionlint } : {}),
+    ...(opts.actionlint === false
+      ? {}
+      : opts.actionlint !== undefined
+        ? { actionlint: opts.actionlint }
+        : {}),
     on: {
       workflow_dispatch: {
         inputs: {

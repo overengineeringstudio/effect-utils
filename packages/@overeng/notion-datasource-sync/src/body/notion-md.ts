@@ -32,11 +32,11 @@ import {
   type LocalWorkspacePortShape,
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
+import { makeFilesystemWorkspaceSidecar } from '../local/sidecar.ts'
 import {
   filesystemWorkspacePageSidecarPath,
   makeFilesystemLocalWorkspacePort,
 } from '../local/workspace.ts'
-import { makeFilesystemWorkspaceSidecar } from '../local/sidecar.ts'
 import {
   bodySafetySnapshot,
   evaluateBodyAdapterContract,
@@ -88,23 +88,14 @@ const provideNotionMdStateStore =
     effect.pipe(Effect.provideService(NmdStateStore, stateStore))
 
 const provideNotionMdGatewayAndStateStore =
-  (input: {
-    readonly gateway: NotionMdGatewayShape
-    readonly stateStore: NmdStateStoreShape
-  }) =>
+  (input: { readonly gateway: NotionMdGatewayShape; readonly stateStore: NmdStateStoreShape }) =>
   <TValue, TError>(effect: Effect.Effect<TValue, TError, NotionMdGateway | NmdStateStore>) =>
     effect.pipe(
       Effect.provideService(NotionMdGateway, input.gateway),
       Effect.provideService(NmdStateStore, input.stateStore),
     )
 
-const writeJsonFile = ({
-  path,
-  value,
-}: {
-  readonly path: string
-  readonly value: unknown
-}) =>
+const writeJsonFile = ({ path, value }: { readonly path: string; readonly value: unknown }) =>
   Effect.tryPromise({
     try: async () => {
       await mkdir(dirname(path), { recursive: true })
@@ -291,12 +282,12 @@ export const makeNotionMdPageBodySyncPort = ({
                       : 'Local NotionMD body changed while settling a verified body push; refusing to overwrite the newer local edit',
                   cause,
                 })
-            : new BodySyncError({
-                operation: 'push',
-                pageId: command.pageId,
-                message: 'Failed to push NotionMD page body',
-                cause,
-              }),
+              : new BodySyncError({
+                  operation: 'push',
+                  pageId: command.pageId,
+                  message: 'Failed to push NotionMD page body',
+                  cause,
+                }),
         ),
       ),
     repair: (input: BodyRepairInput) =>

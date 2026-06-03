@@ -39,6 +39,10 @@ export default oxlintConfig({
         'import/no-named-as-default': 'off',
         'overeng/exports-first': 'off',
         'overeng/jsdoc-require-exports': 'off',
+        // oxlint reports this rule's strictNullChecks precondition at byte 0,
+        // before inline suppression comments can apply. react-inspector keeps
+        // package-local relaxed TypeScript settings while the fork is upstreamed.
+        'typescript/no-useless-default-assignment': 'off',
       },
     },
     // notion-react: incubation lint waiver (tracked in #599; remove before GA)

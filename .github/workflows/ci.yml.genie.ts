@@ -707,9 +707,9 @@ const deployJobs: Record<string, any> = {
         noRecordsMessage: 'No storybooks were deployed.',
         stateId: 'storybook-preview',
         entryId:
-          '${{ github.event_name == \'pull_request\' && github.event.pull_request.head.sha || github.sha }}',
+          "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
         entryLabel:
-          '${{ github.event_name == \'pull_request\' && format(\'PR {0}\', github.event.pull_request.number) || \'prod\' }}',
+          "${{ github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.number) || 'prod' }}",
       }),
       workflowReportPublisherStep({
         workflowReportFlakeRef,

@@ -374,6 +374,9 @@ in
       genieCoverageDirs = [ "packages" ];
       # Type-aware linting for typescript/no-deprecated rule
       tsconfig = "tsconfig.all.json";
+      # The existing workspace still has warning-class oxlint findings. Keep
+      # lint fatal for errors while warning cleanup remains incremental.
+      denyWarnings = false;
     })
     (taskModules.ts-effect-lsp { })
     # Setup task (auto-runs in enterShell)

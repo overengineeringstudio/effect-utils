@@ -41,11 +41,11 @@ runtime dependency on Effect or package-specific services.
 
 ## Package Relationships
 
-| Package                         | Relationship to core                                                    |
-| ------------------------------- | ----------------------------------------------------------------------- |
-| `@overeng/notion-effect-schema` | Builds Effect Schema literals and helpers from core primitives.         |
-| `@overeng/notion-effect-client` | Re-exports shared API constants while owning HTTP services.             |
-| `@overeng/notion-md`            | Owns `.nmd` contracts and body sync.                                    |
-| `@overeng/notion-datasource-sync` | Owns sync persistence and reconciliation.                             |
-| `@overeng/notion-react`         | Owns React integration surfaces.                                        |
-| `@overeng/notion-cli`           | Owns user-facing command composition.                                   |
+| Package                           | Relationship to core                                            |
+| --------------------------------- | --------------------------------------------------------------- |
+| `@overeng/notion-effect-schema`   | Builds Effect Schema literals and helpers from core primitives. |
+| `@overeng/notion-effect-client`   | Re-exports shared API constants while owning HTTP services.     |
+| `@overeng/notion-md`              | Owns `.nmd` contracts and body sync.                            |
+| `@overeng/notion-datasource-sync` | Owns sync persistence and reconciliation.                       |
+| `@overeng/notion-react`           | Owns React integration surfaces.                                |
+| `@overeng/notion-cli`             | Owns user-facing command composition.                           |

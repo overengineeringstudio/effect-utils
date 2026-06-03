@@ -102,9 +102,7 @@ export type ISO8601DateTime = typeof ISO8601DateTime.Type
  *
  * @see https://developers.notion.com/reference/rich-text#the-annotation-object
  */
-export const NotionColor = Schema.Literal(
-  ...NOTION_COLORS,
-).annotations({
+export const NotionColor = Schema.Literal(...NOTION_COLORS).annotations({
   identifier: 'Notion.Color',
   title: 'Notion Color',
   description: 'Color values used for text annotations and backgrounds.',
@@ -118,9 +116,7 @@ export type NotionColor = typeof NotionColor.Type
  *
  * @see https://developers.notion.com/reference/property-value-object#select
  */
-export const SelectColor = Schema.Literal(
-  ...SELECT_COLORS,
-).annotations({
+export const SelectColor = Schema.Literal(...SELECT_COLORS).annotations({
   identifier: 'Notion.SelectColor',
   title: 'Select Color',
   description: 'Color values used for select and multi-select options.',
@@ -136,9 +132,7 @@ export type SelectColor = typeof SelectColor.Type
  *
  * @see https://developers.notion.com/reference/icon-object
  */
-export const NoticonColor = Schema.Literal(
-  ...NOTICON_COLORS,
-).annotations({
+export const NoticonColor = Schema.Literal(...NOTICON_COLORS).annotations({
   identifier: 'Notion.NoticonColor',
   title: 'Noticon Color',
   description: 'Color values used for native Notion icons (noticons).',
@@ -190,7 +184,7 @@ export const isDevEnv = (): boolean => {
 export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
   console.error(msg, ...args)
   if (isDevEnv() === true) {
-    // oxlint-disable-next-line eslint(no-debugger) -- intentional breakpoint for impossible states during development
+    // oxlint-disable-next-line no-debugger -- intentional breakpoint for impossible states during development
     debugger
   }
 

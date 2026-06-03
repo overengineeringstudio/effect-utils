@@ -122,9 +122,9 @@ export const CanonicalPropertyValue = Schema.Union(
 export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
 /** Every Notion property *type* tag the API can return. */
-export const NotionPropertyType = Schema.Literal(
-  ...NOTION_PROPERTY_TYPES,
-).annotations({ identifier: 'Notion.PropertyType' })
+export const NotionPropertyType = Schema.Literal(...NOTION_PROPERTY_TYPES).annotations({
+  identifier: 'Notion.PropertyType',
+})
 export type NotionPropertyType = typeof NotionPropertyType.Type
 
 /** How a property value may be written back to Notion. */

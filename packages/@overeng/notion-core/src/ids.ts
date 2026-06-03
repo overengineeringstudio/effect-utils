@@ -1,8 +1,7 @@
 export type NotionUuid = string
 
 const compactNotionUuidPattern = /^[0-9a-f]{32}$/iu
-const dashedNotionUuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
+const dashedNotionUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 const compactNotionUuidSearchPattern = /[0-9a-f]{32}/iu
 const dashedNotionUuidSearchPattern =
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iu

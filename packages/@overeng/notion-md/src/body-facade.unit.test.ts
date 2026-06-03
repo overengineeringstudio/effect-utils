@@ -8,7 +8,6 @@ import {
   type NmdObjectRef,
   type NmdStorage,
   type NmdSyncStateV1,
-  type Sha256Digest,
 } from '@overeng/notion-effect-client'
 
 import {
@@ -182,10 +181,8 @@ class FakeGateway {
 const runWithStore = <A, E>(effect: Effect.Effect<A, E, NmdStateStore>, store: FakeStore) =>
   Effect.runPromise(effect.pipe(Effect.provide(store.layer)))
 
-const runWithGateway = <A, E>(
-  effect: Effect.Effect<A, E, NotionMdGateway>,
-  gateway: FakeGateway,
-) => Effect.runPromise(effect.pipe(Effect.provide(gateway.layer)))
+const runWithGateway = <A, E>(effect: Effect.Effect<A, E, NotionMdGateway>, gateway: FakeGateway) =>
+  Effect.runPromise(effect.pipe(Effect.provide(gateway.layer)))
 
 const runWithGatewayAndStore = <A, E>(
   effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore>,

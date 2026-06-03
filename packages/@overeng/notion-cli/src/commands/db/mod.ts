@@ -5,8 +5,6 @@
 import { Args, Command } from '@effect/cli'
 import { FetchHttpClient } from '@effect/platform'
 import { Effect, Layer } from 'effect'
-import type { Cause, Channel, Sink, Stream } from 'effect'
-import type { NodeInspectSymbol } from 'effect/Inspectable'
 import React from 'react'
 
 import {

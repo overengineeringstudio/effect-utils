@@ -49,14 +49,14 @@ client package.
 
 Requirement trace: R02-R04.
 
-| Module             | Responsibility                                      |
-| ------------------ | --------------------------------------------------- |
-| `blocks.ts`        | Block retrieve, children, append, update, delete.   |
-| `comments.ts`      | Comment operations.                                 |
-| `data-sources.ts`  | Data-source retrieve, query, update, and metadata.  |
-| `databases.ts`     | Database retrieve and data-source target helpers.   |
-| `files.ts`         | File upload primitives.                             |
-| `pages.ts`         | Page create, retrieve, update, and archive.         |
-| `search.ts`        | Search API.                                         |
-| `users.ts`         | User API.                                           |
-| `views.ts`         | View API primitives.                                |
+| Module            | Responsibility                                     |
+| ----------------- | -------------------------------------------------- |
+| `blocks.ts`       | Block retrieve, children, append, update, delete.  |
+| `comments.ts`     | Comment operations.                                |
+| `data-sources.ts` | Data-source retrieve, query, update, and metadata. |
+| `databases.ts`    | Database retrieve and data-source target helpers.  |
+| `files.ts`        | File upload primitives.                            |
+| `pages.ts`        | Page create, retrieve, update, and archive.        |
+| `search.ts`       | Search API.                                        |
+| `users.ts`        | User API.                                          |
+| `views.ts`        | View API primitives.                               |

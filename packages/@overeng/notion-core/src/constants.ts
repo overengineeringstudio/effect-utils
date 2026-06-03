@@ -68,15 +68,11 @@ export const isNotionApiVersion = (value: string): value is NotionApiVersion =>
   parseNotionApiVersion(value) !== undefined
 
 /** Check whether a version string matches the core package's pinned API version. */
-export const isSupportedNotionApiVersion = (
-  value: string,
-): value is typeof NOTION_API_VERSION => value === NOTION_API_VERSION
+export const isSupportedNotionApiVersion = (value: string): value is typeof NOTION_API_VERSION =>
+  value === NOTION_API_VERSION
 
 /** Compare two valid Notion API version strings. Returns undefined when either side is invalid. */
-export const compareNotionApiVersions = (
-  left: string,
-  right: string,
-): -1 | 0 | 1 | undefined => {
+export const compareNotionApiVersions = (left: string, right: string): -1 | 0 | 1 | undefined => {
   const parsedLeft = parseNotionApiVersion(left)
   const parsedRight = parseNotionApiVersion(right)
   if (parsedLeft === undefined || parsedRight === undefined) return undefined

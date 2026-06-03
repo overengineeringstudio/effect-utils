@@ -13,8 +13,6 @@ export const richTextPlainText = (value: unknown): string => {
   if (Array.isArray(value) === false) return ''
 
   return value
-    .map((part) =>
-      isRecord(part) === true && 'plain_text' in part ? String(part.plain_text) : '',
-    )
+    .map((part) => (isRecord(part) === true && 'plain_text' in part ? String(part.plain_text) : ''))
     .join('')
 }
