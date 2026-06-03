@@ -2,18 +2,15 @@
 
 Effect schemas for the Notion API.
 
-## Boundary
+## What It Provides
 
-`@overeng/notion-effect-schema` owns Effect Schema representations of Notion
-wire payloads and the facades that make those schemas ergonomic to consume. It
-depends on Effect and exposes decoders, encoders, schema transforms, and
-schema-oriented helpers.
+- Effect Schema definitions for Notion wire payloads.
+- Ergonomic property transforms through `NotionSchema`.
+- Rich-text, user, object, page, block, property, and data-source schemas.
+- Canonical property value schemas and codecs for sync-safe projections.
+- Notion documentation annotations for schema metadata.
 
-Shared pure Notion primitives live in `@overeng/notion-core`. This package uses
-those primitives to build Effect Schema contracts while preserving schema-owned
-annotations, transforms, canonical codecs, and wire payload definitions. `.nmd`
-file and sidecar contracts belong to the NotionMD boundary, not the core or
-schema packages.
+See [docs/spec.md](./docs/spec.md) for package-boundary details.
 
 ## Design Decisions
 

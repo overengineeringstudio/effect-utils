@@ -2,19 +2,15 @@
 
 Effect-native HTTP client for the Notion API.
 
-## Boundary
+## What It Provides
 
-`@overeng/notion-effect-client` owns the Effect-native HTTP API service layer for
-Notion: request construction, configured transport, pagination, retries,
-rate-limit handling, and API error mapping. It consumes Notion wire schemas from
-`@overeng/notion-effect-schema` and exposes services for API resources such as
-data sources, databases, pages, blocks, comments, files, search, users, and
-views.
+- Effect-native Notion API services.
+- Request construction and configured transport.
+- Pagination, retries, rate-limit handling, and API error mapping.
+- Resource modules for data sources, databases, pages, blocks, comments, files,
+  search, users, and views.
 
-Shared pure Notion primitives live in `@overeng/notion-core`. Effect Schema wire
-schemas and schema facades live in `@overeng/notion-effect-schema`. This package
-keeps the HTTP service boundary and preserves stable public API constants by
-re-exporting the shared core values from the client entrypoint.
+See [docs/spec.md](./docs/spec.md) for package-boundary details.
 
 ## Installation
 
