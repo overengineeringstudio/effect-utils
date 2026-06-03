@@ -55,13 +55,17 @@ It does not define:
 ## Package Shape
 
 ```
+@overeng/notion-core
+  pure dependency-free Notion primitives, helpers, tuple builders,
+  and classifiers
+
 @overeng/notion-effect-schema
-  raw wire schemas, exact decoders, branded Notion IDs,
-  canonical property values
+  Effect Schema wire schemas, decoders, encoders, schema transforms,
+  and schema facades
 
 @overeng/notion-effect-client
-  versioned Notion API gateway, pagination, retries, rate limits,
-  NMD wire adapters
+  versioned Notion HTTP API services, pagination, retries, rate limits,
+  and API error mapping
 
 @overeng/notion-md
   .nmd page-body adapter implementing PageBodySyncPort
@@ -78,9 +82,16 @@ It does not define:
 The exact package split may be staged. The current implementation keeps the
 sync-core event store, projections, outbox, conflicts, leases, migrations, and
 canonical datasource-sync hash helpers inside `@overeng/notion-datasource-sync`.
-Their module boundaries must remain extractable. Shared Notion concepts that are
-already centralized, such as canonical property values and the Notion ID aliases
-used by datasource-sync, are imported from `@overeng/notion-effect-schema`.
+Their module boundaries must remain extractable.
+
+Milestone 1 follows the Option B package boundary. `@overeng/notion-core` is the
+target package for pure dependency-free Notion primitives, helpers, tuple
+builders, and classifiers. It must not import Effect.
+`@overeng/notion-effect-schema` owns Effect Schema wire schemas and schema
+facades. `@overeng/notion-effect-client` owns the HTTP API service boundary.
+`.nmd` contracts do not move into `@overeng/notion-core` in this milestone;
+page-body sync remains behind the NotionMD body boundary. Canonical codecs do
+not move yet; their current ownership remains staged until a later extraction.
 Datasource sync must not depend on private NotionMD internals.
 
 ## Authority Model

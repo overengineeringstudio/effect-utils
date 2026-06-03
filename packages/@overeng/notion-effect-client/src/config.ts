@@ -1,10 +1,6 @@
 import { Config, Context, Effect, Option, Redacted, Schema } from 'effect'
 
-/** Notion API version - hardcoded to match our schemas */
-export const NOTION_API_VERSION = '2026-03-11'
-
-/** Base URL for Notion API */
-export const NOTION_API_BASE_URL = 'https://api.notion.com/v1'
+export { NOTION_API_BASE_URL, NOTION_API_VERSION } from '@overeng/notion-core'
 
 /** Configuration for the Notion client */
 export interface NotionClientConfig {

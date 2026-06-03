@@ -2,6 +2,30 @@
 
 Effect-native HTTP client for the Notion API.
 
+## Boundary
+
+`@overeng/notion-effect-client` owns the Effect-native HTTP API service layer for
+Notion: request construction, configured transport, pagination, retries,
+rate-limit handling, and API error mapping. It consumes Notion wire schemas from
+`@overeng/notion-effect-schema` and exposes services for API resources such as
+data sources, databases, pages, blocks, comments, files, search, users, and
+views.
+
+Milestone 1 uses the Option B split:
+
+- `@overeng/notion-core` is the intended home for pure dependency-free Notion
+  primitives, helpers, tuple builders, and classifiers when that package is
+  introduced.
+- `@overeng/notion-effect-schema` owns Effect Schema wire schemas and facades.
+- `@overeng/notion-effect-client` owns HTTP API services.
+
+Non-goals for this milestone:
+
+- Do not import Effect from `@overeng/notion-core`.
+- Do not move `.nmd` contracts into `@overeng/notion-core`; page-body sync stays
+  owned by the NotionMD boundary.
+- Do not move canonical codecs yet; existing codec ownership remains staged.
+
 ## Installation
 
 ```bash

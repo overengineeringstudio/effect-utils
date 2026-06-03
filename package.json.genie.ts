@@ -14,6 +14,7 @@ import kdlEffectPkg from './packages/@overeng/kdl-effect/package.json.genie.ts'
 import kdlPkg from './packages/@overeng/kdl/package.json.genie.ts'
 import megarepoPkg from './packages/@overeng/megarepo/package.json.genie.ts'
 import notionCliPkg from './packages/@overeng/notion-cli/package.json.genie.ts'
+import notionCorePkg from './packages/@overeng/notion-core/package.json.genie.ts'
 import notionDatasourceSyncPkg from './packages/@overeng/notion-datasource-sync/package.json.genie.ts'
 import notionEffectClientPkg from './packages/@overeng/notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from './packages/@overeng/notion-effect-schema/package.json.genie.ts'
@@ -45,6 +46,7 @@ export const rootWorkspacePackages = [
   kdlEffectPkg,
   megarepoPkg,
   notionCliPkg,
+  notionCorePkg,
   notionDatasourceSyncPkg,
   notionEffectClientPkg,
   notionEffectSchemaPkg,

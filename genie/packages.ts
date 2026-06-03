@@ -17,6 +17,7 @@ export const internalPackages = [
   'kdl-effect',
   'megarepo',
   'notion-cli',
+  'notion-core',
   'notion-datasource-sync',
   'notion-effect-client',
   'notion-effect-schema',

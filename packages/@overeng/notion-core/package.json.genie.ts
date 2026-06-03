@@ -1,33 +1,23 @@
 import {
   catalog,
-  workspaceMember,
   packageJson,
   privatePackageDefaults,
+  workspaceMember,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
-import notionCorePkg from '../notion-core/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
-const peerDepNames = ['effect'] as const
 const workspaceDeps = catalog.compose({
-  workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-schema' }),
-  dependencies: {
-    workspace: [notionCorePkg],
-  },
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-core' }),
   devDependencies: {
     workspace: [utilsDevPkg],
-    external: {
-      ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'typescript', 'vitest'),
-    },
-  },
-  peerDependencies: {
-    external: catalog.pick(...peerDepNames),
+    external: catalog.pick('@types/node', 'typescript', 'vitest'),
   },
 })
 
 export default packageJson(
   {
-    name: '@overeng/notion-effect-schema',
+    name: '@overeng/notion-core',
     ...privatePackageDefaults,
     exports: {
       '.': './src/mod.ts',

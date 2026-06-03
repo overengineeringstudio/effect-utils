@@ -45,9 +45,6 @@
   "include": ["src/**/*"],
   "references": [
     {
-      "path": "../notion-core"
-    },
-    {
       "path": "../utils-dev"
     }
   ]

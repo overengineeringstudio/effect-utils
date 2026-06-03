@@ -22,6 +22,12 @@
 
 import { Schema } from 'effect'
 
+import {
+  NOTION_PROPERTY_TYPES,
+  PROPERTY_WRITE_CLASSES,
+  propertyWriteClassFromType as propertyWriteClassFromTypeCore,
+} from '@overeng/notion-core'
+
 /** Branded Notion property ID (stable identifier within a database schema). */
 export const PropertyId = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('Notion.PropertyId'),
@@ -117,38 +123,14 @@ export type CanonicalPropertyValue = typeof CanonicalPropertyValue.Type
 
 /** Every Notion property *type* tag the API can return. */
 export const NotionPropertyType = Schema.Literal(
-  'title',
-  'rich_text',
-  'number',
-  'checkbox',
-  'date',
-  'select',
-  'multi_select',
-  'status',
-  'relation',
-  'people',
-  'files',
-  'email',
-  'url',
-  'phone_number',
-  'formula',
-  'rollup',
-  'created_time',
-  'created_by',
-  'last_edited_time',
-  'last_edited_by',
-  'unique_id',
-  'verification',
-  'button',
+  ...NOTION_PROPERTY_TYPES,
 ).annotations({ identifier: 'Notion.PropertyType' })
 export type NotionPropertyType = typeof NotionPropertyType.Type
 
 /** How a property value may be written back to Notion. */
-export const PropertyWriteClass = Schema.Literal('writable', 'computed', 'unsupported').annotations(
-  {
-    identifier: 'Notion.PropertyWriteClass',
-  },
-)
+export const PropertyWriteClass = Schema.Literal(...PROPERTY_WRITE_CLASSES).annotations({
+  identifier: 'Notion.PropertyWriteClass',
+})
 export type PropertyWriteClass = typeof PropertyWriteClass.Type
 
 /**
@@ -159,33 +141,5 @@ export type PropertyWriteClass = typeof PropertyWriteClass.Type
  * else is writable. Mirrors the change-detection contract exactly — do not
  * "fix" the partial coverage, it feeds canonical hashing downstream.
  */
-export const propertyWriteClassFromType = (propertyType: string): PropertyWriteClass => {
-  switch (propertyType) {
-    case 'formula':
-    case 'rollup':
-    case 'created_time':
-    case 'created_by':
-    case 'last_edited_time':
-    case 'last_edited_by':
-    case 'unique_id':
-    case 'verification':
-      return 'computed'
-    case 'title':
-    case 'rich_text':
-    case 'number':
-    case 'checkbox':
-    case 'date':
-    case 'select':
-    case 'multi_select':
-    case 'status':
-    case 'email':
-    case 'url':
-    case 'phone_number':
-    case 'relation':
-    case 'people':
-    case 'files':
-      return 'writable'
-    default:
-      return 'unsupported'
-  }
-}
+export const propertyWriteClassFromType = (propertyType: string): PropertyWriteClass =>
+  propertyWriteClassFromTypeCore(propertyType)

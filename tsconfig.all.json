@@ -49,6 +49,9 @@
       "path": "./packages/@overeng/notion-cli"
     },
     {
+      "path": "./packages/@overeng/notion-core"
+    },
+    {
       "path": "./packages/@overeng/notion-datasource-sync"
     },
     {

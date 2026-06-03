@@ -1,6 +1,17 @@
 import { Option, Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
+import {
+  NOTICON_COLORS,
+  NOTION_COLORS,
+  NOTION_DOCS_BASE as NOTION_DOCS_BASE_CORE,
+  SELECT_COLORS,
+  compactNotionUuid as compactNotionUuidCore,
+  formatNotionUuid as formatNotionUuidCore,
+  notionObjectUrl as notionObjectUrlCore,
+  parseNotionUuid as parseNotionUuidCore,
+} from '@overeng/notion-core'
+
 // -----------------------------------------------------------------------------
 // Custom Annotations
 // -----------------------------------------------------------------------------
@@ -29,7 +40,7 @@ export const optionNameSchema: unique symbol = Symbol.for(
 )
 
 /** Base URL for Notion API documentation */
-export const NOTION_DOCS_BASE = 'https://developers.notion.com/reference'
+export const NOTION_DOCS_BASE = NOTION_DOCS_BASE_CORE
 
 /** Resolve full docs URL from path fragment */
 export const resolveDocsUrl = (path: string): string => `${NOTION_DOCS_BASE}/${path}`
@@ -56,31 +67,20 @@ export type NotionUUID = typeof NotionUUID.Type
 const compactNotionUuidPattern = /^[0-9a-f]{32}$/iu
 
 /** Return the 32-character compact representation used in Notion URLs. */
-export const compactNotionUuid = (id: string): string => id.replaceAll('-', '')
+export const compactNotionUuid = (id: string): string => compactNotionUuidCore(id)
 
 /** Format a compact 32-character Notion ID as the canonical dashed UUID string. */
 export const formatNotionUuid = (compactId: string): NotionUUID | undefined => {
   if (compactNotionUuidPattern.test(compactId) === false) return undefined
 
-  return [
-    compactId.slice(0, 8),
-    compactId.slice(8, 12),
-    compactId.slice(12, 16),
-    compactId.slice(16, 20),
-    compactId.slice(20),
-  ].join('-')
+  return formatNotionUuidCore(compactId)
 }
 
 /** Parse a Notion UUID from either a dashed ID, compact ID, or Notion URL. */
-export const parseNotionUuid = (value: string): NotionUUID | undefined => {
-  const compact = compactNotionUuid(value)
-  const direct = compactNotionUuidPattern.test(compact) === true ? compact : undefined
-  const fromUrl = direct ?? value.match(/[0-9a-f]{32}/iu)?.[0]
-  return fromUrl === undefined ? undefined : formatNotionUuid(fromUrl)
-}
+export const parseNotionUuid = (value: string): NotionUUID | undefined => parseNotionUuidCore(value)
 
 /** Build the canonical public Notion object URL for an ID-like value. */
-export const notionObjectUrl = (id: string): string => `https://notion.so/${compactNotionUuid(id)}`
+export const notionObjectUrl = (id: string): string => notionObjectUrlCore(id)
 
 /**
  * ISO 8601 date-time string as returned by Notion API.
@@ -103,25 +103,7 @@ export type ISO8601DateTime = typeof ISO8601DateTime.Type
  * @see https://developers.notion.com/reference/rich-text#the-annotation-object
  */
 export const NotionColor = Schema.Literal(
-  'default',
-  'gray',
-  'brown',
-  'orange',
-  'yellow',
-  'green',
-  'blue',
-  'purple',
-  'pink',
-  'red',
-  'gray_background',
-  'brown_background',
-  'orange_background',
-  'yellow_background',
-  'green_background',
-  'blue_background',
-  'purple_background',
-  'pink_background',
-  'red_background',
+  ...NOTION_COLORS,
 ).annotations({
   identifier: 'Notion.Color',
   title: 'Notion Color',
@@ -137,16 +119,7 @@ export type NotionColor = typeof NotionColor.Type
  * @see https://developers.notion.com/reference/property-value-object#select
  */
 export const SelectColor = Schema.Literal(
-  'default',
-  'gray',
-  'brown',
-  'orange',
-  'yellow',
-  'green',
-  'blue',
-  'purple',
-  'pink',
-  'red',
+  ...SELECT_COLORS,
 ).annotations({
   identifier: 'Notion.SelectColor',
   title: 'Select Color',
@@ -164,16 +137,7 @@ export type SelectColor = typeof SelectColor.Type
  * @see https://developers.notion.com/reference/icon-object
  */
 export const NoticonColor = Schema.Literal(
-  'gray',
-  'lightgray',
-  'brown',
-  'yellow',
-  'orange',
-  'green',
-  'blue',
-  'purple',
-  'pink',
-  'red',
+  ...NOTICON_COLORS,
 ).annotations({
   identifier: 'Notion.NoticonColor',
   title: 'Noticon Color',

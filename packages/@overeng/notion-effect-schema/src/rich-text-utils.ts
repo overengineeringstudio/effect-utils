@@ -5,6 +5,8 @@
  * @module
  */
 
+import { richTextPlainText as richTextPlainTextCore } from '@overeng/notion-core'
+
 import type {
   EquationRichText,
   MentionRichText,
@@ -41,14 +43,7 @@ export const toPlainText = (richText: RichTextArray): string =>
  * received directly from the Notion API before decoding) and treats any element
  * without a `plain_text` field as the empty string. Used by the canonical codec.
  */
-export const richTextPlainText = (value: readonly unknown[]): string =>
-  value
-    .map((part) =>
-      typeof part === 'object' && part !== null && 'plain_text' in part
-        ? String((part as { readonly plain_text: unknown }).plain_text)
-        : '',
-    )
-    .join('')
+export const richTextPlainText = (value: readonly unknown[]): string => richTextPlainTextCore(value)
 
 // -----------------------------------------------------------------------------
 // Annotation Ordering
