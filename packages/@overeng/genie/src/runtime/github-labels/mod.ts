@@ -2,8 +2,9 @@
  * Type-safe GitHub repository label generator.
  *
  * Generates JSON describing the desired set of GitHub Issue/PR labels for a
- * repository. The JSON is consumed by `mq-cli repo labels {check|apply|migrate}`
- * which diffs it against live GitHub state and creates/updates/deletes labels.
+ * repository. The JSON is consumed by the `dt gh:check-labels` /
+ * `dt gh:apply-labels` devenv tasks, which diff it against live GitHub state
+ * and create/update/delete/migrate labels via `gh api` + `jq`.
  *
  * @see https://docs.github.com/en/rest/issues/labels
  */
