@@ -7,8 +7,9 @@
  *
  * Source of truth for `mq:*` colors/descriptions: kept loosely aligned with
  * `flakes/merge-queue/crates/mq-core/src/gh_client.rs` in dotfiles, which is
- * the runtime safety net for lazy label creation. The reconciler is the
- * canonical writer once `dt gh:apply-labels` has run.
+ * the runtime safety net for lazy label creation. The `dt gh:apply-labels`
+ * task is the canonical writer; `dt gh:check-labels` reports drift without
+ * applying.
  *
  * Every description includes a trailing `· Set: <who>` clause naming the
  * party responsible for applying the label (manual, Hypermerge daemon,
@@ -309,8 +310,8 @@ export const deprecatedDefaults: readonly string[] = [
 ]
 
 /**
- * Canonical migrations applied by `mq-cli repo labels migrate` before the
- * legacy labels are deleted. Idempotent: missing labels are no-ops.
+ * Canonical migrations applied by `dt gh:apply-labels` before the legacy
+ * labels are deleted. Idempotent: missing labels are no-ops.
  */
 export const legacyMigrations: readonly LegacyMigration[] = [
   { from: 'bug', to: 'type:bug' },
