@@ -270,6 +270,8 @@ in
     (taskModules.worktree-guard { })
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
     (import ./nix/devenv-modules/otel.nix { })
+    # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
+    ./nix/devenv-modules/gh-labels.nix
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
