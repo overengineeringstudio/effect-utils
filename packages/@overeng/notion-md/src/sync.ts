@@ -148,6 +148,8 @@ const toParentRef = (page: RemotePageSnapshot): NmdParentRef => {
       return { _tag: 'block', id: page.parent.block_id }
     case 'workspace':
       return { _tag: 'workspace' }
+    case 'agent_id':
+      return { _tag: 'agent', id: page.parent.agent_id }
     default:
       return { _tag: 'unknown', raw: page.parent }
   }
