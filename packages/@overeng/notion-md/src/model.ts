@@ -17,6 +17,7 @@ export type RemoteParent =
   | { readonly type: 'database_id'; readonly database_id: string }
   | { readonly type: 'block_id'; readonly block_id: string }
   | { readonly type: 'workspace'; readonly workspace: true }
+  | { readonly type: 'agent_id'; readonly agent_id: string }
   | { readonly type: 'unknown'; readonly raw: unknown }
 
 /** Stable page metadata needed to rebuild `.nmd` frontmatter after a pull. */
