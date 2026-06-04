@@ -1,9 +1,11 @@
+import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
   classifyNmdFrontmatterPayload,
   decodeNmdFrontmatterV1Sync,
   makeNmdObjectRef,
+  NmdParentRef,
   nmdObjectRelativePath,
   nmdSha256Hex,
   nmdSyncStateRelativePath,
@@ -170,5 +172,14 @@ describe('NMD local metadata paths', () => {
       media_type: 'application/json',
       byte_length: 6,
     })
+  })
+})
+
+describe('NmdParentRef', () => {
+  const decode = Schema.decodeUnknownSync(NmdParentRef)
+  const id = '00000000-0000-4000-8000-000000000001'
+
+  it('round-trips an agent parent (Custom Agent instruction pages)', () => {
+    expect(decode({ _tag: 'agent', id })).toEqual({ _tag: 'agent', id })
   })
 })
