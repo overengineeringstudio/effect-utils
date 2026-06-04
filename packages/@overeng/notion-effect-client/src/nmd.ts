@@ -128,6 +128,9 @@ export const NmdParentRef = Schema.Union(
     id: NotionUUID,
   }),
   Schema.TaggedStruct('workspace', {}),
+  Schema.TaggedStruct('agent', {
+    id: NotionUUID,
+  }),
   Schema.TaggedStruct('unknown', {
     raw: Schema.Unknown,
   }),
