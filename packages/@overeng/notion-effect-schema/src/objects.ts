@@ -51,6 +51,15 @@ export const PageParent = Schema.Union(
     type: Schema.Literal('workspace'),
     workspace: Schema.Literal(true),
   }),
+  /*
+   * Custom Agent instruction pages are parented by the agent itself. Modeled
+   * explicitly (rather than via an opaque `type: string` fallback) so the union
+   * stays discriminable for downstream `switch (parent.type)` consumers.
+   */
+  Schema.Struct({
+    type: Schema.Literal('agent_id'),
+    agent_id: NotionUUID,
+  }),
 ).annotations({
   identifier: 'Notion.PageParent',
   [docsPath]: 'page#page-parent',
