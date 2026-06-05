@@ -792,7 +792,10 @@ const classifyPlan = (opts: {
         resolvedBody: resolved,
         children: childrenOf.get(page.relPath) ?? [],
       })
-      const prevState = yield* readSyncStateOptional({ path: opts.root, pageId })
+      const prevState = yield* readSyncStateOptional({
+        path: treeStateAnchor(opts.root),
+        pageId,
+      })
       if (prevState !== undefined && prevState.body.hash === sha256Digest(composed)) {
         opts.ops.push({ _tag: 'noop', relPath: page.relPath, pageId })
       } else {

@@ -266,6 +266,57 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
+  it('plan on an unchanged, already-synced tree reports all noop', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await mkdir(join(dir, 'guide'), { recursive: true })
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha.' }))
+      await writeFile(join(dir, 'guide', 'index.nmd'), unbound({ title: 'Guide', body: 'Guide.' }))
+      await writeFile(join(dir, 'guide', 'setup.nmd'), unbound({ title: 'Setup', body: 'Setup.' }))
+
+      // establish the tree (sidecars now exist at the tree-root anchor)
+      await run(syncTree({ root: dir, rootPageId }), fake)
+
+      // plan on the unchanged tree must read those sidecars and report noop —
+      // the regression: classifyPlan read from the wrong dir and reported update.
+      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      expect(plan.plan).toBe(true)
+      const counts = opTags(plan.ops)
+      expect(counts.noop).toBe(4) // root + alpha + guide/index + guide/setup
+      expect(counts.update).toBeUndefined()
+      expect(counts.create).toBeUndefined()
+    })
+  })
+
+  it('plan on a changed/extended tree reports update + create', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+
+      // edit alpha's BODY while keeping its binding (an in-place edit), and add
+      // an unbound child gamma. Using `unbound()` here would reset alpha's
+      // page_id and make plan see it as a create instead of an update.
+      const boundAlpha = await readFile(join(dir, 'alpha.nmd'), 'utf8')
+      await writeFile(join(dir, 'alpha.nmd'), boundAlpha.replace('Alpha.', 'Alpha EDITED.'))
+      await writeFile(join(dir, 'gamma.nmd'), unbound({ title: 'Gamma', body: 'Gamma.' }))
+
+      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      const counts = opTags(plan.ops)
+      expect(counts.create).toBe(1) // gamma
+      // alpha (edited) updates; the root updates because its derived child index
+      // gains gamma's anchor. index.nmd (unchanged-but-reanchored) is an update.
+      expect(counts.update).toBeGreaterThanOrEqual(1)
+      expect(plan.ops.some((op) => op._tag === 'update' && op.relPath === 'alpha.nmd')).toBe(true)
+      expect(plan.ops.some((op) => op._tag === 'create' && op.relPath === 'gamma.nmd')).toBe(true)
+      // nothing applied: gamma not created on the remote (root + alpha only)
+      expect(fake.liveCount()).toBe(2)
+    })
+  })
+
   it('creates a nested tree where a same-depth index anchors its siblings', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
