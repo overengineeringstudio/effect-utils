@@ -257,6 +257,18 @@ class FakeNotion {
           return { pageId: child.pageId, title: child.title }
         })
       }),
+    createPage: () =>
+      Effect.sync(() => {
+        throw new Error('createPage not exercised by this test')
+      }),
+    movePage: () =>
+      Effect.sync(() => {
+        throw new Error('movePage not exercised by this test')
+      }),
+    archivePage: () =>
+      Effect.sync(() => {
+        throw new Error('archivePage not exercised by this test')
+      }),
   })
 
   mutateRemote(pageIdToMutate: string, markdown: string): void {

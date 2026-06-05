@@ -21,6 +21,7 @@ import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { statusPage, syncPage, type SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
+import { syncSubtree } from './subtree.ts'
 import {
   isManagedWorkspace,
   statusWorkspace,
@@ -455,9 +456,47 @@ const syncCommand = Command.make(
   ),
 )
 
+const subtreeRootOption = Options.text('root-page-id').pipe(
+  Options.withDescription('Notion root page id (required on first sync to bind the subtree)'),
+  Options.optional,
+)
+
+const subtreeCommand = Command.make(
+  'subtree',
+  {
+    dir: Args.text({ name: 'dir' }).pipe(
+      Args.withDescription('Local directory tree (source of truth) to sync to a Notion subtree'),
+      Args.withSchema(NonEmptyCliText),
+    ),
+    rootPageId: subtreeRootOption,
+  },
+  ({ dir, rootPageId }) =>
+    commandSpan({
+      command: 'subtree',
+      label: basename(dir),
+      effect: withNotion(
+        Option.match(rootPageId, {
+          onNone: () => syncSubtree({ root: dir }),
+          onSome: (id) => {
+            const parsed = parseNotionPageRef(id)
+            return parsed === undefined
+              ? Effect.fail(
+                  new NmdCliError({ message: `Invalid --root-page-id ${id}: not a Notion page id/url` }),
+                )
+              : syncSubtree({ root: dir, rootPageId: parsed })
+          },
+        }).pipe(Effect.map((result): unknown => result)),
+      ),
+    }).pipe(Effect.flatMap(logJson)),
+).pipe(
+  Command.withDescription(
+    'Sync a local directory tree to a Notion page subtree (directory is the source of truth)',
+  ),
+)
+
 const makeNotionMdCommand = (name: 'md' | 'notion-md') =>
   Command.make(name).pipe(
-    Command.withSubcommands([statusCommand, syncCommand]),
+    Command.withSubcommands([statusCommand, syncCommand, subtreeCommand]),
     Command.withDescription('Two-way Notion enhanced Markdown sync'),
   )
 

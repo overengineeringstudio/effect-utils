@@ -175,6 +175,18 @@ class FakeGateway {
         throw new Error('unexpected metadata update')
       }),
     listChildPages: () => Effect.succeed([]),
+    createPage: () =>
+      Effect.sync(() => {
+        throw new Error('createPage not used by body-facade tests')
+      }),
+    movePage: () =>
+      Effect.sync(() => {
+        throw new Error('movePage not used by body-facade tests')
+      }),
+    archivePage: () =>
+      Effect.sync(() => {
+        throw new Error('archivePage not used by body-facade tests')
+      }),
   } satisfies NotionMdGatewayShape)
 }
 
