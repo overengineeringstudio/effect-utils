@@ -520,6 +520,31 @@ const syncTreeLocal = (opts: {
     const ops: TreeOp[] = []
     const createdRelPaths = new Set<string>()
 
+    /*
+     * Persist the root binding + tree index BEFORE creating any child, so a
+     * crash mid-create is recoverable: the root id is the entry point for the
+     * next run. Without this, an interrupt before the (previously end-of-run)
+     * index write would orphan every created child (no known root).
+     */
+    if (plan === false) {
+      if (rootPage.boundPageId === null) {
+        yield* store.writeNmdFile({
+          path: rootPage.path,
+          content: bindFrontmatter({
+            frontmatter: rootPage.frontmatter,
+            title: rootPage.title,
+            pageId: rootPageId,
+            url: undefined,
+            body: rootPage.body,
+          }),
+        })
+      }
+      yield* writeTreeIndex({
+        root,
+        index: { version: 1, root_page_id: rootPageId, root_file: rootFile, pages: {} },
+      })
+    }
+
     // PASS 1 — create unbound pages; move bound pages whose Notion parent differs.
     for (const page of pages) {
       const parentRel = page.parentRelPath ?? rootRel
@@ -589,28 +614,20 @@ const syncTreeLocal = (opts: {
       return ops
     }
 
-    // bind the root id back into the root file when supplied out of band.
-    if (rootPage.boundPageId === null) {
-      yield* store.writeNmdFile({
-        path: rootPage.path,
-        content: bindFrontmatter({
-          frontmatter: rootPage.frontmatter,
-          title: rootPage.title,
-          pageId: rootPageId,
-          url: undefined,
-          body: rootPage.body,
-        }),
-      })
+    /*
+     * Establish the root baseline if absent (the root file was already bound
+     * early, above). Pass 2's self-heal would also do this, but doing it here
+     * keeps the root's first push on the clean local-changed path.
+     */
+    const rootHasBaseline =
+      (yield* readSyncStateOptional({ path: stateAnchor, pageId: rootPageId })) !== undefined
+    if (rootHasBaseline === false) {
       const rootRemote = yield* gateway.pullPage({ pageId: rootPageId })
-      const hasBaseline =
-        (yield* readSyncStateOptional({ path: stateAnchor, pageId: rootPageId })) !== undefined
-      if (hasBaseline === false) {
-        yield* establishBaseline({
-          statePath: stateAnchor,
-          page: rootRemote.page,
-          baselineBody: rootRemote.markdown.markdown,
-        })
-      }
+      yield* establishBaseline({
+        statePath: stateAnchor,
+        page: rootRemote.page,
+        baselineBody: rootRemote.markdown.markdown,
+      })
     }
 
     const childrenOf = childrenByParent({ pages, idForRelPath })
@@ -682,7 +699,13 @@ const syncTreeLocal = (opts: {
       const pushed = yield* pushGuarded({
         local,
         remoteForStatus,
-        options: { ...opts.pushOptions, path },
+        /*
+         * Tree nodes push via `replace_content`: a parent's body is volatile
+         * (Notion auto-appends a `<page>` anchor on each child create), so a
+         * search-replace would miss; the full body — bare + derived anchors —
+         * is always re-emitted, so a full replace is the safe operation.
+         */
+        options: { ...opts.pushOptions, path, replaceContent: true },
         persist: treeNodePersist({
           path,
           statePath: stateAnchor,

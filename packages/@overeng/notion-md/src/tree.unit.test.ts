@@ -63,6 +63,8 @@ class FakeTreeNotion {
     return [...this.pages.values()].filter((page) => page.inTrash === false).length
   }
 
+  createCount = 0
+
   private require(id: string): FakePageState {
     const page = this.pages.get(id)
     if (page === undefined) throw new Error(`unknown page ${id}`)
@@ -128,6 +130,7 @@ class FakeTreeNotion {
     createPage: ({ parentPageId, title, markdown }) =>
       Effect.sync(() => {
         this.counter += 1
+        this.createCount += 1
         const id = `00000000-0000-4000-8000-0000000${String(this.counter).padStart(5, '0')}`
         this.pages.set(id, { title, markdown, parentId: parentPageId, inTrash: false })
         return this.snapshot(id)
@@ -422,6 +425,25 @@ describe('notion-md tree reconcile lifecycle', () => {
       expect(await readFile(join(dir, 'alpha.nmd.conflict.roughdraft.md'), 'utf8')).toContain(
         'Body conflict',
       )
+    })
+  })
+
+  it('is crash-idempotent: per-create id writeback prevents duplicate creation', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha.' }))
+      await writeFile(join(dir, 'beta.nmd'), unbound({ title: 'Beta', body: 'Beta.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      expect(fake.createCount).toBe(2) // alpha + beta
+      // root id was written back to index.nmd early (crash-recoverable entry point)
+      expect(await readFile(join(dir, 'index.nmd'), 'utf8')).toContain(`"page_id": "${rootPageId}"`)
+
+      // re-run (simulating a resume): no page is created again
+      await run(syncTree({ root: dir }), fake)
+      expect(fake.createCount).toBe(2)
+      expect(fake.liveCount()).toBe(3) // root + alpha + beta, no duplicates
     })
   })
 })

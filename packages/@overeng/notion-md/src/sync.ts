@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 
 import {
   NOTION_API_VERSION,
@@ -12,6 +12,7 @@ import {
   type NmdWritablePropertyValue,
 } from '@overeng/notion-effect-client'
 
+import { semanticEquivalent } from './canonical-markdown.ts'
 import {
   NmdConflictError,
   NmdFrontmatterError,
@@ -122,6 +123,16 @@ export interface PushOptions {
   readonly force?: boolean
   readonly allowDeletingUnknownBlocks?: boolean
   readonly allowReviewMarkup?: boolean
+  /**
+   * Push the body via `replace_content` (full replace) rather than the narrowest
+   * `update_content` search-replace. Tree nodes set this: a parent's body is
+   * volatile — Notion auto-appends a `<page>` child anchor on every child
+   * create — so a search-replace `oldStr` derived from the baseline will not
+   * match the live body. The derived child-anchor set is always fully
+   * re-emitted, so replacing the whole body is the safe operation. The guarded
+   * conflict/merge checks still run first; this only changes the wire command.
+   */
+  readonly replaceContent?: boolean
 }
 
 /** Result of a guarded push attempt. */
@@ -716,10 +727,38 @@ const assertLocalBodyUnchanged = (opts: {
     })
   })
 
+/**
+ * Strip block-level `<page url=...>...</page>` child anchors from a body. The
+ * anchor set is DERIVED and re-emitted on every parent push, and Notion itself
+ * auto-appends an anchor whenever a child is created — so it must not count as
+ * a "remote change" that would block the parent's push or trigger a 3-way
+ * merge (which would duplicate the anchor). Used only for change DETECTION; the
+ * push body always carries the full derived anchor set.
+ */
+const stripChildAnchors = (body: string): string =>
+  body
+    .split('\n')
+    .filter((line) => /^\s*<page\b[^>]*>.*<\/page>\s*$/u.test(line) === false)
+    .join('\n')
+
 const statusFromSnapshots = (opts: {
   readonly path: string
   readonly local: LocalState
   readonly remote: PullPageResult
+  /*
+   * The recorded baseline body, when available. With it, "did remote change"
+   * is decided by SEMANTIC equivalence (canonicalization-invariant) rather than
+   * a raw hash — Notion reflows received Markdown (collapses blank lines,
+   * merges blockquote-adjacent blocks), so a raw re-pull-vs-baseline hash check
+   * reports a phantom change on every pass. Without it we fall back to hashes.
+   */
+  readonly baseBody?: string
+  /*
+   * When true (tree nodes), ignore derived `<page>` child anchors in change
+   * detection — they are re-emitted every push and Notion auto-appends them, so
+   * they are not user content. Set by the tree path alongside `replaceContent`.
+   */
+  readonly ignoreChildAnchors?: boolean
 }): StatusResult => {
   /*
    * Compare the DESIRED body (composed, for tree nodes) against the recorded
@@ -727,11 +766,19 @@ const statusFromSnapshots = (opts: {
    * local change" and "did remote change" over the same bytes that live on
    * Notion. `local.body` (bare) is only what we write back to the file.
    */
+  const forCompare = (body: string): string =>
+    opts.ignoreChildAnchors === true ? stripChildAnchors(body) : body
   const localBodyHash = sha256Digest(opts.local.desiredBody)
   const remoteBody = normalizeMarkdownLineEndings(opts.remote.markdown.markdown)
   const remoteBodyHash = sha256Digest(remoteBody)
   const bodyHash = opts.local.syncState.body.hash
-  const localChanged = localBodyHash !== bodyHash
+  const localChanged =
+    opts.baseBody === undefined
+      ? localBodyHash !== bodyHash
+      : semanticEquivalent({
+          a: forCompare(opts.local.desiredBody),
+          b: forCompare(opts.baseBody),
+        }) === false
   const localPageMetadataChanged = hasPageMetadataUpdate(
     pageMetadataUpdate({
       local: opts.local.frontmatter.notion_md.page,
@@ -741,7 +788,10 @@ const statusFromSnapshots = (opts: {
   const localPropertiesChanged = hasWritablePropertyValues(
     opts.local.frontmatter.notion_md.properties,
   )
-  const remoteBodyChanged = remoteBodyHash !== bodyHash
+  const remoteBodyChanged =
+    opts.baseBody === undefined
+      ? remoteBodyHash !== bodyHash
+      : semanticEquivalent({ a: forCompare(remoteBody), b: forCompare(opts.baseBody) }) === false
   const remotePageMetadataChanged =
     opts.remote.page.last_edited_time !== opts.local.syncState.body.remote_last_edited_time
   const remoteChanged = remoteBodyChanged || remotePageMetadataChanged
@@ -952,7 +1002,24 @@ export const pushGuarded = (opts: {
     /* `.notion-md/` state location (tree root for tree nodes, else the file). */
     const statePath = local.statePath
     const gateway = yield* NotionMdGateway
-    const status = statusFromSnapshots({ path, local, remote: remoteForStatus })
+    /*
+     * Load the recorded baseline body so change detection is canonicalization-
+     * invariant (semantic), not a raw hash against Notion's reflowed re-pull.
+     * This is what lets the guarded engine reconcile a tree node whose composed
+     * body Notion stored in a slightly different surface form.
+     */
+    const baseSnapshotForStatus = yield* readBaseSnapshot({
+      path: statePath,
+      syncState: local.syncState,
+    }).pipe(Effect.option)
+    const baseBody = Option.getOrUndefined(baseSnapshotForStatus)?.body
+    const status = statusFromSnapshots({
+      path,
+      local,
+      remote: remoteForStatus,
+      ...(baseBody === undefined ? {} : { baseBody }),
+      ...(options.replaceContent === true ? { ignoreChildAnchors: true } : {}),
+    })
     const metadataUpdate = pageMetadataUpdate({
       local: local.frontmatter.notion_md.page,
       remote: remoteForStatus.page,
@@ -1040,16 +1107,20 @@ export const pushGuarded = (opts: {
 
       if (mergedBody !== undefined) {
         yield* Effect.annotateCurrentSpan({ 'notion_md.push.decision': 'auto_merge' })
-        const command = planMarkdownUpdate({
-          baseBody: baseSnapshot.body,
-          remoteBody: remoteForStatus.markdown.markdown,
-          desiredBody: mergedBody,
-        })
+        const command =
+          options.replaceContent === true
+            ? ({ _tag: 'replace_content', markdown: mergedBody } as const)
+            : planMarkdownUpdate({
+                baseBody: baseSnapshot.body,
+                remoteBody: remoteForStatus.markdown.markdown,
+                desiredBody: mergedBody,
+              })
         yield* Effect.annotateCurrentSpan({ 'notion_md.push.markdown_command': command._tag })
         yield* gateway.updateMarkdown({
           pageId: status.pageId,
           command,
-          allowDeletingContent: options.allowDeletingUnknownBlocks === true,
+          allowDeletingContent:
+            options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
         })
         if (status.localPropertiesChanged === true) {
           yield* gateway.updatePageProperties({
@@ -1092,9 +1163,16 @@ export const pushGuarded = (opts: {
           syncState: local.syncState,
         })
         const remote = yield* gateway.pullPage({ pageId: status.pageId })
+        /*
+         * TOCTOU: the remote must not have moved since the status pull. Compare
+         * semantically against the baseline (canonicalization-invariant) so a
+         * volatile parent body (Notion auto-anchors) does not trip a phantom
+         * race; for `replaceContent` (tree) the full body is re-emitted anyway.
+         */
         if (
           options.force !== true &&
-          sha256Digest(remote.markdown.markdown) !== status.remoteBodyHash
+          options.replaceContent !== true &&
+          semanticEquivalent({ a: remote.markdown.markdown, b: baseSnapshot.body }) === false
         ) {
           return yield* new NmdConflictError({
             path,
@@ -1105,7 +1183,7 @@ export const pushGuarded = (opts: {
           })
         }
         const command =
-          options.force === true
+          options.force === true || options.replaceContent === true
             ? ({ _tag: 'replace_content', markdown: local.desiredBody } as const)
             : planMarkdownUpdate({
                 baseBody: baseSnapshot.body,
@@ -1119,7 +1197,8 @@ export const pushGuarded = (opts: {
         yield* gateway.updateMarkdown({
           pageId: status.pageId,
           command,
-          allowDeletingContent: options.allowDeletingUnknownBlocks === true,
+          allowDeletingContent:
+            options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
         })
       })
     }

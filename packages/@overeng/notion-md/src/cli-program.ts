@@ -596,48 +596,60 @@ const syncCommand = Command.make(
           effect: withNotion(
             parseRootPage(root).pipe(
               Effect.flatMap((rootPageId) =>
-                targetKind(source).pipe(
-                  Effect.flatMap((kind) =>
-                    kind === 'directory'
-                      ? // `--recursive` keeps the flat per-file batch (independent bound pages).
-                        recursive === true
-                        ? syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
-                            Effect.map((result): unknown => result),
-                          )
-                        : // one tree engine, both directions: default local-authoritative,
-                          // `--from-remote` mirrors Notion into the same layout + index.
-                          syncTree({
-                            root: source,
-                            fromRemote,
-                            pushOptions: { ...syncOptions, path: source } satisfies PushOptions,
-                            ...(rootPageId === undefined ? {} : { rootPageId }),
-                            ...(Option.isSome(rootFile) === true
-                              ? { rootFile: rootFile.value }
-                              : {}),
-                          }).pipe(Effect.map((result): unknown => result))
-                      : singleFile.pipe(
-                          Effect.flatMap((isSingleFile) =>
-                            isSingleFile === true
-                              ? assertNotTreeMember({
-                                  path: targets[0] ?? '',
-                                  allowReadOnly: false,
-                                }).pipe(
-                                  Effect.zipRight(
-                                    syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
-                                      Effect.map((result): unknown => result),
-                                    ),
-                                  ),
-                                )
-                              : syncMany({
-                                  ...syncOptions,
-                                  targets,
-                                  recursive,
-                                  concurrency,
-                                }).pipe(Effect.map((result): unknown => result)),
-                          ),
-                        ),
-                  ),
-                ),
+                /*
+                 * `--from-remote` materializes a tree from Notion into the same
+                 * layout + index as the forward path; the target dir may not
+                 * exist yet, so route to the tree engine BEFORE classifying.
+                 */
+                fromRemote === true
+                  ? syncTree({
+                      root: source,
+                      fromRemote: true,
+                      pushOptions: { ...syncOptions, path: source } satisfies PushOptions,
+                      ...(rootPageId === undefined ? {} : { rootPageId }),
+                      ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
+                    }).pipe(Effect.map((result): unknown => result))
+                  : targetKind(source).pipe(
+                      Effect.flatMap((kind) =>
+                        kind === 'directory'
+                          ? // `--recursive` keeps the flat per-file batch (independent bound pages).
+                            recursive === true
+                            ? syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
+                                Effect.map((result): unknown => result),
+                              )
+                            : // one tree engine, local-authoritative forward direction.
+                              syncTree({
+                                root: source,
+                                fromRemote: false,
+                                pushOptions: { ...syncOptions, path: source } satisfies PushOptions,
+                                ...(rootPageId === undefined ? {} : { rootPageId }),
+                                ...(Option.isSome(rootFile) === true
+                                  ? { rootFile: rootFile.value }
+                                  : {}),
+                              }).pipe(Effect.map((result): unknown => result))
+                          : singleFile.pipe(
+                              Effect.flatMap((isSingleFile) =>
+                                isSingleFile === true
+                                  ? assertNotTreeMember({
+                                      path: targets[0] ?? '',
+                                      allowReadOnly: false,
+                                    }).pipe(
+                                      Effect.zipRight(
+                                        syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
+                                          Effect.map((result): unknown => result),
+                                        ),
+                                      ),
+                                    )
+                                  : syncMany({
+                                      ...syncOptions,
+                                      targets,
+                                      recursive,
+                                      concurrency,
+                                    }).pipe(Effect.map((result): unknown => result)),
+                              ),
+                            ),
+                      ),
+                    ),
               ),
             ),
           ),
