@@ -28,12 +28,6 @@ import {
   type NmdStateStore,
 } from './state-store.ts'
 import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
-import {
-  isManagedWorkspace,
-  statusWorkspace,
-  syncRemoteToTarget,
-  syncWorkspace,
-} from './workspace.ts'
 
 const compareStrings = new Intl.Collator().compare
 
@@ -683,179 +677,12 @@ describe('notion-md e2e prototype', () => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
       const path = join(dir, 'probe.nmd')
 
-      const result = await runWithFake(syncRemoteToTarget({ pageId, target: path }), fake)
+      const result = await runWithFake(pullPage({ pageId, outPath: path }), fake)
       const parsed = await parseFile(path)
 
-      expect('pageId' in result ? result.pageId : undefined).toBe(pageId)
+      expect(result.pageId).toBe(pageId)
       expect(parsed.frontmatter.notion_md.page_id).toBe(pageId)
       expect(parsed.body).toContain('Body')
-    })
-  })
-
-  it('does not treat existing .nmd file targets as managed workspaces', async () => {
-    await withTempDir(async (dir) => {
-      const path = join(dir, 'probe.nmd')
-      await writeFile(path, 'local notes\n')
-
-      const managed = await Effect.runPromise(
-        isManagedWorkspace(path).pipe(Effect.provide(NodeContext.layer)),
-      )
-
-      expect(managed).toBe(false)
-    })
-  })
-
-  it('workspace sync materializes missing remote child pages into an empty local directory', async () => {
-    await withTempDir(async (dir) => {
-      const fake = new FakeNotion([
-        {
-          pageId,
-          title: 'Root',
-          markdown: '# Root\n\nBody',
-          childPageIds: [secondPageId],
-        },
-        { pageId: secondPageId, title: 'Child Page', markdown: '# Child Page\n\nChild body' },
-      ])
-
-      const result = await runWithFake(syncRemoteToTarget({ pageId, target: dir }), fake)
-      const root = await parseFile(join(dir, 'index.nmd'))
-      const child = await parseFile(join(dir, 'child-page.nmd'))
-      const manifest = JSON.parse(await readFile(join(dir, '.notion-md', 'workspace.json'), 'utf8'))
-
-      expect('_tag' in result ? result._tag : undefined).toBe('workspace')
-      const materialized = 'materialized' in result ? result.materialized : []
-      expect(materialized.map((item) => item.pageId).toSorted(compareStrings)).toEqual(
-        [pageId, secondPageId].toSorted(compareStrings),
-      )
-      expect(root.frontmatter.notion_md.page_id).toBe(pageId)
-      expect(child.frontmatter.notion_md.page_id).toBe(secondPageId)
-      expect(manifest.pages[pageId]).toBe('index.nmd')
-      expect(manifest.pages[secondPageId]).toBe('child-page.nmd')
-    })
-  })
-
-  it('workspace sync pulls newly added remote child pages after initial materialization', async () => {
-    await withTempDir(async (dir) => {
-      const thirdPageId = '00000000-0000-4000-8000-000000000021'
-      const fake = new FakeNotion([
-        {
-          pageId,
-          title: 'Root',
-          markdown: '# Root\n\nBody',
-          childPageIds: [secondPageId],
-        },
-        { pageId: secondPageId, title: 'First Child', markdown: '# First Child\n\nBody' },
-        { pageId: thirdPageId, title: 'Second Child', markdown: '# Second Child\n\nBody' },
-      ])
-
-      await runWithFake(syncRemoteToTarget({ pageId, target: dir }), fake)
-      fake.setChildPages(pageId, [secondPageId, thirdPageId])
-
-      const result = await runWithFake(syncWorkspace({ root: dir }), fake)
-      const child = await parseFile(join(dir, 'second-child.nmd'))
-
-      expect(result.materialized.map((item) => item.pageId)).toContain(thirdPageId)
-      expect(child.frontmatter.notion_md.page_id).toBe(thirdPageId)
-    })
-  })
-
-  it('workspace sync does not assign a new child page to an existing manifest path', async () => {
-    await withTempDir(async (dir) => {
-      const thirdPageId = '00000000-0000-4000-8000-000000000041'
-      const fake = new FakeNotion([
-        {
-          pageId,
-          title: 'Root',
-          markdown: '# Root\n\nBody',
-          childPageIds: [secondPageId],
-        },
-        { pageId: secondPageId, title: 'Plan', markdown: '# Plan\n\nExisting body' },
-        { pageId: thirdPageId, title: 'Plan', markdown: '# Plan\n\nNew body' },
-      ])
-
-      await runWithFake(syncRemoteToTarget({ pageId, target: dir }), fake)
-      fake.setChildPages(pageId, [thirdPageId, secondPageId])
-
-      const result = await runWithFake(syncWorkspace({ root: dir }), fake)
-      const manifest = JSON.parse(await readFile(join(dir, '.notion-md', 'workspace.json'), 'utf8'))
-
-      expect(result.materialized.map((item) => item.pageId)).toContain(thirdPageId)
-      expect(manifest.pages[secondPageId]).toBe('plan.nmd')
-      expect(manifest.pages[thirdPageId]).toBe('plan-000041.nmd')
-    })
-  })
-
-  it('workspace sync rejects malformed manifests instead of recreating them', async () => {
-    await withTempDir(async (dir) => {
-      const fake = new FakeNotion([{ pageId, title: 'Root', markdown: '# Root\n\nBody' }])
-      const manifestPath = join(dir, '.notion-md', 'workspace.json')
-      await mkdir(dirname(manifestPath), { recursive: true })
-      await writeFile(manifestPath, '{ "version": 1, "pages": {} }\n')
-
-      await expect(
-        runWithFake(syncWorkspace({ root: dir, rootPageId: pageId }), fake),
-      ).rejects.toThrow('Invalid notion-md workspace manifest')
-      expect(await readFile(manifestPath, 'utf8')).toBe('{ "version": 1, "pages": {} }\n')
-    })
-  })
-
-  it('workspace sync rejects manifest paths outside the workspace root', async () => {
-    await withTempDir(async (dir) => {
-      const fake = new FakeNotion([{ pageId, title: 'Root', markdown: '# Root\n\nBody' }])
-      const manifestPath = join(dir, '.notion-md', 'workspace.json')
-      await mkdir(dirname(manifestPath), { recursive: true })
-      await writeFile(
-        manifestPath,
-        JSON.stringify(
-          {
-            version: 1,
-            root_page_id: pageId,
-            pages: { [pageId]: '../outside.nmd' },
-          },
-          null,
-          2,
-        ),
-      )
-
-      await expect(runWithFake(statusWorkspace({ root: dir }), fake)).rejects.toThrow(
-        'escapes the workspace root',
-      )
-    })
-  })
-
-  it('workspace establishment refuses to overwrite existing planned page paths', async () => {
-    await withTempDir(async (dir) => {
-      const fake = new FakeNotion([{ pageId, title: 'Root', markdown: '# Root\n\nBody' }])
-      await writeFile(join(dir, 'index.nmd'), 'local notes\n')
-
-      await expect(runWithFake(syncRemoteToTarget({ pageId, target: dir }), fake)).rejects.toThrow(
-        'planned page path',
-      )
-      await expect(readFile(join(dir, '.notion-md', 'workspace.json'), 'utf8')).rejects.toThrow()
-    })
-  })
-
-  it('workspace status reports missing remote child pages without materializing them', async () => {
-    await withTempDir(async (dir) => {
-      const thirdPageId = '00000000-0000-4000-8000-000000000031'
-      const fake = new FakeNotion([
-        {
-          pageId,
-          title: 'Root',
-          markdown: '# Root\n\nBody',
-          childPageIds: [secondPageId],
-        },
-        { pageId: secondPageId, title: 'First Child', markdown: '# First Child\n\nBody' },
-        { pageId: thirdPageId, title: 'Second Child', markdown: '# Second Child\n\nBody' },
-      ])
-
-      await runWithFake(syncRemoteToTarget({ pageId, target: dir }), fake)
-      fake.setChildPages(pageId, [secondPageId, thirdPageId])
-
-      const result = await runWithFake(statusWorkspace({ root: dir }), fake)
-
-      expect(result.missing).toEqual([{ pageId: thirdPageId, path: 'second-child.nmd' }])
-      await expect(readFile(join(dir, 'second-child.nmd'), 'utf8')).rejects.toThrow()
     })
   })
 
@@ -1928,35 +1755,30 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
-  it('fails loudly when the sidecar is missing for a materialized page', async () => {
+  it('auto-heals a missing sidecar from remote (fresh-clone durability)', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
       const path = join(dir, 'probe.nmd')
 
       await runWithFake(pullPage({ pageId, outPath: path }), fake)
       /*
-       * Simulate a fresh-clone-of-gitignored-`.notion-md/` scenario by
-       * wiping the sidecar. With a materialized `.nmd` (page_id set) the
-       * engine must refuse to operate rather than silently treat the
-       * local body as a baseline — that path produced silent no-op
-       * pushes in the original §6 implementation.
+       * Fresh-clone-of-gitignored-`.notion-md/`: a materialized `.nmd` carries a
+       * valid `page_id` but the sidecar is gone. Identity lives in the file, so
+       * the engine must REBUILD the derived baseline from the live remote page
+       * and reconcile (establish-then-noop), not refuse — see #749.
        */
       await rm(join(dir, '.notion-md'), { recursive: true, force: true })
 
-      const result = await runEitherWithFake(statusPage({ path }), fake)
-
-      expect(result).toMatchObject({
-        _tag: 'Left',
-        left: {
-          _tag: 'NmdFrontmatterError',
-          path,
-        },
-      })
-      if (result._tag !== 'Left') {
-        throw new Error('Expected statusPage to fail')
-      }
-      expect(result.left.message).toContain('Missing sidecar sync state')
-      expect(result.left.message).toContain(pageId)
+      const status = await runWithFake(statusPage({ path }), fake)
+      expect(status.pageId).toBe(pageId)
+      expect(status.localChanged).toBe(false)
+      expect(status.remoteChanged).toBe(false)
+      // the sidecar was rebuilt
+      const sync = await readSyncStateFile(path)
+      expect(sync.page_id).toBe(pageId)
+      // and a subsequent sync is a clean noop
+      const result = await runWithFake(syncPage({ path }), fake)
+      expect(result._tag).toBe('noop')
     })
   })
 

@@ -57,9 +57,27 @@ import { decideStorage } from './storage-policy.ts'
  */
 export interface LocalState {
   readonly path: string
+  /**
+   * Where this page's `.notion-md/` state (sidecar + base/object snapshots)
+   * lives. Equals `path` for single-page files (state colocated with the
+   * file). For a tree node it is the TREE ROOT so all sidecars share one
+   * `.notion-md/`, keyed by immutable page id — a moved/renamed file keeps its
+   * baseline because the state location does not move with the file.
+   */
+  readonly statePath: string
   readonly pageId: string
   readonly frontmatter: NmdFrontmatterV2
+  /** Bare body as it lives on disk (what gets written back to the `.nmd` file). */
   readonly body: string
+  /**
+   * The body the engine actually reconciles against Notion: status, 3-way
+   * merge, conflict, plan, and the sidecar baseline all use this. For a
+   * single-page file it equals `body`. For a tree node it is the COMPOSED
+   * body (bare body + resolved cross-ref links + derived child anchors), so
+   * the one guarded engine sees the same bytes that are stored on Notion and
+   * the noop oracle is the hash of the last *pushed* composed body.
+   */
+  readonly desiredBody: string
   readonly syncState: NmdSyncStateV1
 }
 
@@ -451,14 +469,21 @@ const buildSyncState = (opts: {
   readonly markdown: RemoteMarkdownSnapshot
   readonly storage: NmdStorage
   readonly base: NmdObjectRef
+  /*
+   * The noop oracle: hash of the body the engine intends to be on Notion
+   * (composed for tree nodes), NOT the re-pulled remote markdown — Notion's
+   * markdown GET merges blockquote-adjacent blocks, so a re-pull is a lying
+   * oracle. For single-page the fake/real round-trip makes these equal.
+   */
+  readonly baselineBody: string
 }): NmdSyncStateV1 => {
-  const body = normalizeMarkdownLineEndings(opts.markdown.markdown)
+  const baseline = normalizeMarkdownLineEndings(opts.baselineBody)
   return {
     version: 1,
     page_id: opts.page.id,
     body: {
       format: 'notion-enhanced-markdown',
-      hash: sha256Digest(body),
+      hash: sha256Digest(baseline),
       base: opts.base,
       last_pulled_at: new Date().toISOString(),
       remote_last_edited_time: opts.page.last_edited_time,
@@ -476,13 +501,20 @@ const writeNmdWithStoragePolicy = (opts: {
   readonly page: RemotePageSnapshot
   readonly markdown: RemoteMarkdownSnapshot
   readonly storage: NmdStorage
-  readonly body: string
+  /** Bytes written to the `.nmd` file body (bare body for tree nodes). */
+  readonly fileBody: string
+  /**
+   * Bytes recorded as the sidecar baseline + base snapshot (the noop oracle).
+   * For a tree node this is the COMPOSED pushed body, so the next reconcile
+   * compares composed-vs-composed; for single-page it equals `fileBody`.
+   */
+  readonly baselineBody: string
 }): Effect.Effect<PullResult, NmdFileSystemError, NmdStateStore> =>
   Effect.gen(function* () {
     const base = yield* writeBaseSnapshot({
       path: opts.path,
       pageId: opts.page.id,
-      body: opts.body,
+      body: opts.baselineBody,
     })
     const frontmatter = buildFrontmatterV2({ page: opts.page })
     let syncState = buildSyncState({
@@ -490,6 +522,7 @@ const writeNmdWithStoragePolicy = (opts: {
       markdown: opts.markdown,
       storage: opts.storage,
       base,
+      baselineBody: opts.baselineBody,
     })
     const decision = decideStorage(syncState)
     let storageObjectPath: string | undefined
@@ -523,7 +556,7 @@ const writeNmdWithStoragePolicy = (opts: {
     const store = yield* NmdStateStore
     yield* store.writeNmdFile({
       path: opts.path,
-      content: renderNmdFile({ frontmatter, body: opts.body }),
+      content: renderNmdFile({ frontmatter, body: opts.fileBody }),
     })
     yield* writeSyncState({ path: opts.path, syncState })
     const storage: PullResult['storage'] =
@@ -557,7 +590,8 @@ export const pullPage = (
       page: pulled.page,
       markdown: pulled.markdown,
       storage,
-      body: pulled.markdown.markdown,
+      fileBody: pulled.markdown.markdown,
+      baselineBody: pulled.markdown.markdown,
     })
   }).pipe(
     Effect.withSpan('notion-md.pull-page', {
@@ -569,7 +603,45 @@ export const pullPage = (
     }),
   )
 
-const readNmd = (path: string): Effect.Effect<LocalState, NmdError, NmdStateStore> =>
+/**
+ * Establish the sidecar base snapshot for a bound page from its live remote
+ * body, without clobbering the file's own frontmatter/body. Used to auto-heal a
+ * missing sidecar (fresh clone where the gitignored `.notion-md/` is absent, or
+ * a page bound outside notion-md) — identity lives in the file, derived state is
+ * rebuilt from remote. Idempotent: re-pulls and rewrites the baseline.
+ */
+const establishSidecarFromRemote = (opts: {
+  readonly path: string
+  readonly pageId: string
+}): Effect.Effect<void, NmdError, NotionMdGateway | NmdStateStore> =>
+  Effect.gen(function* () {
+    const gateway = yield* NotionMdGateway
+    const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
+    const baselineBody = normalizeMarkdownLineEndings(pulled.markdown.markdown)
+    const base = yield* writeBaseSnapshot({
+      path: opts.path,
+      pageId: opts.pageId,
+      body: baselineBody,
+    })
+    yield* writeSyncState({
+      path: opts.path,
+      syncState: buildSyncState({
+        page: pulled.page,
+        markdown: pulled.markdown,
+        storage: pulled.storage ?? emptyStorage(),
+        base,
+        baselineBody,
+      }),
+    })
+  }).pipe(
+    Effect.withSpan('notion-md.establish-sidecar', {
+      attributes: { 'span.label': opts.pageId.slice(0, 8), 'notion_md.page_id': opts.pageId },
+    }),
+  )
+
+const readNmd = (
+  path: string,
+): Effect.Effect<LocalState, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const store = yield* NmdStateStore
     const content = yield* store.readNmdFile({ path })
@@ -586,57 +658,76 @@ const readNmd = (path: string): Effect.Effect<LocalState, NmdError, NmdStateStor
         message: `.nmd file ${path} is unbound (page_id: null). Run \`notion-md sync <dir>\` so the tree engine creates the Notion page, or bind it to an existing page id.`,
       })
     }
-    const loaded = yield* store.readSyncStateOptional({ path, pageId })
+    let loaded = yield* store.readSyncStateOptional({ path, pageId })
     if (loaded === undefined) {
       /*
-       * A materialized `.nmd` without a sidecar is the fresh-clone case:
-       * `.notion-md/sync/` is gitignored, the user checked out the working
-       * tree without it. Fail fast with a clear instruction to rebuild it
-       * from the existing Notion page instead of inventing local baseline.
+       * Fresh-clone / externally-bound case: the `.nmd` carries a valid
+       * `page_id` but the gitignored sidecar is absent. Identity lives in the
+       * file; auto-heal by rebuilding the derived baseline from the live remote
+       * page, then reconcile normally (idempotent establish-then-reconcile).
        */
-      return yield* new NmdFrontmatterError({
-        path,
-        message: `Missing sidecar sync state for page ${pageId}. Run \`notion-md sync ${pageId} ${path}\` to rebuild it.`,
-      })
+      yield* establishSidecarFromRemote({ path, pageId })
+      loaded = yield* store.readSyncStateOptional({ path, pageId })
+      if (loaded === undefined) {
+        return yield* new NmdFrontmatterError({
+          path,
+          message: `Failed to establish sidecar sync state for page ${pageId} at ${path}`,
+        })
+      }
     }
     const syncState = loaded
     yield* validateReferencedObjects({ path, syncState })
     return {
       path,
+      statePath: path,
       pageId,
       frontmatter: parsed.frontmatter,
       body: parsed.body,
+      /* single-page: the desired body is exactly the on-disk body */
+      desiredBody: parsed.body,
       syncState,
     }
   })
 
+/**
+ * TOCTOU guard: refuse to overwrite the local file if its on-disk *bare* body
+ * changed while the push was in flight. Reads the raw file (not `readNmd`) so
+ * it works for tree nodes too — `readNmd` would re-narrow `page_id` and the
+ * bare body is the right unit of "did someone edit this file under us".
+ */
 const assertLocalBodyUnchanged = (opts: {
   readonly path: string
   readonly pageId: string
-  readonly expectedBodyHash: string
+  readonly expectedFileBodyHash: string
   readonly status: StatusResult
 }): Effect.Effect<void, NmdError, NmdStateStore> =>
-  readNmd(opts.path).pipe(
-    Effect.flatMap((current) =>
-      sha256Digest(current.body) === opts.expectedBodyHash
-        ? Effect.void
-        : new NmdConflictError({
-            path: opts.path,
-            page_id: opts.pageId,
-            local_changed: true,
-            remote_changed: opts.status.remoteChanged,
-            message:
-              'Local .nmd body changed while push was in progress; refusing to overwrite it with refreshed Notion state',
-          }),
-    ),
-  )
+  Effect.gen(function* () {
+    const store = yield* NmdStateStore
+    const content = yield* store.readNmdFile({ path: opts.path })
+    const parsed = yield* parseNmdFile({ path: opts.path, content })
+    if (sha256Digest(parsed.body) === opts.expectedFileBodyHash) return
+    return yield* new NmdConflictError({
+      path: opts.path,
+      page_id: opts.pageId,
+      local_changed: true,
+      remote_changed: opts.status.remoteChanged,
+      message:
+        'Local .nmd body changed while push was in progress; refusing to overwrite it with refreshed Notion state',
+    })
+  })
 
 const statusFromSnapshots = (opts: {
   readonly path: string
   readonly local: LocalState
   readonly remote: PullPageResult
 }): StatusResult => {
-  const localBodyHash = sha256Digest(opts.local.body)
+  /*
+   * Compare the DESIRED body (composed, for tree nodes) against the recorded
+   * baseline and the live remote, so the one guarded engine answers both "did
+   * local change" and "did remote change" over the same bytes that live on
+   * Notion. `local.body` (bare) is only what we write back to the file.
+   */
+  const localBodyHash = sha256Digest(opts.local.desiredBody)
   const remoteBody = normalizeMarkdownLineEndings(opts.remote.markdown.markdown)
   const remoteBodyHash = sha256Digest(remoteBody)
   const bodyHash = opts.local.syncState.body.hash
@@ -705,17 +796,163 @@ export const statusPage = (
     }),
   )
 
-/** Push local `.nmd` edits to Notion after conflict, unknown-block, and review-markup checks. */
-export const pushPage = (
-  opts: PushOptions,
-): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
+/**
+ * How a successful guarded push persists local state afterwards. Abstracts the
+ * one place the single-page path and the tree path differ: a single-page file
+ * round-trips the re-pulled remote body into both the `.nmd` file and the
+ * sidecar baseline; a tree node keeps the bare body on disk but records the
+ * COMPOSED pushed body as the sidecar baseline (the noop oracle). Everything
+ * before this — status, guards, 3-way merge, conflict — is shared verbatim.
+ */
+export interface PushPersist {
+  /** Hash of the on-disk bare body at read time, for the TOCTOU guard. */
+  readonly expectedFileBodyHash: string
+  /**
+   * Persist after the gateway mutation. `pushedBody` is the exact body the
+   * engine sent to Notion (bare, merged, or composed); `status` is the status
+   * the guarded core computed. `adoptRemoteBody` is set only by the
+   * metadata-only-with-remote-body-race branch, where no body was pushed and
+   * the canonical local body is the freshly re-pulled remote one (a pull).
+   * Implementations re-pull for storage/metadata, run the TOCTOU guard, then
+   * write the `.nmd` file and the sidecar baseline per their body semantics.
+   */
+  readonly persist: (opts: {
+    readonly pushedBody: string
+    readonly status: StatusResult
+    readonly adoptRemoteBody?: boolean
+  }) => Effect.Effect<void, NmdError, NotionMdGateway | NmdStateStore>
+}
+
+/** Single-page persist: round-trip the re-pulled remote body into file + baseline. */
+const singlePagePersist = (opts: {
+  readonly path: string
+  readonly expectedFileBodyHash: string
+}): PushPersist => ({
+  expectedFileBodyHash: opts.expectedFileBodyHash,
+  persist: ({ pushedBody, status, adoptRemoteBody }) =>
+    Effect.gen(function* () {
+      const gateway = yield* NotionMdGateway
+      const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+      yield* assertLocalBodyUnchanged({
+        path: opts.path,
+        pageId: status.pageId,
+        expectedFileBodyHash: opts.expectedFileBodyHash,
+        status,
+      })
+      /*
+       * In the metadata-only race the local body didn't change, so the
+       * canonical body is the re-pulled remote (a pull); otherwise round-trip
+       * the body we just pushed.
+       */
+      const body = adoptRemoteBody === true ? pulled.markdown.markdown : pushedBody
+      yield* writeNmdWithStoragePolicy({
+        path: opts.path,
+        page: pulled.page,
+        markdown: pulled.markdown,
+        storage: pulled.storage ?? emptyStorage(),
+        fileBody: body,
+        baselineBody: body,
+      })
+    }),
+})
+
+/**
+ * Tree-node persist: keep the *bare* body on disk (preserving the node's own
+ * bound frontmatter) but record the *composed* pushed body as the sidecar
+ * baseline — the noop oracle for the next reconcile. Used by `tree.ts` so a
+ * directory tree shares the one guarded engine without re-pulling the lossy
+ * remote markdown as its baseline.
+ */
+export const treeNodePersist = (opts: {
+  readonly path: string
+  /** Tree root where the shared `.notion-md/` state lives (sidecar + base). */
+  readonly statePath: string
+  readonly frontmatter: NmdFrontmatterV2
+  readonly bareBody: string
+  readonly expectedFileBodyHash: string
+}): PushPersist => ({
+  expectedFileBodyHash: opts.expectedFileBodyHash,
+  persist: ({ pushedBody, status }) =>
+    Effect.gen(function* () {
+      const gateway = yield* NotionMdGateway
+      const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+      yield* assertLocalBodyUnchanged({
+        path: opts.path,
+        pageId: status.pageId,
+        expectedFileBodyHash: opts.expectedFileBodyHash,
+        status,
+      })
+      const store = yield* NmdStateStore
+      /* file keeps the node's own frontmatter (bound id/url/title) + bare body */
+      yield* store.writeNmdFile({
+        path: opts.path,
+        content: renderNmdFile({ frontmatter: opts.frontmatter, body: opts.bareBody }),
+      })
+      /* sidecar + base snapshot live at the tree root, keyed by page id */
+      const base = yield* writeBaseSnapshot({
+        path: opts.statePath,
+        pageId: status.pageId,
+        body: pushedBody,
+      })
+      yield* writeSyncState({
+        path: opts.statePath,
+        syncState: buildSyncState({
+          page: pulled.page,
+          markdown: pulled.markdown,
+          storage: pulled.storage ?? emptyStorage(),
+          base,
+          baselineBody: pushedBody,
+        }),
+      })
+    }),
+})
+
+/**
+ * Build a `LocalState` for a tree node so it can flow through the one guarded
+ * engine. `body` is the bare on-disk body; `desiredBody` is the composed body
+ * (bare + resolved cross-refs + derived child anchors); `statePath` is the tree
+ * root so all sidecars share one `.notion-md/`, surviving file moves/renames.
+ */
+export const buildTreeNodeLocalState = (opts: {
+  readonly path: string
+  readonly statePath: string
+  readonly pageId: string
+  readonly frontmatter: NmdFrontmatterV2
+  readonly bareBody: string
+  readonly composedBody: string
+  readonly syncState: NmdSyncStateV1
+}): LocalState => ({
+  path: opts.path,
+  statePath: opts.statePath,
+  pageId: opts.pageId,
+  frontmatter: opts.frontmatter,
+  body: opts.bareBody,
+  desiredBody: opts.composedBody,
+  syncState: opts.syncState,
+})
+
+/**
+ * The shared guarded push core. Runs the full safety suite over `local`
+ * (review-markup guard, unknown-block guard, remote-changed conflict + 3-way
+ * merge + `.conflict.roughdraft.md`, storage policy, TOCTOU) and delegates the
+ * write-back to `persist`. `local.desiredBody` is the content reconciled
+ * against Notion; `local.body` is only the bytes written back to the `.nmd`
+ * file. Both the single-page path and the tree path call this — there is one
+ * reconcile engine, not two.
+ */
+export const pushGuarded = (opts: {
+  readonly local: LocalState
+  readonly remoteForStatus: PullPageResult
+  readonly persist: PushPersist
+  readonly options: PushOptions
+}): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
-    const local = yield* readNmd(opts.path)
+    const { local, remoteForStatus, options } = opts
+    const path = local.path
+    /* `.notion-md/` state location (tree root for tree nodes, else the file). */
+    const statePath = local.statePath
     const gateway = yield* NotionMdGateway
-    const remoteForStatus = yield* gateway.pullPage({
-      pageId: local.pageId,
-    })
-    const status = statusFromSnapshots({ path: opts.path, local, remote: remoteForStatus })
+    const status = statusFromSnapshots({ path, local, remote: remoteForStatus })
     const metadataUpdate = pageMetadataUpdate({
       local: local.frontmatter.notion_md.page,
       remote: remoteForStatus.page,
@@ -726,12 +963,15 @@ export const pushPage = (
       status.localPageMetadataChanged === false &&
       status.localPropertiesChanged === false
     ) {
-      return { path: opts.path, pageId: status.pageId, pushed: false, status }
+      return { path, pageId: status.pageId, pushed: false, status }
     }
 
-    if (containsRoughdraftReviewMarkup(local.body) === true && opts.allowReviewMarkup !== true) {
+    if (
+      containsRoughdraftReviewMarkup(local.desiredBody) === true &&
+      options.allowReviewMarkup !== true
+    ) {
       return yield* new NmdConflictError({
-        path: opts.path,
+        path,
         page_id: status.pageId,
         local_changed: status.localChanged,
         remote_changed: status.remoteChanged,
@@ -743,10 +983,10 @@ export const pushPage = (
     if (
       status.localChanged === true &&
       status.unresolvedUnknownBlocks.length > 0 &&
-      opts.allowDeletingUnknownBlocks !== true
+      options.allowDeletingUnknownBlocks !== true
     ) {
       return yield* new NmdConflictError({
-        path: opts.path,
+        path,
         page_id: status.pageId,
         local_changed: status.localChanged,
         remote_changed: status.remoteChanged,
@@ -755,16 +995,13 @@ export const pushPage = (
       })
     }
 
-    if (status.remoteBodyChanged === true && opts.force !== true) {
-      const baseSnapshot = yield* readBaseSnapshot({
-        path: opts.path,
-        syncState: local.syncState,
-      })
+    if (status.remoteBodyChanged === true && options.force !== true) {
+      const baseSnapshot = yield* readBaseSnapshot({ path: statePath, syncState: local.syncState })
       const mergedBody =
         status.localChanged === true
           ? tryMergeMarkdownBodies({
               baseBody: baseSnapshot.body,
-              localBody: local.body,
+              localBody: local.desiredBody,
               remoteBody: remoteForStatus.markdown.markdown,
             })
           : undefined
@@ -777,110 +1014,69 @@ export const pushPage = (
           'notion_md.push.decision': 'metadata_only_remote_body_changed',
         })
         if (hasPageMetadataUpdate(metadataUpdate) === true) {
-          yield* gateway.updatePageMetadata({
-            pageId: status.pageId,
-            metadata: metadataUpdate,
-          })
+          yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
         }
         if (status.localPropertiesChanged === true) {
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
-              path: opts.path,
+              path,
               properties: local.frontmatter.notion_md.properties,
             }),
           })
         }
-        const pulled = yield* gateway.pullPage({ pageId: status.pageId })
-        yield* assertLocalBodyUnchanged({
-          path: opts.path,
-          pageId: status.pageId,
-          expectedBodyHash: status.localBodyHash,
+        /*
+         * Body unchanged locally but the remote body changed concurrently:
+         * adopt the freshly re-pulled remote body as the new local baseline
+         * (a pull), rather than re-asserting the stale desired body.
+         */
+        yield* opts.persist.persist({
+          pushedBody: local.desiredBody,
           status,
+          adoptRemoteBody: true,
         })
-        yield* writeNmdWithStoragePolicy({
-          path: opts.path,
-          page: pulled.page,
-          markdown: pulled.markdown,
-          storage: pulled.storage ?? emptyStorage(),
-          body: pulled.markdown.markdown,
-        })
-
-        return {
-          path: opts.path,
-          pageId: status.pageId,
-          pushed: true,
-          status,
-        }
+        return { path, pageId: status.pageId, pushed: true, status }
       }
 
       if (mergedBody !== undefined) {
-        yield* Effect.annotateCurrentSpan({
-          'notion_md.push.decision': 'auto_merge',
-        })
+        yield* Effect.annotateCurrentSpan({ 'notion_md.push.decision': 'auto_merge' })
         const command = planMarkdownUpdate({
           baseBody: baseSnapshot.body,
           remoteBody: remoteForStatus.markdown.markdown,
           desiredBody: mergedBody,
         })
-        yield* Effect.annotateCurrentSpan({
-          'notion_md.push.markdown_command': command._tag,
-        })
-        const updated = yield* gateway.updateMarkdown({
+        yield* Effect.annotateCurrentSpan({ 'notion_md.push.markdown_command': command._tag })
+        yield* gateway.updateMarkdown({
           pageId: status.pageId,
           command,
-          allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
+          allowDeletingContent: options.allowDeletingUnknownBlocks === true,
         })
         if (status.localPropertiesChanged === true) {
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
-              path: opts.path,
+              path,
               properties: local.frontmatter.notion_md.properties,
             }),
           })
         }
         if (hasPageMetadataUpdate(metadataUpdate) === true) {
-          yield* gateway.updatePageMetadata({
-            pageId: status.pageId,
-            metadata: metadataUpdate,
-          })
+          yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
         }
-        const pulled = yield* gateway.pullPage({ pageId: status.pageId })
-        yield* assertLocalBodyUnchanged({
-          path: opts.path,
-          pageId: status.pageId,
-          expectedBodyHash: status.localBodyHash,
-          status,
-        })
-        yield* writeNmdWithStoragePolicy({
-          path: opts.path,
-          page: pulled.page,
-          markdown: updated.markdown,
-          storage: pulled.storage ?? emptyStorage(),
-          body: mergedBody,
-        })
-
-        return {
-          path: opts.path,
-          pageId: status.pageId,
-          pushed: true,
-          status,
-        }
+        yield* opts.persist.persist({ pushedBody: mergedBody, status })
+        return { path, pageId: status.pageId, pushed: true, status }
       }
 
       const conflictPath = yield* writeRoughdraftConflict({
-        path: opts.path,
+        path,
         pageId: status.pageId,
         baseBody: baseSnapshot.body,
-        localBody: local.body,
+        localBody: local.desiredBody,
         remoteBody: remoteForStatus.markdown.markdown,
       })
-      yield* Effect.annotateCurrentSpan({
-        'notion_md.push.decision': 'body_conflict',
-      })
+      yield* Effect.annotateCurrentSpan({ 'notion_md.push.decision': 'body_conflict' })
       return yield* new NmdConflictError({
-        path: opts.path,
+        path,
         page_id: status.pageId,
         local_changed: status.localChanged,
         remote_changed: status.remoteChanged,
@@ -892,16 +1088,16 @@ export const pushPage = (
     if (status.localChanged === true) {
       yield* Effect.gen(function* () {
         const baseSnapshot = yield* readBaseSnapshot({
-          path: opts.path,
+          path: statePath,
           syncState: local.syncState,
         })
         const remote = yield* gateway.pullPage({ pageId: status.pageId })
         if (
-          opts.force !== true &&
+          options.force !== true &&
           sha256Digest(remote.markdown.markdown) !== status.remoteBodyHash
         ) {
           return yield* new NmdConflictError({
-            path: opts.path,
+            path,
             page_id: status.pageId,
             local_changed: status.localChanged,
             remote_changed: true,
@@ -909,21 +1105,21 @@ export const pushPage = (
           })
         }
         const command =
-          opts.force === true
-            ? ({ _tag: 'replace_content', markdown: local.body } as const)
+          options.force === true
+            ? ({ _tag: 'replace_content', markdown: local.desiredBody } as const)
             : planMarkdownUpdate({
                 baseBody: baseSnapshot.body,
                 remoteBody: remote.markdown.markdown,
-                desiredBody: local.body,
+                desiredBody: local.desiredBody,
               })
         yield* Effect.annotateCurrentSpan({
-          'notion_md.push.decision': opts.force === true ? 'force_replace' : 'guarded_update',
+          'notion_md.push.decision': options.force === true ? 'force_replace' : 'guarded_update',
           'notion_md.push.markdown_command': command._tag,
         })
         yield* gateway.updateMarkdown({
           pageId: status.pageId,
           command,
-          allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
+          allowDeletingContent: options.allowDeletingUnknownBlocks === true,
         })
       })
     }
@@ -931,38 +1127,45 @@ export const pushPage = (
       yield* gateway.updatePageProperties({
         pageId: status.pageId,
         properties: yield* encodeWritableProperties({
-          path: opts.path,
+          path,
           properties: local.frontmatter.notion_md.properties,
         }),
       })
     }
     if (hasPageMetadataUpdate(metadataUpdate) === true) {
-      yield* gateway.updatePageMetadata({
-        pageId: status.pageId,
-        metadata: metadataUpdate,
-      })
+      yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
     }
-    const pulled = yield* gateway.pullPage({ pageId: status.pageId })
-    yield* assertLocalBodyUnchanged({
-      path: opts.path,
-      pageId: status.pageId,
-      expectedBodyHash: status.localBodyHash,
+    /*
+     * If only properties/metadata changed (the body was not pushed), adopt the
+     * re-pulled remote body — it may have raced ahead during the property
+     * update. When the body WAS pushed, round-trip the pushed body.
+     */
+    yield* opts.persist.persist({
+      pushedBody: local.desiredBody,
       status,
-    })
-    yield* writeNmdWithStoragePolicy({
-      path: opts.path,
-      page: pulled.page,
-      markdown: pulled.markdown,
-      storage: pulled.storage ?? emptyStorage(),
-      body: pulled.markdown.markdown,
+      adoptRemoteBody: status.localChanged === false,
     })
 
-    return {
-      path: opts.path,
-      pageId: status.pageId,
-      pushed: true,
-      status,
-    }
+    return { path, pageId: status.pageId, pushed: true, status }
+  })
+
+/** Push local `.nmd` edits to Notion after conflict, unknown-block, and review-markup checks. */
+export const pushPage = (
+  opts: PushOptions,
+): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
+  Effect.gen(function* () {
+    const local = yield* readNmd(opts.path)
+    const gateway = yield* NotionMdGateway
+    const remoteForStatus = yield* gateway.pullPage({ pageId: local.pageId })
+    return yield* pushGuarded({
+      local,
+      remoteForStatus,
+      options: opts,
+      persist: singlePagePersist({
+        path: opts.path,
+        expectedFileBodyHash: sha256Digest(local.body),
+      }),
+    })
   }).pipe(
     Effect.tap((result) =>
       Effect.annotateCurrentSpan({

@@ -56,22 +56,9 @@ export type {
   SyncResult,
 } from './sync.ts'
 export { NOTION_MD_VERSION } from './version.ts'
-export {
-  composePushBody,
-  pageUrl,
-  parentRelPathFor,
-  resolveCrossRefs,
-  slugForRelPath,
-  syncTree,
-} from './tree.ts'
+export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
+export { composePushBody, parentRelPathFor, slugForRelPath, syncTree } from './tree.ts'
 export type { TreeOp, TreeSyncResult } from './tree.ts'
-export {
-  isManagedWorkspace,
-  statusWorkspace,
-  syncRemoteToTarget,
-  syncWorkspace,
-} from './workspace.ts'
-export type { WorkspaceStatusResult, WorkspaceSyncResult } from './workspace.ts'
 export {
   isSingleFileTarget,
   resolveNmdTargets,

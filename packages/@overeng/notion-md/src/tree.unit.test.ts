@@ -44,6 +44,11 @@ class FakeTreeNotion {
     return this.require(id).markdown
   }
 
+  /** Simulate a concurrent remote edit (someone edited the page on Notion). */
+  mutateRemote(id: string, markdown: string): void {
+    this.require(id).markdown = markdown
+  }
+
   childTitles(id: string): readonly string[] {
     return [...this.pages.entries()]
       .filter(([, page]) => page.parentId === id && page.inTrash === false)
@@ -95,13 +100,21 @@ class FakeTreeNotion {
     pullPage: ({ pageId }) => Effect.sync(() => this.pull(pageId)),
     updateMarkdown: ({ pageId, command }) =>
       Effect.sync(() => {
-        if (command._tag === 'replace_content') this.require(pageId).markdown = command.markdown
+        const page = this.require(pageId)
+        if (command._tag === 'replace_content') {
+          page.markdown = command.markdown
+        } else {
+          // apply each search-and-replace, like Notion's update_content
+          page.markdown = command.contentUpdates.reduce(
+            (body, update) =>
+              update.replaceAllMatches === true
+                ? body.split(update.oldStr).join(update.newStr)
+                : body.replace(update.oldStr, update.newStr),
+            page.markdown,
+          )
+        }
         return {
-          markdown: {
-            markdown: this.require(pageId).markdown,
-            truncated: false,
-            unknown_block_ids: [],
-          },
+          markdown: { markdown: page.markdown, truncated: false, unknown_block_ids: [] },
         }
       }),
     updatePageProperties: ({ pageId }) => Effect.sync(() => this.snapshot(pageId)),
@@ -190,16 +203,29 @@ const opTags = (ops: readonly TreeOp[]): Record<string, number> => {
 }
 
 describe('notion-md tree helpers', () => {
-  it('derives slugs and parent edges from the directory model', () => {
-    expect(slugForRelPath('index.nmd')).toBe('index')
-    expect(slugForRelPath('alpha.nmd')).toBe('alpha')
-    expect(slugForRelPath('sub/beta.nmd')).toBe('sub/beta')
-    expect(slugForRelPath('sub/index.nmd')).toBe('sub')
+  it('derives slugs and parent edges from the directory model (index.nmd root)', () => {
+    const rootFile = 'index.nmd'
+    expect(slugForRelPath({ relPath: 'index.nmd', rootFile })).toBe('index')
+    expect(slugForRelPath({ relPath: 'alpha.nmd', rootFile })).toBe('alpha')
+    expect(slugForRelPath({ relPath: 'sub/beta.nmd', rootFile })).toBe('sub/beta')
+    expect(slugForRelPath({ relPath: 'sub/index.nmd', rootFile })).toBe('sub')
 
-    expect(parentRelPathFor('index.nmd')).toBeUndefined()
-    expect(parentRelPathFor('alpha.nmd')).toBe('index.nmd')
-    expect(parentRelPathFor('sub/index.nmd')).toBe('index.nmd')
-    expect(parentRelPathFor('sub/beta.nmd')).toBe('sub/index.nmd')
+    expect(parentRelPathFor({ relPath: 'index.nmd', rootFile })).toBeUndefined()
+    expect(parentRelPathFor({ relPath: 'alpha.nmd', rootFile })).toBe('index.nmd')
+    expect(parentRelPathFor({ relPath: 'sub/index.nmd', rootFile })).toBe('index.nmd')
+    expect(parentRelPathFor({ relPath: 'sub/beta.nmd', rootFile })).toBe('sub/index.nmd')
+  })
+
+  it('honors a README.nmd root-file convention', () => {
+    const rootFile = 'README.nmd'
+    expect(slugForRelPath({ relPath: 'README.nmd', rootFile })).toBe('README')
+    expect(slugForRelPath({ relPath: 'alpha.nmd', rootFile })).toBe('alpha')
+    expect(slugForRelPath({ relPath: 'sub/README.nmd', rootFile })).toBe('sub')
+
+    expect(parentRelPathFor({ relPath: 'README.nmd', rootFile })).toBeUndefined()
+    expect(parentRelPathFor({ relPath: 'alpha.nmd', rootFile })).toBe('README.nmd')
+    expect(parentRelPathFor({ relPath: 'sub/README.nmd', rootFile })).toBe('README.nmd')
+    expect(parentRelPathFor({ relPath: 'sub/beta.nmd', rootFile })).toBe('sub/README.nmd')
   })
 
   it('blank-line-separates derived child anchors (siblings survive replace_content)', () => {
@@ -359,6 +385,43 @@ describe('notion-md tree reconcile lifecycle', () => {
       }
       // nothing pushed: alpha was NOT created on the remote
       expect(fake.liveCount()).toBe(1)
+    })
+  })
+
+  it('routes through the guarded engine: a concurrent remote edit conflicts, not clobbers', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root body.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Original alpha.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'alpha.nmd'), 'utf8'),
+      )?.[1]
+      expect(alphaId).toBeDefined()
+
+      // someone edits alpha on Notion AND we edit it locally → divergent edits
+      fake.mutateRemote(alphaId ?? '', '# Alpha\n\nRemote-only concurrent edit.\n')
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Local-only edit.' }))
+      // re-bind alpha's id into the rewritten file (simulates an in-place edit)
+      const alphaContent = await readFile(join(dir, 'alpha.nmd'), 'utf8')
+      await writeFile(
+        join(dir, 'alpha.nmd'),
+        alphaContent.replace('"page_id": null', `"page_id": "${alphaId}"`),
+      )
+
+      const result = await run(syncTree({ root: dir }), fake)
+      // alpha is a CONFLICT, not a silent overwrite
+      expect(result.ops.some((op) => op._tag === 'conflict' && op.relPath === 'alpha.nmd')).toBe(
+        true,
+      )
+      // the remote body was NOT clobbered with the local edit
+      expect(fake.remoteBody(alphaId ?? '')).toContain('Remote-only concurrent edit')
+      expect(fake.remoteBody(alphaId ?? '')).not.toContain('Local-only edit')
+      // a conflict artifact was written next to the file
+      expect(await readFile(join(dir, 'alpha.nmd.conflict.roughdraft.md'), 'utf8')).toContain(
+        'Body conflict',
+      )
     })
   })
 })

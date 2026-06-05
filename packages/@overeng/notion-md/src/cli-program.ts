@@ -1,4 +1,4 @@
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, relative, resolve } from 'node:path'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
@@ -19,10 +19,9 @@ import { NmdCliError, NmdTokenMissingError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
-import { statusPage, syncPage, type SyncOptions } from './sync.ts'
+import { pullPage, statusPage, syncPage, type PushOptions, type SyncOptions } from './sync.ts'
 import { syncTree } from './tree.ts'
 import { NOTION_MD_VERSION } from './version.ts'
-import { syncRemoteToTarget, syncWorkspace } from './workspace.ts'
 
 const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
   identifier: 'NotionMd.Cli.NonEmptyText',
@@ -99,6 +98,13 @@ const fromRemoteOption = Options.boolean('from-remote').pipe(
     'Mirror direction: materialize/refresh local files from Notion instead of pushing local-as-desired (default is local-authoritative IaC)',
   ),
   Options.withDefault(false),
+)
+
+const rootFileOption = Options.text('root-file').pipe(
+  Options.withDescription(
+    'Tree root-file basename (default: detect index.nmd or README.nmd at the tree root)',
+  ),
+  Options.optional,
 )
 
 const pushSafetyOptions = {
@@ -334,6 +340,55 @@ const parseRootPage = (
     : Effect.succeed(parsed)
 }
 
+/**
+ * Refuse single-file `sync`/`status` on a `.nmd` that belongs to a managed
+ * tree (an ancestor `.notion-md/workspace.json` lists its page). Pushing the
+ * bare body of a tree node would drop its DERIVED child anchors and trash its
+ * children — the per-file path never composes them. Direct the user to the
+ * tree engine instead. Read-only `status` is allowed (no mutation).
+ */
+const assertNotTreeMember = (opts: {
+  readonly path: string
+  readonly allowReadOnly: boolean
+}): Effect.Effect<void, NmdCliError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    if (opts.allowReadOnly === true) return
+    const fs = yield* FileSystem.FileSystem
+    const absolute = resolve(opts.path)
+    let current = dirname(absolute)
+    // walk up to the filesystem root looking for a tree index
+    while (true) {
+      const indexPath = resolve(current, '.notion-md', 'workspace.json')
+      const exists = yield* fs.exists(indexPath).pipe(Effect.orElseSucceed(() => false))
+      if (exists === true) {
+        const content = yield* fs.readFileString(indexPath).pipe(Effect.orElseSucceed(() => ''))
+        const relFromRoot = relative(current, absolute).split('\\').join('/')
+        const parsed = yield* Effect.try(() => JSON.parse(content) as unknown).pipe(
+          Effect.orElseSucceed(() => undefined as unknown),
+        )
+        const isMember =
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          'pages' in parsed &&
+          typeof (parsed as { pages?: unknown }).pages === 'object' &&
+          relFromRoot in ((parsed as { pages: Record<string, unknown> }).pages ?? {})
+        const rootFile =
+          typeof parsed === 'object' && parsed !== null && 'root_file' in parsed
+            ? (parsed as { root_file?: unknown }).root_file
+            : undefined
+        const isRoot = typeof rootFile === 'string' && relFromRoot === rootFile
+        if (isMember === true || isRoot === true) {
+          return yield* new NmdCliError({
+            message: `${opts.path} is a member of the notion-md tree at ${current}; run \`notion-md sync ${current}\` (the tree composes child anchors — a single-file push would trash its children).`,
+          })
+        }
+      }
+      const parent = dirname(current)
+      if (parent === current) break
+      current = parent
+    }
+  })
+
 const statusCommand = Command.make(
   'status',
   {
@@ -377,8 +432,13 @@ const statusCommand = Command.make(
 
 const planCommand = Command.make(
   'plan',
-  { target: syncSourceArg, root: rootPageOption },
-  ({ target, root }) =>
+  {
+    target: syncSourceArg,
+    root: rootPageOption,
+    rootFile: rootFileOption,
+    fromRemote: fromRemoteOption,
+  },
+  ({ target, root, rootFile, fromRemote }) =>
     commandSpan({
       command: 'plan',
       label: basename(target),
@@ -391,7 +451,9 @@ const planCommand = Command.make(
                   ? syncTree({
                       root: target,
                       plan: true,
+                      fromRemote,
                       ...(rootPageId === undefined ? {} : { rootPageId }),
+                      ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
                     }).pipe(Effect.map((result): unknown => result))
                   : statusPage({ path: target }).pipe(Effect.map((result): unknown => result)),
               ),
@@ -416,6 +478,7 @@ const syncCommand = Command.make(
     recursive: recursiveOption,
     concurrency: concurrencyOption,
     root: rootPageOption,
+    rootFile: rootFileOption,
     fromRemote: fromRemoteOption,
     ...pushSafetyOptions,
   },
@@ -427,6 +490,7 @@ const syncCommand = Command.make(
     recursive,
     concurrency,
     root,
+    rootFile,
     fromRemote,
     ...syncOptions
   }) => {
@@ -458,12 +522,27 @@ const syncCommand = Command.make(
           }),
         )
       }
+      /*
+       * Legacy two-arg establish now materializes a single `.nmd` FILE from a
+       * Notion page. Establishing a directory TREE from Notion is the unified
+       * `sync <dir> --from-remote --root <page>` form (one engine, one layout).
+       */
       return commandSpan({
         command: 'sync',
         label: basename(target.value),
         effect: withNotion(
-          syncRemoteToTarget({ pageId, target: target.value, syncOptions }).pipe(
-            Effect.map((result): unknown => result),
+          targetKind(target.value).pipe(
+            Effect.flatMap((kind) =>
+              kind === 'directory'
+                ? syncTree({
+                    root: target.value,
+                    fromRemote: true,
+                    rootPageId: pageId,
+                  }).pipe(Effect.map((result): unknown => result))
+                : pullPage({ pageId, outPath: target.value }).pipe(
+                    Effect.map((result): unknown => result),
+                  ),
+            ),
           ),
         ),
       }).pipe(Effect.flatMap(logJson))
@@ -525,23 +604,29 @@ const syncCommand = Command.make(
                         ? syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
                             Effect.map((result): unknown => result),
                           )
-                        : // default: local-authoritative tree reconcile.
-                          // `--from-remote`: remote-authoritative materialize/mirror.
-                          fromRemote === true
-                          ? syncWorkspace({
-                              root: source,
-                              syncOptions,
-                              ...(rootPageId === undefined ? {} : { rootPageId }),
-                            }).pipe(Effect.map((result): unknown => result))
-                          : syncTree({
-                              root: source,
-                              ...(rootPageId === undefined ? {} : { rootPageId }),
-                            }).pipe(Effect.map((result): unknown => result))
+                        : // one tree engine, both directions: default local-authoritative,
+                          // `--from-remote` mirrors Notion into the same layout + index.
+                          syncTree({
+                            root: source,
+                            fromRemote,
+                            pushOptions: { ...syncOptions, path: source } satisfies PushOptions,
+                            ...(rootPageId === undefined ? {} : { rootPageId }),
+                            ...(Option.isSome(rootFile) === true
+                              ? { rootFile: rootFile.value }
+                              : {}),
+                          }).pipe(Effect.map((result): unknown => result))
                       : singleFile.pipe(
                           Effect.flatMap((isSingleFile) =>
                             isSingleFile === true
-                              ? syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
-                                  Effect.map((result): unknown => result),
+                              ? assertNotTreeMember({
+                                  path: targets[0] ?? '',
+                                  allowReadOnly: false,
+                                }).pipe(
+                                  Effect.zipRight(
+                                    syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
+                                      Effect.map((result): unknown => result),
+                                    ),
+                                  ),
                                 )
                               : syncMany({
                                   ...syncOptions,

@@ -3,12 +3,13 @@ import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
-import { compactNotionUuid, type NmdFrontmatterV2 } from '@overeng/notion-effect-client'
+import type { NmdFrontmatterV2 } from '@overeng/notion-effect-client'
 import { titleSlug } from '@overeng/utils'
 
+import { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
-import { sha256Digest } from './hash.ts'
+import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { NotionMdGateway, type RemotePageSnapshot } from './model.ts'
 import {
   NmdStateStore,
@@ -16,6 +17,16 @@ import {
   writeBaseSnapshot,
   writeSyncState,
 } from './state-store.ts'
+import {
+  buildTreeNodeLocalState,
+  pullPage,
+  pushGuarded,
+  statusPage,
+  treeNodePersist,
+  type PushOptions,
+} from './sync.ts'
+
+export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
 
 /**
  * Unified directory-tree ↔ Notion-subtree reconcile.
@@ -23,40 +34,47 @@ import {
  * The local directory tree is the source of truth for hierarchy: each `.nmd`
  * file is a page, directory nesting is page nesting. Binding/identity lives IN
  * the file (frontmatter `page_id`); an unbound file (`page_id: null`) is a
- * to-be-created page. This folds the proven #745 subtree mechanism into the
- * existing engine's primitives — canonical `parseNmdFile`/`renderNmdFile`, the
- * `NmdStateStore` sidecar baseline, the gateway's create/move/archive verbs —
- * rather than a parallel `subtree.json` subsystem.
+ * to-be-created page.
  *
- * Load-bearing invariants (verified against Notion in #745, kept verbatim):
- *  - the noop/diff oracle is the hash of the last PUSHED body (recorded in the
- *    sidecar sync state), NOT a re-pull — Notion's markdown GET merges
+ * `tree.ts` is a pure ORCHESTRATOR: it computes hierarchy, the slug→id map, and
+ * the composed body per node, then delegates every per-node create/update to
+ * the ONE guarded engine in `sync.ts` (`pushGuarded`). It never issues a blind
+ * `replace_content`; the same 3-way merge, remote-changed conflict
+ * (`.conflict.roughdraft.md`), storage policy, unknown-block guard,
+ * review-markup guard and TOCTOU that protect single-page sync protect every
+ * tree node. There is one reconcile engine, not two.
+ *
+ * Load-bearing invariants (verified against Notion in #745):
+ *  - the noop/diff oracle is the hash of the last PUSHED *composed* body
+ *    (recorded in the sidecar), NOT a re-pull — Notion's markdown GET merges
  *    blockquote-adjacent blocks, so a re-pull is a lying oracle;
  *  - the parent's child index is DERIVED and re-emitted on every parent push
- *    (creating a child auto-appends a `<page>` anchor; `replace_content`
- *    trashes any child whose anchor is absent — the full anchor set must
- *    always be re-emitted);
+ *    (creating a child auto-appends a `<page>` anchor; the guarded push trashes
+ *    any child whose anchor is absent — the full set must always be re-emitted);
  *  - child `<page>` anchors must be blank-line-separated (consecutive ones
  *    merge and trash siblings);
- *  - inline cross-refs must be markdown links `[label](url)` (inline `<page>`
- *    corrupts on Notion's endpoint); only block-level `<page>` (own line) is a
- *    valid child anchor;
+ *  - inline cross-refs are markdown links `[label](url)`; only block-level
+ *    `<page>` (own line) is a valid child anchor;
  *  - a renamed/moved file keeps its page id (rebind / move), never trash+recreate.
  *
  * Hierarchy convention:
- *  - `<root>/index.nmd` is the root page (its parent is read from Notion, not
- *    reconciled — like single-page sync, the parent edge stays remote).
- *  - any other `<dir>/<name>.nmd` is a child of the page anchoring `<dir>`.
- *  - a subdirectory `<dir>/<sub>/` is anchored by `<dir>/<sub>/index.nmd`.
+ *  - the tree root file (`index.nmd` or `README.nmd`, detected, or `--root-file`)
+ *    is the root page (its parent is read from Notion, not reconciled);
+ *  - any other `<dir>/<name>.nmd` is a child of the page anchoring `<dir>`;
+ *  - a subdirectory `<dir>/<sub>/` is anchored by `<dir>/<sub>/<root-file>`.
  */
 
-const ROOT_SLUG = 'index'
 const NMD_EXT = '.nmd'
 
-/** Regenerable path↔id index for a synced tree (not the source of identity). */
+/** Default root-file candidates in priority order, when not explicitly given. */
+const ROOT_FILE_CANDIDATES = ['index.nmd', 'README.nmd'] as const
+
+/** Regenerable path↔id index for a synced tree (NOT the source of identity). */
 const TreeIndex = Schema.Struct({
   version: Schema.Literal(1),
   root_page_id: Schema.String,
+  /** Root-file basename, so a later run reconstructs the same layout. */
+  root_file: Schema.String,
   /** posix relativePath (from root) → page_id; derived from frontmatter each run. */
   pages: Schema.Record({ key: Schema.String, value: Schema.String }),
 }).annotations({ identifier: 'NotionMd.TreeIndex' })
@@ -72,13 +90,14 @@ const decodeTreeIndexJson = Schema.decodeUnknown(Schema.parseJson(TreeIndex), {
 const treeIndexPath = (root: string): string => join(root, '.notion-md', 'workspace.json')
 
 /**
- * Canonical Notion page URL form proven to round-trip through the enhanced
- * Markdown endpoint both as an INLINE link `[label](url)` and as a block-level
- * `<page url>` anchor. Only the `app.notion.com/p/<dashless-id>` form is
- * verified to resolve to a live page link rather than dead `(#)` text.
+ * Sentinel "file path" inside the tree root used for all `.notion-md/` state
+ * operations. The state-store derives the `.notion-md/` directory by stripping
+ * the basename of the path it is given (it was designed for a `.nmd` FILE
+ * path); passing the bare directory would strip the root's own name and place
+ * state in the PARENT. This anchor makes `stateRootPath` resolve to
+ * `<root>/.notion-md/` so all tree sidecars share one root, keyed by page id.
  */
-export const pageUrl = (pageId: string): string =>
-  `https://app.notion.com/p/${compactNotionUuid(pageId)}`
+const treeStateAnchor = (root: string): string => join(root, '.tree')
 
 /** A local source page discovered in the directory tree. */
 interface LocalTreePage {
@@ -96,7 +115,7 @@ interface LocalTreePage {
   readonly parentRelPath: string | undefined
   /** Durable page id bound in frontmatter (`page_id`), or null when unbound. */
   readonly boundPageId: string | null
-  /** Parsed frontmatter, re-rendered (with the real id) on create. */
+  /** Parsed frontmatter (re-rendered with the real id on create). */
   readonly frontmatter: NmdFrontmatterV2
 }
 
@@ -107,12 +126,16 @@ export type TreeOp =
   | { readonly _tag: 'move'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'noop'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'trash'; readonly relPath: string; readonly pageId: string }
+  | { readonly _tag: 'conflict'; readonly relPath: string; readonly pageId: string }
+  | { readonly _tag: 'materialize'; readonly relPath: string; readonly pageId: string }
 
 /** Result envelope for a tree sync (or plan) pass. */
 export interface TreeSyncResult {
   readonly _tag: 'tree'
   readonly root: string
   readonly rootPageId: string
+  readonly rootFile: string
+  readonly direction: 'local' | 'from-remote'
   readonly plan: boolean
   readonly ops: readonly TreeOp[]
 }
@@ -131,13 +154,23 @@ const makeFsError = (opts: {
 
 const toPosix = (value: string): string => value.split('\\').join('/')
 
-/** Slug for a relative path: directory segments + filename stem, joined by `/`. */
-export const slugForRelPath = (relPath: string): string => {
-  const noExt = relPath.slice(0, relPath.length - NMD_EXT.length)
+/** True when `relPath`'s basename is the tree's root-file (an anchor for its dir). */
+const isRootFile = (opts: { readonly relPath: string; readonly rootFile: string }): boolean =>
+  basename(opts.relPath) === opts.rootFile
+
+/**
+ * Slug for a relative path: directory segments + (non-root) filename stem,
+ * joined by `/`. A root-file identifies its containing directory, not itself.
+ */
+export const slugForRelPath = (opts: {
+  readonly relPath: string
+  readonly rootFile: string
+}): string => {
+  const rootStem = basename(opts.rootFile, NMD_EXT)
+  const noExt = opts.relPath.slice(0, opts.relPath.length - NMD_EXT.length)
   const segments = noExt.split('/').filter((segment) => segment.length > 0)
-  // index files identify their containing directory
-  const effective = segments.at(-1) === ROOT_SLUG ? segments.slice(0, -1) : segments
-  if (effective.length === 0) return ROOT_SLUG
+  const effective = segments.at(-1) === rootStem ? segments.slice(0, -1) : segments
+  if (effective.length === 0) return rootStem
   return effective.map(titleSlug).join('/')
 }
 
@@ -149,21 +182,24 @@ const humanizeStem = (stem: string): string =>
     .join(' ')
 
 /** Resolve the parent relPath for a given file relPath under the directory model. */
-export const parentRelPathFor = (relPath: string): string | undefined => {
-  const stem = basename(relPath, NMD_EXT)
-  const dir = dirname(relPath)
+export const parentRelPathFor = (opts: {
+  readonly relPath: string
+  readonly rootFile: string
+}): string | undefined => {
+  const dir = dirname(opts.relPath)
+  const rootAt = (segments: string): string =>
+    segments === '.' ? opts.rootFile : `${segments}/${opts.rootFile}`
 
-  // root index has no parent
-  if (dir === '.' && stem === ROOT_SLUG) return undefined
-
-  if (stem === ROOT_SLUG) {
-    // a sub/index.nmd: parent is the index of the grandparent dir
-    const parentDir = dirname(dir)
-    return parentDir === '.' ? `${ROOT_SLUG}${NMD_EXT}` : `${parentDir}/${ROOT_SLUG}${NMD_EXT}`
+  // the root-file at the tree root has no parent
+  if (dir === '.' && isRootFile({ relPath: opts.relPath, rootFile: opts.rootFile }) === true) {
+    return undefined
   }
-
-  // a normal file: parent is the index of its own directory
-  return dir === '.' ? `${ROOT_SLUG}${NMD_EXT}` : `${dir}/${ROOT_SLUG}${NMD_EXT}`
+  if (isRootFile({ relPath: opts.relPath, rootFile: opts.rootFile }) === true) {
+    // a sub/<root-file>: parent is the root-file of the grandparent dir
+    return rootAt(dirname(dir))
+  }
+  // a normal file: parent is the root-file of its own directory
+  return rootAt(dir)
 }
 
 /** Recursively walk a directory for `.nmd` files (skips dotdirs). */
@@ -191,13 +227,50 @@ const walkNmdFiles = (
     return found
   })
 
+/**
+ * Detect the tree's root-file basename. Honors an explicit choice; otherwise
+ * picks the first existing default candidate at the tree root, or a previously
+ * recorded one. Fails loud if none is found.
+ */
+const detectRootFile = (opts: {
+  readonly root: string
+  readonly explicit: string | undefined
+  readonly previous: TreeIndex | undefined
+}): Effect.Effect<string, NmdError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const exists = (name: string) =>
+      fs
+        .exists(join(opts.root, name))
+        .pipe(Effect.mapError((cause) => makeFsError({ operation: 'exists', path: name, cause })))
+    if (opts.explicit !== undefined) {
+      if ((yield* exists(opts.explicit)) === false) {
+        return yield* new NmdCliError({
+          message: `Tree root ${opts.root} has no root file ${opts.explicit}`,
+        })
+      }
+      return opts.explicit
+    }
+    if (opts.previous !== undefined && (yield* exists(opts.previous.root_file)) === true) {
+      return opts.previous.root_file
+    }
+    for (const candidate of ROOT_FILE_CANDIDATES) {
+      if ((yield* exists(candidate)) === true) return candidate
+    }
+    return yield* new NmdCliError({
+      message: `Tree root ${opts.root} must contain a root file (${ROOT_FILE_CANDIDATES.join(' or ')}), or pass --root-file`,
+    })
+  })
+
 /** Read + parse all local pages, sorted so parents precede children. */
 const scanLocalPages = (opts: {
   readonly root: string
+  readonly rootFile: string
 }): Effect.Effect<readonly LocalTreePage[], NmdError, FileSystem.FileSystem | NmdStateStore> =>
   Effect.gen(function* () {
     const store = yield* NmdStateStore
     const files = yield* walkNmdFiles(opts.root)
+    const rootStem = basename(opts.rootFile, NMD_EXT)
     const pages: LocalTreePage[] = []
     for (const path of files) {
       const relPath = toPosix(relative(opts.root, path))
@@ -210,36 +283,32 @@ const scanLocalPages = (opts: {
         frontmatterTitle.length > 0
           ? frontmatterTitle
           : humanizeStem(
-              stem === ROOT_SLUG && dirStem !== '.' && relPath.includes('/') === true
+              stem === rootStem && dirStem !== '.' && relPath.includes('/') === true
                 ? dirStem
                 : stem,
             )
       pages.push({
         path,
         relPath,
-        slug: slugForRelPath(relPath),
+        slug: slugForRelPath({ relPath, rootFile: opts.rootFile }),
         title: effectiveTitle,
         body: parsed.body,
-        parentRelPath: parentRelPathFor(relPath),
+        parentRelPath: parentRelPathFor({ relPath, rootFile: opts.rootFile }),
         boundPageId: parsed.frontmatter.notion_md.page_id,
         frontmatter: parsed.frontmatter,
       })
     }
     /*
-     * Topological order so every page's parent precedes it:
-     *  - by depth (segments) ascending — a `<dir>/index.nmd` parent of
-     *    `<parentdir>/index.nmd` is shallower;
-     *  - within the same depth, `index.nmd` first — `<dir>/index.nmd` is the
-     *    parent of its same-depth siblings `<dir>/<file>.nmd`, so it must come
-     *    before them (a plain depth sort leaves siblings unordered and a child
-     *    could precede its anchor).
+     * Topological order so every page's parent precedes it: by depth ascending,
+     * and within a depth the root-file first (it anchors its same-depth
+     * siblings), then lexicographic for determinism.
      */
     return pages.slice().toSorted((a, b) => {
       const depthDelta = a.relPath.split('/').length - b.relPath.split('/').length
       if (depthDelta !== 0) return depthDelta
-      const aIndex = basename(a.relPath, NMD_EXT) === ROOT_SLUG ? 0 : 1
-      const bIndex = basename(b.relPath, NMD_EXT) === ROOT_SLUG ? 0 : 1
-      if (aIndex !== bIndex) return aIndex - bIndex
+      const aRoot = isRootFile({ relPath: a.relPath, rootFile: opts.rootFile }) === true ? 0 : 1
+      const bRoot = isRootFile({ relPath: b.relPath, rootFile: opts.rootFile }) === true ? 0 : 1
+      if (aRoot !== bRoot) return aRoot - bRoot
       return a.relPath.localeCompare(b.relPath)
     })
   })
@@ -280,158 +349,63 @@ const writeTreeIndex = (opts: {
   })
 
 /**
- * Resolve `[[slug]]` and `[text](./rel.nmd)` cross-refs to inline Notion page
- * links. Hard-fails on any ref that does not resolve to a known local page
- * with an assigned id. Returns the rewritten body.
- *
- * Factored as a standalone step so it can be lifted into the shared sync spine
- * (the prototype of effect-utils #744's resolver) without dragging the tree
- * engine along.
- */
-/**
- * Validate that every `[[slug]]` / `[..](./rel.nmd)` cross-ref in a page
- * resolves to a known local target. This is the side-effect-free half of
- * `resolveCrossRefs` (no id needed), run up front so a dangling ref fails the
- * whole sync before any remote create/move/trash.
- */
-const validateCrossRefTargets = (opts: {
-  readonly page: LocalTreePage
-  readonly slugToRelPath: ReadonlyMap<string, string>
-  readonly localRelPaths: ReadonlySet<string>
-}): Effect.Effect<void, NmdError> =>
-  Effect.gen(function* () {
-    const body = opts.page.body
-    for (const match of body.matchAll(/\[\[([^\]]+)\]\]/gu)) {
-      const raw = match[1] ?? ''
-      const slug = (raw.includes('|') === true ? (raw.split('|', 2)[0] ?? raw) : raw).trim()
-      if (opts.slugToRelPath.has(slug) === false) {
-        return yield* new NmdCliError({
-          message: `Dangling cross-ref [[${raw}]] in ${opts.page.relPath}: no page with slug "${slug}"`,
-        })
-      }
-    }
-    const pageDir = dirname(opts.page.relPath)
-    for (const match of body.matchAll(/\[([^\]]*)\]\((\.{0,2}\/?[^)\s]+\.nmd)\)/gu)) {
-      const href = match[2] ?? ''
-      const normalizedRel = toPosix(join(pageDir === '.' ? '' : pageDir, href))
-      if (opts.localRelPaths.has(normalizedRel) === false) {
-        return yield* new NmdCliError({
-          message: `Dangling cross-ref [${match[1] ?? ''}](${href}) in ${opts.page.relPath}: no local page at "${normalizedRel}"`,
-        })
-      }
-    }
-  })
-
-export const resolveCrossRefs = (opts: {
-  readonly page: LocalTreePage
-  readonly slugToRelPath: ReadonlyMap<string, string>
-  readonly idForRelPath: ReadonlyMap<string, string>
-}): Effect.Effect<string, NmdError> =>
-  Effect.gen(function* () {
-    const urlFor = (relPath: string): string | undefined => {
-      const id = opts.idForRelPath.get(relPath)
-      return id === undefined ? undefined : pageUrl(id)
-    }
-
-    let body = opts.page.body
-
-    // [[slug]] or [[slug|label]] → [label](url)
-    const wikiRefs = [...body.matchAll(/\[\[([^\]]+)\]\]/gu)]
-    for (const match of wikiRefs) {
-      const raw = match[1] ?? ''
-      const [slug, label] = raw.includes('|') === true ? raw.split('|', 2) : [raw, raw]
-      const targetRel = opts.slugToRelPath.get((slug ?? '').trim())
-      if (targetRel === undefined) {
-        return yield* new NmdCliError({
-          message: `Dangling cross-ref [[${raw}]] in ${opts.page.relPath}: no page with slug "${(slug ?? '').trim()}"`,
-        })
-      }
-      const url = urlFor(targetRel)
-      if (url === undefined) {
-        return yield* new NmdCliError({
-          message: `Cross-ref [[${raw}]] in ${opts.page.relPath} targets ${targetRel} which has no page id yet`,
-        })
-      }
-      body = body.replace(match[0], `[${(label ?? slug ?? '').trim()}](${url})`)
-    }
-
-    // [text](./rel.nmd) or [text](rel.nmd) → [text](url), resolved relative to
-    // the page's own directory then matched against tree relPaths.
-    const pageDir = dirname(opts.page.relPath)
-    const linkRefs = [...body.matchAll(/\[([^\]]*)\]\((\.{0,2}\/?[^)\s]+\.nmd)\)/gu)]
-    for (const match of linkRefs) {
-      const text = match[1] ?? ''
-      const href = match[2] ?? ''
-      const normalizedRel = toPosix(join(pageDir === '.' ? '' : pageDir, href))
-      const url = urlFor(normalizedRel)
-      if (url === undefined) {
-        return yield* new NmdCliError({
-          message: `Dangling cross-ref [${text}](${href}) in ${opts.page.relPath}: no local page at "${normalizedRel}"`,
-        })
-      }
-      body = body.replace(match[0], `[${text}](${url})`)
-    }
-
-    return body
-  })
-
-/**
  * Compose the body to PUSH for a page: resolved cross-refs + DERIVED child
- * index. Re-emits one `<page url>` anchor per ordered child so
- * `replace_content` preserves (rather than trashes) the real child pages.
+ * index. Re-emits one `<page url>` anchor per ordered child (blank-line
+ * separated) so the guarded push preserves (rather than trashes) the children.
  */
 export const composePushBody = (opts: {
   readonly resolvedBody: string
   readonly children: readonly { readonly title: string; readonly pageId: string }[]
 }): string => {
   const trimmed = opts.resolvedBody.replace(/\n+$/u, '')
-  if (opts.children.length === 0) return `${trimmed}\n`
-  /*
-   * Block-level `<page url>` anchors MUST be blank-line-separated. Without the
-   * blank line between them, Notion's enhanced-markdown parser treats the run
-   * of anchors as lazy continuation of a single block and only the first
-   * anchor is recognized as a child-page reference — the remaining children
-   * are then trashed by `replace_content`'s child-deletion guard.
-   */
+  if (opts.children.length === 0) return normalizeMarkdownLineEndings(`${trimmed}\n`)
   const anchors = opts.children
     .map((child) => `<page url="${pageUrl(child.pageId)}">${child.title}</page>`)
     .join('\n\n')
-  return `${trimmed}\n\n${anchors}\n`
+  return normalizeMarkdownLineEndings(`${trimmed}\n\n${anchors}\n`)
 }
 
-/** Normalize a body for stable hashing across canonicalization round-trips. */
-const normalizeForHash = (value: string): string =>
-  value
-    .replace(/\r\n/gu, '\n')
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .join('\n')
-    .replace(/\n{3,}/gu, '\n\n')
-    .trim()
-
-/** Hash of the last-pushed composed body, used as the noop oracle (never re-pulled). */
-const pushBodyHash = (pushBody: string): string => sha256Digest(normalizeForHash(pushBody))
+/** Re-render a file with the real `page_id`/`url` bound in (keeps body + title). */
+const bindFrontmatter = (opts: {
+  readonly frontmatter: NmdFrontmatterV2
+  readonly title: string
+  readonly pageId: string
+  readonly url: string | undefined
+  readonly body: string
+}): string =>
+  renderNmdFile({
+    frontmatter: {
+      notion_md: {
+        ...opts.frontmatter.notion_md,
+        page_id: opts.pageId,
+        ...(opts.url === undefined ? {} : { url: opts.url }),
+        page: { ...opts.frontmatter.notion_md.page, title: opts.title },
+      },
+    },
+    body: opts.body,
+  })
 
 /**
- * Record the pushed-body baseline for a tree page in the canonical sidecar:
- *  - base snapshot = the composed push body (content-addressed object);
- *  - sidecar `body.hash` = hash of that body — the noop oracle for next pass.
- * Both are keyed by the immutable page id, so a renamed file keeps its baseline.
+ * Establish an initial sidecar baseline for a page whose remote body equals
+ * `baselineBody`. Used right after `createPage` (the stub) and when first
+ * materializing a remote page, so the guarded push in pass 2 has a base
+ * snapshot to 3-way merge against.
  */
-const writeTreePushState = (opts: {
-  readonly path: string
+const establishBaseline = (opts: {
+  /** Tree root where the shared `.notion-md/` state lives. */
+  readonly statePath: string
   readonly page: RemotePageSnapshot
-  readonly pushBody: string
+  readonly baselineBody: string
 }): Effect.Effect<void, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
-    const normalized = normalizeForHash(opts.pushBody)
+    const normalized = normalizeMarkdownLineEndings(opts.baselineBody)
     const base = yield* writeBaseSnapshot({
-      path: opts.path,
+      path: opts.statePath,
       pageId: opts.page.id,
       body: normalized,
     })
     yield* writeSyncState({
-      path: opts.path,
+      path: opts.statePath,
       syncState: {
         version: 1,
         page_id: opts.page.id,
@@ -451,50 +425,75 @@ const writeTreePushState = (opts: {
     })
   })
 
-/** Re-render a freshly-created file with the real `page_id`/`url` bound in. */
-const bindFrontmatter = (opts: {
-  readonly page: LocalTreePage
-  readonly pageId: string
-  readonly url: string | undefined
-}): string =>
-  renderNmdFile({
-    frontmatter: {
-      notion_md: {
-        ...opts.page.frontmatter.notion_md,
-        page_id: opts.pageId,
-        ...(opts.url === undefined ? {} : { url: opts.url }),
-        page: { ...opts.page.frontmatter.notion_md.page, title: opts.page.title },
-      },
-    },
-    body: opts.page.body,
+const filePathFor = (opts: { readonly root: string; readonly relPath: string }): string =>
+  resolve(opts.root, opts.relPath)
+
+/** Build the slug→relPath map (fails on a duplicate slug). */
+const buildSlugMap = (
+  pages: readonly LocalTreePage[],
+): Effect.Effect<ReadonlyMap<string, string>, NmdError> =>
+  Effect.gen(function* () {
+    const slugMap = new Map<string, string>()
+    for (const page of pages) {
+      if (slugMap.has(page.slug) === true) {
+        return yield* new NmdCliError({
+          message: `Duplicate page slug "${page.slug}" (${slugMap.get(page.slug)} and ${page.relPath})`,
+        })
+      }
+      slugMap.set(page.slug, page.relPath)
+    }
+    return slugMap
   })
 
+/** ordered children per parent relPath, from the resolved id map. */
+const childrenByParent = (opts: {
+  readonly pages: readonly LocalTreePage[]
+  readonly idForRelPath: ReadonlyMap<string, string>
+}): Map<string, { readonly title: string; readonly pageId: string }[]> => {
+  const childrenOf = new Map<string, { readonly title: string; readonly pageId: string }[]>()
+  for (const page of opts.pages) {
+    const parentRel = page.parentRelPath
+    if (parentRel === undefined) continue
+    const id = opts.idForRelPath.get(page.relPath)
+    if (id === undefined) continue
+    const list = childrenOf.get(parentRel) ?? []
+    list.push({ title: page.title, pageId: id })
+    childrenOf.set(parentRel, list)
+  }
+  return childrenOf
+}
+
 /**
- * Reconcile a local directory tree against a Notion subtree.
+ * Reconcile a local directory tree against a Notion subtree (local-authoritative).
  *
- * When `plan` is true, computes the create/update/move/trash/noop diff WITHOUT
- * applying anything (dry run). Otherwise applies it in two passes:
- *  (1) create every unbound page (parent-before-child) to obtain ids;
- *  (2) resolve cross-refs against the now-complete id map and push every body
- *      (with derived child anchors). Then trash index pages with no local file.
+ * `plan` true → dry-run diff, nothing applied. Otherwise:
+ *  (1) create unbound pages (parent-before-child); each create writes its id
+ *      back to the file AND establishes an initial sidecar immediately (a crash
+ *      mid-run never leaves a created page unbound → no duplicate on re-run);
+ *  (2) for every node, compose the body (cross-refs + derived child anchors)
+ *      and route it through the ONE guarded engine (`pushGuarded`) — full merge,
+ *      conflict, storage, unknown-block, review-markup, TOCTOU. Then guarded-trash
+ *      index pages with no local file.
  */
-export const syncTree = (opts: {
+const syncTreeLocal = (opts: {
   readonly root: string
-  readonly rootPageId?: string
-  readonly plan?: boolean
+  readonly rootFile: string
+  readonly rootPageId: string
+  readonly pages: readonly LocalTreePage[]
+  readonly previous: TreeIndex | undefined
+  readonly plan: boolean
+  readonly pushOptions: PushOptions
 }): Effect.Effect<
-  TreeSyncResult,
+  readonly TreeOp[],
   NmdError,
   FileSystem.FileSystem | NotionMdGateway | NmdStateStore
 > =>
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
-    const root = resolve(opts.root)
-    const plan = opts.plan === true
-    const previous = yield* readTreeIndexOptional(root)
-
-    const pages = yield* scanLocalPages({ root })
-    const rootRel = `${ROOT_SLUG}${NMD_EXT}`
+    const store = yield* NmdStateStore
+    const { root, rootFile, rootPageId, pages, previous, plan } = opts
+    const stateAnchor = treeStateAnchor(root)
+    const rootRel = rootFile
     const rootPage = pages.find((page) => page.relPath === rootRel)
     if (rootPage === undefined) {
       return yield* new NmdCliError({
@@ -502,73 +501,31 @@ export const syncTree = (opts: {
       })
     }
 
-    const rootPageId =
-      opts.rootPageId ?? rootPage.boundPageId ?? previous?.root_page_id ?? undefined
-    if (rootPageId === undefined) {
-      return yield* new NmdCliError({
-        message: `No Notion root configured for tree ${root}; bind ${rootRel} or pass --root on first sync`,
-      })
-    }
-
-    const slugToRelPath = new Map<string, string>()
-    for (const page of pages) {
-      if (slugToRelPath.has(page.slug) === true) {
-        return yield* new NmdCliError({
-          message: `Duplicate page slug "${page.slug}" (${slugToRelPath.get(page.slug)} and ${page.relPath})`,
-        })
-      }
-      slugToRelPath.set(page.slug, page.relPath)
-    }
+    const slugMap = yield* buildSlugMap(pages)
+    const relPaths = new Set(pages.map((page) => page.relPath))
 
     /*
-     * Fail CLOSED on a dangling cross-ref BEFORE any remote mutation. Dangling
-     * is a property of the local target set (slug / relPath), independent of
-     * whether the target has a Notion id yet — so it can be fully validated up
-     * front. Resolving lazily in pass 2 would leave pass-1 creates/moves
-     * already applied when a dangling ref aborts the run; validating here keeps
-     * the trash-capable engine's "nothing pushed on a dangling ref" promise.
+     * Fail CLOSED on a dangling cross-ref BEFORE any remote mutation — dangling
+     * is a property of the local target set, independent of assigned ids.
      */
-    const localRelPathSet = new Set(pages.map((page) => page.relPath))
     for (const page of pages) {
-      yield* validateCrossRefTargets({ page, slugToRelPath, localRelPaths: localRelPathSet })
+      yield* validateCrossRefTargets({ body: page.body, relPath: page.relPath, slugMap, relPaths })
     }
 
-    /*
-     * Identity is read from frontmatter `page_id` (durable, survives renames /
-     * `git mv`). The tree index is only a regenerable path→id hint used to
-     * recover a moved page's previous body hash and to detect deletions.
-     */
     const idForRelPath = new Map<string, string>([[rootRel, rootPageId]])
     for (const page of pages) {
-      if (page.boundPageId === null) continue
-      idForRelPath.set(page.relPath, page.boundPageId)
+      if (page.boundPageId !== null) idForRelPath.set(page.relPath, page.boundPageId)
     }
 
     const ops: TreeOp[] = []
-    // freshly-created files whose real id must be written back into the file.
-    const needsWriteback = new Map<
-      string,
-      { readonly pageId: string; readonly url: string | undefined }
-    >()
-    // RemotePageSnapshot captured at create/move/update time, keyed by relPath,
-    // so the pushed-body baseline can be recorded without a re-pull.
-    const snapshotForRelPath = new Map<string, RemotePageSnapshot>()
-    const localRelPaths = new Set(pages.map((page) => page.relPath))
+    const createdRelPaths = new Set<string>()
 
-    // PASS 1 — create unbound pages (parent-before-child); move bound pages
-    // whose Notion parent differs from the local parent. (root never moves.)
+    // PASS 1 — create unbound pages; move bound pages whose Notion parent differs.
     for (const page of pages) {
       const parentRel = page.parentRelPath ?? rootRel
       const parentId = idForRelPath.get(parentRel)
       if (parentId === undefined) {
-        /*
-         * In a real sync the parent always has an id by now (parents precede
-         * children in scan order and were just created). In `plan` mode pending
-         * creates have no id yet, so a missing parent id is fine as long as the
-         * parent is itself a local page that will be created; only a parent that
-         * does not exist locally at all is a genuinely orphaned tree.
-         */
-        if (plan === true && localRelPaths.has(parentRel) === true) {
+        if (plan === true && relPaths.has(parentRel) === true) {
           ops.push({ _tag: 'create', relPath: page.relPath, title: page.title })
           continue
         }
@@ -583,8 +540,7 @@ export const syncTree = (opts: {
           const remoteParent =
             remote.page.parent.type === 'page_id' ? remote.page.parent.page_id : undefined
           if (remoteParent !== undefined && remoteParent !== parentId) {
-            const moved = yield* gateway.movePage({ pageId: existingId, parentPageId: parentId })
-            snapshotForRelPath.set(page.relPath, moved)
+            yield* gateway.movePage({ pageId: existingId, parentPageId: parentId })
             ops.push({ _tag: 'move', relPath: page.relPath, pageId: existingId })
           }
         }
@@ -594,106 +550,167 @@ export const syncTree = (opts: {
         ops.push({ _tag: 'create', relPath: page.relPath, title: page.title })
         continue
       }
-      // create with a stub body first; pass 2 pushes the resolved body so
-      // cross-refs (which may point at other freshly-created pages) resolve.
       const created = yield* gateway.createPage({
         parentPageId: parentId,
         title: page.title,
         markdown: `# ${page.title}\n`,
       })
       idForRelPath.set(page.relPath, created.id)
-      snapshotForRelPath.set(page.relPath, created)
-      needsWriteback.set(page.relPath, { pageId: created.id, url: created.url })
+      createdRelPaths.add(page.relPath)
+      /*
+       * Write the real id back + establish the initial sidecar IMMEDIATELY, so
+       * a crash before pass 2 leaves the file bound (re-run finds it bound, no
+       * duplicate create). Baseline = the stub markdown we just created.
+       */
+      yield* store.writeNmdFile({
+        path: page.path,
+        content: bindFrontmatter({
+          frontmatter: page.frontmatter,
+          title: page.title,
+          pageId: created.id,
+          url: created.url,
+          body: page.body,
+        }),
+      })
+      yield* establishBaseline({
+        statePath: stateAnchor,
+        page: created,
+        baselineBody: `# ${page.title}\n`,
+      })
       ops.push({ _tag: 'create', relPath: page.relPath, title: page.title })
     }
 
     if (plan === true) {
-      // children map for noop classification (without ids for unbound pages).
-      yield* classifyPlan({ pages, rootRel, idForRelPath, slugToRelPath, ops })
-      // trash detection: index pages whose id no longer maps to a local file.
+      yield* classifyPlan({ root, pages, idForRelPath, slugMap, ops })
       const liveIds = new Set(idForRelPath.values())
       for (const [relPath, pageId] of Object.entries(previous?.pages ?? {})) {
         if (liveIds.has(pageId) === false) ops.push({ _tag: 'trash', relPath, pageId })
       }
-      return { _tag: 'tree', root, rootPageId, plan: true, ops } as const
+      return ops
     }
 
-    /*
-     * Bind the root id back into `index.nmd` too when it was supplied out of
-     * band (`--root` / a regenerable index) rather than in the file. Identity
-     * must live IN the file for fresh-clone durability — a clone without the
-     * `.notion-md/` index must still know the root page.
-     */
+    // bind the root id back into the root file when supplied out of band.
     if (rootPage.boundPageId === null) {
-      needsWriteback.set(rootRel, { pageId: rootPageId, url: undefined })
-    }
-
-    // write the real id back into freshly-created files via the canonical renderer.
-    const store = yield* NmdStateStore
-    for (const [relPath, binding] of needsWriteback) {
-      const page = pages.find((candidate) => candidate.relPath === relPath)
-      if (page === undefined) continue
       yield* store.writeNmdFile({
-        path: page.path,
-        content: bindFrontmatter({ page, pageId: binding.pageId, url: binding.url }),
+        path: rootPage.path,
+        content: bindFrontmatter({
+          frontmatter: rootPage.frontmatter,
+          title: rootPage.title,
+          pageId: rootPageId,
+          url: undefined,
+          body: rootPage.body,
+        }),
       })
+      const rootRemote = yield* gateway.pullPage({ pageId: rootPageId })
+      const hasBaseline =
+        (yield* readSyncStateOptional({ path: stateAnchor, pageId: rootPageId })) !== undefined
+      if (hasBaseline === false) {
+        yield* establishBaseline({
+          statePath: stateAnchor,
+          page: rootRemote.page,
+          baselineBody: rootRemote.markdown.markdown,
+        })
+      }
     }
 
-    // children map: parentRel → ordered [{title,pageId}]
-    const childrenOf = new Map<string, { readonly title: string; readonly pageId: string }[]>()
-    for (const page of pages) {
-      const parentRel = page.parentRelPath
-      if (parentRel === undefined) continue
-      const id = idForRelPath.get(page.relPath)
-      if (id === undefined) continue
-      const list = childrenOf.get(parentRel) ?? []
-      list.push({ title: page.title, pageId: id })
-      childrenOf.set(parentRel, list)
-    }
+    const childrenOf = childrenByParent({ pages, idForRelPath })
 
-    // PASS 2 — push resolved bodies (with derived child anchors) for every page.
+    // PASS 2 — compose each node's body and push it through the GUARDED engine.
     for (const page of pages) {
       const pageId = idForRelPath.get(page.relPath)
       if (pageId === undefined) continue
-      const resolvedBody = yield* resolveCrossRefs({ page, slugToRelPath, idForRelPath })
-      const pushBody = composePushBody({
+      const resolvedBody = yield* resolveCrossRefs({
+        body: page.body,
+        relPath: page.relPath,
+        slugMap,
+        idMap: idForRelPath,
+      })
+      const composedBody = composePushBody({
         resolvedBody,
         children: childrenOf.get(page.relPath) ?? [],
       })
-      const bodyHash = pushBodyHash(pushBody)
-      const wasCreated = ops.some((op) => op._tag === 'create' && op.relPath === page.relPath)
-      const path = filePathFor({ root, page })
-
-      if (wasCreated === false) {
-        // noop oracle: compare against the last-pushed body hash in the sidecar.
-        const prevState = yield* readSyncStateOptional({ path, pageId })
-        if (prevState !== undefined && prevState.body.hash === bodyHash) {
-          ops.push({ _tag: 'noop', relPath: page.relPath, pageId })
-          continue
+      const path = filePathFor({ root, relPath: page.relPath })
+      const remoteForStatus = yield* gateway.pullPage({ pageId })
+      /*
+       * Self-heal a missing baseline (fresh clone without `.notion-md/`, or a
+       * root bound only in the file): establish it from the live remote body
+       * so the guarded merge has a base. Keyed by page id at the tree root.
+       */
+      let syncState = yield* readSyncStateOptional({ path: stateAnchor, pageId })
+      if (syncState === undefined) {
+        yield* establishBaseline({
+          statePath: stateAnchor,
+          page: remoteForStatus.page,
+          baselineBody: remoteForStatus.markdown.markdown,
+        })
+        syncState = yield* readSyncStateOptional({ path: stateAnchor, pageId })
+        if (syncState === undefined) {
+          return yield* new NmdCliError({
+            message: `Failed to establish baseline for ${page.relPath} (page ${pageId})`,
+          })
         }
       }
-
-      const updated = yield* gateway.updateMarkdown({
+      /*
+       * The node's bound frontmatter (real id/url + local title). The file may
+       * already carry this from a pass-1 writeback, but the original scanned
+       * frontmatter is unbound — so persist must write the BOUND one or it would
+       * clobber the just-bound id back to null.
+       */
+      const boundFrontmatter: NmdFrontmatterV2 = {
+        notion_md: {
+          ...page.frontmatter.notion_md,
+          page_id: pageId,
+          ...(remoteForStatus.page.url === undefined ? {} : { url: remoteForStatus.page.url }),
+          page: { ...page.frontmatter.notion_md.page, title: page.title },
+        },
+      }
+      const local = buildTreeNodeLocalState({
+        path,
+        statePath: stateAnchor,
         pageId,
-        command: { _tag: 'replace_content', markdown: pushBody },
-        // child anchors are always re-emitted, so deleting content is safe:
-        // the only blocks replace_content removes are stale anchors / old body.
-        allowDeletingContent: true,
+        frontmatter: boundFrontmatter,
+        bareBody: page.body,
+        composedBody,
+        syncState,
       })
-      const snapshot =
-        snapshotForRelPath.get(page.relPath) ?? (yield* gateway.pullPage({ pageId })).page
-      yield* writeTreePushState({ path, page: snapshot, pushBody })
-      void updated
-      if (wasCreated === false) {
+      /*
+       * Route the composed body through the ONE guarded engine. A remote-edit
+       * conflict writes `.conflict.roughdraft.md` and surfaces here as
+       * `NmdConflictError`; we record a `conflict` op and continue reconciling
+       * the rest of the tree rather than clobbering or aborting the whole run.
+       */
+      const pushed = yield* pushGuarded({
+        local,
+        remoteForStatus,
+        options: { ...opts.pushOptions, path },
+        persist: treeNodePersist({
+          path,
+          statePath: stateAnchor,
+          frontmatter: boundFrontmatter,
+          bareBody: page.body,
+          expectedFileBodyHash: sha256Digest(page.body),
+        }),
+      }).pipe(
+        Effect.map((result) => ({ ok: true as const, result })),
+        Effect.catchTag('NmdConflictError', (error) =>
+          Effect.as(
+            Effect.logWarning(`notion-md tree conflict on ${page.relPath}: ${error.message}`),
+            { ok: false as const },
+          ),
+        ),
+      )
+      if (pushed.ok === false) {
+        ops.push({ _tag: 'conflict', relPath: page.relPath, pageId })
+      } else if (createdRelPaths.has(page.relPath) === true) {
+        // create already recorded in pass 1
+      } else if (pushed.result.pushed === true) {
         ops.push({ _tag: 'update', relPath: page.relPath, pageId })
+      } else {
+        ops.push({ _tag: 'noop', relPath: page.relPath, pageId })
       }
     }
 
-    /*
-     * RECONCILE — trash index pages whose page id no longer maps to any local
-     * file (guarded). Keyed by page_id, so a renamed file (same id, new path)
-     * is NOT mistaken for a deletion.
-     */
+    // RECONCILE — guarded-trash index pages whose id no longer maps to a file.
     const liveIds = new Set(
       pages
         .map((page) => idForRelPath.get(page.relPath))
@@ -701,12 +718,6 @@ export const syncTree = (opts: {
     )
     for (const [relPath, pageId] of Object.entries(previous?.pages ?? {})) {
       if (liveIds.has(pageId) === true) continue
-      /*
-       * The page may already be in trash: re-pushing the parent body omits a
-       * deleted child's `<page>` anchor, and `replace_content` trashes it as a
-       * side effect. Skip the explicit archive in that case so the guarded
-       * deletion stays idempotent rather than failing on an archived block.
-       */
       const remote = yield* gateway.pullPage({ pageId })
       if (remote.page.in_trash === false) {
         yield* gateway.archivePage({ pageId })
@@ -723,68 +734,249 @@ export const syncTree = (opts: {
     }
     yield* writeTreeIndex({
       root,
-      index: { version: 1, root_page_id: rootPageId, pages: indexPages },
+      index: { version: 1, root_page_id: rootPageId, root_file: rootFile, pages: indexPages },
     })
 
-    return { _tag: 'tree', root, rootPageId, plan: false, ops } as const
-  }).pipe(
-    Effect.withSpan('notion-md.sync-tree', {
-      attributes: {
-        'span.label': basename(opts.root),
-        'notion_md.tree.plan': opts.plan === true,
-      },
-    }),
-  )
-
-/** Absolute `.nmd` file path for a page under the tree root. */
-const filePathFor = (opts: { readonly root: string; readonly page: LocalTreePage }): string =>
-  resolve(opts.root, opts.page.relPath)
+    return ops
+  })
 
 /**
- * Classify create/update/noop ops for a dry-run plan. For unbound pages the
- * id is unknown (would be assigned on apply), so cross-refs cannot be resolved;
- * a bound page is `update` unless its composed push body matches the sidecar.
+ * Classify create/update/noop for a dry-run plan. Unbound pages are already
+ * recorded as create in pass 1; a bound page is `update` unless its composed
+ * body matches the recorded baseline (the noop oracle).
  */
 const classifyPlan = (opts: {
+  readonly root: string
   readonly pages: readonly LocalTreePage[]
-  readonly rootRel: string
   readonly idForRelPath: ReadonlyMap<string, string>
-  readonly slugToRelPath: ReadonlyMap<string, string>
+  readonly slugMap: ReadonlyMap<string, string>
   readonly ops: TreeOp[]
 }): Effect.Effect<void, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
-    const childrenOf = new Map<string, { readonly title: string; readonly pageId: string }[]>()
-    for (const page of opts.pages) {
-      const parentRel = page.parentRelPath
-      if (parentRel === undefined) continue
-      const id = opts.idForRelPath.get(page.relPath)
-      if (id === undefined) continue
-      const list = childrenOf.get(parentRel) ?? []
-      list.push({ title: page.title, pageId: id })
-      childrenOf.set(parentRel, list)
-    }
+    const childrenOf = childrenByParent({ pages: opts.pages, idForRelPath: opts.idForRelPath })
     for (const page of opts.pages) {
       const pageId = opts.idForRelPath.get(page.relPath)
-      // unbound → already recorded as create in pass 1; skip.
       if (pageId === undefined) continue
       if (opts.ops.some((op) => op.relPath === page.relPath && op._tag === 'move') === true)
         continue
       const resolved = yield* resolveCrossRefs({
-        page,
-        slugToRelPath: opts.slugToRelPath,
-        idForRelPath: opts.idForRelPath,
+        body: page.body,
+        relPath: page.relPath,
+        slugMap: opts.slugMap,
+        idMap: opts.idForRelPath,
       }).pipe(Effect.orElseSucceed(() => page.body))
-      const pushBody = composePushBody({
+      const composed = composePushBody({
         resolvedBody: resolved,
         children: childrenOf.get(page.relPath) ?? [],
       })
-      const bodyHash = pushBodyHash(pushBody)
-      const path = resolve(page.path)
-      const prevState = yield* readSyncStateOptional({ path, pageId })
-      if (prevState !== undefined && prevState.body.hash === bodyHash) {
+      const prevState = yield* readSyncStateOptional({ path: opts.root, pageId })
+      if (prevState !== undefined && prevState.body.hash === sha256Digest(composed)) {
         opts.ops.push({ _tag: 'noop', relPath: page.relPath, pageId })
       } else {
         opts.ops.push({ _tag: 'update', relPath: page.relPath, pageId })
       }
     }
   })
+
+/** A remote page discovered while walking a Notion subtree top-down. */
+interface RemoteTreeNode {
+  readonly pageId: string
+  readonly title: string
+  /** posix relPath in the materialized layout (`<dir>/<root-file>` for anchors). */
+  readonly relPath: string
+  readonly parentPageId: string | undefined
+}
+
+/** Walk the remote Notion subtree under `rootPageId` into materialize relPaths. */
+const buildRemoteTree = (opts: {
+  readonly rootPageId: string
+  readonly rootFile: string
+}): Effect.Effect<readonly RemoteTreeNode[], NmdError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    const gateway = yield* NotionMdGateway
+    const root = yield* gateway.pullPage({ pageId: opts.rootPageId })
+    const nodes: RemoteTreeNode[] = [
+      {
+        pageId: opts.rootPageId,
+        title: root.page.title,
+        relPath: opts.rootFile,
+        parentPageId: undefined,
+      },
+    ]
+    const usedDirs = new Set<string>()
+    const visit = (visitOpts: {
+      readonly pageId: string
+      readonly parentDir: string
+    }): Effect.Effect<void, NmdError, NotionMdGateway> =>
+      Effect.gen(function* () {
+        const children = yield* gateway.listChildPages({ pageId: visitOpts.pageId })
+        for (const child of children) {
+          const slug = titleSlug(child.title)
+          // Each child becomes `<dir>/<slug>.nmd`; if it has its own children we
+          // anchor it as `<dir>/<slug>/<root-file>` so the subtree nests.
+          const grandchildren = yield* gateway.listChildPages({ pageId: child.pageId })
+          const baseDir = visitOpts.parentDir === '' ? '' : `${visitOpts.parentDir}/`
+          if (grandchildren.length > 0) {
+            const subDir = `${baseDir}${slug}`
+            usedDirs.add(subDir)
+            nodes.push({
+              pageId: child.pageId,
+              title: child.title,
+              relPath: `${subDir}/${opts.rootFile}`,
+              parentPageId: visitOpts.pageId,
+            })
+            yield* visit({ pageId: child.pageId, parentDir: subDir })
+          } else {
+            nodes.push({
+              pageId: child.pageId,
+              title: child.title,
+              relPath: `${baseDir}${slug}.nmd`,
+              parentPageId: visitOpts.pageId,
+            })
+          }
+        }
+      })
+    yield* visit({ pageId: opts.rootPageId, parentDir: '' })
+    return nodes
+  })
+
+/**
+ * Pull/mirror direction within the ONE tree engine: walk the remote subtree and
+ * materialize/reconcile each page into the SAME `<root-file>` / `<dir>/<root-file>`
+ * layout and the SAME index file the forward path uses, so pull→edit→push
+ * round-trips. Missing files are materialized; existing ones are reconciled via
+ * the single-page guarded `statusPage`/`pullPage` (remote-authoritative pull).
+ */
+const syncTreeFromRemote = (opts: {
+  readonly root: string
+  readonly rootFile: string
+  readonly rootPageId: string
+  readonly plan: boolean
+}): Effect.Effect<
+  readonly TreeOp[],
+  NmdError,
+  FileSystem.FileSystem | NotionMdGateway | NmdStateStore
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const { root, rootFile, rootPageId, plan } = opts
+    yield* fs
+      .makeDirectory(root, { recursive: true })
+      .pipe(Effect.mapError((cause) => makeFsError({ operation: 'mkdir', path: root, cause })))
+
+    const remoteNodes = yield* buildRemoteTree({ rootPageId, rootFile })
+    const ops: TreeOp[] = []
+    const indexPages: Record<string, string> = {}
+
+    for (const node of remoteNodes) {
+      const path = filePathFor({ root, relPath: node.relPath })
+      if (node.relPath !== rootFile) indexPages[node.relPath] = node.pageId
+      const exists = yield* fs
+        .exists(path)
+        .pipe(Effect.mapError((cause) => makeFsError({ operation: 'exists', path, cause })))
+      if (plan === true) {
+        ops.push(
+          exists === true
+            ? { _tag: 'update', relPath: node.relPath, pageId: node.pageId }
+            : { _tag: 'materialize', relPath: node.relPath, pageId: node.pageId },
+        )
+        continue
+      }
+      yield* fs
+        .makeDirectory(dirname(path), { recursive: true })
+        .pipe(Effect.mapError((cause) => makeFsError({ operation: 'mkdir', path, cause })))
+      if (exists === true) {
+        const status = yield* statusPage({ path })
+        if (status.remoteChanged === true) {
+          yield* pullPage({ pageId: node.pageId, outPath: path })
+          ops.push({ _tag: 'update', relPath: node.relPath, pageId: node.pageId })
+        } else {
+          ops.push({ _tag: 'noop', relPath: node.relPath, pageId: node.pageId })
+        }
+      } else {
+        yield* pullPage({ pageId: node.pageId, outPath: path })
+        ops.push({ _tag: 'materialize', relPath: node.relPath, pageId: node.pageId })
+      }
+    }
+
+    if (plan === false) {
+      yield* writeTreeIndex({
+        root,
+        index: { version: 1, root_page_id: rootPageId, root_file: rootFile, pages: indexPages },
+      })
+    }
+    return ops
+  })
+
+/**
+ * Reconcile a directory tree against a Notion subtree. Forward (local-as-desired)
+ * by default; `fromRemote` mirrors Notion into the same layout/index. Both
+ * directions are this one engine — there is no separate workspace materializer.
+ */
+export const syncTree = (opts: {
+  readonly root: string
+  readonly rootPageId?: string
+  readonly rootFile?: string
+  readonly plan?: boolean
+  readonly fromRemote?: boolean
+  readonly pushOptions?: PushOptions
+}): Effect.Effect<
+  TreeSyncResult,
+  NmdError,
+  FileSystem.FileSystem | NotionMdGateway | NmdStateStore
+> =>
+  Effect.gen(function* () {
+    const root = resolve(opts.root)
+    const plan = opts.plan === true
+    const fromRemote = opts.fromRemote === true
+    const previous = yield* readTreeIndexOptional(root)
+
+    if (fromRemote === true) {
+      const rootFile = opts.rootFile ?? previous?.root_file ?? ROOT_FILE_CANDIDATES[0]
+      const rootPageId = opts.rootPageId ?? previous?.root_page_id
+      if (rootPageId === undefined) {
+        return yield* new NmdCliError({
+          message: `--from-remote needs a Notion root page id; pass --root on first mirror`,
+        })
+      }
+      const ops = yield* syncTreeFromRemote({ root, rootFile, rootPageId, plan })
+      return {
+        _tag: 'tree',
+        root,
+        rootPageId,
+        rootFile,
+        direction: 'from-remote',
+        plan,
+        ops,
+      } as const
+    }
+
+    const rootFile = yield* detectRootFile({ root, explicit: opts.rootFile, previous })
+    const pages = yield* scanLocalPages({ root, rootFile })
+    const rootPage = pages.find((page) => page.relPath === rootFile)
+    const rootPageId =
+      opts.rootPageId ?? rootPage?.boundPageId ?? previous?.root_page_id ?? undefined
+    if (rootPageId === undefined) {
+      return yield* new NmdCliError({
+        message: `No Notion root configured for tree ${root}; bind ${rootFile} or pass --root on first sync`,
+      })
+    }
+    const ops = yield* syncTreeLocal({
+      root,
+      rootFile,
+      rootPageId,
+      pages,
+      previous,
+      plan,
+      pushOptions: opts.pushOptions ?? { path: root },
+    })
+    return { _tag: 'tree', root, rootPageId, rootFile, direction: 'local', plan, ops } as const
+  }).pipe(
+    Effect.withSpan('notion-md.sync-tree', {
+      attributes: {
+        'span.label': basename(opts.root),
+        'notion_md.tree.plan': opts.plan === true,
+        'notion_md.tree.from_remote': opts.fromRemote === true,
+      },
+    }),
+  )
