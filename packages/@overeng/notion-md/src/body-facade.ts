@@ -2,7 +2,7 @@ import { Effect, Schema } from 'effect'
 
 import type { Sha256Digest } from '@overeng/notion-effect-client'
 
-import type { NmdError } from './errors.ts'
+import { NmdFrontmatterError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { NotionMdGateway } from './model.ts'
@@ -81,9 +81,16 @@ export const readLocalBody = (opts: {
     const store = yield* NmdStateStore
     const content = yield* store.readNmdFile({ path: opts.path })
     const parsed = yield* parseNmdFile({ path: opts.path, content })
+    const pageId = parsed.frontmatter.notion_md.page_id
+    if (pageId === null) {
+      return yield* new NmdFrontmatterError({
+        path: opts.path,
+        message: `.nmd file ${opts.path} is unbound (page_id: null); the body-only facade only operates on bound pages`,
+      })
+    }
     return {
       path: opts.path,
-      pageId: parsed.frontmatter.notion_md.page_id,
+      pageId,
       markdown: parsed.body,
       bodyHash: sha256Digest(parsed.body),
       fileContentHash: sha256Digest(content),

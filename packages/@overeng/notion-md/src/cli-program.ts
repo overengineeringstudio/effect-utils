@@ -20,13 +20,9 @@ import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { statusPage, syncPage, type SyncOptions } from './sync.ts'
+import { syncTree } from './tree.ts'
 import { NOTION_MD_VERSION } from './version.ts'
-import {
-  isManagedWorkspace,
-  statusWorkspace,
-  syncRemoteToTarget,
-  syncWorkspace,
-} from './workspace.ts'
+import { syncRemoteToTarget, syncWorkspace } from './workspace.ts'
 
 const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
   identifier: 'NotionMd.Cli.NonEmptyText',
@@ -89,6 +85,20 @@ const concurrencyOption = Options.integer('concurrency').pipe(
   Options.withDescription('Maximum number of .nmd files to reconcile concurrently'),
   Options.withDefault(4),
   Options.withSchema(PositiveInteger),
+)
+
+const rootPageOption = Options.text('root').pipe(
+  Options.withDescription(
+    'Notion root page id/url to bind a directory tree to on first sync (unbound index.nmd)',
+  ),
+  Options.optional,
+)
+
+const fromRemoteOption = Options.boolean('from-remote').pipe(
+  Options.withDescription(
+    'Mirror direction: materialize/refresh local files from Notion instead of pushing local-as-desired (default is local-authoritative IaC)',
+  ),
+  Options.withDefault(false),
 )
 
 const pushSafetyOptions = {
@@ -301,6 +311,29 @@ const commandSpan = <A, E, R>(opts: {
     }),
   )
 
+/** Classify a CLI target into file / directory / missing without throwing. */
+const targetKind = (
+  target: string,
+): Effect.Effect<'file' | 'directory' | 'missing', never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const info = yield* fs.stat(target).pipe(Effect.either)
+    if (info._tag === 'Left') return 'missing'
+    return info.right.type === 'Directory' ? 'directory' : 'file'
+  })
+
+const parseRootPage = (
+  root: Option.Option<string>,
+): Effect.Effect<string | undefined, NmdCliError> => {
+  if (Option.isNone(root) === true) return Effect.succeed(undefined)
+  const parsed = parseNotionPageRef(root.value)
+  return parsed === undefined
+    ? Effect.fail(
+        new NmdCliError({ message: `Invalid --root ${root.value}: not a Notion page id/url` }),
+      )
+    : Effect.succeed(parsed)
+}
+
 const statusCommand = Command.make(
   'status',
   {
@@ -313,10 +346,16 @@ const statusCommand = Command.make(
       command: 'status',
       label: targets.length === 1 ? basename(targets[0] ?? 'target') : `${targets.length} targets`,
       effect: withNotion(
-        isManagedWorkspace(targets[0] ?? '').pipe(
-          Effect.flatMap((managedWorkspace) =>
-            managedWorkspace === true && targets.length === 1
-              ? statusWorkspace({ root: targets[0] ?? '' }).pipe(
+        targetKind(targets[0] ?? '').pipe(
+          Effect.flatMap((kind) =>
+            /*
+             * A single directory target reports its tree status as the dry-run
+             * reconcile diff (create/update/move/trash/noop) — the same model
+             * the unified `plan`/`sync` use. A `.nmd` file reports single-page
+             * status; an explicit `--recursive` directory uses the flat batch.
+             */
+            kind === 'directory' && targets.length === 1 && recursive === false
+              ? syncTree({ root: targets[0] ?? '', plan: true }).pipe(
                   Effect.map((result): unknown => result),
                 )
               : isSingleFileTarget({ targets, recursive }).pipe(
@@ -336,6 +375,37 @@ const statusCommand = Command.make(
     }).pipe(Effect.flatMap(logJson)),
 ).pipe(Command.withDescription('Compare local .nmd state with the remote Notion page'))
 
+const planCommand = Command.make(
+  'plan',
+  { target: syncSourceArg, root: rootPageOption },
+  ({ target, root }) =>
+    commandSpan({
+      command: 'plan',
+      label: basename(target),
+      effect: withNotion(
+        parseRootPage(root).pipe(
+          Effect.flatMap((rootPageId) =>
+            targetKind(target).pipe(
+              Effect.flatMap((kind) =>
+                kind === 'directory'
+                  ? syncTree({
+                      root: target,
+                      plan: true,
+                      ...(rootPageId === undefined ? {} : { rootPageId }),
+                    }).pipe(Effect.map((result): unknown => result))
+                  : statusPage({ path: target }).pipe(Effect.map((result): unknown => result)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    }).pipe(Effect.flatMap(logJson)),
+).pipe(
+  Command.withDescription(
+    'Dry-run: print the create/update/move/trash/noop diff for a directory tree (or status for a file) without applying',
+  ),
+)
+
 const syncCommand = Command.make(
   'sync',
   {
@@ -345,14 +415,32 @@ const syncCommand = Command.make(
     pollIntervalMs: pollIntervalMsOption,
     recursive: recursiveOption,
     concurrency: concurrencyOption,
+    root: rootPageOption,
+    fromRemote: fromRemoteOption,
     ...pushSafetyOptions,
   },
-  ({ watch, pollIntervalMs, source, target, recursive, concurrency, ...syncOptions }) => {
+  ({
+    watch,
+    pollIntervalMs,
+    source,
+    target,
+    recursive,
+    concurrency,
+    root,
+    fromRemote,
+    ...syncOptions
+  }) => {
     const targets = [source]
     const label =
       targets.length === 1 ? basename(targets[0] ?? 'target') : `${targets.length} targets`
     const singleFile = isSingleFileTarget({ targets, recursive })
 
+    /*
+     * Legacy two-arg establish: `sync <page-id|url> <local-target>` materializes
+     * a local file (or, with `--from-remote` semantics, a remote-authoritative
+     * directory) from Notion. The unified single-arg form below subsumes the
+     * steady-state cases; this branch keeps first-establish ergonomic.
+     */
     if (Option.isSome(target) === true) {
       const pageId = parseNotionPageRef(source)
       if (pageId === undefined) {
@@ -383,13 +471,13 @@ const syncCommand = Command.make(
 
     return watch === true
       ? withNotion(
-          isManagedWorkspace(source).pipe(
-            Effect.flatMap((managedWorkspace) =>
-              managedWorkspace === true
+          targetKind(source).pipe(
+            Effect.flatMap((kind) =>
+              kind === 'directory'
                 ? Effect.fail(
                     new NmdCliError({
                       message:
-                        'Managed workspace watch is not implemented yet. Run `notion-md sync <workspace>` periodically, or watch specific .nmd files.',
+                        'Directory tree watch is not implemented yet. Run `notion-md sync <dir>` periodically, or watch specific .nmd files.',
                     }),
                   )
                 : singleFile.pipe(
@@ -427,23 +515,44 @@ const syncCommand = Command.make(
           command: 'sync',
           label,
           effect: withNotion(
-            isManagedWorkspace(source).pipe(
-              Effect.flatMap((managedWorkspace) =>
-                managedWorkspace === true
-                  ? syncWorkspace({ root: source, syncOptions }).pipe(
-                      Effect.map((result): unknown => result),
-                    )
-                  : singleFile.pipe(
-                      Effect.flatMap((isSingleFile) =>
-                        isSingleFile === true
-                          ? syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
-                              Effect.map((result): unknown => result),
-                            )
-                          : syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
-                              Effect.map((result): unknown => result),
-                            ),
-                      ),
-                    ),
+            parseRootPage(root).pipe(
+              Effect.flatMap((rootPageId) =>
+                targetKind(source).pipe(
+                  Effect.flatMap((kind) =>
+                    kind === 'directory'
+                      ? // `--recursive` keeps the flat per-file batch (independent bound pages).
+                        recursive === true
+                        ? syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
+                            Effect.map((result): unknown => result),
+                          )
+                        : // default: local-authoritative tree reconcile.
+                          // `--from-remote`: remote-authoritative materialize/mirror.
+                          fromRemote === true
+                          ? syncWorkspace({
+                              root: source,
+                              syncOptions,
+                              ...(rootPageId === undefined ? {} : { rootPageId }),
+                            }).pipe(Effect.map((result): unknown => result))
+                          : syncTree({
+                              root: source,
+                              ...(rootPageId === undefined ? {} : { rootPageId }),
+                            }).pipe(Effect.map((result): unknown => result))
+                      : singleFile.pipe(
+                          Effect.flatMap((isSingleFile) =>
+                            isSingleFile === true
+                              ? syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
+                                  Effect.map((result): unknown => result),
+                                )
+                              : syncMany({
+                                  ...syncOptions,
+                                  targets,
+                                  recursive,
+                                  concurrency,
+                                }).pipe(Effect.map((result): unknown => result)),
+                          ),
+                        ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -451,13 +560,13 @@ const syncCommand = Command.make(
   },
 ).pipe(
   Command.withDescription(
-    'Sync a local target, or establish a local file/workspace from a Notion page',
+    'Sync a local target (file or directory tree) — local-authoritative by default, `--from-remote` to mirror from Notion',
   ),
 )
 
 const makeNotionMdCommand = (name: 'md' | 'notion-md') =>
   Command.make(name).pipe(
-    Command.withSubcommands([statusCommand, syncCommand]),
+    Command.withSubcommands([statusCommand, planCommand, syncCommand]),
     Command.withDescription('Two-way Notion enhanced Markdown sync'),
   )
 

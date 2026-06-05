@@ -305,6 +305,12 @@ const preflightPageIds = (opts: {
       }
 
       const pageId = item.result.right.frontmatter.notion_md.page_id
+      /*
+       * Unbound files (`page_id: null`) have no remote identity yet, so they
+       * cannot collide with another file. The per-file run still fails loud
+       * for them — the flat batch path only reconciles bound pages.
+       */
+      if (pageId === null) continue
       pageIds.set(pageId, [...(pageIds.get(pageId) ?? []), item.path])
     }
 

@@ -128,6 +128,28 @@ export interface NotionMdGatewayShape {
   readonly listChildPages: (opts: {
     readonly pageId: string
   }) => Effect.Effect<readonly RemoteChildPage[], NmdGatewayError>
+  /**
+   * Create a new page under a parent page with title + canonicalized body.
+   *
+   * Notion auto-appends a `<page url>` child-reference block to the parent
+   * body when a page is created with a `page_id` parent — so the tree engine
+   * never hand-authors a child anchor for a freshly created page; it re-emits
+   * the full derived anchor set on the parent's own push instead.
+   */
+  readonly createPage: (opts: {
+    readonly parentPageId: string
+    readonly title: string
+    readonly markdown: string
+  }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
+  /** Move a page to a new parent page (preserves page id / identity). */
+  readonly movePage: (opts: {
+    readonly pageId: string
+    readonly parentPageId: string
+  }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
+  /** Trash (soft-delete) a page. */
+  readonly archivePage: (opts: {
+    readonly pageId: string
+  }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
 }
 
 /** Effect service tag for Notion Markdown sync operations. */

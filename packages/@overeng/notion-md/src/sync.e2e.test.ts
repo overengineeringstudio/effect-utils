@@ -257,6 +257,56 @@ class FakeNotion {
           return { pageId: child.pageId, title: child.title }
         })
       }),
+    createPage: ({ parentPageId, title, markdown }) =>
+      Effect.sync(() => {
+        const parent = this.requirePage(parentPageId)
+        this.tick += 1
+        const newId = `00000000-0000-4000-8000-0000000${String(this.tick).padStart(5, '0')}`
+        this.pages.set(newId, {
+          pageId: newId,
+          title,
+          markdown: normalizeMarkdownLineEndings(markdown),
+          childPageIds: [],
+          icon: null,
+          cover: null,
+          inTrash: false,
+          isLocked: false,
+          lastEditedTime: `2026-05-22T12:00:0${this.tick}.000Z`,
+          storage: { _tag: 'self_contained', unsupported_blocks: [], files: [], comments: [] },
+          properties: {},
+          unknownBlockIds: [],
+        })
+        this.pages.set(parentPageId, {
+          ...parent,
+          childPageIds: [...parent.childPageIds, newId],
+        })
+        return this.toPullResult(this.requirePage(newId)).page
+      }),
+    movePage: ({ pageId: id, parentPageId }) =>
+      Effect.sync(() => {
+        const page = this.requirePage(id)
+        // detach from any current parent, attach to the new one
+        for (const [candidateId, candidate] of this.pages) {
+          if (candidate.childPageIds.includes(id) === true) {
+            this.pages.set(candidateId, {
+              ...candidate,
+              childPageIds: candidate.childPageIds.filter((childId) => childId !== id),
+            })
+          }
+        }
+        const parent = this.requirePage(parentPageId)
+        this.pages.set(parentPageId, {
+          ...parent,
+          childPageIds: [...parent.childPageIds, id],
+        })
+        return this.toPullResult(page).page
+      }),
+    archivePage: ({ pageId: id }) =>
+      Effect.sync(() => {
+        const page = this.requirePage(id)
+        this.pages.set(id, { ...page, inTrash: true })
+        return this.toPullResult(this.requirePage(id)).page
+      }),
   })
 
   mutateRemote(pageIdToMutate: string, markdown: string): void {
@@ -398,6 +448,7 @@ const parseFile = async (path: string) => {
 const readSyncStateFile = async (path: string): Promise<NmdSyncStateV1> => {
   const parsed = await parseFile(path)
   const parsedPageId = parsed.frontmatter.notion_md.page_id
+  if (parsedPageId === null) throw new Error(`Expected bound page id in ${path}`)
   const sidecarPath = syncStatePath({ path, pageId: parsedPageId })
   return JSON.parse(await readFile(sidecarPath, 'utf8')) as NmdSyncStateV1
 }

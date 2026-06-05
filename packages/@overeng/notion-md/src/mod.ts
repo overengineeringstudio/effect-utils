@@ -57,6 +57,15 @@ export type {
 } from './sync.ts'
 export { NOTION_MD_VERSION } from './version.ts'
 export {
+  composePushBody,
+  pageUrl,
+  parentRelPathFor,
+  resolveCrossRefs,
+  slugForRelPath,
+  syncTree,
+} from './tree.ts'
+export type { TreeOp, TreeSyncResult } from './tree.ts'
+export {
   isManagedWorkspace,
   statusWorkspace,
   syncRemoteToTarget,

@@ -50,10 +50,14 @@ import { decideStorage } from './storage-policy.ts'
  * sync engine threads both through `LocalState` so engine logic doesn't
  * need to know about the on-disk split.
  *
- * A materialized `.nmd` must always have a page id and sync state.
+ * A bound `.nmd` (the single-page sync path) must always have a non-null
+ * page id and a sidecar sync state. Unbound (`page_id: null`) files are
+ * handled by the tree reconcile engine (`tree.ts`), not by `readNmd`.
+ * `pageId` is the narrowed non-null id so the engine does not re-check.
  */
 export interface LocalState {
   readonly path: string
+  readonly pageId: string
   readonly frontmatter: NmdFrontmatterV2
   readonly body: string
   readonly syncState: NmdSyncStateV1
@@ -571,6 +575,17 @@ const readNmd = (path: string): Effect.Effect<LocalState, NmdError, NmdStateStor
     const content = yield* store.readNmdFile({ path })
     const parsed = yield* parseNmdFile({ path, content })
     const pageId = parsed.frontmatter.notion_md.page_id
+    if (pageId === null) {
+      /*
+       * An unbound `.nmd` (`page_id: null`) is a to-be-created page. The
+       * single-page guarded path requires a real remote page to reconcile
+       * against; tree reconcile (`notion-md sync <dir>`) creates it first.
+       */
+      return yield* new NmdFrontmatterError({
+        path,
+        message: `.nmd file ${path} is unbound (page_id: null). Run \`notion-md sync <dir>\` so the tree engine creates the Notion page, or bind it to an existing page id.`,
+      })
+    }
     const loaded = yield* store.readSyncStateOptional({ path, pageId })
     if (loaded === undefined) {
       /*
@@ -588,6 +603,7 @@ const readNmd = (path: string): Effect.Effect<LocalState, NmdError, NmdStateStor
     yield* validateReferencedObjects({ path, syncState })
     return {
       path,
+      pageId,
       frontmatter: parsed.frontmatter,
       body: parsed.body,
       syncState,
@@ -666,7 +682,7 @@ export const statusPage = (
   Effect.gen(function* () {
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
-    const remote = yield* gateway.pullPage({ pageId: local.frontmatter.notion_md.page_id })
+    const remote = yield* gateway.pullPage({ pageId: local.pageId })
     return statusFromSnapshots({ path: opts.path, local, remote })
   }).pipe(
     Effect.tap((status) =>
@@ -697,7 +713,7 @@ export const pushPage = (
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
     const remoteForStatus = yield* gateway.pullPage({
-      pageId: local.frontmatter.notion_md.page_id,
+      pageId: local.pageId,
     })
     const status = statusFromSnapshots({ path: opts.path, local, remote: remoteForStatus })
     const metadataUpdate = pageMetadataUpdate({

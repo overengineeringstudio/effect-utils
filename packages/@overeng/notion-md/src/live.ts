@@ -354,6 +354,46 @@ export const NotionMdGatewayLive = Layer.effect(
             attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
           }),
         ),
+      createPage: ({ parentPageId, title, markdown }) =>
+        provideHttp(
+          NotionPages.create({
+            parent: { type: 'page_id', page_id: parentPageId },
+            properties: { title: { title: [{ type: 'text', text: { content: title } }] } },
+            /*
+             * Canonicalize at the wire boundary, same as replace_content, so
+             * the created page stores one Notion block per logical paragraph
+             * rather than one block per soft-wrap line.
+             */
+            markdown: canonicalizeBlockMarkdown(markdown),
+          }),
+        ).pipe(
+          Effect.map(toRemotePage),
+          Effect.mapError(mapGatewayError({ operation: 'create_page', pageId: parentPageId })),
+          Effect.withSpan('notion-md.gateway.create-page', {
+            attributes: {
+              'span.label': parentPageId.slice(0, 8),
+              'notion_md.parent_page_id': parentPageId,
+            },
+          }),
+        ),
+      movePage: ({ pageId, parentPageId }) =>
+        provideHttp(
+          NotionPages.move({ pageId, parent: { type: 'page_id', page_id: parentPageId } }),
+        ).pipe(
+          Effect.map(toRemotePage),
+          Effect.mapError(mapGatewayError({ operation: 'move_page', pageId })),
+          Effect.withSpan('notion-md.gateway.move-page', {
+            attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
+          }),
+        ),
+      archivePage: ({ pageId }) =>
+        provideHttp(NotionPages.update({ pageId, in_trash: true })).pipe(
+          Effect.map(toRemotePage),
+          Effect.mapError(mapGatewayError({ operation: 'archive_page', pageId })),
+          Effect.withSpan('notion-md.gateway.archive-page', {
+            attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
+          }),
+        ),
     }
   }),
 )
