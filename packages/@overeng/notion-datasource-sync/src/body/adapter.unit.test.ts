@@ -127,6 +127,9 @@ const fakeNotionMdGateway = (
     Effect.die('updatePageProperties should not be called by these tests'),
   updatePageMetadata: () => Effect.die('updatePageMetadata should not be called by these tests'),
   listChildPages: () => Effect.succeed([]),
+  createPage: () => Effect.die('createPage should not be called by these tests'),
+  movePage: () => Effect.die('movePage should not be called by these tests'),
+  archivePage: () => Effect.die('archivePage should not be called by these tests'),
 })
 
 const runWithNmdStateStore = <TValue, TError>(

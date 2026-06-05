@@ -19,9 +19,9 @@ import { NmdCliError, NmdTokenMissingError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
+import { syncSubtree } from './subtree.ts'
 import { statusPage, syncPage, type SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
-import { syncSubtree } from './subtree.ts'
 import {
   isManagedWorkspace,
   statusWorkspace,
@@ -481,7 +481,9 @@ const subtreeCommand = Command.make(
             const parsed = parseNotionPageRef(id)
             return parsed === undefined
               ? Effect.fail(
-                  new NmdCliError({ message: `Invalid --root-page-id ${id}: not a Notion page id/url` }),
+                  new NmdCliError({
+                    message: `Invalid --root-page-id ${id}: not a Notion page id/url`,
+                  }),
                 )
               : syncSubtree({ root: dir, rootPageId: parsed })
           },
