@@ -333,9 +333,9 @@ const targetKind = (
 const hasExistingTreeIndex = (root: string): Effect.Effect<boolean, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    return yield* fs.exists(resolve(root, '.notion-md', 'workspace.json')).pipe(
-      Effect.catchAll(() => Effect.succeed(false)),
-    )
+    return yield* fs
+      .exists(resolve(root, '.notion-md', 'workspace.json'))
+      .pipe(Effect.catchAll(() => Effect.succeed(false)))
   })
 
 const rejectPlanFileTarget = (target: string): Effect.Effect<void, NmdCliError> =>

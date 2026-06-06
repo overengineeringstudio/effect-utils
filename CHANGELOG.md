@@ -64,6 +64,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-md**: Guard unified tree sync planning and destructive operations by reporting dry-run moves, blocking missing-file trash unless forced, checking tree `replace_content` races, and documenting the explicit tree/flat-batch CLI contract.
 - **@overeng/notion-md**: Keep unified tree sync compatible with legacy workspace manifests, deduplicate `--from-remote` materialized paths for colliding Notion titles, and strip derived child anchors from tree file bodies while preserving composed baselines.
 - **CI / Nix packages**: Refresh stale pnpm fixed-output hashes for `oxc-config`, `genie`, `notion-cli`, `notion-md`, `megarepo`, `workflow-report`, and `tui-stories`; register `notion-core` in workspace checks; format PR-touched files and keep oxlint fatal for error-level diagnostics while the existing warning backlog is tracked separately.
 - **secretspec**: Keep the public repository secretspec limited to environment variable declarations by removing machine-specific secret locator metadata.

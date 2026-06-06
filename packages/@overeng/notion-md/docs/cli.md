@@ -23,14 +23,14 @@ notion-md status <target...> [--recursive] [--concurrency <n>]
 
 The public contract has three modes:
 
-| Mode | Command | Meaning |
-| ---- | ------- | ------- |
-| Single page | `notion-md sync <page-id-or-url> <file.nmd>` | Import one Notion page into one local file |
-| Single page | `notion-md sync <file.nmd>` | Reconcile one bound file |
+| Mode           | Command                                                      | Meaning                                                           |
+| -------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Single page    | `notion-md sync <page-id-or-url> <file.nmd>`                 | Import one Notion page into one local file                        |
+| Single page    | `notion-md sync <file.nmd>`                                  | Reconcile one bound file                                          |
 | Directory tree | `notion-md sync <dir> --from-remote --root <page-id-or-url>` | Import or refresh a Notion subtree into deterministic local paths |
-| Directory tree | `notion-md plan <dir>` | Preview create/update/move/trash/noop operations |
-| Directory tree | `notion-md sync <dir>` | Apply the local directory as desired tree state |
-| Flat batch | `notion-md sync <dir> --recursive --concurrency 4` | Reconcile existing `.nmd` files independently |
+| Directory tree | `notion-md plan <dir>`                                       | Preview create/update/move/trash/noop operations                  |
+| Directory tree | `notion-md sync <dir>`                                       | Apply the local directory as desired tree state                   |
+| Flat batch     | `notion-md sync <dir> --recursive --concurrency 4`           | Reconcile existing `.nmd` files independently                     |
 
 `--recursive` is not tree sync. It never implies hierarchy, child
 materialization, moves, or trashing pages missing locally.
@@ -79,10 +79,10 @@ skips `.notion-md`, `.git`, and `node_modules`.
 
 Batch options:
 
-| Option          | Default | Meaning                                             |
-| --------------- | ------- | --------------------------------------------------- |
+| Option          | Default | Meaning                                                |
+| --------------- | ------- | ------------------------------------------------------ |
 | `--recursive`   | `false` | Discover existing `.nmd` files under directory targets |
-| `--concurrency` | `4`     | Maximum number of files reconciled at the same time |
+| `--concurrency` | `4`     | Maximum number of files reconciled at the same time    |
 
 Before mutating Notion, batch runs parse the candidate files and reject duplicate
 `page_id` values in the same batch. Each `.nmd` still syncs through the same

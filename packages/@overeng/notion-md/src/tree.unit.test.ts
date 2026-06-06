@@ -351,9 +351,7 @@ describe('notion-md tree reconcile lifecycle', () => {
       await writeFile(join(dir, 'sub', 'alpha.nmd'), alphaContent)
 
       const plan = await run(syncTree({ root: dir, plan: true }), fake)
-      expect(plan.ops.some((op) => op._tag === 'move' && op.relPath === 'sub/alpha.nmd')).toBe(
-        true,
-      )
+      expect(plan.ops.some((op) => op._tag === 'move' && op.relPath === 'sub/alpha.nmd')).toBe(true)
       expect(fake.childTitles(rootPageId)).toContain('Alpha')
       expect(fake.childTitles(rootPageId)).toContain('Sub')
     })
