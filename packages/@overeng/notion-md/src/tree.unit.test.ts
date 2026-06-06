@@ -574,30 +574,6 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
-  it('accepts a legacy workspace manifest and infers the root file before planning', async () => {
-    await withTempDir(async (dir) => {
-      const fake = new FakeTreeNotion()
-      await mkdir(join(dir, '.notion-md'), { recursive: true })
-      await writeFile(join(dir, 'README.nmd'), unbound({ title: 'Root', body: 'Root.' }))
-      await writeFile(
-        join(dir, '.notion-md', 'workspace.json'),
-        `${JSON.stringify(
-          {
-            version: 1,
-            root_page_id: rootPageId,
-            pages: { [rootPageId]: 'README.nmd' },
-          },
-          null,
-          2,
-        )}\n`,
-      )
-
-      const plan = await run(syncTree({ root: dir, plan: true }), fake)
-      expect(plan.rootFile).toBe('README.nmd')
-      expect(plan.rootPageId).toBe(rootPageId)
-    })
-  })
-
   it('materializes duplicate remote title slugs to unique forward-sync paths', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()

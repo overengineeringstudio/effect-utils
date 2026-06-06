@@ -1,4 +1,4 @@
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 
 import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
@@ -17,27 +17,11 @@ export const TreeIndex = Schema.Struct({
 
 export type TreeIndex = typeof TreeIndex.Type
 
-const LegacyWorkspaceManifest = Schema.Struct({
-  version: Schema.Literal(1),
-  root_page_id: Schema.String,
-  /** Legacy workspace shape: page_id -> relPath. */
-  pages: Schema.Record({ key: Schema.String, value: Schema.String }),
-}).annotations({ identifier: 'NotionMd.LegacyWorkspaceManifest' })
-
-type LegacyWorkspaceManifest = typeof LegacyWorkspaceManifest.Type
-
 const encodeTreeIndexJson = Schema.encodeSync(Schema.parseJson(TreeIndex, { space: 2 }))
 const decodeTreeIndexJson = Schema.decodeUnknown(Schema.parseJson(TreeIndex), {
   errors: 'all',
   onExcessProperty: 'error',
 } as const)
-const decodeLegacyWorkspaceManifestJson = Schema.decodeUnknown(
-  Schema.parseJson(LegacyWorkspaceManifest),
-  {
-    errors: 'all',
-    onExcessProperty: 'error',
-  } as const,
-)
 
 const toPosix = (value: string): string => value.split('\\').join('/')
 
@@ -56,27 +40,7 @@ const makeFsError = (opts: {
 /** Absolute path to the internal directory-tree index for a tree root. */
 export const treeIndexPath = (root: string): string => join(root, '.notion-md', 'workspace.json')
 
-const migrateLegacyWorkspaceManifest = (opts: {
-  readonly root: string
-  readonly manifest: LegacyWorkspaceManifest
-}): TreeIndex => {
-  const rootRel = opts.manifest.pages[opts.manifest.root_page_id] ?? 'index.nmd'
-  const rootFile = basename(rootRel)
-  const pages: Record<string, string> = {}
-  for (const [pageId, relPath] of Object.entries(opts.manifest.pages)) {
-    if (pageId === opts.manifest.root_page_id) continue
-    const normalized = toPosix(relative(opts.root, resolve(opts.root, relPath)))
-    pages[normalized] = pageId
-  }
-  return {
-    version: 1,
-    root_page_id: opts.manifest.root_page_id,
-    root_file: rootFile,
-    pages,
-  }
-}
-
-/** Read the internal tree index when present, accepting the legacy workspace shape. */
+/** Read the internal tree index when present. */
 export const readTreeIndexOptional = (
   root: string,
 ): Effect.Effect<TreeIndex | undefined, NmdError, FileSystem.FileSystem> =>
@@ -90,18 +54,14 @@ export const readTreeIndexOptional = (
     const content = yield* fs
       .readFileString(path)
       .pipe(Effect.mapError((cause) => makeFsError({ operation: 'read', path, cause })))
-    const decoded = yield* decodeTreeIndexJson(content).pipe(Effect.either)
-    if (decoded._tag === 'Right') return decoded.right
-
-    const legacy = yield* decodeLegacyWorkspaceManifestJson(content).pipe(
+    return yield* decodeTreeIndexJson(content).pipe(
       Effect.mapError(
         (cause) =>
           new NmdCliError({
-            message: `Invalid tree index ${path}: ${String(decoded.left)}; legacy decode also failed: ${String(cause)}`,
+            message: `Invalid tree index ${path}: ${String(cause)}`,
           }),
       ),
     )
-    return migrateLegacyWorkspaceManifest({ root, manifest: legacy })
   })
 
 /** Write the derived tree index under the tree root's `.notion-md` directory. */

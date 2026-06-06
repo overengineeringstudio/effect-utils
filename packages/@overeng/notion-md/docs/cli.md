@@ -42,10 +42,8 @@ notion-md sync <page-id-or-url> <file.nmd>
 ```
 
 With a Notion page id or URL plus a local file target, `sync` establishes local
-sync state for one page.
-
-The legacy `notion-md sync <page-id-or-url> <dir>` form is accepted as a
-compatibility alias, but new scripts should use:
+sync state for one page. Directory tree materialization uses the explicit
+tree-first form:
 
 ```sh
 notion-md sync <dir> --from-remote --root <page-id-or-url>

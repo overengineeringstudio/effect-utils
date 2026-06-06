@@ -492,11 +492,6 @@ const syncCommand = Command.make(
           }),
         )
       }
-      /*
-       * Legacy two-arg establish now materializes a single `.nmd` FILE from a
-       * Notion page. Establishing a directory TREE from Notion is the unified
-       * `sync <dir> --from-remote --root <page>` form (one engine, one layout).
-       */
       return commandSpan({
         command: 'sync',
         label: basename(target.value),
@@ -504,16 +499,11 @@ const syncCommand = Command.make(
           targetKind(target.value).pipe(
             Effect.flatMap((kind) =>
               kind === 'directory'
-                ? Console.error(
-                    '`notion-md sync <page-id-or-url> <dir>` is a legacy compatibility alias; prefer `notion-md sync <dir> --from-remote --root <page-id-or-url>`.',
-                  ).pipe(
-                    Effect.zipRight(
-                      syncPath({
-                        path: target.value,
-                        fromRemote: true,
-                        rootPageId: pageId,
-                      }).pipe(Effect.map((result): unknown => result)),
-                    ),
+                ? Effect.fail(
+                    new NmdCliError({
+                      message:
+                        'Directory tree materialization uses `notion-md sync <dir> --from-remote --root <page-id-or-url>`; the two-argument form is only for single `.nmd` file targets.',
+                    }),
                   )
                 : pullPage({ pageId, outPath: target.value }).pipe(
                     Effect.map((result): unknown => result),
