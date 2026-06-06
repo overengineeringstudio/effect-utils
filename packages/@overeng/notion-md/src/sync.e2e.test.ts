@@ -27,7 +27,7 @@ import {
   syncStatePath,
   type NmdStateStore,
 } from './state-store.ts'
-import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
+import { pullPage, pushPage, pushPageWithPolicy, statusPage, syncPage } from './sync.ts'
 
 const compareStrings = new Intl.Collator().compare
 
@@ -431,11 +431,14 @@ const runWithFake = <A>(
   )
 
 const runEitherWithFake = <A, E>(
-  effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
   fake: FakeNotion,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.either, Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer))),
+    effect.pipe(
+      Effect.either,
+      Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer)),
+    ),
   )
 
 const parseFile = async (path: string) => {
@@ -1656,7 +1659,10 @@ describe('notion-md e2e prototype', () => {
       await writeFile(path, content.replace('Body', 'Local body'))
       fake.mutateRemoteAfterNextPull(pageId, '# Probe\n\nRemote race body')
 
-      const result = await runEitherWithFake(pushPage({ path, replaceContent: true }), fake)
+      const result = await runEitherWithFake(
+        pushPageWithPolicy({ path, replaceContent: true }),
+        fake,
+      )
 
       expect(result).toMatchObject({
         _tag: 'Left',
@@ -1686,7 +1692,7 @@ describe('notion-md e2e prototype', () => {
         '# Probe\n\nBody\n\n<page url="https://www.notion.so/child">Child</page>',
       )
 
-      const result = await runWithFake(pushPage({ path, replaceContent: true }), fake)
+      const result = await runWithFake(pushPageWithPolicy({ path, replaceContent: true }), fake)
 
       expect(result.pushed).toBe(true)
       expect(fake.updateMarkdownCalls).toEqual([

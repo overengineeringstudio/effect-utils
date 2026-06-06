@@ -1,7 +1,7 @@
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 
 import { FileSystem } from '@effect/platform'
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 
 import {
   NOTION_API_VERSION,
@@ -22,6 +22,7 @@ import {
   writeSyncState,
 } from './state-store.ts'
 import { buildTreeNodeLocalState, pushGuarded, treeNodePersist, type PushOptions } from './sync.ts'
+import { readTreeIndexOptional, writeTreeIndex, type TreeIndex } from './tree-index.ts'
 
 export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
 
@@ -65,42 +66,6 @@ const NMD_EXT = '.nmd'
 
 /** Default root-file candidates in priority order, when not explicitly given. */
 const ROOT_FILE_CANDIDATES = ['index.nmd', 'README.nmd'] as const
-
-/** Regenerable path↔id index for a synced tree (NOT the source of identity). */
-const TreeIndex = Schema.Struct({
-  version: Schema.Literal(1),
-  root_page_id: Schema.String,
-  /** Root-file basename, so a later run reconstructs the same layout. */
-  root_file: Schema.String,
-  /** posix relativePath (from root) → page_id; derived from frontmatter each run. */
-  pages: Schema.Record({ key: Schema.String, value: Schema.String }),
-}).annotations({ identifier: 'NotionMd.TreeIndex' })
-
-type TreeIndex = typeof TreeIndex.Type
-
-const LegacyWorkspaceManifest = Schema.Struct({
-  version: Schema.Literal(1),
-  root_page_id: Schema.String,
-  /** Legacy workspace shape: page_id -> relPath. */
-  pages: Schema.Record({ key: Schema.String, value: Schema.String }),
-}).annotations({ identifier: 'NotionMd.LegacyWorkspaceManifest' })
-
-type LegacyWorkspaceManifest = typeof LegacyWorkspaceManifest.Type
-
-const encodeTreeIndexJson = Schema.encodeSync(Schema.parseJson(TreeIndex, { space: 2 }))
-const decodeTreeIndexJson = Schema.decodeUnknown(Schema.parseJson(TreeIndex), {
-  errors: 'all',
-  onExcessProperty: 'error',
-} as const)
-const decodeLegacyWorkspaceManifestJson = Schema.decodeUnknown(
-  Schema.parseJson(LegacyWorkspaceManifest),
-  {
-    errors: 'all',
-    onExcessProperty: 'error',
-  } as const,
-)
-
-const treeIndexPath = (root: string): string => join(root, '.notion-md', 'workspace.json')
 
 /**
  * Sentinel "file path" inside the tree root used for all `.notion-md/` state
@@ -325,68 +290,6 @@ const scanLocalPages = (opts: {
       if (aRoot !== bRoot) return aRoot - bRoot
       return a.relPath.localeCompare(b.relPath)
     })
-  })
-
-const readTreeIndexOptional = (
-  root: string,
-): Effect.Effect<TreeIndex | undefined, NmdError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = treeIndexPath(root)
-    const exists = yield* fs
-      .exists(path)
-      .pipe(Effect.mapError((cause) => makeFsError({ operation: 'exists', path, cause })))
-    if (exists === false) return undefined
-    const content = yield* fs
-      .readFileString(path)
-      .pipe(Effect.mapError((cause) => makeFsError({ operation: 'read', path, cause })))
-    const decoded = yield* decodeTreeIndexJson(content).pipe(Effect.either)
-    if (decoded._tag === 'Right') return decoded.right
-
-    const legacy = yield* decodeLegacyWorkspaceManifestJson(content).pipe(
-      Effect.mapError(
-        (cause) =>
-          new NmdCliError({
-            message: `Invalid tree index ${path}: ${String(decoded.left)}; legacy decode also failed: ${String(cause)}`,
-          }),
-      ),
-    )
-    return migrateLegacyWorkspaceManifest({ root, manifest: legacy })
-  })
-
-const migrateLegacyWorkspaceManifest = (opts: {
-  readonly root: string
-  readonly manifest: LegacyWorkspaceManifest
-}): TreeIndex => {
-  const rootRel = opts.manifest.pages[opts.manifest.root_page_id] ?? 'index.nmd'
-  const rootFile = basename(rootRel)
-  const pages: Record<string, string> = {}
-  for (const [pageId, relPath] of Object.entries(opts.manifest.pages)) {
-    if (pageId === opts.manifest.root_page_id) continue
-    const normalized = toPosix(relative(opts.root, resolve(opts.root, relPath)))
-    pages[normalized] = pageId
-  }
-  return {
-    version: 1,
-    root_page_id: opts.manifest.root_page_id,
-    root_file: rootFile,
-    pages,
-  }
-}
-
-const writeTreeIndex = (opts: {
-  readonly root: string
-  readonly index: TreeIndex
-}): Effect.Effect<void, NmdFileSystemError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = treeIndexPath(opts.root)
-    yield* fs
-      .makeDirectory(dirname(path), { recursive: true })
-      .pipe(Effect.mapError((cause) => makeFsError({ operation: 'mkdir', path, cause })))
-    yield* fs
-      .writeFileString(path, `${encodeTreeIndexJson(opts.index).trimEnd()}\n`)
-      .pipe(Effect.mapError((cause) => makeFsError({ operation: 'write', path, cause })))
   })
 
 /**

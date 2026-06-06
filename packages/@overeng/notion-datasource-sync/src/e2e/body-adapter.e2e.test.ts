@@ -653,6 +653,7 @@ describe('body adapter E2E boundary', () => {
         statusPage({ path: absoluteBodyPath }).pipe(
           Effect.provideService(NotionMdGateway, notionMdGateway),
           Effect.provideService(NmdStateStore, stateStore),
+          Effect.provide(NodeContext.layer),
         ),
       )
       expect(nmdStatus.localChanged).toBe(false)

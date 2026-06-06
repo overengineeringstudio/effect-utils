@@ -14,7 +14,9 @@ import {
   type PullPageResult,
   type RemotePageSnapshot,
 } from './model.ts'
+import { statusPath, syncPath } from './path.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
+import { statusPage } from './sync.ts'
 import { composePushBody, parentRelPathFor, slugForRelPath, syncTree, type TreeOp } from './tree.ts'
 
 const rootPageId = '00000000-0000-4000-8000-000000000001'
@@ -413,6 +415,27 @@ describe('notion-md tree reconcile lifecycle', () => {
       expect(secondCounts.create).toBeUndefined()
       expect(secondCounts.update).toBeUndefined()
       expect(secondCounts.noop).toBe(3)
+    })
+  })
+
+  it('rejects single-file page/path operations for managed tree members', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaPath = join(dir, 'alpha.nmd')
+
+      await expect(run(statusPage({ path: alphaPath }), fake)).rejects.toThrow(
+        'is a member of the notion-md tree',
+      )
+      await expect(run(statusPath({ path: alphaPath }), fake)).rejects.toThrow(
+        'is a member of the notion-md tree',
+      )
+      await expect(run(syncPath({ path: alphaPath }), fake)).rejects.toThrow(
+        'is a member of the notion-md tree',
+      )
     })
   })
 

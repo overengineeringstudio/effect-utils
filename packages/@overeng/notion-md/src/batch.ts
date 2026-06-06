@@ -346,7 +346,9 @@ const runBatch = <A>(opts: {
   readonly targets: readonly string[]
   readonly recursive?: boolean | undefined
   readonly concurrency?: number | undefined
-  readonly run: (path: string) => Effect.Effect<A, NmdError, NotionMdGateway | NmdStateStore>
+  readonly run: (
+    path: string,
+  ) => Effect.Effect<A, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore>
 }): Effect.Effect<
   BatchResult<A>,
   NmdCliError,

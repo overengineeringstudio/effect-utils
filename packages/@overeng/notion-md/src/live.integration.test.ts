@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type { FileSystem } from '@effect/platform'
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { Chunk, Effect, Layer, Redacted, Stream } from 'effect'
@@ -74,10 +75,16 @@ const StateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
 const TestLayer = Layer.mergeAll(
   BaseLayer,
   StateStoreLayer,
+  NodeContext.layer,
   NotionMdGatewayLive.pipe(Layer.provide(BaseLayer)),
 )
 
-type LiveEnv = NotionMdGateway | NotionConfig | HttpClient.HttpClient | NmdStateStore
+type LiveEnv =
+  | FileSystem.FileSystem
+  | NotionMdGateway
+  | NotionConfig
+  | HttpClient.HttpClient
+  | NmdStateStore
 
 const runLive = <A, E>(effect: Effect.Effect<A, E, LiveEnv>) =>
   Effect.runPromise(Effect.scoped(effect.pipe(Effect.provide(TestLayer))))

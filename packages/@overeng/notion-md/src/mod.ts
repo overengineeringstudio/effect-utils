@@ -46,6 +46,16 @@ export type {
 } from './state-store.ts'
 export { decideStorage } from './storage-policy.ts'
 export type { StorageDecision } from './storage-policy.ts'
+export { planPath, statusPath, syncPath, targetKind } from './path.ts'
+export type {
+  PathTargetKind,
+  PlanPathOptions,
+  PlanPathResult,
+  StatusPathOptions,
+  StatusPathResult,
+  SyncPathOptions,
+  SyncPathResult,
+} from './path.ts'
 export { pullPage, statusPage, syncPage } from './sync.ts'
 export type {
   PullOptions,

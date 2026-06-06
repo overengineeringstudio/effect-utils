@@ -1,5 +1,6 @@
 import { basename } from 'node:path'
 
+import type { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
 
 import {
@@ -14,6 +15,7 @@ import {
 
 import { semanticEquivalent } from './canonical-markdown.ts'
 import {
+  NmdCliError,
   NmdConflictError,
   NmdFrontmatterError,
   type NmdError,
@@ -40,6 +42,7 @@ import {
   writeSyncState,
 } from './state-store.ts'
 import { decideStorage } from './storage-policy.ts'
+import { findTreeMembership } from './tree-index.ts'
 
 /**
  * Combined local view of a `.nmd` file plus its sidecar sync state.
@@ -117,12 +120,19 @@ export interface StatusResult {
   readonly unresolvedUnknownBlocks: readonly string[]
 }
 
-/** Inputs for pushing local `.nmd` edits through the guarded sync path. */
-export interface PushOptions {
-  readonly path: string
+/** User-facing safety options for local `.nmd` pushes. */
+export interface PushSafetyOptions {
   readonly force?: boolean
   readonly allowDeletingUnknownBlocks?: boolean
   readonly allowReviewMarkup?: boolean
+}
+
+/** Inputs for pushing local `.nmd` edits through the guarded sync path. */
+export interface PushOptions extends PushSafetyOptions {
+  readonly path: string
+}
+
+interface GuardedPushOptions extends PushOptions {
   /**
    * Push the body via `replace_content` (full replace) rather than the narrowest
    * `update_content` search-replace. Tree nodes set this: a parent's body is
@@ -211,6 +221,17 @@ const hasWritablePropertyValues = (properties: Record<string, NmdWritablePropert
   Object.keys(properties).length > 0
 
 const stableJson = (value: unknown): string => JSON.stringify(value) ?? 'undefined'
+
+const assertSinglePageTarget = (
+  path: string,
+): Effect.Effect<void, NmdError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const membership = yield* findTreeMembership(path)
+    if (membership === undefined) return
+    return yield* new NmdCliError({
+      message: `${path} is a member of the notion-md tree at ${membership.root}; run \`notion-md sync ${membership.root}\` (the tree composes child anchors — a single-file operation would use the wrong state root).`,
+    })
+  })
 
 const isWritablePageFile = (
   value: NmdFrontmatterV2['notion_md']['page']['cover'],
@@ -832,8 +853,9 @@ const statusFromSnapshots = (opts: {
 /** Compare local body/frontmatter state with the current remote Notion page. */
 export const statusPage = (
   opts: StatusOptions,
-): Effect.Effect<StatusResult, NmdError, NotionMdGateway | NmdStateStore> =>
+): Effect.Effect<StatusResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
+    yield* assertSinglePageTarget(opts.path)
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
     const remote = yield* gateway.pullPage({ pageId: local.pageId })
@@ -1007,7 +1029,7 @@ export const pushGuarded = (opts: {
   readonly local: LocalState
   readonly remoteForStatus: PullPageResult
   readonly persist: PushPersist
-  readonly options: PushOptions
+  readonly options: GuardedPushOptions
 }): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const { local, remoteForStatus, options } = opts
@@ -1245,10 +1267,11 @@ export const pushGuarded = (opts: {
   })
 
 /** Push local `.nmd` edits to Notion after conflict, unknown-block, and review-markup checks. */
-export const pushPage = (
-  opts: PushOptions,
-): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
+export const pushPageWithPolicy = (
+  opts: GuardedPushOptions,
+): Effect.Effect<PushResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
+    yield* assertSinglePageTarget(opts.path)
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
     const remoteForStatus = yield* gateway.pullPage({ pageId: local.pageId })
@@ -1278,10 +1301,16 @@ export const pushPage = (
     }),
   )
 
+/** Push local `.nmd` edits to Notion after conflict, unknown-block, and review-markup checks. */
+export const pushPage = (
+  opts: PushOptions,
+): Effect.Effect<PushResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
+  pushPageWithPolicy(opts)
+
 /** Run one two-way reconciliation pass for a `.nmd` file. */
 export const syncPage = (
   opts: SyncOptions,
-): Effect.Effect<SyncResult, NmdError, NotionMdGateway | NmdStateStore> =>
+): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const status = yield* statusPage({ path: opts.path })
 

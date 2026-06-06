@@ -1,4 +1,4 @@
-import { basename, dirname, relative, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
@@ -18,9 +18,9 @@ import {
 import { NmdCliError, NmdTokenMissingError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
+import { planPath, statusPath, syncPath, targetKind } from './path.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
-import { pullPage, statusPage, syncPage, type PushOptions, type SyncOptions } from './sync.ts'
-import { syncTree } from './tree.ts'
+import { pullPage, syncPage, type SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
 
 const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
@@ -319,17 +319,6 @@ const commandSpan = <A, E, R>(opts: {
     }),
   )
 
-/** Classify a CLI target into file / directory / missing without throwing. */
-const targetKind = (
-  target: string,
-): Effect.Effect<'file' | 'directory' | 'missing', never, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const info = yield* fs.stat(target).pipe(Effect.either)
-    if (info._tag === 'Left') return 'missing'
-    return info.right.type === 'Directory' ? 'directory' : 'file'
-  })
-
 const hasExistingTreeIndex = (root: string): Effect.Effect<boolean, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -384,55 +373,6 @@ const parseRootPage = (
     : Effect.succeed(parsed)
 }
 
-/**
- * Refuse single-file `sync`/`status` on a `.nmd` that belongs to a managed
- * tree (an ancestor `.notion-md/workspace.json` lists its page). Pushing the
- * bare body of a tree node would drop its DERIVED child anchors and trash its
- * children — the per-file path never composes them. Direct the user to the
- * tree engine instead. Read-only `status` is allowed (no mutation).
- */
-const assertNotTreeMember = (opts: {
-  readonly path: string
-  readonly allowReadOnly: boolean
-}): Effect.Effect<void, NmdCliError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    if (opts.allowReadOnly === true) return
-    const fs = yield* FileSystem.FileSystem
-    const absolute = resolve(opts.path)
-    let current = dirname(absolute)
-    // walk up to the filesystem root looking for a tree index
-    while (true) {
-      const indexPath = resolve(current, '.notion-md', 'workspace.json')
-      const exists = yield* fs.exists(indexPath).pipe(Effect.orElseSucceed(() => false))
-      if (exists === true) {
-        const content = yield* fs.readFileString(indexPath).pipe(Effect.orElseSucceed(() => ''))
-        const relFromRoot = relative(current, absolute).split('\\').join('/')
-        const parsed = yield* Effect.try(() => JSON.parse(content) as unknown).pipe(
-          Effect.orElseSucceed(() => undefined as unknown),
-        )
-        const isMember =
-          typeof parsed === 'object' &&
-          parsed !== null &&
-          'pages' in parsed &&
-          typeof (parsed as { pages?: unknown }).pages === 'object' &&
-          relFromRoot in ((parsed as { pages: Record<string, unknown> }).pages ?? {})
-        const rootFile =
-          typeof parsed === 'object' && parsed !== null && 'root_file' in parsed
-            ? (parsed as { root_file?: unknown }).root_file
-            : undefined
-        const isRoot = typeof rootFile === 'string' && relFromRoot === rootFile
-        if (isMember === true || isRoot === true) {
-          return yield* new NmdCliError({
-            message: `${opts.path} is a member of the notion-md tree at ${current}; run \`notion-md sync ${current}\` (the tree composes child anchors — a single-file push would trash its children).`,
-          })
-        }
-      }
-      const parent = dirname(current)
-      if (parent === current) break
-      current = parent
-    }
-  })
-
 const statusCommand = Command.make(
   'status',
   {
@@ -445,31 +385,13 @@ const statusCommand = Command.make(
       command: 'status',
       label: targets.length === 1 ? basename(targets[0] ?? 'target') : `${targets.length} targets`,
       effect: withNotion(
-        targetKind(targets[0] ?? '').pipe(
-          Effect.flatMap((kind) =>
-            /*
-             * A single directory target reports its tree status as the dry-run
-             * reconcile diff (create/update/move/trash/noop) — the same model
-             * the unified `plan`/`sync` use. A `.nmd` file reports single-page
-             * status; an explicit `--recursive` directory uses the flat batch.
-             */
-            kind === 'directory' && targets.length === 1 && recursive === false
-              ? syncTree({ root: targets[0] ?? '', plan: true }).pipe(
-                  Effect.map((result): unknown => result),
-                )
-              : isSingleFileTarget({ targets, recursive }).pipe(
-                  Effect.flatMap((singleFile) =>
-                    singleFile === true
-                      ? statusPage({ path: targets[0] ?? '' }).pipe(
-                          Effect.map((result): unknown => result),
-                        )
-                      : statusMany({ targets, recursive, concurrency }).pipe(
-                          Effect.map((result): unknown => result),
-                        ),
-                  ),
-                ),
-          ),
-        ),
+        targets.length === 1
+          ? statusPath({ path: targets[0] ?? '', recursive, concurrency }).pipe(
+              Effect.map((result): unknown => result),
+            )
+          : statusMany({ targets, recursive, concurrency }).pipe(
+              Effect.map((result): unknown => result),
+            ),
       ),
     }).pipe(Effect.flatMap(logJson)),
 ).pipe(Command.withDescription('Compare local .nmd state with the remote Notion page'))
@@ -498,9 +420,8 @@ const planCommand = Command.make(
             ),
             Effect.zipRight(
               withNotion(
-                syncTree({
-                  root: target,
-                  plan: true,
+                planPath({
+                  path: target,
                   fromRemote,
                   ...(rootPageId === undefined ? {} : { rootPageId }),
                   ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
@@ -587,8 +508,8 @@ const syncCommand = Command.make(
                     '`notion-md sync <page-id-or-url> <dir>` is a legacy compatibility alias; prefer `notion-md sync <dir> --from-remote --root <page-id-or-url>`.',
                   ).pipe(
                     Effect.zipRight(
-                      syncTree({
-                        root: target.value,
+                      syncPath({
+                        path: target.value,
                         fromRemote: true,
                         rootPageId: pageId,
                       }).pipe(Effect.map((result): unknown => result)),
@@ -654,10 +575,10 @@ const syncCommand = Command.make(
                 ? assertFromRemoteTreeTarget({ source, recursive, rootPageId }).pipe(
                     Effect.zipRight(
                       withNotion(
-                        syncTree({
-                          root: source,
+                        syncPath({
+                          path: source,
                           fromRemote: true,
-                          pushOptions: { ...syncOptions, path: source } satisfies PushOptions,
+                          ...syncOptions,
                           ...(rootPageId === undefined ? {} : { rootPageId }),
                           ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
                         }).pipe(Effect.map((result): unknown => result)),
@@ -667,39 +588,26 @@ const syncCommand = Command.make(
                 : targetKind(source).pipe(
                     Effect.flatMap((kind) =>
                       kind === 'directory'
-                        ? // `--recursive` keeps the flat per-file batch (independent bound pages).
-                          recursive === true
-                          ? withNotion(
-                              syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
-                                Effect.map((result): unknown => result),
-                              ),
-                            )
-                          : // one tree engine, local-authoritative forward direction.
-                            withNotion(
-                              syncTree({
-                                root: source,
-                                fromRemote: false,
-                                pushOptions: { ...syncOptions, path: source } satisfies PushOptions,
-                                ...(rootPageId === undefined ? {} : { rootPageId }),
-                                ...(Option.isSome(rootFile) === true
-                                  ? { rootFile: rootFile.value }
-                                  : {}),
-                              }).pipe(Effect.map((result): unknown => result)),
-                            )
+                        ? withNotion(
+                            syncPath({
+                              path: source,
+                              recursive,
+                              concurrency,
+                              ...syncOptions,
+                              ...(rootPageId === undefined ? {} : { rootPageId }),
+                              ...(Option.isSome(rootFile) === true
+                                ? { rootFile: rootFile.value }
+                                : {}),
+                            }).pipe(Effect.map((result): unknown => result)),
+                          )
                         : singleFile.pipe(
                             Effect.flatMap((isSingleFile) =>
                               isSingleFile === true
-                                ? assertNotTreeMember({
-                                    path: targets[0] ?? '',
-                                    allowReadOnly: false,
-                                  }).pipe(
-                                    Effect.zipRight(
-                                      withNotion(
-                                        syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
-                                          Effect.map((result): unknown => result),
-                                        ),
-                                      ),
-                                    ),
+                                ? withNotion(
+                                    syncPath({
+                                      path: targets[0] ?? '',
+                                      ...syncOptions,
+                                    }).pipe(Effect.map((result): unknown => result)),
                                   )
                                 : withNotion(
                                     syncMany({
