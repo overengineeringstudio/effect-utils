@@ -65,6 +65,13 @@ The tree engine writes `<dir>/.notion-md/workspace.json` as an internal tree
 index containing the root page id, root file, and page path map. Users should
 treat it as sync state and commit it with the tree if the tree is versioned.
 
+For parent pages without authored child anchors, tree sync derives one
+block-level `<page>` anchor for every local child. If a parent body already
+contains block-level `<page>` anchors, tree sync treats that block as authored
+content: it preserves anchor placement and interleaved annotations, but fails if
+a local child is missing an anchor, has duplicate anchors, or an anchor points
+outside the local child set.
+
 To add a new local page to a tree, create a `.nmd` file with `page_id: null` and
 a valid `parent` reference. The parent reference is required even before the
 page exists remotely; it lets the tree engine validate intent before creating

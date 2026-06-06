@@ -17,7 +17,14 @@ import {
 import { statusPath, syncPath } from './path.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { statusPage } from './sync.ts'
-import { composePushBody, parentRelPathFor, slugForRelPath, syncTree, type TreeOp } from './tree.ts'
+import {
+  composePushBody,
+  pageUrl,
+  parentRelPathFor,
+  slugForRelPath,
+  syncTree,
+  type TreeOp,
+} from './tree.ts'
 
 const rootPageId = '00000000-0000-4000-8000-000000000001'
 
@@ -421,6 +428,123 @@ describe('notion-md tree reconcile lifecycle', () => {
       expect(secondCounts.create).toBeUndefined()
       expect(secondCounts.update).toBeUndefined()
       expect(secondCounts.noop).toBe(3)
+    })
+  })
+
+  it('validates and preserves a curated child index with interleaved annotations', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root intro.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+      await writeFile(join(dir, 'beta.nmd'), unbound({ title: 'Beta', body: 'Beta body.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'alpha.nmd'), 'utf8'),
+      )?.[1]
+      const betaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'beta.nmd'), 'utf8'),
+      )?.[1]
+      expect(alphaId).toBeDefined()
+      expect(betaId).toBeDefined()
+
+      const boundIndex = await readFile(join(dir, 'index.nmd'), 'utf8')
+      const curatedBody = [
+        'Root intro.',
+        '',
+        '## Page index',
+        '',
+        `<page url="${pageUrl(alphaId ?? '')}">Alpha</page>`,
+        'Alpha annotation stays with the anchor.',
+        '',
+        `<page url="${pageUrl(betaId ?? '')}">Beta</page>`,
+        'Beta annotation stays with the anchor.',
+        '',
+        '## Notes',
+        '',
+        'A section after the index must not receive appended anchors.',
+      ].join('\n')
+      await writeFile(join(dir, 'index.nmd'), boundIndex.replace('Root intro.', curatedBody))
+
+      const result = await run(syncTree({ root: dir }), fake)
+      expect(result.ops.some((op) => op._tag === 'update' && op.relPath === 'index.nmd')).toBe(true)
+      expect(fake.remoteBody(rootPageId)).toBe(`${curatedBody}\n`)
+      expect(fake.remoteBody(rootPageId)).toContain('Alpha annotation stays with the anchor.')
+      expect(fake.remoteBody(rootPageId)).not.toMatch(/Notes[\s\S]*<page/u)
+
+      const second = await run(syncTree({ root: dir }), fake)
+      expect(opTags(second.ops).noop).toBe(3)
+    })
+  })
+
+  it('rejects an authored child index when a local child anchor is missing', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root intro.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+      await writeFile(join(dir, 'beta.nmd'), unbound({ title: 'Beta', body: 'Beta body.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'alpha.nmd'), 'utf8'),
+      )?.[1]
+      expect(alphaId).toBeDefined()
+      const boundIndex = await readFile(join(dir, 'index.nmd'), 'utf8')
+      await writeFile(
+        join(dir, 'index.nmd'),
+        boundIndex.replace(
+          'Root intro.',
+          ['Root intro.', '', `<page url="${pageUrl(alphaId ?? '')}">Alpha</page>`].join('\n'),
+        ),
+      )
+      const before = fake.remoteBody(rootPageId)
+      await expect(run(syncTree({ root: dir }), fake)).rejects.toThrow('Missing child anchor')
+      expect(fake.remoteBody(rootPageId)).toBe(before)
+    })
+  })
+
+  it('rejects an authored child index when an anchor is duplicated or dangling', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root intro.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'alpha.nmd'), 'utf8'),
+      )?.[1]
+      expect(alphaId).toBeDefined()
+      const boundIndex = await readFile(join(dir, 'index.nmd'), 'utf8')
+
+      await writeFile(
+        join(dir, 'index.nmd'),
+        boundIndex.replace(
+          'Root intro.',
+          [
+            'Root intro.',
+            '',
+            `<page url="${pageUrl(alphaId ?? '')}">Alpha</page>`,
+            '',
+            `<page url="${pageUrl(alphaId ?? '')}">Alpha again</page>`,
+          ].join('\n'),
+        ),
+      )
+      await expect(run(syncTree({ root: dir }), fake)).rejects.toThrow('Duplicate child anchor')
+
+      await writeFile(
+        join(dir, 'index.nmd'),
+        boundIndex.replace(
+          'Root intro.',
+          [
+            'Root intro.',
+            '',
+            `<page url="${pageUrl(alphaId ?? '')}">Alpha</page>`,
+            '',
+            '<page url="https://app.notion.com/p/99999999999949998999999999999999">Ghost</page>',
+          ].join('\n'),
+        ),
+      )
+      await expect(run(syncTree({ root: dir }), fake)).rejects.toThrow('Dangling child anchor')
     })
   })
 
