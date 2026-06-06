@@ -393,6 +393,12 @@ describe('notion-md tree reconcile lifecycle', () => {
       const first = await run(syncTree({ root: dir, rootPageId }), fake)
       const firstCounts = opTags(first.ops)
       expect(firstCounts.create).toBe(2) // alpha + beta (root is pre-bound)
+      const creates = first.ops.filter((op) => op._tag === 'create')
+      expect(creates).toHaveLength(2)
+      expect(creates.every((op) => op.pageId !== undefined)).toBe(true)
+      expect(creates.every((op) => op.url?.startsWith('https://www.notion.so/') === true)).toBe(
+        true,
+      )
       expect(fake.childTitles(rootPageId).toSorted()).toEqual(['Alpha', 'Beta'])
 
       // ids bound back into the files via the canonical renderer

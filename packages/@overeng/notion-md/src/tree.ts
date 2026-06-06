@@ -99,7 +99,15 @@ interface LocalTreePage {
 
 /** Tagged reconcile operation for one tree pass. */
 export type TreeOp =
-  | { readonly _tag: 'create'; readonly relPath: string; readonly title: string }
+  | {
+      readonly _tag: 'create'
+      readonly relPath: string
+      readonly title: string
+      /** Present only after an applied create; dry-run plans have no remote id yet. */
+      readonly pageId?: string
+      /** Present after an applied create when Notion returns a URL. */
+      readonly url?: string
+    }
   | { readonly _tag: 'update'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'move'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'noop'; readonly relPath: string; readonly pageId: string }
@@ -597,7 +605,13 @@ const syncTreeLocal = (opts: {
         page: created,
         baselineBody: `# ${page.title}\n`,
       })
-      ops.push({ _tag: 'create', relPath: page.relPath, title: page.title })
+      ops.push({
+        _tag: 'create',
+        relPath: page.relPath,
+        title: page.title,
+        pageId: created.id,
+        ...(created.url === undefined ? {} : { url: created.url }),
+      })
     }
 
     if (plan === true) {

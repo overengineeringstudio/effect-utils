@@ -50,6 +50,11 @@ the root page to `docs/index.nmd`, and materializes child pages using
 deterministic slug paths. Later, `notion-md plan docs` previews the tree diff
 and `notion-md sync docs` applies the local directory as desired tree state.
 
+To create a new page from local tree state, add a `.nmd` file with
+`page_id: null` and a valid `parent` reference, then run `notion-md sync docs`.
+The applied create result includes the new `pageId` and `url`, and the file is
+rewritten with that binding.
+
 ## Creating A New Local File
 
 Create the page in Notion first, then materialize it locally:

@@ -65,6 +65,36 @@ The tree engine writes `<dir>/.notion-md/workspace.json` as an internal tree
 index containing the root page id, root file, and page path map. Users should
 treat it as sync state and commit it with the tree if the tree is versioned.
 
+To add a new local page to a tree, create a `.nmd` file with `page_id: null` and
+a valid `parent` reference. The parent reference is required even before the
+page exists remotely; it lets the tree engine validate intent before creating
+the Notion page.
+
+```json
+{
+  "notion_md": {
+    "version": 2,
+    "api_version": "2026-03-11",
+    "object": "page",
+    "page_id": null,
+    "url": null,
+    "parent": { "_tag": "page", "id": "<parent-page-id>" },
+    "page": {
+      "title": "New child page",
+      "icon": null,
+      "cover": null,
+      "in_trash": false,
+      "is_locked": false
+    },
+    "properties": {}
+  }
+}
+```
+
+`plan` reports these as create operations without remote identity. Applied
+`sync` create operations include the new `pageId` and `url` in JSON output, and
+also write them back into the `.nmd` frontmatter.
+
 ## Targets
 
 `status` accepts one or more file targets. Passing a single file emits a
