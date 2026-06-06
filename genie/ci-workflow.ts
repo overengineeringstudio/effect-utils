@@ -92,6 +92,7 @@ export {
   nixExtraConf,
   runDevenvTasksBefore,
   standardCIEnv,
+  withGcRaceRetry,
   workspaceLocalNixCachePath,
   workspaceLocalNixCacheRoot,
   type NixBinaryCache,
