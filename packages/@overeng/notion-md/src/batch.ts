@@ -305,6 +305,12 @@ const preflightPageIds = (opts: {
       }
 
       const pageId = item.result.right.frontmatter.notion_md.page_id
+      /*
+       * Unbound files (`page_id: null`) have no remote identity yet, so they
+       * cannot collide with another file. The per-file run still fails loud
+       * for them — the flat batch path only reconciles bound pages.
+       */
+      if (pageId === null) continue
       pageIds.set(pageId, [...(pageIds.get(pageId) ?? []), item.path])
     }
 
@@ -340,7 +346,9 @@ const runBatch = <A>(opts: {
   readonly targets: readonly string[]
   readonly recursive?: boolean | undefined
   readonly concurrency?: number | undefined
-  readonly run: (path: string) => Effect.Effect<A, NmdError, NotionMdGateway | NmdStateStore>
+  readonly run: (
+    path: string,
+  ) => Effect.Effect<A, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore>
 }): Effect.Effect<
   BatchResult<A>,
   NmdCliError,

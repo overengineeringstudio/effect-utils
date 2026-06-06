@@ -440,17 +440,19 @@ export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
  * inventory, read-only property echoes, data-source binding) moves to
  * the sidecar `NmdSyncStateV1` at `.notion-md/sync/{page_id}.json`.
  *
- * `page_id` is required. Local files are materialized from an existing
- * Notion page through `notion-md sync <page-id-or-url> <target>` before
- * they can participate in guarded two-way sync.
+ * `page_id` is nullable. A `null` page id marks an *unbound* `.nmd` file —
+ * a page that should exist on Notion but has not been created yet. The
+ * unified `sync <path>` reconcile engine creates the remote page on the
+ * next pass and writes the real id back through the canonical renderer.
+ * A bound (`page_id !== null`) file participates in guarded two-way sync.
  */
 export const NmdFrontmatterV2 = Schema.Struct({
   notion_md: Schema.Struct({
     version: Schema.Literal(2),
     api_version: Schema.Literal(NOTION_API_VERSION),
     object: Schema.Literal('page'),
-    page_id: NotionUUID,
-    url: Schema.optional(Schema.String),
+    page_id: Schema.NullOr(NotionUUID),
+    url: Schema.optional(Schema.NullOr(Schema.String)),
     parent: NmdParentRef,
     page: NmdPageState,
     properties: Schema.Record({ key: Schema.String, value: NmdWritablePropertyValue }),

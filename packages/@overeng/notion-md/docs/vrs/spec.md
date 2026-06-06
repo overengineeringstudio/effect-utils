@@ -32,7 +32,7 @@ notion-md CLI
   |
   |  pull/status/push/sync/watch/batch
   v
-Batch/workspace orchestrator
+Batch/tree orchestrator
   |
   |-- target discovery, duplicate page-id preflight, bounded concurrency
   v
@@ -402,7 +402,8 @@ Current commands:
 
 ```bash
 notion-md sync <page-id-or-url> page.nmd
-notion-md sync <page-id-or-url> docs
+notion-md sync docs --from-remote --root <page-id-or-url>
+notion-md plan docs
 notion-md status page.nmd
 notion-md sync page.nmd [--watch] [--poll-interval-ms 30000]
 notion-md sync docs
@@ -440,11 +441,10 @@ notion-md sync <target> [--recursive] [--concurrency 4] [--watch]
 Rules:
 
 - A single file target emits a single-page JSON result.
-- Multiple status targets or recursive unmanaged directory targets emit a batch envelope.
-- Managed workspace directories read `.notion-md/workspace.json`; `sync`
-  materializes missing remote child pages, while `status` reports them without
-  writing files.
-- Unmanaged directory targets require `--recursive`.
+- Multiple status targets or flat recursive directory targets emit a batch envelope.
+- Directory tree targets read `.notion-md/workspace.json` as an internal tree
+  index when present. `plan` reports tree operations without writing files, and
+  `sync` applies the local tree unless `--from-remote` is explicit.
 - Recursive discovery includes existing `*.nmd` files and skips `.notion-md`,
   `.git`, and `node_modules`.
 - Duplicate `page_id` values in the same batch are rejected before any Notion
@@ -476,7 +476,7 @@ Rules:
 - Multi-file watch resolves the target set at startup, watches the containing
   directories for those files, coalesces by path, and runs batch sync passes with
   bounded concurrency. New files discovered after startup require restarting the
-  watcher until a workspace manifest/daemon owns dynamic discovery.
+  watcher until a tree manifest/daemon owns dynamic discovery.
 
 The watch core uses a sliding queue and debounce window. Future tests may inject
 source streams and `TestClock`, but production code must stay on Effect Platform
@@ -544,7 +544,7 @@ Implemented verification currently includes:
 - live Notion E2E against a configured parent page,
 - live E2E ledger updates on the configured parent page,
 - a durable automated demo page synced from `packages/@overeng/notion-md/demo/showcase.nmd`,
-- a recursive workspace demo template under `packages/@overeng/notion-md/demo/workspace/`,
+- a flat recursive batch demo template under `packages/@overeng/notion-md/demo/workspace/`,
 - local `check:quick` and `check:all`.
 
 Live E2E uses `NOTION_TEST_PARENT_PAGE_ID` as a scratch parent. Test-created
@@ -556,7 +556,7 @@ The automated demo page is not a test scratch page. It is the durable 1:1
 showcase for local `.nmd` and Notion state. Its local file and reachable object
 store entries are committed under `packages/@overeng/notion-md/demo/`.
 
-The workspace demo is intentionally a template, not another live fixture set.
+The batch demo is intentionally a template, not another live fixture set.
 Checked-in examples use `.nmd.example` so recursive commands only operate after a
 user has pulled distinct real Notion pages into `.nmd` files.
 

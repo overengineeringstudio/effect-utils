@@ -46,6 +46,16 @@ export type {
 } from './state-store.ts'
 export { decideStorage } from './storage-policy.ts'
 export type { StorageDecision } from './storage-policy.ts'
+export { planPath, statusPath, syncPath, targetKind } from './path.ts'
+export type {
+  PathTargetKind,
+  PlanPathOptions,
+  PlanPathResult,
+  StatusPathOptions,
+  StatusPathResult,
+  SyncPathOptions,
+  SyncPathResult,
+} from './path.ts'
 export { pullPage, statusPage, syncPage } from './sync.ts'
 export type {
   PullOptions,
@@ -56,13 +66,8 @@ export type {
   SyncResult,
 } from './sync.ts'
 export { NOTION_MD_VERSION } from './version.ts'
-export {
-  isManagedWorkspace,
-  statusWorkspace,
-  syncRemoteToTarget,
-  syncWorkspace,
-} from './workspace.ts'
-export type { WorkspaceStatusResult, WorkspaceSyncResult } from './workspace.ts'
+export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
+export type { TreeOp, TreeSyncResult } from './tree.ts'
 export {
   isSingleFileTarget,
   resolveNmdTargets,

@@ -20,7 +20,7 @@ The fixture demonstrates the intended local shape:
 - content-addressed base evidence under `.notion-md/objects`,
 - clean `status` against the remote page after a successful sync.
 
-The `demo/workspace/` tree is a recursive workspace template. It contains
+The `demo/workspace/` tree is a flat recursive batch template. It contains
 `.nmd.example` files in nested folders so users can see the intended shape
 without making broad recursive commands contact placeholder page ids.
 
@@ -53,9 +53,9 @@ A clean fixture reports:
 }
 ```
 
-## Recursive Workspace
+## Flat Recursive Batch
 
-Populate the workspace by syncing real pages into `.nmd` files next to the
+Populate the directory by syncing real pages into `.nmd` files next to the
 examples:
 
 ```sh
@@ -76,7 +76,7 @@ notion-md sync packages/@overeng/notion-md/demo/workspace --recursive --concurre
 notion-md sync packages/@overeng/notion-md/demo/workspace --recursive --watch --poll-interval-ms 30000
 ```
 
-Keep the durable `showcase.nmd` fixture separate from this workspace template.
+Keep the durable `showcase.nmd` fixture separate from this batch template.
 It is the only checked-in live page fixture today.
 
 ## Edit
