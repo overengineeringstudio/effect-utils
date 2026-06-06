@@ -25,9 +25,10 @@ An `.nmd` file is:
 
 ```sh
 notion-md sync <page-id-or-url> page.nmd
-notion-md sync <page-id-or-url> docs
+notion-md sync docs --from-remote --root <page-id-or-url>
+notion-md plan docs
 notion-md status page.nmd
-notion-md status docs --recursive
+notion-md status docs
 notion-md sync page.nmd
 notion-md sync docs
 notion-md sync docs --recursive --concurrency 4
@@ -40,14 +41,16 @@ The CLI reads `NOTION_API_TOKEN`.
 ## Safety Model
 
 - `sync <page> <file.nmd>` writes a strict `.nmd` envelope and computes the clean body hash over the stripped Markdown body.
-- `sync <page> <dir>` establishes a managed workspace and materializes the page tree locally.
+- `sync <dir> --from-remote --root <page>` imports or refreshes a Notion subtree as a local directory tree.
+- `plan <dir>` previews the local-authoritative tree diff; `sync <dir>` applies the local directory as desired tree state.
+- `sync <dir> --recursive` is flat batch mode for existing `.nmd` files only; it does not imply hierarchy, moves, trashing, or remote materialization.
 - Pulls write strict content-addressed base snapshots under `.notion-md/objects/sha256/` so guarded conflicts can show base/local/remote evidence.
 - `status` compares local body hash, remote body hash, and remote `last_edited_time`.
 - Local pushes refuse to overwrite remote body changes unless `--force` is explicit.
 - Local pushes automatically merge simple non-overlapping line edits, insertions, and deletions using the base snapshot.
 - `sync` runs one reconciliation pass: local changes use the guarded write path, remote-only changes are pulled, and clean files are left untouched.
-- `sync` on a managed workspace also materializes newly discovered remote child pages.
-- `sync --watch` runs the same reconciliation pass after local file changes and on a remote polling interval for file targets and unmanaged recursive directories. Managed workspace watch is not implemented yet.
+- Directory tree state is indexed in `<dir>/.notion-md/workspace.json`; this is an internal tree index, not a separate public workspace model.
+- `sync --watch` runs the same reconciliation pass after local file changes and on a remote polling interval for file targets and flat recursive directories. Directory tree watch is not implemented yet.
 - Multi-file and recursive folder sync are orchestration only: each `.nmd` still maps to one Notion page and duplicate page ids are rejected before mutation.
 - Sync refuses to update pages with unresolved unknown Notion blocks unless destructive deletion is explicit.
 - Sync writes a Roughdraft conflict artifact next to the `.nmd` file when remote body content changed.

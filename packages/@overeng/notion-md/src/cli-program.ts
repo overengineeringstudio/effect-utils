@@ -43,7 +43,7 @@ const syncSourceArg = Args.text({ name: 'source' }).pipe(
 )
 
 const syncTargetArg = Args.text({ name: 'target' }).pipe(
-  Args.withDescription('Local .nmd file or workspace directory to establish from Notion'),
+  Args.withDescription('Local .nmd file to establish from Notion'),
   Args.withSchema(NonEmptyCliText),
   Args.optional,
 )
@@ -76,7 +76,9 @@ const pollIntervalMsOption = Options.integer('poll-interval-ms').pipe(
 
 const recursiveOption = Options.boolean('recursive').pipe(
   Options.withAlias('r'),
-  Options.withDescription('Discover .nmd files recursively when a target is a directory'),
+  Options.withDescription(
+    'Flat batch mode: discover existing .nmd files recursively; no tree hierarchy/moves/trash/materialization',
+  ),
   Options.withDefault(false),
 )
 
@@ -88,21 +90,21 @@ const concurrencyOption = Options.integer('concurrency').pipe(
 
 const rootPageOption = Options.text('root').pipe(
   Options.withDescription(
-    'Notion root page id/url to bind a directory tree to on first sync (unbound index.nmd)',
+    'Notion root page id/url for directory tree import or first local-authoritative tree sync',
   ),
   Options.optional,
 )
 
 const fromRemoteOption = Options.boolean('from-remote').pipe(
   Options.withDescription(
-    'Mirror direction: materialize/refresh local files from Notion instead of pushing local-as-desired (default is local-authoritative IaC)',
+    'Directory tree mode: import/refresh local files from Notion instead of applying local desired tree state',
   ),
   Options.withDefault(false),
 )
 
 const rootFileOption = Options.text('root-file').pipe(
   Options.withDescription(
-    'Tree root-file basename (default: detect index.nmd or README.nmd at the tree root)',
+    'Directory tree root-file basename (default: index.nmd, or existing tree index binding)',
   ),
   Options.optional,
 )
@@ -328,6 +330,48 @@ const targetKind = (
     return info.right.type === 'Directory' ? 'directory' : 'file'
   })
 
+const hasExistingTreeIndex = (root: string): Effect.Effect<boolean, never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    return yield* fs.exists(resolve(root, '.notion-md', 'workspace.json')).pipe(
+      Effect.catchAll(() => Effect.succeed(false)),
+    )
+  })
+
+const rejectPlanFileTarget = (target: string): Effect.Effect<void, NmdCliError> =>
+  Effect.fail(
+    new NmdCliError({
+      message: `plan is directory-tree only; use \`notion-md status ${target}\` for a single .nmd file`,
+    }),
+  )
+
+const assertFromRemoteTreeTarget = (opts: {
+  readonly source: string
+  readonly recursive: boolean
+  readonly rootPageId: string | undefined
+}): Effect.Effect<void, NmdCliError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    if (opts.recursive === true) {
+      return yield* new NmdCliError({
+        message:
+          'Cannot combine --recursive and --from-remote: --recursive is flat batch mode; --from-remote is directory tree mode.',
+      })
+    }
+    const kind = yield* targetKind(opts.source)
+    if (kind === 'file') {
+      return yield* new NmdCliError({
+        message:
+          '--from-remote is directory-tree only; use `notion-md sync <page-id-or-url> <file.nmd>` to import one page.',
+      })
+    }
+    if (opts.rootPageId === undefined && (yield* hasExistingTreeIndex(opts.source)) === false) {
+      return yield* new NmdCliError({
+        message:
+          '--from-remote requires --root <page-id-or-url> unless the directory already has .notion-md/workspace.json.',
+      })
+    }
+  })
+
 const parseRootPage = (
   root: Option.Option<string>,
 ): Effect.Effect<string | undefined, NmdCliError> => {
@@ -442,20 +486,25 @@ const planCommand = Command.make(
     commandSpan({
       command: 'plan',
       label: basename(target),
-      effect: withNotion(
-        parseRootPage(root).pipe(
-          Effect.flatMap((rootPageId) =>
-            targetKind(target).pipe(
-              Effect.flatMap((kind) =>
-                kind === 'directory'
-                  ? syncTree({
-                      root: target,
-                      plan: true,
-                      fromRemote,
-                      ...(rootPageId === undefined ? {} : { rootPageId }),
-                      ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
-                    }).pipe(Effect.map((result): unknown => result))
-                  : statusPage({ path: target }).pipe(Effect.map((result): unknown => result)),
+      effect: parseRootPage(root).pipe(
+        Effect.flatMap((rootPageId) =>
+          targetKind(target).pipe(
+            Effect.flatMap((kind) =>
+              kind === 'file'
+                ? rejectPlanFileTarget(target)
+                : fromRemote === true
+                  ? assertFromRemoteTreeTarget({ source: target, recursive: false, rootPageId })
+                  : Effect.void,
+            ),
+            Effect.zipRight(
+              withNotion(
+                syncTree({
+                  root: target,
+                  plan: true,
+                  fromRemote,
+                  ...(rootPageId === undefined ? {} : { rootPageId }),
+                  ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
+                }).pipe(Effect.map((result): unknown => result)),
               ),
             ),
           ),
@@ -464,7 +513,7 @@ const planCommand = Command.make(
     }).pipe(Effect.flatMap(logJson)),
 ).pipe(
   Command.withDescription(
-    'Dry-run: print the create/update/move/trash/noop diff for a directory tree (or status for a file) without applying',
+    'Dry-run: print the create/update/move/trash/noop diff for a directory tree without applying',
   ),
 )
 
@@ -534,11 +583,17 @@ const syncCommand = Command.make(
           targetKind(target.value).pipe(
             Effect.flatMap((kind) =>
               kind === 'directory'
-                ? syncTree({
-                    root: target.value,
-                    fromRemote: true,
-                    rootPageId: pageId,
-                  }).pipe(Effect.map((result): unknown => result))
+                ? Console.error(
+                    '`notion-md sync <page-id-or-url> <dir>` is a legacy compatibility alias; prefer `notion-md sync <dir> --from-remote --root <page-id-or-url>`.',
+                  ).pipe(
+                    Effect.zipRight(
+                      syncTree({
+                        root: target.value,
+                        fromRemote: true,
+                        rootPageId: pageId,
+                      }).pipe(Effect.map((result): unknown => result)),
+                    ),
+                  )
                 : pullPage({ pageId, outPath: target.value }).pipe(
                     Effect.map((result): unknown => result),
                   ),
@@ -593,31 +648,34 @@ const syncCommand = Command.make(
       : commandSpan({
           command: 'sync',
           label,
-          effect: withNotion(
-            parseRootPage(root).pipe(
-              Effect.flatMap((rootPageId) =>
-                /*
-                 * `--from-remote` materializes a tree from Notion into the same
-                 * layout + index as the forward path; the target dir may not
-                 * exist yet, so route to the tree engine BEFORE classifying.
-                 */
-                fromRemote === true
-                  ? syncTree({
-                      root: source,
-                      fromRemote: true,
-                      pushOptions: { ...syncOptions, path: source } satisfies PushOptions,
-                      ...(rootPageId === undefined ? {} : { rootPageId }),
-                      ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
-                    }).pipe(Effect.map((result): unknown => result))
-                  : targetKind(source).pipe(
-                      Effect.flatMap((kind) =>
-                        kind === 'directory'
-                          ? // `--recursive` keeps the flat per-file batch (independent bound pages).
-                            recursive === true
-                            ? syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
+          effect: parseRootPage(root).pipe(
+            Effect.flatMap((rootPageId) =>
+              fromRemote === true
+                ? assertFromRemoteTreeTarget({ source, recursive, rootPageId }).pipe(
+                    Effect.zipRight(
+                      withNotion(
+                        syncTree({
+                          root: source,
+                          fromRemote: true,
+                          pushOptions: { ...syncOptions, path: source } satisfies PushOptions,
+                          ...(rootPageId === undefined ? {} : { rootPageId }),
+                          ...(Option.isSome(rootFile) === true ? { rootFile: rootFile.value } : {}),
+                        }).pipe(Effect.map((result): unknown => result)),
+                      ),
+                    ),
+                  )
+                : targetKind(source).pipe(
+                    Effect.flatMap((kind) =>
+                      kind === 'directory'
+                        ? // `--recursive` keeps the flat per-file batch (independent bound pages).
+                          recursive === true
+                          ? withNotion(
+                              syncMany({ ...syncOptions, targets, recursive, concurrency }).pipe(
                                 Effect.map((result): unknown => result),
-                              )
-                            : // one tree engine, local-authoritative forward direction.
+                              ),
+                            )
+                          : // one tree engine, local-authoritative forward direction.
+                            withNotion(
                               syncTree({
                                 root: source,
                                 fromRemote: false,
@@ -626,31 +684,35 @@ const syncCommand = Command.make(
                                 ...(Option.isSome(rootFile) === true
                                   ? { rootFile: rootFile.value }
                                   : {}),
-                              }).pipe(Effect.map((result): unknown => result))
-                          : singleFile.pipe(
-                              Effect.flatMap((isSingleFile) =>
-                                isSingleFile === true
-                                  ? assertNotTreeMember({
-                                      path: targets[0] ?? '',
-                                      allowReadOnly: false,
-                                    }).pipe(
-                                      Effect.zipRight(
+                              }).pipe(Effect.map((result): unknown => result)),
+                            )
+                        : singleFile.pipe(
+                            Effect.flatMap((isSingleFile) =>
+                              isSingleFile === true
+                                ? assertNotTreeMember({
+                                    path: targets[0] ?? '',
+                                    allowReadOnly: false,
+                                  }).pipe(
+                                    Effect.zipRight(
+                                      withNotion(
                                         syncPage({ ...syncOptions, path: targets[0] ?? '' }).pipe(
                                           Effect.map((result): unknown => result),
                                         ),
                                       ),
-                                    )
-                                  : syncMany({
+                                    ),
+                                  )
+                                : withNotion(
+                                    syncMany({
                                       ...syncOptions,
                                       targets,
                                       recursive,
                                       concurrency,
                                     }).pipe(Effect.map((result): unknown => result)),
-                              ),
+                                  ),
                             ),
-                      ),
+                          ),
                     ),
-              ),
+                  ),
             ),
           ),
         }).pipe(Effect.flatMap(logJson))

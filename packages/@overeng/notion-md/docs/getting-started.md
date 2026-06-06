@@ -42,13 +42,13 @@ To start from a Notion page tree instead of a single page, use a directory
 target:
 
 ```sh
-notion-md sync 00000000000040008000000000000001 docs
+notion-md sync docs --from-remote --root 00000000000040008000000000000001
 ```
 
-This creates `docs/.notion-md/workspace.json`, writes the root page to
-`docs/index.nmd`, and materializes child pages using deterministic slug paths.
-Later, `notion-md sync docs` keeps the workspace current and pulls newly added
-remote child pages into local files.
+This creates `docs/.notion-md/workspace.json` as an internal tree index, writes
+the root page to `docs/index.nmd`, and materializes child pages using
+deterministic slug paths. Later, `notion-md plan docs` previews the tree diff
+and `notion-md sync docs` applies the local directory as desired tree state.
 
 ## Creating A New Local File
 
@@ -100,8 +100,8 @@ notion-md sync notes.nmd --force
 notion-md sync notes.nmd
 ```
 
-`sync` runs one reconciliation pass. It accepts a single `.nmd`, a managed
-workspace directory, or an unmanaged directory with `--recursive`:
+`sync` runs one reconciliation pass. It accepts a single `.nmd`, a directory
+tree, or a flat batch directory with `--recursive`:
 
 ```sh
 notion-md sync docs --recursive --concurrency 4
@@ -122,7 +122,7 @@ Watch mode runs the same reconciliation pass after local file changes and on a
 remote polling interval. It emits one compact JSON line per sync event or
 recoverable sync error.
 
-Unmanaged recursive directory targets can share one watch process:
+Flat recursive directory targets can share one watch process:
 
 ```sh
 notion-md sync docs --recursive --watch --poll-interval-ms 30000
@@ -132,6 +132,7 @@ The watched file set is resolved at startup. Restart the watcher after adding a
 new `.nmd` file. Concurrent writers can still create real conflicts, and those
 should be resolved through the same guarded conflict flow.
 
-Managed workspace watch is not implemented yet. Use one-shot
-`notion-md sync docs` when you want to refresh the remote tree and materialize
-new child pages.
+Directory tree watch is not implemented yet. Use one-shot
+`notion-md sync docs` when you want to apply the local tree, or
+`notion-md sync docs --from-remote --root <page-id-or-url>` when you want to
+refresh from Notion.

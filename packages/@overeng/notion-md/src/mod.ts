@@ -57,7 +57,7 @@ export type {
 } from './sync.ts'
 export { NOTION_MD_VERSION } from './version.ts'
 export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
-export { composePushBody, parentRelPathFor, slugForRelPath, syncTree } from './tree.ts'
+export { syncTree } from './tree.ts'
 export type { TreeOp, TreeSyncResult } from './tree.ts'
 export {
   isSingleFileTarget,
