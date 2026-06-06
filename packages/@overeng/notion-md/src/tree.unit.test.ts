@@ -63,6 +63,22 @@ class FakeTreeNotion {
     return [...this.pages.values()].filter((page) => page.inTrash === false).length
   }
 
+  addRemotePage(opts: {
+    readonly parentId: string
+    readonly title: string
+    readonly markdown: string
+  }): string {
+    this.counter += 1
+    const id = `00000000-0000-4000-8000-0000000${String(this.counter).padStart(5, '0')}`
+    this.pages.set(id, {
+      title: opts.title,
+      markdown: opts.markdown,
+      parentId: opts.parentId,
+      inTrash: false,
+    })
+    return id
+  }
+
   createCount = 0
 
   private require(id: string): FakePageState {
@@ -495,6 +511,87 @@ describe('notion-md tree reconcile lifecycle', () => {
       await run(syncTree({ root: dir }), fake)
       expect(fake.createCount).toBe(2)
       expect(fake.liveCount()).toBe(3) // root + alpha + beta, no duplicates
+    })
+  })
+
+  it('accepts a legacy workspace manifest and infers the root file before planning', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await mkdir(join(dir, '.notion-md'), { recursive: true })
+      await writeFile(join(dir, 'README.nmd'), unbound({ title: 'Root', body: 'Root.' }))
+      await writeFile(
+        join(dir, '.notion-md', 'workspace.json'),
+        `${JSON.stringify(
+          {
+            version: 1,
+            root_page_id: rootPageId,
+            pages: { [rootPageId]: 'README.nmd' },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+
+      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      expect(plan.rootFile).toBe('README.nmd')
+      expect(plan.rootPageId).toBe(rootPageId)
+    })
+  })
+
+  it('materializes duplicate remote title slugs to unique forward-sync paths', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const leafId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Same',
+        markdown: 'Leaf body.\n',
+      })
+      const subtreeId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Same',
+        markdown: 'Subtree body.\n',
+      })
+      fake.addRemotePage({ parentId: subtreeId, title: 'Child', markdown: 'Child body.\n' })
+
+      const result = await run(
+        syncTree({ root: dir, rootPageId, fromRemote: true, rootFile: 'index.nmd' }),
+        fake,
+      )
+      expect(opTags(result.ops).materialize).toBe(4)
+      expect(await readFile(join(dir, 'same.nmd'), 'utf8')).toContain(`"page_id": "${leafId}"`)
+      expect(
+        await readFile(
+          join(dir, `same-${subtreeId.replaceAll('-', '').slice(-6)}`, 'index.nmd'),
+          'utf8',
+        ),
+      ).toContain(`"page_id": "${subtreeId}"`)
+
+      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      expect(plan.ops.some((op) => op._tag === 'update')).toBe(false)
+    })
+  })
+
+  it('strips derived child anchors from from-remote file bodies while keeping composed baselines', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const childId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Alpha',
+        markdown: 'Alpha body.\n',
+      })
+      fake.mutateRemote(
+        rootPageId,
+        `Root body.\n\n<page url="https://app.notion.com/p/${childId.replaceAll('-', '')}">Alpha</page>\n`,
+      )
+
+      await run(syncTree({ root: dir, rootPageId, fromRemote: true, rootFile: 'index.nmd' }), fake)
+      const rootFile = await readFile(join(dir, 'index.nmd'), 'utf8')
+      expect(rootFile).toContain('Root body.')
+      expect(rootFile).not.toContain('<page url=')
+
+      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      expect(opTags(plan.ops).noop).toBe(2)
+      expect(opTags(plan.ops).update).toBeUndefined()
     })
   })
 })
