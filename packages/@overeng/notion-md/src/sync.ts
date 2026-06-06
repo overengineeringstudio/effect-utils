@@ -741,6 +741,19 @@ const stripChildAnchors = (body: string): string =>
     .filter((line) => /^\s*<page\b[^>]*>.*<\/page>\s*$/u.test(line) === false)
     .join('\n')
 
+const remoteBodyUnchangedForPush = (opts: {
+  readonly remoteBody: string
+  readonly baseBody: string
+  readonly ignoreChildAnchors: boolean
+}): boolean => {
+  const forCompare = (body: string): string =>
+    opts.ignoreChildAnchors === true ? stripChildAnchors(body) : body
+  return semanticEquivalent({
+    a: forCompare(opts.remoteBody),
+    b: forCompare(opts.baseBody),
+  })
+}
+
 const statusFromSnapshots = (opts: {
   readonly path: string
   readonly local: LocalState
@@ -1164,15 +1177,18 @@ export const pushGuarded = (opts: {
         })
         const remote = yield* gateway.pullPage({ pageId: status.pageId })
         /*
-         * TOCTOU: the remote must not have moved since the status pull. Compare
-         * semantically against the baseline (canonicalization-invariant) so a
-         * volatile parent body (Notion auto-anchors) does not trip a phantom
-         * race; for `replaceContent` (tree) the full body is re-emitted anyway.
+         * TOCTOU: the remote must not have changed since the status pull.
+         * Compare semantically against the baseline (canonicalization-invariant).
+         * For `replaceContent` tree pushes, ignore derived child anchors only;
+         * real user-authored body edits still block the full-body replace.
          */
         if (
           options.force !== true &&
-          options.replaceContent !== true &&
-          semanticEquivalent({ a: remote.markdown.markdown, b: baseSnapshot.body }) === false
+          remoteBodyUnchangedForPush({
+            remoteBody: remote.markdown.markdown,
+            baseBody: baseSnapshot.body,
+            ignoreChildAnchors: options.replaceContent === true,
+          }) === false
         ) {
           return yield* new NmdConflictError({
             path,

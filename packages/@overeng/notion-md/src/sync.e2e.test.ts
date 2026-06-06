@@ -113,6 +113,7 @@ class FakeNotion {
   private readonly pages = new Map<string, Required<FakePage>>()
   private tick = 0
   private afterPagePropertiesUpdate: (() => void) | undefined
+  private afterNextPullPage: (() => void) | undefined
   readonly updateMarkdownCalls: Array<{
     readonly pageId: string
     readonly allowDeletingContent: boolean
@@ -146,7 +147,11 @@ class FakeNotion {
     pullPage: ({ pageId: id }) =>
       Effect.sync(() => {
         const page = this.requirePage(id)
-        return this.toPullResult(page)
+        const result = this.toPullResult(page)
+        const afterPull = this.afterNextPullPage
+        this.afterNextPullPage = undefined
+        afterPull?.()
+        return result
       }),
     updateMarkdown: ({ pageId: id, command, allowDeletingContent }) =>
       Effect.sync(() => {
@@ -315,6 +320,12 @@ class FakeNotion {
 
   mutateRemoteAfterNextPropertyUpdate(pageIdToMutate: string, markdown: string): void {
     this.afterPagePropertiesUpdate = () => {
+      this.mutateRemote(pageIdToMutate, markdown)
+    }
+  }
+
+  mutateRemoteAfterNextPull(pageIdToMutate: string, markdown: string): void {
+    this.afterNextPullPage = () => {
       this.mutateRemote(pageIdToMutate, markdown)
     }
   }
@@ -1632,6 +1643,60 @@ describe('notion-md e2e prototype', () => {
         throw new Error('Expected pushPage to fail')
       }
       expect(result.left).toBeInstanceOf(NmdConflictError)
+    })
+  })
+
+  it('rejects replace-content pushes when remote body changes after status pull', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Body', 'Local body'))
+      fake.mutateRemoteAfterNextPull(pageId, '# Probe\n\nRemote race body')
+
+      const result = await runEitherWithFake(pushPage({ path, replaceContent: true }), fake)
+
+      expect(result).toMatchObject({
+        _tag: 'Left',
+        left: {
+          _tag: 'NmdConflictError',
+          path,
+          page_id: pageId,
+          local_changed: true,
+          remote_changed: true,
+          message: 'Remote page changed while preparing guarded Markdown push',
+        },
+      })
+      expect(fake.updateMarkdownCalls).toEqual([])
+    })
+  })
+
+  it('allows replace-content pushes when only derived child anchors race in remotely', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Body', 'Local body'))
+      fake.mutateRemoteAfterNextPull(
+        pageId,
+        '# Probe\n\nBody\n\n<page url="https://www.notion.so/child">Child</page>',
+      )
+
+      const result = await runWithFake(pushPage({ path, replaceContent: true }), fake)
+
+      expect(result.pushed).toBe(true)
+      expect(fake.updateMarkdownCalls).toEqual([
+        {
+          pageId,
+          allowDeletingContent: true,
+          command: 'replace_content',
+          markdown: '# Probe\n\nLocal body\n',
+        },
+      ])
     })
   })
 
