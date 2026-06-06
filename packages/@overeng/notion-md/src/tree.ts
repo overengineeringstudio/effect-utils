@@ -139,6 +139,7 @@ export type TreeOp =
   | { readonly _tag: 'move'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'noop'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'trash'; readonly relPath: string; readonly pageId: string }
+  | { readonly _tag: 'trash_blocked'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'conflict'; readonly relPath: string; readonly pageId: string }
   | { readonly _tag: 'materialize'; readonly relPath: string; readonly pageId: string }
 
@@ -634,7 +635,7 @@ const syncTreeLocal = (opts: {
       })
     }
 
-    // PASS 1 — create unbound pages; move bound pages whose Notion parent differs.
+    // PASS 1 — create unbound pages; plan/apply bound-page structural moves.
     for (const page of pages) {
       const parentRel = page.parentRelPath ?? rootRel
       const parentId = idForRelPath.get(parentRel)
@@ -649,12 +650,14 @@ const syncTreeLocal = (opts: {
       }
       const existingId = idForRelPath.get(page.relPath)
       if (existingId !== undefined) {
-        if (page.relPath !== rootRel && page.boundPageId !== null && plan === false) {
+        if (page.relPath !== rootRel && page.boundPageId !== null) {
           const remote = yield* gateway.pullPage({ pageId: existingId })
           const remoteParent =
             remote.page.parent.type === 'page_id' ? remote.page.parent.page_id : undefined
           if (remoteParent !== undefined && remoteParent !== parentId) {
-            yield* gateway.movePage({ pageId: existingId, parentPageId: parentId })
+            if (plan === false) {
+              yield* gateway.movePage({ pageId: existingId, parentPageId: parentId })
+            }
             ops.push({ _tag: 'move', relPath: page.relPath, pageId: existingId })
           }
         }
@@ -698,7 +701,13 @@ const syncTreeLocal = (opts: {
       yield* classifyPlan({ root, pages, idForRelPath, slugMap, ops })
       const liveIds = new Set(idForRelPath.values())
       for (const [relPath, pageId] of Object.entries(previous?.pages ?? {})) {
-        if (liveIds.has(pageId) === false) ops.push({ _tag: 'trash', relPath, pageId })
+        if (liveIds.has(pageId) === false) {
+          ops.push({
+            _tag: opts.pushOptions.force === true ? 'trash' : 'trash_blocked',
+            relPath,
+            pageId,
+          })
+        }
       }
       return ops
     }
@@ -822,15 +831,21 @@ const syncTreeLocal = (opts: {
       }
     }
 
-    // RECONCILE — guarded-trash index pages whose id no longer maps to a file.
+    // RECONCILE — missing local files are destructive remote trash intent only with force.
     const liveIds = new Set(
       pages
         .map((page) => idForRelPath.get(page.relPath))
         .filter((id): id is string => id !== undefined),
     )
+    const blockedTrashPages: Record<string, string> = {}
     for (const [relPath, pageId] of Object.entries(previous?.pages ?? {})) {
       if (liveIds.has(pageId) === true) continue
       const remote = yield* gateway.pullPage({ pageId })
+      if (opts.pushOptions.force !== true && remote.page.in_trash === false) {
+        blockedTrashPages[relPath] = pageId
+        ops.push({ _tag: 'trash_blocked', relPath, pageId })
+        continue
+      }
       if (remote.page.in_trash === false) {
         yield* gateway.archivePage({ pageId })
       }
@@ -843,6 +858,9 @@ const syncTreeLocal = (opts: {
       if (page.relPath === rootRel) continue
       const id = idForRelPath.get(page.relPath)
       if (id !== undefined) indexPages[page.relPath] = id
+    }
+    for (const [relPath, pageId] of Object.entries(blockedTrashPages)) {
+      indexPages[relPath] = pageId
     }
     yield* writeTreeIndex({
       root,

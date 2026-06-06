@@ -333,6 +333,32 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
+  it('plan reports a bound page move without mutating Notion', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await mkdir(join(dir, 'sub'), { recursive: true })
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha.' }))
+      await writeFile(join(dir, 'sub', 'index.nmd'), unbound({ title: 'Sub', body: 'Sub.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaPath = join(dir, 'alpha.nmd')
+      const alphaContent = await readFile(alphaPath, 'utf8')
+      const alphaId = /"page_id": "([^"]+)"/u.exec(alphaContent)?.[1]
+      expect(alphaId).toBeDefined()
+
+      await rm(alphaPath)
+      await writeFile(join(dir, 'sub', 'alpha.nmd'), alphaContent)
+
+      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      expect(plan.ops.some((op) => op._tag === 'move' && op.relPath === 'sub/alpha.nmd')).toBe(
+        true,
+      )
+      expect(fake.childTitles(rootPageId)).toContain('Alpha')
+      expect(fake.childTitles(rootPageId)).toContain('Sub')
+    })
+  })
+
   it('creates a nested tree where a same-depth index anchors its siblings', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
@@ -392,7 +418,7 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
-  it('reconciles an edit, a move across parents (keeps id), and a guarded trash', async () => {
+  it('reconciles an edit, a move across parents (keeps id), and blocks trash by default', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
       await mkdir(join(dir, 'sub'), { recursive: true })
@@ -420,9 +446,22 @@ describe('notion-md tree reconcile lifecycle', () => {
       expect(fake.isTrashed(alphaId ?? '')).toBe(false)
       expect(fake.remoteBody(alphaId ?? '')).toContain('Alpha edited.')
 
-      // delete sub/alpha.nmd → guarded trash on next sync
+      // delete sub/alpha.nmd: default sync reports blocked destructive intent,
+      // preserves the index entry, and does not archive the remote page.
       await rm(join(dir, 'sub', 'alpha.nmd'))
-      const trashed = await run(syncTree({ root: dir }), fake)
+      const blocked = await run(syncTree({ root: dir }), fake)
+      expect(opTags(blocked.ops).trash_blocked).toBe(1)
+      expect(opTags(blocked.ops).trash).toBeUndefined()
+      expect(fake.isTrashed(alphaId ?? '')).toBe(false)
+
+      const blockedAgain = await run(syncTree({ root: dir }), fake)
+      expect(opTags(blockedAgain.ops).trash_blocked).toBe(1)
+      expect(fake.isTrashed(alphaId ?? '')).toBe(false)
+
+      const trashed = await run(
+        syncTree({ root: dir, pushOptions: { path: dir, force: true } }),
+        fake,
+      )
       expect(opTags(trashed.ops).trash).toBe(1)
       expect(fake.isTrashed(alphaId ?? '')).toBe(true)
     })
