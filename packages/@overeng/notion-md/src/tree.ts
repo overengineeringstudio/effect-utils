@@ -8,6 +8,7 @@ import {
   type NmdFrontmatterV2,
   type NmdParentRef,
 } from '@overeng/notion-effect-client'
+import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { titleSlug } from '@overeng/utils'
 
 import { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
@@ -317,6 +318,164 @@ export const composePushBody = (opts: {
   return normalizeMarkdownLineEndings(`${trimmed}\n\n${anchors}\n`)
 }
 
+const blockChildAnchor = /^(?<indent>\s*)<page\b(?<attrs>[^>]*)>(?<label>.*)<\/page>\s*$/u
+const anchorUrlAttr = /\burl\s*=\s*(?:"(?<double>[^"]+)"|'(?<single>[^']+)')/u
+
+type ChildAnchor =
+  | { readonly _tag: 'valid'; readonly pageId: string }
+  | { readonly _tag: 'placeholder'; readonly title: string; readonly label: string }
+  | { readonly _tag: 'invalid'; readonly reason: string; readonly line: string }
+
+interface ChildIndexChild {
+  readonly title: string
+  readonly pageId?: string
+}
+
+const childKey = (child: ChildIndexChild): string =>
+  child.pageId === undefined ? `title:${child.title}` : `page:${child.pageId}`
+
+const childAnchors = (body: string): readonly ChildAnchor[] => {
+  const anchors: ChildAnchor[] = []
+  for (const line of body.split('\n')) {
+    const anchor = blockChildAnchor.exec(line)
+    if (anchor === null) continue
+    const attrs = anchor.groups?.attrs ?? ''
+    const label = anchor.groups?.label ?? ''
+    const url = anchorUrlAttr.exec(anchor.groups?.attrs ?? '')
+    if (url === null) {
+      anchors.push({ _tag: 'placeholder', title: label.trim(), label })
+      continue
+    }
+    const pageId = parseNotionUuid(url.groups?.double ?? url.groups?.single ?? '')
+    anchors.push(
+      pageId === undefined
+        ? { _tag: 'invalid', reason: `invalid url attribute (${attrs.trim()})`, line }
+        : { _tag: 'valid', pageId },
+    )
+  }
+  return anchors
+}
+
+const validateAndFillChildAnchors = (opts: {
+  readonly relPath: string
+  readonly resolvedBody: string
+  readonly children: readonly ChildIndexChild[]
+}): Effect.Effect<string, NmdError> =>
+  Effect.gen(function* () {
+    const anchors = childAnchors(opts.resolvedBody)
+    const childByPageId = new Map(
+      opts.children.flatMap((child) =>
+        child.pageId === undefined ? [] : ([[child.pageId, child]] as const),
+      ),
+    )
+    const childrenByTitle = new Map<string, readonly ChildIndexChild[]>()
+    for (const child of opts.children) {
+      childrenByTitle.set(child.title, [...(childrenByTitle.get(child.title) ?? []), child])
+    }
+    const counts = new Map<string, number>()
+    for (const anchor of anchors) {
+      if (anchor._tag === 'invalid') {
+        return yield* new NmdCliError({
+          message: `Invalid child anchor in ${opts.relPath}: ${anchor.reason} (${anchor.line.trim()})`,
+        })
+      }
+      if (anchor._tag === 'placeholder') {
+        const matches = childrenByTitle.get(anchor.title) ?? []
+        if (matches.length === 0) {
+          return yield* new NmdCliError({
+            message: `Dangling child anchor in ${opts.relPath}: <page>${anchor.label}</page> does not match a local child title`,
+          })
+        }
+        if (matches.length > 1) {
+          return yield* new NmdCliError({
+            message: `Ambiguous child anchor in ${opts.relPath}: <page>${anchor.label}</page> matches ${matches.length} local children titled "${anchor.title}"`,
+          })
+        }
+        const child = matches[0]
+        if (child !== undefined) {
+          const key = childKey(child)
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
+      } else {
+        const child = childByPageId.get(anchor.pageId)
+        if (child === undefined) {
+          return yield* new NmdCliError({
+            message: `Dangling child anchor in ${opts.relPath}: <page> points at ${anchor.pageId}, which is not a local child`,
+          })
+        }
+        const key = childKey(child)
+        counts.set(key, (counts.get(key) ?? 0) + 1)
+      }
+    }
+
+    for (const child of opts.children) {
+      const count = counts.get(childKey(child)) ?? 0
+      if (count === 0) {
+        return yield* new NmdCliError({
+          message: `Missing child anchor in ${opts.relPath}: expected one <page> anchor for "${child.title}"`,
+        })
+      }
+      if (count > 1) {
+        return yield* new NmdCliError({
+          message: `Duplicate child anchor in ${opts.relPath}: found ${count} anchors for "${child.title}"`,
+        })
+      }
+    }
+
+    const childByTitle = new Map(opts.children.map((child) => [child.title, child]))
+    return opts.resolvedBody
+      .split('\n')
+      .map((line) => {
+        const anchor = blockChildAnchor.exec(line)
+        if (anchor === null) return line
+        if (anchorUrlAttr.test(anchor.groups?.attrs ?? '') === true) return line
+        const label = anchor.groups?.label ?? ''
+        const child = childByTitle.get(label.trim())
+        if (child?.pageId === undefined) return line
+        return `${anchor.groups?.indent ?? ''}<page url="${pageUrl(child.pageId)}">${label}</page>`
+      })
+      .join('\n')
+  })
+
+const blankLineSeparateChildAnchors = (body: string): string => {
+  const lines: string[] = []
+  for (const line of body.split('\n')) {
+    const previous = lines.at(-1)
+    if (
+      previous !== undefined &&
+      blockChildAnchor.test(previous) === true &&
+      blockChildAnchor.test(line) === true
+    ) {
+      lines.push('')
+    }
+    lines.push(line)
+  }
+  return lines.join('\n')
+}
+
+const composeTreePushBody = (opts: {
+  readonly relPath: string
+  readonly resolvedBody: string
+  readonly children: readonly ChildIndexChild[]
+}): Effect.Effect<string, NmdError> =>
+  childAnchors(opts.resolvedBody).length === 0
+    ? Effect.succeed(
+        composePushBody({
+          resolvedBody: opts.resolvedBody,
+          children: opts.children.filter(
+            (child): child is { readonly title: string; readonly pageId: string } =>
+              child.pageId !== undefined,
+          ),
+        }),
+      )
+    : validateAndFillChildAnchors(opts).pipe(
+        Effect.map((body) =>
+          normalizeMarkdownLineEndings(
+            `${blankLineSeparateChildAnchors(body).replace(/\n+$/u, '')}\n`,
+          ),
+        ),
+      )
+
 /** Strip block-level child anchors; in a tree they are derived from hierarchy. */
 const stripChildAnchors = (body: string): string =>
   normalizeMarkdownLineEndings(
@@ -459,6 +618,25 @@ const childrenByParent = (opts: {
     if (id === undefined) continue
     const list = childrenOf.get(parentRel) ?? []
     list.push({ title: page.title, pageId: id })
+    childrenOf.set(parentRel, list)
+  }
+  return childrenOf
+}
+
+const childIndexChildrenByParent = (opts: {
+  readonly pages: readonly LocalTreePage[]
+  readonly idForRelPath: ReadonlyMap<string, string>
+}): Map<string, ChildIndexChild[]> => {
+  const childrenOf = new Map<string, ChildIndexChild[]>()
+  for (const page of opts.pages) {
+    const parentRel = page.parentRelPath
+    if (parentRel === undefined) continue
+    const list = childrenOf.get(parentRel) ?? []
+    const pageId = opts.idForRelPath.get(page.relPath)
+    list.push({
+      title: page.title,
+      ...(pageId === undefined ? {} : { pageId }),
+    })
     childrenOf.set(parentRel, list)
   }
   return childrenOf
@@ -657,7 +835,8 @@ const syncTreeLocal = (opts: {
         slugMap,
         idMap: idForRelPath,
       })
-      const composedBody = composePushBody({
+      const composedBody = yield* composeTreePushBody({
+        relPath: page.relPath,
         resolvedBody,
         children: childrenOf.get(page.relPath) ?? [],
       })
@@ -800,7 +979,10 @@ const classifyPlan = (opts: {
   readonly ops: TreeOp[]
 }): Effect.Effect<void, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
-    const childrenOf = childrenByParent({ pages: opts.pages, idForRelPath: opts.idForRelPath })
+    const childrenOf = childIndexChildrenByParent({
+      pages: opts.pages,
+      idForRelPath: opts.idForRelPath,
+    })
     for (const page of opts.pages) {
       const pageId = opts.idForRelPath.get(page.relPath)
       if (pageId === undefined) continue
@@ -812,7 +994,8 @@ const classifyPlan = (opts: {
         slugMap: opts.slugMap,
         idMap: opts.idForRelPath,
       }).pipe(Effect.orElseSucceed(() => page.body))
-      const composed = composePushBody({
+      const composed = yield* composeTreePushBody({
+        relPath: page.relPath,
         resolvedBody: resolved,
         children: childrenOf.get(page.relPath) ?? [],
       })
