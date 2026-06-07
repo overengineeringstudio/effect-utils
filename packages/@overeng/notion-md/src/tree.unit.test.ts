@@ -525,6 +525,81 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
+  it('plans URL-less authored child anchors for pending children without applying', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root intro.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'alpha.nmd'), 'utf8'),
+      )?.[1]
+      expect(alphaId).toBeDefined()
+
+      const boundIndex = await readFile(join(dir, 'index.nmd'), 'utf8')
+      await writeFile(
+        join(dir, 'index.nmd'),
+        boundIndex.replace(
+          'Root intro.',
+          [
+            'Root intro.',
+            '',
+            `<page url="${pageUrl(alphaId ?? '')}">Alpha</page>`,
+            '',
+            '<page>Beta</page>',
+          ].join('\n'),
+        ),
+      )
+      await writeFile(join(dir, 'beta.nmd'), unbound({ title: 'Beta', body: 'Beta body.' }))
+
+      const plan = await run(syncTree({ root: dir, plan: true }), fake)
+      expect(plan.ops.some((op) => op._tag === 'create' && op.relPath === 'beta.nmd')).toBe(true)
+      expect(plan.ops.some((op) => op._tag === 'update' && op.relPath === 'index.nmd')).toBe(true)
+      expect(fake.childTitles(rootPageId)).toEqual(['Alpha'])
+    })
+  })
+
+  it('blank-line-separates adjacent authored child anchors before pushing', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root intro.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+      await writeFile(join(dir, 'beta.nmd'), unbound({ title: 'Beta', body: 'Beta body.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'alpha.nmd'), 'utf8'),
+      )?.[1]
+      const betaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'beta.nmd'), 'utf8'),
+      )?.[1]
+      expect(alphaId).toBeDefined()
+      expect(betaId).toBeDefined()
+
+      const boundIndex = await readFile(join(dir, 'index.nmd'), 'utf8')
+      await writeFile(
+        join(dir, 'index.nmd'),
+        boundIndex.replace(
+          'Root intro.',
+          [
+            'Root intro.',
+            '',
+            `<page url="${pageUrl(alphaId ?? '')}">Alpha</page>`,
+            `<page url="${pageUrl(betaId ?? '')}">Beta</page>`,
+            '',
+            'After the index.',
+          ].join('\n'),
+        ),
+      )
+
+      await run(syncTree({ root: dir }), fake)
+      expect(fake.remoteBody(rootPageId)).toContain(
+        `<page url="${pageUrl(alphaId ?? '')}">Alpha</page>\n\n<page url="${pageUrl(betaId ?? '')}">Beta</page>`,
+      )
+    })
+  })
+
   it('rejects an authored child index when a local child anchor is missing', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()

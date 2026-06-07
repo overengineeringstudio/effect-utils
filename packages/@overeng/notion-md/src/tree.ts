@@ -326,6 +326,14 @@ type ChildAnchor =
   | { readonly _tag: 'placeholder'; readonly title: string; readonly label: string }
   | { readonly _tag: 'invalid'; readonly reason: string; readonly line: string }
 
+interface ChildIndexChild {
+  readonly title: string
+  readonly pageId?: string
+}
+
+const childKey = (child: ChildIndexChild): string =>
+  child.pageId === undefined ? `title:${child.title}` : `page:${child.pageId}`
+
 const childAnchors = (body: string): readonly ChildAnchor[] => {
   const anchors: ChildAnchor[] = []
   for (const line of body.split('\n')) {
@@ -351,15 +359,16 @@ const childAnchors = (body: string): readonly ChildAnchor[] => {
 const validateAndFillChildAnchors = (opts: {
   readonly relPath: string
   readonly resolvedBody: string
-  readonly children: readonly { readonly title: string; readonly pageId: string }[]
+  readonly children: readonly ChildIndexChild[]
 }): Effect.Effect<string, NmdError> =>
   Effect.gen(function* () {
     const anchors = childAnchors(opts.resolvedBody)
-    const childIds = new Set(opts.children.map((child) => child.pageId))
-    const childrenByTitle = new Map<
-      string,
-      readonly { readonly title: string; readonly pageId: string }[]
-    >()
+    const childByPageId = new Map(
+      opts.children.flatMap((child) =>
+        child.pageId === undefined ? [] : ([[child.pageId, child]] as const),
+      ),
+    )
+    const childrenByTitle = new Map<string, readonly ChildIndexChild[]>()
     for (const child of opts.children) {
       childrenByTitle.set(child.title, [...(childrenByTitle.get(child.title) ?? []), child])
     }
@@ -383,35 +392,32 @@ const validateAndFillChildAnchors = (opts: {
           })
         }
         const child = matches[0]
-        if (child !== undefined) counts.set(child.pageId, (counts.get(child.pageId) ?? 0) + 1)
+        if (child !== undefined) {
+          const key = childKey(child)
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
       } else {
-        counts.set(anchor.pageId, (counts.get(anchor.pageId) ?? 0) + 1)
+        const child = childByPageId.get(anchor.pageId)
+        if (child === undefined) {
+          return yield* new NmdCliError({
+            message: `Dangling child anchor in ${opts.relPath}: <page> points at ${anchor.pageId}, which is not a local child`,
+          })
+        }
+        const key = childKey(child)
+        counts.set(key, (counts.get(key) ?? 0) + 1)
       }
     }
 
     for (const child of opts.children) {
-      const count = counts.get(child.pageId) ?? 0
+      const count = counts.get(childKey(child)) ?? 0
       if (count === 0) {
         return yield* new NmdCliError({
-          message: `Missing child anchor in ${opts.relPath}: expected one <page> anchor for "${child.title}" (${child.pageId})`,
+          message: `Missing child anchor in ${opts.relPath}: expected one <page> anchor for "${child.title}"`,
         })
       }
       if (count > 1) {
         return yield* new NmdCliError({
-          message: `Duplicate child anchor in ${opts.relPath}: found ${count} anchors for "${child.title}" (${child.pageId})`,
-        })
-      }
-    }
-
-    for (const [pageId, count] of counts) {
-      if (childIds.has(pageId) === false) {
-        return yield* new NmdCliError({
-          message: `Dangling child anchor in ${opts.relPath}: <page> points at ${pageId}, which is not a local child`,
-        })
-      }
-      if (count > 1) {
-        return yield* new NmdCliError({
-          message: `Duplicate child anchor in ${opts.relPath}: found ${count} anchors for ${pageId}`,
+          message: `Duplicate child anchor in ${opts.relPath}: found ${count} anchors for "${child.title}"`,
         })
       }
     }
@@ -425,21 +431,49 @@ const validateAndFillChildAnchors = (opts: {
         if (anchorUrlAttr.test(anchor.groups?.attrs ?? '') === true) return line
         const label = anchor.groups?.label ?? ''
         const child = childByTitle.get(label.trim())
-        if (child === undefined) return line
+        if (child?.pageId === undefined) return line
         return `${anchor.groups?.indent ?? ''}<page url="${pageUrl(child.pageId)}">${label}</page>`
       })
       .join('\n')
   })
 
+const blankLineSeparateChildAnchors = (body: string): string => {
+  const lines: string[] = []
+  for (const line of body.split('\n')) {
+    const previous = lines.at(-1)
+    if (
+      previous !== undefined &&
+      blockChildAnchor.test(previous) === true &&
+      blockChildAnchor.test(line) === true
+    ) {
+      lines.push('')
+    }
+    lines.push(line)
+  }
+  return lines.join('\n')
+}
+
 const composeTreePushBody = (opts: {
   readonly relPath: string
   readonly resolvedBody: string
-  readonly children: readonly { readonly title: string; readonly pageId: string }[]
+  readonly children: readonly ChildIndexChild[]
 }): Effect.Effect<string, NmdError> =>
   childAnchors(opts.resolvedBody).length === 0
-    ? Effect.succeed(composePushBody(opts))
+    ? Effect.succeed(
+        composePushBody({
+          resolvedBody: opts.resolvedBody,
+          children: opts.children.filter(
+            (child): child is { readonly title: string; readonly pageId: string } =>
+              child.pageId !== undefined,
+          ),
+        }),
+      )
     : validateAndFillChildAnchors(opts).pipe(
-        Effect.map((body) => normalizeMarkdownLineEndings(`${body.replace(/\n+$/u, '')}\n`)),
+        Effect.map((body) =>
+          normalizeMarkdownLineEndings(
+            `${blankLineSeparateChildAnchors(body).replace(/\n+$/u, '')}\n`,
+          ),
+        ),
       )
 
 /** Strip block-level child anchors; in a tree they are derived from hierarchy. */
@@ -584,6 +618,25 @@ const childrenByParent = (opts: {
     if (id === undefined) continue
     const list = childrenOf.get(parentRel) ?? []
     list.push({ title: page.title, pageId: id })
+    childrenOf.set(parentRel, list)
+  }
+  return childrenOf
+}
+
+const childIndexChildrenByParent = (opts: {
+  readonly pages: readonly LocalTreePage[]
+  readonly idForRelPath: ReadonlyMap<string, string>
+}): Map<string, ChildIndexChild[]> => {
+  const childrenOf = new Map<string, ChildIndexChild[]>()
+  for (const page of opts.pages) {
+    const parentRel = page.parentRelPath
+    if (parentRel === undefined) continue
+    const list = childrenOf.get(parentRel) ?? []
+    const pageId = opts.idForRelPath.get(page.relPath)
+    list.push({
+      title: page.title,
+      ...(pageId === undefined ? {} : { pageId }),
+    })
     childrenOf.set(parentRel, list)
   }
   return childrenOf
@@ -926,7 +979,10 @@ const classifyPlan = (opts: {
   readonly ops: TreeOp[]
 }): Effect.Effect<void, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
-    const childrenOf = childrenByParent({ pages: opts.pages, idForRelPath: opts.idForRelPath })
+    const childrenOf = childIndexChildrenByParent({
+      pages: opts.pages,
+      idForRelPath: opts.idForRelPath,
+    })
     for (const page of opts.pages) {
       const pageId = opts.idForRelPath.get(page.relPath)
       if (pageId === undefined) continue
