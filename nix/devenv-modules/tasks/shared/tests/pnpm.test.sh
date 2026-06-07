@@ -40,29 +40,41 @@ make_projection_fixture() {
   local root="$1"
   local with_dep="$2"
   local dep_blocks_package_json_export="${3:-0}"
+  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
 
-  mkdir -p "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
+  mkdir -p "$package_root"
   mkdir -p "$root/node_modules"
-  cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/package.json" <<'EOF'
+  cat > "$package_root/package.json" <<'EOF'
 {"name":"pkg","dependencies":{"dep":"1.0.0"}}
 EOF
-  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
+  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
 
   if [ "$with_dep" = "1" ]; then
-    mkdir -p "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep"
+    mkdir -p "$package_root/node_modules/dep"
     if [ "$dep_blocks_package_json_export" = "1" ]; then
-      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/package.json" <<'EOF'
+      cat > "$package_root/node_modules/dep/package.json" <<'EOF'
 {"name":"dep","exports":{".":"./index.js"}}
 EOF
-      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/index.js" <<'EOF'
+      cat > "$package_root/node_modules/dep/index.js" <<'EOF'
 module.exports = {}
 EOF
     else
-      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/package.json" <<'EOF'
+      cat > "$package_root/node_modules/dep/package.json" <<'EOF'
 {"name":"dep"}
 EOF
     fi
   fi
+}
+
+make_source_link_fixture() {
+  local root="$1"
+
+  mkdir -p "$root/source/pkg"
+  mkdir -p "$root/node_modules"
+  cat > "$root/source/pkg/package.json" <<'EOF'
+{"name":"pkg","dependencies":{"dep":"1.0.0"}}
+EOF
+  ln -s ../source/pkg "$root/node_modules/pkg"
 }
 
 make_missing_export_fixture() {
@@ -328,7 +340,16 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing dep"
 
-echo "Test 14: Broken node_modules symlink is rejected before projection checks"
+echo "Test 14: Projection health does not require source link deps to resolve"
+source_link_dir="$test_dir/source-link"
+make_source_link_fixture "$source_link_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$source_link_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health skips source link dependency resolution"
+
+echo "Test 15: Broken node_modules symlink is rejected before projection checks"
 broken_dir="$test_dir/broken"
 mkdir -p "$broken_dir/node_modules"
 ln -s ../missing "$broken_dir/node_modules/broken"
@@ -338,7 +359,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "broken symlink is rejected"
 
-echo "Test 15: Projection health fails when a package export target is missing"
+echo "Test 16: Projection health fails when a package export target is missing"
 missing_export_dir="$test_dir/missing-export"
 make_missing_export_fixture "$missing_export_dir"
 set +e
@@ -347,7 +368,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing package export target"
 
-echo "Test 16: Projection health ignores unshipped conditional export targets"
+echo "Test 17: Projection health ignores unshipped conditional export targets"
 unshipped_export_dir="$test_dir/unshipped-export"
 make_unshipped_conditional_export_fixture "$unshipped_export_dir"
 set +e
@@ -356,7 +377,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores export targets outside package files"
 
-echo "Test 17: Projection health ignores missing declaration-only export targets"
+echo "Test 18: Projection health ignores missing declaration-only export targets"
 missing_type_dir="$test_dir/missing-type-export"
 make_missing_type_export_fixture "$missing_type_dir"
 set +e
@@ -365,7 +386,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores type-only export targets"
 
-echo "Test 18: Projection health accepts a package when one root conditional export target exists"
+echo "Test 19: Projection health accepts a package when one root conditional export target exists"
 missing_condition_alternative_dir="$test_dir/missing-condition-alternative"
 make_missing_conditional_export_alternative_fixture "$missing_condition_alternative_dir"
 set +e
@@ -374,7 +395,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health accepts alternate runtime export targets"
 
-echo "Test 19: Projection health ignores dependency names that Node resolves as built-ins"
+echo "Test 20: Projection health ignores dependency names that Node resolves as built-ins"
 builtin_dependency_dir="$test_dir/builtin-dependency"
 make_builtin_dependency_fixture "$builtin_dependency_dir"
 set +e
@@ -383,7 +404,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores built-in dependency names"
 
-echo "Test 20: Projection health accepts extensionless main and root export targets"
+echo "Test 21: Projection health accepts extensionless main and root export targets"
 extensionless_main_dir="$test_dir/extensionless-main"
 make_extensionless_main_fixture "$extensionless_main_dir"
 set +e
@@ -392,7 +413,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health accepts extensionless runtime targets"
 
-echo "Test 21: Projection health ignores missing optional subpath export targets"
+echo "Test 22: Projection health ignores missing optional subpath export targets"
 missing_subpath_export_dir="$test_dir/missing-subpath-export"
 make_missing_subpath_export_fixture "$missing_subpath_export_dir"
 set +e

@@ -8,6 +8,7 @@ export * from './json-artifact/mod.ts'
 export * from './megarepo-config/mod.ts'
 export * from './oxfmt-config/mod.ts'
 export * from './oxlint-config/mod.ts'
+export * from './projection-artifact/mod.ts'
 export * from './repo-context/mod.ts'
 export {
   CatalogConflictError,

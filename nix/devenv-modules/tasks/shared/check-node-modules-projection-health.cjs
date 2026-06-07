@@ -252,6 +252,8 @@ const runHealthCheck = () => {
         failures: packageContentFailures,
       })
 
+      if (!realPath.includes('/v11/links/')) continue
+
       const dependencyNames = Object.keys(pkg.dependencies ?? {})
       if (dependencyNames.length === 0) continue
 

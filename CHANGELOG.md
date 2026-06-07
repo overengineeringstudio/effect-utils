@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/genie**: Add `projectionArtifact.json()` for schema-versioned deterministic JSON projections, with generic validation hooks and reusable duplicate-value validators for TS-authored data projected into committed JSON.
 - **Notion docs**: Add lightweight package-level VRS requirements/spec docs for `@overeng/notion-core`, `@overeng/notion-effect-schema`, and `@overeng/notion-effect-client`; align the broader Notion VRS docs with implementation reality while keeping package READMEs user-facing.
 - **@overeng/notion-core**: Add a dependency-free shared primitive package for Notion API constants, UUID helpers, color/property tuples, property write-class classification, and raw rich-text plain-text extraction.
 - **devenv-modules/tasks/changesets**: New shared task module providing `release:changeset:check-bodies`, which rejects malformed Changesets where the YAML frontmatter has no package bumps **and** the body is empty. Catches `changeset add --empty` invocations whose `---\n---\n` placeholder was never filled in. Consume via `(inputs.effect-utils.devenvModules.tasks.changesets { })` in `devenv.nix`. Ported from livestorejs/livestore#1269.
