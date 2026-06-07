@@ -623,6 +623,7 @@ in
                 export CI=true
                 export NPM_CONFIG_PRODUCTION=false
                 export npm_config_production=false
+                export npm_config_manage_package_manager_versions=false
                 export NODE_ENV=development
                 # Keep pnpm's Node runtime warnings from overwhelming Darwin
                 # builders. pnpm's own install/progress output still reaches logs.
@@ -699,7 +700,7 @@ in
                   ''}
                   pnpm_install_log=$(mktemp "$NIX_BUILD_TOP/pnpm-install.XXXXXX.log")
                   set +e
-                  ${pnpmNodejs}/bin/node "$PNPM_MJS" install ${pnpmLockfileModeArg} ${pnpmOptionalModeArg} --ignore-scripts ${pnpmFilterArgs} 2>&1 | tee "$pnpm_install_log"
+                  ${pnpmNodejs}/bin/node "$PNPM_MJS" install ${pnpmLockfileModeArg} ${pnpmOptionalModeArg} --ignore-scripts --config.manage-package-manager-versions=false ${pnpmFilterArgs} 2>&1 | tee "$pnpm_install_log"
                   pnpm_install_status=''${PIPESTATUS[0]}
                   set -e
                   if [ "$pnpm_install_status" -ne 0 ]; then
