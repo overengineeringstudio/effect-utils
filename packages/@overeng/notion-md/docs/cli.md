@@ -72,6 +72,11 @@ content: it preserves anchor placement and interleaved annotations, but fails if
 a local child is missing an anchor, has duplicate anchors, or an anchor points
 outside the local child set.
 
+For new `page_id: null` children under an authored index, write a URL-less
+placeholder anchor such as `<page>New child page</page>` in the desired
+position. After creating the child page, tree sync fills the pushed Notion body
+with the new page URL while keeping the local authored index shape intact.
+
 To add a new local page to a tree, create a `.nmd` file with `page_id: null` and
 a valid `parent` reference. The parent reference is required even before the
 page exists remotely; it lets the tree engine validate intent before creating

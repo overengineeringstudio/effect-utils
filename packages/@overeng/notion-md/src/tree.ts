@@ -318,45 +318,75 @@ export const composePushBody = (opts: {
   return normalizeMarkdownLineEndings(`${trimmed}\n\n${anchors}\n`)
 }
 
-const blockChildAnchor = /^\s*<page\b(?<attrs>[^>]*)>.*<\/page>\s*$/u
+const blockChildAnchor = /^(?<indent>\s*)<page\b(?<attrs>[^>]*)>(?<label>.*)<\/page>\s*$/u
 const anchorUrlAttr = /\burl\s*=\s*(?:"(?<double>[^"]+)"|'(?<single>[^']+)')/u
 
 type ChildAnchor =
   | { readonly _tag: 'valid'; readonly pageId: string }
-  | { readonly _tag: 'invalid'; readonly line: string }
+  | { readonly _tag: 'placeholder'; readonly title: string; readonly label: string }
+  | { readonly _tag: 'invalid'; readonly reason: string; readonly line: string }
 
 const childAnchors = (body: string): readonly ChildAnchor[] => {
   const anchors: ChildAnchor[] = []
   for (const line of body.split('\n')) {
     const anchor = blockChildAnchor.exec(line)
     if (anchor === null) continue
+    const attrs = anchor.groups?.attrs ?? ''
+    const label = anchor.groups?.label ?? ''
     const url = anchorUrlAttr.exec(anchor.groups?.attrs ?? '')
     if (url === null) {
-      anchors.push({ _tag: 'invalid', line })
+      anchors.push({ _tag: 'placeholder', title: label.trim(), label })
       continue
     }
     const pageId = parseNotionUuid(url.groups?.double ?? url.groups?.single ?? '')
-    anchors.push(pageId === undefined ? { _tag: 'invalid', line } : { _tag: 'valid', pageId })
+    anchors.push(
+      pageId === undefined
+        ? { _tag: 'invalid', reason: `invalid url attribute (${attrs.trim()})`, line }
+        : { _tag: 'valid', pageId },
+    )
   }
   return anchors
 }
 
-const validateChildAnchors = (opts: {
+const validateAndFillChildAnchors = (opts: {
   readonly relPath: string
   readonly resolvedBody: string
   readonly children: readonly { readonly title: string; readonly pageId: string }[]
-}): Effect.Effect<void, NmdError> =>
+}): Effect.Effect<string, NmdError> =>
   Effect.gen(function* () {
     const anchors = childAnchors(opts.resolvedBody)
     const childIds = new Set(opts.children.map((child) => child.pageId))
+    const childrenByTitle = new Map<
+      string,
+      readonly { readonly title: string; readonly pageId: string }[]
+    >()
+    for (const child of opts.children) {
+      childrenByTitle.set(child.title, [...(childrenByTitle.get(child.title) ?? []), child])
+    }
     const counts = new Map<string, number>()
     for (const anchor of anchors) {
       if (anchor._tag === 'invalid') {
         return yield* new NmdCliError({
-          message: `Invalid child anchor in ${opts.relPath}: block-level <page> anchors must include a Notion page url (${anchor.line.trim()})`,
+          message: `Invalid child anchor in ${opts.relPath}: ${anchor.reason} (${anchor.line.trim()})`,
         })
       }
-      counts.set(anchor.pageId, (counts.get(anchor.pageId) ?? 0) + 1)
+      if (anchor._tag === 'placeholder') {
+        const matches = childrenByTitle.get(anchor.title) ?? []
+        if (matches.length === 0) {
+          return yield* new NmdCliError({
+            message: `Dangling child anchor in ${opts.relPath}: <page>${anchor.label}</page> does not match a local child title`,
+          })
+        }
+        if (matches.length > 1) {
+          return yield* new NmdCliError({
+            message: `Ambiguous child anchor in ${opts.relPath}: <page>${anchor.label}</page> matches ${matches.length} local children titled "${anchor.title}"`,
+          })
+        }
+        const child = matches[0]
+        if (child !== undefined) counts.set(child.pageId, (counts.get(child.pageId) ?? 0) + 1)
+      } else {
+        counts.set(anchor.pageId, (counts.get(anchor.pageId) ?? 0) + 1)
+      }
     }
 
     for (const child of opts.children) {
@@ -385,6 +415,20 @@ const validateChildAnchors = (opts: {
         })
       }
     }
+
+    const childByTitle = new Map(opts.children.map((child) => [child.title, child]))
+    return opts.resolvedBody
+      .split('\n')
+      .map((line) => {
+        const anchor = blockChildAnchor.exec(line)
+        if (anchor === null) return line
+        if (anchorUrlAttr.test(anchor.groups?.attrs ?? '') === true) return line
+        const label = anchor.groups?.label ?? ''
+        const child = childByTitle.get(label.trim())
+        if (child === undefined) return line
+        return `${anchor.groups?.indent ?? ''}<page url="${pageUrl(child.pageId)}">${label}</page>`
+      })
+      .join('\n')
   })
 
 const composeTreePushBody = (opts: {
@@ -394,8 +438,8 @@ const composeTreePushBody = (opts: {
 }): Effect.Effect<string, NmdError> =>
   childAnchors(opts.resolvedBody).length === 0
     ? Effect.succeed(composePushBody(opts))
-    : validateChildAnchors(opts).pipe(
-        Effect.as(normalizeMarkdownLineEndings(`${opts.resolvedBody.replace(/\n+$/u, '')}\n`)),
+    : validateAndFillChildAnchors(opts).pipe(
+        Effect.map((body) => normalizeMarkdownLineEndings(`${body.replace(/\n+$/u, '')}\n`)),
       )
 
 /** Strip block-level child anchors; in a tree they are derived from hierarchy. */

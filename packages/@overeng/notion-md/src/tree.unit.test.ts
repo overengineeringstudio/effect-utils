@@ -477,6 +477,54 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
+  it('fills URL-less authored child anchors after creating new children', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root intro.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'alpha.nmd'), 'utf8'),
+      )?.[1]
+      expect(alphaId).toBeDefined()
+
+      const boundIndex = await readFile(join(dir, 'index.nmd'), 'utf8')
+      const curatedBody = [
+        'Root intro.',
+        '',
+        '## Page index',
+        '',
+        `<page url="${pageUrl(alphaId ?? '')}">Alpha</page>`,
+        'Alpha annotation.',
+        '',
+        '<page>Beta</page>',
+        'Beta annotation.',
+        '',
+        '## Notes',
+        '',
+        'Nothing should be appended below this section.',
+      ].join('\n')
+      await writeFile(join(dir, 'index.nmd'), boundIndex.replace('Root intro.', curatedBody))
+      await writeFile(join(dir, 'beta.nmd'), unbound({ title: 'Beta', body: 'Beta body.' }))
+
+      const result = await run(syncTree({ root: dir }), fake)
+      expect(opTags(result.ops).create).toBe(1)
+      const betaId = /"page_id": "([^"]+)"/u.exec(
+        await readFile(join(dir, 'beta.nmd'), 'utf8'),
+      )?.[1]
+      expect(betaId).toBeDefined()
+      expect(fake.remoteBody(rootPageId)).toContain(
+        `<page url="${pageUrl(betaId ?? '')}">Beta</page>`,
+      )
+      expect(fake.remoteBody(rootPageId)).toContain('Beta annotation.')
+      expect(fake.remoteBody(rootPageId)).not.toMatch(/Notes[\s\S]*<page/u)
+
+      const second = await run(syncTree({ root: dir }), fake)
+      expect(opTags(second.ops).noop).toBe(3)
+    })
+  })
+
   it('rejects an authored child index when a local child anchor is missing', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
