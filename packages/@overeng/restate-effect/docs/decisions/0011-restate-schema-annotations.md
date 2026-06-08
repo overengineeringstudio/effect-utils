@@ -10,12 +10,12 @@ annotations off `prop.type` by walking `ast.propertySignatures`).
 Adopted annotations — each read at ONE site, each a fact that belongs to the
 schema rather than the call site:
 
-| Annotation                          | On                       | Read at site            | Effect |
-| ----------------------------------- | ------------------------ | ----------------------- | ------ |
-| `terminal` / `retryable({ retryAfter })` | a `Schema.TaggedError` | `toTerminal`          | per-error classification → `TerminalError` errorCode vs a retryable throw (improves [0003](./0003-error-boundary-model.md): a retryable DOMAIN error becomes expressible) |
-| `serde({ contentType, jsonSchema })` | a value schema          | `effectSerde`          | overrides the hardcoded `application/json` / `JSONSchema.make` |
-| `retention({ … })`                  | a contract / construct   | contract / discovery    | maps to `journalRetention` / `idempotencyRetention` / `workflowRetention` |
-| `idempotencyKey`                    | an input struct FIELD    | client (input walk)     | the SINGLE source of the idempotency key |
+| Annotation                               | On                     | Read at site         | Effect                                                                                                                                                                    |
+| ---------------------------------------- | ---------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `terminal` / `retryable({ retryAfter })` | a `Schema.TaggedError` | `toTerminal`         | per-error classification → `TerminalError` errorCode vs a retryable throw (improves [0003](./0003-error-boundary-model.md): a retryable DOMAIN error becomes expressible) |
+| `serde({ contentType, jsonSchema })`     | a value schema         | `effectSerde`        | overrides the hardcoded `application/json` / `JSONSchema.make`                                                                                                            |
+| `retention({ … })`                       | a contract / construct | contract / discovery | maps to `journalRetention` / `idempotencyRetention` / `workflowRetention`                                                                                                 |
+| `idempotencyKey`                         | an input struct FIELD  | client (input walk)  | the SINGLE source of the idempotency key                                                                                                                                  |
 
 `idempotencyKey` is the SINGLE source: the client walks the input
 `propertySignatures` to find the annotated field and uses its value as the

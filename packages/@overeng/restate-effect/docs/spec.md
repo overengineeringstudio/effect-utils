@@ -96,7 +96,10 @@ const GreeterLive = RestateService.implement(Greeter, {
     Effect.gen(function* () {
       if (name === '') return yield* new EmptyName({})
       const prefix = (yield* Greeting).prefix
-      const id = yield* Restate.run('gen-id', Effect.sync(() => crypto.randomUUID()))
+      const id = yield* Restate.run(
+        'gen-id',
+        Effect.sync(() => crypto.randomUUID()),
+      )
       return { message: `${prefix} ${name}`, id }
     }),
 })
@@ -118,9 +121,9 @@ artifact is still available for cross-package clients.
 
 ```ts
 const Cart = RestateObject.contract('cart', {
-  state: { items: Schema.Array(Item), total: Schema.Number },   // typed State (R06)
+  state: { items: Schema.Array(Item), total: Schema.Number }, // typed State (R06)
   handlers: {
-    add: { input: Item, success: Schema.Void },                 // exclusive (default)
+    add: { input: Item, success: Schema.Void }, // exclusive (default)
     total: { input: Schema.Void, success: Schema.Number, shared: true }, // read-only
   },
 })
@@ -129,7 +132,7 @@ const CartLive = RestateObject.implement(Cart, {
   add: (item) =>
     Effect.gen(function* () {
       const items = (yield* State.get('items')) ?? []
-      yield* State.set('items', [...items, item])               // needs StateWrite (R04)
+      yield* State.set('items', [...items, item]) // needs StateWrite (R04)
     }),
   total: () => State.get('total').pipe(Effect.map((t) => t ?? 0)), // StateRead only
 })
@@ -145,22 +148,22 @@ does not typecheck (R04, R05).
 const Onboard = RestateWorkflow.contract('onboard', {
   state: { status: Schema.Literal('pending', 'approved', 'rejected') },
   payload: { input: OnboardInput, success: Schema.Void, error: OnboardError },
-  signals: { approve: { input: Approval } },        // write-only shared handlers
-  queries: { status: { success: Schema.String } },  // read-only shared handlers
+  signals: { approve: { input: Approval } }, // write-only shared handlers
+  queries: { status: { success: Schema.String } }, // read-only shared handlers
 })
 
 const OnboardLive = RestateWorkflow.implement(Onboard, {
   run: (input) =>
     Effect.gen(function* () {
-      yield* State.set('status', 'pending')                          // StateWrite + DurablePromise + …
+      yield* State.set('status', 'pending') // StateWrite + DurablePromise + …
       const decision = yield* Restate.race([
-        DurablePromise.get<Approval>('approved').descriptor,         // descriptor, issued in order
+        DurablePromise.get<Approval>('approved').descriptor, // descriptor, issued in order
         Restate.sleep('7 days').descriptor,
-      ]).pipe(Effect.map(Option.fromNullable))                       // map the RESULT, not the branch
+      ]).pipe(Effect.map(Option.fromNullable)) // map the RESULT, not the branch
       yield* State.set('status', Option.isSome(decision) ? 'approved' : 'rejected')
     }),
-  approve: (a) => DurablePromise.resolve('approved', a),             // signal (shared, write)
-  status: () => State.get('status'),                                 // query (shared, read)
+  approve: (a) => DurablePromise.resolve('approved', a), // signal (shared, write)
+  status: () => State.get('status'), // query (shared, read)
 })
 ```
 
@@ -176,11 +179,11 @@ maps its RESULT (not a branch) after a single await (R19,
 
 ### 1.4 Construct selection
 
-| Construct      | Key            | State          | Concurrency                                  |
-| -------------- | -------------- | -------------- | -------------------------------------------- |
-| Service        | none           | none           | unbounded                                    |
-| Virtual Object | per key        | typed, durable | exclusive serialized per key; shared concurrent |
-| Workflow       | per workflow ID| typed, durable | one `run` exactly-once; signals concurrent   |
+| Construct      | Key             | State          | Concurrency                                     |
+| -------------- | --------------- | -------------- | ----------------------------------------------- |
+| Service        | none            | none           | unbounded                                       |
+| Virtual Object | per key         | typed, durable | exclusive serialized per key; shared concurrent |
+| Workflow       | per workflow ID | typed, durable | one `run` exactly-once; signals concurrent      |
 
 ---
 
@@ -268,15 +271,15 @@ RestateContext (Tag → raw restate.Context)   always provided
 
 Each durable combinator carries the capability it needs in `R`:
 
-| Combinator                              | Requires                | Backed by                |
-| --------------------------------------- | ----------------------- | ------------------------ |
-| `Restate.run`, `Restate.sleep`          | `RestateContext`        | `ctx.run` / `ctx.sleep`  |
-| `State.get`, `State.stateKeys`          | `StateRead`             | `ctx.get` / `ctx.stateKeys` |
-| `State.set`, `State.clear`              | `StateWrite`            | `ctx.set` / `ctx.clear`  |
-| `Awakeable.make`                        | `RestateContext`        | `ctx.awakeable`          |
-| `Awakeable.resolve` / `.reject`         | `RestateContext`        | `ctx.resolveAwakeable` / `rejectAwakeable` |
-| `DurablePromise.get`/`resolve`/`reject`/`peek` | `DurablePromise` | `ctx.promise(name).*`    |
-| `ctx.key` accessor                      | `ObjectKey`             | `ctx.key`                |
+| Combinator                                     | Requires         | Backed by                                  |
+| ---------------------------------------------- | ---------------- | ------------------------------------------ |
+| `Restate.run`, `Restate.sleep`                 | `RestateContext` | `ctx.run` / `ctx.sleep`                    |
+| `State.get`, `State.stateKeys`                 | `StateRead`      | `ctx.get` / `ctx.stateKeys`                |
+| `State.set`, `State.clear`                     | `StateWrite`     | `ctx.set` / `ctx.clear`                    |
+| `Awakeable.make`                               | `RestateContext` | `ctx.awakeable`                            |
+| `Awakeable.resolve` / `.reject`                | `RestateContext` | `ctx.resolveAwakeable` / `rejectAwakeable` |
+| `DurablePromise.get`/`resolve`/`reject`/`peek` | `DurablePromise` | `ctx.promise(name).*`                      |
+| `ctx.key` accessor                             | `ObjectKey`      | `ctx.key`                                  |
 
 Calling `State.set` (requires `StateWrite`) in a shared handler (provides only
 `StateRead`) is a compile error (R04). State combinators are key- and
@@ -422,11 +425,11 @@ Traces: R17–R20. See [decisions/0004](./decisions/0004-determinism-layer.md),
 The boundary (section 2, step 2) provides journaled time/random over the handler
 runtime — but durable waits are EXPLICIT, not a transparent `Clock.sleep` remap:
 
-| Effect read                       | Backed by              | Effect                                          |
-| --------------------------------- | ---------------------- | ----------------------------------------------- |
-| `Clock.currentTimeMillis` (async) | `ctx.date`             | reads journaled time                            |
+| Effect read                       | Backed by               | Effect                                                                   |
+| --------------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `Clock.currentTimeMillis` (async) | `ctx.date`              | reads journaled time                                                     |
 | `Clock.unsafeCurrentTime*` (sync) | per-attempt frozen base | seeded once from `ctx.date.now()` at entry; does not advance mid-attempt |
-| `Random`                          | `ctx.rand`             | seeded, journaled (`ctx.rand.random` / `uuidv4`) |
+| `Random`                          | `ctx.rand`              | seeded, journaled (`ctx.rand.random` / `uuidv4`)                         |
 
 `Clock.unsafeCurrentTimeMillis` / `unsafeCurrentTimeNanos` are synchronous and
 cannot call the async `ctx.date`, so they read a per-attempt frozen monotonic
@@ -437,11 +440,11 @@ deterministically-correct behavior: a replayed attempt must observe the same tim
 Durable waits are EXPLICIT combinators — the binding does NOT remap `Clock.sleep`
 to `ctx.sleep` (T02, R18):
 
-| Combinator         | Backed by                  | Use                              |
-| ------------------ | -------------------------- | -------------------------------- |
-| `Restate.sleep`    | `ctx.sleep`                | durable timer                    |
-| `Restate.timeout`  | `RestatePromise.orTimeout` | durable race against a deadline  |
-| `Restate.race`     | `RestatePromise.race`      | durable race of descriptors      |
+| Combinator        | Backed by                  | Use                             |
+| ----------------- | -------------------------- | ------------------------------- |
+| `Restate.sleep`   | `ctx.sleep`                | durable timer                   |
+| `Restate.timeout` | `RestatePromise.orTimeout` | durable race against a deadline |
+| `Restate.race`    | `RestatePromise.race`      | durable race of descriptors     |
 
 A bare in-handler `Effect.sleep` stays non-durable (pure in-handler timing only).
 Remapping `Clock.sleep` was rejected because `Effect.timeout` is internally a race
@@ -541,11 +544,11 @@ and starts listening; the finalizer closes the server (R29).
 
 Three distinct ports are in play; do not conflate them:
 
-| Port           | Owner                | Default | Role                                        |
-| -------------- | -------------------- | ------- | ------------------------------------------- |
-| ingress        | `restate-server`     | 8080    | external entry point (callers → server)     |
-| admin          | `restate-server`     | 9070    | health, deployment registration, State API  |
-| handler ENDPOINT | this binding's server | 9080  | discovery + invoke (server → handlers)      |
+| Port             | Owner                 | Default | Role                                       |
+| ---------------- | --------------------- | ------- | ------------------------------------------ |
+| ingress          | `restate-server`      | 8080    | external entry point (callers → server)    |
+| admin            | `restate-server`      | 9070    | health, deployment registration, State API |
+| handler ENDPOINT | this binding's server | 9080    | discovery + invoke (server → handlers)     |
 
 The binding owns ONLY the handler-endpoint port (the SDK server it serves);
 8080/9070 belong to `restate-server`. (The testing harness uses OS port-0 for all
@@ -553,8 +556,8 @@ of them — section 11.)
 
 ```ts
 serve({ services: [GreeterLive, CartLive], port: 9080 }).pipe(
-  Effect.provide(AppLayer),     // shared application services, built once
-  NodeRuntime.runMain,          // SIGTERM → Fiber.interrupt → finalizers
+  Effect.provide(AppLayer), // shared application services, built once
+  NodeRuntime.runMain, // SIGTERM → Fiber.interrupt → finalizers
 )
 ```
 
@@ -586,14 +589,15 @@ fully typed clients.
 `@restatedev/restate-sdk-clients`'s ingress wrapped as an Effect service:
 
 ```ts
-const ingress = yield* RestateIngress
-const result = yield* ingress.call(Greeter, 'greet', { name: 'Sarah' })
+const ingress = yield * RestateIngress
+const result = yield * ingress.call(Greeter, 'greet', { name: 'Sarah' })
 //    result : GreetSuccess          (Schema-validated args + typed success)
 
 // typed error decode (R14): re-decode the terminal body into the tagged error
-yield* ingress.call(Greeter, 'greet', { name: '' }).pipe(
-  Effect.catchTag('EmptyName', () => Effect.succeed(fallback)),
-)
+yield *
+  ingress
+    .call(Greeter, 'greet', { name: '' })
+    .pipe(Effect.catchTag('EmptyName', () => Effect.succeed(fallback)))
 ```
 
 Arguments are encoded through the contract's input serde; the result is decoded
@@ -610,15 +614,15 @@ call is a compile error, not a runtime rejection.
 
 ```ts
 // idempotency key from the annotated input field (0011), not a call-site option
-const handle = yield* ingress.send(Notifier, 'notify', { key: 'abc-123', body })
+const handle = yield * ingress.send(Notifier, 'notify', { key: 'abc-123', body })
 
 // attach / result: get-output by invocation id OR idempotency key
-const out = yield* ingress.result(Notifier, 'notify', { idempotencyKey: 'abc-123' })
+const out = yield * ingress.result(Notifier, 'notify', { idempotencyKey: 'abc-123' })
 //    out : NotifySuccess | <decoded terminal error>
 
 // workflow ingress surface: submit / attach / output (run is NOT directly callable)
-const sub = yield* ingress.submit(Onboard, 'wf-1', input)   // WorkflowSubmission
-const result = yield* ingress.attach(Onboard, 'wf-1')        // typed success | decoded error
+const sub = yield * ingress.submit(Onboard, 'wf-1', input) // WorkflowSubmission
+const result = yield * ingress.attach(Onboard, 'wf-1') // typed success | decoded error
 ```
 
 The idempotency key is the value of the input field carrying the
@@ -634,12 +638,12 @@ R14). For a Workflow, the ingress surface is `submit` / `attach` / `output`; the
 
 ```ts
 // in a handler:
-const { id, promise } = yield* Awakeable.make(PaymentResult)  // id branded, typed payload
-const payment = yield* Restate.await(promise)                  // suspends until resolved
+const { id, promise } = yield * Awakeable.make(PaymentResult) // id branded, typed payload
+const payment = yield * Restate.await(promise) // suspends until resolved
 
 // from ingress (or another handler):
-yield* ingress.resolveAwakeable(id, payment)                   // typed via payload serde
-yield* ingress.rejectAwakeable(id, 'declined')
+yield * ingress.resolveAwakeable(id, payment) // typed via payload serde
+yield * ingress.rejectAwakeable(id, 'declined')
 ```
 
 `Awakeable.make` returns a typed `{ id, promise }` with the id branded; the
@@ -653,9 +657,9 @@ suspends) and `*SendClient` (one-way) exposed as Effect combinators, typed from
 the target contract:
 
 ```ts
-yield* Restate.call(Greeter, 'greet', { name })                 // request/response
-yield* Restate.send(Notifier, 'notify', payload)                // one-way (idempotency from field)
-yield* Restate.send(Reminder, 'fire', payload, { delay: '60 seconds' }) // delayed
+yield * Restate.call(Greeter, 'greet', { name }) // request/response
+yield * Restate.send(Notifier, 'notify', payload) // one-way (idempotency from field)
+yield * Restate.send(Reminder, 'fire', payload, { delay: '60 seconds' }) // delayed
 ```
 
 Idempotency keys (from the annotated input field) dedupe across calls; calls and
@@ -729,13 +733,14 @@ release it shuts the server down and removes the base dir.
 ```ts
 it.effect('greet round-trips', () =>
   Effect.gen(function* () {
-    const harness = yield* RestateTestHarness          // scoped Layer
+    const harness = yield* RestateTestHarness // scoped Layer
     const result = yield* harness.ingress.call(Greeter, 'greet', { name: 'Sarah' })
     expect(result.message).toBe('Hello Sarah')
-    const status = yield* harness.stateOf(Onboard, 'wf-1').get('status')  // typed State
-  }).pipe(Effect.provide(
-    RestateTestHarness.layer({ services: [GreeterLive], appLayer: AppLayer }),
-  )))
+    const status = yield* harness.stateOf(Onboard, 'wf-1').get('status') // typed State
+  }).pipe(
+    Effect.provide(RestateTestHarness.layer({ services: [GreeterLive], appLayer: AppLayer })),
+  ),
+)
 ```
 
 ### 11.1 Typed State inspect/seed (R26b)
@@ -760,10 +765,10 @@ These MUST be consumer-available. RESOLVED (DQ5) against native restate-server
 1.6.2 — both are server-global env vars (verified via `--dump-config` + a handler
 re-entering under replay; lifted from `@restatedev/restate-sdk-testcontainers`):
 
-| Mode             | Env vars                                                                                          | Config-file keys                                                |
-| ---------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `alwaysReplay`   | `RESTATE_WORKER__INVOKER__INACTIVITY_TIMEOUT=0s`                                                   | `[worker.invoker] inactivity-timeout`                          |
-| `disableRetries` | `RESTATE_DEFAULT_RETRY_POLICY__MAX_ATTEMPTS=1` + `RESTATE_DEFAULT_RETRY_POLICY__ON_MAX_ATTEMPTS=kill` | `[default-retry-policy] max-attempts` / `on-max-attempts`     |
+| Mode             | Env vars                                                                                              | Config-file keys                                          |
+| ---------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `alwaysReplay`   | `RESTATE_WORKER__INVOKER__INACTIVITY_TIMEOUT=0s`                                                      | `[worker.invoker] inactivity-timeout`                     |
+| `disableRetries` | `RESTATE_DEFAULT_RETRY_POLICY__MAX_ATTEMPTS=1` + `RESTATE_DEFAULT_RETRY_POLICY__ON_MAX_ATTEMPTS=kill` | `[default-retry-policy] max-attempts` / `on-max-attempts` |
 
 The harness also supports MULTI-deployment registration, so a test can register
 two endpoint versions and assert replay/upgrade across them (T07, A11).
@@ -787,11 +792,11 @@ Lifecycle contract (R27, sharpened over the POC):
 The two CORE guarantees are server-free testable; only true end-to-end paths need
 the integration job:
 
-| Layer     | Needs server? | Covers                                                                 |
-| --------- | ------------- | ---------------------------------------------------------------------- |
-| unit      | no            | serde round-trips, `toTerminal`, pure combinators, annotation read-back |
-| contract  | no            | error-transport round-trip (decode helper over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter` |
-| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises          |
+| Layer       | Needs server?       | Covers                                                                                                                           |
+| ----------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| unit        | no                  | serde round-trips, `toTerminal`, pure combinators, annotation read-back                                                          |
+| contract    | no                  | error-transport round-trip (decode helper over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter` |
+| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises                                                                          |
 
 ### 11.4 Consumer workflow (R26d)
 
@@ -857,13 +862,13 @@ via `SchemaAST.getAnnotation` at one site each (mirroring
 `@overeng/notion-effect-client`'s `schema-helpers.ts`, which walks
 `ast.propertySignatures` and reads off `prop.type`):
 
-| Annotation                          | On                     | Read at         | Drives                                  |
-| ----------------------------------- | ---------------------- | --------------- | --------------------------------------- |
-| `terminal` / `retryable({retryAfter})` | `Schema.TaggedError` | `toTerminal`    | per-error errorCode vs retryable throw  |
-| `serde({contentType, jsonSchema})`  | value schema           | `effectSerde`   | overrides `application/json` / JSON Schema |
-| `retention({...})`                  | contract / construct   | discovery       | journal/idempotency/workflow retention  |
-| `idempotencyKey`                    | input struct field     | client          | the SINGLE idempotency-key source       |
-| `sensitive` / `redacted`            | value field            | `effectSerde`   | a TRANSFORM (encrypt/decrypt), not passive |
+| Annotation                             | On                   | Read at       | Drives                                     |
+| -------------------------------------- | -------------------- | ------------- | ------------------------------------------ |
+| `terminal` / `retryable({retryAfter})` | `Schema.TaggedError` | `toTerminal`  | per-error errorCode vs retryable throw     |
+| `serde({contentType, jsonSchema})`     | value schema         | `effectSerde` | overrides `application/json` / JSON Schema |
+| `retention({...})`                     | contract / construct | discovery     | journal/idempotency/workflow retention     |
+| `idempotencyKey`                       | input struct field   | client        | the SINGLE idempotency-key source          |
+| `sensitive` / `redacted`               | value field          | `effectSerde` | a TRANSFORM (encrypt/decrypt), not passive |
 
 `sensitive` / `redacted` is a Schema TRANSFORM applied by `effectSerde`
 (encrypt-at-encode / decrypt-at-decode), read ONCE on pre-transform property
@@ -959,7 +964,7 @@ single in-impl confirmation (the frozen-base sync clock).
 - **DQ2 Pure-vs-durable concurrency guard — RESOLVED.** The descriptor type shape
   rejects an arbitrary `Effect[]` and recovers a precise tuple/union, confirmed
   against the real `RestatePromise.all`/`race`/`any` signatures (`readonly
-  RestatePromise<unknown>[]`, leaf/descriptor model) and the `.then`-is-suspension
+RestatePromise<unknown>[]`, leaf/descriptor model) and the `.then`-is-suspension
   /`.map`-the-result invariant. The typed descriptor is the primary guard; the lint
   rule against a fan-out handler stays the advisory backstop (section 6.2).
 - **DQ3 Capability-marker discharge over a mixed record — RESOLVED.** Discharging
@@ -972,7 +977,7 @@ single in-impl confirmation (the frozen-base sync clock).
   Requires the explicit-app-`R` discipline (section 2). (See
   [decisions/0002](./decisions/0002-typed-capability-contexts.md).)
 - **DQ4 Contract → client inference — RESOLVED.** The phantom `Contract<Name,
-  HandlerMap>` + `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed
+HandlerMap>` + `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed
   accessors recover the EXACT per-handler types (proven with `Equals<>`) without
   erasing to `Record<string, …>`; wrong-input / unknown-method / wrong-success all
   error. The Phase-1 gate (paired with DQ3) passes. (See
@@ -992,7 +997,7 @@ single in-impl confirmation (the frozen-base sync clock).
   stays to confirm against a representative handler in impl. (See
   [decisions/0004](./decisions/0004-determinism-layer.md).)
 - **DQ7 h2c prior-knowledge handshake — RESOLVED.** `http2.createServer(
-  createEndpointHandler({ services }))` with `bidirectional` UNSET serves h2c
+createEndpointHandler({ services }))` with `bidirectional` UNSET serves h2c
   prior-knowledge correctly against native restate-server 1.6.2 discovery: full
   `BIDI_STREAM` is negotiated and a real `ctx.sleep` suspend → persist → resume
   worked over h2c (no TLS/ALPN). `true` is redundant; `false` degrades to

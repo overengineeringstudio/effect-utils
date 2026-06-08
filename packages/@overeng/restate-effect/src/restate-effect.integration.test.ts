@@ -1,20 +1,20 @@
 /**
- * End-to-end integration test against a real native `restate-server`.
+ * End-to-end integration test against a real native `restate-server`, on the
+ * Phase 1 contract/implement architecture.
  *
- * Proves the POC architecture pillars through one service vertical slice:
- * Schema I/O, app-service injection via a Layer, a per-invocation Effect
- * runtime boundary, a durable `ctx.run` step, the endpoint as a scoped
- * (graceful-shutdown) Layer, and tagged-error → TerminalError mapping.
+ * Proves one Service vertical slice: a `contract` + `implement` with an injected
+ * application Layer (`Greeting`) and a durable `Restate.run`, served via the
+ * scoped endpoint `layer`, registered against the native server, driven through
+ * the typed `RestateIngress` client — asserting BOTH the success path and the
+ * typed terminal-error path (`EmptyName` recovered via the decode helper).
  */
-import { execFileSync } from 'node:child_process'
+import { createServer } from 'node:net'
 
-import type * as restate from '@restatedev/restate-sdk'
-import * as clients from '@restatedev/restate-sdk-clients'
 import { Context, Effect, Exit, Layer, Schema, Scope } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { serverBin, startRestateServer, type RestateServerHandle } from '../test/restate-server.ts'
-import { layer, RestateContext, RestateService } from './mod.ts'
+import { startRestateServer, type RestateServerHandle } from '../test/restate-server.ts'
+import { callTyped, layer, Restate, RestateIngress, RestateService } from './mod.ts'
 
 /* ── demo app: an injected Effect service + a greeter Restate service ── */
 
@@ -27,67 +27,77 @@ class EmptyName extends Schema.TaggedError<EmptyName>('test/EmptyName')('EmptyNa
 const GreetInput = Schema.Struct({ name: Schema.String })
 const GreetSuccess = Schema.Struct({ message: Schema.String, id: Schema.String })
 
-const greeter = RestateService.make('greeter', {
-  greet: RestateService.handler({
-    input: GreetInput,
-    success: GreetSuccess,
-    error: EmptyName,
-    run: ({ name }) =>
-      Effect.gen(function* () {
-        if (name === '') return yield* new EmptyName({})
-        const prefix = (yield* Greeting).prefix
-        /* A failed durable step is infrastructure-transient → turn the wrapper
-         * `RestateError` into a defect so it leaves the domain `E` channel
-         * (which is only `EmptyName`) and the SDK retries it. */
-        const id = yield* RestateContext.run(
-          'gen-id',
-          Effect.sync(() => crypto.randomUUID()),
-        ).pipe(Effect.orDie)
-        return { message: `${prefix} ${name}`, id }
-      }),
-  }),
+const Greeter = RestateService.contract('greeter', {
+  greet: { input: GreetInput, success: GreetSuccess, error: EmptyName },
 })
 
-/* Client-side phantom service definition for the typed ingress client. The
- * SDK derives client args from the handler shape `(ctx, input) => Promise<O>`. */
-type GreeterApi = {
-  greet: (ctx: restate.Context, input: typeof GreetInput.Type) => Promise<typeof GreetSuccess.Type>
-}
-const greeterDefinition: restate.ServiceDefinition<'greeter', GreeterApi> = { name: 'greeter' }
+const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, {
+  greet: ({ name }) =>
+    Effect.gen(function* () {
+      if (name === '') return yield* new EmptyName()
+      const prefix = (yield* Greeting).prefix
+      /* A failed durable step is infrastructure-transient → `orDie` so the
+       * wrapper `RestateError` leaves the domain `E` channel (only `EmptyName`)
+       * and the SDK retries it. */
+      const id = yield* Restate.run(
+        'gen-id',
+        Effect.sync(() => crypto.randomUUID()),
+      ).pipe(Effect.orDie)
+      return { message: `${prefix} ${name}`, id }
+    }),
+})
 
 /* ── harness ── */
 
-const SDK_PORT = 9080
-
 const serverAvailable = (() => {
   try {
-    execFileSync(serverBin(), ['--version'], { stdio: 'ignore' })
+    const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
+    execFileSync(process.env['RESTATE_SERVER_BIN'] ?? 'restate-server', ['--version'], {
+      stdio: 'ignore',
+    })
     return true
   } catch {
     return false
   }
 })()
 
-describe('restate-effect end-to-end', () => {
+const freePort = (): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const srv = createServer()
+    srv.unref()
+    srv.on('error', reject)
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address()
+      if (addr === null || typeof addr === 'string') {
+        srv.close(() => reject(new Error('no free port')))
+        return
+      }
+      const port = addr.port
+      srv.close(() => resolve(port))
+    })
+  })
+
+describe('restate-effect end-to-end (contract/implement)', () => {
   let server: RestateServerHandle
   let endpointScope: Scope.CloseableScope
-  let ingress: clients.Ingress
+  let ingressLayer: Layer.Layer<RestateIngress>
 
   beforeAll(async () => {
     if (!serverAvailable) return
     server = await startRestateServer()
+    const sdkPort = await freePort()
 
     /* Launch the endpoint layer in a scope we hold open; the finalizer closes
      * the HTTP/2 server in afterAll. */
     endpointScope = await Effect.runPromise(Scope.make())
     await Effect.runPromise(
-      Layer.buildWithScope(layer({ services: [greeter], port: SDK_PORT }), endpointScope).pipe(
+      Layer.buildWithScope(layer({ services: [GreeterLive], port: sdkPort }), endpointScope).pipe(
         Effect.provide(Greeting.Default),
       ),
     )
 
-    await server.register(`http://localhost:${SDK_PORT}`)
-    ingress = clients.connect({ url: server.ingressUrl })
+    await server.register(`http://localhost:${sdkPort}`)
+    ingressLayer = RestateIngress.layer({ url: server.ingressUrl })
   }, 60_000)
 
   afterAll(async () => {
@@ -99,28 +109,24 @@ describe('restate-effect end-to-end', () => {
   }, 60_000)
 
   it.skipIf(!serverAvailable)('greet returns the prefixed message + a uuid', async () => {
-    const result = await ingress.serviceClient(greeterDefinition).greet({ name: 'Sarah' })
+    const result = await Effect.runPromise(
+      callTyped(Greeter, 'greet', { name: 'Sarah' }).pipe(Effect.provide(ingressLayer)),
+    )
     expect(result.message).toBe('Hello Sarah')
     expect(result.id).toMatch(/^[0-9a-f-]{36}$/)
   })
 
   it.skipIf(!serverAvailable)(
-    'greet with empty name surfaces a terminal EmptyName error',
+    'greet with empty name recovers the typed EmptyName via the decode helper',
     async () => {
-      let error: unknown
-      try {
-        await ingress.serviceClient(greeterDefinition).greet({ name: '' })
-        expect.unreachable('expected the empty-name call to reject')
-      } catch (e) {
-        error = e
-      }
-
-      expect(error).toBeInstanceOf(clients.HttpCallError)
-      const httpErr = error as clients.HttpCallError
-      /* Domain failure mapped to a non-retryable terminal error (errorCode 500),
-       * the encoded body carrying the EmptyName tag. */
-      expect(httpErr.status).toBe(500)
-      expect(httpErr.responseText).toContain('EmptyName')
+      const recovered = await Effect.runPromise(
+        callTyped(Greeter, 'greet', { name: '' }).pipe(
+          Effect.map(() => 'unexpected-success' as const),
+          Effect.catchTag('EmptyName', () => Effect.succeed('recovered-EmptyName' as const)),
+          Effect.provide(ingressLayer),
+        ),
+      )
+      expect(recovered).toBe('recovered-EmptyName')
     },
   )
 })

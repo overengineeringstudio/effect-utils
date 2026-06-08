@@ -49,7 +49,7 @@ inside of a `run` closure.
   - Library / AppLayer code that happens to `Effect.sleep` (retries, debounce,
     rate-limiting) would silently journal durable timers it never intended,
     making the journal shape depend on transitive dependencies.
-  Durable waits must be a deliberate, named choice.
+    Durable waits must be a deliberate, named choice.
 
 ## Consequences
 

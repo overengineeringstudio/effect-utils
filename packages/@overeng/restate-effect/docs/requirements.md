@@ -255,7 +255,7 @@ rationale for the hard-to-reverse choices lives in
   support multi-deployment registration so replay/upgrade across deployment
   versions is testable (T07). (A07, A11; [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
 - **R26b Typed State inspect/seed:** The harness MUST expose a `stateOf(contract,
-  key)` proxy with `get`/`getAll`/`set`/`setAll`, key- and value-typed against the
+key)` proxy with `get`/`getAll`/`set`/`setAll`, key- and value-typed against the
   contract's `state` block and serialized via `effectSerde` over the Admin API, as
   stable public API. (A07; [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
 - **R26c Server-free contract testability:** The two core guarantees — the
