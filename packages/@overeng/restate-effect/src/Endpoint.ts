@@ -15,7 +15,12 @@ import {
   Schema,
 } from 'effect'
 
-import { readErrorClass, readRetention, type RetentionOptions } from './Annotations.ts'
+import {
+  readErrorClass,
+  readRetention,
+  readRetryAfterMillis,
+  type RetentionOptions,
+} from './Annotations.ts'
 import { type RedactionCipher, RestateRedaction } from './Redaction.ts'
 import { ObjectKey, RestateContext, StateRead, StateWrite } from './RestateContext.ts'
 import { DurablePromise } from './RestateContext.ts'
@@ -84,16 +89,27 @@ export const toTerminal = (
     /* A Restate suspension is never a real failure — never terminalize it. */
     if (restate.internal.isSuspendedError(error) === true) return Cause.squash(cause)
 
+    /* Validate the thrown failure against the contract's declared `error` union
+     * BEFORE classifying/encoding it. A failure that does NOT match the declared
+     * union is error-classification DRIFT (a handler failed with an undeclared
+     * error) — surface it as a DEFECT (no silent mis-encode), so the SDK retries
+     * and the bug is visible, rather than encoding garbage into the terminal body. */
+    const encoded =
+      errorSchema !== undefined ? Schema.encodeUnknownEither(errorSchema)(error) : undefined
+    if (errorSchema !== undefined && encoded !== undefined && encoded._tag === 'Left') {
+      return Cause.squash(cause)
+    }
+
     const classification =
       errorSchema !== undefined
         ? readErrorClass(errorSchema.ast).pipe(Option.getOrElse(() => undefined))
         : undefined
 
     if (classification?._tag === 'retryable') {
-      const retryAfter =
-        classification.retryAfter !== undefined
-          ? Duration.toMillis(Duration.decode(classification.retryAfter))
-          : undefined
+      /* Project `retryAfter` from the ACTUAL error instance (#3): a static value
+       * is decoded as-is; a projection reads the floor off this very error (e.g. a
+       * 429's `e.retryAfterMillis`). */
+      const retryAfter = readRetryAfterMillis(classification.retryAfter, error)
       return restate.RetryableError.from(error, retryAfter !== undefined ? { retryAfter } : {})
     }
 
@@ -102,7 +118,7 @@ export const toTerminal = (
       typeof error === 'object' && error !== null && '_tag' in error
         ? String((error as { _tag: unknown })._tag)
         : undefined
-    const body = errorSchema !== undefined ? Schema.encodeSync(errorSchema)(error) : error
+    const body = encoded !== undefined && encoded._tag === 'Right' ? encoded.right : error
     return new restate.TerminalError(JSON.stringify(body), {
       errorCode,
       ...(tag !== undefined ? { metadata: { _tag: tag } } : {}),
@@ -139,8 +155,11 @@ export type HandlerWrap = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Ef
 export type EndpointHooks = restate.HooksProvider
 
 /* The empty capability-marker value: markers gate type-legality, not runtime
- * behavior (the raw `ctx` does the work), so each provides an empty record. */
-const emptyMarker = {} as Record<never, never>
+ * behavior (the raw `ctx` does the work), so each provides an empty record. The
+ * marker value types now carry a DESCRIPTIVE phantom brand (for readable
+ * violation messages), so the provided runtime value is cast to the marker's
+ * value type (it is never read at runtime). */
+const emptyMarker = {} as never
 
 /**
  * Provide `RestateContext` (always) plus the capability markers legal for this
@@ -548,6 +567,22 @@ export const materializeAny = <AppR>(
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- the AppR extractor walks heterogeneous implementations */
+
+/**
+ * The UNION of every served implementation's app requirement `AppR` — the
+ * combined requirement `layer`/`serve` need the captured runtime to provide. A
+ * homogeneous array collapses to one `AppR`; a HETEROGENEOUS array (services with
+ * differing `AppR`s) widens to the union, so a runtime providing all of them is
+ * required (fixes the docs-worker mixed-`AppR` array friction — `AppR` no longer
+ * forced to a single element via `ReadonlyArray<AnyImplementation<AppR>>`
+ * inference). Relies on `_Implementation._AppR` being covariant.
+ */
+export type AppROf<Services extends ReadonlyArray<AnyImplementation<any>>> =
+  Services[number] extends AnyImplementation<infer R> ? R : never
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 /** Options for the endpoint server layer / `serve`. */
 export interface EndpointOptions<AppR> {
   /** A mixed array of Service / Object / Workflow implementations to serve. */
@@ -581,9 +616,13 @@ export interface EndpointOptions<AppR> {
  * `bidirectional` is left UNSET so the SDK negotiates full `BIDI_STREAM` over
  * h2c prior-knowledge (DQ7, spec §8).
  */
-export const layer = <AppR>(opts: EndpointOptions<AppR>): Layer.Layer<never, RestateError, AppR> =>
+/* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
+export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
+  opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
+): Layer.Layer<never, RestateError, AppROf<S>> =>
   Layer.scopedDiscard(
     Effect.gen(function* () {
+      type AppR = AppROf<S>
       const runtime = yield* Effect.runtime<AppR>()
       const wiring: MaterializeWiring = { hooks: opts.hooks, inboundBridge: opts.inboundBridge }
       const fn = createEndpointHandler({
@@ -627,6 +666,7 @@ export const layer = <AppR>(opts: EndpointOptions<AppR>): Layer.Layer<never, Res
  * )
  * ```
  */
-export const serve = <AppR>(
-  opts: EndpointOptions<AppR>,
-): Effect.Effect<never, RestateError, AppR> => Layer.launch(layer(opts))
+export const serve = <const S extends ReadonlyArray<AnyImplementation<any>>>(
+  opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
+): Effect.Effect<never, RestateError, AppROf<S>> => Layer.launch(layer(opts))
+/* eslint-enable @typescript-eslint/no-explicit-any */

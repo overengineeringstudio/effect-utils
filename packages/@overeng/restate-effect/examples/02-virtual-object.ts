@@ -33,16 +33,14 @@ export const CounterLive = RestateObject.implement<typeof CounterObj>(CounterObj
    * `number | undefined` (undefined = unset), so default it. */
   add: (amount) =>
     Effect.gen(function* () {
+      /* `State.get`/`set` have a CLEAN `E` (#1) — no `orDie` needed (a State infra
+       * or corrupt-journal failure is a defect at the boundary). */
       const current = (yield* Counter.get('count')) ?? 0
       const next = current + amount
       yield* Counter.set('count', next) // requires StateWrite — only legal here
       return next
-    }).pipe(Effect.orDie),
+    }),
   /* Shared (read-only): a `Counter.set('count', …)` here would be a COMPILE error
    * — `State.set` requires `StateWrite`, which a shared handler is not given. */
-  get: () =>
-    Counter.get('count').pipe(
-      Effect.map((c) => c ?? 0),
-      Effect.orDie,
-    ),
+  get: () => Counter.get('count').pipe(Effect.map((c) => c ?? 0)),
 })

@@ -4,6 +4,7 @@ import { Context, Effect, Layer, Option, Schema } from 'effect'
 import { readIdempotencyKey } from './Annotations.ts'
 import {
   type AwakeableId,
+  type Descriptor,
   inHandlerClients,
   type RestateContext,
   type SendOptions,
@@ -556,6 +557,29 @@ export const sendService = <C extends Contract<string, HandlerSpecMap>, M extend
     ...(opts?.delayMillis !== undefined ? { delayMillis: opts.delayMillis } : {}),
   })
 
+/**
+ * A typed in-handler service `call` issued as a `Descriptor` (#2), so a peer call
+ * joins `Restate.all`/`race`/`any` deterministically (issued in source order,
+ * awaited once). Same typing + idempotency path as `callService`.
+ */
+export const callServiceDescriptor = <
+  C extends Contract<string, HandlerSpecMap>,
+  M extends MethodsOf<C>,
+>(
+  contract: C,
+  method: M,
+  input: InputOf<C, M>,
+): Descriptor<SuccessOf<C, M>> => {
+  const spec = contract.handlers[method]!
+  return inHandlerClients.callDescriptor<InputOf<C, M>, unknown, SuccessOf<C, M>, unknown>({
+    service: contract.name,
+    handler: method,
+    inputSchema: spec.input,
+    outputSchema: spec.success,
+    input,
+  })
+}
+
 /** In-handler request/response call to a keyed Virtual Object handler. */
 export const callObject = <
   C extends ObjectContract<string, any, any>,
@@ -568,6 +592,32 @@ export const callObject = <
 ): Effect.Effect<ObjectSuccessOf<C, M>, RestateError, RestateContext> => {
   const spec = contract.handlers[method] as HandlerSpec
   return inHandlerClients.callRpc<ObjectInputOf<C, M>, unknown, ObjectSuccessOf<C, M>, unknown>({
+    service: contract.name,
+    handler: method,
+    inputSchema: spec.input,
+    outputSchema: spec.success,
+    input,
+    key,
+  })
+}
+
+/** A typed in-handler Object `call` issued as a `Descriptor` for the deterministic combinators (#2). */
+export const callObjectDescriptor = <
+  C extends ObjectContract<string, any, any>,
+  M extends ObjectMethodsOf<C>,
+>(
+  contract: C,
+  key: string,
+  method: M,
+  input: ObjectInputOf<C, M>,
+): Descriptor<ObjectSuccessOf<C, M>> => {
+  const spec = contract.handlers[method] as HandlerSpec
+  return inHandlerClients.callDescriptor<
+    ObjectInputOf<C, M>,
+    unknown,
+    ObjectSuccessOf<C, M>,
+    unknown
+  >({
     service: contract.name,
     handler: method,
     inputSchema: spec.input,

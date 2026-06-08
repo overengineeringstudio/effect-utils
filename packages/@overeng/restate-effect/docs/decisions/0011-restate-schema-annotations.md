@@ -10,17 +10,27 @@ annotations off `prop.type` by walking `ast.propertySignatures`).
 Adopted annotations — each read at ONE site, each a fact that belongs to the
 schema rather than the call site:
 
-| Annotation                               | On                     | Read at site         | Effect                                                                                                                                                                    |
-| ---------------------------------------- | ---------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `terminal` / `retryable({ retryAfter })` | a `Schema.TaggedError` | `toTerminal`         | per-error classification → `TerminalError` errorCode vs a retryable throw (improves [0003](./0003-error-boundary-model.md): a retryable DOMAIN error becomes expressible) |
-| `serde({ contentType, jsonSchema })`     | a value schema         | `effectSerde`        | overrides the hardcoded `application/json` / `JSONSchema.make`                                                                                                            |
-| `retention({ … })`                       | a contract / construct | contract / discovery | maps to `journalRetention` / `idempotencyRetention` / `workflowRetention`                                                                                                 |
-| `idempotencyKey`                         | an input struct FIELD  | client (input walk)  | the SINGLE source of the idempotency key                                                                                                                                  |
+| Annotation                               | On                     | Read at site         | Effect                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------- | ---------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `terminal` / `retryable({ retryAfter })` | a `Schema.TaggedError` | `toTerminal`         | per-error classification → `TerminalError` errorCode vs a retryable throw (improves [0003](./0003-error-boundary-model.md): a retryable DOMAIN error becomes expressible). `retryAfter` is static OR an INSTANCE projection `(error)=>DurationInput\|undefined` (#3, like `idempotencyKey`) |
+| `serde({ contentType, jsonSchema })`     | a value schema         | `effectSerde`        | overrides the hardcoded `application/json` / `JSONSchema.make`                                                                                                                                                                                                                              |
+| `retention({ … })`                       | a contract / construct | contract / discovery | maps to `journalRetention` / `idempotencyRetention` / `workflowRetention`                                                                                                                                                                                                                   |
+| `idempotencyKey`                         | an input struct FIELD  | client (input walk)  | the SINGLE source of the idempotency key                                                                                                                                                                                                                                                    |
 
 `idempotencyKey` is the SINGLE source: the client walks the input
 `propertySignatures` to find the annotated field and uses its value as the
 key, DROPPING the call-site `{ idempotencyKey }` send option. One place to
 declare it, no drift between schema and call site.
+
+`retryable({ retryAfter })` mirrors that instance-projection shape (#3):
+`retryAfter` is either a STATIC `Duration` shorthand OR a projection
+`(error) => DurationInput | undefined` read off the ACTUAL failing error at
+`toTerminal` (e.g. a Notion 429's `e.retryAfterMillis`). The projection is typed
+against the error's decoded type, applied defensively (a throwing/invalid
+projection yields `undefined` rather than corrupting the retry path), and
+`undefined` falls back to Restate's default backoff for that instance. Like
+`idempotencyKey`, the fact lives on the schema and is read once at the boundary —
+no call-site retry-delay option to keep in sync.
 
 `sensitive` / `redacted` is NOT a passive annotation — it is a Schema TRANSFORM
 applied by `effectSerde` (encrypt-at-encode / decrypt-at-decode on the annotated
@@ -64,3 +74,8 @@ AST gotchas (documented so the implementation reads annotations correctly):
   on it.
 
 Status: accepted
+
+_Revised (#3): `retryAfter` upgraded from static-only to `static | (error) =>
+DurationInput | undefined` — an instance projection read off the actual failing
+error at the boundary, mirroring `idempotencyKey`. The annotations worker shipped
+static; the projection is the final form._
