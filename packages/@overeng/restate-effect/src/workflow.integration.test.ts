@@ -7,14 +7,11 @@
  * `workflowSubmit` + `workflowAttach`, asserting BOTH the approved and rejected
  * outcomes (spec §1.3 — the `'rejected'` path is reachable via the query, R34).
  */
-import { Effect, Exit, Layer, Schema, Scope } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { startRestateServer, type RestateServerHandle } from '../test/restate-server.ts'
-import { freePort, serverAvailable } from '../test/test-utils.ts'
 import {
   DurablePromise,
-  layer,
   RestateIngress,
   RestateWorkflow,
   State,
@@ -22,6 +19,7 @@ import {
   workflowCall,
   workflowSubmit,
 } from './mod.ts'
+import { serverAvailable, withRestateServer } from './testing.ts'
 
 /* ── approval workflow: run awaits a durable promise; approve/reject signals ── */
 
@@ -66,28 +64,16 @@ const ApprovalLive = RestateWorkflow.implement<typeof ApprovalWf>(ApprovalWf, {
     ),
 })
 
+/* One held native server for the suite (collapses the copy-pasted scope/ingress
+ * `beforeAll`); the standalone workflow ingress functions need a `RestateIngress`
+ * layer built from the booted ingress URL. */
+const held = withRestateServer({ services: [ApprovalLive], appLayer: Layer.empty })
+const ingressLayer = (): Layer.Layer<RestateIngress> =>
+  RestateIngress.layer({ url: held.harness().ingressUrl })
+
 describe('restate-effect workflow (approval)', () => {
-  let server: RestateServerHandle
-  let endpointScope: Scope.CloseableScope
-  let ingressLayer: Layer.Layer<RestateIngress>
-
-  beforeAll(async () => {
-    if (!serverAvailable) return
-    server = await startRestateServer()
-    const sdkPort = await freePort()
-    endpointScope = await Effect.runPromise(Scope.make())
-    await Effect.runPromise(
-      Layer.buildWithScope(layer({ services: [ApprovalLive], port: sdkPort }), endpointScope),
-    )
-    await server.register(`http://localhost:${sdkPort}`)
-    ingressLayer = RestateIngress.layer({ url: server.ingressUrl })
-  }, 60_000)
-
-  afterAll(async () => {
-    if (!serverAvailable) return
-    if (endpointScope !== undefined) await Effect.runPromise(Scope.close(endpointScope, Exit.void))
-    if (server !== undefined) await server.shutdown()
-  }, 60_000)
+  beforeAll(held.setup, 60_000)
+  afterAll(held.teardown, 60_000)
 
   it.skipIf(!serverAvailable)('submit → approve signal → attach resolves approved', async () => {
     const outcome = await Effect.runPromise(
@@ -99,7 +85,7 @@ describe('restate-effect workflow (approval)', () => {
         const result = yield* workflowAttach(ApprovalWf, 'wf-approve')
         const status = yield* workflowCall(ApprovalWf, 'wf-approve', 'status', undefined)
         return { result, status }
-      }).pipe(Effect.provide(ingressLayer)),
+      }).pipe(Effect.provide(ingressLayer())),
     )
     expect(outcome.result).toBe(true)
     expect(outcome.status).toBe('approved')
@@ -114,7 +100,7 @@ describe('restate-effect workflow (approval)', () => {
         const result = yield* workflowAttach(ApprovalWf, 'wf-reject')
         const status = yield* workflowCall(ApprovalWf, 'wf-reject', 'status', undefined)
         return { result, status }
-      }).pipe(Effect.provide(ingressLayer)),
+      }).pipe(Effect.provide(ingressLayer())),
     )
     expect(outcome.result).toBe(false)
     expect(outcome.status).toBe('rejected')

@@ -168,7 +168,8 @@
     {
       "files": ["**/restate-effect/src/**"],
       "rules": {
-        "overeng/no-raw-nondeterminism": "error"
+        "overeng/no-raw-nondeterminism": "error",
+        "overeng/no-non-durable-wait": "error"
       }
     },
     {
@@ -176,10 +177,12 @@
         "**/restate-effect/src/**/*.test.ts",
         "**/restate-effect/src/**/*.test.tsx",
         "**/restate-effect/src/testing.ts",
+        "**/restate-effect/src/TestContext.ts",
         "**/restate-effect/test/**"
       ],
       "rules": {
-        "overeng/no-raw-nondeterminism": "off"
+        "overeng/no-raw-nondeterminism": "off",
+        "overeng/no-non-durable-wait": "off"
       }
     },
     {
