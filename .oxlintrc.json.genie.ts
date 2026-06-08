@@ -34,18 +34,31 @@ export default oxlintConfig({
     // harness so they can use Date.now / random freely.
     {
       files: ['**/restate-effect/src/**'],
-      rules: { 'overeng/no-raw-nondeterminism': 'error' },
+      rules: {
+        'overeng/no-raw-nondeterminism': 'error',
+        // Ban non-durable Effect.sleep/timeout in handler src (steer to
+        // Restate.sleep/timeout, which journal a durable timer that survives
+        // suspension/replay). EXEMPT for the same test + harness/testing infra
+        // files below — that lifecycle code (live-clock sleeps, in-memory context)
+        // is not a durable handler.
+        'overeng/no-non-durable-wait': 'error',
+      },
     },
     {
       files: [
         '**/restate-effect/src/**/*.test.ts',
         '**/restate-effect/src/**/*.test.tsx',
         // The `./testing` harness manages the native restate-server lifecycle
-        // (poll deadlines, ephemeral ports) — server infra, not handler code.
+        // (poll deadlines, ephemeral ports, the live-clock sleep util) — server
+        // infra, not handler code. The in-memory TestContext is likewise test infra.
         '**/restate-effect/src/testing.ts',
+        '**/restate-effect/src/TestContext.ts',
         '**/restate-effect/test/**',
       ],
-      rules: { 'overeng/no-raw-nondeterminism': 'off' },
+      rules: {
+        'overeng/no-raw-nondeterminism': 'off',
+        'overeng/no-non-durable-wait': 'off',
+      },
     },
     // effect-utils specific: react-inspector is a fork with its own style
     {

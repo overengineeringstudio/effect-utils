@@ -90,6 +90,40 @@ const _runNestedState = Restate.run('bad', CounterStateApi.get('count'))
 // @ts-expect-error — durable capability (RestateContext) is not allowed inside Restate.run
 const _runNestedSleep = Restate.run('bad', Restate.sleep(1000))
 
+/* ── determinism-hazard verification (stress-run round 2) ──────────────────── */
+/*
+ * Two claimed hazards from the stress run, verified here at the type level:
+ *
+ * (a) HAZARD — "a nested journaled op inside `Restate.run`". CONFIRMED prevented by
+ *     the #1 run-scrubbing (`Exclude<R, DurableCaps>`, Core A): the two
+ *     `@ts-expect-error` cases above (`_runNestedState`, `_runNestedSleep`) are
+ *     COMPILE errors, so a nested `State.get` / `Restate.sleep` inside a `run`
+ *     closure cannot be written. No new rule is needed — the type system is the
+ *     guard (mirrors Restate's "no nested ctx.* inside run").
+ *
+ * (b) NON-HAZARD — "gate a `Restate.run` on a `State.get`". `State.get` is a
+ *     journaled, deterministic read in the HANDLER BODY (not inside the closure);
+ *     gating on it replays identically (the journal yields the same value), so it
+ *     is the LEGITIMATE pattern, not a hazard. Confirmed legal below — no rule
+ *     should flag it.
+ */
+const _gateRunOnStateGet = (
+  CounterState2: ReturnType<typeof State.for<{ count: typeof Schema.Number }>>,
+) =>
+  Effect.gen(function* () {
+    /* Read journaled State in the handler body (StateRead — legal, deterministic). */
+    const current = (yield* CounterState2.get('count')) ?? 0
+    /* Gate a durable step on that journaled value: the captured `current` is a
+     * plain number, so the `run` closure carries NO durable capability — legal,
+     * and replay-stable because `current` came from the journal. */
+    if (current > 0) {
+      yield* Restate.run(
+        'gated',
+        Effect.sync(() => current * 2),
+      )
+    }
+  })
+
 /* ── descriptor concurrency rejects opaque Effects ───────────────────────── */
 
 /* POSITIVE: descriptor tuple → inferred result tuple. */

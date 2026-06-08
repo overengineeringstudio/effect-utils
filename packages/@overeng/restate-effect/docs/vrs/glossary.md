@@ -145,3 +145,23 @@ sees the first failure rather than a retry loop.
 `stateOf(contract, key)` returns a `StateProxy` with `get`/`getAll`/`set`/`setAll`,
 key- and value-typed against the contract's `state` block, for inspecting and
 seeding **State** directly over the Admin API in tests.
+
+**In-memory TestContext**:
+A FAITHFUL in-memory `RestateContext` (`makeTestContext` / `makeTestContextLayer`,
+`./testing`) for SERVER-FREE unit tests of handler logic + **State** transitions —
+a real in-memory implementation (Map-backed State, journaled-once `run`,
+deterministic clock/random, controllable `sleep`, per-`handlerKind` capability
+markers), NOT a stub and NOT a substitute for the **Test Harness**
+(durability/**Replay**/single-writer/cross-invocation need the real server). See
+`decisions/0013`.
+_Avoid_: "mock context".
+
+**withRestateServer**:
+A manual-scope holder over `RestateTestHarness.layer` exposing `setup`/`teardown`
+(for `beforeAll`/`afterAll`) + a `harness()` accessor — collapses the copy-pasted
+scope/ingress boilerplate when a suite holds ONE server across plain `async` tests.
+
+**liveSleep / withLiveClock**:
+Test utils (`./testing`) that pin an `Effect.sleep` / sub-program to a LIVE
+`Clock`, so wall-clock waits coordinating with the native server elapse in real
+time even under `@effect/vitest` `it.effect`'s virtual `TestClock`.

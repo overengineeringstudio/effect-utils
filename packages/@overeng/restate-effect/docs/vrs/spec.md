@@ -541,18 +541,41 @@ is the SDK's progress/suspension seam (hence the `.map`-not-`.then` invariant); 
 descriptor type shape rejects an arbitrary `Effect[]` and recovers a precise
 tuple/union.
 
-### 6.3 Nondeterminism lint
+### 6.3 Nondeterminism + durability lints
 
-An oxlint rule flags raw nondeterminism in handler bodies — `Date.now()`,
-`new Date()`, `Math.random()`, `crypto.randomUUID()`, and un-journaled I/O —
-OUTSIDE `Restate.run` and the journaled Clock/Random, as an advisory backstop;
-the journaled layer + explicit combinators are the primary guarantee (R20).
-INSIDE a `Restate.run` closure nondeterminism is fine: the `run` result is
-journaled once, so a `crypto.randomUUID()` or the journaled `Random` is recorded on
-the first real execution and replayed verbatim. (`ctx.rand` inside `ctx.run` is not
-SDK-enforced in restate-sdk 1.14.5 — the guard is a no-op — and is harmless anyway,
-being journaled-seeded; the lint keeps nondeterminism inside `run` or the journaled
-sources, it does not police the inside of a `run` closure.)
+Two oxlint rules (`@overeng/oxc-config`) backstop handler `src/` (both EXEMPT for
+test + harness/testing infra files — `*.test.ts`, `testing.ts`, `TestContext.ts`,
+`test/**` — where polling / live-clock sleeps are legitimate):
+
+- `overeng/no-raw-nondeterminism` flags raw nondeterminism in handler bodies —
+  `Date.now()`, `new Date()`, `Math.random()`, `crypto.randomUUID()`, and
+  un-journaled I/O — OUTSIDE `Restate.run` and the journaled Clock/Random, as an
+  advisory backstop; the journaled layer + explicit combinators are the primary
+  guarantee (R20). INSIDE a `Restate.run` closure nondeterminism is fine: the `run`
+  result is journaled once, so a `crypto.randomUUID()` or the journaled `Random` is
+  recorded on the first real execution and replayed verbatim. (`ctx.rand` inside
+  `ctx.run` is not SDK-enforced in restate-sdk 1.14.5 — the guard is a no-op — and
+  is harmless anyway, being journaled-seeded; the lint keeps nondeterminism inside
+  `run` or the journaled sources, it does not police the inside of a `run` closure.)
+- `overeng/no-non-durable-wait` flags a non-durable `Effect.sleep` / `Effect.timeout`
+  in a handler body (it schedules an in-process timer that does NOT survive
+  suspension/replay), steering to `Restate.sleep` / `Restate.timeout` (which journal
+  a durable timer). It is about DURABILITY, not determinism (a bare `Effect.sleep`
+  is perfectly deterministic, just not durable). EXEMPT inside a `Restate.run`
+  closure — there the wait is part of a single journaled step.
+
+### Determinism hazards (verified — no extra rule needed)
+
+Two stress-run claims were verified rather than turned into new rules:
+
+- "A nested journaled op inside `Restate.run`" IS a hazard — but it is already
+  PREVENTED at the type level by the run-scrubbing (`Exclude<R, DurableCaps>`,
+  §5/§6): a nested `State.get` / `Restate.sleep` inside a `run` closure is a COMPILE
+  error (asserted in `capability-inference.types.ts`). No new rule needed.
+- "Gating a `Restate.run` on a `State.get`" is NOT a hazard. `State.get` is a
+  journaled, deterministic read in the HANDLER BODY (not inside the closure); gating
+  on it replays identically, so it is the legitimate pattern. Confirmed legal
+  (`capability-inference.types.ts`); no rule should flag it.
 
 ---
 
@@ -910,11 +933,16 @@ Lifecycle contract (R27, sharpened over the POC):
 The two CORE guarantees are server-free testable; only true end-to-end paths need
 the integration job:
 
-| Layer       | Needs server?       | Covers                                                                                                                           |
-| ----------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| unit        | no                  | serde round-trips, `toTerminal`, pure combinators, annotation read-back                                                          |
-| contract    | no                  | error-transport round-trip (decode helper over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter` |
-| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises                                                                          |
+| Layer       | Needs server?       | Covers                                                                                                                                                                  |
+| ----------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| unit        | no                  | serde round-trips, `toTerminal`, pure combinators, annotation read-back; AND server-free handler-logic / State-transition tests via the in-memory `TestContext` (§11.5) |
+| contract    | no                  | error-transport round-trip (decode helper over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter`                                        |
+| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises, single-writer, cross-invocation (calls/sends/`reschedule`/`pollLoop`), journal-shape (`alwaysReplay`)          |
+
+The in-memory `TestContext` (§11.5) extends the `unit` row to handler LOGIC: a
+handler's control flow + State read-modify-write is testable server-free. Anything
+durability-, replay-, single-writer-, or cross-invocation-shaped stays in the
+`integration` row (only the real server provides it).
 
 ### 11.4 Consumer workflow (R26d)
 
@@ -937,6 +965,54 @@ with `allowUnfreePredicate` scoped to `restate`; generous timeout; graceful SKIP
 when the binary is absent. Open question: whether `alwaysReplay` runs in the
 default lane or a scheduled lane (server-spawn cost tradeoff). The harness is
 public API and must stay stable.
+
+### 11.5 In-memory `TestContext` + ergonomics (decision 0013)
+
+A FAITHFUL in-memory `RestateContext` for SERVER-FREE unit tests of handler logic
+
+- State transitions — a real in-memory implementation, NOT a stub. `./testing`
+  exports `makeTestContext(options)` (returns the fake `restate.ObjectContext` + the
+  backing State `Map` + the `run`-memoization journal) and `makeTestContextLayer(options)`
+  (a `Layer` providing `RestateContext` + the capability markers for the chosen
+  `handlerKind`). Provide the layer over the real handler effect and assert on the
+  result AND the State `Map`:
+
+```ts
+const state = new Map<string, unknown>([['count', 40]])
+const next =
+  yield *
+  CounterLive.impl.add(3).pipe(Effect.provide(makeTestContextLayer({ state, key: 'cart-1' })))
+// next === 43; state.get('count') === 43
+```
+
+FAITHFULLY modeled: State (`get`/`set`/`clear`/`clearAll`/`stateKeys`) over a real
+`Map`, round-tripped through the same `effectSerde`; `ctx.run(name, …)` executes
+once and MEMOIZES by name (journaled-once: a re-`run` returns the stored value);
+deterministic `ctx.date`/`ctx.rand` (seeded); a controllable no-op `ctx.sleep`;
+`ctx.key`; the per-`handlerKind` capability gating (the SAME marker subset
+`Endpoint.materialize*` provides, so a `State.set` in a read-only handler is still
+a compile error); in-handler awakeable resolve/await. NOT modeled (use the real
+harness): durability / replay / suspension, single-writer / per-key concurrency,
+and cross-handler / cross-invocation effects (`call`/`send`/`reschedule`/
+delayed-self-send/`pollLoop`/cross-invocation durable-promise resolution).
+Explicitly documented (module JSDoc + README + decision 0013) as NOT a substitute
+for `RestateTestHarness`.
+
+`withRestateServer({ services, appLayer })` is a manual-scope harness holder over
+`RestateTestHarness.layer`: it collapses the copy-pasted ~25-line
+`beforeAll`/`afterAll` (make a `Scope`, build the harness layer into it, extract
+the service, close the scope) into `setup`/`teardown` + a `harness()` accessor. A
+suite wires `beforeAll(held.setup)` / `afterAll(held.teardown)` and reads
+`held.harness().ingress.*` / `.stateOf(...)`. Prefer `@effect/vitest` `it.layer`
+for `it.effect` suites; use `withRestateServer` when the suite drives the ingress
+from plain `async` bodies and needs ONE server held across all tests.
+
+Live-clock test util (the `@effect/vitest` `it.effect` virtual-`TestClock`
+friction): under `it.effect` a bare `Effect.sleep` is virtual and never advances,
+so a real-time wait coordinating with the native server across suspend/resume
+HANGS. `./testing` surfaces `liveSleep(millis)` (an `Effect.sleep` pinned to a live
+`Clock.make()`) and `withLiveClock(effect)` (run a sub-program under a live clock),
+so wall-clock waits elapse regardless of the ambient test clock.
 
 ---
 

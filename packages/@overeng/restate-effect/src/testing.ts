@@ -32,7 +32,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import * as clients from '@restatedev/restate-sdk-clients'
-import { Context, Effect, Layer, type Schema } from 'effect'
+import { Clock, Context, Effect, Exit, Layer, type Schema, Scope } from 'effect'
 
 import {
   call as ingressCall,
@@ -72,6 +72,56 @@ import type {
   WorkflowSignalQueryOf,
   WorkflowSignalSuccessOf,
 } from './Service.ts'
+
+/**
+ * The faithful in-memory `RestateContext` (decision 0013, spec §11.5): a REAL
+ * in-memory implementation of the durable `ctx` for SERVER-FREE unit tests of
+ * handler logic + State transitions. NOT a substitute for `RestateTestHarness`
+ * (it deliberately does not model durability/replay/single-writer/
+ * cross-invocation) — see `TestContext.ts` for the full contract.
+ */
+export {
+  makeTestContext,
+  makeTestContextLayer,
+  type TestContextHandle,
+  type TestContextOptions,
+  type TestHandlerKind,
+} from './TestContext.ts'
+
+/* ════════════════════════════════════════════════════════════════════════
+ * Live-clock test util (docs-worker friction #3).
+ * ════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A REAL-time sleep that IGNORES `@effect/vitest`'s `it.effect` virtual
+ * `TestClock` (under which a bare `Effect.sleep` is virtual and never advances).
+ * An integration test coordinating with a real native server across
+ * suspend/resume must let wall-clock time actually elapse — `Effect.sleep(ms)`
+ * under `TestClock` would HANG forever (the clock never ticks). This pins the
+ * sleep to a live `Clock`, so it elapses in real time regardless of the ambient
+ * test clock.
+ *
+ * ```ts
+ * it.effect('polls a durable timer', () =>
+ *   Effect.gen(function* () {
+ *     yield* harness.ingress.objectCall(Loop, key, 'start', undefined)
+ *     yield* liveSleep(200) // real time, NOT virtual
+ *     // ... assert the timer fired ...
+ *   }),
+ * )
+ * ```
+ */
+export const liveSleep = (millis: number): Effect.Effect<void> =>
+  Effect.sleep(millis).pipe(Effect.withClock(Clock.make()))
+
+/**
+ * Run `effect` under a LIVE `Clock` (ignoring the ambient `it.effect`
+ * `TestClock`), so any `Effect.sleep` / timer inside it elapses in real time —
+ * the general form of {@link liveSleep} for a sub-program that must coordinate
+ * with the real server in wall-clock time.
+ */
+export const withLiveClock = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.withClock(Clock.make()))
 
 /* ════════════════════════════════════════════════════════════════════════
  * Native server lifecycle (productized from `test/restate-server.ts`).
@@ -686,4 +736,76 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
         }
       }),
     )
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+ * `withRestateServer` — a manual-scope harness holder (#5, spec §11.5).
+ * ════════════════════════════════════════════════════════════════════════ */
+
+/** A held, lazily-booted harness: `setup`/`teardown` for `beforeAll`/`afterAll`, plus the live `harness` accessor. */
+export interface HeldRestateServer {
+  /** Build the harness Layer into a held scope (boots the native server). Wire as the suite's `beforeAll`. */
+  readonly setup: () => Promise<void>
+  /** Close the held scope (shuts the server down + removes the temp dir). Wire as the suite's `afterAll`. */
+  readonly teardown: () => Promise<void>
+  /** The live harness service (typed ingress + `stateOf`). THROWS if read before `setup` completed. */
+  readonly harness: () => RestateTestHarnessService
+}
+
+/**
+ * Collapse the ~25-line copy-pasted `beforeAll`/`afterAll` that manually makes a
+ * `Scope`, builds `RestateTestHarness.layer` into it, extracts the service, and
+ * closes the scope. A suite calls this ONCE and wires `setup`/`teardown` into its
+ * `beforeAll`/`afterAll`, then reads the booted service via `harness()`:
+ *
+ * ```ts
+ * const held = withRestateServer({ services, appLayer: Layer.empty })
+ * beforeAll(held.setup, 90_000)
+ * afterAll(held.teardown, 90_000)
+ * // ... in a test:
+ * const result = yield* held.harness().ingress.objectCall(Loop, key, 'start', undefined)
+ * ```
+ *
+ * This is the manual-scope sibling of `RestateTestHarness.layer` (which a suite
+ * provides via `@effect/vitest`'s `it.layer`). Prefer `it.layer` for `it.effect`
+ * suites; use `withRestateServer` when the suite drives the ingress from plain
+ * `async` test bodies and needs ONE server held across all tests (e.g. a poll-loop
+ * stress suite). The same `serverAvailable` skip applies — `setup` is a no-op when
+ * no native binary is present, and `harness()` then throws (guard the suite with
+ * `describe.skipIf(!serverAvailable)`).
+ */
+export const withRestateServer = <AppR>(opts: {
+  readonly services: ReadonlyArray<AnyImplementation<AppR>>
+  readonly appLayer: Layer.Layer<AppR, never, never>
+  readonly alwaysReplay?: boolean
+  readonly disableRetries?: boolean
+}): HeldRestateServer => {
+  let scope: Scope.CloseableScope | undefined
+  let service: RestateTestHarnessService | undefined
+  const built = RestateTestHarness.layer(opts)
+
+  return {
+    setup: async () => {
+      if (!serverAvailable) return
+      scope = await Effect.runPromise(Scope.make())
+      service = await Effect.runPromise(
+        Layer.buildWithScope(built, scope).pipe(
+          Effect.map((ctx) => Context.get(ctx, RestateTestHarness)),
+        ),
+      )
+    },
+    teardown: async () => {
+      if (scope !== undefined) await Effect.runPromise(Scope.close(scope, Exit.void))
+      scope = undefined
+      service = undefined
+    },
+    harness: () => {
+      if (service === undefined) {
+        throw new Error(
+          'withRestateServer: harness() read before setup() completed (or no restate-server available)',
+        )
+      }
+      return service
+    },
+  }
 }

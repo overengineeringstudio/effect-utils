@@ -15,12 +15,17 @@
  * Waits POLL the observable status/State (durable timer actually fired) rather
  * than fixed sleeps. Gracefully skips without a native `restate-server`.
  */
-import { Clock, Context, Effect, Exit, Layer, Schema, Scope } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { NotionWatcher, RawWatcherObj, RawWatcherLive } from '../examples/12-self-reschedule.ts'
 import { Restate, RestateObject, RestateScheduled, State } from './mod.ts'
-import { RestateTestHarness, type RestateTestHarnessService, serverAvailable } from './testing.ts'
+import {
+  liveSleep as liveSleepEff,
+  type RestateTestHarnessService,
+  serverAvailable,
+  withRestateServer,
+} from './testing.ts'
 
 /* ── test watchers (distinct names so they coexist on one deployment) ─────── */
 
@@ -131,44 +136,34 @@ const services = [
   RawWatcherLive,
 ]
 
-const HarnessLayer = RestateTestHarness.layer({ services, appLayer: Layer.empty })
+/* ── shared harness (one native server, held across the suite) ────────────── */
 
-/* ── shared harness (one native server on a manually-held scope) ──────────── */
+const held = withRestateServer({ services, appLayer: Layer.empty })
+const harness = (): RestateTestHarnessService => held.harness()
 
-let harness: RestateTestHarnessService
-let scope: Scope.CloseableScope
-
-beforeAll(async () => {
-  if (!serverAvailable) return
-  scope = await Effect.runPromise(Scope.make())
-  harness = await Effect.runPromise(
-    Layer.buildWithScope(HarnessLayer, scope).pipe(
-      Effect.map((ctx) => Context.get(ctx, RestateTestHarness)),
-    ),
-  )
-}, 90_000)
-
-afterAll(async () => {
-  if (scope !== undefined) await Effect.runPromise(Scope.close(scope, Exit.void))
-}, 90_000)
+beforeAll(held.setup, 90_000)
+afterAll(held.teardown, 90_000)
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 
 const live = <A>(eff: Effect.Effect<A, unknown, never>): Promise<A> =>
   Effect.runPromise(eff as Effect.Effect<A, never, never>)
 
-const liveSleep = (ms: number): Promise<void> =>
-  live(Effect.sleep(ms).pipe(Effect.withClock(Clock.make())))
+/* A REAL-time sleep (the harness live-clock util), so the wall-clock waits this
+ * suite uses to coordinate with the real server actually elapse. */
+const liveSleep = (ms: number): Promise<void> => live(liveSleepEff(ms))
 
 type Status = { readonly status: string; readonly iteration: number; readonly lastError?: string }
 
 const statusOf = (scheduled: { readonly contract: any }, key: string): Promise<Status> =>
-  live(harness.ingress.objectCall(scheduled.contract, key, 'status', undefined)) as Promise<Status>
+  live(
+    harness().ingress.objectCall(scheduled.contract, key, 'status', undefined),
+  ) as Promise<Status>
 
 const start = (scheduled: { readonly contract: any }, key: string): Promise<unknown> =>
-  live(harness.ingress.objectCall(scheduled.contract, key, 'start', undefined))
+  live(harness().ingress.objectCall(scheduled.contract, key, 'start', undefined))
 const stop = (scheduled: { readonly contract: any }, key: string): Promise<unknown> =>
-  live(harness.ingress.objectCall(scheduled.contract, key, 'stop', undefined))
+  live(harness().ingress.objectCall(scheduled.contract, key, 'stop', undefined))
 
 const waitUntil = async (
   scheduled: { readonly contract: any },
@@ -196,7 +191,7 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
     expect(s.status).toBe('running')
     /* Exactly-once: the journaled counter equals the iteration count (no cycle ran
      * twice or was skipped — proven against the durable counter in State). */
-    expect((await live(harness.stateOf(BasicDomain, key).get('n'))) ?? 0).toBe(s.iteration)
+    expect((await live(harness().stateOf(BasicDomain, key).get('n'))) ?? 0).toBe(s.iteration)
     await stop(Basic, key)
     const stopped = await waitUntil(Basic, key, (st) => st.status === 'stopped')
     expect(stopped.status).toBe('stopped')
@@ -246,7 +241,7 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
   it('generation idempotency: a duplicate start never overlaps the chain', async () => {
     const key = 'dup-1'
     const readN = (): Promise<number> =>
-      live(harness.stateOf(BasicDomain, key).get('n')).then((v) => v ?? 0)
+      live(harness().stateOf(BasicDomain, key).get('n')).then((v) => v ?? 0)
     await start(Basic, key)
     await waitUntil(Basic, key, (st) => st.iteration >= 2)
     /* A duplicate start bumps the generation and re-arms; the per-key write lock +
@@ -295,7 +290,7 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
     /* Drives the EXACT exported example so the README snippet is CI-verified. The
      * default stub source reports `done` at cursor >= 4 → the loop ends cleanly. */
     const key = 'notion-1'
-    await live(harness.ingress.objectCall(NotionWatcher.contract, key, 'start', undefined))
+    await live(harness().ingress.objectCall(NotionWatcher.contract, key, 'start', undefined))
     const s = await waitUntil(NotionWatcher, key, (st) => st.status === 'completed')
     expect(s.status).toBe('completed')
     expect(s.iteration).toBeGreaterThanOrEqual(5)
@@ -304,11 +299,11 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
   it('reschedule building block: the hand-rolled RawWatcher loops and stops', async () => {
     const key = 'raw-1'
     const read = (): Promise<{ running: boolean; cursor: number }> =>
-      live(harness.ingress.objectCall(RawWatcherObj, key, 'read', undefined)) as Promise<{
+      live(harness().ingress.objectCall(RawWatcherObj, key, 'read', undefined)) as Promise<{
         running: boolean
         cursor: number
       }>
-    await live(harness.ingress.objectCall(RawWatcherObj, key, 'start', undefined))
+    await live(harness().ingress.objectCall(RawWatcherObj, key, 'start', undefined))
     const deadline = Date.now() + 12_000
     let snap = await read()
     while (snap.cursor < 4 && Date.now() < deadline) {
@@ -317,7 +312,7 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
     }
     expect(snap.cursor).toBeGreaterThanOrEqual(4)
     expect(snap.running).toBe(true)
-    await live(harness.ingress.objectCall(RawWatcherObj, key, 'stop', undefined))
+    await live(harness().ingress.objectCall(RawWatcherObj, key, 'stop', undefined))
     await liveSleep(500)
     const after = await read()
     expect(after.running).toBe(false)

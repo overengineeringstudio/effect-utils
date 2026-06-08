@@ -6,16 +6,13 @@
  * via a shared query, resolves the awakeable from INGRESS, and asserts the
  * handler resumes with the typed payload (recovered via `result`).
  */
-import { Effect, Exit, Layer, Schema, Scope } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { startRestateServer, type RestateServerHandle } from '../test/restate-server.ts'
-import { freePort, serverAvailable } from '../test/test-utils.ts'
 import {
   Awakeable,
   type AwakeableId,
   ingressResolveAwakeable,
-  layer,
   objectCall,
   objectSend,
   Restate,
@@ -24,6 +21,7 @@ import {
   result,
   State,
 } from './mod.ts'
+import { serverAvailable, withRestateServer } from './testing.ts'
 
 /* ── object that creates an awakeable, stores its id, suspends, returns payload ── */
 
@@ -61,28 +59,16 @@ const WaiterLive = RestateObject.implement<typeof WaiterObj>(WaiterObj, {
     ),
 })
 
+/* One held native server for the suite (collapses the copy-pasted scope/ingress
+ * `beforeAll`); the standalone ingress functions still need a `RestateIngress`
+ * layer, built from the booted server's ingress URL. */
+const held = withRestateServer({ services: [WaiterLive], appLayer: Layer.empty })
+const ingressLayer = (): Layer.Layer<RestateIngress> =>
+  RestateIngress.layer({ url: held.harness().ingressUrl })
+
 describe('restate-effect awakeable round-trip', () => {
-  let server: RestateServerHandle
-  let endpointScope: Scope.CloseableScope
-  let ingressLayer: Layer.Layer<RestateIngress>
-
-  beforeAll(async () => {
-    if (!serverAvailable) return
-    server = await startRestateServer()
-    const sdkPort = await freePort()
-    endpointScope = await Effect.runPromise(Scope.make())
-    await Effect.runPromise(
-      Layer.buildWithScope(layer({ services: [WaiterLive], port: sdkPort }), endpointScope),
-    )
-    await server.register(`http://localhost:${sdkPort}`)
-    ingressLayer = RestateIngress.layer({ url: server.ingressUrl })
-  }, 60_000)
-
-  afterAll(async () => {
-    if (!serverAvailable) return
-    if (endpointScope !== undefined) await Effect.runPromise(Scope.close(endpointScope, Exit.void))
-    if (server !== undefined) await server.shutdown()
-  }, 60_000)
+  beforeAll(held.setup, 60_000)
+  afterAll(held.teardown, 60_000)
 
   it.skipIf(!serverAvailable)(
     'handler suspends on awakeable, resumes with ingress payload',
@@ -104,7 +90,7 @@ describe('restate-effect awakeable round-trip', () => {
 
           /* Attach to the original send's output — the resumed handler return value. */
           return yield* result(send, Payload)
-        }).pipe(Effect.provide(ingressLayer)),
+        }).pipe(Effect.provide(ingressLayer())),
       )
       expect(resumed).toEqual({ token: 'resumed-ok' })
     },

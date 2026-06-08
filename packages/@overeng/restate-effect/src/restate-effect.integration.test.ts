@@ -8,12 +8,11 @@
  * the typed `RestateIngress` client — asserting BOTH the success path and the
  * typed terminal-error path (`EmptyName` recovered via the decode helper).
  */
-import { Context, Effect, Exit, Layer, Schema, Scope } from 'effect'
+import { Context, Effect, Layer, Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { startRestateServer, type RestateServerHandle } from '../test/restate-server.ts'
-import { freePort, serverAvailable } from '../test/test-utils.ts'
-import { callTyped, layer, Restate, RestateIngress, RestateService } from './mod.ts'
+import { callTyped, Restate, RestateIngress, RestateService } from './mod.ts'
+import { serverAvailable, withRestateServer } from './testing.ts'
 
 /* ── demo app: an injected Effect service + a greeter Restate service ── */
 
@@ -48,40 +47,21 @@ const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, 
 
 /* ── harness ── */
 
+/* One held native server for the suite (collapses the copy-pasted scope/ingress
+ * `beforeAll`); the consumer `Greeting` Layer is threaded into the served runtime.
+ * The standalone `callTyped` needs a `RestateIngress` layer built from the booted
+ * ingress URL. */
+const held = withRestateServer({ services: [GreeterLive], appLayer: Greeting.Default })
+const ingressLayer = (): Layer.Layer<RestateIngress> =>
+  RestateIngress.layer({ url: held.harness().ingressUrl })
+
 describe('restate-effect end-to-end (contract/implement)', () => {
-  let server: RestateServerHandle
-  let endpointScope: Scope.CloseableScope
-  let ingressLayer: Layer.Layer<RestateIngress>
-
-  beforeAll(async () => {
-    if (!serverAvailable) return
-    server = await startRestateServer()
-    const sdkPort = await freePort()
-
-    /* Launch the endpoint layer in a scope we hold open; the finalizer closes
-     * the HTTP/2 server in afterAll. */
-    endpointScope = await Effect.runPromise(Scope.make())
-    await Effect.runPromise(
-      Layer.buildWithScope(layer({ services: [GreeterLive], port: sdkPort }), endpointScope).pipe(
-        Effect.provide(Greeting.Default),
-      ),
-    )
-
-    await server.register(`http://localhost:${sdkPort}`)
-    ingressLayer = RestateIngress.layer({ url: server.ingressUrl })
-  }, 60_000)
-
-  afterAll(async () => {
-    if (!serverAvailable) return
-    if (endpointScope !== undefined) {
-      await Effect.runPromise(Scope.close(endpointScope, Exit.void))
-    }
-    if (server !== undefined) await server.shutdown()
-  }, 60_000)
+  beforeAll(held.setup, 60_000)
+  afterAll(held.teardown, 60_000)
 
   it.skipIf(!serverAvailable)('greet returns the prefixed message + a uuid', async () => {
     const result = await Effect.runPromise(
-      callTyped(Greeter, 'greet', { name: 'Sarah' }).pipe(Effect.provide(ingressLayer)),
+      callTyped(Greeter, 'greet', { name: 'Sarah' }).pipe(Effect.provide(ingressLayer())),
     )
     expect(result.message).toBe('Hello Sarah')
     expect(result.id).toMatch(/^[0-9a-f-]{36}$/)
@@ -94,7 +74,7 @@ describe('restate-effect end-to-end (contract/implement)', () => {
         callTyped(Greeter, 'greet', { name: '' }).pipe(
           Effect.map(() => 'unexpected-success' as const),
           Effect.catchTag('EmptyName', () => Effect.succeed('recovered-EmptyName' as const)),
-          Effect.provide(ingressLayer),
+          Effect.provide(ingressLayer()),
         ),
       )
       expect(recovered).toBe('recovered-EmptyName')
