@@ -8,13 +8,16 @@ inline.
 
 ## Status
 
-Draft. The POC (commit `61c8d8cf`) proved the core pillars — Schema serde,
-per-invocation runtime boundary, durable `ctx.run`/`ctx.sleep`, the endpoint
-scoped Layer, and tagged-error → `TerminalError` mapping — using a combined
-`RestateService.make`. This spec describes the TARGET design, in which decision
-[0010](./decisions/0010-separated-contract-impl.md) supersedes the combined
-`make` with separated `contract` + `implement`. Sections note where the POC
-differs.
+Implemented. The full v1 surface described here is built and shipping —
+the core constructs (`contract`/`implement`/`define`), the per-invocation runtime
+boundary, the determinism layer + lints, the error boundary, the typed clients,
+self-reschedule, the `./otel` bridge, and the `./testing` harness, all covered by
+the unit + native-server integration suites. The original POC (commit `61c8d8cf`)
+proved the core pillars using a combined `RestateService.make`; decision
+[0010](./decisions/0010-separated-contract-impl.md) superseded that `make` with
+the separated `contract` + `implement` that shipped. POC references below point at
+the proving ground; the shipped modules are the source of truth. The Deferred list
+notes what is intentionally out of v1.
 
 ## Scope
 
@@ -62,14 +65,14 @@ Module layout (subpath exports):
 
 ```
 .            core: constructs, combinators, serde, error boundary, endpoint, clients
-./otel       OpenTelemetry bridge (opt-in deps)          (R03, R23–R25)   PLANNED
-./testing    Docker-free native-server harness Layer     (R26–R28d)       PLANNED
+./otel       OpenTelemetry bridge (opt-in deps)          (R03, R23–R25)   SHIPPED
+./testing    Docker-free native-server harness Layer     (R26–R28d)       SHIPPED
 ```
 
-`./otel` and `./testing` are PLANNED subpath exports: the modules do not yet
-exist, so the `package.json` exports declaration is added together with the
-modules (declaring an export for a non-existent module breaks the build). Until
-then `package.json` exposes only `.`.
+`./otel` and `./testing` are opt-in subpath exports declared in `package.json`
+alongside their modules (`src/otel.ts`, `src/testing.ts`); the otel/metrics and
+testing-only deps stay scoped to those subpaths so the core `.` surface stays
+dependency-light (R03).
 
 ---
 
@@ -157,8 +160,8 @@ const OnboardLive = RestateWorkflow.implement(Onboard, {
     Effect.gen(function* () {
       yield* State.set('status', 'pending') // StateWrite + DurablePromise + …
       const decision = yield* Restate.race([
-        DurablePromise.get<Approval>('approved').descriptor, // descriptor, issued in order
-        Restate.sleep('7 days').descriptor,
+        DurablePromise.for(Approval).getDescriptor('approved'), // descriptor, issued in order
+        Restate.sleepDescriptor(7 * 24 * 60 * 60 * 1000), // 7 days, in millis
       ]).pipe(Effect.map(Option.fromNullable)) // map the RESULT, not the branch
       yield* State.set('status', Option.isSome(decision) ? 'approved' : 'rejected')
     }),
@@ -721,7 +724,7 @@ R14). For a Workflow, the ingress surface is `submit` / `attach` / `output`; the
 ```ts
 // in a handler:
 const { id, promise } = yield * Awakeable.make(PaymentResult) // id branded, typed payload
-const payment = yield * Restate.await(promise) // suspends until resolved
+const payment = yield * promise // `promise` is itself an Effect; suspends until resolved
 
 // from ingress (or another handler):
 yield * ingress.resolveAwakeable(id, payment) // typed via payload serde
@@ -915,8 +918,8 @@ These deps live behind `./otel` so the core stays dependency-light (R03, A09).
 
 Traces: R26, R26a–d, R27, R28. See
 [decisions/0009](./decisions/0009-effect-native-testing-harness.md). POC
-reference: `test/restate-server.ts`. `./testing` is a PLANNED subpath export
-(declared in `package.json` only when the module lands).
+reference: `test/restate-server.ts`. `./testing` is a shipped opt-in subpath
+export (`src/testing.ts`).
 
 A scoped `Layer` that, on acquire, boots a native `restate-server` (no Docker) on
 ephemeral ports against an isolated temp base dir, waits for the admin health
@@ -1198,9 +1201,9 @@ Out of v1 scope, designed to slot in without reshaping the core:
 
 A three-stream empirical de-risk (type-level prototypes vs real `effect` +
 `restate-sdk`; SDK ground truth from the published `.d.ts`/source; native
-restate-server 1.6.2, no Docker) resolved every DQ below. No residual
-genuine-unknown design questions remain; DQ1 is a perf note and DQ6 carries a
-single in-impl confirmation (the frozen-base sync clock).
+restate-server 1.6.2, no Docker), followed by the shipped implementation,
+resolved every DQ below. No residual genuine-unknown design questions remain;
+DQ1 is the one entry kept open as a perf note (not a design fork).
 
 - **DQ1 Durable-wait overhead (reframed):** With durable waits now explicit (R18,
   T02 — no transparent remap), the original "non-durable escape hatch" question is
@@ -1236,13 +1239,15 @@ HandlerMap>` + `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed
   `RESTATE_DEFAULT_RETRY_POLICY__MAX_ATTEMPTS=1` +
   `RESTATE_DEFAULT_RETRY_POLICY__ON_MAX_ATTEMPTS=kill`. (See
   [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
-- **DQ6 Frozen monotonic base — design validated end-to-end; confirm in impl.**
-  Determinism is validated end-to-end against native restate-server 1.6.2: a
-  `Restate.run` side effect fires exactly once across replays and journaled
-  `ctx.date.now()` reads are replay-stable (section 6.1). The frozen-base sync
-  `unsafeCurrentTime*` design is sound; only the frozen-base sync clock itself
-  stays to confirm against a representative handler in impl. (See
-  [decisions/0004](./decisions/0004-determinism-layer.md).)
+- **DQ6 Frozen monotonic base — RESOLVED.** Confirmed in implementation:
+  `determinismLayer` seeds a per-attempt frozen sync base from the first
+  `ctx.date.now()`, and `src/Runtime.test.ts` asserts `Clock.unsafeCurrentTime*` is
+  FROZEN at entry (does not advance mid-attempt) while the async
+  `Clock.currentTimeMillis` tracks `ctx.date`. Determinism is also validated
+  end-to-end against native restate-server 1.6.2 — a `Restate.run` side effect
+  fires exactly once across replays and journaled reads are replay-stable (the
+  `alwaysReplay determinism` lane in `src/examples.integration.test.ts`, section
+  6.1). (See [decisions/0004](./decisions/0004-determinism-layer.md).)
 - **DQ7 h2c prior-knowledge handshake — RESOLVED.** `http2.createServer(
 createEndpointHandler({ services }))` with `bidirectional` UNSET serves h2c
   prior-knowledge correctly against native restate-server 1.6.2 discovery: full

@@ -148,7 +148,8 @@ prominently in the README and the `examples/12-self-reschedule.ts` example.
   reads the domain keys). A future ergonomic could merge the two typed views.
 - `reschedule` and `pollLoop` are on the core `.` surface (no new subpath).
 - The lint `overeng/no-non-durable-wait` (steer a handler `Effect.sleep` to
-  `Restate.sleep`) is NOT yet enabled — a held-open in-handler sleep is exactly the
-  anti-pattern this primitive replaces, but enabling the lint is tracked separately.
+  `Restate.sleep`) is now enabled (`error` on `restate-effect/src/**`, exempting
+  the test + harness files) — a held-open in-handler sleep is exactly the
+  anti-pattern this primitive replaces, and the lint backstops it.
 
 Status: accepted
