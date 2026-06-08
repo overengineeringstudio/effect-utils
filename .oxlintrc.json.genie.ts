@@ -27,6 +27,23 @@ export default oxlintConfig({
       files: ['**/genie/src/runtime/**/*.test.ts'],
       rules: { 'overeng/no-external-imports': 'off' },
     },
+    // restate-effect: ban raw nondeterminism in SOURCE handler code (R20, decision
+    // 0004). The journaled Clock/Random + explicit durable combinators are the
+    // primary guarantee; this lint is an advisory backstop. Scoped to `src/` only —
+    // the follow-up test override re-disables it so test setup can use Date.now /
+    // random freely.
+    {
+      files: ['**/restate-effect/src/**'],
+      rules: { 'overeng/no-raw-nondeterminism': 'error' },
+    },
+    {
+      files: [
+        '**/restate-effect/src/**/*.test.ts',
+        '**/restate-effect/src/**/*.test.tsx',
+        '**/restate-effect/test/**',
+      ],
+      rules: { 'overeng/no-raw-nondeterminism': 'off' },
+    },
     // effect-utils specific: react-inspector is a fork with its own style
     {
       files: ['**/react-inspector/**'],

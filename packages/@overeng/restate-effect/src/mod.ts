@@ -26,8 +26,19 @@
  * - Typed service-to-service clients (`Restate.call`/`send`/`objectClient`/…) and
  *   the `idempotencyKey` input-field annotation (the single key source, 0011).
  *
- * Determinism Clock/Random layer + nondeterminism lint, the OTel bridge, and the
- * testing-harness subpaths remain for later phases.
+ * Phase 3 (determinism layer) + Phase 2b (cancellation):
+ * - The per-invocation determinism layer (`determinismLayer`): a journaled Effect
+ *   `Clock` (async `currentTimeMillis`/`Nanos` ← `ctx.date`; sync
+ *   `unsafeCurrentTime*` ← a per-attempt frozen base seeded at handler entry) and
+ *   `Random` (← `ctx.rand`), provided over each handler effect.
+ * - The cancellation↔interruption bridge (`withAttemptInterruption`):
+ *   `Request.attemptCompletedSignal` → Effect interruption, so `acquireRelease` /
+ *   `onInterrupt` finalizers run; `toTerminal` maps an interruption to a
+ *   `CancelledError` (no retry), distinct from a defect (retry).
+ * - The `Restate.cancel` / `Restate.onCancellation` cancellation surface.
+ * - The `overeng/no-raw-nondeterminism` lint enabled on `src/` handler code.
+ *
+ * The OTel bridge and the testing-harness subpaths remain for later phases.
  */
 
 export { RestateError } from './RestateError.ts'
@@ -48,6 +59,7 @@ import * as Annotations from './Annotations.ts'
  */
 import * as Client from './Client.ts'
 import * as Ctx from './RestateContext.ts'
+import * as Runtime from './Runtime.ts'
 
 export const Restate = {
   run: Ctx.run,
@@ -67,6 +79,11 @@ export const Restate = {
   objectSendClient: Client.sendObject,
   workflowClient: Client.callWorkflowSignal,
   workflowSubmit: Client.sendWorkflowRun,
+  /* Cancellation surface (R31, §12): cancel another invocation (cooperative — the
+   * target surfaces an interruption so its finalizers run), and observe the
+   * current invocation's cancellation (resolves only under `explicitCancellation`). */
+  cancel: Runtime.cancel,
+  onCancellation: Runtime.onCancellation,
   terminal: Annotations.Restate.terminal,
   retryable: Annotations.Restate.retryable,
   serde: Annotations.Restate.serde,
@@ -155,6 +172,14 @@ export {
   type AnyImplementation,
   type EndpointOptions,
 } from './Endpoint.ts'
+
+/**
+ * Per-invocation runtime boundary helpers (R17, R31). `determinismLayer` is the
+ * journaled `Clock`/`Random` Layer (`ctx.date` + frozen base; `ctx.rand`);
+ * `withAttemptInterruption` bridges `attemptCompletedSignal` to interruption.
+ * Both are wired by `materialize*`; exported for direct testing.
+ */
+export { determinismLayer, withAttemptInterruption } from './Runtime.ts'
 
 /**
  * The typed external ingress client. `RestateIngress` is the connected-ingress
