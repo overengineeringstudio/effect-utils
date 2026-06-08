@@ -11,8 +11,8 @@ rationale for the hard-to-reverse choices lives in
   and siblings, v1.14.x) against a `restate-server` (≥1.6, see A10). It is
   Effect-native (`effect` ^3.21), so all behavior is expressed as Effects,
   Schemas, Layers, and Scopes.
-- The design is fixed by eleven accepted decision records,
-  [0001](./decisions/0001-thin-faithful-restate-binding.md)–[0011](./decisions/0011-restate-schema-annotations.md);
+- The design is fixed by fourteen accepted decision records,
+  [0001](./decisions/0001-thin-faithful-restate-binding.md)–[0014](./decisions/0014-observability-metrics-and-attrs.md);
   this document states the cross-cutting, testable constraints those decisions
   imply. Where a requirement traces to a decision, the decision is cited.
 
