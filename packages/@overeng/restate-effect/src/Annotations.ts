@@ -1,5 +1,4 @@
-import type { Option, Schema } from 'effect'
-import { type Duration } from 'effect'
+import { type Duration, Option, type Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
 /**
@@ -13,9 +12,11 @@ import * as SchemaAST from 'effect/SchemaAST'
  * [decisions/0011](../docs/decisions/0011-restate-schema-annotations.md).
  *
  * Phase 1 implements `terminal` / `retryable` (on a `Schema.TaggedError`) and
- * `serde` (on a value schema). `idempotencyKey` / `retention` / `sensitive` are
- * namespace STUBS — their ids exist so Phase 2 can read them, but no read site
- * is wired and the `sensitive` transform is not yet applied.
+ * `serde` (on a value schema). Phase 2 wires `idempotencyKey` (on an input struct
+ * FIELD) — the SINGLE source of a call/send's idempotency key, read by walking the
+ * input schema's `propertySignatures` (decision 0011). `retention` / `sensitive`
+ * remain namespace STUBS — their ids exist but no read site is wired and the
+ * `sensitive` transform is not yet applied.
  */
 
 /* ── annotation payloads ────────────────────────────────────────────────── */
@@ -45,9 +46,9 @@ export const ErrorClassId: unique symbol = id('errorClass') as typeof ErrorClass
 /** Serde-options id (`contentType` / `jsonSchema`), read at `effectSerde`. */
 export const SerdeId: unique symbol = id('serde') as typeof SerdeId
 
-/* TODO(Phase 2): no read site yet — ids reserved so Phase 2 can wire them. */
-/** Idempotency-key field id (input struct field), read by the client. */
+/** Idempotency-key field id (input struct field), read by the client (Phase 2). */
 export const IdempotencyKeyId: unique symbol = id('idempotencyKey') as typeof IdempotencyKeyId
+/* TODO(Phase 3+): no read site yet — ids reserved so a later phase can wire them. */
 /** Retention id (contract/construct), read at discovery. */
 export const RetentionId: unique symbol = id('retention') as typeof RetentionId
 /** Sensitive/redacted field id, read (and consumed as a transform) by `effectSerde`. */
@@ -96,6 +97,15 @@ export const Restate = {
   /** Override the serde `contentType` / `jsonSchema` for a value schema. */
   serde: <S extends Schema.Annotable.All>(self: S, options: SerdeOptions): S =>
     annotate<SerdeOptions>(SerdeId)(self, options),
+
+  /**
+   * Mark an input-struct FIELD as the idempotency-key source (decision 0011). Its
+   * value becomes the call/send idempotency key — the SINGLE source, dropping the
+   * call-site `{ idempotencyKey }` option. MUST be applied to the FIELD's value
+   * schema (e.g. `Restate.idempotencyKey(Schema.String)`), not the struct.
+   */
+  idempotencyKey: <S extends Schema.Annotable.All>(self: S): S =>
+    annotate<true>(IdempotencyKeyId)(self, true),
 } as const
 
 /* ── annotation readers ─────────────────────────────────────────────────── */
@@ -107,3 +117,36 @@ export const readErrorClass = (ast: SchemaAST.AST): Option.Option<ErrorClass> =>
 /** Read the serde options from a schema's AST (`None` if unannotated). */
 export const readSerdeOptions = (ast: SchemaAST.AST): Option.Option<SerdeOptions> =>
   SchemaAST.getAnnotation<SerdeOptions>(SerdeId)(ast)
+
+/**
+ * Find the name of the input-struct field carrying the `idempotencyKey`
+ * annotation, by walking `ast.propertySignatures` and reading the annotation off
+ * each `prop.type` (decision 0011 — the annotation lives on the field's value
+ * schema, NOT the `PropertySignature`). `None` if the input is not a struct or no
+ * field is annotated. Cached at contract time, not re-walked per call.
+ */
+export const findIdempotencyKeyField = (ast: SchemaAST.AST): Option.Option<string> => {
+  if (ast._tag !== 'TypeLiteral') return Option.none()
+  for (const prop of ast.propertySignatures) {
+    if (typeof prop.name !== 'string') continue
+    if (Option.isSome(SchemaAST.getAnnotation<true>(IdempotencyKeyId)(prop.type)) === true) {
+      return Option.some(prop.name)
+    }
+  }
+  return Option.none()
+}
+
+/**
+ * Extract the idempotency-key VALUE from a decoded input by reading the annotated
+ * field (decision 0011 — the SINGLE source). `None` if the input declares no
+ * idempotency-key field, or the field's value is absent/non-string.
+ */
+export const readIdempotencyKey = (ast: SchemaAST.AST, input: unknown): Option.Option<string> =>
+  findIdempotencyKeyField(ast).pipe(
+    Option.flatMap((field) =>
+      typeof input === 'object' && input !== null && field in input
+        ? Option.fromNullable((input as Record<string, unknown>)[field])
+        : Option.none(),
+    ),
+    Option.filter((value): value is string => typeof value === 'string'),
+  )

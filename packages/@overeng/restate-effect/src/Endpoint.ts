@@ -5,10 +5,26 @@ import { createEndpointHandler } from '@restatedev/restate-sdk/node'
 import { Cause, Duration, Effect, Exit, Layer, Option, Runtime, Schema } from 'effect'
 
 import { readErrorClass } from './Annotations.ts'
-import { RestateContext } from './RestateContext.ts'
+import { ObjectKey, RestateContext, StateRead, StateWrite } from './RestateContext.ts'
+import { DurablePromise } from './RestateContext.ts'
 import { RestateError } from './RestateError.ts'
 import { ingressSerde } from './Serde.ts'
-import type { Contract, HandlerSpec, HandlerSpecMap, ServiceImplementation } from './Service.ts'
+import type {
+  Contract,
+  HandlerOptions,
+  HandlerSpec,
+  HandlerSpecMap,
+  ObjectContract,
+  ObjectHandlerSpec,
+  ObjectHandlerSpecMap,
+  ObjectImplementation,
+  ServiceImplementation,
+  ServiceLevelOptions,
+  WorkflowContract,
+  WorkflowHandlerSpec,
+  WorkflowHandlerSpecMap,
+  WorkflowImplementation,
+} from './Service.ts'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the materialize boundary deliberately erases the contract's phantom map (invisible to users; the public Contract type stays precise) */
 
@@ -66,6 +82,95 @@ export const toTerminal = (
   return Cause.squash(cause)
 }
 
+/* An untyped Effect handler bound to a single contract handler. */
+type EffectHandler = (input: unknown) => Effect.Effect<unknown, unknown, any>
+
+/* The empty capability-marker value: markers gate type-legality, not runtime
+ * behavior (the raw `ctx` does the work), so each provides an empty record. */
+const emptyMarker = {} as Record<never, never>
+
+/**
+ * Provide `RestateContext` (always) plus the capability markers legal for this
+ * handler kind (spec §3), run the user's Effect on the captured runtime, and map
+ * the exit to a return value or a thrown `TerminalError`/retryable error. The
+ * `provide` set is per-kind so an illegal `State.set` in a shared handler is a
+ * COMPILE error and the residual `R` collapses to `AppR` at runtime.
+ */
+const runEffectHandler =
+  <AppR>(opts: {
+    readonly run: EffectHandler
+    readonly errorSchema: Schema.Schema<any, any> | undefined
+    readonly runtime: Runtime.Runtime<AppR>
+    readonly markers:
+      | 'service'
+      | 'objectExclusive'
+      | 'objectShared'
+      | 'workflowRun'
+      | 'workflowShared'
+  }) =>
+  async (ctx: restate.Context, input: unknown): Promise<unknown> => {
+    let effect = opts.run(input).pipe(Effect.provideService(RestateContext, ctx))
+    if (opts.markers !== 'service') {
+      effect = effect.pipe(
+        Effect.provideService(ObjectKey, { key: (ctx as restate.ObjectContext).key }),
+        Effect.provideService(StateRead, emptyMarker),
+      )
+    }
+    if (opts.markers === 'objectExclusive' || opts.markers === 'workflowRun') {
+      effect = effect.pipe(Effect.provideService(StateWrite, emptyMarker))
+    }
+    if (opts.markers === 'workflowRun' || opts.markers === 'workflowShared') {
+      effect = effect.pipe(Effect.provideService(DurablePromise, emptyMarker))
+    }
+    const exit = await Runtime.runPromiseExit(opts.runtime)(
+      effect as Effect.Effect<unknown, unknown, AppR>,
+    )
+    if (Exit.isSuccess(exit) === true) return exit.value
+    throw toTerminal(exit.cause, opts.errorSchema)
+  }
+
+/* Map a handler spec's serde (R07) + surfaced R35 options into the SDK opts bag. */
+const handlerOpts = (spec: {
+  readonly input: Schema.Schema<any, any>
+  readonly success: Schema.Schema<any, any>
+  readonly options?: HandlerOptions
+}): Record<string, unknown> => ({
+  input: ingressSerde(spec.input),
+  output: ingressSerde(spec.success),
+  ...mapHandlerOptions(spec.options),
+})
+
+const mapHandlerOptions = (o?: HandlerOptions): Record<string, unknown> =>
+  o === undefined
+    ? {}
+    : {
+        ...(o.idempotencyRetentionMillis !== undefined
+          ? { idempotencyRetention: o.idempotencyRetentionMillis }
+          : {}),
+        ...(o.journalRetentionMillis !== undefined
+          ? { journalRetention: o.journalRetentionMillis }
+          : {}),
+        ...(o.inactivityTimeoutMillis !== undefined
+          ? { inactivityTimeout: o.inactivityTimeoutMillis }
+          : {}),
+        ...(o.abortTimeoutMillis !== undefined ? { abortTimeout: o.abortTimeoutMillis } : {}),
+        ...(o.ingressPrivate !== undefined ? { ingressPrivate: o.ingressPrivate } : {}),
+        ...(o.enableLazyState !== undefined ? { enableLazyState: o.enableLazyState } : {}),
+        ...(o.explicitCancellation !== undefined
+          ? { explicitCancellation: o.explicitCancellation }
+          : {}),
+      }
+
+const mapServiceOptions = (o?: ServiceLevelOptions): Record<string, unknown> | undefined =>
+  o === undefined
+    ? undefined
+    : {
+        ...mapHandlerOptions(o),
+        ...(o.workflowRetentionMillis !== undefined
+          ? { workflowRetention: o.workflowRetentionMillis }
+          : {}),
+      }
+
 /**
  * Materialize a Service `ServiceImplementation` into a runtime `restate.service`.
  * Each handler runs the user's Effect on the CAPTURED runtime (built once from
@@ -83,21 +188,12 @@ export const materialize = <AppR>(
   const { contract, impl } = implementation
   const handlers = Object.fromEntries(
     Object.entries(contract.handlers).map(([name, spec]: [string, HandlerSpec]) => {
-      const run = (
-        impl as Record<string, (input: unknown) => Effect.Effect<unknown, unknown, any>>
-      )[name]!
+      const run = (impl as Record<string, EffectHandler>)[name]!
       return [
         name,
         restate.handlers.handler(
-          { input: ingressSerde(spec.input), output: ingressSerde(spec.success) },
-          async (ctx: restate.Context, input: unknown) => {
-            const discharged = run(input).pipe(Effect.provideService(RestateContext, ctx))
-            const exit = await Runtime.runPromiseExit(runtime)(
-              discharged as Effect.Effect<unknown, unknown, AppR>,
-            )
-            if (Exit.isSuccess(exit) === true) return exit.value
-            throw toTerminal(exit.cause, spec.error)
-          },
+          handlerOpts(spec),
+          runEffectHandler({ run, errorSchema: spec.error, runtime, markers: 'service' }),
         ),
       ]
     }),
@@ -108,11 +204,161 @@ export const materialize = <AppR>(
   >
 }
 
+/**
+ * Materialize an `ObjectImplementation` into a runtime `restate.object`. Each
+ * EXCLUSIVE handler gets `ObjectKey + StateRead + StateWrite`; each `shared: true`
+ * handler is wrapped with `restate.handlers.object.shared(...)` and gets
+ * `ObjectKey + StateRead` only (read-only — a `State.set` there does not
+ * typecheck). `AppR` is explicit (decision 0002).
+ */
+export const materializeObject = <AppR>(
+  implementation: ObjectImplementation<
+    ObjectContract<string, Record<string, Schema.Schema<any, any>>, ObjectHandlerSpecMap>,
+    AppR
+  >,
+  runtime: Runtime.Runtime<AppR>,
+): restate.VirtualObjectDefinition<string, unknown> => {
+  const { contract, impl } = implementation
+  const handlers = Object.fromEntries(
+    Object.entries(contract.handlers).map(([name, spec]: [string, ObjectHandlerSpec]) => {
+      const run = (impl as Record<string, EffectHandler>)[name]!
+      const opts = handlerOpts(spec)
+      const handler =
+        spec.shared === true
+          ? restate.handlers.object.shared(
+              opts,
+              runEffectHandler({ run, errorSchema: spec.error, runtime, markers: 'objectShared' }),
+            )
+          : restate.handlers.object.exclusive(
+              opts,
+              runEffectHandler({
+                run,
+                errorSchema: spec.error,
+                runtime,
+                markers: 'objectExclusive',
+              }),
+            )
+      return [name, handler]
+    }),
+  )
+  const serviceOptions = mapServiceOptions(contract.options)
+  return restate.object({
+    name: contract.name,
+    handlers,
+    ...(serviceOptions !== undefined ? { options: serviceOptions } : {}),
+  } as unknown as Parameters<typeof restate.object>[0]) as restate.VirtualObjectDefinition<
+    string,
+    unknown
+  >
+}
+
+/**
+ * Materialize a `WorkflowImplementation` into a runtime `restate.workflow`. The
+ * single `run` handler gets the full set (`ObjectKey + StateRead + StateWrite +
+ * DurablePromise`); each signal/query is wrapped with
+ * `restate.handlers.workflow.shared(...)` and gets `ObjectKey + StateRead +
+ * DurablePromise` (read-only State + durable promises). `AppR` is explicit.
+ */
+export const materializeWorkflow = <AppR>(
+  implementation: WorkflowImplementation<
+    WorkflowContract<
+      string,
+      Record<string, Schema.Schema<any, any>>,
+      WorkflowHandlerSpec,
+      WorkflowHandlerSpecMap,
+      WorkflowHandlerSpecMap
+    >,
+    AppR
+  >,
+  runtime: Runtime.Runtime<AppR>,
+): restate.WorkflowDefinition<string, unknown> => {
+  const { contract, impl } = implementation
+  const implMap = impl as Record<string, EffectHandler>
+  const runSpec = contract.run
+  const runHandler = restate.handlers.workflow.workflow(
+    handlerOpts(runSpec),
+    runEffectHandler({
+      run: implMap['run']!,
+      errorSchema: runSpec.error,
+      runtime,
+      markers: 'workflowRun',
+    }),
+  )
+  const shared = (specs: WorkflowHandlerSpecMap): Array<[string, unknown]> =>
+    Object.entries(specs).map(([name, spec]: [string, WorkflowHandlerSpec]) => [
+      name,
+      restate.handlers.workflow.shared(
+        handlerOpts(spec),
+        runEffectHandler({
+          run: implMap[name]!,
+          errorSchema: spec.error,
+          runtime,
+          markers: 'workflowShared',
+        }),
+      ),
+    ])
+  const handlers = Object.fromEntries([
+    ['run', runHandler],
+    ...shared(contract.signals),
+    ...shared(contract.queries),
+  ])
+  const serviceOptions = mapServiceOptions(contract.options)
+  return restate.workflow({
+    name: contract.name,
+    handlers,
+    ...(serviceOptions !== undefined ? { options: serviceOptions } : {}),
+  } as unknown as Parameters<typeof restate.workflow>[0]) as restate.WorkflowDefinition<
+    string,
+    unknown
+  >
+}
+
+/**
+ * Any bound implementation servable on an endpoint. `materializeAny` dispatches on
+ * the `_tag` to the right `materialize*`, so `layer` / `serve` accept a mixed
+ * `services` array of Services, Objects, and Workflows.
+ */
+export type AnyImplementation<AppR> =
+  | ServiceImplementation<Contract<string, HandlerSpecMap>, AppR>
+  | ObjectImplementation<
+      ObjectContract<string, Record<string, Schema.Schema<any, any>>, ObjectHandlerSpecMap>,
+      AppR
+    >
+  | WorkflowImplementation<
+      WorkflowContract<
+        string,
+        Record<string, Schema.Schema<any, any>>,
+        WorkflowHandlerSpec,
+        WorkflowHandlerSpecMap,
+        WorkflowHandlerSpecMap
+      >,
+      AppR
+    >
+
+/** Dispatch a bound implementation to the right `materialize*` by its `_tag`. */
+export const materializeAny = <AppR>(
+  implementation: AnyImplementation<AppR>,
+  runtime: Runtime.Runtime<AppR>,
+):
+  | restate.ServiceDefinition<string, unknown>
+  | restate.VirtualObjectDefinition<string, unknown>
+  | restate.WorkflowDefinition<string, unknown> => {
+  switch (implementation._tag) {
+    case 'ServiceImplementation':
+      return materialize(implementation, runtime)
+    case 'ObjectImplementation':
+      return materializeObject(implementation, runtime)
+    case 'WorkflowImplementation':
+      return materializeWorkflow(implementation, runtime)
+  }
+}
+
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** Options for the endpoint server layer / `serve`. */
 export interface EndpointOptions<AppR> {
-  readonly services: ReadonlyArray<ServiceImplementation<Contract<string, HandlerSpecMap>, AppR>>
+  /** A mixed array of Service / Object / Workflow implementations to serve. */
+  readonly services: ReadonlyArray<AnyImplementation<AppR>>
   readonly port: number
 }
 
@@ -135,7 +381,7 @@ export const layer = <AppR>(opts: EndpointOptions<AppR>): Layer.Layer<never, Res
     Effect.gen(function* () {
       const runtime = yield* Effect.runtime<AppR>()
       const fn = createEndpointHandler({
-        services: opts.services.map((s) => materialize(s, runtime)),
+        services: opts.services.map((s) => materializeAny(s, runtime)),
       })
       const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])
 

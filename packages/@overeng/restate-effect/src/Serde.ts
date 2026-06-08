@@ -48,18 +48,33 @@ export const effectSerde = <A, I>(
   const encode = Schema.encodeSync(schema)
   const decode = Schema.decodeUnknownSync(schema)
   const overrides = readSerdeOptions(schema.ast)
+  /* A void/undefined payload has NO body. Restate's `serde.empty` leaves the
+   * content type UNSET so the server allows an empty body (`application/json` +
+   * an empty body is rejected as "Empty body not allowed"). Mirror that: a
+   * `VoidKeyword`/`UndefinedKeyword` schema defaults to no content type. */
+  const isVoid = schema.ast._tag === 'VoidKeyword' || schema.ast._tag === 'UndefinedKeyword'
   const contentType = Option.flatMap(overrides, (o) => Option.fromNullable(o.contentType)).pipe(
-    Option.getOrElse(() => 'application/json'),
+    Option.getOrElse(() => (isVoid ? undefined : 'application/json')),
   )
   const jsonSchema = Option.flatMap(overrides, (o) => Option.fromNullable(o.jsonSchema)).pipe(
     Option.getOrElse(() => JSONSchema.make(schema) as object),
   )
   return {
-    contentType,
+    /* Omit `contentType` entirely when unset (void payload), per `exactOptionalPropertyTypes`. */
+    ...(contentType !== undefined ? { contentType } : {}),
     jsonSchema,
-    serialize: (value: A): Uint8Array => encoder.encode(JSON.stringify(encode(value))),
+    serialize: (value: A): Uint8Array => {
+      const encoded = encode(value)
+      /* `Schema.Void` (and any `undefined` payload) has no JSON representation
+       * (`JSON.stringify(undefined) === undefined`). Restate's convention for a
+       * void/empty payload is an EMPTY body, so emit zero bytes; `deserialize`
+       * reverses it (an empty body decodes back to the `undefined` value). */
+      if (encoded === undefined) return new Uint8Array(0)
+      return encoder.encode(JSON.stringify(encoded))
+    },
     deserialize: (data: Uint8Array): A => {
       try {
+        if (data.length === 0) return decode(undefined)
         return decode(JSON.parse(decoder.decode(data)) as unknown)
       } catch (cause) {
         throw classifyDecodeFailure({ slot, cause })

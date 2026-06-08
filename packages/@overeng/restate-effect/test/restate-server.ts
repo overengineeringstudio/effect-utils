@@ -52,7 +52,10 @@ const freePort = (): Promise<number> =>
 export const startRestateServer = async (): Promise<RestateServerHandle> => {
   const baseDir = await mkdtemp(join(tmpdir(), 'restate-poc-'))
   const bin = serverBin()
-  const [ingressPort, adminPort] = await Promise.all([freePort(), freePort()])
+  /* Allocate ALL listener ports ephemerally so parallel test files do not collide:
+   * ingress + admin (caller-facing) AND the internal node-to-node message-fabric
+   * port (default 5122 — fixed, so concurrent instances would clash; R27). */
+  const [ingressPort, adminPort, nodePort] = await Promise.all([freePort(), freePort(), freePort()])
   const ingressUrl = `http://localhost:${ingressPort}`
   const adminUrl = `http://localhost:${adminPort}`
 
@@ -69,6 +72,10 @@ export const startRestateServer = async (): Promise<RestateServerHandle> => {
         /* Ephemeral bind addresses → parallel-safe instances (R27). */
         RESTATE_INGRESS__BIND_ADDRESS: `0.0.0.0:${ingressPort}`,
         RESTATE_ADMIN__BIND_ADDRESS: `0.0.0.0:${adminPort}`,
+        /* The internal node-to-node (message-fabric) port also needs an ephemeral
+         * bind, else concurrent instances collide on the fixed default 5122. */
+        RESTATE_BIND_ADDRESS: `0.0.0.0:${nodePort}`,
+        RESTATE_ADVERTISED_ADDRESS: `http://127.0.0.1:${nodePort}/`,
         /* Quiet but still capture warnings/errors for diagnostics. */
         RESTATE_LOG_FILTER: process.env['RESTATE_LOG_FILTER'] ?? 'warn',
       },
