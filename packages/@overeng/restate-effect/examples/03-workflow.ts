@@ -47,19 +47,18 @@ export const ApprovalLive = RestateWorkflow.implement<typeof ApprovalWf>(Approva
    * outcome. The await survives process restarts — it is journaled, not in-memory. */
   run: () =>
     Effect.gen(function* () {
+      /* `State.*` and `DurablePromise.*` have a CLEAN `E` (#1) — no `orDie`. A
+       * promise `reject` arrives terminally at the boundary (the `'rejected'` path),
+       * an infra failure is a defect there. */
       yield* Status.set('status', 'pending')
       const decision = yield* Approval.get('decision') // blocks until resolved
       yield* Status.set('status', decision.approved ? 'approved' : 'rejected')
       return decision.approved
-    }).pipe(Effect.orDie),
+    }),
   /* Signals (shared): resolve the durable promise. `reject` drives the
    * `'rejected'` State path, observable via the `status` query. */
-  approve: () => Approval.resolve('decision', { approved: true }).pipe(Effect.orDie),
-  reject: () => Approval.resolve('decision', { approved: false }).pipe(Effect.orDie),
+  approve: () => Approval.resolve('decision', { approved: true }),
+  reject: () => Approval.resolve('decision', { approved: false }),
   /* Query (shared, read-only State). */
-  status: () =>
-    Status.get('status').pipe(
-      Effect.map((s) => s ?? 'pending'),
-      Effect.orDie,
-    ),
+  status: () => Status.get('status').pipe(Effect.map((s) => s ?? 'pending')),
 })

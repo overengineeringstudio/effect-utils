@@ -85,17 +85,16 @@ export const WaiterObj = RestateObject.contract('waiter', {
 })
 
 export const WaiterLive = RestateObject.implement<typeof WaiterObj>(WaiterObj, {
+  /* `Awakeable.make().promise`, `Waiter.set`/`get` all have a CLEAN `E` (#1) —
+   * no `orDie`. An awakeable `reject` arrives as a terminal at the boundary; an
+   * infra failure is a defect classified there. */
   start: () =>
     Effect.gen(function* () {
       const { id, promise } = yield* Awakeable.make(Payload)
       yield* Waiter.set('awakeableId', id)
       return yield* promise // suspends until the awakeable is resolved
-    }).pipe(Effect.orDie),
-  awakeableId: () =>
-    Waiter.get('awakeableId').pipe(
-      Effect.map((id) => id ?? ''),
-      Effect.orDie,
-    ),
+    }),
+  awakeableId: () => Waiter.get('awakeableId').pipe(Effect.map((id) => id ?? '')),
 })
 
 /* Resolution comes from ingress (`ingressResolveAwakeable(Payload, id, payload)`)

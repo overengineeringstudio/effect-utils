@@ -104,4 +104,50 @@ describe('error transport (contract layer, server-free)', () => {
     expect(out).toBeInstanceOf(restate.RetryableError)
     expect(out).not.toBeInstanceOf(restate.TerminalError)
   })
+
+  it('retryAfter is projected from the ACTUAL error instance (#3)', () => {
+    /* A 429-style error carrying its own retry floor; the projection reads it off
+     * the very instance that failed, not a static literal. */
+    class RateLimited extends Schema.TaggedError<RateLimited>('test/RateLimited')('RateLimited', {
+      retryAfterMillis: Schema.Number,
+    }) {}
+    const RateLimitedSchema = Restate.retryable(Schema.asSchema(RateLimited), {
+      retryAfter: (e) => e.retryAfterMillis,
+    })
+    const out = toTerminal(
+      Cause.fail(new RateLimited({ retryAfterMillis: 7_500 })),
+      RateLimitedSchema,
+    )
+    expect(out).toBeInstanceOf(restate.RetryableError)
+    expect((out as restate.RetryableError).retryAfter).toBe(7_500)
+  })
+
+  it('retryAfter accepts a static Duration shorthand', () => {
+    class Slow extends Schema.TaggedError<Slow>('test/Slow')('Slow', {}) {}
+    const SlowSchema = Restate.retryable(Schema.asSchema(Slow), { retryAfter: '2 seconds' })
+    const out = toTerminal(Cause.fail(new Slow()), SlowSchema)
+    expect((out as restate.RetryableError).retryAfter).toBe(2_000)
+  })
+
+  it('a projection returning undefined falls back to default backoff (no floor)', () => {
+    class Maybe extends Schema.TaggedError<Maybe>('test/Maybe')('Maybe', {
+      after: Schema.optional(Schema.Number),
+    }) {}
+    const MaybeSchema = Restate.retryable(Schema.asSchema(Maybe), { retryAfter: (e) => e.after })
+    const out = toTerminal(Cause.fail(new Maybe({})), MaybeSchema)
+    expect(out).toBeInstanceOf(restate.RetryableError)
+    expect((out as restate.RetryableError).retryAfter).toBeUndefined()
+  })
+
+  it('a failure NOT matching the declared error union is a DEFECT, not a mis-encode', () => {
+    /* `Registry.lookup` declares `NotFound`; a foreign tagged error must not be
+     * silently encoded into a terminal body — it is error-classification drift and
+     * surfaces as a defect (the squashed cause) so the SDK retries / the bug shows. */
+    class Foreign extends Schema.TaggedError<Foreign>('test/Foreign')('Foreign', {
+      whatever: Schema.String,
+    }) {}
+    const out = toTerminal(Cause.fail(new Foreign({ whatever: 'x' })), NotFoundSchema)
+    expect(out).not.toBeInstanceOf(restate.TerminalError)
+    expect(out).toBeInstanceOf(Foreign)
+  })
 })

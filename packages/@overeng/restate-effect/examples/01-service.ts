@@ -48,12 +48,13 @@ export const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Gr
       if (name === '') return yield* new EmptyName()
       const { prefix } = yield* Greeting
       /* A non-deterministic call (a UUID) journaled once by `Restate.run`, so a
-       * replay observes the SAME id. A failed durable step is infrastructure →
-       * `orDie`, keeping the wrapper error out of the `EmptyName`-only `E`. */
+       * replay observes the SAME id. `Restate.run`'s `E` is CLEAN (#1): this
+       * closure declares no domain error, so the `E` stays `EmptyName`-only with no
+       * `orDie` — a durable-step infra failure is a defect classified at the boundary. */
       const id = yield* Restate.run(
         'gen-id',
         Effect.sync(() => crypto.randomUUID()),
-      ).pipe(Effect.orDie)
+      )
       return { message: `${prefix} ${name}`, id }
     }),
 })

@@ -1,4 +1,4 @@
-import { type Duration, Option, type Schema } from 'effect'
+import { Duration, Option, type Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
 /**
@@ -23,14 +23,26 @@ import * as SchemaAST from 'effect/SchemaAST'
 /* ── annotation payloads ────────────────────────────────────────────────── */
 
 /**
+ * The `retryAfter` floor for a `retryable` error — either a STATIC value (a
+ * literal shorthand, e.g. `'30 seconds'`) OR an INSTANCE PROJECTION read from the
+ * actual failing error at the boundary (e.g. a Notion 429's `e.retryAfterMillis`),
+ * mirroring `idempotencyKey` (decision 0011, #3). The projection returns
+ * `undefined` to fall back to Restate's default backoff for that instance.
+ */
+export type RetryAfter =
+  | Duration.DurationInput
+  | ((error: unknown) => Duration.DurationInput | undefined)
+
+/**
  * The error-boundary classification for a domain `Schema.TaggedError`, read by
  * `toTerminal`. `terminal` (the default) maps to a non-retryable
  * `TerminalError` with the given `errorCode` (default 500); `retryable` maps to
- * a non-terminal throw so Restate retries, with an optional `retryAfter` floor.
+ * a non-terminal throw so Restate retries, with an optional `retryAfter` floor
+ * (a static value OR a projection from the error instance — #3).
  */
 export type ErrorClass =
   | { readonly _tag: 'terminal'; readonly errorCode: number }
-  | { readonly _tag: 'retryable'; readonly retryAfter?: Duration.DurationInput }
+  | { readonly _tag: 'retryable'; readonly retryAfter?: RetryAfter }
 
 /** Override the default `application/json` content type / `JSONSchema.make`. */
 export interface SerdeOptions {
@@ -96,15 +108,26 @@ export const Restate = {
 
   /**
    * Mark a `Schema.TaggedError` retryable: `toTerminal` throws it non-terminally
-   * so Restate retries, honoring an optional `retryAfter` floor.
+   * so Restate retries, honoring an optional `retryAfter` floor. `retryAfter` is
+   * either a STATIC value (literal shorthand, e.g. `'30 seconds'`) or an INSTANCE
+   * PROJECTION `(error) => DurationInput | undefined` read from the actual failing
+   * error at the boundary (e.g. a 429's `e.retryAfterMillis`), mirroring
+   * `idempotencyKey` (decision 0011, #3). The projection is typed against the
+   * error's decoded type so the field access is checked.
    */
   retryable: <S extends Schema.Annotable.All>(
     self: S,
-    options?: { readonly retryAfter?: Duration.DurationInput },
+    options?: {
+      readonly retryAfter?:
+        | Duration.DurationInput
+        | ((error: Schema.Schema.Type<S>) => Duration.DurationInput | undefined)
+    },
   ): S =>
     annotate<ErrorClass>(ErrorClassId)(self, {
       _tag: 'retryable',
-      ...(options?.retryAfter !== undefined ? { retryAfter: options.retryAfter } : {}),
+      ...(options?.retryAfter !== undefined
+        ? { retryAfter: options.retryAfter as RetryAfter }
+        : {}),
     }),
 
   /** Override the serde `contentType` / `jsonSchema` for a value schema. */
@@ -150,6 +173,40 @@ export const Restate = {
 /** Read the error classification from a schema's AST (`None` if unannotated). */
 export const readErrorClass = (ast: SchemaAST.AST): Option.Option<ErrorClass> =>
   SchemaAST.getAnnotation<ErrorClass>(ErrorClassId)(ast)
+
+/**
+ * Resolve a `retryable` classification's `retryAfter` floor against the ACTUAL
+ * failing error instance → millis, or `undefined` (default backoff). A static
+ * value is decoded as-is; a projection is applied to the error (e.g. a 429's
+ * `e.retryAfterMillis`) and its result decoded — `undefined` from the projection
+ * means "no floor for this instance" (#3, mirrors `readIdempotencyKey`). Defensive
+ * around a throwing/invalid projection: a bad projection yields `undefined` rather
+ * than corrupting the retry path.
+ */
+export const readRetryAfterMillis = (
+  retryAfter: RetryAfter | undefined,
+  error: unknown,
+): number | undefined => {
+  if (retryAfter === undefined) return undefined
+  const value = typeof retryAfter === 'function' ? safeProject(retryAfter, error) : retryAfter
+  if (value === undefined) return undefined
+  try {
+    return Duration.toMillis(Duration.decode(value))
+  } catch {
+    return undefined
+  }
+}
+
+const safeProject = (
+  project: (error: unknown) => Duration.DurationInput | undefined,
+  error: unknown,
+): Duration.DurationInput | undefined => {
+  try {
+    return project(error)
+  } catch {
+    return undefined
+  }
+}
 
 /** Read the serde options from a schema's AST (`None` if unannotated). */
 export const readSerdeOptions = (ast: SchemaAST.AST): Option.Option<SerdeOptions> =>

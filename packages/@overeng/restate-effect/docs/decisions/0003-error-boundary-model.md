@@ -12,9 +12,12 @@ boundary maps:
   [0011](./0011-restate-schema-annotations.md)). No retry; propagates to caller.
 - A `retryable`-annotated domain error (or explicit `Restate.retryable(...)`,
   optional `retryAfter`) → non-terminal throw → Restate retries.
-- Effect defect (incl. durable-combinator infrastructure failures, which are
-  `orDie` by default) → rethrown → Restate retries, unless a service/handler
-  `asTerminalError`-style policy classifies it terminal.
+- Effect defect (incl. durable-combinator infrastructure failures) → rethrown →
+  Restate retries, unless a service/handler `asTerminalError`-style policy
+  classifies it terminal.
+- A failure that does NOT match the declared `error` union (classification drift) →
+  DEFECT (the squashed cause), never a silent mis-encode into the terminal body.
+  The boundary validates with `Schema.encodeUnknownEither` before terminalizing.
 
 `TerminalError(message: string, options)` has no separate body channel — the
 encoded error and its `_tag` travel in the `message` BODY (a JSON string), NOT
@@ -50,10 +53,44 @@ so callers `catchTag` typed errors rather than handling a raw `HttpCallError`.
 - Per-error `errorCode` lets callers distinguish 404/409/etc. instead of
   collapsing every domain failure to 500.
 
+## Durable combinators have a clean `E` (no `RestateError`)
+
+The durable combinators carry NO `RestateError` in their typed `E` — an infra
+failure is a DEFECT classified at the boundary, never a typed failure a user must
+`catchTag('RestateError', Effect.die)` away. Explicit signatures:
+
+```ts
+Restate.run<A, E, R>(name, effect: Effect<A, E, R>, options?)
+                          : Effect<A, E, Exclude<R, DurableCaps> | RestateContext>  // inner E only
+Restate.runExit<A, E, R>(name, effect, options?)
+                          : Effect<Exit<A, E>, never, Exclude<R, DurableCaps> | RestateContext>  // observe
+Restate.sleep(millis, name?)     : Effect<void,           never, RestateContext>
+Restate.timeout<A>(descr, millis): Effect<A | undefined,  never, RestateContext>
+Restate.all/race/any<T>(descrs)  : Effect<ResultsOf<T>[…], never, RestateContext>
+State.for(S).get/set/clear/clearAll/stateKeys : Effect<…, never, StateRead|StateWrite | RestateContext>
+Awakeable.make(S).promise        : Effect<T, never, never>
+```
+
+`Restate.run` journals the raw success `A` (the contract's serde-friendly value),
+NOT a wrapped `Exit`/`Cause` (which the SDK's default journal serde cannot
+round-trip). Only the inner effect's own domain `E` is carried in the type; in
+practice the inner is `E = never` (domain errors are checked in the HANDLER body,
+not inside a `run` closure — see the examples). A durable-op infra failure (incl. a
+give-up after `ctx.run`'s own retries) is `Effect.die`'d as a `RestateError` at the
+single `awaitDurable` seam, so the boundary classifies it (transient → retry;
+terminal → fail). The `IngressFailed` client surface (`Restate.call`/`send`,
+ingress) still carries a typed `RestateError` — it pairs with the typed
+`decodeTerminalError` decode helper, a caller-facing boundary, not a journaled op.
+
+Compensation/sagas OBSERVE a durable step via `Restate.runExit(name, effect)` →
+`Effect<Exit<A, E>>`: the `Exit` captures success, a domain `E` failure, AND the
+infra failure (a `Cause.Die` carrying the `RestateError`, via `Cause.dieOption`).
+
 ## Consequences
 
-- Durable-combinator failures (`run`/`sleep`/state) are defects by default;
-  observing them for compensation is opt-in.
+- Durable-combinator failures (`run`/`sleep`/`timeout`/`all`/`race`/`any`/
+  `State.*`/`Awakeable` await) are defects by default with a CLEAN typed `E`;
+  observing them for compensation is opt-in via `Restate.runExit`.
 - Typed cross-wire transport requires both sides to share the error Schema (fine
   within a codebase; cross-language callers get the encoded JSON body + `_tag`).
 
@@ -63,3 +100,9 @@ _Revised after design review: per-error `errorCode` (from the error annotation,
 not hardcoded 500); the encoded error + `_tag` travel in the message BODY (not
 `metadata`, which ingress cannot see); slot-aware serde (ingress input → 400,
 internal-slot corruption → defect/retry)._
+
+_Revised (#1): the durable combinators carry a CLEAN typed `E` (no `RestateError`)
+— infra failures are `Effect.die`'d at the `awaitDurable` seam and classified at
+the boundary, the no-op `catchTag('RestateError', die)` is gone, and `Restate.runExit`
+is the opt-in observe form for compensation. The boundary also validates a thrown
+failure against the declared `error` union (non-match → defect, no mis-encode)._

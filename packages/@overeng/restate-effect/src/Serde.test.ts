@@ -3,6 +3,7 @@ import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { Restate } from './Annotations.ts'
+import { normalizeStateSchema } from './RestateContext.ts'
 import { effectSerde, ingressSerde, internalSerde } from './Serde.ts'
 
 describe('effectSerde', () => {
@@ -69,5 +70,21 @@ describe('effectSerde', () => {
     } catch (error) {
       expect(error).not.toBeInstanceOf(restate.TerminalError)
     }
+  })
+})
+
+describe('State.for optional field serde (papercut)', () => {
+  it('a plain Schema state field passes through normalize unchanged', () => {
+    const serde = effectSerde(normalizeStateSchema(Schema.Number))
+    expect(serde.deserialize(serde.serialize(42))).toBe(42)
+  })
+
+  it('a Schema.optional state field round-trips its value type via the recovered schema', () => {
+    /* `State.for({ note: Schema.optional(Schema.String) })` — the optional field's
+     * value schema is recovered from the PropertySignature AST so the State serde
+     * round-trips a present value. (Absent state is read as `undefined` by the
+     * State combinator, which never reaches the serde.) */
+    const serde = effectSerde(normalizeStateSchema(Schema.optional(Schema.String)))
+    expect(serde.deserialize(serde.serialize('hi'))).toBe('hi')
   })
 })

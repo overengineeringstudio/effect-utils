@@ -35,9 +35,10 @@ export const JobLive = RestateObject.implement<typeof Job>(Job, {
       )
       /* A long durable timer: the invocation durably suspends here. A cancellation
        * interrupts the fiber at this point → the release above runs → the boundary
-       * terminalizes a `CancelledError` (no silent retry). */
-      yield* Restate.sleep(60_000, 'long-wait').pipe(Effect.orDie)
-    }).pipe(Effect.scoped, Effect.orDie),
+       * terminalizes a `CancelledError` (no silent retry). `Restate.sleep`'s `E` is
+       * CLEAN (#1) — no `orDie`. */
+      yield* Restate.sleep(60_000, 'long-wait')
+    }).pipe(Effect.scoped),
 })
 
 /** Cancel ANOTHER invocation cooperatively (the target surfaces an interruption
