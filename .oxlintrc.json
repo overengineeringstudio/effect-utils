@@ -166,6 +166,22 @@
       }
     },
     {
+      "files": ["**/restate-effect/src/**"],
+      "rules": {
+        "overeng/no-raw-nondeterminism": "error"
+      }
+    },
+    {
+      "files": [
+        "**/restate-effect/src/**/*.test.ts",
+        "**/restate-effect/src/**/*.test.tsx",
+        "**/restate-effect/test/**"
+      ],
+      "rules": {
+        "overeng/no-raw-nondeterminism": "off"
+      }
+    },
+    {
       "files": ["**/react-inspector/**"],
       "rules": {
         "func-style": "off",
