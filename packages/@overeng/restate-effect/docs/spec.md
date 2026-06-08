@@ -106,10 +106,9 @@ const GreeterLive = RestateService.implement(Greeter, {
 The handler Effect is `Effect<Success, Error, R | <capabilities>>`. `R` is
 satisfied from the shared application Layer; capabilities (section 3) are
 provided per invocation. `error` is the only thing the `E` channel may carry
-(R11). The id is generated with `crypto.randomUUID()` strictly INSIDE
-`Restate.run` (where `ctx.rand` is disallowed and the call is journaled once);
-this is the documented lint exemption (section 6.3). Generated OUTSIDE a `run`,
-an id would instead use the journaled `Random` (R20).
+(R11). The id is generated with `crypto.randomUUID()` INSIDE `Restate.run`, where
+the call is journaled once and replays verbatim (section 6.3); generated OUTSIDE a
+`run`, an id would instead use the journaled `Random` (R20).
 
 For the single-package case, `RestateService.define(name, specs, impl)` combines
 `contract` + `implement` in one expression (R36); the separable `contract`
@@ -232,6 +231,13 @@ internal `materialize` boundary widens to `any` (invisible to users) — it does
 NOT erase the contract's public type (see
 [decisions/0008](./decisions/0008-typed-client-inference.md)).
 
+`materialize` / `implement` take the application `R` (`AppR`) as an EXPLICIT type
+param (from the `Runtime<AppR>` they run against), NEVER inferred from the handler
+bodies — else the union over per-handler residual `R` over-infers and the residual
+capability `R` fails to collapse. With `AppR` explicit, each handler's residual is
+exactly its capability markers, which per-kind `provideService` discharges
+(VALIDATED, DQ3; see [decisions/0002](./decisions/0002-typed-capability-contexts.md)).
+
 ---
 
 ## 3. Typed capability-marker context model
@@ -288,12 +294,14 @@ rule.
 > provided markers per handler kind, and why a composite `WorkflowScope` marker
 > would not discharge the individual `StateRead`/`StateWrite`/… requirements.
 
-> **Unproven (Phase-1 gate):** discharging the right markers per handler over a
-> HETEROGENEOUS `implement` record (exclusive + shared in one call) is not yet
-> validated. The risk is a whole-record error or an erased `any` instead of a
-> handler-LOCAL error. A type-level prototype must prove the mixed-record case;
-> the fallback is distinct context Tags per handler kind
-> (`ObjectExclusiveContext` vs `ObjectSharedContext`). See DQ3.
+> **VALIDATED (DQ3):** discharging the right markers per handler over a
+> HETEROGENEOUS `implement` record (exclusive + shared in one call) COMPILES
+> against real `effect` + `restate-sdk` types — a `State.set` in a shared handler
+> is a handler-LOCAL error (not a whole-record error, not erased to `any`), with
+> per-kind `provideService` discharging each handler's residual `R` to the app
+> `R`. Flat markers are kept; the distinct-context-Tags fallback also compiles but
+> is strictly worse (intersection `R` forces a `getExclusive`/`getShared` split)
+> and is not needed. Requires the explicit-app-`R` discipline (section 2).
 
 ---
 
@@ -471,14 +479,24 @@ EXACTLY ONCE; transforms apply via `.map` to the RESULT after awaiting, never
 Post-combinator mapping applies to the result, not the branches
 ([decisions/0005](./decisions/0005-deterministic-concurrency.md)).
 
+CONFIRMED (DQ2) against the real SDK: `RestatePromise.all`/`race`/`any` take a
+`readonly RestatePromise<unknown>[]` backed by a leaf/descriptor model, and `.then`
+is the SDK's progress/suspension seam (hence the `.map`-not-`.then` invariant); the
+descriptor type shape rejects an arbitrary `Effect[]` and recovers a precise
+tuple/union.
+
 ### 6.3 Nondeterminism lint
 
 An oxlint rule flags raw nondeterminism in handler bodies — `Date.now()`,
 `new Date()`, `Math.random()`, `crypto.randomUUID()`, and un-journaled I/O —
 OUTSIDE `Restate.run` and the journaled Clock/Random, as an advisory backstop;
 the journaled layer + explicit combinators are the primary guarantee (R20).
-`crypto.randomUUID()` strictly INSIDE a `Restate.run` closure is EXEMPT: `ctx.rand`
-is disallowed there, the call is journaled once, and the result replays.
+INSIDE a `Restate.run` closure nondeterminism is fine: the `run` result is
+journaled once, so a `crypto.randomUUID()` or the journaled `Random` is recorded on
+the first real execution and replayed verbatim. (`ctx.rand` inside `ctx.run` is not
+SDK-enforced in restate-sdk 1.14.5 — the guard is a no-op — and is harmless anyway,
+being journaled-seeded; the lint keeps nondeterminism inside `run` or the journaled
+sources, it does not police the inside of a `run` closure.)
 
 ---
 
@@ -547,12 +565,13 @@ exposes no endpoint-level close; the binding owns the `http2.Http2Server` inside
 `Effect.acquireRelease` to provide it.
 
 The endpoint serves h2c (HTTP/2 cleartext, prior-knowledge) via
-`http2.createServer` + `createEndpointHandler`. `createEndpointHandler` takes a
-`bidirectional?: boolean` (undefined = auto-detect by HTTP version); under node
-h2c the binding sets `bidirectional: true` to get full bidirectional streaming
-rather than request/response degradation. The spec validates that this h2c
-prior-knowledge handshake works against `restate-server` discovery (a DQ until
-confirmed end-to-end against the binary).
+`http2.createServer(createEndpointHandler({ services }))`. `createEndpointHandler`
+takes a `bidirectional?: boolean` (undefined = auto-detect by HTTP version); the
+binding leaves it UNSET. VERIFIED (DQ7) end-to-end against native restate-server
+1.6.2: with `bidirectional` unset the discovery probe and SDK negotiate full
+`BIDI_STREAM`, and a real `ctx.sleep` suspend → persist → resume worked over h2c
+prior-knowledge (no TLS/ALPN). `bidirectional: true` is redundant; `false` degrades
+to request/response and loses in-stream suspension — so the binding leaves it unset.
 
 ---
 
@@ -672,11 +691,15 @@ Effect spans (Effect.withSpan on boundary ops)
   (`AsyncLocalStorageContextManager` / AsyncHooks) MUST be registered, so the
   hook's `trace.getActiveSpan()` resolves the attempt span at handler entry.
   Without the global context manager, `getActiveSpan()` returns `undefined` and
-  the inbound bridge is fed nothing → orphaned Effect spans. The spec verifies
-  whether `NodeSdk.layer@0.63` registers the global context manager; if it does
-  not, the binding adds `Tracer.layerGlobal` /
-  `trace.setGlobalTracerProvider` + an `AsyncLocalStorageContextManager`. This is
-  a hard prerequisite, not an assumption.
+  the inbound bridge is fed nothing → orphaned Effect spans. This is a PROVEN-required
+  step: empirically `NodeSdk.layer@0.63` registers NEITHER the global provider NOR
+  a context manager, and `Tracer.layerGlobal` only sets the provider (no context
+  manager) — INSUFFICIENT. The `./otel` layer MUST therefore itself call
+  `provider.register()` (installs the global provider AND a default
+  `AsyncLocalStorageContextManager`) OR `trace.setGlobalTracerProvider(provider)` +
+  `context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable())`.
+  A hard prerequisite the binding owns (see
+  [decisions/0007](./decisions/0007-otel-bridge.md)).
 - At handler entry the boundary reads `trace.getActiveSpan()?.spanContext()` and
   applies `Tracer.withSpanContext`, parenting all in-handler Effect spans under
   the attempt span → one coherent trace (R23).
@@ -733,9 +756,14 @@ RT0016:
   divergence T07 introduces).
 - `disableRetries` — surface failures immediately instead of retrying.
 
-These MUST be consumer-available. How the NATIVE server is driven into
-replay-on-every-suspension (a config flag / env var vs the testcontainers
-container method) is resolved against the binary (a DQ).
+These MUST be consumer-available. RESOLVED (DQ5) against native restate-server
+1.6.2 — both are server-global env vars (verified via `--dump-config` + a handler
+re-entering under replay; lifted from `@restatedev/restate-sdk-testcontainers`):
+
+| Mode             | Env vars                                                                                          | Config-file keys                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `alwaysReplay`   | `RESTATE_WORKER__INVOKER__INACTIVITY_TIMEOUT=0s`                                                   | `[worker.invoker] inactivity-timeout`                          |
+| `disableRetries` | `RESTATE_DEFAULT_RETRY_POLICY__MAX_ATTEMPTS=1` + `RESTATE_DEFAULT_RETRY_POLICY__ON_MAX_ATTEMPTS=kill` | `[default-retry-policy] max-attempts` / `on-max-attempts`     |
 
 The harness also supports MULTI-deployment registration, so a test can register
 two endpoint versions and assert replay/upgrade across them (T07, A11).
@@ -744,7 +772,10 @@ Lifecycle contract (R27, sharpened over the POC):
 
 - EPHEMERAL ports for ALL listeners — server ingress, admin, AND the SDK handler
   endpoint — via OS port-0, never fixed (the POC's 8080/9070/9080 are
-  disallowed). An isolated temp base dir per instance.
+  disallowed). The native server's ingress/admin bind addresses are set per
+  instance via `RESTATE_INGRESS__BIND_ADDRESS` / `RESTATE_ADMIN__BIND_ADDRESS`
+  (verified), the harness-isolation mechanism behind R27. An isolated temp base
+  dir per instance.
 - Startup: poll a defined health target with a defined timeout; on failure, dump
   the buffered server output as diagnostics (promote the POC's buffer-on-failure
   behavior into the contract).
@@ -913,37 +944,56 @@ Out of v1 scope, designed to slot in without reshaping the core:
 
 ## Open design questions
 
+A three-stream empirical de-risk (type-level prototypes vs real `effect` +
+`restate-sdk`; SDK ground truth from the published `.d.ts`/source; native
+restate-server 1.6.2, no Docker) resolved every DQ below. No residual
+genuine-unknown design questions remain; DQ1 is a perf note and DQ6 carries a
+single in-impl confirmation (the frozen-base sync clock).
+
 - **DQ1 Durable-wait overhead (reframed):** With durable waits now explicit (R18,
   T02 — no transparent remap), the original "non-durable escape hatch" question is
   RESOLVED: a bare `Effect.sleep` is the non-durable path and `Restate.sleep` the
   durable one. The residual question is only whether `Restate.sleep` overhead
   matters for very short durable waits — a perf note, not a design fork. (See
   [decisions/0004](./decisions/0004-determinism-layer.md).)
-- **DQ2 Pure-vs-durable concurrency guard:** How is "concurrency over durable
-  operations" detected for the R19 guard — lint only, a typed marker that
-  durable combinators carry, or both? Resolved by prototyping the lint rule
-  against a fan-out handler.
-- **DQ3 Capability-marker discharge over a mixed record:** Does `materialize`
-  provide markers per handler kind over a HETEROGENEOUS `implement` record
-  (exclusive + shared in one call) yielding a handler-LOCAL error (not a
-  whole-record error or an erased `any`)? Resolved by the Phase-1 type-level
-  prototype; fallback is distinct context Tags per handler kind. (See
+- **DQ2 Pure-vs-durable concurrency guard — RESOLVED.** The descriptor type shape
+  rejects an arbitrary `Effect[]` and recovers a precise tuple/union, confirmed
+  against the real `RestatePromise.all`/`race`/`any` signatures (`readonly
+  RestatePromise<unknown>[]`, leaf/descriptor model) and the `.then`-is-suspension
+  /`.map`-the-result invariant. The typed descriptor is the primary guard; the lint
+  rule against a fan-out handler stays the advisory backstop (section 6.2).
+- **DQ3 Capability-marker discharge over a mixed record — RESOLVED.** Discharging
+  markers per handler kind over a HETEROGENEOUS `implement` record (exclusive +
+  shared in one call) COMPILES against real `effect` + `restate-sdk` types and
+  yields a handler-LOCAL error (a `State.set` in a shared handler; not a
+  whole-record error, not erased to `any`), with per-kind `provideService`
+  collapsing each handler's residual `R` to the app `R`. Flat markers are kept; the
+  distinct-context-Tags fallback compiles but is strictly worse and is not needed.
+  Requires the explicit-app-`R` discipline (section 2). (See
   [decisions/0002](./decisions/0002-typed-capability-contexts.md).)
-- **DQ4 Contract → client inference:** Does `contract` carry the handler map in a
-  phantom param such that `call`/`send`/`implement` index `HandlerMap[method]`
-  without erasing to `Record<string, …>`? Resolved by a Phase-1 type-level test
-  (paired with DQ3). (See [decisions/0008](./decisions/0008-typed-client-inference.md).)
-- **DQ5 Native-server replay/retry modes:** How is the NATIVE `restate-server`
-  driven into replay-on-every-suspension (`alwaysReplay`) and immediate-failure
-  (`disableRetries`) — a config flag / env var vs the testcontainers container
-  method? Resolved against the binary (section 11.2). (See
+- **DQ4 Contract → client inference — RESOLVED.** The phantom `Contract<Name,
+  HandlerMap>` + `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed
+  accessors recover the EXACT per-handler types (proven with `Equals<>`) without
+  erasing to `Record<string, …>`; wrong-input / unknown-method / wrong-success all
+  error. The Phase-1 gate (paired with DQ3) passes. (See
+  [decisions/0008](./decisions/0008-typed-client-inference.md).)
+- **DQ5 Native-server replay/retry modes — RESOLVED.** Both are server-global env
+  vars on native restate-server 1.6.2 (verified via `--dump-config` + replay
+  re-entry; section 11.2): `alwaysReplay` =
+  `RESTATE_WORKER__INVOKER__INACTIVITY_TIMEOUT=0s`; `disableRetries` =
+  `RESTATE_DEFAULT_RETRY_POLICY__MAX_ATTEMPTS=1` +
+  `RESTATE_DEFAULT_RETRY_POLICY__ON_MAX_ATTEMPTS=kill`. (See
   [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
-- **DQ6 Frozen monotonic base:** Does serving `Clock.unsafeCurrentTime*` from a
-  per-attempt frozen base seeded at handler entry behave correctly across replay
-  in a representative handler? Resolved by validation (section 6.1). (See
+- **DQ6 Frozen monotonic base — design validated end-to-end; confirm in impl.**
+  Determinism is validated end-to-end against native restate-server 1.6.2: a
+  `Restate.run` side effect fires exactly once across replays and journaled
+  `ctx.date.now()` reads are replay-stable (section 6.1). The frozen-base sync
+  `unsafeCurrentTime*` design is sound; only the frozen-base sync clock itself
+  stays to confirm against a representative handler in impl. (See
   [decisions/0004](./decisions/0004-determinism-layer.md).)
-- **DQ7 h2c prior-knowledge handshake:** Does `http2.createServer` +
-  `createEndpointHandler` (`bidirectional: true`) serve h2c prior-knowledge
-  correctly against `restate-server` discovery, with full bidirectional streaming
-  rather than request/response degradation? Resolved end-to-end against the binary
-  (section 8).
+- **DQ7 h2c prior-knowledge handshake — RESOLVED.** `http2.createServer(
+  createEndpointHandler({ services }))` with `bidirectional` UNSET serves h2c
+  prior-knowledge correctly against native restate-server 1.6.2 discovery: full
+  `BIDI_STREAM` is negotiated and a real `ctx.sleep` suspend → persist → resume
+  worked over h2c (no TLS/ALPN). `true` is redundant; `false` degrades to
+  request/response — the binding leaves it unset (section 8).
