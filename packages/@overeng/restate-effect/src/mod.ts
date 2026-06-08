@@ -171,6 +171,9 @@ export {
   toTerminal,
   type AnyImplementation,
   type EndpointOptions,
+  type EndpointHooks,
+  type HandlerWrap,
+  type MaterializeWiring,
 } from './Endpoint.ts'
 
 /**

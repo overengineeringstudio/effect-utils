@@ -108,6 +108,23 @@ export const toTerminal = (
 /* An untyped Effect handler bound to a single contract handler. */
 type EffectHandler = (input: unknown) => Effect.Effect<unknown, unknown, any>
 
+/**
+ * A per-invocation Effect transform applied to the user's program right before
+ * it runs on the captured runtime — the inbound bridge seam (R23, §10). The
+ * `./otel` module supplies one that captures `trace.getActiveSpan()?.spanContext()`
+ * (the OTel attempt span the hook set active) and reparents the Effect program
+ * under it. Pure in the core: a `<A, E, R>(effect) => Effect<A, E, R>` with NO
+ * otel type — so the core stays dependency-light while `./otel` owns the bridge.
+ */
+export type HandlerWrap = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
+
+/**
+ * A Restate `HooksProvider` (re-exported as a TYPE so `EndpointOptions.hooks`
+ * carries it without the core importing any otel package). The `./otel` module
+ * builds these via `@restatedev/restate-sdk-opentelemetry`'s `openTelemetryHook`.
+ */
+export type EndpointHooks = restate.HooksProvider
+
 /* The empty capability-marker value: markers gate type-legality, not runtime
  * behavior (the raw `ctx` does the work), so each provides an empty record. */
 const emptyMarker = {} as Record<never, never>
@@ -136,6 +153,11 @@ const runEffectHandler =
       | 'objectShared'
       | 'workflowRun'
       | 'workflowShared'
+    /* The inbound-bridge transform (`./otel` supplies it; undefined in the
+     * otel-free core). Applied INSIDE the handler so `trace.getActiveSpan()`
+     * (the hook's attempt span, set active via `context.with` around this fn)
+     * resolves at capture time and reparents the Effect program (R23, §10). */
+    readonly inboundBridge: HandlerWrap | undefined
   }) =>
   async (ctx: restate.Context, input: unknown): Promise<unknown> => {
     /* Seed the per-attempt frozen monotonic base ONCE from journaled time. */
@@ -159,8 +181,12 @@ const runEffectHandler =
     const bridged = withAttemptInterruption(ctx, effect).pipe(
       Effect.provide(determinismLayer(ctx, frozenBaseMillis)),
     )
+    /* Reparent under the OTel attempt span (no-op in the core; `./otel` supplies
+     * the transform). Applied last so the active span is read at runtime, inside
+     * the hook's `context.with` window, just before the program runs (R23). */
+    const program = opts.inboundBridge !== undefined ? opts.inboundBridge(bridged) : bridged
     const exit = await Runtime.runPromiseExit(opts.runtime)(
-      bridged as Effect.Effect<unknown, unknown, AppR>,
+      program as Effect.Effect<unknown, unknown, AppR>,
     )
     if (Exit.isSuccess(exit) === true) return exit.value
     throw toTerminal(exit.cause, opts.errorSchema)
@@ -209,6 +235,40 @@ const mapServiceOptions = (o?: ServiceLevelOptions): Record<string, unknown> | u
       }
 
 /**
+ * The endpoint-level wiring `materialize*` thread into every service: the
+ * Restate `hooks` (e.g. the otel `openTelemetryHook`, attached SERVICE-level so
+ * they wrap every handler) and the per-invocation inbound-bridge transform. Both
+ * are supplied by `layer`/`serve` (and ultimately the `./otel` module); the core
+ * itself imports no otel package.
+ */
+export interface MaterializeWiring {
+  readonly hooks?: ReadonlyArray<EndpointHooks> | undefined
+  readonly inboundBridge?: HandlerWrap | undefined
+}
+
+/* Build the service-level `options.hooks` fragment from the wiring (omitted when
+ * no hooks are configured, so the otel-free path produces an identical bag). The
+ * array is copied to a mutable `HooksProvider[]` (the SDK's expected shape). */
+const serviceHooksOptions = (
+  wiring?: MaterializeWiring,
+): { readonly options?: { readonly hooks: Array<EndpointHooks> } } =>
+  wiring?.hooks !== undefined && wiring.hooks.length > 0
+    ? { options: { hooks: [...wiring.hooks] } }
+    : {}
+
+/* Merge the wiring's service-level `hooks` into an existing service-options bag
+ * (Objects/Workflows already build one from `ServiceLevelOptions`). */
+const withHooks = (
+  serviceOptions: Record<string, unknown> | undefined,
+  wiring?: MaterializeWiring,
+): Record<string, unknown> | undefined => {
+  const hooks =
+    wiring?.hooks !== undefined && wiring.hooks.length > 0 ? [...wiring.hooks] : undefined
+  if (hooks === undefined) return serviceOptions
+  return { ...serviceOptions, hooks }
+}
+
+/**
  * Materialize a Service `ServiceImplementation` into a runtime `restate.service`.
  * Each handler runs the user's Effect on the CAPTURED runtime (built once from
  * the application Layer), with `RestateContext` provided PER INVOCATION, and
@@ -221,6 +281,7 @@ const mapServiceOptions = (o?: ServiceLevelOptions): Record<string, unknown> | u
 export const materialize = <AppR>(
   implementation: ServiceImplementation<Contract<string, HandlerSpecMap>, AppR>,
   runtime: Runtime.Runtime<AppR>,
+  wiring?: MaterializeWiring,
 ): restate.ServiceDefinition<string, unknown> => {
   const { contract, impl } = implementation
   const handlers = Object.fromEntries(
@@ -230,12 +291,22 @@ export const materialize = <AppR>(
         name,
         restate.handlers.handler(
           handlerOpts(spec),
-          runEffectHandler({ run, errorSchema: spec.error, runtime, markers: 'service' }),
+          runEffectHandler({
+            run,
+            errorSchema: spec.error,
+            runtime,
+            markers: 'service',
+            inboundBridge: wiring?.inboundBridge,
+          }),
         ),
       ]
     }),
   )
-  return restate.service({ name: contract.name, handlers }) as restate.ServiceDefinition<
+  return restate.service({
+    name: contract.name,
+    handlers,
+    ...serviceHooksOptions(wiring),
+  } as unknown as Parameters<typeof restate.service>[0]) as restate.ServiceDefinition<
     string,
     unknown
   >
@@ -254,6 +325,7 @@ export const materializeObject = <AppR>(
     AppR
   >,
   runtime: Runtime.Runtime<AppR>,
+  wiring?: MaterializeWiring,
 ): restate.VirtualObjectDefinition<string, unknown> => {
   const { contract, impl } = implementation
   const handlers = Object.fromEntries(
@@ -264,7 +336,13 @@ export const materializeObject = <AppR>(
         spec.shared === true
           ? restate.handlers.object.shared(
               opts,
-              runEffectHandler({ run, errorSchema: spec.error, runtime, markers: 'objectShared' }),
+              runEffectHandler({
+                run,
+                errorSchema: spec.error,
+                runtime,
+                markers: 'objectShared',
+                inboundBridge: wiring?.inboundBridge,
+              }),
             )
           : restate.handlers.object.exclusive(
               opts,
@@ -273,12 +351,13 @@ export const materializeObject = <AppR>(
                 errorSchema: spec.error,
                 runtime,
                 markers: 'objectExclusive',
+                inboundBridge: wiring?.inboundBridge,
               }),
             )
       return [name, handler]
     }),
   )
-  const serviceOptions = mapServiceOptions(contract.options)
+  const serviceOptions = withHooks(mapServiceOptions(contract.options), wiring)
   return restate.object({
     name: contract.name,
     handlers,
@@ -308,6 +387,7 @@ export const materializeWorkflow = <AppR>(
     AppR
   >,
   runtime: Runtime.Runtime<AppR>,
+  wiring?: MaterializeWiring,
 ): restate.WorkflowDefinition<string, unknown> => {
   const { contract, impl } = implementation
   const implMap = impl as Record<string, EffectHandler>
@@ -319,6 +399,7 @@ export const materializeWorkflow = <AppR>(
       errorSchema: runSpec.error,
       runtime,
       markers: 'workflowRun',
+      inboundBridge: wiring?.inboundBridge,
     }),
   )
   const shared = (specs: WorkflowHandlerSpecMap): Array<[string, unknown]> =>
@@ -331,6 +412,7 @@ export const materializeWorkflow = <AppR>(
           errorSchema: spec.error,
           runtime,
           markers: 'workflowShared',
+          inboundBridge: wiring?.inboundBridge,
         }),
       ),
     ])
@@ -339,7 +421,7 @@ export const materializeWorkflow = <AppR>(
     ...shared(contract.signals),
     ...shared(contract.queries),
   ])
-  const serviceOptions = mapServiceOptions(contract.options)
+  const serviceOptions = withHooks(mapServiceOptions(contract.options), wiring)
   return restate.workflow({
     name: contract.name,
     handlers,
@@ -376,17 +458,18 @@ export type AnyImplementation<AppR> =
 export const materializeAny = <AppR>(
   implementation: AnyImplementation<AppR>,
   runtime: Runtime.Runtime<AppR>,
+  wiring?: MaterializeWiring,
 ):
   | restate.ServiceDefinition<string, unknown>
   | restate.VirtualObjectDefinition<string, unknown>
   | restate.WorkflowDefinition<string, unknown> => {
   switch (implementation._tag) {
     case 'ServiceImplementation':
-      return materialize(implementation, runtime)
+      return materialize(implementation, runtime, wiring)
     case 'ObjectImplementation':
-      return materializeObject(implementation, runtime)
+      return materializeObject(implementation, runtime, wiring)
     case 'WorkflowImplementation':
-      return materializeWorkflow(implementation, runtime)
+      return materializeWorkflow(implementation, runtime, wiring)
   }
 }
 
@@ -397,6 +480,18 @@ export interface EndpointOptions<AppR> {
   /** A mixed array of Service / Object / Workflow implementations to serve. */
   readonly services: ReadonlyArray<AnyImplementation<AppR>>
   readonly port: number
+  /**
+   * Restate `HooksProvider`s attached SERVICE-level to every materialized
+   * service (so they wrap every handler). The `./otel` module supplies the
+   * `openTelemetryHook` here; the otel-free core leaves this undefined (§10).
+   */
+  readonly hooks?: ReadonlyArray<EndpointHooks>
+  /**
+   * Per-invocation inbound-bridge transform applied to every handler's program
+   * (the `./otel` module's attempt-span → Effect-parent bridge, R23 §10). A pure
+   * `<A, E, R>(effect) => Effect<A, E, R>`; undefined in the otel-free core.
+   */
+  readonly inboundBridge?: HandlerWrap
 }
 
 /**
@@ -417,8 +512,9 @@ export const layer = <AppR>(opts: EndpointOptions<AppR>): Layer.Layer<never, Res
   Layer.scopedDiscard(
     Effect.gen(function* () {
       const runtime = yield* Effect.runtime<AppR>()
+      const wiring: MaterializeWiring = { hooks: opts.hooks, inboundBridge: opts.inboundBridge }
       const fn = createEndpointHandler({
-        services: opts.services.map((s) => materializeAny(s, runtime)),
+        services: opts.services.map((s) => materializeAny(s, runtime, wiring)),
       })
       const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])
 
