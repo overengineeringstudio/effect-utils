@@ -153,6 +153,33 @@ const awaitDurable = <A>(
 /* ── durable combinators ─────────────────────────────────────────────────── */
 
 /**
+ * Per-step durable retry controls for a single `Restate.run` (decision 0006, spec
+ * §7) — the SDK `RunOptions` retry knobs (the `serde` field is excluded; that is
+ * the serde layer's concern). Restate retries the step with this backoff; on
+ * giving up (`maxRetryAttempts`/`maxRetryDuration`), `ctx.run` converts the
+ * failure to a `TerminalError` (surfaced here as a `RestateError` defect). Durable
+ * retries are Restate's — `Effect.retry`/`Schedule` are for pure logic only.
+ */
+export interface RunRetryOptions {
+  readonly maxRetryAttempts?: number
+  readonly maxRetryDurationMillis?: number
+  readonly initialRetryIntervalMillis?: number
+  readonly maxRetryIntervalMillis?: number
+  readonly retryIntervalFactor?: number
+}
+
+/* Map `RunRetryOptions` to the SDK `RunOptions` retry fields (millis = number). */
+const mapRunOptions = (o: RunRetryOptions): Record<string, unknown> => ({
+  ...(o.maxRetryAttempts !== undefined ? { maxRetryAttempts: o.maxRetryAttempts } : {}),
+  ...(o.maxRetryDurationMillis !== undefined ? { maxRetryDuration: o.maxRetryDurationMillis } : {}),
+  ...(o.initialRetryIntervalMillis !== undefined
+    ? { initialRetryInterval: o.initialRetryIntervalMillis }
+    : {}),
+  ...(o.maxRetryIntervalMillis !== undefined ? { maxRetryInterval: o.maxRetryIntervalMillis } : {}),
+  ...(o.retryIntervalFactor !== undefined ? { retryIntervalFactor: o.retryIntervalFactor } : {}),
+})
+
+/**
  * A durable side-effect step backed by `ctx.run(name, …)`. Restate journals the
  * result so subsequent attempts replay it verbatim instead of re-executing.
  *
@@ -162,6 +189,11 @@ const awaitDurable = <A>(
  * per-invocation runtime, so any residual app `R` is satisfied from the
  * surrounding handler scope.
  *
+ * `options` surfaces Restate's per-step durable retry controls (decision 0006,
+ * spec §7); when given, the step is bounded by `ctx.run`'s own retry/backoff and
+ * a give-up becomes a `RestateError` defect. Never wrap a durable step in
+ * `Effect.retry` — that double-retries non-durably (R21).
+ *
  * A rejection (incl. a give-up after `ctx.run`'s own retries) surfaces as a
  * `RestateError({ reason: 'RunFailed' })` — the wrapper's failure, distinct from
  * the handler's domain `E`.
@@ -169,6 +201,7 @@ const awaitDurable = <A>(
 export const run = <A, E, R>(
   name: string,
   effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, E, R> : never,
+  options?: RunRetryOptions,
 ): Effect.Effect<A, E | RestateError, Exclude<R, DurableCaps> | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
@@ -177,8 +210,12 @@ export const run = <A, E, R>(
      * durable capability, so the captured `Exclude<R, DurableCaps>` runtime can
      * run it; the cast just reconciles the conditional type. */
     const inner = effect as Effect.Effect<A, E, Exclude<R, DurableCaps>>
+    const action = (): Promise<A> => Runtime.runPromise(runtime)(inner)
     return yield* awaitDurable(
-      () => ctx.run(name, () => Runtime.runPromise(runtime)(inner)),
+      () =>
+        options !== undefined
+          ? ctx.run(name, action, mapRunOptions(options) as Parameters<typeof ctx.run<A>>[2])
+          : ctx.run(name, action),
       (cause) => new RestateError({ reason: 'RunFailed', method: `run(${name})`, cause }),
     )
   }).pipe(Effect.withSpan('restate.run', { attributes: { 'span.label': name } }))
