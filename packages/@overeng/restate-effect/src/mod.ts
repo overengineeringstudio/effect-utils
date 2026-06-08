@@ -84,6 +84,8 @@ import * as Runtime from './Runtime.ts'
 
 export const Restate = {
   run: Ctx.run,
+  /** Observe a `Restate.run`'s outcome (success / domain `E` / infra defect) as an `Exit` value (compensation/sagas, decision 0003). */
+  runExit: Ctx.runExit,
   sleep: Ctx.sleep,
   timeout: Ctx.timeout,
   all: Ctx.all,
@@ -91,6 +93,10 @@ export const Restate = {
   any: Ctx.any,
   runDescriptor: Ctx.runDescriptor,
   sleepDescriptor: Ctx.sleepDescriptor,
+  /** A typed in-handler service `call` issued as a `Descriptor` for `Restate.all`/`race`/`any` (#2). */
+  callDescriptor: Client.callServiceDescriptor,
+  /** A typed in-handler Object `call` issued as a `Descriptor` for the deterministic combinators (#2). */
+  objectCallDescriptor: Client.callObjectDescriptor,
   /** The current Object / Workflow invocation key (requires `ObjectKey`). */
   key: Ctx.objectKey,
   /* In-handler service-to-service clients (require `RestateContext`, §9.2). */
@@ -129,6 +135,7 @@ export type {
   RunRetryOptions,
   SendOptions,
   StateSchemas,
+  StateValueType,
 } from './RestateContext.ts'
 
 /** Typed, capability-gated State combinators bound to a contract's `state` block. */

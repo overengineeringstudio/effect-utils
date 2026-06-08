@@ -49,10 +49,29 @@ import {
   workflowSubmit as ingressWorkflowSubmit,
 } from './Client.ts'
 import { type AnyImplementation, layer as endpointLayer } from './Endpoint.ts'
-import type { StateSchemas } from './RestateContext.ts'
+import { normalizeStateSchema, type StateSchemas, type StateValueType } from './RestateContext.ts'
 import { RestateError } from './RestateError.ts'
 import { effectSerde } from './Serde.ts'
-import type { ObjectContract, WorkflowContract } from './Service.ts'
+import type {
+  Contract,
+  ErrorOf,
+  HandlerSpecMap,
+  InputOf,
+  MethodsOf,
+  ObjectContract,
+  ObjectErrorOf,
+  ObjectInputOf,
+  ObjectMethodsOf,
+  ObjectSuccessOf,
+  SuccessOf,
+  WorkflowContract,
+  WorkflowRunErrorOf,
+  WorkflowRunInputOf,
+  WorkflowRunSuccessOf,
+  WorkflowSignalInputOf,
+  WorkflowSignalQueryOf,
+  WorkflowSignalSuccessOf,
+} from './Service.ts'
 
 /* ════════════════════════════════════════════════════════════════════════
  * Native server lifecycle (productized from `test/restate-server.ts`).
@@ -272,20 +291,20 @@ export interface StateProxy<S extends StateSchemas> {
   /** Read a single typed State value (or `undefined` when unset). */
   readonly get: <K extends keyof S & string>(
     key: K,
-  ) => Effect.Effect<Schema.Schema.Type<S[K]> | undefined, RestateError>
+  ) => Effect.Effect<StateValueType<S[K]> | undefined, RestateError>
   /** Read every set State value as a partial typed record. */
   readonly getAll: () => Effect.Effect<
-    { readonly [K in keyof S]?: Schema.Schema.Type<S[K]> },
+    { readonly [K in keyof S]?: StateValueType<S[K]> },
     RestateError
   >
   /** Seed a single typed State value (read-modify-write of the full key set). */
   readonly set: <K extends keyof S & string>(
     key: K,
-    value: Schema.Schema.Type<S[K]>,
+    value: StateValueType<S[K]>,
   ) => Effect.Effect<void, RestateError>
   /** Replace the entire State for the key with the given typed record. */
   readonly setAll: (values: {
-    readonly [K in keyof S]?: Schema.Schema.Type<S[K]>
+    readonly [K in keyof S]?: StateValueType<S[K]>
   }) => Effect.Effect<void, RestateError>
 }
 
@@ -371,9 +390,11 @@ const makeStateProxy = <S extends StateSchemas>(
 ): StateProxy<S> => {
   const schemas = contract.state
   const service = contract.name
-  /* The per-key serde is the SAME `effectSerde` the handlers use for State, so a
-   * seed written here decodes identically inside a handler and vice-versa. */
-  const serdeFor = <K extends keyof S & string>(key: K) => effectSerde(schemas[key] as S[K])
+  /* The per-key serde is the SAME `effectSerde` the handlers use for State (with
+   * the same optional-field normalization), so a seed written here decodes
+   * identically inside a handler and vice-versa. */
+  const serdeFor = <K extends keyof S & string>(key: K) =>
+    effectSerde(normalizeStateSchema(schemas[key]!))
 
   const readAll = (): Effect.Effect<ReadonlyArray<readonly [string, Uint8Array]>, RestateError> =>
     Effect.tryPromise({
@@ -399,7 +420,7 @@ const makeStateProxy = <S extends StateSchemas>(
           const hit = rows.find(([k]) => k === key)
           if (hit === undefined) return Effect.succeed(undefined)
           return Effect.try({
-            try: () => serdeFor(key).deserialize(hit[1]) as Schema.Schema.Type<S[typeof key]>,
+            try: () => serdeFor(key).deserialize(hit[1]) as StateValueType<S[typeof key]>,
             catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).get(${key})`, cause),
           })
         }),
@@ -412,9 +433,9 @@ const makeStateProxy = <S extends StateSchemas>(
               Object.fromEntries(
                 rows.map(([k, bytes]) => [
                   k,
-                  effectSerde(schemas[k] as S[string]).deserialize(bytes),
+                  effectSerde(normalizeStateSchema(schemas[k]!)).deserialize(bytes),
                 ]),
-              ) as { readonly [K in keyof S]?: Schema.Schema.Type<S[K]> },
+              ) as { readonly [K in keyof S]?: StateValueType<S[K]> },
             catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).getAll`, cause),
           }),
         ),
@@ -435,7 +456,10 @@ const makeStateProxy = <S extends StateSchemas>(
           try: () =>
             Object.entries(values)
               .filter(([, v]) => v !== undefined)
-              .map(([k, v]) => [k, effectSerde(schemas[k] as S[string]).serialize(v)] as const),
+              .map(
+                ([k, v]) =>
+                  [k, effectSerde(normalizeStateSchema(schemas[k]!)).serialize(v)] as const,
+              ),
           catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).setAll`, cause),
         })
         yield* writeAll(entries)
@@ -473,32 +497,83 @@ export interface RestateTestHarnessService {
   ) => StateProxy<S>
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- contract phantoms, matching the `Client` signatures these mirror */
+
 /**
  * The harness ingress surface: the standalone `Client` call functions with their
  * trailing `RestateIngress` requirement already discharged (the harness provides
  * the connected ingress). A test reaches these via `harness.ingress.*`.
+ *
+ * Each method MIRRORS the corresponding `Client` function's GENERIC signature so
+ * the precise per-call typed-error + success channels survive (the old
+ * `BindLast<typeof fn>` mapped type collapsed each generic's `E` to its widest
+ * constraint, losing per-call `ErrorOf` — so `catchTag<DomainError>` would not
+ * compile). The only difference is `R = never` (the harness provides
+ * `RestateIngress`). The `*Of` helpers keep these derived from the contract, so a
+ * contract change still flows through.
  */
 export interface BoundIngress {
-  readonly call: BindLast<typeof ingressCall>
-  readonly callTyped: BindLast<typeof ingressCallTyped>
-  readonly objectCall: BindLast<typeof ingressObjectCall>
-  readonly objectCallTyped: BindLast<typeof ingressObjectCallTyped>
-  readonly objectSend: BindLast<typeof ingressObjectSend>
-  readonly workflowSubmit: BindLast<typeof ingressWorkflowSubmit>
-  readonly workflowAttach: BindLast<typeof ingressWorkflowAttach>
-  readonly workflowOutput: BindLast<typeof ingressWorkflowOutput>
-  readonly workflowCall: BindLast<typeof ingressWorkflowCall>
-  readonly result: BindLast<typeof ingressResult>
+  readonly call: <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
+    contract: C,
+    method: M,
+    input: InputOf<C, M>,
+  ) => Effect.Effect<SuccessOf<C, M>, RestateError, never>
+  readonly callTyped: <C extends Contract<string, HandlerSpecMap>, M extends MethodsOf<C>>(
+    contract: C,
+    method: M,
+    input: InputOf<C, M>,
+  ) => Effect.Effect<SuccessOf<C, M>, RestateError | ErrorOf<C, M>, never>
+  readonly objectCall: <C extends ObjectContract<string, any, any>, M extends ObjectMethodsOf<C>>(
+    contract: C,
+    key: string,
+    method: M,
+    input: ObjectInputOf<C, M>,
+  ) => Effect.Effect<ObjectSuccessOf<C, M>, RestateError, never>
+  readonly objectCallTyped: <
+    C extends ObjectContract<string, any, any>,
+    M extends ObjectMethodsOf<C>,
+  >(
+    contract: C,
+    key: string,
+    method: M,
+    input: ObjectInputOf<C, M>,
+  ) => Effect.Effect<ObjectSuccessOf<C, M>, RestateError | ObjectErrorOf<C, M>, never>
+  readonly objectSend: <C extends ObjectContract<string, any, any>, M extends ObjectMethodsOf<C>>(
+    contract: C,
+    key: string,
+    method: M,
+    input: ObjectInputOf<C, M>,
+    opts?: { readonly delayMillis?: number },
+  ) => Effect.Effect<clients.Send, RestateError, never>
+  readonly workflowSubmit: <C extends WorkflowContract<string, any, any, any, any>>(
+    contract: C,
+    key: string,
+    input: WorkflowRunInputOf<C>,
+  ) => Effect.Effect<clients.WorkflowSubmission<WorkflowRunSuccessOf<C>>, RestateError, never>
+  readonly workflowAttach: <C extends WorkflowContract<string, any, any, any, any>>(
+    contract: C,
+    key: string,
+  ) => Effect.Effect<WorkflowRunSuccessOf<C>, RestateError | WorkflowRunErrorOf<C>, never>
+  readonly workflowOutput: <C extends WorkflowContract<string, any, any, any, any>>(
+    contract: C,
+    key: string,
+  ) => Effect.Effect<clients.Output<WorkflowRunSuccessOf<C>>, RestateError, never>
+  readonly workflowCall: <
+    C extends WorkflowContract<string, any, any, any, any>,
+    M extends WorkflowSignalQueryOf<C>,
+  >(
+    contract: C,
+    key: string,
+    method: M,
+    input: WorkflowSignalInputOf<C, M>,
+  ) => Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError, never>
+  readonly result: <T, I>(
+    send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>,
+    outputSchema: Schema.Schema<T, I>,
+  ) => Effect.Effect<T, RestateError, never>
 }
 
-/**
- * Strip the `RestateIngress` requirement from a `Client` call function's `R`:
- * the returned `Effect`'s context no longer mentions `RestateIngress` because the
- * harness provides it. Preserves the precise success / error / argument types.
- */
-type BindLast<F> = F extends (...args: infer A) => Effect.Effect<infer X, infer E, infer R>
-  ? (...args: A) => Effect.Effect<X, E, Exclude<R, RestateIngress>>
-  : never
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* The harness service tag. The `layer` factory below is the only constructor. */
 export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/RestateTestHarness')<

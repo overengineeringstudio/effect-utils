@@ -17,8 +17,9 @@ programming model and the engine. If you want Effect's own durable engine, use
 The stable surface documented here — Services, Virtual Objects, Workflows, the
 Schema serde + typed error boundary, determinism, durable steps/calls/awakeables,
 cancellation, the endpoint, `./otel`, and `./testing` — is implemented and
-verified end-to-end against a real native `restate-server`. A handful of
-in-flux ergonomics are marked with `TODO(refinement)` stubs below.
+verified end-to-end against a real native `restate-server`. One remaining in-flux
+ergonomic (a server-free in-memory test context) is marked with a
+`TODO(refinement)` stub below.
 
 Every code snippet in this README is a real, compiled-and-run example. The files
 live in [`examples/`](./examples), are type-checked by `dt ts:check`, and are
@@ -110,10 +111,12 @@ const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, 
       if (name === '') return yield* new EmptyName()
       const { prefix } = yield* Greeting
       // A UUID journaled once by `Restate.run`; a replay observes the same id.
+      // `Restate.run`'s `E` is clean — no `.orDie` needed (an infra failure is a
+      // defect at the boundary), so the handler `E` stays `EmptyName`-only.
       const id = yield* Restate.run(
         'gen-id',
         Effect.sync(() => crypto.randomUUID()),
-      ).pipe(Effect.orDie)
+      )
       return { message: `${prefix} ${name}`, id }
     }),
 })
@@ -497,14 +500,85 @@ const Vault = RestateService.contract('vault', {
 })
 ```
 
-<!-- TODO(refinement): `Restate.retryable(Err, { retryAfter })` — the exact
-`retryAfter` syntax is being reworked into an error-instance projection. Document
-the final form (and a verified example) once it lands. -->
+### Retryable errors and `retryAfter`
 
-<!-- TODO(refinement): error-channel ergonomics — durable-combinator infra
-failures becoming defects automatically (so `RestateError` never appears in `E`
-without an explicit `catchTag`). Today you `.pipe(Effect.orDie)` a durable step
-whose failure is infrastructure; the smoother surface is in flight. -->
+A domain error can be marked **retryable** so the boundary throws it
+non-terminally and Restate retries (instead of failing the caller). `retryAfter`
+sets a floor before the next attempt — either a **static** `Duration` shorthand or
+an **instance projection** read off the actual failing error (mirroring
+`idempotencyKey` — the fact lives on the schema, read once at the boundary):
+
+```ts
+// static floor
+const Throttled = Restate.retryable(
+  Schema.asSchema(class extends Schema.TaggedError<any>()('Throttled', {}) {}),
+  { retryAfter: '30 seconds' },
+)
+
+// projection: read the floor off THIS error instance (e.g. a 429's header)
+class RateLimited extends Schema.TaggedError<RateLimited>()('RateLimited', {
+  retryAfterMillis: Schema.Number,
+}) {}
+const RateLimitedSchema = Restate.retryable(Schema.asSchema(RateLimited), {
+  retryAfter: (e) => e.retryAfterMillis, // typed against the error; undefined → default backoff
+})
+```
+
+The projection is applied to the very error that failed, so a Notion 429's
+`e.retryAfterMillis` becomes the retry floor without threading it through a
+call-site option. (`src/error-transport.test.ts` verifies both forms.)
+
+### Clean error channel: infra failures are defects, not typed `E`
+
+The durable combinators (`Restate.run` / `sleep` / `timeout` / `all` / `race` /
+`any` / `State.*` / `Awakeable.make().promise`) have a **clean `E`** — they carry
+**no** `RestateError`. Only the inner effect's own domain `E` flows through
+`Restate.run`. A durable-op infrastructure failure is classified at the boundary
+as a **defect** (transient infra → Restate retries; a terminally-failed step →
+fail, no retry), so you never write a no-op `catchTag('RestateError', Effect.die)`
+to scrub it out of a handler's typed channel:
+
+```ts
+greet: ({ name }) =>
+  Effect.gen(function* () {
+    if (name === '') return yield* new EmptyName() // domain error → handler `E`
+    // No `.orDie` needed: `Restate.run`'s `E` is `never` here (the closure declares
+    // no domain error), and an infra failure is a defect handled at the boundary.
+    const id = yield* Restate.run(
+      'gen-id',
+      Effect.sync(() => crypto.randomUUID()),
+    )
+    return { message: `Hello ${name}`, id }
+  })
+```
+
+To OBSERVE a durable step's outcome (for compensation / sagas) instead of letting
+a failure propagate, use `Restate.runExit(name, effect)` → `Effect<Exit<A, E>>`:
+the `Exit` captures success, a domain `E` failure, and an infra failure (a
+`Cause.Die` carrying the `RestateError`, via `Cause.dieOption`), so you can branch
+and run a compensating durable step.
+
+### Awakeables (and other durable ops) in a deterministic race
+
+Every durable op exposes a **descriptor** so it joins `Restate.all` / `race` /
+`any` deterministically (issued in journal-source order, awaited once) — not just
+`run`/`sleep`, but also durable promises (`DurablePromise.for(S).getDescriptor`),
+in-handler calls (`Restate.callDescriptor` / `objectCallDescriptor`), and
+**awakeables** (`Awakeable.make(S).descriptor`). This replaces the in-process
+`Effect.raceFirst` workaround, which loses journal-order determinism:
+
+```ts
+const { id, promise, descriptor } = yield * Awakeable.make(Schema.String)
+// resume on EITHER the external completion OR a durable deadline — replay-stable
+const winner =
+  yield *
+  Restate.race([
+    descriptor,
+    Restate.runDescriptor('deadline', () => Promise.resolve('__timeout__')),
+  ])
+```
+
+(`examples/05-determinism.ts` `awakeableRaceExample` compiles + is type-checked.)
 
 ## OpenTelemetry (`./otel`)
 

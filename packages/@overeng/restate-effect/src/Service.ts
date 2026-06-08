@@ -108,7 +108,13 @@ export interface ServiceImplementation<C extends Contract<string, HandlerSpecMap
   readonly _tag: 'ServiceImplementation'
   readonly contract: C
   readonly impl: ServiceImpl<C, AppR>
-  readonly _AppR?: (r: AppR) => void
+  /* COVARIANT phantom (`_AppR?: AppR`, not `(r: AppR) => void`): a heterogeneous
+   * `services` array of implementations with DIFFERING `AppR`s widens to
+   * `AnyImplementation<AppR_a | AppR_b>`, so `layer`/`serve` require a runtime
+   * providing the UNION (decision 0002 — `AppR` is still explicit at `implement`).
+   * A contravariant phantom would instead demand the impossible `AppR_a & AppR_b`
+   * runtime, so a mixed array failed to typecheck (docs-worker friction). */
+  readonly _AppR?: AppR
 }
 
 /* ── builders ────────────────────────────────────────────────────────────── */
@@ -218,7 +224,8 @@ export interface ObjectImplementation<
   readonly _tag: 'ObjectImplementation'
   readonly contract: C
   readonly impl: C extends ObjectContract<string, infer _S, infer H> ? ObjectImpl<H, AppR> : never
-  readonly _AppR?: (r: AppR) => void
+  /* COVARIANT phantom — see `ServiceImplementation._AppR` (mixed-`AppR` array). */
+  readonly _AppR?: AppR
 }
 
 const objectContract = <
@@ -339,7 +346,8 @@ export interface WorkflowImplementation<
   readonly impl: C extends WorkflowContract<string, infer _S, infer Run, infer Sig, infer Qry>
     ? WorkflowImpl<Run, Sig, Qry, AppR>
     : never
-  readonly _AppR?: (r: AppR) => void
+  /* COVARIANT phantom — see `ServiceImplementation._AppR` (mixed-`AppR` array). */
+  readonly _AppR?: AppR
 }
 
 const workflowContract = <

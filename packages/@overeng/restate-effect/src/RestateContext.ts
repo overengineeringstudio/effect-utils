@@ -1,6 +1,7 @@
 import * as restate from '@restatedev/restate-sdk'
-import type { Brand } from 'effect'
+import type { Brand, Exit } from 'effect'
 import { Context, Effect, Option, Runtime, Schema } from 'effect'
+import * as SchemaAST from 'effect/SchemaAST'
 
 import { readIdempotencyKey } from './Annotations.ts'
 import { RestateError } from './RestateError.ts'
@@ -24,26 +25,33 @@ export class RestateContext extends Context.Tag('@overeng/restate-effect/Restate
  * Each marker is a distinct `Context.Tag` service, NOT a subtype lattice
  * (`Context.Tag` models no inheritance). A combinator requiring `StateWrite` is
  * satisfied ONLY by `StateWrite`, never by an umbrella marker — so the right set
- * is PROVIDED per handler kind at `materialize`. Empty service values: they gate
- * type-legality, not runtime behavior (the raw `ctx` does the work).
+ * is PROVIDED per handler kind at `materialize`. The service values carry a
+ * DESCRIPTIVE brand (not an opaque empty record), so a capability violation in a
+ * handler reads like the missing capability (`'requires a write-enabled (exclusive)
+ * handler'`) instead of `StateWrite ≠ ObjectKey` — they gate type-legality, not
+ * runtime behavior (the raw `ctx` does the work). The brand value is phantom (the
+ * provided runtime value is still an empty marker).
  */
+
+/** A descriptively-branded capability marker value (phantom; describes the requirement). */
+type CapabilityMarker<Brand_ extends string> = { readonly [K in Brand_]: never }
 
 /** Permits `State.get` / `State.stateKeys`. Provided to object/workflow handlers. */
 export class StateRead extends Context.Tag('@overeng/restate-effect/StateRead')<
   StateRead,
-  Record<never, never>
+  CapabilityMarker<'requires a State-readable (object/workflow) handler'>
 >() {}
 
 /** Permits `State.set` / `State.clear` / `State.clearAll`. Exclusive object / workflow `run` only. */
 export class StateWrite extends Context.Tag('@overeng/restate-effect/StateWrite')<
   StateWrite,
-  Record<never, never>
+  CapabilityMarker<'requires a write-enabled (exclusive object / workflow run) handler'>
 >() {}
 
 /** Permits `DurablePromise.*`. Workflow handlers only. */
 export class DurablePromise extends Context.Tag('@overeng/restate-effect/DurablePromise')<
   DurablePromise,
-  Record<never, never>
+  CapabilityMarker<'requires a Workflow handler (durable promises)'>
 >() {}
 
 /** Permits the `ctx.key` accessor. Object / workflow handlers (all keyed). */
@@ -60,8 +68,53 @@ export class ObjectKey extends Context.Tag('@overeng/restate-effect/ObjectKey')<
 export type DurableCaps = RestateContext | StateRead | StateWrite | DurablePromise | ObjectKey
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- Schema map value variance */
-/** A map of State key → value Schema (the contract's typed `state` block). */
-export type StateSchemas = Record<string, Schema.Schema<any, any>>
+/**
+ * A map of State key → value schema (the contract's typed `state` block). A value
+ * may be a plain `Schema` OR a `Schema.optional`-style field (a
+ * `PropertySignature`), so an OPTIONAL state key (`Schema.optional(Schema.Number)`)
+ * is supported — its value type is `T | undefined`, which matches State's
+ * "unset → undefined" semantics. The `Record<string, Schema>` impl detail does not
+ * leak: `State.for` accepts the same field shapes `Schema.Struct` does.
+ */
+export type StateSchemas = Record<string, Schema.Schema<any, any> | Schema.PropertySignature.All>
+
+/** The decoded value type of a State field (`T | undefined` for an optional field). */
+export type StateValueType<F> =
+  F extends Schema.Schema<infer A, any>
+    ? A
+    : F extends Schema.PropertySignature<any, infer A, any, any, any, any, any>
+      ? A
+      : never
+
+/**
+ * Normalize a State field to a plain value `Schema` for serde: a `Schema` passes
+ * through; an OPTIONAL field's value schema is recovered from its
+ * `PropertySignature` AST (`.type` is the `value | undefined` union) with the
+ * `undefined` member STRIPPED — a SET value is always the present `T` (the
+ * "unset → undefined" case never reaches the serde, the State combinator returns
+ * `undefined` directly), and keeping `undefined` would break `JSONSchema.make`.
+ */
+export const normalizeStateSchema = (
+  field: Schema.Schema<any, any> | Schema.PropertySignature.All,
+): Schema.Schema<any, any> => {
+  if (Schema.isSchema(field) === true) return field as Schema.Schema<any, any>
+  /* A `Schema.optional(s)` PropertySignature's `ast` is a `PropertySignatureDeclaration`
+   * (extends `OptionalType`) whose `.type` is the `value | undefined` AST. */
+  const ast = (field as unknown as { readonly ast?: { readonly type?: SchemaAST.AST } }).ast
+  const valueAst = ast?.type
+  if (valueAst === undefined) {
+    throw new Error('State field is neither a Schema nor a recoverable optional field')
+  }
+  return Schema.make(stripUndefined(valueAst))
+}
+
+/** Drop an `UndefinedKeyword` member from a recovered optional union (`T | undefined → T`). */
+const stripUndefined = (ast: SchemaAST.AST): SchemaAST.AST => {
+  if (ast._tag !== 'Union') return ast
+  const members = ast.types.filter((t) => t._tag !== 'UndefinedKeyword')
+  if (members.length === ast.types.length) return ast
+  return members.length === 1 ? members[0]! : SchemaAST.Union.make(members)
+}
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* ── descriptors (deterministic concurrency — see decision 0005) ─────────── */
@@ -77,7 +130,7 @@ export type StateSchemas = Record<string, Schema.Schema<any, any>>
  * the combinators recover a precise result tuple/union.
  */
 export interface Descriptor<A> {
-  readonly _tag: 'run' | 'sleep' | 'promiseGet'
+  readonly _tag: 'run' | 'sleep' | 'promiseGet' | 'awakeable' | 'call'
   readonly issue: (ctx: restate.Context) => restate.RestatePromise<A>
   /** phantom result carrier (never read at runtime) */
   readonly _A?: (a: A) => void
@@ -107,8 +160,9 @@ const isCancellation = (cause: unknown): cause is restate.CancelledError =>
   cause instanceof restate.CancelledError
 
 /**
- * Await a durable-op promise, classifying the rejection so cancellation and
- * suspension are NOT wrapped into a `RestateError` (which would be retried):
+ * Await a durable-op promise, classifying the rejection so a durable
+ * combinator's typed `E` stays CLEAN (no `RestateError`) — infra is handled at
+ * the boundary, per decision 0003 (#1):
  *
  * - A `CancelledError` (cooperative cancel; R31) → re-throw as an Effect
  *   INTERRUPT, so the handler's `acquireRelease` / `onInterrupt` finalizers and
@@ -119,18 +173,21 @@ const isCancellation = (cause: unknown): cause is restate.CancelledError =>
  *   suspends/resumes. Finalizers must NOT run here — the work resumes in a new
  *   attempt (R15).
  * - Any other rejection (a real infra failure / give-up after `ctx.run` retries)
- *   → fail with the wrapper's `RestateError` (a defect by `orDie` default; the SDK
- *   retries it).
+ *   → DIE with the wrapper's `RestateError` (a DEFECT, never a typed failure), so
+ *   it leaves the domain channel and the boundary classifies it: a transient infra
+ *   failure → the SDK retries; a give-up after `ctx.run`'s own retries already
+ *   arrived terminal. A user never has to `catchTag('RestateError', die)` it away.
  *
  * This is the single seam where a durable rejection is classified, so every
  * durable combinator (`run` / `sleep` / `timeout` / `all` / `race` / `any`)
- * handles cancellation/suspension identically.
+ * handles cancellation/suspension/infra identically. The opt-in `runExit` form
+ * re-surfaces the defect as an observable `Exit` value for compensation/sagas.
  */
 const awaitDurable = <A>(
   thunk: () => Promise<A>,
   onError: (cause: unknown) => RestateError,
-): Effect.Effect<A, RestateError, never> =>
-  Effect.async<A, RestateError>((resume) => {
+): Effect.Effect<A, never, never> =>
+  Effect.async<A, never>((resume) => {
     thunk().then(
       (value) => resume(Effect.succeed(value)),
       (cause: unknown) => {
@@ -145,7 +202,9 @@ const awaitDurable = <A>(
           resume(Effect.die(cause))
           return
         }
-        resume(Effect.fail(onError(cause)))
+        /* Real infra failure → DIE with `RestateError` (a defect, not a typed
+         * failure), so the combinator's `E` stays clean and the boundary retries. */
+        resume(Effect.die(onError(cause)))
       },
     )
   })
@@ -191,24 +250,38 @@ const mapRunOptions = (o: RunRetryOptions): Record<string, unknown> => ({
  *
  * `options` surfaces Restate's per-step durable retry controls (decision 0006,
  * spec §7); when given, the step is bounded by `ctx.run`'s own retry/backoff and
- * a give-up becomes a `RestateError` defect. Never wrap a durable step in
+ * a give-up becomes a `RestateError` DEFECT. Never wrap a durable step in
  * `Effect.retry` — that double-retries non-durably (R21).
  *
- * A rejection (incl. a give-up after `ctx.run`'s own retries) surfaces as a
- * `RestateError({ reason: 'RunFailed' })` — the wrapper's failure, distinct from
- * the handler's domain `E`.
+ * The `E` channel stays CLEAN: only the inner effect's OWN domain `E` flows
+ * through (#1, decision 0003). A durable-op infra failure (incl. a give-up after
+ * `ctx.run`'s own retries) becomes a `RestateError` DEFECT, classified at the
+ * boundary (transient → retry; terminal → fail) — never a typed failure the user
+ * must `catchTag('RestateError', die)` away. Use {@link runExit} to OBSERVE the
+ * outcome (incl. the infra defect) as a value for compensation/sagas.
+ *
+ * The journaled value is the raw success `A` (the contract's serde-friendly
+ * value), NOT a wrapped `Exit` — so the SDK's default journal serde stays correct
+ * and a replay reproduces it verbatim. A nested `Exit`/`Cause` would not be
+ * JSON-journalable. A domain failure or defect inside the closure REJECTS the
+ * `ctx.run` step (so it is journaled as a step failure, retried by Restate per its
+ * retry policy) — domain errors therefore belong in the HANDLER body, not inside a
+ * `Restate.run` closure (see the examples), and the inner `E` is `never` in
+ * practice. The typed `E` is preserved in the signature for the rare typed-inner
+ * case and re-surfaced from the rejection.
  */
 export const run = <A, E, R>(
   name: string,
   effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, E, R> : never,
   options?: RunRetryOptions,
-): Effect.Effect<A, E | RestateError, Exclude<R, DurableCaps> | RestateContext> =>
+): Effect.Effect<A, E, Exclude<R, DurableCaps> | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const runtime = yield* Effect.runtime<Exclude<R, DurableCaps>>()
     /* The `[R] extends [Exclude<R, DurableCaps>]` guard guarantees `R` carries no
      * durable capability, so the captured `Exclude<R, DurableCaps>` runtime can
-     * run it; the cast just reconciles the conditional type. */
+     * run it; the cast just reconciles the conditional type. The inner runs to a
+     * raw `A` (journaled by the SDK); a failure/defect rejects the step. */
     const inner = effect as Effect.Effect<A, E, Exclude<R, DurableCaps>>
     const action = (): Promise<A> => Runtime.runPromise(runtime)(inner)
     return yield* awaitDurable(
@@ -220,6 +293,21 @@ export const run = <A, E, R>(
     )
   }).pipe(Effect.withSpan('restate.run', { attributes: { 'span.label': name } }))
 
+/**
+ * Observe a `Restate.run`'s outcome as an `Exit` VALUE instead of failing — the
+ * opt-in seam for compensation / sagas (decision 0003). The `Exit` captures a
+ * success, a domain `E` failure (`Cause.Fail`), AND a durable-op infra failure
+ * (a `Cause.Die` carrying the `RestateError`, read via `Cause.dieOption`), so the
+ * caller can branch on the outcome and run a compensating durable step without the
+ * failure escaping. The inner step is still journaled exactly once.
+ */
+export const runExit = <A, E, R>(
+  name: string,
+  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, E, R> : never,
+  options?: RunRetryOptions,
+): Effect.Effect<Exit.Exit<A, E>, never, Exclude<R, DurableCaps> | RestateContext> =>
+  Effect.exit(run<A, E, R>(name, effect, options))
+
 /** A `run` descriptor for use inside `Restate.all`/`race`/`any`. */
 export const runDescriptor = <A>(
   name: string,
@@ -228,12 +316,11 @@ export const runDescriptor = <A>(
 
 /**
  * A durable timer backed by `ctx.sleep`. The duration is a lower bound; the
- * timer survives suspension and process restarts.
+ * timer survives suspension and process restarts. The `E` channel is CLEAN: a
+ * timer infra failure is a defect classified at the boundary (#1), never a typed
+ * `RestateError`.
  */
-export const sleep = (
-  millis: number,
-  name?: string,
-): Effect.Effect<void, RestateError, RestateContext> =>
+export const sleep = (millis: number, name?: string): Effect.Effect<void, never, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     yield* awaitDurable(
@@ -256,7 +343,7 @@ export const sleepDescriptor = (millis: number, name?: string): Descriptor<void>
 export const timeout = <A>(
   descr: Descriptor<A>,
   millis: number,
-): Effect.Effect<A | undefined, RestateError, RestateContext> =>
+): Effect.Effect<A | undefined, never, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     return yield* awaitDurable(
@@ -287,7 +374,7 @@ const combineDescriptors =
   ) =>
   <const T extends readonly Descriptor<any>[]>(
     descriptors: T,
-  ): Effect.Effect<Combined, RestateError, RestateContext> =>
+  ): Effect.Effect<Combined, never, RestateContext> =>
     Effect.gen(function* () {
       const ctx = yield* RestateContext
       return yield* awaitDurable(
@@ -299,7 +386,7 @@ const combineDescriptors =
 /** Await all durable descriptors → result TUPLE (issued in source order). */
 export const all = <const T extends readonly Descriptor<any>[]>(
   descriptors: T,
-): Effect.Effect<ResultsOf<T>, RestateError, RestateContext> =>
+): Effect.Effect<ResultsOf<T>, never, RestateContext> =>
   combineDescriptors<ResultsOf<T>>(
     'all',
     (promises) =>
@@ -311,7 +398,7 @@ export const all = <const T extends readonly Descriptor<any>[]>(
 /** Race durable descriptors → first result (union of branch types). */
 export const race = <const T extends readonly Descriptor<any>[]>(
   descriptors: T,
-): Effect.Effect<ResultsOf<T>[number], RestateError, RestateContext> =>
+): Effect.Effect<ResultsOf<T>[number], never, RestateContext> =>
   combineDescriptors<ResultsOf<T>[number]>(
     'race',
     (promises) =>
@@ -321,7 +408,7 @@ export const race = <const T extends readonly Descriptor<any>[]>(
 /** First SUCCESSFULLY-resolved durable descriptor (union of branch types). */
 export const any = <const T extends readonly Descriptor<any>[]>(
   descriptors: T,
-): Effect.Effect<ResultsOf<T>[number], RestateError, RestateContext> =>
+): Effect.Effect<ResultsOf<T>[number], never, RestateContext> =>
   combineDescriptors<ResultsOf<T>[number]>(
     'any',
     (promises) =>
@@ -341,35 +428,40 @@ export const any = <const T extends readonly Descriptor<any>[]>(
 const readState = <S extends StateSchemas, K extends keyof S & string>(
   schemas: S,
   key: K,
-): Effect.Effect<Schema.Schema.Type<S[K]> | undefined, RestateError, StateRead | RestateContext> =>
+): Effect.Effect<StateValueType<S[K]> | undefined, never, StateRead | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const objectCtx = ctx as restate.ObjectContext
+    /* A read infra failure is a defect (clean `E`, #1); a decode failure on the
+     * State (internal) slot is a CORRUPT-JOURNAL defect (decision 0003) — neither
+     * is a typed `RestateError` a handler must catch. */
     const raw = yield* Effect.tryPromise({
       try: () => objectCtx.get<unknown>(key),
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `State.get(${key})`, cause }),
-    })
+    }).pipe(Effect.orDie)
     if (raw === null || raw === undefined) return undefined
-    return yield* Schema.decodeUnknown(schemas[key] as S[K])(raw).pipe(
+    return yield* Schema.decodeUnknown(normalizeStateSchema(schemas[key]!))(raw).pipe(
       Effect.mapError(
         (cause) => new RestateError({ reason: 'SerdeFailed', method: `State.get(${key})`, cause }),
       ),
+      Effect.orDie,
     )
   }).pipe(Effect.withSpan('restate.state.get', { attributes: { 'span.label': key } }))
 
 const writeState = <S extends StateSchemas, K extends keyof S & string>(
   schemas: S,
   key: K,
-  value: Schema.Schema.Type<S[K]>,
-): Effect.Effect<void, RestateError, StateWrite | RestateContext> =>
+  value: StateValueType<S[K]>,
+): Effect.Effect<void, never, StateWrite | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const objectCtx = ctx as restate.ObjectContext
-    const encoded = yield* Schema.encode(schemas[key] as S[K])(value).pipe(
+    const encoded = yield* Schema.encode(normalizeStateSchema(schemas[key]!))(value).pipe(
       Effect.mapError(
         (cause) => new RestateError({ reason: 'SerdeFailed', method: `State.set(${key})`, cause }),
       ),
+      Effect.orDie,
     )
     objectCtx.set(key, encoded)
   }).pipe(Effect.withSpan('restate.state.set', { attributes: { 'span.label': key } }))
@@ -382,28 +474,29 @@ const writeState = <S extends StateSchemas, K extends keyof S & string>(
 export const stateFor = <S extends StateSchemas>(schemas: S) =>
   ({
     get: <K extends keyof S & string>(key: K) => readState(schemas, key),
-    set: <K extends keyof S & string>(key: K, value: Schema.Schema.Type<S[K]>) =>
+    set: <K extends keyof S & string>(key: K, value: StateValueType<S[K]>) =>
       writeState(schemas, key, value),
     clear: <K extends keyof S & string>(
       key: K,
-    ): Effect.Effect<void, RestateError, StateWrite | RestateContext> =>
+    ): Effect.Effect<void, never, StateWrite | RestateContext> =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
         ;(ctx as restate.ObjectContext).clear(key)
       }).pipe(Effect.withSpan('restate.state.clear', { attributes: { 'span.label': key } })),
-    clearAll: (): Effect.Effect<void, RestateError, StateWrite | RestateContext> =>
+    clearAll: (): Effect.Effect<void, never, StateWrite | RestateContext> =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
         ;(ctx as restate.ObjectContext).clearAll()
       }).pipe(Effect.withSpan('restate.state.clearAll')),
-    stateKeys: (): Effect.Effect<ReadonlyArray<string>, RestateError, StateRead | RestateContext> =>
+    stateKeys: (): Effect.Effect<ReadonlyArray<string>, never, StateRead | RestateContext> =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
+        /* A `stateKeys` infra failure is a defect (clean `E`, #1). */
         return yield* Effect.tryPromise({
           try: () => (ctx as restate.ObjectContext).stateKeys(),
           catch: (cause) =>
             new RestateError({ reason: 'RunFailed', method: 'State.stateKeys', cause }),
-        })
+        }).pipe(Effect.orDie)
       }).pipe(Effect.withSpan('restate.state.stateKeys')),
   }) as const
 
@@ -435,10 +528,13 @@ export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext>
 
 const promiseSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> => internalSerde(schema)
 
+/* A durable-promise op infra failure is a defect (clean `E`, #1). A `reject`
+ * makes the awaiting `get` fail TERMINALLY (R34) — that rejection arrives as a
+ * `TerminalError` the boundary terminalizes verbatim, not a typed `RestateError`. */
 const promiseGet = <T, I>(
   name: string,
   schema: Schema.Schema<T, I>,
-): Effect.Effect<T, RestateError, DurablePromise | RestateContext> =>
+): Effect.Effect<T, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     return yield* Effect.tryPromise({
@@ -446,13 +542,13 @@ const promiseGet = <T, I>(
         (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.get(${name})`, cause }),
-    })
+    }).pipe(Effect.orDie)
   }).pipe(Effect.withSpan('restate.promise.get', { attributes: { 'span.label': name } }))
 
 const promisePeek = <T, I>(
   name: string,
   schema: Schema.Schema<T, I>,
-): Effect.Effect<T | undefined, RestateError, DurablePromise | RestateContext> =>
+): Effect.Effect<T | undefined, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     return yield* Effect.tryPromise({
@@ -460,14 +556,14 @@ const promisePeek = <T, I>(
         (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).peek(),
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.peek(${name})`, cause }),
-    })
+    }).pipe(Effect.orDie)
   }).pipe(Effect.withSpan('restate.promise.peek', { attributes: { 'span.label': name } }))
 
 const promiseResolve = <T, I>(
   name: string,
   schema: Schema.Schema<T, I>,
   value: T,
-): Effect.Effect<void, RestateError, DurablePromise | RestateContext> =>
+): Effect.Effect<void, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     yield* Effect.tryPromise({
@@ -477,14 +573,14 @@ const promiseResolve = <T, I>(
           .resolve(value),
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.resolve(${name})`, cause }),
-    })
+    }).pipe(Effect.orDie)
   }).pipe(Effect.withSpan('restate.promise.resolve', { attributes: { 'span.label': name } }))
 
 const promiseReject = <T, I>(
   name: string,
   schema: Schema.Schema<T, I>,
   reason: string,
-): Effect.Effect<void, RestateError, DurablePromise | RestateContext> =>
+): Effect.Effect<void, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     yield* Effect.tryPromise({
@@ -494,7 +590,7 @@ const promiseReject = <T, I>(
           .reject(reason),
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.reject(${name})`, cause }),
-    })
+    }).pipe(Effect.orDie)
   }).pipe(Effect.withSpan('restate.promise.reject', { attributes: { 'span.label': name } }))
 
 /**
@@ -530,16 +626,25 @@ export type AwakeableId<T> = string & AwakeableIdBrand & { readonly _payload?: T
 
 /**
  * Create an awakeable: a typed external-completion token. Returns its branded
- * `id` (send it to an external system / another handler) and a `promise` Effect
- * that SUSPENDS until the awakeable is resolved (via ingress `resolveAwakeable`
- * or another handler). The payload is decode/encode'd via `schema` on the
- * `internal` slot. Requires `RestateContext` (legal in any handler kind). A
- * rejection surfaces the awaiting `promise` as a `RestateError`.
+ * `id` (send it to an external system / another handler), a `promise` Effect that
+ * SUSPENDS until the awakeable is resolved (via ingress `resolveAwakeable` or
+ * another handler), and a `descriptor` to join `Restate.all`/`race`/`any`
+ * deterministically (#2). The payload is decode/encode'd via `schema` on the
+ * `internal` slot. Requires `RestateContext` (legal in any handler kind).
+ *
+ * The `promise`'s `E` is CLEAN (#1): an await infra failure is a defect
+ * classified at the boundary; a `reject` arrives as a `TerminalError` the
+ * boundary terminalizes verbatim (the awaiter fails terminally, R33/R34), not a
+ * typed `RestateError`.
  */
 export const makeAwakeable = <T, I>(
   schema: Schema.Schema<T, I>,
 ): Effect.Effect<
-  { readonly id: AwakeableId<T>; readonly promise: Effect.Effect<T, RestateError, never> },
+  {
+    readonly id: AwakeableId<T>
+    readonly promise: Effect.Effect<T, never, never>
+    readonly descriptor: Descriptor<T>
+  },
   never,
   RestateContext
 > =>
@@ -549,8 +654,16 @@ export const makeAwakeable = <T, I>(
     const promise = Effect.tryPromise({
       try: () => aw.promise,
       catch: (cause) => new RestateError({ reason: 'RunFailed', method: 'Awakeable.await', cause }),
-    }).pipe(Effect.withSpan('restate.awakeable.await', { attributes: { 'span.label': aw.id } }))
-    return { id: aw.id as AwakeableId<T>, promise }
+    }).pipe(
+      Effect.orDie,
+      Effect.withSpan('restate.awakeable.await', { attributes: { 'span.label': aw.id } }),
+    )
+    /* The awakeable's completion promise is itself a `RestatePromise`, so it joins
+     * the deterministic combinators like any other descriptor — issued in source
+     * order, awaited once (decision 0005, #2). It is created ONCE (at `make`), so
+     * `issue` just hands the existing promise to the combinator. */
+    const descriptor: Descriptor<T> = { _tag: 'awakeable', issue: () => aw.promise }
+    return { id: aw.id as AwakeableId<T>, promise, descriptor }
   }).pipe(Effect.withSpan('restate.awakeable.make'))
 
 /** Resolve an awakeable in-handler with a typed payload (encoded via `schema`). */
@@ -669,5 +782,37 @@ const sendRpc = <In, InI>(opts: {
     }),
   )
 
+/**
+ * A `call` descriptor: issue an in-handler service-to-service `genericCall` as a
+ * `Descriptor` so it joins `Restate.all`/`race`/`any` deterministically (#2). The
+ * `genericCall` returns an `InvocationPromise` (a `RestatePromise`), issued in
+ * source order with the other descriptors. Input encoded / output decoded via the
+ * target's serde; the idempotency key is read from the annotated input field (the
+ * same path as `callRpc`).
+ */
+const callDescriptor = <In, InI, Out, OutI>(opts: {
+  readonly service: string
+  readonly handler: string
+  readonly inputSchema: Schema.Schema<In, InI>
+  readonly outputSchema: Schema.Schema<Out, OutI>
+  readonly input: In
+  readonly key?: string
+}): Descriptor<Out> => {
+  const idempotencyKey = readIdempotencyKey(opts.inputSchema.ast, opts.input).pipe(
+    Option.getOrUndefined,
+  )
+  return descriptor<Out>('call', (ctx) =>
+    ctx.genericCall<In, Out>({
+      service: opts.service,
+      method: opts.handler,
+      parameter: opts.input,
+      ...(opts.key !== undefined ? { key: opts.key } : {}),
+      inputSerde: clientCallSerde(opts.inputSchema),
+      outputSerde: clientCallSerde(opts.outputSchema),
+      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+    }),
+  )
+}
+
 /** Internal seam used by the typed `Restate.call/send/objectClient/...` surface. */
-export const inHandlerClients = { callRpc, sendRpc } as const
+export const inHandlerClients = { callRpc, sendRpc, callDescriptor } as const
