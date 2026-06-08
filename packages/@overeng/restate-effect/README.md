@@ -9,8 +9,8 @@ Scopes, OpenTelemetry) on top without hiding Restate.
 This is a faithful binding, not a vendor-neutral facade: Restate is the
 programming model and the engine. If you want Effect's own durable engine, use
 `@effect/workflow` + `@effect/cluster` instead. See
-[docs/vision.md](./docs/vision.md) for the full motivation and
-[docs/spec.md](./docs/spec.md) for the design.
+[docs/vrs/vision.md](./docs/vrs/vision.md) for the full motivation and
+[docs/vrs/spec.md](./docs/vrs/spec.md) for the design.
 
 ## Status
 
@@ -723,8 +723,8 @@ compile or run is treated as a defect.
 
 ## Further reading
 
-- [docs/vision.md](./docs/vision.md) — why this exists; what it is and is not.
-- [docs/spec.md](./docs/spec.md) — the full design (boundary, capability model,
+- [docs/vrs/vision.md](./docs/vrs/vision.md) — why this exists; what it is and is not.
+- [docs/vrs/spec.md](./docs/vrs/spec.md) — the full design (boundary, capability model,
   serde, error boundary, determinism, retry, endpoint, clients, OTel, testing).
-- [docs/decisions/](./docs/decisions) — the hard-to-reverse design decisions.
-- [docs/glossary.md](./docs/glossary.md) — Restate + binding vocabulary.
+- [docs/vrs/decisions/](./docs/vrs/decisions) — the hard-to-reverse design decisions.
+- [docs/vrs/glossary.md](./docs/vrs/glossary.md) — Restate + binding vocabulary.
