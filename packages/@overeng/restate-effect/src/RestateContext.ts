@@ -93,6 +93,63 @@ const descriptor = <A>(
   issue: (ctx: restate.Context) => restate.RestatePromise<A>,
 ): Descriptor<A> => ({ _tag: tag, issue })
 
+/* ── durable-op rejection handling (cancellation/suspension preservation) ─── */
+
+/**
+ * Whether a durable-op rejection is a Restate cancellation (`CancelledError`,
+ * which `extends TerminalError`) — the cooperative-cancel signal a suspended
+ * durable op (e.g. `ctx.sleep`) rejects with when the invocation is cancelled
+ * (R31, spec §5a). It must NOT be wrapped into a `RestateError` defect (which
+ * would be retried); it has to propagate so the boundary terminalizes it as a
+ * non-retried cancellation.
+ */
+const isCancellation = (cause: unknown): cause is restate.CancelledError =>
+  cause instanceof restate.CancelledError
+
+/**
+ * Await a durable-op promise, classifying the rejection so cancellation and
+ * suspension are NOT wrapped into a `RestateError` (which would be retried):
+ *
+ * - A `CancelledError` (cooperative cancel; R31) → re-throw as an Effect
+ *   INTERRUPT, so the handler's `acquireRelease` / `onInterrupt` finalizers and
+ *   compensations RUN. The boundary then re-maps the interrupt to a
+ *   `CancelledError` (terminal, not retried).
+ * - A Restate SUSPENSION (`isSuspendedError`) → re-throw the original suspended
+ *   error AS-IS (as a defect), so `toTerminal` re-throws it verbatim and the SDK
+ *   suspends/resumes. Finalizers must NOT run here — the work resumes in a new
+ *   attempt (R15).
+ * - Any other rejection (a real infra failure / give-up after `ctx.run` retries)
+ *   → fail with the wrapper's `RestateError` (a defect by `orDie` default; the SDK
+ *   retries it).
+ *
+ * This is the single seam where a durable rejection is classified, so every
+ * durable combinator (`run` / `sleep` / `timeout` / `all` / `race` / `any`)
+ * handles cancellation/suspension identically.
+ */
+const awaitDurable = <A>(
+  thunk: () => Promise<A>,
+  onError: (cause: unknown) => RestateError,
+): Effect.Effect<A, RestateError, never> =>
+  Effect.async<A, RestateError>((resume) => {
+    thunk().then(
+      (value) => resume(Effect.succeed(value)),
+      (cause: unknown) => {
+        /* Cancellation → interrupt (finalizers run, not retried). */
+        if (isCancellation(cause) === true) {
+          resume(Effect.interrupt)
+          return
+        }
+        /* Suspension → re-throw the original verbatim as a defect (the SDK
+         * suspends/resumes; finalizers must NOT run — work resumes next attempt). */
+        if (restate.internal.isSuspendedError(cause) === true) {
+          resume(Effect.die(cause))
+          return
+        }
+        resume(Effect.fail(onError(cause)))
+      },
+    )
+  })
+
 /* ── durable combinators ─────────────────────────────────────────────────── */
 
 /**
@@ -120,10 +177,10 @@ export const run = <A, E, R>(
      * durable capability, so the captured `Exclude<R, DurableCaps>` runtime can
      * run it; the cast just reconciles the conditional type. */
     const inner = effect as Effect.Effect<A, E, Exclude<R, DurableCaps>>
-    return yield* Effect.tryPromise({
-      try: () => ctx.run(name, () => Runtime.runPromise(runtime)(inner)),
-      catch: (cause) => new RestateError({ reason: 'RunFailed', method: `run(${name})`, cause }),
-    })
+    return yield* awaitDurable(
+      () => ctx.run(name, () => Runtime.runPromise(runtime)(inner)),
+      (cause) => new RestateError({ reason: 'RunFailed', method: `run(${name})`, cause }),
+    )
   }).pipe(Effect.withSpan('restate.run', { attributes: { 'span.label': name } }))
 
 /** A `run` descriptor for use inside `Restate.all`/`race`/`any`. */
@@ -142,11 +199,10 @@ export const sleep = (
 ): Effect.Effect<void, RestateError, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    yield* Effect.tryPromise({
-      try: () => ctx.sleep(millis, name),
-      catch: (cause) =>
-        new RestateError({ reason: 'SleepFailed', method: `sleep(${millis})`, cause }),
-    })
+    yield* awaitDurable(
+      () => ctx.sleep(millis, name),
+      (cause) => new RestateError({ reason: 'SleepFailed', method: `sleep(${millis})`, cause }),
+    )
   }).pipe(Effect.withSpan('restate.sleep', { attributes: { 'span.label': name ?? `${millis}ms` } }))
 
 /** A `sleep` descriptor for use inside `Restate.all`/`race`/`any`. */
@@ -166,24 +222,24 @@ export const timeout = <A>(
 ): Effect.Effect<A | undefined, RestateError, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    return yield* Effect.tryPromise({
-      try: () =>
+    return yield* awaitDurable(
+      () =>
         descr
           .issue(ctx)
           .orTimeout(millis)
           .map((value?: A) => value),
-      catch: (cause) =>
-        new RestateError({ reason: 'RunFailed', method: `timeout(${millis})`, cause }),
-    })
+      (cause) => new RestateError({ reason: 'RunFailed', method: `timeout(${millis})`, cause }),
+    )
   }).pipe(Effect.withSpan('restate.timeout', { attributes: { 'span.label': `${millis}ms` } }))
 
 /**
  * Combine durable-op descriptors deterministically. Issues every descriptor
  * SYNCHRONOUSLY in source order to obtain the `RestatePromise[]` (fixing the
  * journal order), hands the array to the SDK `combine` (`all`/`race`/`any`), and
- * awaits the SINGLE resulting `RestatePromise` in ONE `Effect.tryPromise`,
- * mapping the result after (never `.then`-chaining pre-await — `.then` is the
- * SDK's suspension seam). See decision 0005.
+ * awaits the SINGLE resulting `RestatePromise` ONCE via `awaitDurable`, mapping
+ * the result after (never `.then`-chaining pre-await — `.then` is the SDK's
+ * suspension seam; `awaitDurable` also preserves cancellation/suspension). See
+ * decision 0005.
  */
 const combineDescriptors =
   <Combined>(
@@ -197,10 +253,10 @@ const combineDescriptors =
   ): Effect.Effect<Combined, RestateError, RestateContext> =>
     Effect.gen(function* () {
       const ctx = yield* RestateContext
-      return yield* Effect.tryPromise({
-        try: () => combine(descriptors.map((d) => d.issue(ctx))),
-        catch: (cause) => new RestateError({ reason: 'RunFailed', method: label, cause }),
-      })
+      return yield* awaitDurable(
+        () => combine(descriptors.map((d) => d.issue(ctx))),
+        (cause) => new RestateError({ reason: 'RunFailed', method: label, cause }),
+      )
     }).pipe(Effect.withSpan(`restate.${label}`))
 
 /** Await all durable descriptors → result TUPLE (issued in source order). */

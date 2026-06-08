@@ -2,12 +2,13 @@ import * as http2 from 'node:http2'
 
 import * as restate from '@restatedev/restate-sdk'
 import { createEndpointHandler } from '@restatedev/restate-sdk/node'
-import { Cause, Duration, Effect, Exit, Layer, Option, Runtime, Schema } from 'effect'
+import { Cause, Chunk, Duration, Effect, Exit, Layer, Option, Runtime, Schema } from 'effect'
 
 import { readErrorClass } from './Annotations.ts'
 import { ObjectKey, RestateContext, StateRead, StateWrite } from './RestateContext.ts'
 import { DurablePromise } from './RestateContext.ts'
 import { RestateError } from './RestateError.ts'
+import { determinismLayer, withAttemptInterruption } from './Runtime.ts'
 import { ingressSerde } from './Serde.ts'
 import type {
   Contract,
@@ -41,13 +42,29 @@ import type {
  * - `retryable`-annotated domain failure → throw `RetryableError` (Restate
  *   retries), honoring `retryAfter`.
  * - A Restate suspension (`isSuspendedError`) → re-thrown as-is, never terminalized.
- * - Anything else (defect / interrupt) → return the squashed cause so the SDK
- *   throws it as a normal error and RETRIES.
+ * - An Effect INTERRUPTION (Restate cancellation bridged to the handler fiber, or
+ *   an in-handler interrupt) → re-thrown as a `CancelledError` (which `extends
+ *   TerminalError`), so the SDK does NOT retry it. It is neither a domain failure
+ *   nor a defect: finalizers/compensations have already run at the interruption
+ *   point (R31, spec §5a). If the underlying cause is itself a Restate suspension
+ *   (the attempt is being torn down), that suspension is re-thrown as-is.
+ * - Anything else (defect) → return the squashed cause so the SDK throws it as a
+ *   normal error and RETRIES.
  */
 export const toTerminal = (
   cause: Cause.Cause<unknown>,
   errorSchema?: Schema.Schema<any, any>,
 ): unknown => {
+  /* A Restate suspension (a durable op suspending the attempt) may arrive as a
+   * DEFECT (a durable combinator re-throws it verbatim via `Effect.die`, see
+   * `awaitDurable`). Re-throw it AS-IS so the SDK suspends/resumes — never
+   * terminalize or retry it (R15). Checked first: a suspension defect is not a
+   * domain failure. */
+  const suspensionDefect = Chunk.findFirst(Cause.defects(cause), (d) =>
+    restate.internal.isSuspendedError(d),
+  )
+  if (Option.isSome(suspensionDefect) === true) return suspensionDefect.value
+
   const failure = Cause.failureOption(cause)
   if (failure._tag === 'Some') {
     const error = failure.value
@@ -78,7 +95,13 @@ export const toTerminal = (
       ...(tag !== undefined ? { metadata: { _tag: tag } } : {}),
     })
   }
-  /* Defect / interrupt → let the SDK retry. */
+  /* An interruption (Restate cancellation bridged to the fiber, or an in-handler
+   * interrupt — incl. a durable op that rejected with `CancelledError`) is neither
+   * a domain failure nor a defect: finalizers/compensations already ran.
+   * Terminalize as a `CancelledError` so the SDK does NOT retry it (R31, §5a).
+   * (A suspension is already handled above as a defect, never reaching here.) */
+  if (Cause.isInterrupted(cause) === true) return new restate.CancelledError()
+  /* Defect → let the SDK retry. */
   return Cause.squash(cause)
 }
 
@@ -91,10 +114,16 @@ const emptyMarker = {} as Record<never, never>
 
 /**
  * Provide `RestateContext` (always) plus the capability markers legal for this
- * handler kind (spec §3), run the user's Effect on the captured runtime, and map
- * the exit to a return value or a thrown `TerminalError`/retryable error. The
- * `provide` set is per-kind so an illegal `State.set` in a shared handler is a
- * COMPILE error and the residual `R` collapses to `AppR` at runtime.
+ * handler kind (spec §3), the per-invocation determinism layer (journaled
+ * Clock/Random, R17) and the cancellation↔interruption bridge (R31), run the
+ * user's Effect on the captured runtime, and map the exit to a return value or a
+ * thrown `TerminalError`/retryable error. The `provide` set is per-kind so an
+ * illegal `State.set` in a shared handler is a COMPILE error and the residual `R`
+ * collapses to `AppR` at runtime.
+ *
+ * The sync-clock frozen base is seeded ONCE here at handler entry from
+ * `ctx.date.now()` (journaled), so `Clock.unsafeCurrentTime*` reads are
+ * replay-stable and do not advance mid-attempt (R17, decision 0004).
  */
 const runEffectHandler =
   <AppR>(opts: {
@@ -109,6 +138,8 @@ const runEffectHandler =
       | 'workflowShared'
   }) =>
   async (ctx: restate.Context, input: unknown): Promise<unknown> => {
+    /* Seed the per-attempt frozen monotonic base ONCE from journaled time. */
+    const frozenBaseMillis = await ctx.date.now()
     let effect = opts.run(input).pipe(Effect.provideService(RestateContext, ctx))
     if (opts.markers !== 'service') {
       effect = effect.pipe(
@@ -122,8 +153,14 @@ const runEffectHandler =
     if (opts.markers === 'workflowRun' || opts.markers === 'workflowShared') {
       effect = effect.pipe(Effect.provideService(DurablePromise, emptyMarker))
     }
+    /* Bridge the attempt-completed signal to interruption (R31), then provide the
+     * journaled Clock/Random over the handler (R17). The determinism layer wraps
+     * OUTSIDE the interruption bridge so its forked fiber inherits the layer. */
+    const bridged = withAttemptInterruption(ctx, effect).pipe(
+      Effect.provide(determinismLayer(ctx, frozenBaseMillis)),
+    )
     const exit = await Runtime.runPromiseExit(opts.runtime)(
-      effect as Effect.Effect<unknown, unknown, AppR>,
+      bridged as Effect.Effect<unknown, unknown, AppR>,
     )
     if (Exit.isSuccess(exit) === true) return exit.value
     throw toTerminal(exit.cause, opts.errorSchema)
