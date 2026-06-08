@@ -45,12 +45,16 @@ Restate's unit of effectively-once execution. (`@effect/workflow` calls this an
 
 **Awakeable**:
 An external-completion token: a handler suspends on an awakeable ID and an
-outside system resolves/rejects it to resume. The external-signal /
+outside system resolves/rejects it to resume. `Awakeable.make` returns a typed
+`{ id, promise }` (id branded). Resolution may come from an IN-HANDLER caller or
+from INGRESS (`resolveAwakeable` / `rejectAwakeable`). The external-signal /
 human-in-the-loop primitive.
 
 **Durable Promise**:
-A named, durable promise on a **Workflow** for cross-handler signalling
-(resolve/reject/peek), surviving **Replay**.
+A named, durable promise on a **Workflow** for cross-handler signalling,
+surviving **Replay**. Operations: `get` (await), `resolve`, `reject`, and `peek`
+(non-blocking read). A `reject` drives a `'rejected'` State observable via a
+**query** handler.
 
 **State**:
 A **Virtual Object** / **Workflow** keyed K/V store, atomic with the **Journal**.
@@ -80,5 +84,32 @@ The single Rust binary that brokers calls, owns the **Journal** and **State**,
 and drives **Replay**. Sits between callers and handlers.
 
 **Ingress**:
-The external entry point (HTTP, default :8080) for invoking handlers from outside
-Restate.
+The external entry point on the **restate-server** (HTTP, default :8080) for
+invoking handlers from outside Restate. Distinct from the **Handler Endpoint**:
+ingress is callers → server; the handler endpoint is server → handlers.
+
+**Handler Endpoint**:
+The HTTP/2 server THIS binding serves (default :9080), which the
+**restate-server** discovers and invokes. Not the ingress port (:8080) and not
+the admin port (:9070). The binding owns only this port.
+
+## Testing
+
+**Test Harness**:
+The Docker-free scoped `Layer` (`./testing`) that boots a native
+**restate-server** on ephemeral ports in an isolated base dir, serves the
+endpoint, registers the deployment, and exposes the typed ingress client +
+`stateOf`. The Effect-native counterpart to `RestateTestEnvironment`.
+
+**alwaysReplay**:
+A harness mode that forces **Replay** at every **Suspension**, surfacing
+journal-shape divergence (RT0016). A determinism-hunting tool.
+
+**disableRetries**:
+A harness mode that surfaces failures immediately instead of retrying, so a test
+sees the first failure rather than a retry loop.
+
+**stateOf / StateProxy**:
+`stateOf(contract, key)` returns a `StateProxy` with `get`/`getAll`/`set`/`setAll`,
+key- and value-typed against the contract's `state` block, for inspecting and
+seeding **State** directly over the Admin API in tests.

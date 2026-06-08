@@ -8,11 +8,11 @@ rationale for the hard-to-reverse choices lives in
 ## Context
 
 - The binding wraps the Restate TypeScript SDK family (`@restatedev/restate-sdk`
-  and siblings, v1.14.x) against a `restate-server` (v1.6.x). It is Effect-native
-  (`effect` ^3.21), so all behavior is expressed as Effects, Schemas, Layers, and
-  Scopes.
-- The design is fixed by ten accepted decision records,
-  [0001](./decisions/0001-thin-faithful-restate-binding.md)–[0010](./decisions/0010-separated-contract-impl.md);
+  and siblings, v1.14.x) against a `restate-server` (≥1.6, see A10). It is
+  Effect-native (`effect` ^3.21), so all behavior is expressed as Effects,
+  Schemas, Layers, and Scopes.
+- The design is fixed by eleven accepted decision records,
+  [0001](./decisions/0001-thin-faithful-restate-binding.md)–[0011](./decisions/0011-restate-schema-annotations.md);
   this document states the cross-cutting, testable constraints those decisions
   imply. Where a requirement traces to a decision, the decision is cited.
 
@@ -48,6 +48,13 @@ rationale for the hard-to-reverse choices lives in
 - **A09 OTel opt-in:** The OpenTelemetry bridge and its dependencies
   (`@effect/opentelemetry`, `@restatedev/restate-sdk-opentelemetry`) are an
   opt-in subpath; the core stays dependency-light.
+- **A10 Server floor ≥1.6:** The binding targets `restate-server` ≥1.6
+  (`nix/restate.nix` pins 1.6.2). Features that need ≥1.6 (e.g. the
+  `metadata._tag` best-effort extra on terminal errors) assume this floor.
+- **A11 Deployment immutability:** A `Deployment` is immutable and versioned; the
+  `restate-server` owns deployment versioning and the replay/upgrade contract
+  (A01). The binding registers deployments and may serve multiple versions but
+  does not manage version routing itself.
 
 ## Acceptable Tradeoffs
 
@@ -55,11 +62,13 @@ rationale for the hard-to-reverse choices lives in
   Restate's model and vocabulary; there is no engine portability. Mechanical
   sympathy with the engine is worth more than a vendor-neutral abstraction. (See
   [decisions/0001](./decisions/0001-thin-faithful-restate-binding.md).)
-- **T02 Durable-sleep remap over a non-durable default:** Every in-handler
-  `Effect.sleep` / `Effect.timeout` becomes a journaled durable timer. This is
-  correct-by-default for workflow waits at the cost of overhead for tight
-  internal sleeps; a non-durable escape hatch may be added only if validation
-  shows it is needed. (See [decisions/0004](./decisions/0004-determinism-layer.md).)
+- **T02 Explicit durable waits over a transparent remap:** Durable waits are
+  named combinators (`Restate.sleep` / `Restate.timeout` / `Restate.race`), not a
+  transparent `Clock.sleep → ctx.sleep` global remap. A bare in-handler
+  `Effect.sleep` stays non-durable. This costs a deliberate choice at the wait
+  site but avoids `Effect.timeout` suspending/interleaving nondeterministically
+  and avoids library/AppLayer code silently journaling durable timers. (See
+  [decisions/0004](./decisions/0004-determinism-layer.md).)
 - **T03 Contract/impl ceremony over client-bundle pollution:** A service is
   authored as a separate `contract` and `implement`, adding ceremony for a
   trivial single-package service, to keep client bundles free of server code and
@@ -78,6 +87,18 @@ rationale for the hard-to-reverse choices lives in
   error back into its tagged form requires both sides to share the error Schema
   (natural within a codebase); cross-language callers get the encoded JSON body
   plus the `_tag` only. (See [decisions/0003](./decisions/0003-error-boundary-model.md).)
+- **T07 Journal-shape sensitivity to refactors:** The determinism layer increases
+  the journal's sensitivity to ordinary Effect refactors — reordering durable ops,
+  adding/removing a `Restate.run`, or changing combinator order alters the journal
+  shape and is a redeploy/replay hazard the lint does NOT catch. The mitigation is
+  the testing harness's multi-deployment replay/upgrade tests (R26a, R26c), not a
+  static guarantee. (A11; [decisions/0004](./decisions/0004-determinism-layer.md).)
+- **T08 Annotation as single source over call-site options:** Restate facts that
+  belong to a Schema (retryable/terminal, custom serde, idempotency key) are
+  carried as Schema annotations read at one site, dropping the equivalent
+  call-site option (e.g. the `{ idempotencyKey }` send option). This removes drift
+  at the cost of a one-time migration of those options onto the schema. (See
+  [decisions/0011](./decisions/0011-restate-schema-annotations.md).)
 
 ## Requirements
 
@@ -123,16 +144,22 @@ rationale for the hard-to-reverse choices lives in
 - **R10 Inferred typed clients:** From a contract alone the binding MUST derive
   typed clients — an external ingress client and in-handler service-to-service
   clients — whose arguments are Schema-validated, whose result is the typed
-  success, and which require no hand-declared handler shape. (Vision; [decisions/0008](./decisions/0008-typed-client-inference.md).)
+  success, and which require no hand-declared handler shape. The contract MUST
+  carry its handler map in a phantom type param; a contract whose handler map
+  erases to `Record<string, …>` does NOT satisfy this requirement. (Vision; [decisions/0008](./decisions/0008-typed-client-inference.md).)
 
 ### Must guarantee a typed error boundary
 
 - **R11 Domain-only error channel:** A handler's Effect `E` channel MUST carry
   only declared business (terminal) errors. (Vision; [decisions/0003](./decisions/0003-error-boundary-model.md).)
 - **R12 Terminal transport:** A handler failure whose value matches the declared
-  error Schema MUST cross the boundary as a `TerminalError` (Schema-encoded body
-  plus the error `_tag` as metadata) that does not retry and propagates to the
-  caller. (A05; [decisions/0003](./decisions/0003-error-boundary-model.md).)
+  error Schema MUST cross the boundary as a `TerminalError` whose `message` BODY
+  is the Schema-encoded error plus its `_tag` (the `responseText` an ingress
+  caller sees), with a per-error `errorCode` derived from the error's
+  `terminal`/`retryable` annotation (default 500). The `_tag` MAY ALSO appear in
+  `metadata` as a best-effort extra for server-side consumers (server ≥1.6, A10),
+  but `metadata` is invisible to ingress callers so it is never the load-bearing
+  channel. It does not retry and propagates to the caller. (A05; [decisions/0003](./decisions/0003-error-boundary-model.md), [decisions/0011](./decisions/0011-restate-schema-annotations.md).)
 - **R13 Infra-as-defect:** An Effect defect, including a durable-combinator
   infrastructure failure, MUST propagate as a normal throw so Restate retries it,
   unless an explicit terminal-classification policy applies. (A05; [decisions/0003](./decisions/0003-error-boundary-model.md).)
@@ -142,28 +169,41 @@ rationale for the hard-to-reverse choices lives in
   a raw transport error. (T06; [decisions/0003](./decisions/0003-error-boundary-model.md).)
 - **R15 Suspension is never terminal:** The boundary MUST NOT convert a Restate
   suspension into a terminal error. (A05; [decisions/0003](./decisions/0003-error-boundary-model.md).)
-- **R16 Deterministic-input failure:** A malformed or schema-invalid input MUST
-  fail as a non-retryable terminal error (HTTP 400), since retrying cannot help.
-  (A03.)
+- **R16 Slot-aware serde failure:** A serde `ParseError` MUST be classified by
+  slot. A malformed or schema-invalid INGRESS INPUT MUST fail as a non-retryable
+  terminal error (HTTP 400), since retrying cannot help. A decode failure on an
+  INTERNAL slot (State value, `ctx.run` result, awakeable / durable-promise
+  payload) is a corrupt-journal infrastructure condition and MUST propagate as a
+  defect that Restate retries (R13), NOT a 400. (A03; [decisions/0003](./decisions/0003-error-boundary-model.md).)
 
 ### Must guarantee determinism
 
-- **R17 Journaled time and randomness:** Inside a handler runtime, `Clock` MUST
-  read journaled time (`ctx.date`) and `Random` MUST read journaled, seeded
-  randomness (`ctx.rand`), so idiomatic Effect time/random reads are
-  replay-safe. (A04; [decisions/0004](./decisions/0004-determinism-layer.md).)
-- **R18 Durable sleep remap:** `Clock.sleep` inside a handler MUST be remapped to
-  `ctx.sleep`, so `Effect.sleep` / `Effect.timeout` become durable timers.
-  (A04, T02; [decisions/0004](./decisions/0004-determinism-layer.md).)
+- **R17 Journaled time and randomness:** Inside a handler runtime,
+  `Clock.currentTimeMillis` MUST read journaled time (`ctx.date`) and `Random`
+  MUST read journaled, seeded randomness (`ctx.rand`). The SYNC
+  `Clock.unsafeCurrentTimeMillis` / `unsafeCurrentTimeNanos` (which cannot be
+  backed by the async `ctx.date`) MUST be served from a per-attempt frozen
+  monotonic base seeded once at handler entry, so wall-clock reads are replay-safe
+  and do not advance mid-attempt. (A04; [decisions/0004](./decisions/0004-determinism-layer.md).)
+- **R18 Explicit durable waits:** Durable waits MUST be explicit combinators —
+  `Restate.sleep`, `Restate.timeout`, `Restate.race` — backed by `ctx.sleep` /
+  `RestatePromise.orTimeout`. The binding MUST NOT transparently remap
+  `Clock.sleep` to `ctx.sleep`; a bare in-handler `Effect.sleep` stays
+  non-durable. (A04, T02; [decisions/0004](./decisions/0004-determinism-layer.md).)
 - **R19 Deterministic durable concurrency:** Concurrency over durable operations
-  MUST go through `Restate.all` / `race` / `any` (preserving journal order);
-  raw fiber concurrency over durable operations MUST be guarded/lint-flagged.
-  Sequential durable operations and pure in-handler concurrency need no special
-  handling. (A04, T04; [decisions/0005](./decisions/0005-deterministic-concurrency.md).)
+  MUST go through `Restate.all` / `race` / `any`, which take durable-op
+  descriptors, issue them in source order to obtain the `RestatePromise[]`, and
+  hand those to the SDK's `RestatePromise.all/race/any` (preserving journal
+  order); each `RestatePromise` MUST be awaited exactly once and transformed only
+  after awaiting (never `.then`-chained). Raw fiber concurrency over durable
+  operations MUST be guarded/lint-flagged. Sequential durable operations and pure
+  in-handler concurrency need no special handling. (A04, T04; [decisions/0005](./decisions/0005-deterministic-concurrency.md).)
 - **R20 Nondeterminism lint:** A lint rule MUST flag raw nondeterminism in
   handler bodies (`Date.now()`, `new Date()`, `Math.random()`,
-  `crypto.randomUUID()`, and un-journaled I/O outside `ctx.run`) as an advisory
-  backstop to the determinism layer. (A04; [decisions/0004](./decisions/0004-determinism-layer.md).)
+  `crypto.randomUUID()`, and un-journaled I/O) OUTSIDE `Restate.run` and the
+  journaled Clock/Random, as an advisory backstop to the determinism layer.
+  `crypto.randomUUID()` strictly inside a `Restate.run` closure is exempt (where
+  the journaled `Random` is unavailable). (A04; [decisions/0004](./decisions/0004-determinism-layer.md).)
 
 ### Must let Restate own retries
 
@@ -182,14 +222,19 @@ rationale for the hard-to-reverse choices lives in
 - **R23 One coherent trace:** With the OTel bridge enabled, a single invocation
   MUST produce one connected trace from the external caller through
   `ingress_invoke`, `invoke`, the attempt span, and the in-handler Effect spans,
-  by sharing a single `TracerProvider` and parenting Effect spans under the
-  attempt span. (Vision; [decisions/0007](./decisions/0007-otel-bridge.md).)
+  by sharing a single GLOBAL `TracerProvider` and a registered global context
+  manager (so the hook's `trace.getActiveSpan()` resolves the attempt span) and
+  parenting Effect spans under the attempt span. (Vision; [decisions/0007](./decisions/0007-otel-bridge.md).)
 - **R24 Exactly-once-on-replay emission:** Custom span events and metric
   increments MUST be emitted exactly once across replays; replay MUST NOT
-  double-emit. The attempt and `ctx.run` spans are owned by Restate's hook and
-  MUST NOT be re-emitted by the Effect layer. (A04; [decisions/0007](./decisions/0007-otel-bridge.md).)
+  double-emit. The PREFERRED mechanism is routing exactly-once telemetry through
+  `Restate.run` closures (which run once on real execution), not gating on the
+  `isReplaying` flag. The attempt and `ctx.run` spans are owned by Restate's hook
+  and MUST NOT be re-emitted by the Effect layer. (A04; [decisions/0007](./decisions/0007-otel-bridge.md).)
 - **R25 Replay signal exposed:** An `isReplaying` capability MUST be available to
-  gate side-effecting telemetry (and to user code). ([decisions/0007](./decisions/0007-otel-bridge.md).)
+  gate side-effecting telemetry (and for user code). It is sourced from an
+  unstable internal SDK symbol, so it is version-fragile and secondary to the
+  `Restate.run` mechanism (R24). ([decisions/0007](./decisions/0007-otel-bridge.md).)
 
 ### Must be testable without Docker
 
@@ -203,6 +248,26 @@ rationale for the hard-to-reverse choices lives in
 - **R28 Dedicated CI integration job:** CI MUST run the integration tests as a
   dedicated job with `restate-server` on `$PATH` (from `nix/restate.nix`, with
   `allowUnfree` scoped to `restate`). (A07; [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
+- **R26a Determinism-hunting modes:** The harness MUST expose typed `alwaysReplay`
+  (force replay at every suspension) and `disableRetries` options, mirroring the
+  testcontainers `RestateTestEnvironment`, as the primary tools for catching
+  RT0016 journal mismatches. They MUST be consumer-available, and the harness MUST
+  support multi-deployment registration so replay/upgrade across deployment
+  versions is testable (T07). (A07, A11; [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
+- **R26b Typed State inspect/seed:** The harness MUST expose a `stateOf(contract,
+  key)` proxy with `get`/`getAll`/`set`/`setAll`, key- and value-typed against the
+  contract's `state` block and serialized via `effectSerde` over the Admin API, as
+  stable public API. (A07; [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
+- **R26c Server-free contract testability:** The two core guarantees — the
+  error-transport round-trip (decode helper over a constructed `TerminalError`)
+  and OTel exactly-once emission (in-memory `SpanExporter`) — MUST be testable
+  WITHOUT a running server, so the bulk of correctness is covered by unit/contract
+  tests and only true end-to-end paths need the integration job. (Vision;
+  [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
+- **R26d Consumer AppLayer threading:** The harness `Layer` MUST accept the
+  consumer's `AppLayer`, so handler `R` is satisfied inside the spawned endpoint,
+  and expose the typed ingress client plus `stateOf` for use with
+  `@effect/vitest` `it.effect`. (A07; [decisions/0009](./decisions/0009-effect-native-testing-harness.md).)
 
 ### Must shut down gracefully
 
@@ -214,3 +279,50 @@ rationale for the hard-to-reverse choices lives in
   built once from a Layer; the per-invocation `ctx` and its capability markers
   MUST be provided per call, never placed in the long-lived application Layer.
   (A02.)
+
+### Must surface cancellation as interruption
+
+- **R31 Cancellation ↔ interruption:** A Restate cancellation MUST surface as an
+  Effect INTERRUPTION at the next await point, so `onInterrupt` / `acquireRelease`
+  finalizers and compensations run. An in-handler Effect interruption MUST NOT be
+  terminalized or blindly retried (it is not a domain failure). The attempt's
+  `Request.attemptCompletedSignal` (AbortSignal) MUST be bridged to
+  attempt-scoped finalization, with the caveat that the same logical invocation
+  may later get a new attempt. (A05; [decisions/0003](./decisions/0003-error-boundary-model.md).)
+
+### Must expose ingress idempotency, attach, and output
+
+- **R32 Ingress idempotency / attach / output:** The ingress client MUST accept an
+  idempotency key on `call` / `send` and MUST expose typed `attach` / `result`
+  (get-output by invocation id OR idempotency key) returning the typed success or
+  the DECODED terminal error. A Workflow's ingress surface MUST be typed
+  `submit` / `attach` / `output` with the `run` handler OMITTED from the direct
+  call surface. (Vision; [decisions/0008](./decisions/0008-typed-client-inference.md).)
+
+### Must expose awakeable external completion
+
+- **R33 Awakeable external completion:** `Awakeable.make` MUST return a typed
+  `{ id, promise }` (the id branded), serialized via the payload serde. Ingress
+  MUST expose typed `resolveAwakeable` / `rejectAwakeable`. Resolution MAY come
+  from an in-handler caller OR from ingress. (A03; [decisions/0011](./decisions/0011-restate-schema-annotations.md).)
+
+### Must expose the full durable-promise and option surface
+
+- **R34 Durable-promise lifecycle:** The Workflow durable-promise combinators MUST
+  cover `get` / `resolve` / `reject` / `peek` (non-blocking read). The workflow
+  contract DSL MUST distinguish signals (write-only shared handlers) from queries
+  (read-only shared handlers) so a query path that observes a `'rejected'` state
+  is reachable. (R06; [decisions/0002](./decisions/0002-typed-capability-contexts.md).)
+- **R35 Surfaced service/handler options:** The remaining SDK service/handler
+  options MUST be surfaced as TYPED options — `enableLazyState`,
+  `journalRetention`, `idempotencyRetention`, `inactivityTimeout`, `abortTimeout`,
+  `ingressPrivate`, `workflowRetention`, `explicitCancellation`. `ingressPrivate`
+  MUST be reflected in the ingress client TYPE so an ingress-private handler is
+  not callable from the ingress client. (A02.)
+
+### May reduce single-package ceremony
+
+- **R36 `define` convenience helper:** For the single-package case, a
+  `RestateService.define(name, specs, impl)` helper MAY combine `contract` and
+  `implement` in one expression, mitigating T03's ceremony without removing the
+  separable `contract` artifact. (T03; [decisions/0010](./decisions/0010-separated-contract-impl.md).)
