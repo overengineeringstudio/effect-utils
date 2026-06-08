@@ -9,7 +9,7 @@ import * as SchemaAST from 'effect/SchemaAST'
  * Mirrors `@overeng/notion-effect-client`'s `schema-helpers.ts` field-walk
  * pattern: field annotations live on `prop.type` (NOT the `PropertySignature`),
  * read by walking `ast.propertySignatures`. See
- * [decisions/0011](../docs/decisions/0011-restate-schema-annotations.md).
+ * [decisions/0011](../docs/vrs/decisions/0011-restate-schema-annotations.md).
  *
  * Phase 1 implements `terminal` / `retryable` (on a `Schema.TaggedError`) and
  * `serde` (on a value schema). Phase 2 wires `idempotencyKey` (on an input struct

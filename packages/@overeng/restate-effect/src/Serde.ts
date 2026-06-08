@@ -35,7 +35,7 @@ const decoder = new TextDecoder()
  *
  * `contentType` / `jsonSchema` default to `application/json` /
  * `JSONSchema.make`, overridable via the `Restate.serde` annotation
- * ([decisions/0011](../docs/decisions/0011-restate-schema-annotations.md)).
+ * ([decisions/0011](../docs/vrs/decisions/0011-restate-schema-annotations.md)).
  *
  * The `slot` controls decode-failure classification: an `ingress` decode
  * failure throws `TerminalError(400)`; an `internal` decode failure rethrows
