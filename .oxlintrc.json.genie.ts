@@ -30,8 +30,8 @@ export default oxlintConfig({
     // restate-effect: ban raw nondeterminism in SOURCE handler code (R20, decision
     // 0004). The journaled Clock/Random + explicit durable combinators are the
     // primary guarantee; this lint is an advisory backstop. Scoped to `src/` only —
-    // the follow-up test override re-disables it so test setup can use Date.now /
-    // random freely.
+    // the follow-up override re-disables it for test setup + the `./testing`
+    // harness so they can use Date.now / random freely.
     {
       files: ['**/restate-effect/src/**'],
       rules: { 'overeng/no-raw-nondeterminism': 'error' },
@@ -40,6 +40,9 @@ export default oxlintConfig({
       files: [
         '**/restate-effect/src/**/*.test.ts',
         '**/restate-effect/src/**/*.test.tsx',
+        // The `./testing` harness manages the native restate-server lifecycle
+        // (poll deadlines, ephemeral ports) — server infra, not handler code.
+        '**/restate-effect/src/testing.ts',
         '**/restate-effect/test/**',
       ],
       rules: { 'overeng/no-raw-nondeterminism': 'off' },

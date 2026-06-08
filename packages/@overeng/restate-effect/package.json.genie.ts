@@ -54,12 +54,14 @@ export default packageJson(
     exports: {
       '.': './src/mod.ts',
       './otel': './src/otel.ts',
+      './testing': './src/testing.ts',
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': './dist/mod.js',
         './otel': './dist/otel.js',
+        './testing': './dist/testing.js',
       },
     },
   } satisfies PackageJsonData,

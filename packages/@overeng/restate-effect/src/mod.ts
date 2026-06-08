@@ -38,7 +38,9 @@
  * - The `Restate.cancel` / `Restate.onCancellation` cancellation surface.
  * - The `overeng/no-raw-nondeterminism` lint enabled on `src/` handler code.
  *
- * The OTel bridge and the testing-harness subpaths remain for later phases.
+ * The OTel bridge (`./otel`, Phase 4) and the Docker-free testing harness
+ * (`./testing`, Phase 5) live behind their own opt-in subpath exports — not on
+ * this core `.` surface.
  */
 
 export { RestateError } from './RestateError.ts'
