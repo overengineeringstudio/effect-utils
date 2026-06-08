@@ -1,0 +1,29 @@
+# Full OpenTelemetry bridge in v1 (behind ./otel subpath)
+
+OTel is a first-class v1 feature. The binding wires Restate's
+`@restatedev/restate-sdk-opentelemetry` `openTelemetryHook` on every service and
+shares a single OTel `TracerProvider` with Effect (`@effect/opentelemetry`
+`NodeSdk.layer`). At handler entry it bridges the hook's attempt span into Effect
+as the parent (inbound `Tracer.withSpanContext`), so caller → `ingress_invoke` →
+`invoke` → `attempt` → Effect spans form one coherent trace. Custom span events /
+metric increments are gated on an `isReplaying` service so replay does not
+double-emit; `ctx.run` spans are owned by the hook (fire once on real execution).
+`Effect.withSpan` stays on boundary ops.
+
+This lives behind an `./otel` subpath export so `@effect/opentelemetry` +
+`@restatedev/restate-sdk-opentelemetry` are opt-in (the core stays dep-light).
+
+## Why
+
+- "Proper OTel support" is a headline requirement; disconnected server/handler
+  traces and replay double-counting would undermine it. The bridge recipe is
+  concrete and replay-aware.
+
+## Consequences
+
+- The hook owns attempt/run spans + replay suppression; the Effect layer must not
+  re-emit them.
+- An `isReplaying` capability is exposed (also useful to user code) to gate
+  side-effecting telemetry.
+
+Status: accepted
