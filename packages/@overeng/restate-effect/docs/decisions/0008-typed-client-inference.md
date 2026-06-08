@@ -34,11 +34,14 @@ public, indexable type.
 - Real generics care is required in `contract` and the client-view type
   derivation; the cost is contained inside the builder, keeping authoring +
   calling surfaces clean.
-- **Unproven**: a type-level test that `contract` → `call`/`send`/`implement`
-  inference works (and that the handler map does NOT erase to `Record<string,
-  …>`) must pass BEFORE 0008 is treated as settled. This is the Phase-1 gate,
-  paired with the [0002](./0002-typed-capability-contexts.md) capability-discharge
-  prototype.
+- **VALIDATED (DQ4)**: a type-level test proves `contract` → `call`/`send`/`implement`
+  inference recovers the EXACT per-handler I/O/error types against real `effect`
+  types (asserted with `Equals<>`): a phantom `Contract<Name, HandlerMap>` +
+  `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed accessors, with no
+  erasure to `Record<string, …>`. Wrong-input, unknown-method, and wrong-success
+  all error. The Phase-1 gate — paired with the
+  [0002](./0002-typed-capability-contexts.md) capability-discharge prototype —
+  PASSES.
 
 Status: accepted
 
@@ -46,3 +49,8 @@ _Revised after design review: `contract` must carry the handler map in a phantom
 type param (not erase to `Record`); made the `Record`-erasure case a normative
 R10 failure and added the Phase-1 type-level inference gate; named the POC's
 hand-declared `GreeterApi` as the anti-pattern being replaced._
+
+_Revised after empirical de-risk: the contract→client inference gate is VALIDATED
+(DQ4) — the phantom `Contract<Name, H>` + `const` params + indexed accessors
+recover exact types (proven with `Equals<>`) and reject wrong-input / unknown-method
+/ wrong-success; the Phase-1 gate passes._

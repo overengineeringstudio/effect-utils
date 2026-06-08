@@ -30,6 +30,13 @@ ObjectKey | …>`), so a nested `ctx.*` / `State.get` / `Restate.sleep` inside a
 `run` closure is a COMPILE error — mirroring Restate's own "no nested `ctx.*`
 inside `run`" rule.
 
+NORMATIVE: `materialize` / `implement` MUST take the application `R` (`AppR`) as an
+EXPLICIT type param — derived from the `Runtime<AppR>` they materialize against,
+never inferred from the handler bodies. Inferring `AppR` from the bodies makes the
+union over per-handler residual `R` over-infer, and the residual capability `R`
+then fails to collapse. With `AppR` explicit, each handler's residual is exactly
+its capability markers, which the per-kind `provideService` discharges.
+
 ## Why
 
 - A faithful binding should make Restate's illegal operations unrepresentable;
@@ -44,18 +51,22 @@ inside `run`" rule.
   provide exactly the right capability markers per construct / handler kind.
 - The authoring surface stays clean — users write capability-correct handlers and
   get compile errors on misuse.
-- **Unproven**: the per-handler marker discharge at `materialize` over a
+- **VALIDATED (DQ3)**: the per-handler marker discharge at `materialize` over a
   HETEROGENEOUS handler record (an `implement` mixing exclusive and shared
-  handlers) is not yet validated. The risk is that a `State.set` in a shared
-  handler becomes a whole-record error or erases to `any` instead of a
-  handler-LOCAL error. A Phase-1 type-level prototype gates this (prove the
-  mixed-record case yields a handler-local error). Fallback if it cannot be made
-  clean: distinct context Tags per handler kind (`ObjectExclusiveContext` vs
-  `ObjectSharedContext`), matching the SDK's nominal split, instead of composing
-  markers over one shared context.
+  handlers) COMPILES against real `effect` + `restate-sdk` types. A `State.set` in
+  a shared handler is a handler-LOCAL error (not a whole-record error, not erased
+  to `any`); per-kind `provideService` discharges each handler's residual `R` to
+  the app `R`. Flat markers (this decision) are kept. The distinct-context-Tags
+  fallback also compiles but is strictly worse — intersection `R` forces a
+  `getExclusive`/`getShared` split — so it is NOT needed.
 
 Status: accepted
 
 _Revised after design review: dropped the composite `WorkflowScope` marker
 (intersection semantics make it non-discharging); added `Restate.run` capability
 scrubbing and the Phase-1 heterogeneous-record discharge gate._
+
+_Revised after empirical de-risk: the heterogeneous-record discharge is VALIDATED
+(DQ3) — flat markers yield a handler-LOCAL error and the distinct-Tags fallback is
+not needed. Added the normative explicit-app-`R` discipline (`AppR` from
+`Runtime<AppR>`, never inferred from handler bodies)._
