@@ -14,12 +14,17 @@ The inbound bridge depends on a registered GLOBAL `TracerProvider` AND a global
 context manager (`AsyncLocalStorageContextManager` / AsyncHooks), so the hook's
 `trace.getActiveSpan()` resolves the attempt span at handler entry. Without the
 global context manager, `getActiveSpan()` returns `undefined` and
-`Tracer.withSpanContext` is fed nothing → orphaned Effect spans. The binding
-MUST therefore ensure the global is registered. `NodeSdk.layer` (`@0.63`)
-registers a real `TracerProvider`; the spec verifies whether it also installs the
-global context manager, and if not, the binding adds `Tracer.layerGlobal` /
-`trace.setGlobalTracerProvider` + an `AsyncLocalStorageContextManager`. This is a
-hard prerequisite, not a default to assume.
+`Tracer.withSpanContext` is fed nothing → orphaned Effect spans.
+
+This is a PROVEN-required step, not an assumption. Empirically (`@effect/opentelemetry`
+`@0.63`): `NodeSdk.layer` registers NEITHER a global `TracerProvider` NOR a global
+context manager (`getActiveSpan()` stays `undefined` until something registers them),
+and `Tracer.layerGlobal` only reads/sets the provider — it installs NO context
+manager, so it is INSUFFICIENT on its own. The `./otel` binding MUST therefore
+itself either call `provider.register()` (which installs both the global provider
+AND a default `AsyncLocalStorageContextManager`) OR
+`trace.setGlobalTracerProvider(provider)` + `context.setGlobalContextManager(new
+AsyncLocalStorageContextManager().enable())`. A hard prerequisite the binding owns.
 
 `isReplaying` is sourced from an UNSTABLE internal SDK symbol
 (`Symbol.for("@restatedev/restate-sdk/hooks.isProcessing")`) and is version-fragile.
@@ -51,3 +56,10 @@ _Revised after design review: made the global `TracerProvider` + global context
 manager registration an explicit prerequisite (otherwise `getActiveSpan()` is
 `undefined` → orphaned spans); flagged `isReplaying` as version-fragile and made
 `Restate.run` the preferred exactly-once seam._
+
+_Revised after empirical de-risk: the global-registration requirement is now
+PROVEN. `NodeSdk.layer@0.63` registers neither the global provider nor a context
+manager, and `Tracer.layerGlobal` only sets the provider (no context manager) —
+INSUFFICIENT. The `./otel` layer must itself `provider.register()` (or
+`trace.setGlobalTracerProvider` + `context.setGlobalContextManager(new
+AsyncLocalStorageContextManager().enable())`)._
