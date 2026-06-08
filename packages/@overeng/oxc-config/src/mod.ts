@@ -7,6 +7,7 @@
  * - named-args: Enforce functions have at most one parameter (use options objects)
  * - jsdoc-require-exports: Require JSDoc comments on type/wildcard exports
  * - no-external-imports: Disallow value imports from npm packages (for dependency-free modules)
+ * - no-raw-nondeterminism: Ban raw nondeterminism outside a journaled Restate.run closure
  *
  * It also re-exports selected rules from eslint-plugin-storybook under the
  * `overeng/storybook/*` namespace for enforcing Storybook best practices.
@@ -25,6 +26,7 @@ import { exportsFirstRule } from './exports-first.ts'
 import { jsdocRequireExportsRule } from './jsdoc-require-exports.ts'
 import { namedArgsRule } from './named-args.ts'
 import { noExternalImportsRule } from './no-external-imports.ts'
+import { noRawNondeterminismRule } from './no-raw-nondeterminism.ts'
 
 type Rules = {
   'explicit-boolean-compare': typeof explicitBooleanCompareRule
@@ -32,6 +34,7 @@ type Rules = {
   'jsdoc-require-exports': typeof jsdocRequireExportsRule
   'named-args': typeof namedArgsRule
   'no-external-imports': typeof noExternalImportsRule
+  'no-raw-nondeterminism': typeof noRawNondeterminismRule
   'storybook/meta-satisfies-type': (typeof storybookRules)['meta-satisfies-type']
   'storybook/default-exports': (typeof storybookRules)['default-exports']
   'storybook/story-exports': (typeof storybookRules)['story-exports']
@@ -48,6 +51,7 @@ const rules: Rules = {
   'jsdoc-require-exports': jsdocRequireExportsRule,
   'named-args': namedArgsRule,
   'no-external-imports': noExternalImportsRule,
+  'no-raw-nondeterminism': noRawNondeterminismRule,
 
   // Re-exported storybook rules (use as overeng/storybook/*)
   'storybook/meta-satisfies-type': storybookRules['meta-satisfies-type'],
