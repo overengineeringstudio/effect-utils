@@ -1,16 +1,22 @@
 /**
  * Docker-free native `restate-server` harness for integration tests.
  *
- * Spawns a real `restate-server` child against a throwaway base dir, waits for
- * the admin API to report healthy, and exposes the ingress/admin URLs plus a
- * `register(uri)` that POSTs an SDK deployment to the admin API. All output is
- * buffered so failures can dump diagnostics.
+ * Spawns a real `restate-server` child against a throwaway base dir on EPHEMERAL
+ * ports (R27 — parallel-safe; OS picks a free port via `:0`, then we read the
+ * actual bound port from the admin API), waits for the admin API to report
+ * healthy, and exposes the ingress/admin URLs plus a `register(uri)` that POSTs
+ * an SDK deployment to the admin API. All output is buffered so failures can
+ * dump diagnostics.
  *
  * The server binary is resolved from `RESTATE_SERVER_BIN` (built from
  * `nix/restate.nix`) and falls back to a `restate-server` on `$PATH`.
+ *
+ * Ephemeral ports are set per instance via `RESTATE_INGRESS__BIND_ADDRESS` /
+ * `RESTATE_ADMIN__BIND_ADDRESS` (verified, de-risk stream C).
  */
 import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -21,19 +27,34 @@ export interface RestateServerHandle {
   readonly shutdown: () => Promise<void>
 }
 
-const INGRESS_PORT = 8080
-const ADMIN_PORT = 9070
-
 /** Resolve whether a usable server binary is available without spawning it. */
 export const serverBin = (): string => process.env['RESTATE_SERVER_BIN'] ?? 'restate-server'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
+/** Ask the OS for a free TCP port (bind `:0`, read the port, release it). */
+const freePort = (): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const srv = createServer()
+    srv.unref()
+    srv.on('error', reject)
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address()
+      if (addr === null || typeof addr === 'string') {
+        srv.close(() => reject(new Error('could not allocate a free port')))
+        return
+      }
+      const port = addr.port
+      srv.close(() => resolve(port))
+    })
+  })
+
 export const startRestateServer = async (): Promise<RestateServerHandle> => {
   const baseDir = await mkdtemp(join(tmpdir(), 'restate-poc-'))
   const bin = serverBin()
-  const ingressUrl = `http://localhost:${INGRESS_PORT}`
-  const adminUrl = `http://localhost:${ADMIN_PORT}`
+  const [ingressPort, adminPort] = await Promise.all([freePort(), freePort()])
+  const ingressUrl = `http://localhost:${ingressPort}`
+  const adminUrl = `http://localhost:${adminPort}`
 
   let logs = ''
   const capture = (chunk: Buffer | string) => {
@@ -42,11 +63,12 @@ export const startRestateServer = async (): Promise<RestateServerHandle> => {
 
   let child: ChildProcess
   try {
-    /* `restate-server` takes the data dir via `--base-dir` (no env var); the
-     * admin API listens on :9070 and ingress on :8080 by default. */
     child = spawn(bin, ['--base-dir', baseDir], {
       env: {
         ...process.env,
+        /* Ephemeral bind addresses → parallel-safe instances (R27). */
+        RESTATE_INGRESS__BIND_ADDRESS: `0.0.0.0:${ingressPort}`,
+        RESTATE_ADMIN__BIND_ADDRESS: `0.0.0.0:${adminPort}`,
         /* Quiet but still capture warnings/errors for diagnostics. */
         RESTATE_LOG_FILTER: process.env['RESTATE_LOG_FILTER'] ?? 'warn',
       },

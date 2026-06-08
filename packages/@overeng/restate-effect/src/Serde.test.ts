@@ -2,7 +2,8 @@ import * as restate from '@restatedev/restate-sdk'
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { effectSerde } from './Serde.ts'
+import { Restate } from './Annotations.ts'
+import { effectSerde, ingressSerde, internalSerde } from './Serde.ts'
 
 describe('effectSerde', () => {
   it('round-trips a plain struct', () => {
@@ -16,8 +17,8 @@ describe('effectSerde', () => {
   })
 
   it('handles a transformed schema where encoded ≠ decoded', () => {
-    /* Date <-> ISO string: proves encode produces the wire (`I`) shape and
-     * decode reconstructs the rich (`A`) value. */
+    /* Date <-> ISO string: encode produces the wire (`I`) shape, decode
+     * reconstructs the rich (`A`) value. */
     const schema = Schema.Struct({ at: Schema.Date })
     const serde = effectSerde(schema)
     const value = { at: new Date('2026-06-08T12:00:00.000Z') }
@@ -39,8 +40,15 @@ describe('effectSerde', () => {
     expect(serde.deserialize(serde.serialize(value))).toStrictEqual(value)
   })
 
-  it('throws a TerminalError(400) on malformed input', () => {
-    const serde = effectSerde(Schema.Struct({ n: Schema.Number }))
+  it('honors the Restate.serde annotation contentType override', () => {
+    const schema = Restate.serde(Schema.Struct({ n: Schema.Number }), {
+      contentType: 'application/vnd.custom+json',
+    })
+    expect(effectSerde(schema).contentType).toBe('application/vnd.custom+json')
+  })
+
+  it('throws TerminalError(400) on a malformed INGRESS input', () => {
+    const serde = ingressSerde(Schema.Struct({ n: Schema.Number }))
     const badBytes = new TextEncoder().encode(JSON.stringify({ n: 'not-a-number' }))
     try {
       serde.deserialize(badBytes)
@@ -48,6 +56,18 @@ describe('effectSerde', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(restate.TerminalError)
       expect((error as restate.TerminalError).code).toBe(400)
+    }
+  })
+
+  it('rethrows a raw defect (not a TerminalError) on a malformed INTERNAL slot', () => {
+    /* A corrupt-journal decode failure must NOT become a 400 to the caller. */
+    const serde = internalSerde(Schema.Struct({ n: Schema.Number }))
+    const badBytes = new TextEncoder().encode(JSON.stringify({ n: 'not-a-number' }))
+    try {
+      serde.deserialize(badBytes)
+      expect.unreachable('expected a thrown defect')
+    } catch (error) {
+      expect(error).not.toBeInstanceOf(restate.TerminalError)
     }
   })
 })

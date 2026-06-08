@@ -25,7 +25,7 @@ _Avoid_: "saga" (a saga is a pattern, not a construct).
 
 **Handler**:
 A single invocable method on a Service / Virtual Object / Workflow. Whether it is
-*exclusive* or *shared* determines its **Context** capabilities.
+_exclusive_ or _shared_ determines its **Context** capabilities.
 
 ## Durable primitives
 
