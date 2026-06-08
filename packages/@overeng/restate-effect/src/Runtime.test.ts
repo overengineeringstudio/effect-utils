@@ -55,6 +55,28 @@ describe('determinism layer', () => {
     expect(result.b).toBe(1_700_000_002_000)
   })
 
+  it('Clock.sleep is preserved (in-handler Effect.sleep does NOT throw clock.sleep is not a function)', async () => {
+    /* REGRESSION (found under load): the journaled Clock was built via a
+     * `{ ...Clock.make(), … }` object spread, which DROPS `sleep` (it lives on
+     * the Clock prototype, not as an own-enumerable property). A bare in-handler
+     * `Effect.sleep` then crashed with `clock.sleep is not a function`, surfacing
+     * as a retry loop. The prototype-preserving construction keeps `sleep`. */
+    const ctx = fakeCtx({ dateBase: 1_700_000_000_000, randValues: [0.5] })
+    const frozenBase = await ctx.date.now()
+    const layer = determinismLayer(ctx, frozenBase)
+    /* The journaled Clock must expose a callable `sleep` (the non-durable
+     * in-process timer — NOT remapped to `ctx.sleep`, R18). */
+    const sleepIsFn = await Effect.runPromise(
+      Clock.clockWith((clock) => Effect.succeed(typeof clock.sleep)).pipe(Effect.provide(layer)),
+    )
+    expect(sleepIsFn).toBe('function')
+    /* And an actual in-handler `Effect.sleep` runs to completion without throwing. */
+    const completed = await Effect.runPromise(
+      Effect.sleep('1 millis').pipe(Effect.as('done' as const), Effect.provide(layer)),
+    )
+    expect(completed).toBe('done')
+  })
+
   it('Clock.unsafeCurrentTime* is FROZEN at the entry base (does not advance mid-attempt)', async () => {
     const ctx = fakeCtx({ dateBase: 1_700_000_000_000, randValues: [0.5] })
     const frozenBase = await ctx.date.now()

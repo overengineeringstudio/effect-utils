@@ -79,8 +79,10 @@ export type { RetentionOptions, SerdeOptions, ErrorClass } from './Annotations.t
  * annotations read at the error boundary / serde).
  */
 import * as Client from './Client.ts'
+import { reschedule } from './Reschedule.ts'
 import * as Ctx from './RestateContext.ts'
 import * as Runtime from './Runtime.ts'
+import { pollLoop } from './Scheduled.ts'
 
 export const Restate = {
   run: Ctx.run,
@@ -106,6 +108,20 @@ export const Restate = {
   objectSendClient: Client.sendObject,
   workflowClient: Client.callWorkflowSignal,
   workflowSubmit: Client.sendWorkflowRun,
+  /**
+   * Re-arm the CURRENT Virtual Object by a delayed self-send of one of its own
+   * handlers (#4, decision 0012): the typed durable self-send building block for a
+   * hand-rolled durable loop. Capability-gated to keyed handlers (`ObjectKey`).
+   */
+  reschedule,
+  /**
+   * Build a narrow durable recurring-loop Virtual Object (#4, decision 0012):
+   * `fixedDelay` scheduling, `skipToNext` default error policy, stop conditions,
+   * generation re-arm, and the safe re-arm-before-fallible-work ordering. Alias for
+   * {@link RestateScheduled.make}; per-cycle retry belongs inside a bounded
+   * `Restate.run` (there is no `retryCycle` knob).
+   */
+  pollLoop,
   /* Cancellation surface (R31, §12): cancel another invocation (cooperative — the
    * target surfaces an interruption so its finalizers run), and observe the
    * current invocation's cancellation (resolves only under `explicitCancellation`). */
@@ -140,6 +156,27 @@ export type {
 
 /** Typed, capability-gated State combinators bound to a contract's `state` block. */
 export const State = { for: Ctx.stateFor } as const
+
+/**
+ * The narrow durable recurring-loop primitive (#4, decision 0012):
+ * `RestateScheduled.make({ name, domainState, cycle, schedule, … })` materializes
+ * a Virtual Object that runs a chain of bounded delayed self-sends. `fixedDelay`
+ * scheduling, `OnCycleError` (default `skipToNext`), stop via
+ * `stopWhen`/`maxIterations`/in-cycle `{ stop: true }`, generation-token re-arm,
+ * and the safe re-arm-before-fallible-work ordering. `fixedRate`/`cron`/runtime
+ * reconfigure are deferred; per-cycle retry lives inside a bounded `Restate.run`.
+ */
+export { RestateScheduled, Schedule, OnCycleError } from './Scheduled.ts'
+export type {
+  Scheduled,
+  ScheduledConfig,
+  CycleEffect,
+  LoopStatusTag,
+  StatusOutput as ScheduledStatus,
+} from './Scheduled.ts'
+
+/** The typed durable self-send building block (#4, decision 0012). */
+export { reschedule } from './Reschedule.ts'
 
 /**
  * Typed, capability-gated Workflow durable-promise combinators bound to a payload
