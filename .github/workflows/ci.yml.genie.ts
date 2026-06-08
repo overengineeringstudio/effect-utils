@@ -668,6 +668,40 @@ const extraJobs: Record<string, any> = {
       failureReminderStep,
     ],
   },
+  /**
+   * Integration tests for restate-effect against a native restate-server.
+   * The server is provisioned via nix/restate.nix and resolved through
+   * RESTATE_SERVER_BIN inside the devenv shell — no secrets required. Runs as a
+   * dedicated, serialized lane (its own job) because the suite boots a real
+   * server child process; the package's ts/lint/unit are already covered by the
+   * aggregate jobs above.
+   */
+  'test-integration-restate': {
+    if: normalCiIf,
+    concurrency: {
+      group:
+        'test-integration-restate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+      'cancel-in-progress': true,
+    },
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': 60,
+    defaults: bashShellDefaults,
+    env: standardCIEnv,
+    steps: [
+      ...baseSteps,
+      {
+        name: 'Restate integration tests',
+        run: runDevenvTasksBefore('test:restate-integration'),
+      },
+      savePnpmStateStep(),
+      nixDiagnosticsSummaryStep,
+      nixDiagnosticsArtifactStep(),
+      failureReminderStep,
+    ],
+  },
 }
 
 const deployJobs: Record<string, any> = {
