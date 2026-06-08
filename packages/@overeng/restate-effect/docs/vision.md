@@ -76,10 +76,12 @@ discourages writing the integration tests durable handlers most need.
   (write state only in an exclusive handler; resolve a durable promise only in a
   workflow `run`) are encoded in the type system, so misuse is a compile error.
   (Problem 1, Problem 2)
-- **Determinism is correct by construction.** Inside a handler, time, randomness,
-  and sleep are backed by the journaled context, so idiomatic Effect time
-  combinators become durable waits automatically; raw nondeterminism is caught
-  by lint as a backstop. (Problem 3)
+- **Determinism is correct by construction.** Inside a handler, time and
+  randomness are backed by the journaled context, so idiomatic Effect time/random
+  reads are replay-safe; durable waits are explicit, named combinators
+  (`Restate.sleep` / `Restate.timeout` / `Restate.race`) rather than a hidden
+  remap of `Effect.sleep`; raw nondeterminism is caught by lint as a backstop.
+  (Problem 3)
 - **The error channel means one thing.** A handler's typed error channel carries
   only declared business failures, which cross the wire as terminal errors and
   decode back into the original tagged error on the caller side; infrastructure
@@ -121,9 +123,11 @@ discourages writing the integration tests durable handlers most need.
    hand-declared handler shape), validates its arguments, returns the typed
    success, and surfaces typed business errors that the caller matches with
    `catchTag`.
-4. Idiomatic Effect time combinators (`Effect.sleep`, `Effect.timeout`) inside a
-   handler become Restate-durable timers, and a raw `Date.now()` / `Math.random()`
-   in a handler body is flagged by lint.
+4. Inside a handler, time and randomness reads are journaled and replay-safe;
+   durable waits are written as explicit combinators (`Restate.sleep`,
+   `Restate.timeout`, `Restate.race`) that become Restate-durable timers; and a
+   raw `Date.now()` / `Math.random()` in a handler body (outside `Restate.run`) is
+   flagged by lint.
 5. A single invocation — external caller through ingress, invoke, attempt, and
    in-handler Effect spans — forms one coherent OpenTelemetry trace, with custom
    span events and metric increments emitted exactly once across replays.
