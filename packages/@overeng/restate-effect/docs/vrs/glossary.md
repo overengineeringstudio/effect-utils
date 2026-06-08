@@ -73,6 +73,38 @@ A caller-supplied key that dedupes an invocation across retries/calls.
 An invocation pausing (holding zero resources) while awaiting a durable
 timer/promise/call, later resumed via **Replay**. Not an error.
 
+## Scheduling
+
+**Reschedule** (`Restate.reschedule`):
+A typed durable SELF-SEND: a keyed handler re-arms one of its OWN handlers via a
+delayed one-way send (read its key from `Restate.key`, send with a `delayMillis`).
+The building block for a durable daemon. Journaled → idempotent under **Replay**.
+Capability-gated to keyed handlers (`ObjectKey`).
+_Avoid_: "self-call" (it is a one-way send, never a blocking call).
+
+**Poll Loop / Scheduled** (`RestateScheduled.make` / `Restate.pollLoop`):
+A narrow durable recurring-loop primitive: a **Virtual Object** whose internal
+`cycle` handler runs one **Cycle** of the user's work, then re-arms via
+**Reschedule**. Owns the schedule, the stop condition, the per-cycle error policy,
+overlap prevention (the per-key write lock), and a `start`/`stop`/`status` control
+surface. v1 schedules `fixedDelay` only.
+
+**Cycle**:
+One bounded iteration of a **Poll Loop** — the user's `cycle` effect for one tick.
+Each cycle is a fresh, bounded, COMPLETED invocation (its **Journal** does not grow
+with the number of cycles). May end the loop by returning `{ stop: true }`.
+
+**Generation token**:
+A monotonic counter on a **Poll Loop**, bumped on every `start`, carried by each
+delayed re-arm send; a landing **Cycle** whose generation is stale (or whose status
+is not `running`) no-ops. How `stop`/restart invalidate an in-flight delayed timer
+WITHOUT a timer handle.
+
+**fixedDelay**:
+A **Poll Loop** schedule where the gap between the END of one **Cycle** and the
+START of the next is exactly `delayMillis` (never overlaps, never catches up). The
+v1 schedule shape; `fixedRate`/`cron` are deferred.
+
 ## Deployment
 
 **Deployment**:
