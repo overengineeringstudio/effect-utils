@@ -34,11 +34,18 @@ import { RestateContext } from './RestateContext.ts'
  */
 const makeJournaledClock = (ctx: restate.Context, frozenBaseMillis: number): Clock.Clock => {
   const millisToNanos = (millis: number): bigint => BigInt(Math.trunc(millis)) * 1_000_000n
-  /* Spread the canonical default Clock so the nominal `[ClockTypeId]` brand and
-   * its `sleep` (the non-durable in-process timer — NOT remapped to `ctx.sleep`,
-   * R18) are preserved; override only the time reads. */
-  return {
-    ...Clock.make(),
+  const base = Clock.make()
+  /* PROTOTYPE-PRESERVING clone: `Clock.make()` puts `sleep` and the sync
+   * `unsafeCurrentTime*` on the Clock PROTOTYPE (only the async `currentTime*`
+   * Effects are own-enumerable). A plain `{ ...Clock.make(), … }` object spread
+   * therefore DROPS `sleep` — an in-handler `Effect.sleep` would then throw
+   * `clock.sleep is not a function` (it surfaces as a retry loop under load).
+   * We clone onto an object whose prototype IS the base Clock's prototype, so
+   * `sleep` (the non-durable in-process timer — NOT remapped to `ctx.sleep`,
+   * R18) and the `[ClockTypeId]` brand survive, then override only the time
+   * reads: the sync `unsafeCurrentTime*` from the per-attempt frozen base, the
+   * async `currentTime*` from the journaled `ctx.date`. */
+  return Object.assign(Object.create(Object.getPrototypeOf(base)) as Clock.Clock, base, {
     unsafeCurrentTimeMillis: () => frozenBaseMillis,
     unsafeCurrentTimeNanos: () => millisToNanos(frozenBaseMillis),
     currentTimeMillis: Effect.promise(() => ctx.date.now()),
@@ -46,7 +53,7 @@ const makeJournaledClock = (ctx: restate.Context, frozenBaseMillis: number): Clo
       Effect.promise(() => ctx.date.now()),
       millisToNanos,
     ),
-  }
+  })
 }
 
 /**

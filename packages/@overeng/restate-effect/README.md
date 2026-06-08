@@ -407,6 +407,80 @@ const payment = yield * promise // durably suspends until resolved
 yield * ingressResolveAwakeable(PaymentResult, id, { token: 'ok' })
 ```
 
+## Self-reschedule and durable scheduling
+
+A durable daemon — a poller or watcher that wakes periodically, forever — is NOT a
+held-open `for(;;){ poll(); sleep() }`. The idiomatic Restate shape is a chain of
+**delayed self-sends**: each invocation does ONE bounded unit of work, re-arms
+itself via a delayed self-send, and RETURNS. Each invocation therefore has a
+bounded journal (it does not grow with the number of cycles), the per-key write
+lock is released between cycles, and crash/restart durability is free — the pending
+delayed timer survives a server restart and re-fires.
+
+**The p99 latency rule.** A durable daemon uses a one-way `send` + a delayed
+self-send, NEVER a blocking `call`. A blocking ingress `call` into a per-key
+Virtual Object serializes behind that key's write lock and stacks on top of the
+platform's retry backoff; under load this was measured at an 18.4s p99. The
+self-send shape returns immediately after enqueuing the next cycle.
+
+Two levels, both in [`examples/12-self-reschedule.ts`](./examples/12-self-reschedule.ts):
+
+**The narrow primitive — `RestateScheduled.make` (a.k.a. `Restate.pollLoop`).** You
+write ONE `cycle` effect; the primitive materializes a Virtual Object that owns the
+whole recurring lifecycle (schedule, stop condition, error policy, overlap
+prevention, and a `start`/`stop`/`status` control surface):
+
+```ts
+import { Effect, Schema } from 'effect'
+import { Restate, RestateScheduled, State } from '@overeng/restate-effect'
+
+const WatcherState = { cursor: Schema.Number, itemsSeen: Schema.Number } as const
+const Watcher = State.for(WatcherState)
+
+const NotionWatcher = RestateScheduled.make<typeof WatcherState>({
+  name: 'notion-watcher',
+  domainState: WatcherState,
+  schedule: RestateScheduled.Schedule.fixedDelay(200), // 200ms gap between cycles
+  onCycleError: RestateScheduled.OnCycleError.skipToNext(), // a bad cycle never stalls cadence
+  cycle: ({ key }) =>
+    Effect.gen(function* () {
+      const cursor = (yield* Watcher.get('cursor')) ?? 0
+      // per-cycle retry lives INSIDE a BOUNDED Restate.run (there is no retryCycle knob)
+      const page = yield* Restate.run(`poll(${key}@${cursor})`, pollOnePage(cursor), {
+        maxRetryAttempts: 3,
+      })
+      yield* Watcher.set('cursor', page.nextCursor)
+      return page.done ? { stop: true } : { stop: false } // data-driven stop
+    }),
+})
+// drive it from ingress: objectCall(NotionWatcher.contract, key, 'start' | 'stop' | 'status', …)
+```
+
+- `schedule`: `Schedule.fixedDelay(ms)` only in v1 (`fixedRate`/`cron` deferred).
+- `onCycleError`: `skipToNext` (default — swallow a failing cycle, keep cadence) or
+  `stopLoop` (stop the loop, status `failed`).
+- Stop: data-driven `{ stop: true }`, count-driven `stopWhen` / `maxIterations`, or
+  external `stop` — all end as status `completed` / `stopped`.
+- `start` re-arms under a fresh **generation token**, so a stale in-flight timer
+  (from before a `stop`/restart) no-ops when it lands — no overlapping chains.
+- There is intentionally **no `retryCycle` knob**: per-cycle durable retry belongs
+  inside a BOUNDED `Restate.run`. An unbounded `Restate.run` retries forever and
+  wedges the per-key write lock so `start`/`stop` block.
+
+**The building block — `Restate.reschedule`.** The typed delayed self-send the
+primitive is built on, for a hand-rolled loop that does not fit the primitive. The
+author passes the lexical `self` contract (the SDK has no runtime self-reflection);
+the send targets `Restate.key`, so it stays on the same single-writer instance:
+
+```ts
+// inside a keyed handler — re-arm one of this Object's own handlers after a delay:
+yield * Restate.reschedule({ contract: Self, method: 'cycle', input, delayMillis: 200 })
+```
+
+Re-arm BEFORE the fallible work (advance the cursor + reschedule first, both
+journaled, THEN poll), so a re-arm journaled before a failure is still delivered
+and the loop survives a failing cycle.
+
 ## Cancellation and lifecycle
 
 When an invocation is cancelled (via `Restate.cancel`, ingress, or the admin API),
@@ -683,6 +757,9 @@ unit-tested directly against the `Schema`/combinators. -->
 | `Restate.{run, sleep, timeout, all, race, any}`                                                                                                                                                                 | durable steps, timers, and deterministic concurrency                                   |
 | `Restate.{runDescriptor, sleepDescriptor}`                                                                                                                                                                      | descriptors for `all`/`race`/`any`/`timeout`                                           |
 | `Restate.{call, send, objectClient, objectSendClient, workflowClient, workflowSubmit}`                                                                                                                          | in-handler service-to-service clients                                                  |
+| `Restate.reschedule({ contract, method, input, delayMillis })`                                                                                                                                                  | typed durable self-send (re-arm a keyed handler after a delay)                         |
+| `RestateScheduled.make(config)` / `Restate.pollLoop`                                                                                                                                                            | a narrow durable recurring-loop Virtual Object (`fixedDelay`, `start`/`stop`/`status`) |
+| `RestateScheduled.{Schedule, OnCycleError}`                                                                                                                                                                     | the loop's schedule (`fixedDelay`) + error-policy (`skipToNext`/`stopLoop`) builders   |
 | `Restate.key`                                                                                                                                                                                                   | the current Object/Workflow invocation key (`ObjectKey`)                               |
 | `Restate.{cancel, onCancellation}`                                                                                                                                                                              | cancel another invocation; observe this one's cancellation                             |
 | `Restate.{terminal, retryable, serde, idempotencyKey, retention, sensitive, redacted}`                                                                                                                          | Schema annotations                                                                     |
