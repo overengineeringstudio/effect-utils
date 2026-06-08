@@ -24,6 +24,7 @@ export const internalPackages = [
   'notion-effect-schema',
   'notion-react',
   'pty-effect',
+  'restate-effect',
   'tui-core',
   'tui-react',
   'tui-stories',

@@ -121,6 +121,7 @@ let
     "packages/@overeng/oxc-config"
     "packages/@overeng/pty-effect"
     "packages/@overeng/react-inspector"
+    "packages/@overeng/restate-effect"
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
     "packages/@overeng/tui-stories"
@@ -196,6 +197,10 @@ let
     {
       path = "packages/@overeng/pty-effect";
       name = "pty-effect";
+    }
+    {
+      path = "packages/@overeng/restate-effect";
+      name = "restate-effect";
     }
     {
       path = "packages/@overeng/tui-core";

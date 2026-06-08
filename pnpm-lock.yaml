@@ -1331,6 +1331,34 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
+  packages/@overeng/restate-effect:
+    dependencies:
+      '@restatedev/restate-sdk':
+        specifier: 1.14.5
+        version: 1.14.5
+      '@restatedev/restate-sdk-clients':
+        specifier: 1.14.5
+        version: 1.14.5
+    devDependencies:
+      '@effect/vitest':
+        specifier: 0.29.0
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3))
+      '@overeng/utils-dev':
+        specifier: workspace:^
+        version: link:../utils-dev
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      effect:
+        specifier: 3.21.2
+        version: 3.21.2
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+
   packages/@overeng/tui-core:
     devDependencies:
       '@types/node':
@@ -2672,6 +2700,15 @@ packages:
     resolution: {integrity: sha512-gp6xo/s2lX54AlTjOiqwDnxA7UW79BNvI9dB9pr3LZTzRKCd1ZA+ZbgKw/ReIiWuvvVw/8QFJpnqeeFyLocMcQ==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
+
+  '@restatedev/restate-sdk-clients@1.14.5':
+    resolution: {integrity: sha512-uVcjpiMr+7JEMNL3ZeVYxR4UbfoxmamgiOhwdKB42rBpESg0uBtgOgg6CKdeF1sJKEQusUwWE8rm6q+jw+Sb5A==}
+
+  '@restatedev/restate-sdk-core@1.14.5':
+    resolution: {integrity: sha512-MvlRhyFhnNMDLFRz2t5TbhebIkIAI8oN2reRgoAj9OMADK0xn7mOuBbWHwGF+8MsFfBXmV1HrNqpAXltEeNzqg==}
+
+  '@restatedev/restate-sdk@1.14.5':
+    resolution: {integrity: sha512-RvuJU/Ji9MSgLkRBN1pLeGm/AdrpFl380SZZ0sPk/NWC9jpZyX2fntJx7NbIqfQ4PfoTm1/zPH8/gn7AQGuSaQ==}
 
   '@rolldown/pluginutils@1.0.0-beta.40':
     resolution: {integrity: sha512-s3GeJKSQOwBlzdUrj4ISjJj5SfSh+aqn0wjOar4Bx95iV1ETI7F6S/5hLcfAxZ9kXDcyrAkxPlqmd1ZITttf+w==}
@@ -6103,6 +6140,16 @@ snapshots:
   '@react-types/shared@3.34.0(react@19.2.3)':
     dependencies:
       react: 19.2.3
+
+  '@restatedev/restate-sdk-clients@1.14.5':
+    dependencies:
+      '@restatedev/restate-sdk-core': 1.14.5
+
+  '@restatedev/restate-sdk-core@1.14.5': {}
+
+  '@restatedev/restate-sdk@1.14.5':
+    dependencies:
+      '@restatedev/restate-sdk-core': 1.14.5
 
   '@rolldown/pluginutils@1.0.0-beta.40': {}
 
