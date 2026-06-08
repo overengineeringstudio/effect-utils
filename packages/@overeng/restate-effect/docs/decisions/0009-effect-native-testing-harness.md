@@ -3,9 +3,10 @@
 The binding exports a testing harness (subpath `./testing`) as a scoped `Layer`
 that boots a real native `restate-server` (no Docker) on ephemeral ports + an
 isolated base dir, registers the deployment, and exposes the typed ingress client
-+ state inspection. Consumers use it to integration-test their own Restate
-services. This is the Docker-free, Effect-native counterpart to Restate's
-`@restatedev/restate-sdk-testcontainers`.
+
+- state inspection. Consumers use it to integration-test their own Restate
+  services. This is the Docker-free, Effect-native counterpart to Restate's
+  `@restatedev/restate-sdk-testcontainers`.
 
 CI runs the integration tests as a dedicated job (nixpkgs `allowUnfreePredicate`
 scoped to `restate`, `restate-server` from `nix/restate.nix` on `$PATH`,
