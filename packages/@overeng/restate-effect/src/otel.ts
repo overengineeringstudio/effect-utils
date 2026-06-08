@@ -33,10 +33,13 @@
  * reads a version-fragile internal SDK flag — prefer `Restate.run`.
  */
 
+import * as EffectMetrics from '@effect/opentelemetry/Metrics'
 import * as Resource from '@effect/opentelemetry/Resource'
 import * as EffectTracer from '@effect/opentelemetry/Tracer'
-import { trace } from '@opentelemetry/api'
+import { type Span, trace } from '@opentelemetry/api'
 import { resourceFromAttributes } from '@opentelemetry/resources'
+import type { MetricReader, PushMetricExporter } from '@opentelemetry/sdk-metrics'
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import type { SpanExporter, SpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
@@ -47,7 +50,13 @@ import {
 } from '@restatedev/restate-sdk-opentelemetry'
 import { Effect, Layer, type Scope } from 'effect'
 
-import type { EndpointHooks, EndpointOptions, HandlerWrap } from './Endpoint.ts'
+import type {
+  BoundaryObserver,
+  BoundaryOutcome,
+  EndpointHooks,
+  EndpointOptions,
+  HandlerWrap,
+} from './Endpoint.ts'
 import { RestateContext } from './RestateContext.ts'
 
 /** The OTel resource identity shared by the provider and the Effect tracer. */
@@ -67,6 +76,16 @@ export interface OtelLayerConfig {
    */
   readonly spanProcessor?: SpanProcessor
   readonly exporter?: SpanExporter
+  /**
+   * How Effect `Metric`s export (the auto baseline + user metrics, decision 0014).
+   * Provide a ready `metricReader` (e.g. a `PeriodicExportingMetricReader` over an
+   * OTLP metric exporter, or an `InMemoryMetricExporter`-backed reader in a test)
+   * OR a bare `metricExporter` (wrapped in a `PeriodicExportingMetricReader`). When
+   * NEITHER is given, NO `MeterProvider` is registered — traces still work and the
+   * Effect metrics stay in-memory (the metrics path is opt-in within `./otel`).
+   */
+  readonly metricReader?: MetricReader
+  readonly metricExporter?: PushMetricExporter
 }
 
 const toOtelResource = (config: OtelResourceConfig) =>
@@ -84,6 +103,20 @@ const resolveProcessor = (config: OtelLayerConfig): SpanProcessor => {
   throw new Error(
     'RestateOtel.layer: provide either `spanProcessor` or `exporter` to export spans.',
   )
+}
+
+/**
+ * Resolve the optional metric reader (decision 0014). A ready `metricReader` wins;
+ * otherwise a bare `metricExporter` is wrapped in a `PeriodicExportingMetricReader`.
+ * `undefined` when neither is configured — the metrics path is then OFF (traces
+ * only), so adopting metrics is a purely additive config change.
+ */
+const resolveMetricReader = (config: OtelLayerConfig): MetricReader | undefined => {
+  if (config.metricReader !== undefined) return config.metricReader
+  if (config.metricExporter !== undefined) {
+    return new PeriodicExportingMetricReader({ exporter: config.metricExporter })
+  }
+  return undefined
 }
 
 /**
@@ -119,18 +152,26 @@ const acquireProvider = (
  * The shared-provider scoped `Layer`. Builds + globally registers ONE
  * `TracerProvider` (+ global context manager) and binds Effect's tracer to that
  * SAME provider, so `Effect.withSpan` and the Restate hook emit into one trace.
- * Built once per scope (`Layer` memoizes the acquire), so there is no double
- * `register()`.
+ * When a metric reader is configured it ALSO binds Effect's `Metric` to an OTel
+ * `MeterProvider` SHARING the SAME `Resource` (decision 0014) — so the auto
+ * baseline + user metrics export with the same `service.name`/identity as the
+ * traces. The metric layer is scoped (`@effect/opentelemetry`'s `Metrics.layer`
+ * registers the producer + shuts the reader down on teardown). Built once per
+ * scope (`Layer` memoizes the acquire), so there is no double `register()`.
  */
 const sharedLayer = (config: OtelLayerConfig): Layer.Layer<never, never, never> =>
   Layer.unwrapScoped(
     acquireProvider(config).pipe(
-      Effect.map((provider) =>
-        EffectTracer.layer.pipe(
+      Effect.map((provider) => {
+        const resourceLayer = Resource.layer(config.resource)
+        const tracerLayer = EffectTracer.layer.pipe(
           Layer.provide(Layer.succeed(EffectTracer.OtelTracerProvider, provider)),
-          Layer.provide(Resource.layer(config.resource)),
-        ),
-      ),
+        )
+        const metricReader = resolveMetricReader(config)
+        const metricsLayer =
+          metricReader !== undefined ? EffectMetrics.layer(() => metricReader) : Layer.empty
+        return Layer.merge(tracerLayer, metricsLayer).pipe(Layer.provideMerge(resourceLayer))
+      }),
     ),
   )
 
@@ -171,16 +212,73 @@ const inboundBridge: HandlerWrap = <A, E, R>(effect: Effect.Effect<A, E, R>) => 
   return spanContext !== undefined ? EffectTracer.withSpanContext(spanContext)(effect) : effect
 }
 
+/* Map a boundary failure outcome to the `restate.error.class` span label (the
+ * operator slices error rates on this). `suspended`/`defect` are not stamped (a
+ * suspension is not a failure; a defect leaves the hook to record the exception). */
+const errorClassOf = (
+  outcome: BoundaryOutcome,
+): 'terminal' | 'retryable' | 'cancelled' | undefined => {
+  switch (outcome._tag) {
+    case 'terminal':
+      return 'terminal'
+    case 'retryable':
+      return 'retryable'
+    case 'cancelled':
+      return 'cancelled'
+    default:
+      return undefined
+  }
+}
+
 /**
- * Compose the OTel hook + inbound bridge onto a core `EndpointOptions`. The
- * resulting options serve every service with the `openTelemetryHook` attached
- * and every handler's Effect program reparented under the attempt span. Pair
- * with {@link RestateOtel.layer} provided over the application Layer (the layer
- * registers the shared global provider the hook + bridge read).
+ * The boundary observer (R23, §10, decision 0014) as a core {@link BoundaryObserver}.
+ * At handler entry it captures the hook's ACTIVE attempt span and AUTO-stamps the
+ * business identity an operator slices on in Tempo/Grafana:
+ *
+ * - `restate.object.key` (the Object/Workflow key; omitted for plain Services),
+ * - `restate.service` (the construct name), `restate.handler` (the handler name).
+ *
+ * On a FAILURE outcome it ALSO stamps the classification the boundary already read
+ * at `classifyOutcome` — `restate.error.tag` (the domain error `_tag`) and
+ * `restate.error.class` (`terminal` | `retryable` | `cancelled`) — so error-rate
+ * panels can split by classification WITHOUT re-deriving it. Stamps onto the
+ * attempt span directly (NOT the Effect span), so the attributes ride the span the
+ * hook owns. A no-op when no span is active (the hook is not installed).
+ */
+const boundaryObserver: BoundaryObserver = (info) => {
+  /* Read the active attempt span ONCE at entry (the hook set it active via
+   * `context.with` around this fn). The `outcome` callback closes over it so it
+   * stamps the SAME span at exit. */
+  const span: Span | undefined = trace.getActiveSpan()
+  if (span === undefined) return () => {}
+  span.setAttribute('restate.service', info.service)
+  span.setAttribute('restate.handler', info.handler)
+  if (info.key !== undefined) span.setAttribute('restate.object.key', info.key)
+  return (outcome) => {
+    const errorClass = errorClassOf(outcome)
+    if (errorClass !== undefined) span.setAttribute('restate.error.class', errorClass)
+    if (
+      (outcome._tag === 'terminal' || outcome._tag === 'retryable') &&
+      outcome.errorTag !== undefined
+    ) {
+      span.setAttribute('restate.error.tag', outcome.errorTag)
+    }
+  }
+}
+
+/**
+ * Compose the OTel hook + inbound bridge + boundary observer onto a core
+ * `EndpointOptions`. The resulting options serve every service with the
+ * `openTelemetryHook` attached, every handler's Effect program reparented under
+ * the attempt span, and the boundary span stamped with identity + error-class
+ * attributes (decision 0014). Pair with {@link RestateOtel.layer} provided over
+ * the application Layer (the layer registers the shared global provider the hook +
+ * bridge read, and — when a metric reader is configured — the shared meter the
+ * auto baseline metrics export through).
  *
  * ```ts
  * serve(RestateOtel.withOtel({ services: [GreeterLive], port: 9080 })).pipe(
- *   Effect.provide(RestateOtel.layer({ resource: { serviceName: 'greeter' }, exporter })),
+ *   Effect.provide(RestateOtel.layer({ resource: { serviceName: 'greeter' }, exporter, metricExporter })),
  *   Effect.provide(AppLayer),
  *   NodeRuntime.runMain,
  * )
@@ -193,19 +291,38 @@ const withOtel = <AppR>(
   ...opts,
   hooks: [...(opts.hooks ?? []), hook(hookOptions)],
   inboundBridge,
+  boundaryObserver,
 })
 
 /**
- * The OTel bridge surface. `layer` registers the shared global provider; `hook`
- * + `inboundBridge` are the per-service / per-invocation seams; `withOtel`
- * composes them onto `EndpointOptions`.
+ * The OTel bridge surface. `layer` registers the shared global provider (+ the
+ * shared meter when a metric reader is configured); `hook` + `inboundBridge` are
+ * the per-service / per-invocation TRACE seams; `boundaryObserver` is the
+ * per-invocation span-attribute stamper (identity + error class, decision 0014);
+ * `withOtel` composes them all onto `EndpointOptions`.
  */
 export const RestateOtel = {
   layer: sharedLayer,
   hook,
   inboundBridge,
+  boundaryObserver,
   withOtel,
 } as const
+
+/**
+ * The auto baseline metric definitions (decision 0014), re-exported from `./otel`
+ * for discoverability — they are Effect `Metric`s defined in the core (no otel
+ * import) and bound to the OTel meter by {@link RestateOtel.layer}. `annotateSpan`
+ * (the user span-attribute combinator) is exposed on the core `Restate` namespace.
+ */
+export {
+  invocationsTotal,
+  invocationDurationMs,
+  attemptsTotal,
+  durableStepsTotal,
+  awakeableWaitMs,
+  pollLoopCyclesTotal,
+} from './Metrics.ts'
 
 /**
  * Whether the current invocation is REPLAYING journaled work (R25, §10).

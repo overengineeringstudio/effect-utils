@@ -16,10 +16,13 @@ const peerDepNames = ['effect'] as const
 /* OTel deps are used ONLY by the `./otel` subpath — the base `.` export must not
  * pull them. They are PEERS (a consumer that imports `./otel` provides them) and
  * also dev deps (so the package builds + the OTel test runs locally). This keeps
- * the core dependency-light (decision 0007, spec §10). */
+ * the core dependency-light (decision 0007, spec §10). `@opentelemetry/sdk-metrics`
+ * is a peer because the metrics path (decision 0014) imports its
+ * `PeriodicExportingMetricReader` / `MetricReader` types directly from `./otel`. */
 const otelPeerDepNames = [
   '@effect/opentelemetry',
   '@opentelemetry/api',
+  '@opentelemetry/sdk-metrics',
   '@restatedev/restate-sdk-opentelemetry',
 ] as const
 

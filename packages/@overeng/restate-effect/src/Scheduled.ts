@@ -30,9 +30,10 @@
 import { Cause, Effect, Schema } from 'effect'
 
 import type { AnyImplementation } from './Endpoint.ts'
+import { emitPollLoopCycle } from './Metrics.ts'
 import { reschedule } from './Reschedule.ts'
-import type { ObjectKey, RestateContext, StateRead, StateWrite } from './RestateContext.ts'
-import { objectKey, stateFor } from './RestateContext.ts'
+import type { ObjectKey, StateRead, StateWrite } from './RestateContext.ts'
+import { objectKey, RestateContext, stateFor } from './RestateContext.ts'
 import type { RestateError } from './RestateError.ts'
 import { RestateObject } from './Service.ts'
 
@@ -352,6 +353,17 @@ export const RestateScheduled = {
                   ),
             ),
           )
+
+          /* AUTO baseline metric (decision 0014): one cycle executed, by loop name
+           * and cycle outcome (`ok` | `error` | `stopped`). Gated on non-replay so
+           * a replayed cycle is not re-counted. A data/count-driven stop is folded
+           * into `stopped`; `skipped`/`failed` both read as `error`. */
+          const ctx = yield* RestateContext
+          const cycleStops =
+            outcome._tag === 'ok' && (outcome.stop === true || stopByCount(nextIteration))
+          const cycleMetricOutcome: 'ok' | 'error' | 'stopped' =
+            outcome._tag === 'ok' ? (cycleStops ? 'stopped' : 'ok') : 'error'
+          yield* emitPollLoopCycle(ctx, { name: config.name, outcome: cycleMetricOutcome })
 
           if (outcome._tag === 'failed') {
             yield* Ctrl.set('status', 'failed')
