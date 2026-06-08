@@ -811,7 +811,8 @@ stress runs measured an 18.4s p99 for the blocking-call shape. The
 
 ## 10. OpenTelemetry bridge (`./otel`)
 
-Traces: R23–R25, R03. See [decisions/0007](./decisions/0007-otel-bridge.md).
+Traces: R23–R25, R03. See [decisions/0007](./decisions/0007-otel-bridge.md). Span
+attributes + the metrics path: [decisions/0014](./decisions/0014-observability-metrics-and-attrs.md).
 
 ```
 [external caller traceparent]
@@ -854,6 +855,57 @@ Effect spans (Effect.withSpan on boundary ops)
   usable by user code), but it reads an unstable internal SDK symbol
   (`Symbol.for("@restatedev/restate-sdk/hooks.isProcessing")`) — version-fragile,
   so `Restate.run` is the load-bearing seam, not the flag (R25).
+
+### 10.1 Span attributes (identity + error class + user attrs)
+
+The boundary AUTO-stamps the business identity an operator slices on, onto the
+hook's `attempt <target>` span (decision 0014):
+
+- `restate.service` (construct name), `restate.handler` (handler name),
+  `restate.object.key` (Object/Workflow key; omitted for plain Services).
+- On a FAILURE: `restate.error.tag` (the domain error `_tag`) + `restate.error.class`
+  (`terminal` | `retryable` | `cancelled`) — read from the boundary's
+  `classifyOutcome` (the single source of truth `toTerminal` is built on, so the
+  span class matches the SDK outcome exactly).
+
+The seam is a PURE core `BoundaryObserver` (`(BoundaryInfo) => (BoundaryOutcome) =>
+void`, NO otel type), wired next to the inbound-bridge `HandlerWrap`; `./otel`
+supplies the impl that reads `trace.getActiveSpan()` and stamps it, the otel-free
+core leaves it undefined. The USER path is `Restate.annotateSpan(attrs)` — a thin
+otel-free combinator over `Effect.annotateCurrentSpan` on the core `Restate`
+namespace — for business attributes (e.g. `dataSourceId`) on the current Effect
+span (reparented under the attempt span); use the `span.label` convention for a
+single primary label.
+
+### 10.2 Metrics path (`RestateOtel.layer({ metricReader?/metricExporter? })`)
+
+`RestateOtel.layer` registers a `MeterProvider` SHARING the tracer's `Resource`
+(via `@effect/opentelemetry`'s `Metrics.layer` over an `@opentelemetry/sdk-metrics`
+`MetricReader`) and binds Effect's `Metric` to it. Neither config given → no meter
+(traces-only); metrics are then in-memory Effect metrics, so adoption is additive.
+The baseline metrics are core Effect `Metric`s (`Metrics.ts`, otel-free), bound to
+OTel only when the meter is registered — keeping the otel/metrics deps scoped to
+`./otel` (R03).
+
+The auto baseline, with the REPLAY-AWARE exactly-once seam chosen per metric (all
+gated through `emitWhenProcessing(ctx, …)` on `ctx.isProcessing()`):
+
+| Metric | Seam (exactly-once) |
+| --- | --- |
+| `restate_invocations_total{service,handler,outcome}` | boundary EXIT, final classification; a `retryable` failed attempt counts per real attempt (retry pressure). |
+| `restate_invocation_duration_ms{service,handler,outcome}` | boundary (monotonic start → exit). |
+| `restate_attempts_total{service,handler}` | boundary ENTRY; retries derive as `attempts − invocations{success\|terminal}`. |
+| `restate_durable_steps_total{step}` | inside `Restate.run` (the `ctx.run` body runs once / skipped on replay). |
+| `restate_awakeable_wait_ms` | at awakeable resolution (replay reproduces instantly — not a real wait). |
+| `restate_poll_loop_cycles_total{name,outcome}` | inside the `pollLoop` `cycle` handler (`ok`/`error`/`stopped`). |
+
+Wall-clock elapsed is read via `process.hrtime.bigint()` (monotonic, non-journaled
+side-channel — never feeds journaled state), not `Date.now()`. USER metrics export
+through the SAME meter; to be exactly-once a user counter must be incremented
+INSIDE a `Restate.run` (journaled-once) or gated on non-replay (`emitWhenProcessing`
+is the reusable gate). The whole path is verified server-free with an in-memory
+`MetricReader` + `SpanExporter`, including a forced-replay no-double-count assertion
+(`src/observability.test.ts`).
 
 These deps live behind `./otel` so the core stays dependency-light (R03, A09).
 

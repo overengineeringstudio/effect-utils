@@ -79,6 +79,7 @@ export type { RetentionOptions, SerdeOptions, ErrorClass } from './Annotations.t
  * annotations read at the error boundary / serde).
  */
 import * as Client from './Client.ts'
+import { annotateSpan } from './Metrics.ts'
 import { reschedule } from './Reschedule.ts'
 import * as Ctx from './RestateContext.ts'
 import * as Runtime from './Runtime.ts'
@@ -127,6 +128,15 @@ export const Restate = {
    * current invocation's cancellation (resolves only under `explicitCancellation`). */
   cancel: Runtime.cancel,
   onCancellation: Runtime.onCancellation,
+  /**
+   * Stamp custom BUSINESS span attributes on the current span (R23, §10, decision
+   * 0014) — the USER observability path for slicing in Tempo/Grafana (e.g.
+   * `dataSourceId`). A thin combinator over `Effect.annotateCurrentSpan`; otel-free
+   * (no `./otel` import). Use the `span.label` convention for a single primary
+   * label. Attributes are NOT replay-suppressed — for side-effecting telemetry use
+   * a metric / span event gated through `Restate.run`.
+   */
+  annotateSpan,
   terminal: Annotations.Restate.terminal,
   retryable: Annotations.Restate.retryable,
   serde: Annotations.Restate.serde,
@@ -242,12 +252,32 @@ export {
   materializeWorkflow,
   materializeAny,
   toTerminal,
+  classifyOutcome,
   type AnyImplementation,
+  type BoundaryErrorClass,
+  type BoundaryInfo,
+  type BoundaryObserver,
+  type BoundaryOutcome,
   type EndpointOptions,
   type EndpointHooks,
   type HandlerWrap,
   type MaterializeWiring,
 } from './Endpoint.ts'
+
+/**
+ * The replay-aware auto baseline metric definitions (decision 0014, §10) — Effect
+ * `Metric`s (no otel import) bound to the OTel meter by `RestateOtel.layer` (see
+ * `./otel`). Exported so consumers can inspect / reuse them; `Restate.annotateSpan`
+ * is the user span-attribute path on the `Restate` namespace.
+ */
+export {
+  invocationsTotal,
+  invocationDurationMs,
+  attemptsTotal,
+  durableStepsTotal,
+  awakeableWaitMs,
+  pollLoopCyclesTotal,
+} from './Metrics.ts'
 
 /**
  * Per-invocation runtime boundary helpers (R17, R31). `determinismLayer` is the
