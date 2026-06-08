@@ -1,3 +1,4 @@
+import type { TerminalError as restateTerminalError } from '@restatedev/restate-sdk'
 import type { Effect, Schema } from 'effect'
 
 import type {
@@ -21,6 +22,8 @@ export interface HandlerSpec {
   readonly input: Schema.Schema<any, any>
   readonly success: Schema.Schema<any, any>
   readonly error?: Schema.Schema<any, any>
+  /** Per-handler SDK options (retry policy, retention, timeouts, …; R35, spec §7). */
+  readonly options?: HandlerOptions
 }
 
 /** A map of handler name → `HandlerSpec`. */
@@ -39,6 +42,8 @@ export interface Contract<Name extends string, H extends HandlerSpecMap> {
   readonly _tag: 'Contract'
   readonly name: Name
   readonly handlers: H
+  /** Service-level SDK options (retry policy, retention, timeouts, …; R35, spec §7). */
+  readonly options?: ServiceLevelOptions
   /* Phantom (covariant) carrier so the precise `H` survives even when `handlers`
    * is read at a widened runtime type; `InputOf`/`SuccessOf`/`ErrorOf` recover it
    * by `infer`ring the `H` type param. */
@@ -116,7 +121,13 @@ export interface ServiceImplementation<C extends Contract<string, HandlerSpecMap
 const contract = <const Name extends string, const H extends HandlerSpecMap>(
   name: Name,
   handlers: H,
-): Contract<Name, H> => ({ _tag: 'Contract', name, handlers })
+  options?: ServiceLevelOptions,
+): Contract<Name, H> => ({
+  _tag: 'Contract',
+  name,
+  handlers,
+  ...(options !== undefined ? { options } : {}),
+})
 
 /**
  * Bind a Service contract to its handler effects → a `ServiceImplementation`
@@ -380,12 +391,30 @@ const workflowImplement = <
 export const RestateWorkflow = { contract: workflowContract, implement: workflowImplement } as const
 
 /* ════════════════════════════════════════════════════════════════════════
- * Surfaced SDK options (R35). Minimal-but-real subset for Phase 2: the
- * idempotency/journal/timeout/ingressPrivate/cancellation knobs. `retention`-
- * annotation + `sensitive` stay for a later phase.
+ * Surfaced SDK options (R35). The idempotency/journal/timeout/ingressPrivate/
+ * cancellation knobs, plus the retry surfacing (decision 0006, spec §7): a typed
+ * `retryPolicy` and an `asTerminalError` hook mapped to the SDK at `materialize`.
  * ════════════════════════════════════════════════════════════════════════ */
 
-/** Per-handler options surfaced from the SDK `*HandlerOpts` (R35). */
+/* eslint-disable @typescript-eslint/no-explicit-any -- the `asTerminalError` arg is the raw thrown error (any), matching the SDK signature */
+
+/**
+ * Restate's durable retry policy (decision 0006, spec §7). Durable retries are
+ * Restate's — `Effect.retry`/`Schedule` are for PURE logic only (the
+ * `overeng/no-raw-nondeterminism` lint guards against wrapping durable ops). This
+ * mirrors the SDK `RetryPolicy`: intervals are millis (decoded by the boundary);
+ * `onMaxAttempts` decides what happens after the last attempt — `'pause'` makes
+ * the invocation resumable from the CLI/UI, `'kill'` auto-kills it.
+ */
+export interface RetryPolicyOptions {
+  readonly maxAttempts?: number
+  readonly initialIntervalMillis?: number
+  readonly maxIntervalMillis?: number
+  readonly exponentiationFactor?: number
+  readonly onMaxAttempts?: 'pause' | 'kill'
+}
+
+/** Per-handler options surfaced from the SDK `*HandlerOpts` (R35, decision 0006). */
 export interface HandlerOptions {
   readonly idempotencyRetentionMillis?: number
   readonly journalRetentionMillis?: number
@@ -395,9 +424,18 @@ export interface HandlerOptions {
   readonly ingressPrivate?: boolean
   readonly enableLazyState?: boolean
   readonly explicitCancellation?: boolean
+  /** Restate's durable retry policy for this handler (spec §7). */
+  readonly retryPolicy?: RetryPolicyOptions
+  /**
+   * Map a thrown (non-`TerminalError`) error to a `TerminalError` so Restate does
+   * NOT retry it — the SDK-level escape hatch for "this raw throw is terminal".
+   * Domain errors should prefer the `Restate.terminal`/`retryable` annotation; this
+   * is for foreign throws from inside `ctx.run` etc. (spec §7).
+   */
+  readonly asTerminalError?: (error: any) => restateTerminalError | undefined
 }
 
-/** Service/object/workflow-level options surfaced from the SDK (R35). */
+/** Service/object/workflow-level options surfaced from the SDK (R35, decision 0006). */
 export interface ServiceLevelOptions {
   readonly idempotencyRetentionMillis?: number
   readonly journalRetentionMillis?: number
@@ -407,7 +445,13 @@ export interface ServiceLevelOptions {
   readonly enableLazyState?: boolean
   readonly workflowRetentionMillis?: number
   readonly explicitCancellation?: boolean
+  /** Restate's durable retry policy for every handler of this construct (spec §7). */
+  readonly retryPolicy?: RetryPolicyOptions
+  /** Service-level `asTerminalError` mapping (spec §7). */
+  readonly asTerminalError?: (error: any) => restateTerminalError | undefined
 }
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* ── per-method type recovery for Objects / Workflows (client inference) ──── */
 

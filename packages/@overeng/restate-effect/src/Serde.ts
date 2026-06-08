@@ -2,6 +2,7 @@ import * as restate from '@restatedev/restate-sdk'
 import { JSONSchema, Option, ParseResult, Schema } from 'effect'
 
 import { readSerdeOptions } from './Annotations.ts'
+import { findSensitiveFields, type RedactionCipher, withRedaction } from './Redaction.ts'
 
 /**
  * The Restate `Serde<T>` shape (re-exported from the SDK). A single `Serde<T>`
@@ -44,9 +45,21 @@ const decoder = new TextDecoder()
 export const effectSerde = <A, I>(
   schema: Schema.Schema<A, I>,
   slot: SerdeSlot = 'internal',
+  options?: { readonly redaction?: RedactionCipher },
 ): RestateSerde<A> => {
-  const encode = Schema.encodeSync(schema)
-  const decode = Schema.decodeUnknownSync(schema)
+  /* Field-level redaction (decision 0011, spec §4/§13): for each `sensitive`/
+   * `redacted` field (read ONCE on the pre-transform property signatures), wrap
+   * the schema's encode/decode with an encrypt-at-encode / decrypt-at-decode
+   * transform via the provided cipher. No sensitive field → the original
+   * encode/decode pass through untouched. A sensitive field but no cipher →
+   * encode/decode throws a clear `RedactionCipherMissingError` (never plaintext). */
+  const sensitiveFields = findSensitiveFields(schema.ast)
+  const { encode, decode } = withRedaction<A>({
+    fields: sensitiveFields,
+    cipher: options?.redaction,
+    encode: Schema.encodeSync(schema),
+    decode: Schema.decodeUnknownSync(schema),
+  })
   const overrides = readSerdeOptions(schema.ast)
   /* A void/undefined payload has NO body. Restate's `serde.empty` leaves the
    * content type UNSET so the server allows an empty body (`application/json` +
@@ -84,12 +97,16 @@ export const effectSerde = <A, I>(
 }
 
 /** `effectSerde(schema, 'ingress')` — decode failure → `TerminalError(400)`. */
-export const ingressSerde = <A, I>(schema: Schema.Schema<A, I>): RestateSerde<A> =>
-  effectSerde(schema, 'ingress')
+export const ingressSerde = <A, I>(
+  schema: Schema.Schema<A, I>,
+  options?: { readonly redaction?: RedactionCipher },
+): RestateSerde<A> => effectSerde(schema, 'ingress', options)
 
 /** `effectSerde(schema, 'internal')` — decode failure → DEFECT (corrupt journal). */
-export const internalSerde = <A, I>(schema: Schema.Schema<A, I>): RestateSerde<A> =>
-  effectSerde(schema, 'internal')
+export const internalSerde = <A, I>(
+  schema: Schema.Schema<A, I>,
+  options?: { readonly redaction?: RedactionCipher },
+): RestateSerde<A> => effectSerde(schema, 'internal', options)
 
 /**
  * Classify a decode failure by slot. An `ingress` failure is a deterministic

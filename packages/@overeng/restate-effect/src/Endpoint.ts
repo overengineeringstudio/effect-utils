@@ -2,9 +2,21 @@ import * as http2 from 'node:http2'
 
 import * as restate from '@restatedev/restate-sdk'
 import { createEndpointHandler } from '@restatedev/restate-sdk/node'
-import { Cause, Chunk, Duration, Effect, Exit, Layer, Option, Runtime, Schema } from 'effect'
+import {
+  Cause,
+  Chunk,
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Runtime,
+  Schema,
+} from 'effect'
 
-import { readErrorClass } from './Annotations.ts'
+import { readErrorClass, readRetention, type RetentionOptions } from './Annotations.ts'
+import { type RedactionCipher, RestateRedaction } from './Redaction.ts'
 import { ObjectKey, RestateContext, StateRead, StateWrite } from './RestateContext.ts'
 import { DurablePromise } from './RestateContext.ts'
 import { RestateError } from './RestateError.ts'
@@ -19,6 +31,7 @@ import type {
   ObjectHandlerSpec,
   ObjectHandlerSpecMap,
   ObjectImplementation,
+  RetryPolicyOptions,
   ServiceImplementation,
   ServiceLevelOptions,
   WorkflowContract,
@@ -192,16 +205,59 @@ const runEffectHandler =
     throw toTerminal(exit.cause, opts.errorSchema)
   }
 
-/* Map a handler spec's serde (R07) + surfaced R35 options into the SDK opts bag. */
-const handlerOpts = (spec: {
-  readonly input: Schema.Schema<any, any>
-  readonly success: Schema.Schema<any, any>
-  readonly options?: HandlerOptions
-}): Record<string, unknown> => ({
-  input: ingressSerde(spec.input),
-  output: ingressSerde(spec.success),
-  ...mapHandlerOptions(spec.options),
+/* Map the typed `retryPolicy` option to the SDK `RetryPolicy` (decision 0006,
+ * spec §7). Intervals are already millis (the SDK accepts a number = millis). */
+const mapRetryPolicy = (p: RetryPolicyOptions): Record<string, unknown> => ({
+  ...(p.maxAttempts !== undefined ? { maxAttempts: p.maxAttempts } : {}),
+  ...(p.onMaxAttempts !== undefined ? { onMaxAttempts: p.onMaxAttempts } : {}),
+  ...(p.initialIntervalMillis !== undefined ? { initialInterval: p.initialIntervalMillis } : {}),
+  ...(p.maxIntervalMillis !== undefined ? { maxInterval: p.maxIntervalMillis } : {}),
+  ...(p.exponentiationFactor !== undefined ? { exponentiationFactor: p.exponentiationFactor } : {}),
 })
+
+/* Map a `Restate.retention` annotation (decision 0011) to the SDK retention
+ * options. `workflow` is dropped unless the construct is a Workflow (the caller
+ * decides via `includeWorkflow`). Builder `options` win over the annotation. */
+const mapRetention = (
+  retention: RetentionOptions,
+  includeWorkflow: boolean,
+): Record<string, unknown> => {
+  const toMillis = (d: Duration.DurationInput): number => Duration.toMillis(Duration.decode(d))
+  return {
+    ...(retention.idempotency !== undefined
+      ? { idempotencyRetention: toMillis(retention.idempotency) }
+      : {}),
+    ...(retention.journal !== undefined ? { journalRetention: toMillis(retention.journal) } : {}),
+    ...(includeWorkflow && retention.workflow !== undefined
+      ? { workflowRetention: toMillis(retention.workflow) }
+      : {}),
+  }
+}
+
+/**
+ * Map a handler spec's serde (R07) + surfaced R35/retry options into the SDK opts
+ * bag. The `retention` annotation on the handler's INPUT schema (decision 0011)
+ * is folded in first; explicit `spec.options` (incl. its own retention) win.
+ * `redaction` (resolved from the runtime context at `materialize`) is threaded
+ * into the I/O serdes so `sensitive` fields are encrypted on the wire (spec §4).
+ */
+const handlerOpts = (
+  spec: {
+    readonly input: Schema.Schema<any, any>
+    readonly success: Schema.Schema<any, any>
+    readonly options?: HandlerOptions
+  },
+  redaction: RedactionCipher | undefined,
+): Record<string, unknown> => {
+  const serdeOpts = redaction !== undefined ? { redaction } : undefined
+  const annotated = readRetention(spec.input.ast).pipe(Option.getOrUndefined)
+  return {
+    input: ingressSerde(spec.input, serdeOpts),
+    output: ingressSerde(spec.success, serdeOpts),
+    ...(annotated !== undefined ? mapRetention(annotated, false) : {}),
+    ...mapHandlerOptions(spec.options),
+  }
+}
 
 const mapHandlerOptions = (o?: HandlerOptions): Record<string, unknown> =>
   o === undefined
@@ -222,6 +278,8 @@ const mapHandlerOptions = (o?: HandlerOptions): Record<string, unknown> =>
         ...(o.explicitCancellation !== undefined
           ? { explicitCancellation: o.explicitCancellation }
           : {}),
+        ...(o.retryPolicy !== undefined ? { retryPolicy: mapRetryPolicy(o.retryPolicy) } : {}),
+        ...(o.asTerminalError !== undefined ? { asTerminalError: o.asTerminalError } : {}),
       }
 
 const mapServiceOptions = (o?: ServiceLevelOptions): Record<string, unknown> | undefined =>
@@ -245,6 +303,17 @@ export interface MaterializeWiring {
   readonly hooks?: ReadonlyArray<EndpointHooks> | undefined
   readonly inboundBridge?: HandlerWrap | undefined
 }
+
+/**
+ * Resolve the optional `RestateRedaction` cipher from the captured runtime's
+ * context (decision 0011, spec §4). It is OPTIONAL: a schema with no `sensitive`
+ * field never needs it, so the application Layer need not provide one. When a
+ * served schema DOES have a sensitive field but the cipher is absent, the serde
+ * fails with a clear `RedactionCipherMissingError` at encode/decode — never
+ * plaintext (see `./Redaction.ts`). Resolved once per `materialize*`.
+ */
+const resolveRedaction = <AppR>(runtime: Runtime.Runtime<AppR>): RedactionCipher | undefined =>
+  Context.getOption(runtime.context, RestateRedaction).pipe(Option.getOrUndefined)
 
 /* Build the service-level `options.hooks` fragment from the wiring (omitted when
  * no hooks are configured, so the otel-free path produces an identical bag). The
@@ -284,13 +353,14 @@ export const materialize = <AppR>(
   wiring?: MaterializeWiring,
 ): restate.ServiceDefinition<string, unknown> => {
   const { contract, impl } = implementation
+  const redaction = resolveRedaction(runtime)
   const handlers = Object.fromEntries(
     Object.entries(contract.handlers).map(([name, spec]: [string, HandlerSpec]) => {
       const run = (impl as Record<string, EffectHandler>)[name]!
       return [
         name,
         restate.handlers.handler(
-          handlerOpts(spec),
+          handlerOpts(spec, redaction),
           runEffectHandler({
             run,
             errorSchema: spec.error,
@@ -302,10 +372,11 @@ export const materialize = <AppR>(
       ]
     }),
   )
+  const serviceOptions = withHooks(mapServiceOptions(contract.options), wiring)
   return restate.service({
     name: contract.name,
     handlers,
-    ...serviceHooksOptions(wiring),
+    ...(serviceOptions !== undefined ? { options: serviceOptions } : serviceHooksOptions(wiring)),
   } as unknown as Parameters<typeof restate.service>[0]) as restate.ServiceDefinition<
     string,
     unknown
@@ -328,10 +399,11 @@ export const materializeObject = <AppR>(
   wiring?: MaterializeWiring,
 ): restate.VirtualObjectDefinition<string, unknown> => {
   const { contract, impl } = implementation
+  const redaction = resolveRedaction(runtime)
   const handlers = Object.fromEntries(
     Object.entries(contract.handlers).map(([name, spec]: [string, ObjectHandlerSpec]) => {
       const run = (impl as Record<string, EffectHandler>)[name]!
-      const opts = handlerOpts(spec)
+      const opts = handlerOpts(spec, redaction)
       const handler =
         spec.shared === true
           ? restate.handlers.object.shared(
@@ -390,10 +462,11 @@ export const materializeWorkflow = <AppR>(
   wiring?: MaterializeWiring,
 ): restate.WorkflowDefinition<string, unknown> => {
   const { contract, impl } = implementation
+  const redaction = resolveRedaction(runtime)
   const implMap = impl as Record<string, EffectHandler>
   const runSpec = contract.run
   const runHandler = restate.handlers.workflow.workflow(
-    handlerOpts(runSpec),
+    handlerOpts(runSpec, redaction),
     runEffectHandler({
       run: implMap['run']!,
       errorSchema: runSpec.error,
@@ -406,7 +479,7 @@ export const materializeWorkflow = <AppR>(
     Object.entries(specs).map(([name, spec]: [string, WorkflowHandlerSpec]) => [
       name,
       restate.handlers.workflow.shared(
-        handlerOpts(spec),
+        handlerOpts(spec, redaction),
         runEffectHandler({
           run: implMap[name]!,
           errorSchema: spec.error,

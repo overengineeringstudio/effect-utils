@@ -52,7 +52,26 @@ export {
   type SerdeSlot,
 } from './Serde.ts'
 
+/**
+ * Field-level redaction for `sensitive`/`redacted` schema fields (decision 0011,
+ * §4/§13). `RestateRedaction` is the pluggable cipher Tag the consumer provides;
+ * `aesGcmRedactionLayer(key)` is a ready-to-use AES-256-GCM reference layer (and
+ * `aesGcmCipher(key)` the bare cipher). Provide a `RestateRedaction` layer in the
+ * application Layer whenever any served schema marks a field `Restate.sensitive`
+ * — otherwise encode/decode fails with `RedactionCipherMissingError` (never
+ * plaintext). NOT the deferred whole-value `JournalValueCodec` (which has no field
+ * structure).
+ */
+export {
+  RestateRedaction,
+  aesGcmCipher,
+  aesGcmRedactionLayer,
+  RedactionCipherMissingError,
+  type RedactionCipher,
+} from './Redaction.ts'
+
 import * as Annotations from './Annotations.ts'
+export type { RetentionOptions, SerdeOptions, ErrorClass } from './Annotations.ts'
 /**
  * Durable combinators + Restate Schema annotations under one `Restate`
  * namespace: `Restate.run` / `.sleep` / `.timeout` / `.all` / `.race` / `.any`
@@ -90,6 +109,12 @@ export const Restate = {
   retryable: Annotations.Restate.retryable,
   serde: Annotations.Restate.serde,
   idempotencyKey: Annotations.Restate.idempotencyKey,
+  /* Retention/timeout facts on a contract / handler I/O schema → SDK options at
+   * `materialize` (decision 0011, §7), and field-level redaction (`sensitive`/
+   * `redacted`) consumed by `effectSerde` as an encrypt/decrypt transform (0011, §4). */
+  retention: Annotations.Restate.retention,
+  sensitive: Annotations.Restate.sensitive,
+  redacted: Annotations.Restate.redacted,
 } as const
 
 export { RestateContext, StateRead, StateWrite, ObjectKey } from './RestateContext.ts'
@@ -101,6 +126,7 @@ export type {
   Descriptor,
   DurableCaps,
   ResultsOf,
+  RunRetryOptions,
   SendOptions,
   StateSchemas,
 } from './RestateContext.ts'
@@ -135,6 +161,7 @@ export {
   type HandlerSpecMap,
   type HandlerOptions,
   type ServiceLevelOptions,
+  type RetryPolicyOptions,
   type ServiceImpl,
   type ServiceImplementation,
   type InputOf,

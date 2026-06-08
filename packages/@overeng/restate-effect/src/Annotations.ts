@@ -14,9 +14,10 @@ import * as SchemaAST from 'effect/SchemaAST'
  * Phase 1 implements `terminal` / `retryable` (on a `Schema.TaggedError`) and
  * `serde` (on a value schema). Phase 2 wires `idempotencyKey` (on an input struct
  * FIELD) — the SINGLE source of a call/send's idempotency key, read by walking the
- * input schema's `propertySignatures` (decision 0011). `retention` / `sensitive`
- * remain namespace STUBS — their ids exist but no read site is wired and the
- * `sensitive` transform is not yet applied.
+ * input schema's `propertySignatures` (decision 0011). The final annotation set
+ * adds `retention` (on a contract/handler — mapped to the SDK retention/timeout
+ * options at `materialize`) and `sensitive`/`redacted` (on a struct FIELD —
+ * consumed as a serde TRANSFORM by `effectSerde`, see `./Redaction.ts`).
  */
 
 /* ── annotation payloads ────────────────────────────────────────────────── */
@@ -37,6 +38,19 @@ export interface SerdeOptions {
   readonly jsonSchema?: object
 }
 
+/**
+ * Retention/visibility facts carried on a contract or handler value schema and
+ * mapped to the SDK service/handler options at `materialize` (decision 0011, spec
+ * §7). Durations are `Duration.DurationInput` (decoded to millis at the boundary).
+ * `journal`/`idempotency` apply to any construct; `workflow` only to a Workflow
+ * (it is dropped for Services/Objects).
+ */
+export interface RetentionOptions {
+  readonly idempotency?: Duration.DurationInput
+  readonly journal?: Duration.DurationInput
+  readonly workflow?: Duration.DurationInput
+}
+
 /* ── symbol ids ─────────────────────────────────────────────────────────── */
 
 const id = (name: string): symbol => Symbol.for(`@overeng/restate-effect/annotation/${name}`)
@@ -48,10 +62,9 @@ export const SerdeId: unique symbol = id('serde') as typeof SerdeId
 
 /** Idempotency-key field id (input struct field), read by the client (Phase 2). */
 export const IdempotencyKeyId: unique symbol = id('idempotencyKey') as typeof IdempotencyKeyId
-/* TODO(Phase 3+): no read site yet — ids reserved so a later phase can wire them. */
-/** Retention id (contract/construct), read at discovery. */
+/** Retention id (contract / handler I/O schema), read at `materialize` → SDK options. */
 export const RetentionId: unique symbol = id('retention') as typeof RetentionId
-/** Sensitive/redacted field id, read (and consumed as a transform) by `effectSerde`. */
+/** Sensitive/redacted field id, read (and consumed as a transform) by `effectSerde` / `./Redaction.ts`. */
 export const SensitiveId: unique symbol = id('sensitive') as typeof SensitiveId
 
 /* ── annotation appliers ────────────────────────────────────────────────── */
@@ -106,6 +119,30 @@ export const Restate = {
    */
   idempotencyKey: <S extends Schema.Annotable.All>(self: S): S =>
     annotate<true>(IdempotencyKeyId)(self, true),
+
+  /**
+   * Declare retention/timeout facts on a contract or handler I/O schema, mapped
+   * to the SDK `idempotencyRetention` / `journalRetention` / `workflowRetention`
+   * service/handler options at `materialize` (decision 0011, spec §7). Equivalent
+   * to setting the matching builder `options`, but kept WITH the schema so the
+   * fact has one home. Builder `options` win when both are present.
+   */
+  retention: <S extends Schema.Annotable.All>(self: S, options: RetentionOptions): S =>
+    annotate<RetentionOptions>(RetentionId)(self, options),
+
+  /**
+   * Mark a struct FIELD `sensitive` (alias `redacted`): `effectSerde` consumes it
+   * as a TRANSFORM, encrypting the field at encode and decrypting at decode via
+   * the pluggable `RestateRedaction` cipher (decision 0011, see `./Redaction.ts`).
+   * MUST be applied to the FIELD's value schema (e.g.
+   * `Restate.sensitive(Schema.String)`), not the struct — an annotation on the
+   * wrong node disappears silently.
+   */
+  sensitive: <S extends Schema.Annotable.All>(self: S): S =>
+    annotate<true>(SensitiveId)(self, true),
+
+  /** Alias of {@link Restate.sensitive}. */
+  redacted: <S extends Schema.Annotable.All>(self: S): S => annotate<true>(SensitiveId)(self, true),
 } as const
 
 /* ── annotation readers ─────────────────────────────────────────────────── */
@@ -117,6 +154,10 @@ export const readErrorClass = (ast: SchemaAST.AST): Option.Option<ErrorClass> =>
 /** Read the serde options from a schema's AST (`None` if unannotated). */
 export const readSerdeOptions = (ast: SchemaAST.AST): Option.Option<SerdeOptions> =>
   SchemaAST.getAnnotation<SerdeOptions>(SerdeId)(ast)
+
+/** Read the retention options from a schema's AST (`None` if unannotated). */
+export const readRetention = (ast: SchemaAST.AST): Option.Option<RetentionOptions> =>
+  SchemaAST.getAnnotation<RetentionOptions>(RetentionId)(ast)
 
 /**
  * Find the name of the input-struct field carrying the `idempotencyKey`
