@@ -1,7 +1,10 @@
 import * as restate from '@restatedev/restate-sdk'
-import { Context, Effect, Runtime, Schema } from 'effect'
+import type { Brand } from 'effect'
+import { Context, Effect, Option, Runtime, Schema } from 'effect'
 
+import { readIdempotencyKey } from './Annotations.ts'
 import { RestateError } from './RestateError.ts'
+import { internalSerde } from './Serde.ts'
 
 /**
  * The per-invocation Restate `Context`, provided as a `Context.Tag` service.
@@ -310,3 +313,268 @@ export const stateFor = <S extends StateSchemas>(schemas: S) =>
         })
       }).pipe(Effect.withSpan('restate.state.stateKeys')),
   }) as const
+
+/* ── ObjectKey accessor (capability-gated) ───────────────────────────────── */
+
+/**
+ * The key of the current Object / Workflow invocation. Requires `ObjectKey`, so
+ * it compile-fails in a Service handler (no key). Backed by `ctx.key`.
+ */
+export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext> = Effect.gen(
+  function* () {
+    const ctx = yield* RestateContext
+    return (ctx as restate.ObjectContext).key
+  },
+).pipe(Effect.withSpan('restate.objectKey'))
+
+/* ── Durable promises (Workflow cross-handler signalling) ────────────────── */
+/*
+ * A Workflow durable promise: a named, durable rendezvous between the `run`
+ * handler (which awaits it) and a shared signal handler (which resolves/rejects
+ * it). Capability-gated on `DurablePromise`. The payload is decode/encode'd via
+ * the contract's per-name Schema on the `internal` slot — a decode failure is a
+ * corrupt-journal defect (R13, spec §4). `get` blocks until resolved; `peek` is a
+ * non-blocking read (`undefined` if unresolved); `resolve`/`reject` complete it
+ * (a `reject` makes the awaiting `get` fail terminally — drives the `'rejected'`
+ * path, R34). `getDescriptor` issues the promise as a `Descriptor` for
+ * `Restate.race`/`all`/`any`.
+ */
+
+const promiseSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> => internalSerde(schema)
+
+const promiseGet = <T, I>(
+  name: string,
+  schema: Schema.Schema<T, I>,
+): Effect.Effect<T, RestateError, DurablePromise | RestateContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    return yield* Effect.tryPromise({
+      try: () =>
+        (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
+      catch: (cause) =>
+        new RestateError({ reason: 'RunFailed', method: `DurablePromise.get(${name})`, cause }),
+    })
+  }).pipe(Effect.withSpan('restate.promise.get', { attributes: { 'span.label': name } }))
+
+const promisePeek = <T, I>(
+  name: string,
+  schema: Schema.Schema<T, I>,
+): Effect.Effect<T | undefined, RestateError, DurablePromise | RestateContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    return yield* Effect.tryPromise({
+      try: () =>
+        (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).peek(),
+      catch: (cause) =>
+        new RestateError({ reason: 'RunFailed', method: `DurablePromise.peek(${name})`, cause }),
+    })
+  }).pipe(Effect.withSpan('restate.promise.peek', { attributes: { 'span.label': name } }))
+
+const promiseResolve = <T, I>(
+  name: string,
+  schema: Schema.Schema<T, I>,
+  value: T,
+): Effect.Effect<void, RestateError, DurablePromise | RestateContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    yield* Effect.tryPromise({
+      try: () =>
+        (ctx as restate.WorkflowSharedContext)
+          .promise<T>(name, promiseSerde(schema))
+          .resolve(value),
+      catch: (cause) =>
+        new RestateError({ reason: 'RunFailed', method: `DurablePromise.resolve(${name})`, cause }),
+    })
+  }).pipe(Effect.withSpan('restate.promise.resolve', { attributes: { 'span.label': name } }))
+
+const promiseReject = <T, I>(
+  name: string,
+  schema: Schema.Schema<T, I>,
+  reason: string,
+): Effect.Effect<void, RestateError, DurablePromise | RestateContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    yield* Effect.tryPromise({
+      try: () =>
+        (ctx as restate.WorkflowSharedContext)
+          .promise<T>(name, promiseSerde(schema))
+          .reject(reason),
+      catch: (cause) =>
+        new RestateError({ reason: 'RunFailed', method: `DurablePromise.reject(${name})`, cause }),
+    })
+  }).pipe(Effect.withSpan('restate.promise.reject', { attributes: { 'span.label': name } }))
+
+/**
+ * Build the typed durable-promise combinator family for one payload Schema. Each
+ * combinator is capability-gated on `DurablePromise` (Workflow handlers only) and
+ * payload-typed. `getDescriptor` issues the promise for deterministic concurrency.
+ */
+export const durablePromiseFor = <T, I>(schema: Schema.Schema<T, I>) =>
+  ({
+    get: (name: string) => promiseGet(name, schema),
+    peek: (name: string) => promisePeek(name, schema),
+    resolve: (name: string, value: T) => promiseResolve(name, schema, value),
+    reject: (name: string, reason: string) => promiseReject(name, schema, reason),
+    getDescriptor: (name: string): Descriptor<T> =>
+      descriptor<T>('promiseGet', (ctx) =>
+        (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
+      ),
+  }) as const
+
+/* ── Awakeables (external completion tokens) ─────────────────────────────── */
+
+/** The nominal awakeable-id brand (independent of payload — the `<T>` tag rides below). */
+type AwakeableIdBrand = Brand.Brand<'@overeng/restate-effect/AwakeableId'>
+
+/**
+ * Branded awakeable id (typed against its payload — see `Awakeable.make`). The
+ * payload `T` rides in a property whose KEY is unique per payload type via the
+ * intersection, but `T` is kept OUT of any inference-driving position: the resolve
+ * combinators infer their `T` from the payload SCHEMA (the single source), never
+ * from the id, so a mismatched id is a plain assignability error, not a `T` shift.
+ */
+export type AwakeableId<T> = string & AwakeableIdBrand & { readonly _payload?: T }
+
+/**
+ * Create an awakeable: a typed external-completion token. Returns its branded
+ * `id` (send it to an external system / another handler) and a `promise` Effect
+ * that SUSPENDS until the awakeable is resolved (via ingress `resolveAwakeable`
+ * or another handler). The payload is decode/encode'd via `schema` on the
+ * `internal` slot. Requires `RestateContext` (legal in any handler kind). A
+ * rejection surfaces the awaiting `promise` as a `RestateError`.
+ */
+export const makeAwakeable = <T, I>(
+  schema: Schema.Schema<T, I>,
+): Effect.Effect<
+  { readonly id: AwakeableId<T>; readonly promise: Effect.Effect<T, RestateError, never> },
+  never,
+  RestateContext
+> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    const aw = ctx.awakeable<T>(promiseSerde(schema))
+    const promise = Effect.tryPromise({
+      try: () => aw.promise,
+      catch: (cause) => new RestateError({ reason: 'RunFailed', method: 'Awakeable.await', cause }),
+    }).pipe(Effect.withSpan('restate.awakeable.await', { attributes: { 'span.label': aw.id } }))
+    return { id: aw.id as AwakeableId<T>, promise }
+  }).pipe(Effect.withSpan('restate.awakeable.make'))
+
+/** Resolve an awakeable in-handler with a typed payload (encoded via `schema`). */
+export const resolveAwakeable = <T, I>(
+  schema: Schema.Schema<T, I>,
+  id: AwakeableId<T>,
+  payload: T,
+): Effect.Effect<void, never, RestateContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    ctx.resolveAwakeable<T>(id, payload, promiseSerde(schema))
+  }).pipe(Effect.withSpan('restate.awakeable.resolve', { attributes: { 'span.label': id } }))
+
+/** Reject an awakeable in-handler with a reason (the awaiter fails terminally). */
+export const rejectAwakeable = <T>(
+  id: AwakeableId<T>,
+  reason: string,
+): Effect.Effect<void, never, RestateContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    ctx.rejectAwakeable(id, reason)
+  }).pipe(Effect.withSpan('restate.awakeable.reject', { attributes: { 'span.label': id } }))
+
+/* ── In-handler service-to-service clients ───────────────────────────────── */
+/*
+ * Typed request/response (`call`) and one-way (`send`, optionally delayed)
+ * service-to-service invocations from inside a handler, routed by the target
+ * contract's name + the `generic*` SDK surface so no `restate.service` value is
+ * needed at the call site. Input encoded / success decoded via the target's serde
+ * (`ingress` slot — a peer call is a caller-facing boundary). The idempotency key
+ * is read from the annotated input field (decision 0011), never a call-site
+ * option. `key` routes to a Virtual Object / Workflow instance.
+ */
+
+const clientCallSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> =>
+  internalSerde(schema)
+
+/** Options threaded through an in-handler one-way `send` (delay only — key is positional). */
+export interface SendOptions {
+  /** Delay the send by this many milliseconds (durable, fault-tolerant cron). */
+  readonly delayMillis?: number
+}
+
+const callRpc = <In, InI, Out, OutI>(opts: {
+  readonly service: string
+  readonly handler: string
+  readonly inputSchema: Schema.Schema<In, InI>
+  readonly outputSchema: Schema.Schema<Out, OutI>
+  readonly input: In
+  readonly key?: string
+}): Effect.Effect<Out, RestateError, RestateContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    const idempotencyKey = readIdempotencyKey(opts.inputSchema.ast, opts.input).pipe(
+      Option.getOrUndefined,
+    )
+    const result = yield* Effect.tryPromise({
+      try: () =>
+        ctx.genericCall<In, Out>({
+          service: opts.service,
+          method: opts.handler,
+          parameter: opts.input,
+          ...(opts.key !== undefined ? { key: opts.key } : {}),
+          inputSerde: clientCallSerde(opts.inputSchema),
+          outputSerde: clientCallSerde(opts.outputSchema),
+          ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        }),
+      catch: (cause) =>
+        new RestateError({
+          reason: 'IngressFailed',
+          method: `call(${opts.service}.${opts.handler})`,
+          cause,
+        }),
+    })
+    return result as Out
+  }).pipe(
+    Effect.withSpan('restate.client.call', {
+      attributes: { 'span.label': `${opts.service}.${opts.handler}` },
+    }),
+  )
+
+const sendRpc = <In, InI>(opts: {
+  readonly service: string
+  readonly handler: string
+  readonly inputSchema: Schema.Schema<In, InI>
+  readonly input: In
+  readonly key?: string
+  readonly delayMillis?: number
+}): Effect.Effect<void, RestateError, RestateContext> =>
+  Effect.gen(function* () {
+    const ctx = yield* RestateContext
+    const idempotencyKey = readIdempotencyKey(opts.inputSchema.ast, opts.input).pipe(
+      Option.getOrUndefined,
+    )
+    yield* Effect.try({
+      try: () =>
+        ctx.genericSend<In>({
+          service: opts.service,
+          method: opts.handler,
+          parameter: opts.input,
+          ...(opts.key !== undefined ? { key: opts.key } : {}),
+          inputSerde: clientCallSerde(opts.inputSchema),
+          ...(opts.delayMillis !== undefined ? { delay: opts.delayMillis } : {}),
+          ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        }),
+      catch: (cause) =>
+        new RestateError({
+          reason: 'IngressFailed',
+          method: `send(${opts.service}.${opts.handler})`,
+          cause,
+        }),
+    })
+  }).pipe(
+    Effect.withSpan('restate.client.send', {
+      attributes: { 'span.label': `${opts.service}.${opts.handler}` },
+    }),
+  )
+
+/** Internal seam used by the typed `Restate.call/send/objectClient/...` surface. */
+export const inHandlerClients = { callRpc, sendRpc } as const

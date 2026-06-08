@@ -8,12 +8,11 @@
  * the typed `RestateIngress` client — asserting BOTH the success path and the
  * typed terminal-error path (`EmptyName` recovered via the decode helper).
  */
-import { createServer } from 'node:net'
-
 import { Context, Effect, Exit, Layer, Schema, Scope } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { startRestateServer, type RestateServerHandle } from '../test/restate-server.ts'
+import { freePort, serverAvailable } from '../test/test-utils.ts'
 import { callTyped, layer, Restate, RestateIngress, RestateService } from './mod.ts'
 
 /* ── demo app: an injected Effect service + a greeter Restate service ── */
@@ -48,34 +47,6 @@ const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, 
 })
 
 /* ── harness ── */
-
-const serverAvailable = (() => {
-  try {
-    const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
-    execFileSync(process.env['RESTATE_SERVER_BIN'] ?? 'restate-server', ['--version'], {
-      stdio: 'ignore',
-    })
-    return true
-  } catch {
-    return false
-  }
-})()
-
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const srv = createServer()
-    srv.unref()
-    srv.on('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address()
-      if (addr === null || typeof addr === 'string') {
-        srv.close(() => reject(new Error('no free port')))
-        return
-      }
-      const port = addr.port
-      srv.close(() => resolve(port))
-    })
-  })
 
 describe('restate-effect end-to-end (contract/implement)', () => {
   let server: RestateServerHandle

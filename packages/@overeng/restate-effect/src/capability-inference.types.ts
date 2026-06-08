@@ -13,8 +13,8 @@
  */
 import { Effect, Schema } from 'effect'
 
-import { call, callTyped } from './Client.ts'
-import { Restate, State } from './mod.ts'
+import { call, callTyped, objectCall, workflowSubmit } from './Client.ts'
+import { DurablePromise, Restate, RestateObject, RestateWorkflow, State } from './mod.ts'
 import type { RestateError } from './RestateError.ts'
 import { RestateService } from './Service.ts'
 
@@ -101,5 +101,100 @@ const _allOk: Effect.Effect<readonly [string, void], unknown, unknown> = Restate
 /* NEGATIVE: passing arbitrary Effects (not descriptors) is rejected. */
 // @ts-expect-error — Restate.all takes Descriptor[], not Effect[]
 const _allRejectsEffects = Restate.all([Effect.succeed(1), Effect.succeed('x')])
+
+/* ── Phase 2: Object exclusive vs shared capability discharge (DQ3) ────────── */
+
+const CounterObj = RestateObject.contract('counter', {
+  state: { count: Schema.Number },
+  handlers: {
+    add: { input: Schema.Number, success: Schema.Number }, // exclusive (default)
+    get: { input: Schema.Void, success: Schema.Number, shared: true }, // read-only
+  },
+})
+const CounterState2 = State.for({ count: Schema.Number })
+
+/* POSITIVE: an exclusive handler may write State; a shared handler may read it.
+ * Both kinds live in one heterogeneous `implement` record and discharge per-kind.
+ * Wrapper `RestateError`s are infra → `orDie` (the handler declares no domain error,
+ * so its `E` is `never`; decision 0003). */
+const _CounterObjOk = RestateObject.implement<typeof CounterObj>(CounterObj, {
+  add: (n) =>
+    Effect.gen(function* () {
+      const cur = (yield* CounterState2.get('count')) ?? 0
+      yield* CounterState2.set('count', cur + n)
+      return cur + n
+    }).pipe(Effect.orDie),
+  get: () =>
+    CounterState2.get('count').pipe(
+      Effect.map((c) => c ?? 0),
+      Effect.orDie,
+    ),
+})
+
+/* NEGATIVE: `State.set` in the SHARED `get` handler is a handler-LOCAL compile error
+ * (no `StateWrite` provided to a shared handler). This is the key R04/R05 gate. */
+const _CounterObjBad = RestateObject.implement<typeof CounterObj>(CounterObj, {
+  add: (n) => CounterState2.set('count', n).pipe(Effect.as(n), Effect.orDie),
+  // @ts-expect-error — State.set requires StateWrite, not provided to a shared handler
+  get: () => CounterState2.set('count', 0).pipe(Effect.as(0), Effect.orDie),
+})
+
+/* The object ingress client infers exact input/success from the contract + key. */
+const _objCall = objectCall(CounterObj, 'key-1', 'add', 1)
+type _O1 = Assert<Equals<Effect.Effect.Success<typeof _objCall>, number>>
+// @ts-expect-error — `add` takes a number, not a string
+const _objCallBad = objectCall(CounterObj, 'key-1', 'add', 'x')
+
+/* ── Phase 2: Workflow run vs signal/query capability discharge ────────────── */
+
+class Decision extends Schema.Class<Decision>('test/Decision')({ ok: Schema.Boolean }) {}
+const Approval = DurablePromise.for(Decision)
+
+const Approve = RestateWorkflow.contract('approve', {
+  state: { status: Schema.Literal('pending', 'approved', 'rejected') },
+  payload: { input: Schema.String, success: Schema.Boolean },
+  signals: { approve: { input: Decision, success: Schema.Void } },
+  queries: { status: { input: Schema.Void, success: Schema.String } },
+})
+const ApproveState = State.for({
+  status: Schema.Literal('pending', 'approved', 'rejected'),
+})
+
+/* POSITIVE: `run` writes State + awaits a durable promise; the signal resolves it
+ * (read-only State + durable promise); the query reads State. Wrapper errors `orDie`. */
+const _ApproveOk = RestateWorkflow.implement<typeof Approve>(Approve, {
+  run: () =>
+    Effect.gen(function* () {
+      yield* ApproveState.set('status', 'pending')
+      const decision = yield* Approval.get('decision')
+      yield* ApproveState.set('status', decision.ok ? 'approved' : 'rejected')
+      return decision.ok
+    }).pipe(Effect.orDie),
+  approve: (d) => Approval.resolve('decision', d).pipe(Effect.orDie),
+  status: () =>
+    ApproveState.get('status').pipe(
+      Effect.map((s) => s ?? 'pending'),
+      Effect.orDie,
+    ),
+})
+
+/* NEGATIVE: `State.set` in a query (shared, read-only) is a compile error. */
+const _ApproveBad = RestateWorkflow.implement<typeof Approve>(Approve, {
+  run: () => Effect.succeed(true),
+  approve: (d) => Approval.resolve('decision', d).pipe(Effect.orDie),
+  // @ts-expect-error — State.set requires StateWrite, not provided to a query (shared) handler
+  status: () => ApproveState.set('status', 'approved').pipe(Effect.as('approved'), Effect.orDie),
+})
+
+/* NEGATIVE: a durable promise in a SERVICE handler is a compile error (no DurablePromise). */
+const _ServiceNoPromise = RestateService.implement<typeof Counter>(Counter, {
+  // @ts-expect-error — DurablePromise.resolve requires DurablePromise, not provided to a Service handler
+  bump: () => Approval.resolve('decision', new Decision({ ok: true })),
+})
+
+/* The workflow submit client omits the `run` handler from the direct call surface
+ * but submit/attach derive from `run`'s I/O. */
+const _wfSubmit = workflowSubmit(Approve, 'wf-1', 'payload')
+type _W1 = Assert<Equals<Effect.Effect.Error<typeof _wfSubmit>, RestateError>>
 
 /* eslint-enable @typescript-eslint/no-unused-vars */
