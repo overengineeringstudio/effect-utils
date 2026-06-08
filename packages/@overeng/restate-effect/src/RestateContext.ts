@@ -4,6 +4,7 @@ import { Context, Effect, Option, Runtime, Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
 import { readIdempotencyKey } from './Annotations.ts'
+import { emitAwakeableWait, emitDurableStep, monotonicMs } from './Metrics.ts'
 import { RestateError } from './RestateError.ts'
 import { internalSerde } from './Serde.ts'
 
@@ -284,13 +285,18 @@ export const run = <A, E, R>(
      * raw `A` (journaled by the SDK); a failure/defect rejects the step. */
     const inner = effect as Effect.Effect<A, E, Exclude<R, DurableCaps>>
     const action = (): Promise<A> => Runtime.runPromise(runtime)(inner)
-    return yield* awaitDurable(
+    const result = yield* awaitDurable(
       () =>
         options !== undefined
           ? ctx.run(name, action, mapRunOptions(options) as Parameters<typeof ctx.run<A>>[2])
           : ctx.run(name, action),
       (cause) => new RestateError({ reason: 'RunFailed', method: `run(${name})`, cause }),
     )
+    /* AUTO baseline metric (decision 0014): a durable step executed exactly once.
+     * The journaled `ctx.run` body runs on real execution and is skipped on replay,
+     * so gating the counter on non-replay makes it exactly-once across attempts. */
+    yield* emitDurableStep(ctx, name)
+    return result
   }).pipe(Effect.withSpan('restate.run', { attributes: { 'span.label': name } }))
 
 /**
@@ -651,13 +657,20 @@ export const makeAwakeable = <T, I>(
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const aw = ctx.awakeable<T>(promiseSerde(schema))
-    const promise = Effect.tryPromise({
-      try: () => aw.promise,
-      catch: (cause) => new RestateError({ reason: 'RunFailed', method: 'Awakeable.await', cause }),
-    }).pipe(
-      Effect.orDie,
-      Effect.withSpan('restate.awakeable.await', { attributes: { 'span.label': aw.id } }),
-    )
+    const promise = Effect.gen(function* () {
+      const startMs = monotonicMs()
+      const value = yield* Effect.tryPromise({
+        try: () => aw.promise,
+        catch: (cause) =>
+          new RestateError({ reason: 'RunFailed', method: 'Awakeable.await', cause }),
+      }).pipe(Effect.orDie)
+      /* AUTO baseline metric (decision 0014): the real external-completion wait.
+       * Gated on non-replay — a replay reproduces the journaled completion
+       * instantly, so the measured (monotonic) delta is only recorded on a real
+       * resolution, never on replay. */
+      yield* emitAwakeableWait(ctx, monotonicMs() - startMs)
+      return value
+    }).pipe(Effect.withSpan('restate.awakeable.await', { attributes: { 'span.label': aw.id } }))
     /* The awakeable's completion promise is itself a `RestatePromise`, so it joins
      * the deterministic combinators like any other descriptor — issued in source
      * order, awaited once (decision 0005, #2). It is created ONCE (at `make`), so

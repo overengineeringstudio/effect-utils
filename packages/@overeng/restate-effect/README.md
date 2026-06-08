@@ -33,8 +33,9 @@ pnpm add @overeng/restate-effect effect
 
 `@restatedev/restate-sdk` and `@restatedev/restate-sdk-clients` come bundled. The
 `./otel` subpath additionally needs `@effect/opentelemetry`, `@opentelemetry/api`,
-and `@restatedev/restate-sdk-opentelemetry` (peer deps you install when you use
-it). To run an endpoint you also bring `@effect/platform-node` for
+`@opentelemetry/sdk-metrics` (the metrics path), and
+`@restatedev/restate-sdk-opentelemetry` (peer deps you install when you use it). To
+run an endpoint you also bring `@effect/platform-node` for
 `NodeRuntime.runMain`. You need a `restate-server` binary to actually run handlers
 (via Restate's CLI/Docker in production, or the `./testing` harness in tests).
 
@@ -657,25 +658,31 @@ const winner =
 
 The opt-in OTel bridge wires the external caller, the Restate server spans, the
 SDK attempt/`run` spans, and your in-handler Effect spans into **one coherent
-trace**. The otel packages live behind this subpath, so the core `.` export stays
+trace** — AND makes an invocation operable from Grafana with span attributes +
+metrics. The otel packages live behind this subpath, so the core `.` export stays
 dependency-light. ([`examples/09-otel.ts`](./examples/09-otel.ts))
 
 ```ts
 import { NodeRuntime } from '@effect/platform-node'
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base'
 import { Effect } from 'effect'
 import { serve } from '@overeng/restate-effect'
 import { RestateOtel } from '@overeng/restate-effect/otel'
 
 // `layer` registers ONE global TracerProvider + a global context manager (the
-// load-bearing step that makes the attempt span resolve at handler entry) and
-// binds Effect's tracer to the same provider.
+// load-bearing step that makes the attempt span resolve at handler entry), binds
+// Effect's tracer to the same provider, AND — when a metric exporter/reader is
+// given — registers a MeterProvider sharing the same Resource and binds Effect's
+// `Metric` to it. Omit the metric config for a traces-only setup.
 const OtelLayer = RestateOtel.layer({
   resource: { serviceName: 'greeter' },
   exporter: new ConsoleSpanExporter(), // a BatchSpanProcessor over OTLP in prod
+  metricExporter: new OTLPMetricExporter({ url: 'http://localhost:4318/v1/metrics' }),
 })
 
-// `withOtel` attaches the hook + the inbound span-context bridge to every handler.
+// `withOtel` attaches the hook + inbound span-context bridge + the boundary
+// observer (span-attribute stamping) to every handler.
 serve(RestateOtel.withOtel({ services: [GreeterLive], port: 9080 })).pipe(
   Effect.provide(Greeting.Default),
   Effect.provide(OtelLayer),
@@ -683,9 +690,42 @@ serve(RestateOtel.withOtel({ services: [GreeterLive], port: 9080 })).pipe(
 )
 ```
 
-For exactly-once-on-replay custom telemetry, route span events / metric
-increments through `Restate.run` (it runs once on real execution, skipped on
-replay) — preferred over the version-fragile `isReplaying` flag.
+### Span attributes
+
+The boundary auto-stamps the **attempt span** with the identity an operator slices
+on — `restate.service`, `restate.handler`, `restate.object.key` (Objects/Workflows)
+— and, on a failure, `restate.error.tag` (the domain error `_tag`) +
+`restate.error.class` (`terminal` | `retryable` | `cancelled`). For custom business
+attributes, use `Restate.annotateSpan` in a handler:
+
+```ts
+import { Restate } from '@overeng/restate-effect'
+
+const sync = (input: SyncInput) =>
+  Effect.gen(function* () {
+    yield* Restate.annotateSpan({ dataSourceId: input.dataSourceId })
+    // … now every span in this invocation is sliceable by `dataSourceId` in Tempo.
+  })
+```
+
+### Metrics
+
+When a `metricExporter`/`metricReader` is configured, the bridge emits a
+REPLAY-AWARE auto baseline (exactly-once across attempts/replays):
+
+| Metric | Labels |
+| --- | --- |
+| `restate_invocations_total` | `service`, `handler`, `outcome` (`success`/`terminal`/`retryable`/`cancelled`) |
+| `restate_invocation_duration_ms` | `service`, `handler`, `outcome` |
+| `restate_attempts_total` | `service`, `handler` (retries = attempts − success/terminal) |
+| `restate_durable_steps_total` | `step` (the `Restate.run` name) |
+| `restate_awakeable_wait_ms` | — |
+| `restate_poll_loop_cycles_total` | `name`, `outcome` (`ok`/`error`/`stopped`) |
+
+User counters/histograms export through the SAME meter (any Effect `Metric`). For
+exactly-once custom telemetry, route span events / metric increments through
+`Restate.run` (runs once on real execution, skipped on replay) — preferred over the
+version-fragile `isReplaying` flag.
 
 ## Testing (`./testing`)
 
@@ -833,12 +873,17 @@ wall-clock waits actually elapse.
 
 ### `./otel`
 
-| Symbol                                  | What                                                      |
-| --------------------------------------- | --------------------------------------------------------- |
-| `RestateOtel.layer(config)`             | the shared global `TracerProvider` Layer (load-bearing)   |
-| `RestateOtel.withOtel(endpointOptions)` | attach the hook + inbound bridge to every handler         |
-| `RestateOtel.hook` / `inboundBridge`    | the per-service / per-invocation seams (compose by hand)  |
-| `isReplaying`                           | replay-state flag (version-fragile; prefer `Restate.run`) |
+| Symbol                                  | What                                                                |
+| --------------------------------------- | ------------------------------------------------------------------- |
+| `RestateOtel.layer(config)`             | the shared `TracerProvider` + (opt-in) `MeterProvider` Layer        |
+| `RestateOtel.withOtel(endpointOptions)` | attach hook + inbound bridge + boundary observer to every handler   |
+| `RestateOtel.hook` / `inboundBridge`    | the per-service / per-invocation TRACE seams (compose by hand)      |
+| `RestateOtel.boundaryObserver`          | the per-invocation span-attribute stamper (identity + error class)  |
+| `restate_*` metric definitions          | the auto baseline Effect `Metric`s (re-exported for inspection)     |
+| `isReplaying`                           | replay-state flag (version-fragile; prefer `Restate.run`)           |
+
+`Restate.annotateSpan(attrs)` (on the core `Restate` namespace) is the user
+span-attribute path.
 
 ### `./testing`
 

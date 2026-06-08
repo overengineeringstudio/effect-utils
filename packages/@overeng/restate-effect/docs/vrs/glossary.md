@@ -165,3 +165,36 @@ scope/ingress boilerplate when a suite holds ONE server across plain `async` tes
 Test utils (`./testing`) that pin an `Effect.sleep` / sub-program to a LIVE
 `Clock`, so wall-clock waits coordinating with the native server elapse in real
 time even under `@effect/vitest` `it.effect`'s virtual `TestClock`.
+
+**Boundary observer**:
+The per-invocation observability seam (`BoundaryObserver`, a pure core
+`(BoundaryInfo) => (BoundaryOutcome) => void`) wired next to the inbound bridge.
+`./otel` supplies the impl that AUTO-stamps `restate.service`/`restate.handler`/
+`restate.object.key` on the **attempt span** and, on failure, `restate.error.tag`/
+`restate.error.class`. Otel-free in the core. See `decisions/0014`.
+
+**Span attribute (identity / error class)**:
+The boundary-stamped attributes an operator slices on in Tempo/Grafana —
+`restate.{service,handler,object.key}` (identity) and, on a failure,
+`restate.error.{tag,class}` (`class` ∈ `terminal`/`retryable`/`cancelled`, read
+from the boundary's `classifyOutcome`).
+
+**`Restate.annotateSpan`**:
+The USER span-attribute path — a thin otel-free combinator over
+`Effect.annotateCurrentSpan` for business attributes (e.g. `dataSourceId`) on the
+current Effect span. Attributes are NOT replay-suppressed; use the `span.label`
+convention for a single primary label.
+
+**Exactly-once metric emission**:
+The replay-aware seam (`emitWhenProcessing(ctx, …)`) gating every auto baseline
+metric on `ctx.isProcessing()`, so a journal **Replay**/extra attempt never
+re-increments. The auto baseline:
+`restate_invocations_total{service,handler,outcome}`, `restate_invocation_duration_ms`,
+`restate_attempts_total`, `restate_durable_steps_total`, `restate_awakeable_wait_ms`,
+`restate_poll_loop_cycles_total`. See `decisions/0014`.
+_Avoid_: "increment in the handler body" (double-counts across attempts).
+
+**Shared meter (MeterProvider)**:
+The OTel `MeterProvider` `RestateOtel.layer({ metricReader?/metricExporter? })`
+registers SHARING the tracer's `Resource`, binding Effect's `Metric` so the auto
+baseline + user metrics export with the same identity as the traces.

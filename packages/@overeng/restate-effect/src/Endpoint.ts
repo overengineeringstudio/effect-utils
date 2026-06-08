@@ -21,6 +21,7 @@ import {
   readRetryAfterMillis,
   type RetentionOptions,
 } from './Annotations.ts'
+import { emitAttempt, emitInvocationMetrics, monotonicMs } from './Metrics.ts'
 import { type RedactionCipher, RestateRedaction } from './Redaction.ts'
 import { ObjectKey, RestateContext, StateRead, StateWrite } from './RestateContext.ts'
 import { DurablePromise } from './RestateContext.ts'
@@ -48,31 +49,58 @@ import type {
 /* eslint-disable @typescript-eslint/no-explicit-any -- the materialize boundary deliberately erases the contract's phantom map (invisible to users; the public Contract type stays precise) */
 
 /**
- * Map an Effect failure `Cause` to a Restate handler outcome (spec §5). Reads
- * the failing error's `terminal`/`retryable` annotation to decide errorCode vs
- * a retryable throw.
+ * The boundary's classification of a handler exit (spec §5, §10). A SINGLE source
+ * of truth read by BOTH the `throw`-producing `toTerminal` and the observability
+ * boundary observer ({@link BoundaryObserver}) — so the span attributes / metrics
+ * an operator slices on (`restate.error.{tag,class}`, `restate_invocations_total`
+ * `outcome`) match the actual SDK outcome exactly (decision 0014).
  *
- * - Typed domain failure (declared `error` schema): encode it and throw a
+ * - `success` — the handler returned a value.
+ * - `terminal` — a declared domain failure that fails the invocation WITHOUT
+ *   retry (the `terminal` annotation, or the default for an unclassified domain
+ *   error). `errorTag` is the domain error's `_tag` (when present).
+ * - `retryable` — a declared domain failure the SDK RETRIES (the `retryable`
+ *   annotation), honoring `retryAfter`. `errorTag` is the domain error's `_tag`.
+ * - `cancelled` — an interruption (Restate cancellation bridged to the fiber, or
+ *   an in-handler interrupt); finalizers/compensations already ran. Terminal, not
+ *   retried (R31, §5a).
+ * - `suspended` — a Restate suspension (a durable op parking the attempt); NOT an
+ *   outcome an operator counts (the invocation has not finished) — re-thrown as-is.
+ * - `defect` — anything else; the SDK throws it as a normal error and RETRIES.
+ */
+export type BoundaryOutcome =
+  | { readonly _tag: 'success' }
+  | { readonly _tag: 'terminal'; readonly errorTag: string | undefined; readonly thrown: unknown }
+  | { readonly _tag: 'retryable'; readonly errorTag: string | undefined; readonly thrown: unknown }
+  | { readonly _tag: 'cancelled'; readonly thrown: unknown }
+  | { readonly _tag: 'suspended'; readonly thrown: unknown }
+  | { readonly _tag: 'defect'; readonly thrown: unknown }
+
+/** The error-class label stamped on the boundary span / used as the metric `outcome`. */
+export type BoundaryErrorClass = 'terminal' | 'retryable' | 'cancelled'
+
+/**
+ * Classify an Effect failure `Cause` into a {@link BoundaryOutcome} (spec §5,
+ * §10). The throw value the SDK sees rides in `thrown`; {@link toTerminal} just
+ * unwraps it. Reads the failing error's `terminal`/`retryable` annotation to
+ * decide errorCode vs a retryable throw:
+ *
+ * - Typed domain failure (declared `error` schema): encode it and produce a
  *   `restate.TerminalError`. The encoded body AND its `_tag` ride in the message
  *   BODY (JSON) — the only channel an ingress caller's `responseText` can read.
  *   `errorCode` comes from the error's `terminal` annotation (default 500);
  *   `_tag` is ALSO mirrored into `metadata` best-effort (server ≥1.6).
- * - `retryable`-annotated domain failure → throw `RetryableError` (Restate
- *   retries), honoring `retryAfter`.
+ * - `retryable`-annotated domain failure → a `RetryableError` (Restate retries),
+ *   honoring `retryAfter`.
  * - A Restate suspension (`isSuspendedError`) → re-thrown as-is, never terminalized.
- * - An Effect INTERRUPTION (Restate cancellation bridged to the handler fiber, or
- *   an in-handler interrupt) → re-thrown as a `CancelledError` (which `extends
- *   TerminalError`), so the SDK does NOT retry it. It is neither a domain failure
- *   nor a defect: finalizers/compensations have already run at the interruption
- *   point (R31, spec §5a). If the underlying cause is itself a Restate suspension
- *   (the attempt is being torn down), that suspension is re-thrown as-is.
- * - Anything else (defect) → return the squashed cause so the SDK throws it as a
- *   normal error and RETRIES.
+ * - An Effect INTERRUPTION → a `CancelledError` (which `extends TerminalError`),
+ *   so the SDK does NOT retry it.
+ * - Anything else (defect) → the squashed cause so the SDK throws it and RETRIES.
  */
-export const toTerminal = (
+export const classifyOutcome = (
   cause: Cause.Cause<unknown>,
   errorSchema?: Schema.Schema<any, any>,
-): unknown => {
+): BoundaryOutcome => {
   /* A Restate suspension (a durable op suspending the attempt) may arrive as a
    * DEFECT (a durable combinator re-throws it verbatim via `Effect.die`, see
    * `awaitDurable`). Re-throw it AS-IS so the SDK suspends/resumes — never
@@ -81,13 +109,17 @@ export const toTerminal = (
   const suspensionDefect = Chunk.findFirst(Cause.defects(cause), (d) =>
     restate.internal.isSuspendedError(d),
   )
-  if (Option.isSome(suspensionDefect) === true) return suspensionDefect.value
+  if (Option.isSome(suspensionDefect) === true) {
+    return { _tag: 'suspended', thrown: suspensionDefect.value }
+  }
 
   const failure = Cause.failureOption(cause)
   if (failure._tag === 'Some') {
     const error = failure.value
     /* A Restate suspension is never a real failure — never terminalize it. */
-    if (restate.internal.isSuspendedError(error) === true) return Cause.squash(cause)
+    if (restate.internal.isSuspendedError(error) === true) {
+      return { _tag: 'suspended', thrown: Cause.squash(cause) }
+    }
 
     /* Validate the thrown failure against the contract's declared `error` union
      * BEFORE classifying/encoding it. A failure that does NOT match the declared
@@ -97,12 +129,16 @@ export const toTerminal = (
     const encoded =
       errorSchema !== undefined ? Schema.encodeUnknownEither(errorSchema)(error) : undefined
     if (errorSchema !== undefined && encoded !== undefined && encoded._tag === 'Left') {
-      return Cause.squash(cause)
+      return { _tag: 'defect', thrown: Cause.squash(cause) }
     }
 
     const classification =
       errorSchema !== undefined
         ? readErrorClass(errorSchema.ast).pipe(Option.getOrElse(() => undefined))
+        : undefined
+    const tag =
+      typeof error === 'object' && error !== null && '_tag' in error
+        ? String((error as { _tag: unknown })._tag)
         : undefined
 
     if (classification?._tag === 'retryable') {
@@ -110,28 +146,47 @@ export const toTerminal = (
        * is decoded as-is; a projection reads the floor off this very error (e.g. a
        * 429's `e.retryAfterMillis`). */
       const retryAfter = readRetryAfterMillis(classification.retryAfter, error)
-      return restate.RetryableError.from(error, retryAfter !== undefined ? { retryAfter } : {})
+      return {
+        _tag: 'retryable',
+        errorTag: tag,
+        thrown: restate.RetryableError.from(error, retryAfter !== undefined ? { retryAfter } : {}),
+      }
     }
 
     const errorCode = classification?._tag === 'terminal' ? classification.errorCode : 500
-    const tag =
-      typeof error === 'object' && error !== null && '_tag' in error
-        ? String((error as { _tag: unknown })._tag)
-        : undefined
     const body = encoded !== undefined && encoded._tag === 'Right' ? encoded.right : error
-    return new restate.TerminalError(JSON.stringify(body), {
-      errorCode,
-      ...(tag !== undefined ? { metadata: { _tag: tag } } : {}),
-    })
+    return {
+      _tag: 'terminal',
+      errorTag: tag,
+      thrown: new restate.TerminalError(JSON.stringify(body), {
+        errorCode,
+        ...(tag !== undefined ? { metadata: { _tag: tag } } : {}),
+      }),
+    }
   }
   /* An interruption (Restate cancellation bridged to the fiber, or an in-handler
    * interrupt — incl. a durable op that rejected with `CancelledError`) is neither
    * a domain failure nor a defect: finalizers/compensations already ran.
    * Terminalize as a `CancelledError` so the SDK does NOT retry it (R31, §5a).
    * (A suspension is already handled above as a defect, never reaching here.) */
-  if (Cause.isInterrupted(cause) === true) return new restate.CancelledError()
+  if (Cause.isInterrupted(cause) === true) {
+    return { _tag: 'cancelled', thrown: new restate.CancelledError() }
+  }
   /* Defect → let the SDK retry. */
-  return Cause.squash(cause)
+  return { _tag: 'defect', thrown: Cause.squash(cause) }
+}
+
+/**
+ * The value the SDK handler must throw for a failure `Cause` (spec §5). A thin
+ * unwrap of {@link classifyOutcome}'s `thrown` — kept as a named export for the
+ * unit tests and any direct boundary use.
+ */
+export const toTerminal = (
+  cause: Cause.Cause<unknown>,
+  errorSchema?: Schema.Schema<any, any>,
+): unknown => {
+  const outcome = classifyOutcome(cause, errorSchema)
+  return outcome._tag === 'success' ? undefined : outcome.thrown
 }
 
 /* An untyped Effect handler bound to a single contract handler. */
@@ -153,6 +208,35 @@ export type HandlerWrap = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Ef
  * builds these via `@restatedev/restate-sdk-opentelemetry`'s `openTelemetryHook`.
  */
 export type EndpointHooks = restate.HooksProvider
+
+/**
+ * Per-invocation identity the boundary hands the {@link BoundaryObserver} (R23,
+ * §10, decision 0014): the construct name (`service`), the handler name, the
+ * Object/Workflow `key` (undefined for plain Services), and whether the marker
+ * kind is keyed. The `./otel` observer stamps these as span attributes
+ * (`restate.service` / `restate.handler` / `restate.object.key`) and metric
+ * labels. PURE in the core (no otel type).
+ */
+export interface BoundaryInfo {
+  readonly service: string
+  readonly handler: string
+  readonly key: string | undefined
+}
+
+/**
+ * The observability seam the boundary calls ONCE PER INVOCATION (R23, §10,
+ * decision 0014). A factory `(info) => (outcome) => void`: invoked at handler
+ * ENTRY with the {@link BoundaryInfo} (so the `./otel` impl can stamp identity
+ * attributes / start a timer), returning a callback invoked at handler EXIT with
+ * the classified {@link BoundaryOutcome} (so it can stamp `restate.error.{tag,
+ * class}` on the active span and emit the per-invocation outcome metric).
+ *
+ * The boundary observer fires on EVERY attempt (it has no replay knowledge); the
+ * `./otel` impl gates exactly-once invocation metrics on the SDK's non-replay
+ * signal. PURE in the core: a `(BoundaryInfo) => (BoundaryOutcome) => void` with
+ * NO otel type, so the core stays dependency-light while `./otel` owns the impl.
+ */
+export type BoundaryObserver = (info: BoundaryInfo) => (outcome: BoundaryOutcome) => void
 
 /* The empty capability-marker value: markers gate type-legality, not runtime
  * behavior (the raw `ctx` does the work), so each provides an empty record. The
@@ -176,6 +260,8 @@ const emptyMarker = {} as never
  */
 const runEffectHandler =
   <AppR>(opts: {
+    readonly service: string
+    readonly handler: string
     readonly run: EffectHandler
     readonly errorSchema: Schema.Schema<any, any> | undefined
     readonly runtime: Runtime.Runtime<AppR>
@@ -190,10 +276,36 @@ const runEffectHandler =
      * (the hook's attempt span, set active via `context.with` around this fn)
      * resolves at capture time and reparents the Effect program (R23, §10). */
     readonly inboundBridge: HandlerWrap | undefined
+    /* The observability boundary observer (`./otel` supplies it; undefined in the
+     * otel-free core). Invoked at entry with the per-invocation identity, then at
+     * exit with the classified outcome, so `./otel` stamps span attributes + emits
+     * the per-invocation metric (decision 0014). */
+    readonly boundaryObserver: BoundaryObserver | undefined
   }) =>
   async (ctx: restate.Context, input: unknown): Promise<unknown> => {
     /* Seed the per-attempt frozen monotonic base ONCE from journaled time. */
     const frozenBaseMillis = await ctx.date.now()
+    /* Open the boundary observation at handler ENTRY (the hook's attempt span is
+     * active here), with the construct/handler identity + Object/Workflow key. A
+     * plain Service has no `key` (undefined). */
+    const onOutcome =
+      opts.boundaryObserver !== undefined
+        ? opts.boundaryObserver({
+            service: opts.service,
+            handler: opts.handler,
+            key: opts.markers !== 'service' ? (ctx as restate.ObjectContext).key : undefined,
+          })
+        : undefined
+    /* AUTO baseline metrics (decision 0014): the per-attempt counter at ENTRY +
+     * the per-invocation outcome/duration at EXIT, run on the CAPTURED runtime so
+     * they reach the bound OTel meter (when `RestateOtel.layer` provides it; a
+     * harmless in-memory Effect metric otherwise). Both are exactly-once-gated on
+     * `ctx.isProcessing()` inside the emit (replays do not re-increment). The
+     * start is a monotonic real-time read — only used on a real (non-replay) emit. */
+    const attemptStartMs = monotonicMs()
+    Runtime.runSync(opts.runtime)(
+      emitAttempt(ctx, { service: opts.service, handler: opts.handler }),
+    )
     let effect = opts.run(input).pipe(Effect.provideService(RestateContext, ctx))
     if (opts.markers !== 'service') {
       effect = effect.pipe(
@@ -220,8 +332,36 @@ const runEffectHandler =
     const exit = await Runtime.runPromiseExit(opts.runtime)(
       program as Effect.Effect<unknown, unknown, AppR>,
     )
-    if (Exit.isSuccess(exit) === true) return exit.value
-    throw toTerminal(exit.cause, opts.errorSchema)
+    const emitInvocation = (
+      outcomeTag: 'success' | 'terminal' | 'retryable' | 'cancelled',
+    ): void => {
+      Runtime.runSync(opts.runtime)(
+        emitInvocationMetrics(ctx, {
+          service: opts.service,
+          handler: opts.handler,
+          outcome: outcomeTag,
+          durationMs: monotonicMs() - attemptStartMs,
+        }),
+      )
+    }
+    if (Exit.isSuccess(exit) === true) {
+      onOutcome?.({ _tag: 'success' })
+      emitInvocation('success')
+      return exit.value
+    }
+    const outcome = classifyOutcome(exit.cause, opts.errorSchema)
+    onOutcome?.(outcome)
+    /* Count a TERMINAL outcome (success/terminal/cancelled — the invocation truly
+     * ends) or a retryable failed attempt; `suspended`/`defect` are NOT terminal
+     * outcomes (the invocation parks/retries), so they are not counted here. */
+    if (
+      outcome._tag === 'terminal' ||
+      outcome._tag === 'retryable' ||
+      outcome._tag === 'cancelled'
+    ) {
+      emitInvocation(outcome._tag)
+    }
+    throw outcome._tag === 'success' ? undefined : outcome.thrown
   }
 
 /* Map the typed `retryPolicy` option to the SDK `RetryPolicy` (decision 0006,
@@ -321,6 +461,7 @@ const mapServiceOptions = (o?: ServiceLevelOptions): Record<string, unknown> | u
 export interface MaterializeWiring {
   readonly hooks?: ReadonlyArray<EndpointHooks> | undefined
   readonly inboundBridge?: HandlerWrap | undefined
+  readonly boundaryObserver?: BoundaryObserver | undefined
 }
 
 /**
@@ -381,11 +522,14 @@ export const materialize = <AppR>(
         restate.handlers.handler(
           handlerOpts(spec, redaction),
           runEffectHandler({
+            service: contract.name,
+            handler: name,
             run,
             errorSchema: spec.error,
             runtime,
             markers: 'service',
             inboundBridge: wiring?.inboundBridge,
+            boundaryObserver: wiring?.boundaryObserver,
           }),
         ),
       ]
@@ -428,21 +572,27 @@ export const materializeObject = <AppR>(
           ? restate.handlers.object.shared(
               opts,
               runEffectHandler({
+                service: contract.name,
+                handler: name,
                 run,
                 errorSchema: spec.error,
                 runtime,
                 markers: 'objectShared',
                 inboundBridge: wiring?.inboundBridge,
+                boundaryObserver: wiring?.boundaryObserver,
               }),
             )
           : restate.handlers.object.exclusive(
               opts,
               runEffectHandler({
+                service: contract.name,
+                handler: name,
                 run,
                 errorSchema: spec.error,
                 runtime,
                 markers: 'objectExclusive',
                 inboundBridge: wiring?.inboundBridge,
+                boundaryObserver: wiring?.boundaryObserver,
               }),
             )
       return [name, handler]
@@ -487,11 +637,14 @@ export const materializeWorkflow = <AppR>(
   const runHandler = restate.handlers.workflow.workflow(
     handlerOpts(runSpec, redaction),
     runEffectHandler({
+      service: contract.name,
+      handler: 'run',
       run: implMap['run']!,
       errorSchema: runSpec.error,
       runtime,
       markers: 'workflowRun',
       inboundBridge: wiring?.inboundBridge,
+      boundaryObserver: wiring?.boundaryObserver,
     }),
   )
   const shared = (specs: WorkflowHandlerSpecMap): Array<[string, unknown]> =>
@@ -500,11 +653,14 @@ export const materializeWorkflow = <AppR>(
       restate.handlers.workflow.shared(
         handlerOpts(spec, redaction),
         runEffectHandler({
+          service: contract.name,
+          handler: name,
           run: implMap[name]!,
           errorSchema: spec.error,
           runtime,
           markers: 'workflowShared',
           inboundBridge: wiring?.inboundBridge,
+          boundaryObserver: wiring?.boundaryObserver,
         }),
       ),
     ])
@@ -600,6 +756,12 @@ export interface EndpointOptions<AppR> {
    * `<A, E, R>(effect) => Effect<A, E, R>`; undefined in the otel-free core.
    */
   readonly inboundBridge?: HandlerWrap
+  /**
+   * Per-invocation observability observer (the `./otel` module's boundary span
+   * stamping + per-invocation outcome metric, R23 §10, decision 0014). A pure
+   * `(BoundaryInfo) => (BoundaryOutcome) => void`; undefined in the otel-free core.
+   */
+  readonly boundaryObserver?: BoundaryObserver
 }
 
 /**
@@ -624,7 +786,11 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
     Effect.gen(function* () {
       type AppR = AppROf<S>
       const runtime = yield* Effect.runtime<AppR>()
-      const wiring: MaterializeWiring = { hooks: opts.hooks, inboundBridge: opts.inboundBridge }
+      const wiring: MaterializeWiring = {
+        hooks: opts.hooks,
+        inboundBridge: opts.inboundBridge,
+        boundaryObserver: opts.boundaryObserver,
+      }
       const fn = createEndpointHandler({
         services: opts.services.map((s) => materializeAny(s, runtime, wiring)),
       })
