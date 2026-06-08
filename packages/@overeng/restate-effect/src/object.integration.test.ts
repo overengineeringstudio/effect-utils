@@ -10,12 +10,11 @@
  * The type-level gate that `State.set` in the shared `get` handler is a COMPILE
  * error lives in `capability-inference.types.ts` (checked by `tsc`, DQ3).
  */
-import { Effect, Exit, Layer, Schema, Scope } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { startRestateServer, type RestateServerHandle } from '../test/restate-server.ts'
-import { freePort, serverAvailable } from '../test/test-utils.ts'
-import { layer, objectCall, RestateIngress, RestateObject, State } from './mod.ts'
+import { objectCall, RestateIngress, RestateObject, State } from './mod.ts'
+import { serverAvailable, withRestateServer } from './testing.ts'
 
 /* ── counter object: exclusive `add` (typed State) + shared `get` ── */
 
@@ -48,28 +47,16 @@ const CounterLive = RestateObject.implement<typeof CounterObj>(CounterObj, {
     ),
 })
 
+/* One held native server for the suite (collapses the copy-pasted scope/ingress
+ * `beforeAll`); the standalone `objectCall` needs a `RestateIngress` layer built
+ * from the booted ingress URL. */
+const held = withRestateServer({ services: [CounterLive], appLayer: Layer.empty })
+const ingressLayer = (): Layer.Layer<RestateIngress> =>
+  RestateIngress.layer({ url: held.harness().ingressUrl })
+
 describe('restate-effect virtual object (counter)', () => {
-  let server: RestateServerHandle
-  let endpointScope: Scope.CloseableScope
-  let ingressLayer: Layer.Layer<RestateIngress>
-
-  beforeAll(async () => {
-    if (!serverAvailable) return
-    server = await startRestateServer()
-    const sdkPort = await freePort()
-    endpointScope = await Effect.runPromise(Scope.make())
-    await Effect.runPromise(
-      Layer.buildWithScope(layer({ services: [CounterLive], port: sdkPort }), endpointScope),
-    )
-    await server.register(`http://localhost:${sdkPort}`)
-    ingressLayer = RestateIngress.layer({ url: server.ingressUrl })
-  }, 60_000)
-
-  afterAll(async () => {
-    if (!serverAvailable) return
-    if (endpointScope !== undefined) await Effect.runPromise(Scope.close(endpointScope, Exit.void))
-    if (server !== undefined) await server.shutdown()
-  }, 60_000)
+  beforeAll(held.setup, 60_000)
+  afterAll(held.teardown, 60_000)
 
   it.skipIf(!serverAvailable)('add mutates per-key State; get reads it back', async () => {
     const result = await Effect.runPromise(
@@ -78,7 +65,7 @@ describe('restate-effect virtual object (counter)', () => {
         const afterSecond = yield* objectCall(CounterObj, 'cart-a', 'add', 4)
         const read = yield* objectCall(CounterObj, 'cart-a', 'get', undefined)
         return { afterFirst, afterSecond, read }
-      }).pipe(Effect.provide(ingressLayer)),
+      }).pipe(Effect.provide(ingressLayer())),
     )
     expect(result.afterFirst).toBe(3)
     expect(result.afterSecond).toBe(7)
@@ -93,7 +80,7 @@ describe('restate-effect virtual object (counter)', () => {
         const x = yield* objectCall(CounterObj, 'key-x', 'get', undefined)
         const y = yield* objectCall(CounterObj, 'key-y', 'get', undefined)
         return { x, y }
-      }).pipe(Effect.provide(ingressLayer)),
+      }).pipe(Effect.provide(ingressLayer())),
     )
     /* Per-key isolation (A01): the two keys do not share State. */
     expect(result.x).toBe(10)

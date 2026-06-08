@@ -16,10 +16,9 @@ programming model and the engine. If you want Effect's own durable engine, use
 
 The stable surface documented here — Services, Virtual Objects, Workflows, the
 Schema serde + typed error boundary, determinism, durable steps/calls/awakeables,
-cancellation, the endpoint, `./otel`, and `./testing` — is implemented and
-verified end-to-end against a real native `restate-server`. One remaining in-flux
-ergonomic (a server-free in-memory test context) is marked with a
-`TODO(refinement)` stub below.
+cancellation, the endpoint, `./otel`, and `./testing` (the native-server harness
+AND the server-free in-memory test context) — is implemented and verified
+end-to-end against a real native `restate-server`.
 
 Every code snippet in this README is a real, compiled-and-run example. The files
 live in [`examples/`](./examples), are type-checked by `dt ts:check`, and are
@@ -736,11 +735,72 @@ the SDK test environment: `alwaysReplay: true` forces a replay at every suspensi
 immediately. `serverAvailable` lets a suite gracefully `skipIf` when no native
 binary is on `$PATH`.
 
-<!-- TODO(refinement): a server-free, in-memory mock context for unit-testing a
-single handler without spawning a server is being designed. Until then,
-`RestateTestHarness` (a real native server on ephemeral ports) is the supported
-path, and pure pieces (serde round-trips, `toTerminal`, annotation read-back) are
-unit-tested directly against the `Schema`/combinators. -->
+### In-memory `TestContext` (server-free unit tests)
+
+For fast unit tests of a handler's LOGIC and State transitions — no server, no
+Docker — `./testing` also exports a FAITHFUL in-memory `RestateContext`. It is a
+real in-memory implementation, not a stub: State is a real `Map` (round-tripped
+through the same serde the handler uses), `Restate.run(name, …)` executes once and
+memoizes by name (journaled-once), `ctx.date`/`ctx.rand` are deterministic (seeded),
+and `ctx.sleep` is a controllable no-op. Provide it over the real handler effect and
+assert on the result AND the State `Map` (verified by
+[`src/TestContext.test.ts`](./src/TestContext.test.ts)):
+
+```ts
+import { Effect } from 'effect'
+import { describe, expect, it } from 'vitest'
+import { makeTestContextLayer } from '@overeng/restate-effect/testing'
+import { CounterLive } from './counter.ts' // your RestateObject.implement(...)
+
+describe('counter handler logic', () => {
+  it('add reads + writes State (server-free)', () =>
+    Effect.gen(function* () {
+      // seed a pre-condition in the backing State Map
+      const state = new Map<string, unknown>([['count', 40]])
+      // run the REAL `add` handler against the in-memory context
+      const next = yield* CounterLive.impl
+        .add(3)
+        .pipe(Effect.provide(makeTestContextLayer({ state, key: 'cart-1' })))
+      // assert the result AND the State transition
+      expect(next).toBe(43)
+      expect(state.get('count')).toBe(43)
+    }).pipe(Effect.runPromise))
+})
+```
+
+`makeTestContextLayer({ handlerKind })` provides the SAME capability-marker subset
+the real boundary provides per handler kind (`service` / `objectShared` /
+`objectExclusive` / `workflowShared` / `workflowRun`), so a `State.set` in a
+read-only handler is still a compile error. `makeTestContext(options)` is the
+lower-level form (returns the fake `ctx` + the State `Map` + the `run` journal).
+
+**This is NOT a substitute for `RestateTestHarness`.** It deliberately does not
+model durability/replay, single-writer/per-key concurrency, or cross-handler /
+cross-invocation effects (`Restate.call`/`send`/`reschedule`/delayed self-send/
+`pollLoop`, durable promises resolved by another invocation) — none of those route
+anywhere without a server. Use the harness for any of those; use the in-memory
+context for fast handler-logic and State-transition tests.
+
+### Test ergonomics
+
+`withRestateServer({ services, appLayer })` collapses the manual
+`beforeAll`/`afterAll` scope/ingress boilerplate into `setup`/`teardown` + a
+`harness()` accessor — for a suite that holds ONE native server across plain
+`async` test bodies (prefer `@effect/vitest`'s `it.layer` for `it.effect` suites):
+
+```ts
+const held = withRestateServer({ services: [CounterLive], appLayer: Layer.empty })
+beforeAll(held.setup, 90_000)
+afterAll(held.teardown, 90_000)
+// ... in a test:
+const result = await Effect.runPromise(held.harness().ingress.objectCall(CounterObj, 'k', 'add', 1))
+```
+
+Under `@effect/vitest`'s `it.effect`, a bare `Effect.sleep` runs on a virtual
+`TestClock` and never advances — a real-time wait coordinating with the native
+server across suspend/resume would hang. `./testing` exports `liveSleep(millis)`
+(an `Effect.sleep` pinned to a live `Clock`) and `withLiveClock(effect)` so
+wall-clock waits actually elapse.
 
 ## API reference
 
@@ -782,12 +842,16 @@ unit-tested directly against the `Schema`/combinators. -->
 
 ### `./testing`
 
-| Symbol                           | What                                                                 |
-| -------------------------------- | -------------------------------------------------------------------- |
-| `RestateTestHarness.layer(opts)` | the scoped native-server harness Layer                               |
-| `RestateTestHarness`             | the harness service (`ingress`, `stateOf`, `ingressUrl`, `adminUrl`) |
-| `serverAvailable`                | whether a native `restate-server` binary is on `$PATH`               |
-| `StateProxy` / `BoundIngress`    | the typed `stateOf` proxy / pre-bound ingress surface types          |
+| Symbol                                                         | What                                                                        |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `RestateTestHarness.layer(opts)`                               | the scoped native-server harness Layer                                      |
+| `RestateTestHarness`                                           | the harness service (`ingress`, `stateOf`, `ingressUrl`, `adminUrl`)        |
+| `withRestateServer(opts)`                                      | manual-scope harness holder (`setup`/`teardown`/`harness()`)                |
+| `makeTestContext` / `makeTestContextLayer`                     | the FAITHFUL in-memory `RestateContext` for server-free handler-logic tests |
+| `liveSleep` / `withLiveClock`                                  | live-clock test utils (real-time waits under `it.effect`'s `TestClock`)     |
+| `serverAvailable`                                              | whether a native `restate-server` binary is on `$PATH`                      |
+| `StateProxy` / `BoundIngress`                                  | the typed `stateOf` proxy / pre-bound ingress surface types                 |
+| `TestContextOptions` / `TestHandlerKind` / `HeldRestateServer` | the in-memory-context + holder option/result types                          |
 
 ## How the examples are verified
 

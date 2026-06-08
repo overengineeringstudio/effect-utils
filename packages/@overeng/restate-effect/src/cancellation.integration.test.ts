@@ -17,12 +17,11 @@
  * The endpoint runs in-process, so the finalizer's observable side effect is a
  * module-level shared map keyed by the Object key.
  */
-import { Deferred, Effect, Exit, Layer, Schema, Scope } from 'effect'
+import { Deferred, Effect, Layer, Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { startRestateServer, type RestateServerHandle } from '../test/restate-server.ts'
-import { freePort, serverAvailable } from '../test/test-utils.ts'
-import { layer, objectSend, Restate, RestateIngress, RestateObject } from './mod.ts'
+import { objectSend, Restate, RestateIngress, RestateObject } from './mod.ts'
+import { serverAvailable, withRestateServer } from './testing.ts'
 
 /* ── shared observable: per-key lifecycle the in-process finalizer records ── */
 
@@ -94,28 +93,16 @@ const cancelInvocation = async (adminUrl: string, invocationId: string): Promise
   }
 }
 
+/* One held native server for the suite (collapses the copy-pasted scope/ingress
+ * `beforeAll`). The standalone `objectSend` needs a `RestateIngress` layer built
+ * from the booted ingress URL; the admin cancel uses the booted admin URL. */
+const held = withRestateServer({ services: [WaiterLive], appLayer: Layer.empty })
+const ingressLayer = (): Layer.Layer<RestateIngress> =>
+  RestateIngress.layer({ url: held.harness().ingressUrl })
+
 describe('restate-effect cancellation ↔ interruption', () => {
-  let server: RestateServerHandle
-  let endpointScope: Scope.CloseableScope
-  let ingressLayer: Layer.Layer<RestateIngress>
-
-  beforeAll(async () => {
-    if (!serverAvailable) return
-    server = await startRestateServer()
-    const sdkPort = await freePort()
-    endpointScope = await Effect.runPromise(Scope.make())
-    await Effect.runPromise(
-      Layer.buildWithScope(layer({ services: [WaiterLive], port: sdkPort }), endpointScope),
-    )
-    await server.register(`http://localhost:${sdkPort}`)
-    ingressLayer = RestateIngress.layer({ url: server.ingressUrl })
-  }, 60_000)
-
-  afterAll(async () => {
-    if (!serverAvailable) return
-    if (endpointScope !== undefined) await Effect.runPromise(Scope.close(endpointScope, Exit.void))
-    if (server !== undefined) await server.shutdown()
-  }, 60_000)
+  beforeAll(held.setup, 60_000)
+  afterAll(held.teardown, 60_000)
 
   it.skipIf(!serverAvailable)(
     'a cancelled invocation runs its acquireRelease finalizer and does not silently retry',
@@ -124,7 +111,7 @@ describe('restate-effect cancellation ↔ interruption', () => {
 
       /* Fire-and-forget the long handler; capture its invocation id. */
       const send = await Effect.runPromise(
-        objectSend(Waiter, key, 'wait', undefined).pipe(Effect.provide(ingressLayer)),
+        objectSend(Waiter, key, 'wait', undefined).pipe(Effect.provide(ingressLayer())),
       )
       expect(send.invocationId).toMatch(/.+/)
 
@@ -142,7 +129,7 @@ describe('restate-effect cancellation ↔ interruption', () => {
 
       /* Cancel via the admin API → Restate aborts the attempt → bridge interrupts
        * the fiber at the suspend point → acquireRelease release runs. */
-      await cancelInvocation(server.adminUrl, send.invocationId)
+      await cancelInvocation(held.harness().adminUrl, send.invocationId)
 
       /* Poll for the release finalizer (cancellation propagation is async). */
       const deadline = Date.now() + 30_000
