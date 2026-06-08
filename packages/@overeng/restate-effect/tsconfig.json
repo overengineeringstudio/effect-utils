@@ -42,7 +42,7 @@
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*", "test/**/*", "examples/**/*"],
   "references": [
     {
       "path": "../utils-dev"
