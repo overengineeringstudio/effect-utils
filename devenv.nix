@@ -9,6 +9,13 @@ let
   repoFlake = builtins.getFlake (toString ./.);
   currentSystem = pkgs.stdenv.hostPlatform.system;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
+  # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
+  # rest of the closure stays free-only.
+  restatePkgs = import repoFlake.inputs.nixpkgs {
+    system = currentSystem;
+    config.allowUnfreePredicate = pkg: builtins.elem (pkgs.lib.getName pkg) [ "restate" ];
+  };
+  restate = import ./nix/restate.nix { pkgs = restatePkgs; };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
@@ -416,6 +423,8 @@ in
     ./nix/devenv-modules/tasks/local/workspace-check.nix
     # Notion integration tests (requires NOTION_API_TOKEN)
     ./nix/devenv-modules/tasks/local/notion-integration-test.nix
+    # Restate integration tests (native restate-server via RESTATE_SERVER_BIN)
+    ./nix/devenv-modules/tasks/local/restate-integration-test.nix
   ];
 
   packages = [
@@ -427,6 +436,8 @@ in
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
     oxlintWithPlugins
     pkgs.oxfmt
+    # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
+    restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoFlake.packages.${currentSystem}.notion-cli
     (mkSourceCli {
@@ -446,6 +457,10 @@ in
 
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
+
+  # restate-server binary path for restate-effect integration tests (test/test-utils.ts
+  # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
+  env.RESTATE_SERVER_BIN = "${restate}/bin/restate-server";
 
   # Source-mode CLIs need pnpm install before running.
   # (The shared modules don't assume this — they work with Nix packages too.)
