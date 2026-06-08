@@ -1,3 +1,4 @@
+import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
   workspaceMember,
@@ -12,6 +13,16 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
  * `NodeRuntime.runMain` around `serve`). Keep peers minimal like pty-effect. */
 const peerDepNames = ['effect'] as const
 
+/* OTel deps are used ONLY by the `./otel` subpath — the base `.` export must not
+ * pull them. They are PEERS (a consumer that imports `./otel` provides them) and
+ * also dev deps (so the package builds + the OTel test runs locally). This keeps
+ * the core dependency-light (decision 0007, spec §10). */
+const otelPeerDepNames = [
+  '@effect/opentelemetry',
+  '@opentelemetry/api',
+  '@restatedev/restate-sdk-opentelemetry',
+] as const
+
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/restate-effect' }),
   dependencies: {
@@ -20,11 +31,19 @@ const workspaceDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'typescript', 'vitest'),
+      ...catalog.pick(
+        ...peerDepNames,
+        ...otelPeerDepNames,
+        ...otelSdkDeps,
+        '@effect/vitest',
+        '@types/node',
+        'typescript',
+        'vitest',
+      ),
     },
   },
   peerDependencies: {
-    external: catalog.pick(...peerDepNames),
+    external: catalog.pick(...peerDepNames, ...otelPeerDepNames),
   },
 })
 
@@ -34,11 +53,13 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       '.': './src/mod.ts',
+      './otel': './src/otel.ts',
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': './dist/mod.js',
+        './otel': './dist/otel.js',
       },
     },
   } satisfies PackageJsonData,
