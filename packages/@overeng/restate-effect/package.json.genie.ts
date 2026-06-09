@@ -7,6 +7,7 @@ import {
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 /* The library itself only depends on `effect` and the Restate SDKs; platform
  * deps are not imported here (consumers wire `@effect/platform-node`'s
@@ -32,7 +33,14 @@ const workspaceDeps = catalog.compose({
     external: catalog.pick('@restatedev/restate-sdk', '@restatedev/restate-sdk-clients'),
   },
   devDependencies: {
-    workspace: [utilsDevPkg],
+    /* `@overeng/utils` provides the shared SSOT helpers the source consumes:
+     * `formatReasonMessage` (RestateError), `textEncodeToArrayBuffer` (Serde) and
+     * `freePort`/`freePorts` (testing harness) — all dependency-free isomorphic /
+     * `node:net` helpers. utils is a PEER (mirroring `notion-effect-client`) so its
+     * broad peer surface propagates to the consumer rather than bloating this
+     * dependency-light core; listed as a dev workspace dep too so it builds + tests
+     * locally. */
+    workspace: [utilsDevPkg, utilsPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,
@@ -46,6 +54,7 @@ const workspaceDeps = catalog.compose({
     },
   },
   peerDependencies: {
+    workspace: [utilsPkg],
     external: catalog.pick(...peerDepNames, ...otelPeerDepNames),
   },
 })

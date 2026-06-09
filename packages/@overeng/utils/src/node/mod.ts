@@ -2,6 +2,9 @@
 export * from '../isomorphic/mod.ts'
 export * from './cmd.ts'
 
+/** Free-TCP-port helpers for tests / dev servers (TOCTOU-aware) */
+export * from './net.ts'
+
 /** File-system based backing for distributed semaphore */
 export * as FileSystemBacking from './file-system-backing.ts'
 
