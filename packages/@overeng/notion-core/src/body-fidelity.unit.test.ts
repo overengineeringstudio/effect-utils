@@ -54,6 +54,42 @@ describe('classifyBodyCompleteness', () => {
     })
   })
 
+  it('marks empty endpoint Markdown with non-empty rendered Markdown as lossy', () => {
+    expect(
+      classifyBodyCompleteness({
+        markdown: { markdown: '', truncated: false, unknownBlockIds: [] },
+        inventory: {
+          ...inventory,
+          renderedMarkdown: 'Rendered content',
+        },
+      }),
+    ).toEqual({
+      _tag: 'lossy',
+      reasons: ['rendered_markdown_has_unobserved_suffix'],
+    })
+  })
+
+  it('accepts empty endpoint Markdown when rendered Markdown is also empty', () => {
+    expect(
+      classifyBodyCompleteness({
+        markdown: { markdown: '', truncated: false, unknownBlockIds: [] },
+        inventory: {
+          ...inventory,
+          renderedMarkdown: '',
+        },
+      }),
+    ).toEqual({ _tag: 'complete' })
+  })
+
+  it('accepts empty endpoint Markdown when no rendered Markdown evidence exists', () => {
+    expect(
+      classifyBodyCompleteness({
+        markdown: { markdown: '', truncated: false, unknownBlockIds: [] },
+        inventory,
+      }),
+    ).toEqual({ _tag: 'complete' })
+  })
+
   it('classifies unsupported block inventory as lossy', () => {
     expect(
       classifyBodyCompleteness({

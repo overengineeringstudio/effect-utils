@@ -70,7 +70,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **@overeng/notion-md + @overeng/notion-datasource-sync**: Fail closed when a remote Notion Markdown body observation is lossy, including endpoint truncation, unknown blocks, unsupported body inventory, or rendered suffix content omitted after a divider, so partial bodies are not adopted as clean `.nmd` bases or settled through datasource-sync body guards (#759).
+- **@overeng/notion-md + @overeng/notion-datasource-sync**: Fail closed when a remote Notion Markdown body observation is lossy, including endpoint truncation, empty endpoint bodies with non-empty rendered evidence, unknown blocks, unsupported body inventory, or rendered suffix content omitted after dividers and toggleable headings, so partial bodies are not adopted as clean `.nmd` bases or settled through datasource-sync body guards (#759).
 - **@overeng/notion-md**: Guard unified tree sync planning and destructive operations by reporting dry-run moves, blocking missing-file trash unless forced, checking tree `replace_content` races, and documenting the explicit tree/flat-batch CLI contract.
 - **@overeng/notion-md**: Deduplicate `--from-remote` materialized paths for colliding Notion titles, strip derived child anchors from tree file bodies while preserving composed baselines, and keep tree sync pinned to the current strict index schema.
 - **CI / Nix packages**: Refresh stale pnpm fixed-output hashes for `oxc-config`, `genie`, `notion-cli`, `notion-md`, `megarepo`, `workflow-report`, and `tui-stories`; register `notion-core` in workspace checks; format PR-touched files and keep oxlint fatal for error-level diagnostics while the existing warning backlog is tracked separately.

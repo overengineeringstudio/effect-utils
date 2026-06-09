@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -15,6 +16,7 @@ import {
   isTodoChecked,
   markdownToBlocks,
   parseInlineMarkdown,
+  treeToMarkdown,
 } from './markdown.ts'
 
 /** Create a mock block with specific type data */
@@ -32,6 +34,23 @@ const mockBlock = <T extends string>(type: T, data: Record<string, unknown>): Bl
     parent: { type: 'page_id', page_id: 'parent-id' },
     [type]: data,
   }) as BlockWithData
+
+const mockRichText = (content: string) => [
+  {
+    type: 'text',
+    text: { content },
+    annotations: {
+      bold: false,
+      italic: false,
+      strikethrough: false,
+      underline: false,
+      code: false,
+      color: 'default',
+    },
+    plain_text: content,
+    href: null,
+  },
+]
 
 describe('Block Helpers', () => {
   describe('getBlockRichText', () => {
@@ -645,5 +664,35 @@ describe('markdownToBlocks', () => {
         "heading_1",
       ]
     `)
+  })
+})
+
+describe('treeToMarkdown', () => {
+  it('renders heading children', async () => {
+    const markdown = await Effect.runPromise(
+      treeToMarkdown({
+        tree: [
+          {
+            block: {
+              ...mockBlock('heading_1', {
+                rich_text: mockRichText('Heading'),
+                is_toggleable: true,
+              }),
+              has_children: true,
+            },
+            children: [
+              {
+                block: mockBlock('paragraph', {
+                  rich_text: mockRichText('Nested child'),
+                }),
+                children: [],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+
+    expect(markdown).toBe('# Heading\n\nNested child')
   })
 })

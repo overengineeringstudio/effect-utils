@@ -60,7 +60,8 @@ const hasUnobservedRenderedSuffix = (opts: {
   const observed = normalizeComparableMarkdown(opts.observedMarkdown)
   const rendered = normalizeComparableMarkdown(opts.renderedMarkdown)
 
-  if (observed === '' || rendered === '' || observed === rendered) return false
+  if (rendered === '' || observed === rendered) return false
+  if (observed === '') return true
   if (rendered.startsWith(observed) === false) return false
 
   const suffix = rendered.slice(observed.length).trim()
