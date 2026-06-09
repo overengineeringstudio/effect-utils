@@ -1,0 +1,3 @@
+args = ["trace", "inspect", "0123456789abcdef0123456789abcdef"]
+
+[env]

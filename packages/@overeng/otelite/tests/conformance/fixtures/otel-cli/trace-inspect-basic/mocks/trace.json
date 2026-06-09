@@ -1,0 +1,1 @@
+{"batches":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"nix"}}]},"scopeSpans":[{"scope":{"name":"nix-trace-bridge"},"spans":[{"traceId":"0123456789abcdef0123456789abcdef","spanId":"aaaaaaaaaaaaaaaa","name":"nix.session","startTimeUnixNano":"1000000","endTimeUnixNano":"5000000","kind":1,"status":{"code":1},"attributes":[]}]}]}]}

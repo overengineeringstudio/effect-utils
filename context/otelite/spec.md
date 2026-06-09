@@ -49,6 +49,12 @@ Design borrows from `rg --json`, `gh --json`+jq, `kubectl -o json`, BSD
 - **Filtering, not a query language:** `--service` / `--name` / `--attr k=v` /
   `--summary` cover exact-match; everything else is a natural `| jq`. Upholds the
   scope line — otelite normalizes, tests assert (`jq -e` / Effect `Schema`).
+  Filters narrow the **flat** `otelite.span/v1` rows; `--summary` always
+  summarizes the whole trace (filters do not pre-narrow it, so exclusive-duration
+  math stays correct). In flat rows, `attrs` is a `Record<string,string>` — the
+  capture model flattens every OTLP `AnyValue` (bool/int/double) to its string
+  form, and non-scalar values (array/kvlist/bytes) flatten to `""`. The Effect
+  `Schema` (M9) decodes `attrs` as `Record<string,string>` accordingly.
 
 ### Exit codes
 

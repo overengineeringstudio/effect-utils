@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use otelite::inspect_cmd::{inspect, parse_attr, InspectOpts};
 use otelite::run::{run, RunOpts};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -26,17 +27,17 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("run") => dispatch_run(&args[2..]),
-        Some("inspect") => {
-            eprintln!("otelite: `inspect` is not yet implemented (epic #772, M4)");
-            ExitCode::from(EX_UNAVAILABLE)
-        }
+        Some("inspect") => dispatch_inspect(&args[2..]),
         Some("capture") => {
             eprintln!("otelite: `capture` is not yet implemented (epic #772, M7)");
             ExitCode::from(EX_UNAVAILABLE)
         }
         Some("--print-schema") => {
-            eprintln!("otelite: `--print-schema` is not yet implemented (epic #772, M4)");
-            ExitCode::from(EX_UNAVAILABLE)
+            // The stable output schema tags (locked by the conformance goldens).
+            println!(
+                r#"{{"schemas":["otelite.summary/v1","otelite.span/v1","otelite.trace-summary/v1"]}}"#
+            );
+            ExitCode::SUCCESS
         }
         Some(other) => {
             eprintln!("otelite: unknown argument: {other}");
@@ -137,4 +138,88 @@ fn usage(msg: &str) -> ExitCode {
     eprintln!("otelite: {msg}");
     eprintln!("try: otelite run [opts] -- <cmd...>");
     ExitCode::from(EX_USAGE)
+}
+
+/// Parse `inspect <src> [filters]`. `<src>` is a dir, a file, or `-` (stdin).
+fn dispatch_inspect(args: &[String]) -> ExitCode {
+    let mut src: Option<String> = None;
+    let mut signal = String::from("traces");
+    let mut service: Option<String> = None;
+    let mut name: Option<String> = None;
+    let mut attrs: Vec<(String, String)> = Vec::new();
+    let mut summary = false;
+    let mut top = 20usize;
+    let mut pretty = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--signal" => match args.get(i + 1) {
+                Some(v) => {
+                    signal = v.clone();
+                    i += 2;
+                }
+                None => return usage("--signal needs a value"),
+            },
+            "--service" => match args.get(i + 1) {
+                Some(v) => {
+                    service = Some(v.clone());
+                    i += 2;
+                }
+                None => return usage("--service needs a value"),
+            },
+            "--name" => match args.get(i + 1) {
+                Some(v) => {
+                    name = Some(v.clone());
+                    i += 2;
+                }
+                None => return usage("--name needs a value"),
+            },
+            "--attr" => match args.get(i + 1) {
+                Some(v) => match parse_attr(v) {
+                    Ok(kv) => {
+                        attrs.push(kv);
+                        i += 2;
+                    }
+                    Err(code) => return ExitCode::from(code),
+                },
+                None => return usage("--attr needs key=value"),
+            },
+            "--top" => match args.get(i + 1).and_then(|v| v.parse().ok()) {
+                Some(t) => {
+                    top = t;
+                    i += 2;
+                }
+                None => return usage("--top needs a number"),
+            },
+            "--summary" => {
+                summary = true;
+                i += 1;
+            }
+            "--pretty" => {
+                pretty = true;
+                i += 1;
+            }
+            other if !other.starts_with("--") && src.is_none() => {
+                src = Some(other.to_string());
+                i += 1;
+            }
+            other => return usage(&format!("unknown inspect arg: {other}")),
+        }
+    }
+
+    let Some(src) = src else {
+        return usage("inspect needs a source (a dir, a file, or `-`)");
+    };
+    let opts = InspectOpts {
+        src,
+        signal,
+        service,
+        name,
+        attrs,
+        summary,
+        top,
+        pretty,
+    };
+    ExitCode::from(inspect(opts))
 }
