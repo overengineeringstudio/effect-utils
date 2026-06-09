@@ -39,6 +39,9 @@
             "context": "pnpm-regression"
           },
           {
+            "context": "cargo"
+          },
+          {
             "context": "test (namespace-profile-linux-x86-64)"
           },
           {

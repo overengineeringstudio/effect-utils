@@ -453,6 +453,14 @@ in
       name = "tui-stories";
       entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
     })
+    # Rust toolchain for the otelite crate (effect-utils' first Rust package).
+    # Nix builds use pkgs.rustPlatform; these give local dev + the cargo CI lane
+    # cargo/clippy/rustfmt/rust-analyzer matching nixpkgs' stable rust.
+    pkgs.cargo
+    pkgs.rustc
+    pkgs.clippy
+    pkgs.rustfmt
+    pkgs.rust-analyzer
   ];
 
   # actionlint binary path for genie's workflow validation (also used by tests)

@@ -40,6 +40,7 @@ import {
   defaultRefPolicyCheckJob,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
+import { nixOnlyPackages } from '../../genie/packages.ts'
 import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const workflowReportFlakeRef =
@@ -245,8 +246,72 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
   ],
 })
 
+/**
+ * Cargo lane for the otelite Rust crate (effect-utils' first Rust package).
+ *
+ * The Nix build/test of the crate is already covered by `.#otelite` /
+ * `nix-check`; this lane is the source-quality gate (build/test/clippy/fmt)
+ * using the nixpkgs-provided rust toolchain so it matches local dev and the
+ * devenv shell exactly. The crate registry lives in genie/packages.ts as the
+ * single source of truth for the crate path.
+ */
+const oteliteCrate = nixOnlyPackages.find((p) => p.name === 'otelite')
+if (oteliteCrate === undefined) {
+  throw new Error("genie/packages.ts: nix-only package 'otelite' not found")
+}
+
+const provideRustToolchainStep = {
+  name: 'Provide Rust toolchain',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    'for out in $(nix build --no-link --print-out-paths nixpkgs#cargo nixpkgs#rustc nixpkgs#clippy nixpkgs#rustfmt); do',
+    '  echo "$out/bin" >> "$GITHUB_PATH"',
+    'done',
+  ].join('\n'),
+} as const
+
+const cargoCrateChecksStep = {
+  name: 'Cargo build + test + clippy + fmt',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    `cd ${oteliteCrate.cratePath}`,
+    'cargo build --release',
+    'cargo test',
+    'cargo clippy -- -D warnings',
+    'cargo fmt --check',
+  ].join('\n'),
+} as const
+
+/**
+ * Cargo job: nix-installed rust toolchain + the four crate checks. Kept off the
+ * pnpm/devenv base steps because the crate is independent of the JS workspace;
+ * it only needs Nix to materialize the toolchain.
+ */
+const cargoJob = {
+  if: normalCiIf,
+  'runs-on': namespaceRunner({
+    profile: 'namespace-profile-linux-x86-64',
+    runId: '${{ github.run_id }}',
+  }),
+  'timeout-minutes': jobTimeoutMinutes,
+  defaults: bashShellDefaults,
+  env: standardCIEnv,
+  steps: [
+    checkoutStep(),
+    installNixStep(),
+    provideRustToolchainStep,
+    cargoCrateChecksStep,
+    failureReminderStep,
+  ],
+} as const
+
 // Jobs keyed by CIJobName for type safety with required status checks
-const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
+const jobs: Record<
+  CIJobName,
+  ReturnType<typeof job> | ReturnType<typeof multiPlatformJob> | typeof cargoJob
+> = {
   typecheck: job(
     {
       name: 'Type check',
@@ -289,6 +354,7 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
       'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
     ].join('\n'),
   }),
+  cargo: cargoJob,
 }
 
 const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'
