@@ -236,13 +236,13 @@ async fn spawn_and_wait(rx: &RunningReceiver, opts: &RunOpts) -> std::io::Result
     cmd.stderr(Stdio::inherit());
 
     let mut child = cmd.spawn()?;
-    if let Some(out) = child.stdout.take() {
+    let stdout_forward = child.stdout.take().map(|out| {
         tokio::spawn(async move {
             let mut reader = out;
             let mut err = tokio::io::stderr();
             let _ = tokio::io::copy(&mut reader, &mut err).await;
-        });
-    }
+        })
+    });
 
     let status = loop {
         tokio::select! {
@@ -254,6 +254,13 @@ async fn spawn_and_wait(rx: &RunningReceiver, opts: &RunOpts) -> std::io::Result
             _ = tokio::signal::ctrl_c() => continue,
         }
     };
+
+    // Await the forwarder so any stdout still buffered in the pipe after the
+    // child exits is fully copied to our stderr before we return — otherwise
+    // dropping the runtime could truncate output the spec promises to preserve.
+    if let Some(handle) = stdout_forward {
+        let _ = handle.await;
+    }
     Ok(child_exit_code(status))
 }
 
