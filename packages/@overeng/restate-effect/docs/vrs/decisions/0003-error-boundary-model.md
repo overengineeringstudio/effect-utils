@@ -82,6 +82,17 @@ terminal → fail). The `IngressFailed` client surface (`Restate.call`/`send`,
 ingress) still carries a typed `RestateError` — it pairs with the typed
 `decodeTerminalError` decode helper, a caller-facing boundary, not a journaled op.
 
+The STANDALONE blocking awaits — `Awakeable.make(S).promise` and
+`DurablePromise.for(S).get`/`peek` — route through the SAME `awaitDurable` seam as
+`run`/`sleep`, so they classify identically: a Restate suspension PARKS the
+invocation (it does not degrade to a retried defect), a cancellation INTERRUPTS
+(finalizers run, mapped to a non-retried `CancelledError`), and a `reject` — the
+`TerminalError` the awaiting `get`/`promise` rejects with — terminalizes VERBATIM
+(R34), the awaiter fails terminally rather than as a retried infra defect. Only a
+real, unexpected infra rejection becomes a `RestateError` defect. (A `ctx.run`
+give-up's `TerminalError` is deliberately the exception: `run` keeps it an infra
+DEFECT, since a step give-up is infra, not a domain `reject`.)
+
 Compensation/sagas OBSERVE a durable step via `Restate.runExit(name, effect)` →
 `Effect<Exit<A, E>>`: the `Exit` captures success, a domain `E` failure, AND the
 infra failure (a `Cause.Die` carrying the `RestateError`, via `Cause.dieOption`).

@@ -53,8 +53,12 @@ human-in-the-loop primitive.
 **Durable Promise**:
 A named, durable promise on a **Workflow** for cross-handler signalling,
 surviving **Replay**. Operations: `get` (await), `resolve`, `reject`, and `peek`
-(non-blocking read). A `reject` drives a `'rejected'` State observable via a
-**query** handler.
+(non-blocking read). The blocking `get`/`peek` await through the same
+`awaitDurable` seam as `run`/`sleep`, so a `reject` makes the awaiting `get` fail
+TERMINALLY — the rejection's `TerminalError` terminalizes the awaiter verbatim
+(R34), not a retried infra defect. (A workflow wanting an OBSERVABLE `'rejected'`
+outcome instead `resolve`s a "declined" payload and records it in State, read via a
+**query** handler.)
 
 **State**:
 A **Virtual Object** / **Workflow** keyed K/V store, atomic with the **Journal**.
