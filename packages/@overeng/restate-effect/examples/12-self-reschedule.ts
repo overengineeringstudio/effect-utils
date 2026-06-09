@@ -27,6 +27,7 @@
  */
 import { Effect, Schema } from 'effect'
 
+import type { RestateContext, RestateError } from '../src/mod.ts'
 import { Restate, RestateObject, RestateScheduled, State } from '../src/mod.ts'
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -169,3 +170,141 @@ export const RawWatcherLive = RestateObject.implement<typeof RawWatcherObj>(RawW
       /* ... the actual poll/work would go here (a bounded `Restate.run`) ... */
     }),
 })
+
+/* ════════════════════════════════════════════════════════════════════════
+ * 3. The COMPOSED daemon: fixedDelay + Retry-After re-arm + webhook wake.
+ * ════════════════════════════════════════════════════════════════════════
+ *
+ * The exact "poll a Notion-like source on a cadence, honor a 429 `Retry-After`,
+ * and be wakeable early by a webhook" use case — all in ONE
+ * `RestateScheduled.make({ wake, errorSchema, … })` (decision 0012). Previously
+ * this needed a hand-rolled object plus a separate awakeable holder; the composed
+ * primitive folds the three behaviors into one Virtual Object.
+ *
+ * Verified end-to-end by `src/scheduled-compose.integration.test.ts`.
+ */
+
+/** A stubbed source page (a real watcher would page a Notion datasource). */
+export interface ComposedPage {
+  readonly nextCursor: number
+  readonly itemCount: number
+  readonly done: boolean
+}
+
+/** One poll result: a page, a terminal failure, or a 429 with a Retry-After. */
+export type ComposedSourceResult =
+  | ComposedPage
+  | { readonly _terminal: string }
+  | { readonly _rateLimited: true; readonly retryAfterMillis: number }
+
+export type ComposedSourceBehavior = (cursor: number) => ComposedSourceResult
+
+/* Module-level per-key source registry (a test seam; a real watcher calls the API). */
+const composedSources = new Map<string, ComposedSourceBehavior>()
+/** Install a per-key source behavior (the test seam). */
+export const installComposedSource = (key: string, behavior: ComposedSourceBehavior): void => {
+  composedSources.set(key, behavior)
+}
+/** Reset all installed source behaviors. */
+export const resetComposedSources = (): void => composedSources.clear()
+const defaultComposedSource: ComposedSourceBehavior = (cursor) => ({
+  nextCursor: cursor + 1,
+  itemCount: 1,
+  done: false,
+})
+
+/**
+ * A 429 from the source: RETRYABLE, with the Retry-After floor PROJECTED off the
+ * instance (`e.retryAfterMillis`) — exactly the Notion 429 shape (decision 0011).
+ * The loop reads this projection (via `classifyOutcome`) to set the re-arm delay.
+ */
+export class RateLimited extends Schema.TaggedError<RateLimited>()('RateLimited', {
+  retryAfterMillis: Schema.Number,
+}) {}
+const RateLimitedRetryable = Restate.retryable(RateLimited, {
+  retryAfter: (e) => e.retryAfterMillis,
+})
+
+/** A terminal source failure: NON-retryable, governed by the `onCycleError` policy. */
+export class SourceFailed extends Schema.TaggedError<SourceFailed>()('SourceFailed', {
+  message: Schema.String,
+}) {}
+const SourceFailedTerminal = Restate.terminal(SourceFailed)
+
+/** The cycle's declared error UNION (a retryable + a terminal member), classified
+ * per-member at the loop boundary. */
+export const ComposedError = Schema.Union(RateLimitedRetryable, SourceFailedTerminal)
+
+/** The composed daemon's domain State: the poll cursor, an item tally, and a
+ * count of how many times it was woken early (for assertions). */
+export const ComposedState = {
+  cursor: Schema.Number,
+  itemsSeen: Schema.Number,
+  wakeCount: Schema.Number,
+} as const
+const Composed = State.for(ComposedState)
+
+/** Poll the stub inside a BOUNDED `Restate.run` (journaled + bounded retry). The
+ * declared 429 / terminal are RETURNED as tagged values, then `Effect.fail`ed in
+ * the cycle so they travel the typed `E` to the loop's classification. */
+const pollComposedSource = (
+  key: string,
+  cursor: number,
+): Effect.Effect<ComposedSourceResult, RestateError, RestateContext> =>
+  Restate.run(
+    `poll(${key}@${cursor})`,
+    Effect.sync((): ComposedSourceResult => {
+      const behavior = composedSources.get(key) ?? defaultComposedSource
+      return behavior(cursor)
+    }),
+    { maxRetryAttempts: 1, initialRetryIntervalMillis: 10 },
+  )
+
+/**
+ * Build the composed daemon. `wake` defaults to true (the held-race shape that an
+ * external webhook can cut short); set `wake: false` for the WEDGE-FREE delayed-send
+ * shape. `maxRetryBackoffs` (optional) demotes a permanently-429 source to the
+ * `onCycleError` policy after N consecutive backoffs.
+ */
+export const makeComposedDaemon = (opts: {
+  readonly name: string
+  readonly delayMillis: number
+  readonly wake?: boolean
+  readonly maxRetryBackoffs?: number
+}): ReturnType<typeof RestateScheduled.make<typeof ComposedState, never>> =>
+  RestateScheduled.make<typeof ComposedState, never>({
+    name: opts.name,
+    domainState: ComposedState,
+    schedule: RestateScheduled.Schedule.fixedDelay(opts.delayMillis),
+    wake: opts.wake ?? true,
+    errorSchema: ComposedError,
+    ...(opts.maxRetryBackoffs !== undefined ? { maxRetryBackoffs: opts.maxRetryBackoffs } : {}),
+    cycle: ({ key, wokenBy }) =>
+      Effect.gen(function* () {
+        const cursor = (yield* Composed.get('cursor')) ?? 0
+        const itemsSeen = (yield* Composed.get('itemsSeen')) ?? 0
+
+        /* Record a wake (the prior wait was cut short by the webhook). */
+        if (wokenBy !== undefined) {
+          const wakeCount = (yield* Composed.get('wakeCount')) ?? 0
+          yield* Composed.set('wakeCount', wakeCount + 1)
+        }
+
+        const result = yield* pollComposedSource(key, cursor)
+
+        /* A 429 → fail with the RETRYABLE typed error (cursor NOT advanced). The
+         * loop reads its `retryAfterMillis` projection and re-arms after that floor. */
+        if ('_rateLimited' in result) {
+          return yield* Effect.fail(new RateLimited({ retryAfterMillis: result.retryAfterMillis }))
+        }
+        /* A terminal failure → the `onCycleError` policy governs it (skip/stop). */
+        if ('_terminal' in result) {
+          return yield* Effect.fail(new SourceFailed({ message: result._terminal }))
+        }
+
+        /* Success: advance the cursor + tally; `done` ends the loop cleanly. */
+        yield* Composed.set('cursor', result.nextCursor)
+        yield* Composed.set('itemsSeen', itemsSeen + result.itemCount)
+        return result.done ? { stop: true } : { stop: false }
+      }) as Effect.Effect<{ readonly stop?: boolean }, RestateError, RestateContext>,
+  })

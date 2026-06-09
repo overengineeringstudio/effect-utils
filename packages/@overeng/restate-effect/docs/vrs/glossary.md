@@ -105,6 +105,28 @@ A **Poll Loop** schedule where the gap between the END of one **Cycle** and the
 START of the next is exactly `delayMillis` (never overlaps, never catches up). The
 v1 schedule shape; `fixedRate`/`cron` are deferred.
 
+**Retry re-arm** (Retry-After re-arm):
+A **Poll Loop** behavior (opt-in via `errorSchema`): a cycle failure that classifies
+as `retryable` (via the boundary's `classifyOutcome`) RE-ARMS the next **Cycle** after
+the error's projected `retryAfter` floor — the **Generation token** is bumped and a
+fresh `retryAfter` send armed so the pre-armed `fixedDelay` send no-ops. The cursor
+and iteration are FROZEN: the SAME logical cycle retries, it does not advance.
+`maxRetryBackoffs` caps consecutive re-arms before demoting to the **OnCycleError**
+policy.
+_Avoid_: "cycle retry" (it re-arms the loop, it does not re-run the bounded
+`Restate.run`).
+
+**wakeId**:
+The id of a **Poll Loop**'s live inter-cycle wake awakeable (wake mode), persisted in
+State and exposed via a SHARED `wakeId` handler so an external webhook can read it
+(even while an exclusive **Cycle** holds the write lock) and `resolveAwakeable` it to
+fire the next cycle EARLY. ROTATED every cycle; a stale id resolves harmlessly.
+
+**wokenBy**:
+The one-shot payload (the wake reason) handed to the NEXT **Cycle** when the previous
+inter-cycle wait was cut short by a `wakeId` resolution rather than the timer. Lets the
+cycle branch on "woke early for X". `undefined` when the timer fired.
+
 ## Deployment
 
 **Deployment**:
