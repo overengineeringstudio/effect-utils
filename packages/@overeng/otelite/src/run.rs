@@ -18,6 +18,9 @@ pub struct RunOpts {
     /// Fixed HTTP / gRPC ports (deterministic/debug runs); `None` → ephemeral.
     pub http_port: Option<u16>,
     pub grpc_port: Option<u16>,
+    /// The OTLP protocol injected into the child (`http/protobuf` default,
+    /// `http/json`, or `grpc` — the last points it at the gRPC endpoint).
+    pub protocol: String,
     /// After the child exits, keep capturing until no export arrives for this
     /// many ms (bounded; for fire-and-forget emitters). `None` → in-flight drain
     /// only (0ms tax).
@@ -90,13 +93,19 @@ pub async fn run(opts: RunOpts) -> u8 {
     let grpc_ep = rx.grpc_endpoint.clone();
     let paths = rx.sink().paths();
     let counts = rx.shutdown().await;
+    if counts.rejected > 0 {
+        eprintln!(
+            "otelite: {} export(s) rejected at decode (non-default OTLP dialect or malformed)",
+            counts.rejected
+        );
+    }
 
     let summary = serde_json::json!({
         "schema": "otelite.summary/v1",
         "out": out_dir,
         "endpoints": { "http": http_ep, "grpc": grpc_ep },
         "files": { "traces": paths.traces, "metrics": paths.metrics, "logs": paths.logs },
-        "counts": { "spans": counts.spans, "metrics": counts.metrics, "logs": counts.logs },
+        "counts": { "spans": counts.spans, "metrics": counts.metrics, "logs": counts.logs, "rejected": counts.rejected },
         "child": { "argv": opts.argv, "exit_code": exit_code },
         "duration_ms": start.elapsed().as_millis(),
     });
@@ -162,12 +171,18 @@ pub async fn capture(opts: CaptureOpts) -> u8 {
     let grpc_ep = rx.grpc_endpoint.clone();
     let paths = rx.sink().paths();
     let counts = rx.shutdown().await;
+    if counts.rejected > 0 {
+        eprintln!(
+            "otelite: {} export(s) rejected at decode (non-default OTLP dialect or malformed)",
+            counts.rejected
+        );
+    }
     let summary = serde_json::json!({
         "schema": "otelite.summary/v1",
         "out": out_dir,
         "endpoints": { "http": http_ep, "grpc": grpc_ep },
         "files": { "traces": paths.traces, "metrics": paths.metrics, "logs": paths.logs },
-        "counts": { "spans": counts.spans, "metrics": counts.metrics, "logs": counts.logs },
+        "counts": { "spans": counts.spans, "metrics": counts.metrics, "logs": counts.logs, "rejected": counts.rejected },
         "child": serde_json::Value::Null,
         "duration_ms": start.elapsed().as_millis(),
     });
@@ -210,9 +225,16 @@ async fn spawn_and_wait(rx: &RunningReceiver, opts: &RunOpts) -> std::io::Result
     let mut cmd = tokio::process::Command::new(&opts.argv[0]);
     cmd.args(&opts.argv[1..]);
 
-    // Owned: always overwrite so telemetry points at our receiver.
-    cmd.env("OTEL_EXPORTER_OTLP_ENDPOINT", &rx.http_endpoint);
-    cmd.env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf");
+    // Owned: always overwrite so telemetry points at our receiver. `--protocol
+    // grpc` points the child at the gRPC endpoint; otherwise the HTTP endpoint
+    // (json or protobuf encoding both land on the HTTP port).
+    let endpoint = if opts.protocol == "grpc" {
+        &rx.grpc_endpoint
+    } else {
+        &rx.http_endpoint
+    };
+    cmd.env("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);
+    cmd.env("OTEL_EXPORTER_OTLP_PROTOCOL", &opts.protocol);
     // A parent per-signal endpoint/protocol override would silently win over our
     // base endpoint and misroute telemetry away from the receiver — clear them.
     for signal in ["TRACES", "METRICS", "LOGS"] {

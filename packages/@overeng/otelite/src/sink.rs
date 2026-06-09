@@ -95,6 +95,10 @@ pub struct Sink {
     /// Total export requests received (any signal). Drives `--drain-idle`:
     /// the caller watches this for "no new export for N ms".
     requests: AtomicU64,
+    /// Exports rejected at decode (loud 400) — surfaced so a fire-and-forget
+    /// emitter that discards the response doesn't make a rejection look like
+    /// "no telemetry".
+    rejected: AtomicU64,
 }
 
 /// Paths of the three capture files, surfaced in the run summary.
@@ -109,6 +113,7 @@ pub struct Counts {
     pub spans: u64,
     pub metrics: u64,
     pub logs: u64,
+    pub rejected: u64,
 }
 
 impl Sink {
@@ -124,7 +129,13 @@ impl Sink {
             metric_count: AtomicU64::new(0),
             log_count: AtomicU64::new(0),
             requests: AtomicU64::new(0),
+            rejected: AtomicU64::new(0),
         })
+    }
+
+    /// Record an export rejected at decode (a loud 400).
+    pub fn note_rejected(&self) {
+        self.rejected.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Total export requests received so far (any signal). Monotonic; used by
@@ -146,6 +157,7 @@ impl Sink {
             spans: self.span_count.load(Ordering::Relaxed),
             metrics: self.metric_count.load(Ordering::Relaxed),
             logs: self.log_count.load(Ordering::Relaxed),
+            rejected: self.rejected.load(Ordering::Relaxed),
         }
     }
 

@@ -44,11 +44,27 @@ fn print_help() {
     eprintln!("otelite {VERSION} — local OTLP capture tool for tests");
     eprintln!();
     eprintln!("usage:");
-    eprintln!("  otelite run [--out <dir>] [--service N] [--http-port N] [--grpc-port N] \\");
-    eprintln!("              [--drain-idle MS] [--pretty] -- <cmd...>");
-    eprintln!("  otelite inspect <dir|file|-> ...        (M4)");
-    eprintln!("  otelite capture [--out <dir>] ...       (M7)");
-    eprintln!("  otelite --version | --help");
+    eprintln!(
+        "  otelite run [--out <dir>] [--service N] [--protocol grpc|http/protobuf|http/json] \\"
+    );
+    eprintln!(
+        "              [--http-port N] [--grpc-port N] [--drain-idle MS] [--pretty] -- <cmd...>"
+    );
+    eprintln!(
+        "  otelite inspect <dir|file|-> [--signal traces|metrics|logs] [--derive-metrics] \\"
+    );
+    eprintln!("              [--service S] [--name N] [--attr k=v]... [--summary] [--pretty]");
+    eprintln!("  otelite capture [--out <dir>] [--http-port N] [--grpc-port N] [--pretty]");
+    eprintln!("  otelite --version | --help | --print-schema");
+    eprintln!();
+    eprintln!("`run` also exports OTELITE_HTTP_ENDPOINT / OTELITE_GRPC_ENDPOINT for the child.");
+}
+
+/// `--help`/`-h` anywhere before a `--` child separator.
+fn wants_help(args: &[String]) -> bool {
+    args.iter()
+        .take_while(|a| a.as_str() != "--")
+        .any(|a| a == "--help" || a == "-h")
 }
 
 /// Parse `run` flags up to `--`, then everything after is the child command.
@@ -59,11 +75,23 @@ fn dispatch_run(args: &[String]) -> ExitCode {
     let mut grpc_port: Option<u16> = None;
     let mut drain_idle_ms: Option<u64> = None;
     let mut pretty = false;
+    let mut protocol = String::from("http/protobuf");
     let mut argv: Vec<String> = Vec::new();
 
+    if wants_help(args) {
+        print_help();
+        return ExitCode::SUCCESS;
+    }
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            "--protocol" => match args.get(i + 1).map(String::as_str) {
+                Some(p @ ("grpc" | "http/protobuf" | "http/json")) => {
+                    protocol = p.to_string();
+                    i += 2;
+                }
+                _ => return usage("--protocol must be grpc|http/protobuf|http/json"),
+            },
             "--out" => {
                 let Some(v) = args.get(i + 1) else {
                     return usage("--out needs a value");
@@ -122,6 +150,7 @@ fn dispatch_run(args: &[String]) -> ExitCode {
         grpc_port,
         drain_idle_ms,
         pretty,
+        protocol,
         argv,
     };
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
@@ -136,6 +165,10 @@ fn usage(msg: &str) -> ExitCode {
 
 /// Parse `capture [--out <dir>] [--http-port N] [--grpc-port N] [--pretty]`.
 fn dispatch_capture(args: &[String]) -> ExitCode {
+    if wants_help(args) {
+        print_help();
+        return ExitCode::SUCCESS;
+    }
     let mut out: Option<PathBuf> = None;
     let mut http_port: Option<u16> = None;
     let mut grpc_port: Option<u16> = None;
@@ -185,6 +218,10 @@ fn dispatch_capture(args: &[String]) -> ExitCode {
 
 /// Parse `inspect <src> [filters]`. `<src>` is a dir, a file, or `-` (stdin).
 fn dispatch_inspect(args: &[String]) -> ExitCode {
+    if wants_help(args) {
+        print_help();
+        return ExitCode::SUCCESS;
+    }
     let mut src: Option<String> = None;
     let mut signal = String::from("traces");
     let mut service: Option<String> = None;

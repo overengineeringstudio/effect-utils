@@ -252,7 +252,10 @@ async fn http_traces(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: By
     let proto = is_protobuf(&headers);
     let req: ExportTraceServiceRequest = match decode(proto, &body) {
         Ok(r) => r,
-        Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
+        Err(e) => {
+            sink.note_rejected();
+            return (StatusCode::BAD_REQUEST, e).into_response();
+        }
     };
     maybe_test_panic();
     if let Err(e) = sink.write_traces(&req).await {
@@ -269,7 +272,10 @@ async fn http_metrics(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: B
     let proto = is_protobuf(&headers);
     let req: ExportMetricsServiceRequest = match decode(proto, &body) {
         Ok(r) => r,
-        Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
+        Err(e) => {
+            sink.note_rejected();
+            return (StatusCode::BAD_REQUEST, e).into_response();
+        }
     };
     maybe_test_panic();
     if let Err(e) = sink.write_metrics(&req).await {
@@ -289,7 +295,10 @@ async fn http_logs(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: Byte
     let proto = is_protobuf(&headers);
     let req: ExportLogsServiceRequest = match decode(proto, &body) {
         Ok(r) => r,
-        Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
+        Err(e) => {
+            sink.note_rejected();
+            return (StatusCode::BAD_REQUEST, e).into_response();
+        }
     };
     maybe_test_panic();
     if let Err(e) = sink.write_logs(&req).await {

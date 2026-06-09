@@ -32,10 +32,12 @@ pub fn summarize_trace(snapshot: &TraceSnapshot, top: usize) -> Value {
         .max()
         .unwrap_or(0);
     let total_ms = nanos_to_ms(trace_end.saturating_sub(trace_start));
+    // OTLP status: UNSET=0, OK=1, ERROR=2. Only ERROR is an error — OK(1) spans
+    // (which nix-trace and SDKs emit for success) must not be miscounted.
     let errors: Vec<_> = snapshot
         .spans
         .iter()
-        .filter(|s| s.status_code != 0)
+        .filter(|s| s.status_code == 2)
         .collect();
     let zero_duration_spans = snapshot
         .spans

@@ -169,6 +169,27 @@ fn real_run_piped_into_inspect() {
     }
 }
 
+/// `--summary` counts only ERROR(2) spans as errors — OK(1) and UNSET(0) are
+/// not errors (OTLP status enum; regression guard for the salvaged summarizer).
+#[test]
+fn summary_error_count_only_error_status() {
+    let dir = tempfile::tempdir().unwrap();
+    // One trace, three spans (one NDJSON line): UNSET, OK(1), ERROR(2).
+    let cap = r#"{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"s"}}]},"scopeSpans":[{"scope":{"name":"t"},"spans":[{"traceId":"22222222222222222222222222222222","spanId":"a000000000000000","name":"unset","startTimeUnixNano":"1000000000","endTimeUnixNano":"1002000000"},{"traceId":"22222222222222222222222222222222","spanId":"b000000000000000","name":"ok","status":{"code":1},"startTimeUnixNano":"1000000000","endTimeUnixNano":"1002000000"},{"traceId":"22222222222222222222222222222222","spanId":"c000000000000000","name":"err","status":{"code":2},"startTimeUnixNano":"1000000000","endTimeUnixNano":"1002000000"}]}]}]}"#;
+    std::fs::write(dir.path().join("traces.ndjson"), format!("{cap}\n")).unwrap();
+    let out = otelite()
+        .arg("inspect")
+        .arg(dir.path())
+        .arg("--summary")
+        .output()
+        .unwrap();
+    let r = rows(&out.stdout);
+    assert_eq!(
+        r[0]["error_span_count"], 1,
+        "only the ERROR(2) span is an error"
+    );
+}
+
 /// Missing source → 66; corrupt capture → 65.
 #[test]
 fn inspect_error_codes() {

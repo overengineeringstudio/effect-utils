@@ -103,6 +103,32 @@ fn env_owned_and_respected_split() {
     );
 }
 
+/// `--protocol grpc` points the child's endpoint at the gRPC receiver.
+#[test]
+fn protocol_grpc_points_at_grpc_endpoint() {
+    let dir = tempfile::tempdir().unwrap();
+    let envfile = dir.path().join("e");
+    let out = otelite()
+        .env("ENVOUT", &envfile)
+        .args(["run", "--out"])
+        .arg(dir.path())
+        .args(["--protocol", "grpc", "--", "sh", "-c"])
+        .arg(r#"printf '%s\n%s\n%s\n' "$OTEL_EXPORTER_OTLP_ENDPOINT" "$OTEL_EXPORTER_OTLP_PROTOCOL" "$OTELITE_GRPC_ENDPOINT" > "$ENVOUT""#)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let e = std::fs::read_to_string(&envfile).unwrap();
+    let mut l = e.lines();
+    let endpoint = l.next().unwrap();
+    let protocol = l.next().unwrap();
+    let grpc = l.next().unwrap();
+    assert_eq!(protocol, "grpc");
+    assert_eq!(
+        endpoint, grpc,
+        "endpoint must be the gRPC one under --protocol grpc"
+    );
+}
+
 /// Without `--out`, otelite mints a unique dir under $TMPDIR and echoes it.
 #[test]
 fn auto_unique_out_dir_echoed() {

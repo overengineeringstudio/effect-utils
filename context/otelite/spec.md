@@ -168,12 +168,22 @@ Canonical conventions confirmed against the OTLP spec: ports default ephemeral
 but pin to 4317 (gRPC) / 4318 (HTTP); paths `/v1/{traces,metrics,logs}`;
 content-types `application/x-protobuf` + `application/json`.
 
+`--protocol` (default `http/protobuf`; also `http/json` or `grpc`) sets the
+injected `OTEL_EXPORTER_OTLP_PROTOCOL` and, for `grpc`, points
+`OTEL_EXPORTER_OTLP_ENDPOINT` at the gRPC endpoint (otherwise the HTTP one — a
+standard SDK reaching the wrong transport would 404). `run`/`capture` also export
+non-standard `OTELITE_HTTP_ENDPOINT` / `OTELITE_GRPC_ENDPOINT` so a child can
+reach either receiver explicitly. Decode rejections (loud 400s) are counted as
+`counts.rejected` in the summary (with a stderr notice), so a fire-and-forget
+emitter that discards the 400 doesn't make a rejection look like "no telemetry".
+
 ## Drain
 
 After the Child exits, otelite finishes serving in-flight exports, then closes —
 no timer by default. `--drain-idle <ms>` (bounded) is the opt-in for
-fire-and-forget emitters; otelite **never** waits unbounded. See
-`decisions/0006` for the evidence.
+fire-and-forget emitters: it keeps capturing until no export arrives for one
+`<ms>` window, capped at 50 windows (so wall time is at most `50 × <ms>`) — never
+unbounded. See `decisions/0006` for the evidence.
 
 `run` swallows terminal Ctrl-C (the child shares the process group and receives
 it too) so otelite stays up to drain and still emit the summary. Limitation: a

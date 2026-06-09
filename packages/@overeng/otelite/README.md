@@ -45,8 +45,11 @@ or the `@overeng/otelite-effect` typed wrapper) owns the assertions.
 ## What it captures
 
 - **Transports:** OTLP/HTTP (JSON + protobuf) and OTLP/gRPC, on ephemeral ports.
+  `run` points the child at HTTP by default; for a gRPC-configured SDK use
+  `otelite run --protocol grpc -- …` (or read the exported `OTELITE_GRPC_ENDPOINT`).
   Only the default OTel-SDK JSON dialect (hex IDs, string int64, integer enums)
-  is accepted; other encodings are rejected loudly (HTTP 400), never dropped.
+  is accepted; other encodings are rejected loudly (HTTP 400, counted as
+  `counts.rejected`), never dropped.
 - **On disk:** one file per signal (`traces.ndjson` / `metrics.ndjson` /
   `logs.ndjson`), each line a canonical OTLP/JSON export.
 
@@ -74,7 +77,8 @@ every row.
   `--out`). Many agents run at once with no shared state — validated to K=400.
 - **Capture completeness:** after the child exits, otelite drains in-flight
   exports (0ms tax; full capture for any emitter that flushes on shutdown). For
-  fire-and-forget emitters, `--drain-idle <ms>` waits — bounded, never
+  fire-and-forget emitters, `--drain-idle <ms>` waits until no export arrives for
+  one `<ms>` window (capped at 50 windows → at most `50 × <ms>`), never
   unbounded. Each export is written durably before it is acked.
 - **Exit codes:** `run` preserves the child's code (signal deaths → `128+signo`);
   otelite's own failures use `sysexits.h` (`64` usage, `65` decode, `66` missing
