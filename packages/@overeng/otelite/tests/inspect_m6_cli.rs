@@ -78,7 +78,7 @@ fn exp_histogram_fields() {
     let e = m.iter().find(|r| r["type"] == "exphistogram").unwrap();
     assert_eq!(e["scale"], 2);
     assert_eq!(e["zero_count"], 3);
-    assert!(e["positive_buckets"]["bucketCounts"].is_array());
+    assert!(e["positive_buckets"]["bucket_counts"].is_array());
 }
 
 /// M5: sum carries monotonic + temporality (so "valid for rate()" is assertable).
