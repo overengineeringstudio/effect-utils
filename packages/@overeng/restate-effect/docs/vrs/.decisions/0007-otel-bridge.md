@@ -52,14 +52,6 @@ This lives behind an `./otel` subpath export so `@effect/opentelemetry` +
 
 Status: accepted
 
-_Revised after design review: made the global `TracerProvider` + global context
-manager registration an explicit prerequisite (otherwise `getActiveSpan()` is
-`undefined` → orphaned spans); flagged `isReplaying` as version-fragile and made
-`Restate.run` the preferred exactly-once seam._
-
-_Revised after empirical de-risk: the global-registration requirement is now
-PROVEN. `NodeSdk.layer@0.63` registers neither the global provider nor a context
-manager, and `Tracer.layerGlobal` only sets the provider (no context manager) —
-INSUFFICIENT. The `./otel` layer must itself `provider.register()` (or
-`trace.setGlobalTracerProvider` + `context.setGlobalContextManager(new
-AsyncLocalStorageContextManager().enable())`)._
+_Revised: the global-registration requirement (proven above) and the
+`isReplaying`-is-fragile / `Restate.run`-is-the-exactly-once-seam guidance were
+both folded into the body._

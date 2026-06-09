@@ -15,48 +15,27 @@ This decision closes both, plus threads the related config from the environment.
 
 ## 1. Ingress auth (bearer API key)
 
-`RestateIngress.layer` keeps the literal `{ url }` form as the PRIMITIVE and gains an
-optional `apiKey: Redacted<string>` (+ extra `headers`). The key is sent as
-`Authorization: Bearer <key>` on every ingress request via `clients.connect({ headers })`.
-
-- **`Redacted`, not `string`.** The key is a `Redacted<string>` so it never prints
-  in logs or error messages; it is unwrapped only at the `connect` boundary.
-- **`layerConfig` is a thin `Config`-then-literal wrapper.** `RestateIngress.layerConfig()`
-  reads the URL from `Config.url('RESTATE_INGRESS_URL')` and the key from
-  `Config.option(Config.redacted('RESTATE_INGRESS_KEY'))`, then calls the literal
-  `layer`. The key is OPTIONAL (a local dev ingress needs none). The redacted Config
-  keeps the secret a `Redacted` end-to-end.
+`RestateIngress.layer` keeps the literal `{ url }` PRIMITIVE and gains optional
+`apiKey: Redacted<string>` (+ `headers`), sent as `Authorization: Bearer <key>`.
+`layerConfig` reads URL + optional redacted key from the environment. The key stays
+a `Redacted` end-to-end (unwrapped only at the `connect` boundary).
 
 ## 2. Request identity (ED25519 signing keys)
 
-`EndpointOptions` gains `identityKeys?: ReadonlyArray<string>` — the SDK's v1
-request-identity PUBLIC keys (`publickeyv1_…`). `serve`/`layer` thread them into
-`createEndpointHandler({ identityKeys })`, which the SDK forwards to
-`endpoint.withIdentityV1(...)`. When set, the SDK REJECTS any inbound request not
-carrying `x-restate-signature-scheme: v1` + a valid `x-restate-jwt-v1` JWT signed by
-the matching private key — so only the operator's Restate cluster can invoke the
-endpoint.
-
-This is a PURE PASSTHROUGH: the binding adds no verification logic; the SDK owns the
-handshake. It pairs with the eventual serverless work (a Lambda/edge endpoint must
-verify identity), which is deferred — the option is the building block.
+`EndpointOptions.identityKeys?` threads the SDK's v1 request-identity PUBLIC keys to
+`endpoint.withIdentityV1(...)`, after which the SDK rejects any unsigned inbound
+request — so only the operator's cluster can invoke the endpoint. A PURE PASSTHROUGH
+(the SDK owns the handshake); it is the building block for the deferred serverless
+(Lambda/edge) work, where identity verification is mandatory.
 
 ## 3. Env-driven config (`Config`)
 
-To make a secured deployment wire-able from the environment without threading values
-by hand:
-
-- **Port.** `EndpointOptions.port` accepts `number | Config<number>` (e.g.
-  `Config.integer('PORT')`), resolved on layer acquisition. A failing Config fails
-  the layer with a `ConfigError`, so `layer`/`serve`'s channel becomes
-  `RestateError | ConfigError`. A literal-`number` port never produces a `ConfigError`
-  (that arm is structurally unreachable).
-- **OTel.** `RestateOtel.layerConfig` reads `OTEL_SERVICE_NAME` /
-  `OTEL_EXPORTER_OTLP_ENDPOINT` via `Config` and hands the resolved endpoint +
-  service name to a caller-supplied `build` that constructs the exporter. The OTLP
-  exporter package is the consumer's choice — deliberately NOT pulled into the
-  binding's closure (decision 0007's dependency-light rule), so a consumer installs
-  only the exporter their collector needs.
+`EndpointOptions.port` accepts `number | Config<number>` (so `layer`/`serve` widen to
+`RestateError | ConfigError`; a literal port makes that arm unreachable).
+`RestateOtel.layerConfig` reads the OTLP env vars and hands the resolved
+endpoint/service to a caller-supplied `build` — the exporter package stays the
+consumer's choice, NOT in the binding's closure (decision 0007's dependency-light
+rule).
 
 ## Why this shape
 

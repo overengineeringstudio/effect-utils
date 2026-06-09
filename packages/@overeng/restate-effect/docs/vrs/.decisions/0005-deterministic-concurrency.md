@@ -47,8 +47,6 @@ pre-await.
 
 Status: accepted
 
-_Revised after design review: the combinators take durable-op DESCRIPTORS and
-issue them in source order to reach the SDK's `RestatePromise.all/race/any` (an
-`Effect.all` of opaque thunks would let Effect's scheduler decide journal order);
-added the await-exactly-once `RestatePromise.then` invariant and the map-the-result
-(not the branch) rule._
+_Revised: settled on the DESCRIPTOR shape (over an `Effect.all` of opaque thunks)
+and the await-exactly-once `RestatePromise.then` invariant — both folded into the
+body above._

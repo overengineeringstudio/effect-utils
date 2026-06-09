@@ -53,20 +53,15 @@ its capability markers, which the per-kind `provideService` discharges.
   get compile errors on misuse.
 - **VALIDATED (DQ3)**: the per-handler marker discharge at `materialize` over a
   HETEROGENEOUS handler record (an `implement` mixing exclusive and shared
-  handlers) COMPILES against real `effect` + `restate-sdk` types. A `State.set` in
-  a shared handler is a handler-LOCAL error (not a whole-record error, not erased
-  to `any`); per-kind `provideService` discharges each handler's residual `R` to
-  the app `R`. Flat markers (this decision) are kept. The distinct-context-Tags
-  fallback also compiles but is strictly worse — intersection `R` forces a
-  `getExclusive`/`getShared` split — so it is NOT needed.
+  handlers) compiles against real `effect` + `restate-sdk` types — a `State.set`
+  in a shared handler is a handler-LOCAL error, not a whole-record error or an
+  erasure to `any`. The distinct-context-Tags fallback also compiles but is
+  strictly worse (intersection `R` forces a `getExclusive`/`getShared` split), so
+  flat markers stand.
 
 Status: accepted
 
-_Revised after design review: dropped the composite `WorkflowScope` marker
-(intersection semantics make it non-discharging); added `Restate.run` capability
-scrubbing and the Phase-1 heterogeneous-record discharge gate._
-
-_Revised after empirical de-risk: the heterogeneous-record discharge is VALIDATED
-(DQ3) — flat markers yield a handler-LOCAL error and the distinct-Tags fallback is
-not needed. Added the normative explicit-app-`R` discipline (`AppR` from
-`Runtime<AppR>`, never inferred from handler bodies)._
+_Revised: dropped the composite `WorkflowScope` marker (intersection semantics
+make it non-discharging — the Workflow `run` boundary provides the concrete
+marker set instead); added `Restate.run` capability scrubbing and the normative
+explicit-`AppR` discipline._

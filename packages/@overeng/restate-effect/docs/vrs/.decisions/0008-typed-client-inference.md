@@ -45,12 +45,6 @@ public, indexable type.
 
 Status: accepted
 
-_Revised after design review: `contract` must carry the handler map in a phantom
-type param (not erase to `Record`); made the `Record`-erasure case a normative
-R10 failure and added the Phase-1 type-level inference gate; named the POC's
-hand-declared `GreeterApi` as the anti-pattern being replaced._
-
-_Revised after empirical de-risk: the contract→client inference gate is VALIDATED
-(DQ4) — the phantom `Contract<Name, H>` + `const` params + indexed accessors
-recover exact types (proven with `Equals<>`) and reject wrong-input / unknown-method
-/ wrong-success; the Phase-1 gate passes._
+_Revised: tightened `contract` to carry the handler map in a phantom type param
+(the `Record`-erasure case is a normative R10 failure) and validated the
+contract→client inference gate (DQ4, above)._
