@@ -245,6 +245,13 @@ rationale for the hard-to-reverse choices lives in
   gate side-effecting telemetry (and for user code). It is sourced from an
   unstable internal SDK symbol, so it is version-fragile and secondary to the
   `Restate.run` mechanism (R24). ([decisions/0007](./decisions/0007-otel-bridge.md).)
+- **R37 Replay-aware in-handler logging:** An in-handler `Effect.log*` MUST route
+  to the invocation's replay-aware `ctx.console` (suppressed during replay,
+  level-controlled via `RESTATE_LOGGING`, stamped with invocation context), so a
+  log is NOT re-emitted on every replay/attempt. This is on the CORE `.` export
+  (no `./otel`), provided per invocation alongside the determinism layer. A log
+  line is non-durable (never journaled); side-effecting telemetry MUST instead go
+  through `Restate.run`. ([decisions/0015](./decisions/0015-logger-ctx-console-bridge.md).)
 
 ### Must be testable without Docker
 
@@ -329,6 +336,23 @@ key)` proxy with `get`/`getAll`/`set`/`setAll`, key- and value-typed against the
   `ingressPrivate`, `workflowRetention`, `explicitCancellation`. `ingressPrivate`
   MUST be reflected in the ingress client TYPE so an ingress-private handler is
   not callable from the ingress client. (A02.)
+
+### Must support secured deployments
+
+- **R38 Secured ingress auth:** The ingress client MUST support a bearer API key so
+  a SECURED / Restate Cloud ingress is reachable (it is impossible with the bare
+  URL form). The key MUST be carried as a `Redacted<string>` so it never prints,
+  sent as `Authorization: Bearer …`. A `Config`-driven form MUST read the URL +
+  optional redacted key from the environment (`RESTATE_INGRESS_URL` /
+  `RESTATE_INGRESS_KEY`). ([decisions/0016](./decisions/0016-secured-ingress-and-request-identity.md).)
+- **R39 Request-identity verification:** The endpoint MUST accept Restate
+  request-identity public keys (`identityKeys`, ED25519 v1) threaded into the SDK
+  endpoint builder, so the SDK rejects unsigned/unauthorized inbound requests —
+  closing the otherwise-unauthenticated handler-endpoint hole. Pure passthrough
+  (the SDK owns verification). The endpoint `port` and OTel config MUST also be
+  resolvable from `Config` (`port: Config<number>`,
+  `OTEL_SERVICE_NAME`/`OTEL_EXPORTER_OTLP_ENDPOINT`).
+  ([decisions/0016](./decisions/0016-secured-ingress-and-request-identity.md).)
 
 ### May reduce single-package ceremony
 

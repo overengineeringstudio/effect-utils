@@ -13,7 +13,10 @@ import type * as restate from '@restatedev/restate-sdk'
 import { Clock, Effect, Random } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { determinismLayer } from './mod.ts'
+import { determinismLayer, loggerLayer } from './mod.ts'
+
+/* The fully-derived default Random whose method set the journaled Random must match. */
+const defaultRandom = Random.make('parity-probe')
 
 /**
  * A minimal deterministic fake `ctx` for the determinism layer: `date.now()`
@@ -114,6 +117,62 @@ describe('determinism layer', () => {
     expect(result.bool).toBe(false)
   })
 
+  it('journaled Random overrides EVERY generator method of the default Random (parity guard)', async () => {
+    /* `makeJournaledRandom` spreads `Random.make(...)` then overrides each
+     * generator from the journaled `ctx.rand`. A FUTURE generator method on the
+     * `Random` interface that the journaled Random does NOT override would be a
+     * SILENT determinism hole — it would read the spread's non-journaled source on
+     * replay. This guard enumerates every CALLABLE member the default Random
+     * exposes (own + prototype), drops the known PRNG IMPL details (`seed`/`PRNG`
+     * are not part of the `Random` service interface and do not feed a journaled
+     * read), and asserts the journaled Random carries its OWN override for each
+     * remaining generator method. It fails loudly the day Effect adds a generator
+     * we have not journaled. */
+    const ctx = fakeCtx({ dateBase: 0, randValues: [0.5] })
+    const journaled = await Effect.runPromise(
+      Random.randomWith((r) => Effect.succeed(r)).pipe(Effect.provide(determinismLayer(ctx, 0))),
+    )
+    /* PRNG impl details (NOT on the `Random` service interface; carried by the
+     * concrete `Random.make` instance but never read by the journaled overrides).
+     * The `Random` brand symbol is also dropped — it is not a generator. */
+    const implOnly = new Set(['seed', 'PRNG'])
+    const generators = (r: object): ReadonlyArray<string> => {
+      const names = new Set<string>()
+      /* Walk own + prototype members but STOP at `Object.prototype` (so the
+       * universal `toString`/`hasOwnProperty`/… are not counted). Both Effect-VALUED
+       * generators (`next`/`nextBoolean`/`nextInt`) and function-shaped generators
+       * (`nextRange`/`nextIntBetween`/`shuffle`) count — classifying by `typeof` would
+       * miss the Effect-valued ones. */
+      for (
+        let cur: object | null = r;
+        cur !== null && cur !== Object.prototype;
+        cur = Object.getPrototypeOf(cur)
+      ) {
+        for (const key of Object.getOwnPropertyNames(cur)) {
+          if (key === 'constructor' || implOnly.has(key)) continue
+          names.add(key)
+        }
+      }
+      return [...names].sort()
+    }
+    const expected = generators(defaultRandom)
+    /* The six documented `Random` generators (sanity floor — catches accidental
+     * over-filtering of the impl allowlist). */
+    expect(expected).toStrictEqual([
+      'next',
+      'nextBoolean',
+      'nextInt',
+      'nextIntBetween',
+      'nextRange',
+      'shuffle',
+    ])
+    /* Every generator method is an OWN property on the journaled Random (i.e. it
+     * was re-journaled, not inherited from the spread). */
+    for (const method of expected) {
+      expect(Object.hasOwn(journaled, method)).toBe(true)
+    }
+  })
+
   it('Random.nextIntBetween derives a bounded int from the journaled float', async () => {
     /* 0.42 over [0,10) → floor(0.42 * 10) = 4. */
     const ctx = fakeCtx({ dateBase: 0, randValues: [0.42] })
@@ -136,5 +195,64 @@ describe('determinism layer', () => {
     const second = await Effect.runPromise(program(make()))
     /* A replayed attempt over the same journal observes identical values. */
     expect(second).toEqual(first)
+  })
+})
+
+/**
+ * A fake `ctx.console` that RECORDS the `(method, message)` of every call, and
+ * (modeling the SDK's replay-aware console) DROPS the call entirely while
+ * `replaying` is true — exactly the replay-suppression `loggerLayer` rides on.
+ */
+const fakeConsoleCtx = (state: { replaying: boolean }) => {
+  const calls: Array<{ readonly method: string; readonly message: string }> = []
+  const record =
+    (method: 'debug' | 'info' | 'warn' | 'error') =>
+    (...args: ReadonlyArray<unknown>): void => {
+      if (state.replaying === true) return
+      calls.push({ method, message: String(args[0]) })
+    }
+  const console = {
+    debug: record('debug'),
+    info: record('info'),
+    warn: record('warn'),
+    error: record('error'),
+  }
+  return { calls, ctx: { console } as unknown as restate.Context }
+}
+
+describe('logger bridge (decision 0015)', () => {
+  it('routes an in-handler Effect.log* through ctx.console at the matching level', async () => {
+    const state = { replaying: false }
+    const { calls, ctx } = fakeConsoleCtx(state)
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* Effect.logInfo('hello info')
+        yield* Effect.logWarning('careful')
+        yield* Effect.logError('boom')
+      }).pipe(Effect.provide(loggerLayer(ctx))),
+    )
+    /* Each level lands on the matching console method, with the message in the line. */
+    const info = calls.find((c) => c.message.includes('hello info'))
+    const warn = calls.find((c) => c.message.includes('careful'))
+    const error = calls.find((c) => c.message.includes('boom'))
+    expect(info?.method).toBe('info')
+    expect(warn?.method).toBe('warn')
+    expect(error?.method).toBe('error')
+    /* The bridge writes to ctx.console, NOT a separate sink (one call per log). */
+    expect(calls).toHaveLength(3)
+  })
+
+  it('does NOT double-emit under replay (ctx.console suppresses replayed logs)', async () => {
+    const state = { replaying: false }
+    const { calls, ctx } = fakeConsoleCtx(state)
+    const program = Effect.logInfo('once-per-real-attempt').pipe(Effect.provide(loggerLayer(ctx)))
+    /* First (real) attempt emits. */
+    await Effect.runPromise(program)
+    expect(calls).toHaveLength(1)
+    /* A replayed attempt re-runs the same logInfo, but ctx.console drops it — so
+     * the handler does not re-emit the log on every replay (the bug this fixes). */
+    state.replaying = true
+    await Effect.runPromise(program)
+    expect(calls).toHaveLength(1)
   })
 })

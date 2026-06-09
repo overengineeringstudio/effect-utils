@@ -5,6 +5,8 @@ import { createEndpointHandler } from '@restatedev/restate-sdk/node'
 import {
   Cause,
   Chunk,
+  Config,
+  type ConfigError,
   Context,
   Duration,
   Effect,
@@ -26,7 +28,7 @@ import { type RedactionCipher, RestateRedaction } from './Redaction.ts'
 import { ObjectKey, RestateContext, StateRead, StateWrite } from './RestateContext.ts'
 import { DurablePromise } from './RestateContext.ts'
 import { RestateError } from './RestateError.ts'
-import { determinismLayer, withAttemptInterruption } from './Runtime.ts'
+import { determinismLayer, loggerLayer, withAttemptInterruption } from './Runtime.ts'
 import { ingressSerde } from './Serde.ts'
 import type {
   Contract,
@@ -352,10 +354,12 @@ const runEffectHandler =
       effect = effect.pipe(Effect.provideService(DurablePromise, emptyMarker))
     }
     /* Bridge the attempt-completed signal to interruption (R31), then provide the
-     * journaled Clock/Random over the handler (R17). The determinism layer wraps
-     * OUTSIDE the interruption bridge so its forked fiber inherits the layer. */
+     * journaled Clock/Random (R17) AND the replay-aware logger (decision 0015 —
+     * routes `Effect.log*` through `ctx.console`, suppressed on replay) over the
+     * handler. The per-invocation layers wrap OUTSIDE the interruption bridge so
+     * the forked fiber inherits them. */
     const bridged = withAttemptInterruption(ctx, effect).pipe(
-      Effect.provide(determinismLayer(ctx, frozenBaseMillis)),
+      Effect.provide(Layer.merge(determinismLayer(ctx, frozenBaseMillis), loggerLayer(ctx))),
     )
     /* Reparent under the OTel attempt span (no-op in the core; `./otel` supplies
      * the transform). Applied last so the active span is read at runtime, inside
@@ -775,7 +779,14 @@ export type AppROf<Services extends ReadonlyArray<AnyImplementation<any>>> =
 export interface EndpointOptions<AppR> {
   /** A mixed array of Service / Object / Workflow implementations to serve. */
   readonly services: ReadonlyArray<AnyImplementation<AppR>>
-  readonly port: number
+  /**
+   * The handler-endpoint port the server listens on. Either a literal `number`
+   * or a `Config<number>` (e.g. `Config.integer('PORT')`) resolved on layer
+   * acquisition — so the port can come from the environment without a separate
+   * read. A `Config` that fails (unset / unparseable) fails the layer with a
+   * `ConfigError`.
+   */
+  readonly port: number | Config.Config<number>
   /**
    * Restate `HooksProvider`s attached SERVICE-level to every materialized
    * service (so they wrap every handler). The `./otel` module supplies the
@@ -794,6 +805,16 @@ export interface EndpointOptions<AppR> {
    * `(BoundaryInfo) => (BoundaryOutcome) => void`; undefined in the otel-free core.
    */
   readonly boundaryObserver?: BoundaryObserver
+  /**
+   * Restate REQUEST-IDENTITY public keys (ED25519, v1 — e.g.
+   * `publickeyv1_2G8dCQhArfvGpzPw5Vx2ALciR4xCLHfS5YaT93XjNxX9`), threaded into the
+   * SDK endpoint's `identityKeys` (spec §8, decision 0016). When set, the SDK
+   * REJECTS any inbound request not signed by the matching private key (the
+   * `x-restate-signature-scheme: v1` + `x-restate-jwt-v1` JWT check) — closing the
+   * otherwise-unauthenticated handler-endpoint hole. Pure passthrough; the SDK
+   * owns the verification. Leave unset for a trusted local network.
+   */
+  readonly identityKeys?: ReadonlyArray<string>
 }
 
 /**
@@ -807,16 +828,25 @@ export interface EndpointOptions<AppR> {
  * graceful (SIGTERM-driven) shutdown when launched via `serve` +
  * `NodeRuntime.runMain`.
  *
+ * The failure channel is `RestateError` (a bind/listen failure) plus
+ * `ConfigError` — the latter only ever fails when `port` is a `Config<number>`
+ * that the environment does not satisfy (a literal-`number` port never produces
+ * one).
+ *
  * `bidirectional` is left UNSET so the SDK negotiates full `BIDI_STREAM` over
  * h2c prior-knowledge (DQ7, spec §8).
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Layer.Layer<never, RestateError, AppROf<S>> =>
+): Layer.Layer<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
   Layer.scopedDiscard(
     Effect.gen(function* () {
       type AppR = AppROf<S>
+      /* Resolve a `Config<number>` port (e.g. `Config.integer('PORT')`) on
+       * acquisition; a literal `number` passes through. A failing Config fails
+       * the layer with a `ConfigError`. */
+      const port = typeof opts.port === 'number' ? opts.port : yield* opts.port
       const runtime = yield* Effect.runtime<AppR>()
       const wiring: MaterializeWiring = {
         hooks: opts.hooks,
@@ -825,6 +855,7 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
       }
       const fn = createEndpointHandler({
         services: opts.services.map((s) => materializeAny(s, runtime, wiring)),
+        ...(opts.identityKeys !== undefined ? { identityKeys: [...opts.identityKeys] } : {}),
       })
       const server = http2.createServer(fn as Parameters<typeof http2.createServer>[0])
 
@@ -837,7 +868,7 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
             )
           }
           server.once('error', onError)
-          server.listen(opts.port, () => {
+          server.listen(port, () => {
             server.off('error', onError)
             resume(Effect.succeed(server))
           })
@@ -848,7 +879,7 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
           }),
       )
 
-      yield* Effect.logInfo(`restate-effect endpoint listening on http://localhost:${opts.port}`)
+      yield* Effect.logInfo(`restate-effect endpoint listening on http://localhost:${port}`)
     }),
   )
 
@@ -866,5 +897,6 @@ export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(
  */
 export const serve = <const S extends ReadonlyArray<AnyImplementation<any>>>(
   opts: Omit<EndpointOptions<AppROf<S>>, 'services'> & { readonly services: S },
-): Effect.Effect<never, RestateError, AppROf<S>> => Layer.launch(layer(opts))
+): Effect.Effect<never, RestateError | ConfigError.ConfigError, AppROf<S>> =>
+  Layer.launch(layer(opts))
 /* eslint-enable @typescript-eslint/no-explicit-any */

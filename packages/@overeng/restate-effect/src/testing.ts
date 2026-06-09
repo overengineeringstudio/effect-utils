@@ -680,6 +680,14 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
         const sdkPort = yield* Effect.promise(() => freePort())
         yield* endpointLayer({ services: opts.services, port: sdkPort }).pipe(
           Layer.provide(opts.appLayer),
+          /* The endpoint layer's channel is `RestateError | ConfigError`, but the
+           * `ConfigError` arm fires ONLY for a `Config<number>` port — here the port
+           * is a literal `number`, so it is structurally impossible. Re-fail a real
+           * `RestateError` (a bind/listen failure) and die on the unreachable
+           * `ConfigError`, keeping the harness's channel `RestateError` clean. */
+          Layer.catchAll((cause) =>
+            cause instanceof RestateError ? Layer.fail(cause) : Layer.die(cause),
+          ),
           Layer.build,
         )
 

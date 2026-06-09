@@ -1,5 +1,5 @@
 import * as clients from '@restatedev/restate-sdk-clients'
-import { Context, Effect, Layer, Option, Schema } from 'effect'
+import { Config, type ConfigError, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
 
 import { readIdempotencyKey } from './Annotations.ts'
 import {
@@ -43,15 +43,72 @@ export interface RestateIngressService {
 }
 
 /* Service to make typed ingress calls against a `restate-server` ingress URL.
- * Build the layer with `RestateIngress.layer({ url })` and `yield* RestateIngress`
- * (or thread `call` / `callTyped`, which require it in `R`). */
+ * Build the layer with `RestateIngress.layer({ url, apiKey? })` (or the
+ * env-driven `RestateIngress.layerConfig`) and `yield* RestateIngress` (or thread
+ * `call` / `callTyped`, which require it in `R`). */
 export class RestateIngress extends Context.Tag('@overeng/restate-effect/RestateIngress')<
   RestateIngress,
   RestateIngressService
 >() {
-  /** Build a `RestateIngress` layer bound to a `restate-server` ingress URL. */
-  static layer = (opts: { readonly url: string }): Layer.Layer<RestateIngress> =>
-    Layer.succeed(RestateIngress, { ingress: clients.connect({ url: opts.url }) })
+  /**
+   * Build a `RestateIngress` layer bound to a `restate-server` ingress URL. The
+   * PRIMITIVE form (a thin wrapper over `clients.connect`).
+   *
+   * For a SECURED / Restate Cloud ingress, pass `apiKey` (a `Redacted<string>`,
+   * so the key never prints in logs/error messages): it is sent as the
+   * `Authorization: Bearer <key>` header on every ingress request. Extra
+   * `headers` are merged in (the bearer header wins). When neither is set the
+   * connection is unauthenticated (a local dev server).
+   */
+  static layer = (opts: {
+    readonly url: string
+    readonly apiKey?: Redacted.Redacted<string>
+    readonly headers?: Readonly<Record<string, string>>
+  }): Layer.Layer<RestateIngress> => Layer.succeed(RestateIngress, makeIngress(opts))
+
+  /**
+   * Build a `RestateIngress` layer from `Config` (env-driven): the ingress URL
+   * from `RESTATE_INGRESS_URL` and an OPTIONAL bearer API key from
+   * `RESTATE_INGRESS_KEY` (read as a `Config.redacted`, so the secret stays a
+   * `Redacted` and never prints). A thin `Config`-then-literal wrapper over
+   * {@link RestateIngress.layer} — secured/Cloud ingress with zero call-site
+   * secret handling. Fails the layer with a `ConfigError` if `RESTATE_INGRESS_URL`
+   * is unset.
+   */
+  static layerConfig = (): Layer.Layer<RestateIngress, ConfigError.ConfigError> =>
+    Layer.effect(
+      RestateIngress,
+      Effect.gen(function* () {
+        const url = yield* Config.url('RESTATE_INGRESS_URL')
+        const apiKey = yield* Config.option(Config.redacted('RESTATE_INGRESS_KEY'))
+        return makeIngress({
+          url: url.toString(),
+          ...(Option.isSome(apiKey) ? { apiKey: apiKey.value } : {}),
+        })
+      }),
+    )
+}
+
+/* Connect the SDK ingress client, threading an optional bearer API key + extra
+ * headers into `clients.connect({ headers })`. The `apiKey` is unwrapped from its
+ * `Redacted` only HERE, at the connect boundary (never logged). */
+const makeIngress = (opts: {
+  readonly url: string
+  readonly apiKey?: Redacted.Redacted<string>
+  readonly headers?: Readonly<Record<string, string>>
+}): RestateIngressService => {
+  const headers: Record<string, string> = {
+    ...opts.headers,
+    ...(opts.apiKey !== undefined
+      ? { Authorization: `Bearer ${Redacted.value(opts.apiKey)}` }
+      : {}),
+  }
+  return {
+    ingress: clients.connect({
+      url: opts.url,
+      ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    }),
+  }
 }
 
 /**

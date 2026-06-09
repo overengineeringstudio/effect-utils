@@ -674,6 +674,38 @@ binding leaves it UNSET. VERIFIED (DQ7) end-to-end against native restate-server
 prior-knowledge (no TLS/ALPN). `bidirectional: true` is redundant; `false` degrades
 to request/response and loses in-stream suspension — so the binding leaves it unset.
 
+### 8.1 Securing the endpoint + env-driven config (decision 0016)
+
+Two trust boundaries a secured / Restate Cloud deployment must close, plus the
+config to wire them from the environment:
+
+- **Request identity (server → handlers, R39).** By default the handler-endpoint
+  port is UNAUTHENTICATED. `EndpointOptions.identityKeys?: ReadonlyArray<string>`
+  (ED25519 v1 public keys, `publickeyv1_…`) threads into
+  `createEndpointHandler({ identityKeys })` → `endpoint.withIdentityV1(...)`. The SDK
+  then REJECTS any inbound request lacking `x-restate-signature-scheme: v1` + a valid
+  `x-restate-jwt-v1` JWT signed by the matching private key, so only the operator's
+  cluster can invoke the endpoint. PURE passthrough (the SDK owns verification);
+  pairs with the deferred serverless work. Unset = trusted local network.
+- **Ingress auth (you → server, §9.1, R38).** `RestateIngress.layer({ url, apiKey?, headers? })`
+  sends `apiKey` (a `Redacted<string>`, never printed) as `Authorization: Bearer …`
+  on every ingress request — reaching a secured ingress that the bare `{ url }` form
+  could not. `RestateIngress.layerConfig()` is the `Config`-then-literal wrapper:
+  URL from `RESTATE_INGRESS_URL`, optional key from `Config.redacted('RESTATE_INGRESS_KEY')`.
+- **Config port.** `EndpointOptions.port` accepts `number | Config<number>` (e.g.
+  `Config.integer('PORT')`), resolved on layer acquisition; a failing Config fails
+  the layer, so `layer`/`serve`'s channel is `RestateError | ConfigError` (the
+  `ConfigError` arm is structurally unreachable for a literal-number port).
+- **OTel config.** `RestateOtel.layerConfig` reads `OTEL_SERVICE_NAME` /
+  `OTEL_EXPORTER_OTLP_ENDPOINT` and hands the resolved endpoint to a caller-supplied
+  exporter `build` (the OTLP exporter package stays the consumer's choice — not in
+  the closure, R03).
+
+Verified server-free: the bearer header + `layerConfig` env reads
+(`src/client-ingress.test.ts`), `identityKeys` reaching the SDK builder
+(`src/identity.test.ts`), the OTel `layerConfig` Config resolution (`src/otel.test.ts`).
+A real signing handshake belongs to the integration lane.
+
 ---
 
 ## 9. Typed clients
@@ -947,7 +979,34 @@ is the reusable gate). The whole path is verified server-free with an in-memory
 `MetricReader` + `SpanExporter`, including a forced-replay no-double-count assertion
 (`src/observability.test.ts`).
 
-These deps live behind `./otel` so the core stays dependency-light (R03, A09).
+The traces + metrics deps live behind `./otel` so the core stays dependency-light
+(R03, A09). Logging (§10.3) is the exception — it is on the core `.` export.
+
+### 10.3 Logging — `Logger` → replay-aware `ctx.console` (R37, decision 0015)
+
+UNLIKE traces/metrics, logging is on the CORE `.` export (no `./otel`). A
+per-invocation `loggerLayer(ctx)` (`Logger.replace(Logger.defaultLogger, …)`) is
+provided over every handler effect ALONGSIDE `determinismLayer` in every
+`materialize*` path, so an in-handler `Effect.log*` routes into the invocation's
+`ctx.console`:
+
+- **Replay-suppressed.** `ctx.console` automatically excludes output during replay,
+  so a single `Effect.logInfo` emits ONCE on the real execution — not on every
+  replay/attempt (the bug the default `globalThis.console`-backed logger has). This
+  rides the SAME non-replay knowledge the OTel path uses (§10.2).
+- **Level + context for free.** `ctx.console` honors `RESTATE_LOGGING` and stamps
+  each line with the invoked service/handler + invocation id. The Effect `LogLevel`
+  maps to the `Console` method (`Trace`/`Debug` → `debug`, `Info` → `info`,
+  `Warning` → `warn`, `Error`/`Fatal` → `error`).
+- **Effect's format.** The line is produced by `Logger.logfmtLogger.log`, so log
+  annotations (`Effect.annotateLogs`), spans, fiber id, and cause ride along; only
+  the SINK changes.
+
+A log line is NOT durable — suppressed on replay, never journaled. For
+side-effecting telemetry route it through `Restate.run` (the exactly-once seam,
+§10.2). The endpoint's OWN startup log (`Endpoint.ts`) is OUTSIDE a handler and
+keeps the process default logger. Verified server-free (`src/Runtime.test.ts`):
+routing to the matching `ctx.console` method + no double-emit under replay.
 
 ---
 
@@ -1042,9 +1101,18 @@ A consumer imports `./testing`; the harness `Layer` ACCEPTS the consumer's
 `AppLayer` (so handler `R` is satisfied inside the spawned endpoint) and exposes
 the typed ingress client + `stateOf`; tests use `@effect/vitest` `it.effect`.
 
-Property-based testing is first-class: serde round-trips (`decode(encode(x)) ≡ x`
-over an `Arbitrary` derived from the schema) and deterministic-replay tests (run a
-handler, replay it under `alwaysReplay`, assert identical journal/result).
+Property-based testing is first-class AND IMPLEMENTED for serde: `@effect/vitest`
+`it.prop` derives a `fast-check` `Arbitrary` from each schema and asserts
+`deserialize(serialize(x))` is EQUIVALENT to `x` — using `Schema.equivalence(schema)`
+(NOT `toStrictEqual`), so transformed/branded values compare by their decoded VALUE.
+Covered: a plain struct, a transformed schema (encoded ≠ decoded), an optional state
+field (the `normalizeStateSchema` path), and CRITICALLY the redaction transform
+(`encrypt(decrypt(x)) ≡ x` by value, since a fresh IV per encrypt makes the bytes
+differ each time). Values outside the JSON-representable domain (`NaN`/`±Infinity`,
+which `JSON.stringify` emits as `null`) are excluded via `Schema.Finite` — they are
+not round-trippable by design, not a serde bug (`src/Serde.test.ts`). Deterministic-
+replay property tests (run a handler, replay it under `alwaysReplay`, assert
+identical journal/result) remain integration-lane.
 
 Awakeable / durable-promise example: seed State via `stateOf` → `submit` a
 workflow → `resolveAwakeable` via ingress → `attach` and assert completion.

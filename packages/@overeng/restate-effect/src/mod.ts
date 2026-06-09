@@ -285,12 +285,14 @@ export {
 } from './Metrics.ts'
 
 /**
- * Per-invocation runtime boundary helpers (R17, R31). `determinismLayer` is the
- * journaled `Clock`/`Random` Layer (`ctx.date` + frozen base; `ctx.rand`);
- * `withAttemptInterruption` bridges `attemptCompletedSignal` to interruption.
- * Both are wired by `materialize*`; exported for direct testing.
+ * Per-invocation runtime boundary helpers (R17, R31, decision 0015).
+ * `determinismLayer` is the journaled `Clock`/`Random` Layer (`ctx.date` + frozen
+ * base; `ctx.rand`); `loggerLayer` replaces the default Effect logger with one
+ * that writes to the replay-aware `ctx.console` (so in-handler `Effect.log*` is
+ * suppressed on replay); `withAttemptInterruption` bridges `attemptCompletedSignal`
+ * to interruption. All wired by `materialize*`; exported for direct testing.
  */
-export { determinismLayer, withAttemptInterruption } from './Runtime.ts'
+export { determinismLayer, loggerLayer, withAttemptInterruption } from './Runtime.ts'
 
 /**
  * The typed external ingress client. `RestateIngress` is the connected-ingress

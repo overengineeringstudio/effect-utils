@@ -31,7 +31,7 @@ import {
   openTelemetryHook,
   type OpenTelemetryHookContext,
 } from '@restatedev/restate-sdk-opentelemetry'
-import { Effect, Layer } from 'effect'
+import { ConfigProvider, Effect, Layer } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { RestateOtel } from './otel.ts'
@@ -160,5 +160,51 @@ describe('OTel bridge (server-free)', () => {
     expect(attemptSpans).toHaveLength(2)
     const replayAttempt = attemptSpans.find((s) => s.events.every((e) => e.name !== 'charged'))!
     expect(replayAttempt.events.map((e) => e.name)).not.toContain('should-be-suppressed')
+  })
+})
+
+describe('RestateOtel.layerConfig (Config-driven, decision 0016/0014)', () => {
+  /* The global registration in beforeEach is shut down in afterEach; building
+   * layerConfig here registers its own provider over the in-memory exporter, so we
+   * tear it down via the scope. */
+  it('reads OTEL_SERVICE_NAME / OTEL_EXPORTER_OTLP_ENDPOINT and feeds build', async () => {
+    const inMemory = new InMemorySpanExporter()
+    let resolved: { endpoint: string | undefined; serviceName: string } | undefined
+    const provider = ConfigProvider.fromMap(
+      new Map([
+        ['OTEL_SERVICE_NAME', 'svc-from-env'],
+        ['OTEL_EXPORTER_OTLP_ENDPOINT', 'http://collector:4318'],
+      ]),
+    )
+    const layer = RestateOtel.layerConfig({
+      base: { resource: { serviceName: 'fallback' } },
+      build: (r) => {
+        resolved = r
+        /* The exporter is the caller's choice — use the in-memory one here. */
+        return { exporter: inMemory }
+      },
+    }).pipe(Layer.provide(Layer.setConfigProvider(provider)))
+    /* Build into a scope and release immediately (registers + shuts down the
+     * provider); the captured `resolved` is the assertion. */
+    await Effect.runPromise(Effect.scoped(Layer.build(layer)).pipe(Effect.asVoid))
+    expect(resolved).toStrictEqual({
+      endpoint: 'http://collector:4318',
+      serviceName: 'svc-from-env',
+    })
+  })
+
+  it('falls back to base.resource.serviceName when OTEL_SERVICE_NAME is unset', async () => {
+    const inMemory = new InMemorySpanExporter()
+    let resolved: { endpoint: string | undefined; serviceName: string } | undefined
+    const provider = ConfigProvider.fromMap(new Map())
+    const layer = RestateOtel.layerConfig({
+      base: { resource: { serviceName: 'fallback-name' } },
+      build: (r) => {
+        resolved = r
+        return { exporter: inMemory }
+      },
+    }).pipe(Layer.provide(Layer.setConfigProvider(provider)))
+    await Effect.runPromise(Effect.scoped(Layer.build(layer)).pipe(Effect.asVoid))
+    expect(resolved).toStrictEqual({ endpoint: undefined, serviceName: 'fallback-name' })
   })
 })
