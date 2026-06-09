@@ -2,20 +2,106 @@
 
 [← Handbook index](./README.md)
 
-The `./testing` subpath exports two complementary test surfaces: a **native-server
-harness** (no Docker) for true end-to-end paths, and a **faithful in-memory
-`TestContext`** for fast, server-free handler-logic tests.
+The `./testing` subpath exports three test surfaces:
+
+- a **swappable `RestateTestEnv`** façade — ONE contract-addressed body that runs on
+  either a fast in-process **mock** or the real server;
+- a **native-server harness** (no Docker) for true end-to-end paths;
+- a **faithful in-memory `TestContext`** for fast, server-free handler-logic tests.
+
+`RestateTestEnv` is the front door (write the body once, swap the backend);
+`RestateTestHarness` + `makeTestContextLayer` are the lower-level primitives it
+composes over (both still available).
 
 ## Test layering
 
 The two core guarantees are server-free testable; only true end-to-end paths need
 the integration job.
 
-| Layer       | Needs server?       | Covers                                                                                                                                                          |
-| ----------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| unit        | no                  | serde round-trips, `toTerminal`, pure combinators, annotation read-back; AND server-free handler-logic / State-transition tests via the in-memory `TestContext` |
-| contract    | no                  | error-transport round-trip (decode over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter`                                       |
-| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises, single-writer, cross-invocation (calls/sends/`reschedule`/`pollLoop`), journal-shape (`alwaysReplay`)  |
+| Layer       | Needs server?       | Covers                                                                                                                                                                        |
+| ----------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| unit        | no                  | serde round-trips, `toTerminal`, pure combinators, annotation read-back; AND server-free handler-logic / State tests via the in-memory `TestContext` OR `RestateTestEnv.mock` |
+| contract    | no                  | error-transport round-trip (decode over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter`                                                     |
+| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises, single-writer, cross-invocation (calls/sends/`reschedule`/`pollLoop`), journal-shape (`alwaysReplay`)                |
+
+## Swappable `RestateTestEnv` (one body, two backends)
+
+`RestateTestEnv` is ONE `Context.Tag` whose surface is the CONTRACT-ADDRESSED
+invocation level — `invokeService(contract, method, input)` /
+`invokeObject(contract, key, method, input)` / `submitWorkflow` / `signalWorkflow` /
+`attachWorkflow` / `stateOf` / `resolveAwakeable` / `kind` — with TWO Layer impls, so
+the SAME body runs on either backend:
+
+- `RestateTestEnv.mock({ services, appLayer })` — in-process, no server, in ms.
+- `RestateTestEnv.real({ services, appLayer, alwaysReplay?, disableRetries? })` — a
+  thin wrapper over `RestateTestHarness`.
+
+The key property: `invoke*` carries `RestateError | ErrorOf` (the TYPED declared
+error) on BOTH backends, so `catchTag(DomainError)` compiles AND recovers identically
+on the mock and the real server. Parametrize with `it.each(['mock', 'real'])` and gate
+the real backend with `kind === 'real' && !serverAvailable`. Verified by
+[`src/test-env.integration.test.ts`](../../src/test-env.integration.test.ts).
+
+```ts
+import { it } from '@effect/vitest'
+import { Effect, Layer } from 'effect'
+import { describe, expect } from 'vitest'
+import { RestateTestEnv, serverAvailable } from '@overeng/restate-effect/testing'
+
+const backends = [
+  { kind: 'mock' as const, layer: () => RestateTestEnv.mock({ services, appLayer }) },
+  { kind: 'real' as const, layer: () => RestateTestEnv.real({ services, appLayer }) },
+]
+
+describe.each(backends)('RestateTestEnv ($kind)', ({ kind, layer }) => {
+  const d = kind === 'real' && !serverAvailable ? describe.skip : describe
+  d(kind, () => {
+    it.layer(layer(), { timeout: 90_000 })('same body', (it) => {
+      it.effect('typed success + typed error + State', () =>
+        Effect.gen(function* () {
+          const env = yield* RestateTestEnv
+          const ok = yield* env.invokeService(Greeter, 'greet', { name: 'Sarah' })
+          expect(ok.message).toBe('Hello Sarah')
+
+          // typed error recovers IDENTICALLY on mock and real
+          const recovered = yield* env
+            .invokeService(Greeter, 'greet', { name: '' })
+            .pipe(Effect.catchTag('EmptyName', () => Effect.succeed('recovered' as const)))
+          expect(recovered).toBe('recovered')
+
+          // typed State seed/assert + per-key isolation, same on both backends
+          yield* env.stateOf(CounterObj, 'a').set('count', 40)
+          expect(yield* env.invokeObject(CounterObj, 'a', 'add', 2)).toBe(42)
+        }),
+      )
+    })
+  })
+})
+```
+
+### Mock-vs-real matrix
+
+The mock reuses the package's real building blocks (the captured runtime, the
+in-memory `ctx`, the per-kind capability provision, the determinism layer, and the
+boundary's `classifyOutcome`) — it is faithful to the combinator semantics it covers,
+not a stub. But it has NO journal/server, so it does not model the durable runtime:
+
+| Behavior                                       | mock | real |
+| ---------------------------------------------- | :--: | :--: |
+| handler logic, typed success + typed error     |  ✓   |  ✓   |
+| typed State + per-key isolation                |  ✓   |  ✓   |
+| `Restate.run` journaled-once WITHIN an invoke  |  ✓   |  ✓   |
+| deterministic date / rand / sleep              |  ✓   |  ✓   |
+| awakeable resolve / await                      |  ✓   |  ✓   |
+| durability / replay / suspension               |      |  ✓   |
+| exactly-once across attempts / retry           |      |  ✓   |
+| single-writer / concurrency                    |      |  ✓   |
+| cross-invocation call/send/reschedule/pollLoop |      |  ✓   |
+| admin-cancel, idempotency-keyed result attach  |      |  ✓   |
+| OTel attempt-span reparenting under replay     |      |  ✓   |
+
+Author any real-only behavior directly against `.real` (or a dedicated
+`*.integration.test.ts`). A green mock test is NOT durability/replay coverage.
 
 ## The native-server harness
 
@@ -74,8 +160,13 @@ Two flags mirror the SDK test environment:
   divergence — the classic replay bug).
 - `disableRetries: true` surfaces failures immediately instead of retrying.
 
-The harness also supports multi-deployment registration, so a test can register two
-endpoint versions and assert replay/upgrade across them.
+`harness.registerDeployment({ services, appLayer })` serves an additional endpoint
+VERSION on a fresh ephemeral port and registers it as a second deployment, so a test
+can assert the upgrade (two deployments coexist; a new invocation routes to the
+latest). The `layer` also accepts endpoint observability wiring (`hooks` /
+`inboundBridge` / `boundaryObserver`) — pass the `./otel`
+`RestateOtel.{hook,inboundBridge,boundaryObserver}` to exercise OTel reparenting +
+exactly-once metrics against the real server (e.g. under `alwaysReplay`).
 
 ## In-memory `TestContext` (server-free unit tests)
 
@@ -109,11 +200,17 @@ describe('counter handler logic', () => {
 })
 ```
 
-`makeTestContextLayer({ handlerKind })` provides the SAME capability-marker subset
-the real boundary provides per handler kind (`service` / `objectShared` /
-`objectExclusive` / `workflowShared` / `workflowRun`), so a `State.set` in a
-read-only handler is still a compile error. `makeTestContext(options)` is the
-lower-level form (returns the fake `ctx` + the State `Map` + the `run` journal).
+`makeTestContextLayer(options)` takes ONE options bag (all fields optional):
+
+| Option        | Default             | Purpose                                                                                                                                                                                                                                        |
+| ------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state`       | fresh empty `Map`   | the backing State `Map` (key → serde-encoded value) — seed pre-conditions, read it back to assert transitions                                                                                                                                  |
+| `key`         | `'test-key'`        | the Object/Workflow invocation key (`Restate.key` / the `ObjectKey` capability)                                                                                                                                                                |
+| `handlerKind` | `'objectExclusive'` | selects the provided capability-marker subset (`service` / `objectShared` / `objectExclusive` / `workflowShared` / `workflowRun`) — the SAME subset the real boundary grants, so a `State.set` in a read-only handler is still a compile error |
+
+(Additional knobs — `nowMillis` / `clockStepMillis` / `randomSeed` / `onSleep` —
+control the deterministic clock / PRNG / `ctx.sleep`.) `makeTestContext(options)` is
+the lower-level form (returns the fake `ctx` + the State `Map` + the `run` journal).
 
 ### What the in-memory context does NOT model
 
@@ -156,4 +253,6 @@ waits actually elapse.
 
 - [Determinism](./determinism.md) — `alwaysReplay` surfaces journal-shape divergence.
 - [Verification + migration notes](./verification.md) — how the example suite gates CI.
+- [decision 0017](../vrs/decisions/0017-swappable-test-env.md) — the swappable `RestateTestEnv` façade.
 - [decision 0013](../vrs/decisions/0013-in-memory-test-context.md) — the in-memory context rationale.
+- [decision 0009](../vrs/decisions/0009-effect-native-testing-harness.md) — the native-server harness rationale.

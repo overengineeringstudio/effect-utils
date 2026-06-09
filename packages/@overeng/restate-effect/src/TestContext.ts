@@ -104,7 +104,38 @@ export interface TestContextOptions {
    * observe / control sleeps (e.g. record the requested durations).
    */
   readonly onSleep?: (millis: number, name?: string) => Promise<void>
+  /**
+   * A SHARED awakeable registry (id → resolve/reject hooks). Pass one to bridge a
+   * `ctx.awakeable()` created INSIDE a handler to a resolve issued OUTSIDE it (e.g.
+   * `RestateTestEnv.mock`'s env-scoped `resolveAwakeable` completing a suspended
+   * handler — honest, since an awakeable is just a promise). Defaults to a fresh
+   * per-context registry (the awakeable resolves only from within the same handler).
+   */
+  readonly awakeables?: AwakeableRegistry
 }
+
+/** The completion hooks for one pending awakeable id (used by the shared registry). */
+export interface AwakeableCompletion {
+  readonly resolve: (value: unknown) => void
+  readonly reject: (reason: unknown) => void
+}
+
+/**
+ * A shared awakeable registry: id → completion hooks, plus a monotonic counter for
+ * fresh ids. Threaded across {@link makeTestContext} calls so a resolve from
+ * "outside" a handler (env-scoped, in `RestateTestEnv.mock`) completes a promise an
+ * INSIDE-handler `ctx.awakeable()` is suspended on.
+ */
+export interface AwakeableRegistry {
+  readonly pending: Map<string, AwakeableCompletion>
+  next: number
+}
+
+/** Build a fresh shared awakeable registry (for `RestateTestEnv.mock`'s env scope). */
+export const makeAwakeableRegistry = (): AwakeableRegistry => ({
+  pending: new Map(),
+  next: 0,
+})
 
 /* A small deterministic PRNG (mulberry32) — seeded, uniform `[0, 1)`, replayable.
  * Mirrors `ctx.rand.random()`'s contract (deterministic, seeded, not crypto). */
@@ -151,6 +182,8 @@ export interface TestContextHandle {
   readonly state: Map<string, unknown>
   /** The `run`-memoization journal (name → the once-executed result). */
   readonly journal: Map<string, unknown>
+  /** The awakeable registry backing this context (shared when one was passed in). */
+  readonly awakeables: AwakeableRegistry
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- emulating the loosely-typed raw SDK `ctx` surface */
@@ -178,12 +211,11 @@ export const makeTestContext = (options: TestContextOptions = {}): TestContextHa
   }
 
   /* In-memory awakeable registry: a token's promise is completed by a
-   * same-handler resolve/reject. The completion bridges a manual promise. */
-  let awakeableCounter = 0
-  const awakeables = new Map<
-    string,
-    { resolve: (value: unknown) => void; reject: (reason: unknown) => void }
-  >()
+   * same-handler resolve/reject — OR, when a SHARED registry is passed (the
+   * `RestateTestEnv.mock` env scope), by a resolve issued from OUTSIDE the handler.
+   * The completion bridges a manual promise either way. */
+  const registry = options.awakeables ?? makeAwakeableRegistry()
+  const awakeables = registry.pending
 
   const rand: restate.Rand = {
     random: () => nextRandom(),
@@ -216,8 +248,8 @@ export const makeTestContext = (options: TestContextOptions = {}): TestContextHa
     restate.RestatePromise.resolve(onSleep(typeof duration === 'number' ? duration : 0, name))
 
   const awakeable = <T>(): { id: string; promise: restate.RestatePromise<T> } => {
-    awakeableCounter += 1
-    const id = `test-awakeable-${awakeableCounter}`
+    registry.next += 1
+    const id = `test-awakeable-${registry.next}`
     const promise = new Promise<T>((resolve, reject) => {
       awakeables.set(id, { resolve: resolve as (v: unknown) => void, reject })
     })
@@ -272,7 +304,7 @@ export const makeTestContext = (options: TestContextOptions = {}): TestContextHa
     stateKeys: () => Promise.resolve([...state.keys()]),
   } as unknown as restate.ObjectContext
 
-  return { context, state, journal }
+  return { context, state, journal, awakeables: registry }
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */

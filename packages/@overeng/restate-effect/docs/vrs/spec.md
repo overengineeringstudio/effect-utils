@@ -1013,9 +1013,11 @@ routing to the matching `ctx.console` method + no double-emit under replay.
 ## 11. Testing harness (`./testing`)
 
 Traces: R26, R26a–d, R27, R28. See
-[decisions/0009](./decisions/0009-effect-native-testing-harness.md). POC
-reference: `test/restate-server.ts`. `./testing` is a shipped opt-in subpath
-export (`src/testing.ts`).
+[decisions/0009](./decisions/0009-effect-native-testing-harness.md),
+[decisions/0013](./decisions/0013-in-memory-test-context.md), and
+[decisions/0017](./decisions/0017-swappable-test-env.md) (the swappable
+`RestateTestEnv` façade). POC reference: `test/restate-server.ts`. `./testing` is a
+shipped opt-in subpath export (`src/testing.ts`).
 
 A scoped `Layer` that, on acquire, boots a native `restate-server` (no Docker) on
 ephemeral ports against an isolated temp base dir, waits for the admin health
@@ -1062,8 +1064,14 @@ re-entering under replay; lifted from `@restatedev/restate-sdk-testcontainers`):
 | `alwaysReplay`   | `RESTATE_WORKER__INVOKER__INACTIVITY_TIMEOUT=0s`                                                      | `[worker.invoker] inactivity-timeout`                     |
 | `disableRetries` | `RESTATE_DEFAULT_RETRY_POLICY__MAX_ATTEMPTS=1` + `RESTATE_DEFAULT_RETRY_POLICY__ON_MAX_ATTEMPTS=kill` | `[default-retry-policy] max-attempts` / `on-max-attempts` |
 
-The harness also supports MULTI-deployment registration, so a test can register
-two endpoint versions and assert replay/upgrade across them (T07, A11).
+The harness also supports MULTI-deployment registration via
+`harness.registerDeployment({ services, appLayer })` (§11.6), so a test can register
+two endpoint VERSIONS on separate ephemeral ports and assert the upgrade — two
+deployments coexist on the admin API and a new invocation routes to the latest
+(T07, A11). RESIDUAL (follow-up): a FULL cross-version replay where an invocation
+started on V1 SUSPENDS mid-handler and RESUMES its journal on V2 needs a
+controllable mid-invocation suspension straddling the re-register — deferred; the
+registration + routing-to-latest half is proven.
 
 Lifecycle contract (R27, sharpened over the POC):
 
@@ -1084,14 +1092,17 @@ Lifecycle contract (R27, sharpened over the POC):
 The two CORE guarantees are server-free testable; only true end-to-end paths need
 the integration job:
 
-| Layer       | Needs server?       | Covers                                                                                                                                                                  |
-| ----------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| unit        | no                  | serde round-trips, `toTerminal`, pure combinators, annotation read-back; AND server-free handler-logic / State-transition tests via the in-memory `TestContext` (§11.5) |
-| contract    | no                  | error-transport round-trip (decode helper over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter`                                        |
-| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises, single-writer, cross-invocation (calls/sends/`reschedule`/`pollLoop`), journal-shape (`alwaysReplay`)          |
+| Layer       | Needs server?       | Covers                                                                                                                                                                                                   |
+| ----------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| unit        | no                  | serde round-trips, `toTerminal`, pure combinators, annotation read-back; AND server-free handler-logic / State-transition tests via the in-memory `TestContext` (§11.5) OR `RestateTestEnv.mock` (§11.6) |
+| contract    | no                  | error-transport round-trip (decode helper over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter`                                                                         |
+| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises, single-writer, cross-invocation (calls/sends/`reschedule`/`pollLoop`), journal-shape (`alwaysReplay`)                                           |
 
 The in-memory `TestContext` (§11.5) extends the `unit` row to handler LOGIC: a
-handler's control flow + State read-modify-write is testable server-free. Anything
+handler's control flow + State read-modify-write is testable server-free. The
+`RestateTestEnv.mock` backend (§11.6) PROMOTES that same unit-level coverage to the
+CONTRACT-ADDRESSED surface (`invoke(contract, …)`, not `impl.method(…)`), so the
+same test body runs unchanged on the real server via `RestateTestEnv.real`. Anything
 durability-, replay-, single-writer-, or cross-invocation-shaped stays in the
 `integration` row (only the real server provides it).
 
@@ -1173,6 +1184,50 @@ so a real-time wait coordinating with the native server across suspend/resume
 HANGS. `./testing` surfaces `liveSleep(millis)` (an `Effect.sleep` pinned to a live
 `Clock.make()`) and `withLiveClock(effect)` (run a sub-program under a live clock),
 so wall-clock waits elapse regardless of the ambient test clock.
+
+### 11.6 Swappable `RestateTestEnv` façade (decision 0017)
+
+`RestateTestEnv` is ONE `Context.Tag` whose surface is the CONTRACT-ADDRESSED
+invocation level — `invokeService(contract, method, input)` /
+`invokeObject(contract, key, method, input)` /
+`submitWorkflow` / `signalWorkflow` / `attachWorkflow` / `stateOf` (the same typed
+`StateProxy`) / `resolveAwakeable` / `kind: 'mock' | 'real'` — with TWO Layer impls
+satisfying the same Tag, so the SAME test body runs on either backend:
+
+- `RestateTestEnv.mock({ services, appLayer })` — in-process dispatch over per-key
+  `Map`s and a shared awakeable registry, NO journal, NO server (ms).
+- `RestateTestEnv.real({ services, appLayer, alwaysReplay?, disableRetries? })` — a
+  thin wrapper over `RestateTestHarness.layer` (§11, decision 0009).
+
+It is the swappable façade OVER the two existing primitives (`makeTestContextLayer`
+and `RestateTestHarness` stay available — additive). The LOAD-BEARING property:
+`invoke*` carries `RestateError | ErrorOf` (the TYPED declared error) on BOTH
+backends, so `catchTag(DomainError)` compiles AND recovers identically on the mock
+and the real server. The mock recovers the typed `E` by round-tripping the failure
+through the contract's `error` schema (the SAME decode an ingress caller performs).
+This also made the bound harness ingress's typed form the default invoke (the
+precise typed-error union no longer widens — the old escape to the standalone
+`callTyped` is gone).
+
+The mock reuses the package's real building blocks (not a re-implementation): the
+captured `Runtime<AppR>`, the in-memory `makeTestContext`, the shared
+`Endpoint.provideHandlerCaps` per-kind marker provision (the single source of truth,
+also used by the real `materialize*` boundary), the journaled `determinismLayer`,
+and `classifyOutcome`. Mock-vs-real matrix (mock models: handler logic, typed
+success+error, typed State + per-key isolation, `Restate.run` journaled-once within
+an invoke, deterministic time/rand/sleep, awakeable resolve/await; real-only:
+durability/replay/suspension, exactly-once-across-attempts/retry,
+single-writer/concurrency, cross-invocation, admin-cancel, idempotency-keyed result
+attach, OTel reparenting). Parametrize with `it.each(['mock', 'real'])` and gate the
+real backend with `kind === 'real' && !serverAvailable`.
+
+`RestateTestHarness.registerDeployment({ services, appLayer })` serves an ADDITIONAL
+endpoint version on a fresh ephemeral port and registers it as a SECOND deployment
+(the multi-deployment machinery promised in §11.2): two versions coexist on the
+admin API and a new invocation routes to the latest (the upgrade). The harness
+`layer` also accepts endpoint observability wiring (`hooks` / `inboundBridge` /
+`boundaryObserver`) so OTel reparenting + exactly-once metrics are exercisable
+against the real server under `alwaysReplay`.
 
 ---
 
