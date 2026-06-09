@@ -6,10 +6,10 @@ three hardening items are mandatory.
 
 ## Evidence (`tmp/otelite-compare/concurrency/`, 32-core box)
 
-| K concurrent | runs OK | bind fails | cross-contamination | collisions |
-| --- | --- | --- | --- | --- |
-| 1 / 20 / 50 | all | 0 | 0 | 0 |
-| 100 / 200 / 400 | ≥90% | 0 | **0** | **0** |
+| K concurrent    | runs OK | bind fails | cross-contamination | collisions |
+| --------------- | ------- | ---------- | ------------------- | ---------- |
+| 1 / 20 / 50     | all     | 0          | 0                   | 0          |
+| 100 / 200 / 400 | ≥90%    | 0          | **0**               | **0**      |
 
 - Only per-run identity = **(ephemeral HTTP port + ephemeral gRPC port) + caller
   out-dir**. Shared-state audit clean: no fixed ports, PID/lock files, env reads,
@@ -20,7 +20,7 @@ three hardening items are mandatory.
 ## Required hardening (the footguns found)
 
 1. **Auto-unique default out-dir.** The prototype's fixed `./otel-capture`
-   default is the *only* coordination-forcer — two agents in one cwd collide.
+   default is the _only_ coordination-forcer — two agents in one cwd collide.
    Default to a minted unique dir (`$TMPDIR/otelite-<random>`), always echo the
    resolved `.out`. Don't hard-require `--out` (hurts ergonomics).
 2. **Defend a shared `--out`.** Open sink files with `create_new`/`O_EXCL` (or

@@ -2,7 +2,7 @@
 
 ## Why this exists
 
-Instrumentation tests need to assert what a program *emits* — span shape,
+Instrumentation tests need to assert what a program _emits_ — span shape,
 attributes, service boundaries, the absence of obvious secret leakage — without
 standing up the full Grafana/Tempo stack. Today that verification is either
 heavyweight (the production collector + Tempo + Grafana stack) or
@@ -27,7 +27,7 @@ milliseconds, with no stack and no configuration.
 - Captures are faithful (canonical OTLP, lossless) and the tool is honest about
   what it does and does not guarantee.
 
-## Positioning (what it is *not*)
+## Positioning (what it is _not_)
 
 otelite is one **Lane** among three and replaces neither of the others:
 

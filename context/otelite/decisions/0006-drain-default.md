@@ -6,12 +6,12 @@ is the opt-in for fire-and-forget emitters. otelite never waits unbounded.
 
 ## Evidence (N=50/cell, loopback; `tmp/otelite-compare/drain/`)
 
-| regime | close-immediate | in-flight | idle:200 |
-| --- | --- | --- | --- |
-| sync (awaits response) | 0% drop | 0% drop | 0% |
-| SDK `shutdown()` | 0% drop | 0% drop | 0% |
-| fire-and-forget | 100% | 100% | 0% |
-| SDK no-shutdown | 0 spans (never sent) | 0 spans | 0 spans |
+| regime                 | close-immediate      | in-flight | idle:200 |
+| ---------------------- | -------------------- | --------- | -------- |
+| sync (awaits response) | 0% drop              | 0% drop   | 0%       |
+| SDK `shutdown()`       | 0% drop              | 0% drop   | 0%       |
+| fire-and-forget        | 100%                 | 100%      | 0%       |
+| SDK no-shutdown        | 0 spans (never sent) | 0 spans   | 0 spans  |
 
 - In-flight drain = **0ms tax, 100% capture** for emitters that await their
   export on shutdown — the regimes otelite optimizes for (an un-awaited span is
