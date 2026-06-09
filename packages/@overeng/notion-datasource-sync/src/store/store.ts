@@ -9,6 +9,7 @@ import { propertySurfaceKey } from '../core/canonical.ts'
 import { RemoteWritePlanPayload, type RemoteWriteCommand } from '../core/commands.ts'
 import {
   BodySafetySnapshot,
+  BodyPointer,
   CapabilityName,
   CommandId,
   DatabaseId,
@@ -218,6 +219,7 @@ export type OutboxSettlementInput = {
   readonly requestId: NotionRequestId
   readonly desiredHash: typeof Hash.Type
   readonly observedHash: typeof Hash.Type
+  readonly bodyPointer?: BodyPointer
   readonly createdPageId?: typeof PageId.Type
   readonly settlementKind: 'verified-success' | 'verified-no-op'
   readonly idempotencyKey?: IdempotencyKey
@@ -283,8 +285,7 @@ export type WorkspaceBindingRow = {
 
 const decodeEventFromJson = Schema.decodeSync(Schema.parseJson(SyncEvent))
 const encodeEvent = Schema.encodeSync(SyncEvent)
-const decodeBodySafetyFromJson = Schema.decodeSync(Schema.parseJson(BodySafetySnapshot))
-const encodeBodySafety = Schema.encodeSync(BodySafetySnapshot)
+const decodeLegacyBodySafetyFromJson = Schema.decodeSync(Schema.parseJson(BodySafetySnapshot))
 const decodeCapabilityName = Schema.decodeUnknownSync(CapabilityName)
 const decodeDataSourceId = Schema.decodeSync(DataSourceId)
 const decodeDatabaseId = Schema.decodeSync(DatabaseId)
@@ -305,6 +306,17 @@ const decodeRowProjectionPayload = Schema.decodeUnknownSync(Schema.parseJson(Row
 const decodeBodyProjectionSafetyPayload = Schema.decodeUnknownSync(
   Schema.parseJson(BodyProjectionSafetyPayload),
 )
+const encodeBodyProjectionSafetyPayload = Schema.encodeSync(BodyProjectionSafetyPayload)
+const encodeBodyPointer = Schema.encodeSync(BodyPointer)
+const decodeBodyProjectionPayloadFromJson = (
+  json: string,
+): typeof BodyProjectionSafetyPayload.Type => {
+  try {
+    return decodeBodyProjectionSafetyPayload(json)
+  } catch {
+    return { safety: decodeLegacyBodySafetyFromJson(json) }
+  }
+}
 const decodePropertyCheckpointProjectionPayload = Schema.decodeUnknownSync(
   Schema.parseJson(PropertyCheckpointProjectionPayload),
 )
@@ -723,6 +735,8 @@ export class NotionSyncStore {
   appendOutboxSettlement(input: OutboxSettlementInput): SyncEvent {
     this.#db.exec('BEGIN IMMEDIATE')
     try {
+      const bodyPointer =
+        input.bodyPointer === undefined ? undefined : encodeBodyPointer(input.bodyPointer)
       const event = this.#appendEventInTransaction(
         Schema.decodeUnknownSync(SyncEvent)({
           _tag: 'RemoteWriteSettled',
@@ -742,6 +756,7 @@ export class NotionSyncStore {
               settlementKind: input.settlementKind,
               desiredHash: input.desiredHash,
               observedHash: input.observedHash,
+              ...(bodyPointer === undefined ? {} : { bodyPointer }),
               ...(input.createdPageId === undefined ? {} : { createdPageId: input.createdPageId }),
             }),
           ),
@@ -752,6 +767,7 @@ export class NotionSyncStore {
           desiredHash: input.desiredHash,
           observedHash: input.observedHash,
           ...(input.createdPageId === undefined ? {} : { createdPageId: input.createdPageId }),
+          ...(bodyPointer === undefined ? {} : { bodyPointer }),
           settlementKind: input.settlementKind,
         }),
       )
@@ -1488,7 +1504,9 @@ export class NotionSyncStore {
           ownWriteMaterializationIds: Schema.decodeSync(
             Schema.parseJson(Schema.Array(Schema.String)),
           )(readString({ row: row, key: 'own_write_materialization_ids_json' })),
-          safety: decodeBodySafetyFromJson(readString({ row: row, key: 'safety_json' })),
+          safety:
+            decodeBodyProjectionPayloadFromJson(readString({ row: row, key: 'safety_json' }))
+              .safety ?? defaultUnsafeBodySafety,
         })),
       tombstones: this.#readTombstones(rootId),
       queries: this.#readQuerySurfaces(rootId),
@@ -2579,6 +2597,15 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
           })
           const safety =
             event.bodyPointer.safety ?? safetyPayload?.safety ?? defaultUnsafeBodySafety
+          const bodyProjectionPayload = encodeBodyProjectionSafetyPayload({
+            safety,
+            ...(event.bodyPointer.bodyDescriptor === undefined
+              ? {}
+              : { bodyDescriptor: event.bodyPointer.bodyDescriptor }),
+            ...(event.bodyPointer.bodyEvidenceFingerprint === undefined
+              ? {}
+              : { bodyEvidenceFingerprint: event.bodyPointer.bodyEvidenceFingerprint }),
+          })
           const bodyHash = event.bodyPointer.bodyHash
           this.#db
             .prepare(
@@ -2612,7 +2639,7 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
               bodyHash,
               payload?.sidecarIdentityProven === true ? 1 : 0,
               stringifyJson(payload?.ownWriteMaterializationIds ?? []),
-              stringifyJson(encodeBodySafety(safety)),
+              stringifyJson(bodyProjectionPayload),
               event.eventId,
               currentIso(this.#now),
             )
@@ -2750,11 +2777,28 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
             const match = /^page:(?<pageId>.+):body$/u.exec(event.surface)
             const pageId = match?.groups?.pageId
             if (pageId !== undefined) {
+              const safetyJson =
+                event.bodyPointer === undefined
+                  ? undefined
+                  : stringifyJson(
+                      encodeBodyProjectionSafetyPayload({
+                        safety: event.bodyPointer.safety,
+                        ...(event.bodyPointer.bodyDescriptor === undefined
+                          ? {}
+                          : { bodyDescriptor: event.bodyPointer.bodyDescriptor }),
+                        ...(event.bodyPointer.bodyEvidenceFingerprint === undefined
+                          ? {}
+                          : {
+                              bodyEvidenceFingerprint: event.bodyPointer.bodyEvidenceFingerprint,
+                            }),
+                      }),
+                    )
               this.#db
                 .prepare(
                   `UPDATE _nds_body_pointer
                    SET base_hash = ?,
                        current_hash = ?,
+                       safety_json = COALESCE(?, safety_json),
                        observed_event_id = ?,
                        updated_at = ?
                    WHERE root_id = ?
@@ -2763,6 +2807,7 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
                 .run(
                   event.observedHash,
                   event.observedHash,
+                  safetyJson ?? null,
                   event.eventId,
                   currentIso(this.#now),
                   event.rootId,

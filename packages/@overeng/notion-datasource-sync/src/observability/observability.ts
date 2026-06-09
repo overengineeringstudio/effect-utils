@@ -33,6 +33,8 @@ export const spanAttr = {
   appendedEvents: 'notion.datasource.appended_events',
   attempt: 'notion.datasource.attempt',
   blockedCount: 'notion.datasource.blocked_count',
+  bodyEvidenceFingerprint: 'notion.datasource.body.evidence_fingerprint',
+  bodyHash: 'notion.datasource.body.hash',
   cancelled: 'notion.datasource.cancelled',
   cappedAtLimit: 'notion.datasource.capped_at_limit',
   command: 'notion.datasource.command',

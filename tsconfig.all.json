@@ -13,6 +13,9 @@
       "path": "./packages/@overeng/agent-session-ingest"
     },
     {
+      "path": "./packages/@overeng/content-address"
+    },
+    {
       "path": "./packages/@overeng/effect-ai-claude-cli"
     },
     {

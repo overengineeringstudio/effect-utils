@@ -25,6 +25,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@overeng/content-address": "workspace:^",
     "@overeng/notion-core": "workspace:^",
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
@@ -80,6 +81,7 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
       "packages/@overeng/notion-core",
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",

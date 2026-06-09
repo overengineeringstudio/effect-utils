@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 
 import { Effect, Layer, Schema, Stream } from 'effect'
 
+import type { ContentDescriptor } from '@overeng/content-address'
 import type { BodyCompleteness, BodyLossyReason } from '@overeng/notion-core'
 import {
   materializeBody,
@@ -20,6 +21,9 @@ import {
 import type { BodyLocalChangeInput, BodyRepairInput, ObserveBodyInput } from '../core/commands.ts'
 import {
   BodyPointer,
+  bodyDescriptorForMarkdown,
+  bodyEvidenceFingerprintFromContentDigest,
+  bodyPointerIdentityHash,
   type BodySafetySnapshot,
   Hash,
   NotionRequestId,
@@ -79,6 +83,9 @@ export type NotionMdRemoteBodyLike = {
   readonly fidelity?: NotionBodyFidelityLike
   readonly bodyFidelity?: NotionBodyFidelityLike
   readonly completeness?: BodyCompleteness
+  readonly markdown?: string | undefined
+  readonly bodyDescriptor?: ContentDescriptor | undefined
+  readonly bodyEvidenceFingerprint?: string | undefined
 }
 
 const unknownBlockCauseFromLossyReasons = (
@@ -135,12 +142,22 @@ export const notionMdBodySafetySnapshot = (body: NotionMdRemoteBodyLike): BodySa
 const bodyPointerFromRemoteBody = (input: {
   readonly pageId: PageId
   readonly bodyHash: string
+  readonly markdown?: string | undefined
+  readonly bodyDescriptor?: ContentDescriptor | undefined
+  readonly bodyEvidenceFingerprint?: string | undefined
   readonly safety?: BodySafetySnapshot
 }): typeof BodyPointer.Type => {
   return BodyPointer.make({
     _tag: 'BodyPointer',
     pageId: input.pageId,
     bodyHash: hashFromNotionMdDigest(input.bodyHash),
+    bodyDescriptor:
+      input.bodyDescriptor ??
+      (input.markdown === undefined ? undefined : bodyDescriptorForMarkdown(input.markdown)),
+    bodyEvidenceFingerprint:
+      input.bodyEvidenceFingerprint === undefined
+        ? undefined
+        : bodyEvidenceFingerprintFromContentDigest(input.bodyEvidenceFingerprint),
     observedAt: observedAtNow(),
     safety: input.safety ?? bodySafetySnapshot({ adapterMutationSurfaces: ['body'] }),
   })
@@ -217,6 +234,9 @@ export const makeNotionMdPageBodySyncPort = ({
           bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            markdown: body.markdown,
+            bodyDescriptor: body.bodyDescriptor,
+            bodyEvidenceFingerprint: body.bodyEvidenceFingerprint,
             safety: notionMdBodySafetySnapshot(body),
           }),
         ),
@@ -237,6 +257,9 @@ export const makeNotionMdPageBodySyncPort = ({
           const remote = bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            markdown: body.markdown,
+            bodyDescriptor: body.bodyDescriptor,
+            bodyEvidenceFingerprint: body.bodyEvidenceFingerprint,
             safety: notionMdBodySafetySnapshot(body),
           })
           const contract = evaluateBodyAdapterContract(remote.safety ?? bodySafetySnapshot())
@@ -253,7 +276,7 @@ export const makeNotionMdPageBodySyncPort = ({
             }
           }
 
-          if (remote.bodyHash !== input.baseBodyPointer.bodyHash) {
+          if (bodyPointerIdentityHash(remote) !== bodyPointerIdentityHash(input.baseBodyPointer)) {
             return {
               _tag: 'BodyConflict' as const,
               pageId: input.pageId,
@@ -305,6 +328,9 @@ export const makeNotionMdPageBodySyncPort = ({
         const bodyPointer = bodyPointerFromRemoteBody({
           pageId: command.pageId,
           bodyHash: replaced.bodyHash,
+          markdown: replaced.markdown,
+          bodyDescriptor: replaced.bodyDescriptor,
+          bodyEvidenceFingerprint: replaced.bodyEvidenceFingerprint,
           safety: notionMdBodySafetySnapshot(replaced),
         })
 
@@ -369,6 +395,9 @@ export const makeNotionMdPageBodySyncPort = ({
           bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            markdown: body.markdown,
+            bodyDescriptor: body.bodyDescriptor,
+            bodyEvidenceFingerprint: body.bodyEvidenceFingerprint,
             safety: notionMdBodySafetySnapshot(body),
           }),
         ),

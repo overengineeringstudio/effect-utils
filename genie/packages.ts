@@ -9,6 +9,7 @@
  * All internal @overeng/* package short names.
  */
 export const internalPackages = [
+  'content-address',
   'effect-path',
   'effect-schema-form',
   'effect-schema-form-aria',

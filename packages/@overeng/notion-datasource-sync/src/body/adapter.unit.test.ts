@@ -17,6 +17,7 @@ import {
 import {
   AbsolutePath,
   BodyPointer,
+  BodyEvidenceFingerprint,
   CommandId,
   DataSourceId,
   Hash,
@@ -42,6 +43,8 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (char: string) => decode(Hash, `sha256:${char.repeat(64)}`)
+const evidenceFingerprint = (char: string) =>
+  decode(BodyEvidenceFingerprint, `sha256:${char.repeat(64)}`)
 const contentHash = (content: string) =>
   decode(Hash, `sha256:${createHash('sha256').update(content).digest('hex')}`)
 
@@ -198,6 +201,43 @@ describe('body adapter contract', () => {
     expect(result).toMatchObject({
       _tag: 'BodyConflict',
       reason: 'BodyAdapterNonBodyMutation',
+    })
+  })
+
+  it('rejects stale body bases by evidence fingerprint even when body hashes match', async () => {
+    const basePointer = decode(BodyPointer, {
+      _tag: 'BodyPointer',
+      pageId,
+      bodyHash: hash('a'),
+      bodyEvidenceFingerprint: evidenceFingerprint('b'),
+      observedAt: '2026-05-25T00:00:00.000Z',
+      safety: bodySafetySnapshot(),
+    })
+    const remotePointer = decode(BodyPointer, {
+      _tag: 'BodyPointer',
+      pageId,
+      bodyHash: hash('a'),
+      bodyEvidenceFingerprint: evidenceFingerprint('c'),
+      observedAt: '2026-05-25T00:00:00.000Z',
+      safety: bodySafetySnapshot(),
+    })
+    const port = makeFakePageBodySyncPort({
+      pages: [{ pageId, pointer: remotePointer, requestId }],
+    })
+
+    const result = await Effect.runPromise(
+      port.planLocalChange({
+        _tag: 'BodyLocalChangeInput',
+        pageId,
+        baseBodyPointer: basePointer,
+        localBodyHash: hash('d'),
+      }),
+    )
+
+    expect(result).toMatchObject({
+      _tag: 'BodyConflict',
+      reason: 'StaleSurfaceBase',
+      remoteBodyHash: hash('a'),
     })
   })
 

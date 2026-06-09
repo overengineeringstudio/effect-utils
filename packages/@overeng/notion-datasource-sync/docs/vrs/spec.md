@@ -55,6 +55,10 @@ It does not define:
 ## Package Shape
 
 ```
+@overeng/content-address
+  reusable content identity primitives, canonical JSON bytes,
+  descriptors, and descriptor verification
+
 @overeng/notion-core
   pure dependency-free Notion primitives, helpers, tuple builders,
   and classifiers
@@ -85,6 +89,10 @@ It does not define:
 ```
 
 The package split is an ownership boundary, not just a publishing layout.
+`@overeng/content-address` owns reusable content identity, not Notion semantics:
+algorithm-tagged digests, byte descriptors, canonical JSON byte encoding, and
+descriptor verification. It deliberately does not own `.notion-md` paths,
+retention, garbage collection, datasource-sync events, or settlement rules.
 `@overeng/notion-core` stays dependency-free and contains only pure Notion
 primitives, helpers, tuple builders, and classifiers, including the shared
 body-completeness vocabulary.
@@ -101,6 +109,23 @@ datasource sync consumes the public body-only facade and owns its own
 datasource sidecars, path claims, outbox, and settlement events. It must not
 depend on private NotionMD internals. It maps NotionMD body-completeness
 evidence into body guards; it does not reclassify Markdown lossiness itself.
+
+Remote body evidence is immutable observation identity, not remote truth and not
+a Notion revision token. `@overeng/notion-effect-client` derives body evidence
+fingerprints from a versioned envelope containing the Notion API version,
+observation window, endpoint Markdown descriptor, rendered body descriptor,
+block-tree descriptor, block inventory descriptor, and completeness. Public
+Notion APIs still do not provide conditional body writes or transactional
+multi-endpoint snapshots, so datasource-sync uses evidence fingerprints only for
+application-level guarded settlement: re-observe before mutation, reject stale
+bases when evidence identity differs, mutate, then settle only from a fresh
+complete observation whose body descriptor matches the desired body.
+
+Privacy and retention remain domain-owned. Full body evidence can include
+descriptors for sensitive Markdown and block inventory; packages that store it
+must choose explicit retention policy. Hash-only evidence may be retained when a
+workflow only needs identity/integrity, but lossy or incomplete evidence cannot
+establish or refresh a clean body base.
 
 `@overeng/notion-react` is deliberately deferred for this path. It may reuse
 core body-fidelity types later for preflight or drift reporting, but the

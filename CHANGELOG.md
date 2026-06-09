@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/content-address + Notion body sync**: Add reusable content-address primitives (`ContentDigest`, `ContentDescriptor`, canonical JSON hashing, descriptor verification) and use Notion body observation evidence fingerprints for guarded body planning and settlement.
 - **@overeng/notion-core + @overeng/notion-effect-client**: Add shared Notion body-fidelity vocabulary and live Markdown/block-tree observation so downstream packages can distinguish complete remote bodies from lossy endpoint output.
 - **@overeng/genie**: Add `projectionArtifact.json()` for schema-versioned deterministic JSON projections, with generic validation hooks and reusable duplicate-value validators for TS-authored data projected into committed JSON.
 - **Notion docs**: Add lightweight package-level VRS requirements/spec docs for `@overeng/notion-core`, `@overeng/notion-effect-schema`, and `@overeng/notion-effect-client`; align the broader Notion VRS docs with implementation reality while keeping package READMEs user-facing.

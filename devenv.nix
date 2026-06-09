@@ -97,6 +97,7 @@ let
   # See: context/workarounds/bun-issues.md
   allPackages = [
     "packages/@overeng/agent-session-ingest"
+    "packages/@overeng/content-address"
     "packages/@overeng/utils"
     "packages/@overeng/utils-dev"
     "packages/@overeng/effect-ai-claude-cli"
@@ -131,6 +132,10 @@ let
   # Packages that have vitest tests (subset of allPackages)
   # Each package uses its own vitest from node_modules (self-contained)
   packagesWithTests = [
+    {
+      path = "packages/@overeng/content-address";
+      name = "content-address";
+    }
     {
       path = "packages/@overeng/effect-ai-claude-cli";
       name = "effect-ai-claude-cli";

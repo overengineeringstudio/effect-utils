@@ -5,6 +5,7 @@ import {
   workspaceMember,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import contentAddressPkg from '../content-address/package.json.genie.ts'
 import notionCorePkg from '../notion-core/package.json.genie.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
@@ -29,6 +30,7 @@ const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-datasource-sync' }),
   dependencies: {
     workspace: [
+      contentAddressPkg,
       notionCorePkg,
       notionEffectClientPkg,
       notionEffectSchemaPkg,

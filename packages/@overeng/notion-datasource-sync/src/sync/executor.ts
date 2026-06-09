@@ -1,7 +1,14 @@
 import { Chunk, Effect, Schema, Stream } from 'effect'
 
 import type { PatchPagePropertiesCommand, RemoteWriteCommand } from '../core/commands.ts'
-import { PropertyId, type Hash, type NotionRequestId, type PageId } from '../core/domain.ts'
+import {
+  bodyPointerIdentityHash,
+  PropertyId,
+  type BodyPointer,
+  type Hash,
+  type NotionRequestId,
+  type PageId,
+} from '../core/domain.ts'
 import { LocalStoreError, NotionGatewayError, type BodySyncError } from '../core/errors.ts'
 import { IdempotencyKey } from '../core/events.ts'
 import type { GuardName } from '../core/guards.ts'
@@ -52,6 +59,7 @@ type CurrentSurface = {
   readonly baseHash: Hash
   readonly verificationHash: Hash
   readonly requestId: NotionRequestId
+  readonly bodyPointer?: BodyPointer
 }
 
 type RemoteWriteResult = {
@@ -107,14 +115,15 @@ const storeEffect = <TValue>({
 }): Effect.Effect<TValue, LocalStoreError> =>
   Effect.try({
     try: f,
-    catch: (cause) =>
-      cause instanceof LocalStoreError
-        ? cause
-        : new LocalStoreError({
-            operation,
-            message: `Local store operation failed: ${operation}`,
-            cause,
-          }),
+    catch: (cause) => {
+      if (cause instanceof LocalStoreError) return cause
+      const causeMessage = cause instanceof Error ? cause.message : String(cause)
+      return new LocalStoreError({
+        operation,
+        message: `Local store operation failed: ${operation}: ${causeMessage}`,
+        cause,
+      })
+    },
   })
 
 const commandTag = (command: RemoteWriteCommand): string => command._tag.replace(/Command$/, '')
@@ -141,6 +150,12 @@ const commandSpanAttributes = (input: {
     [spanAttr.commandKind]: otelCommandKind(input.command._tag),
     [spanAttr.dataSourceId]: commandDataSourceId(input.command),
     [spanAttr.pageId]: commandPageId(input.command),
+    [spanAttr.bodyHash]:
+      input.command._tag === 'BodyPushCommand' ? input.command.nextBodyHash : undefined,
+    [spanAttr.bodyEvidenceFingerprint]:
+      input.command._tag === 'BodyPushCommand'
+        ? input.command.baseBodyPointer.bodyEvidenceFingerprint
+        : undefined,
   })
 
 const commandBaseHash = (command: RemoteWriteCommand): Hash => {
@@ -155,7 +170,7 @@ const commandBaseHash = (command: RemoteWriteCommand): Hash => {
     case 'PatchDatabaseMetadataCommand':
       return command.baseMetadataHash
     case 'BodyPushCommand':
-      return command.baseBodyPointer.bodyHash
+      return bodyPointerIdentityHash(command.baseBodyPointer)
     case 'CreatePageCommand':
       return command.baseSchemaHash
   }
@@ -248,9 +263,10 @@ const observeCurrentSurface = (
         const body = yield* PageBodySyncPort
         const pointer = yield* body.observe({ _tag: 'ObserveBodyInput', pageId: command.pageId })
         return {
-          baseHash: pointer.bodyHash,
-          verificationHash: pointer.bodyHash,
+          baseHash: bodyPointerIdentityHash(pointer),
+          verificationHash: bodyPointerIdentityHash(pointer),
           requestId: notionRequestId(`body-observe:${command.commandId}`),
+          bodyPointer: pointer,
         }
       }
     }
@@ -385,6 +401,7 @@ const settle = ({
   command,
   requestId,
   observedHash,
+  bodyPointer,
   createdPageId,
   settlementKind,
 }: {
@@ -393,6 +410,7 @@ const settle = ({
   readonly command: RemoteWriteCommand
   readonly requestId: NotionRequestId
   readonly observedHash: Hash
+  readonly bodyPointer?: BodyPointer
   readonly createdPageId?: PageId
   readonly settlementKind: 'verified-success' | 'verified-no-op'
 }) =>
@@ -408,6 +426,7 @@ const settle = ({
         requestId,
         desiredHash: claimed.desiredHash,
         observedHash,
+        ...(bodyPointer === undefined ? {} : { bodyPointer }),
         ...(createdPageId === undefined ? {} : { createdPageId }),
         settlementKind,
         idempotencyKey: idempotencyKey(`${claimed.commandKey}:settled`),
@@ -520,6 +539,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
           command,
           requestId: before.requestId,
           observedHash: before.verificationHash,
+          ...(before.bodyPointer === undefined ? {} : { bodyPointer: before.bodyPointer }),
           settlementKind: 'verified-no-op',
         })
         yield* annotateOutboxResult(result)
@@ -661,6 +681,7 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
               ...(writeResult.createdPageId === undefined
                 ? {}
                 : { createdPageId: writeResult.createdPageId }),
+              ...(after.bodyPointer === undefined ? {} : { bodyPointer: after.bodyPointer }),
               settlementKind: 'verified-success',
             })
           : yield* recordAttemptState({

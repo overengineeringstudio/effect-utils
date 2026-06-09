@@ -13,6 +13,7 @@ import {
   type QueryRowsPage,
 } from '../core/commands.ts'
 import {
+  bodyPointerIdentityHash,
   BodyPointer,
   CommandId,
   PageSnapshot,
@@ -983,7 +984,8 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             inTrash: page.inTrash,
             payload: rowPayload,
           })
-          const bodyHashPart = bodyPointer === undefined ? 'no-body' : bodyPointer.bodyHash
+          const bodyHashPart =
+            bodyPointer === undefined ? 'no-body' : bodyPointerIdentityHash(bodyPointer)
 
           events.push(
             decode({

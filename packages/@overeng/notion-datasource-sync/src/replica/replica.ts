@@ -33,15 +33,33 @@ import {
   PropertyId,
   type AbsolutePath,
   BodyPointer,
+  BodySafetySnapshot,
   WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
 import type { PlanDecision, PlannerIntent } from '../planner/planner.ts'
 import { resolveConflictCommand } from '../planner/user-commands.ts'
-import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
+import {
+  BodyProjectionSafetyPayload,
+  hashStoreBytes,
+  pageLifecycleHash,
+} from '../store/projections.ts'
 import type { NotionSyncStore } from '../store/store.ts'
 
 type SqlRow = Record<string, unknown>
+const decodeBodyProjectionPayloadJson = Schema.decodeUnknownSync(
+  Schema.parseJson(BodyProjectionSafetyPayload),
+)
+const decodeLegacyBodySafetyJson = Schema.decodeUnknownSync(Schema.parseJson(BodySafetySnapshot))
+const decodeBodyProjectionPayloadCompat = (
+  json: string,
+): typeof BodyProjectionSafetyPayload.Type => {
+  try {
+    return decodeBodyProjectionPayloadJson(json)
+  } catch {
+    return { safety: decodeLegacyBodySafetyJson(json) }
+  }
+}
 
 /** Default file name for the on-disk SQLite replica inside a workspace. */
 export const replicaFileName = 'notion.sqlite'
@@ -4526,9 +4544,11 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        let safety: unknown
+        let bodyProjectionPayload: typeof BodyProjectionSafetyPayload.Type
         try {
-          safety = JSON.parse(readString({ row: body, key: 'safety_json' }))
+          bodyProjectionPayload = decodeBodyProjectionPayloadCompat(
+            readString({ row: body, key: 'safety_json' }),
+          )
         } catch {
           markChange({
             replicaPath,
@@ -4545,8 +4565,14 @@ export const replicaChangesToPlannerIntents = ({
             _tag: 'BodyPointer',
             pageId,
             bodyHash: baseHash,
+            ...(bodyProjectionPayload.bodyDescriptor === undefined
+              ? {}
+              : { bodyDescriptor: bodyProjectionPayload.bodyDescriptor }),
+            ...(bodyProjectionPayload.bodyEvidenceFingerprint === undefined
+              ? {}
+              : { bodyEvidenceFingerprint: bodyProjectionPayload.bodyEvidenceFingerprint }),
             observedAt: new Date().toISOString(),
-            safety,
+            safety: bodyProjectionPayload.safety,
           },
         })
         intents.push({

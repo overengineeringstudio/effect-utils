@@ -10,11 +10,5 @@ export default tsconfigJson({
     ...packageTsconfigCompilerOptions,
   },
   include: ['src/**/*'],
-  references: [
-    { path: '../content-address' },
-    { path: '../notion-core' },
-    { path: '../notion-effect-schema' },
-    { path: '../utils' },
-    { path: '../utils-dev' },
-  ],
+  references: [{ path: '../utils-dev' }],
 } satisfies TSConfigArgs)

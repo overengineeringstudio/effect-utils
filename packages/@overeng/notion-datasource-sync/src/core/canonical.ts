@@ -1,8 +1,15 @@
 import { Schema } from 'effect'
 
-import { hashStoreBytes } from '../store/projections.ts'
+import { hashCanonicalJson } from '@overeng/content-address'
+
 import type { CanonicalDataSourceMetadata, QueryRowsInput } from './commands.ts'
-import type { DatabaseId, DataSourceId, PageId, PropertyId } from './domain.ts'
+import {
+  hashFromContentDigest,
+  type DatabaseId,
+  type DataSourceId,
+  type PageId,
+  type PropertyId,
+} from './domain.ts'
 import { SurfaceKey } from './events.ts'
 
 /** Decode an arbitrary string into a branded `SurfaceKey` — throws on malformed input. */
@@ -52,36 +59,9 @@ export const querySurfaceKey = ({
   readonly queryContractHash: string
 }): SurfaceKey => surfaceKey(`data-source:${dataSourceId}:query:${queryContractHash}`)
 
-const stableStringify = (value: unknown): string => {
-  if (value === undefined) {
-    return '"[undefined]"'
-  }
-
-  if (
-    value !== null &&
-    typeof value === 'object' &&
-    'toJSON' in value &&
-    typeof value.toJSON === 'function'
-  ) {
-    return stableStringify(value.toJSON())
-  }
-
-  if (Array.isArray(value) === true) {
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`
-  }
-
-  if (value !== null && typeof value === 'object') {
-    return `{${Object.entries(value)
-      .toSorted(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-      .join(',')}}`
-  }
-
-  return JSON.stringify(value)
-}
-
 /** SHA-256 hash for canonicalized datasource-sync contract and surface data. */
-export const canonicalHash = (value: unknown) => hashStoreBytes(stableStringify(value))
+export const canonicalHash = (value: unknown) =>
+  hashFromContentDigest(hashCanonicalJson(Schema.Unknown, value))
 
 /** Hash data-source metadata independently from the property schema surface. */
 export const dataSourceMetadataHash = (metadata: CanonicalDataSourceMetadata) =>

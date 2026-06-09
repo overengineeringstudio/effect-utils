@@ -57,6 +57,18 @@ decide whether body planning or push is safe. Lossy evidence is pessimistic: it
 must win over any stale or optimistic body-safety metadata already attached to a
 pointer.
 
+`BodyPointer` may carry both the legacy rendered-body hash and a body evidence
+fingerprint. When both sides have a fingerprint, guards compare the fingerprint
+instead of the rendered-body hash so endpoint/block-tree skew with the same
+rendered Markdown still blocks stale-base adoption. Existing projections and
+events without evidence continue to compare the legacy body hash.
+
+Body evidence fingerprints are content-addressed observation envelopes, not
+Notion revisions. They are safe to use as body-scoped base identities for
+planner/executor guards, but they cannot eliminate the residual race after the
+pre-write read because Notion does not expose server-side conditional body
+writes.
+
 `@overeng/notion-react` is intentionally not in this path: it is an owned-region
 writer and may later reuse core classifiers or fingerprints for preflight/drift
 reporting, but datasource-sync must not route guarded Markdown adoption through
@@ -68,6 +80,9 @@ the body content that was just pushed. If the file changed while the remote writ
 was in flight, the adapter fails closed instead of overwriting the newer local
 edit. Clean-base refresh is settlement bookkeeping, not a second user-visible
 body mutation, and it may settle only from a complete NotionMD body observation.
+Settlement records preserve body evidence metadata in projection payloads so a
+replay can rebuild body pointers with the same descriptor/fingerprint identity
+instead of collapsing back to a bare hash.
 
 Body materialization is subordinate to the established sync no-unwanted-data-loss
 invariant. The body adapter may provide materialization mechanics, but

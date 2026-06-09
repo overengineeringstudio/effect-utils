@@ -17,6 +17,7 @@ import type {
   NotionRequestId,
   PageId,
 } from '../core/domain.ts'
+import { bodyDescriptorForMarkdown, bodyPointerIdentityHash } from '../core/domain.ts'
 import { BodySyncError } from '../core/errors.ts'
 import { guardBodySafety, type BodyAdapterMutationSurface, type GuardName } from '../core/guards.ts'
 import { PageBodySyncPort, type PageBodySyncPortShape } from '../core/ports.ts'
@@ -305,8 +306,10 @@ export const makeFakePageBodySyncPort = ({
             })
           }
 
-          const remoteBodyHash = page.remoteBodyHash ?? page.pointer.bodyHash
-          if (input.baseBodyPointer.bodyHash !== remoteBodyHash) {
+          if (
+            bodyPointerIdentityHash(input.baseBodyPointer) !==
+            (page.remoteBodyHash ?? bodyPointerIdentityHash(page.pointer))
+          ) {
             return conflictFromBlocked({
               page,
               input,
@@ -342,8 +345,10 @@ export const makeFakePageBodySyncPort = ({
             )
           }
 
-          const remoteBodyHash = page.remoteBodyHash ?? page.pointer.bodyHash
-          if (command.baseBodyPointer.bodyHash !== remoteBodyHash) {
+          if (
+            bodyPointerIdentityHash(command.baseBodyPointer) !==
+            (page.remoteBodyHash ?? bodyPointerIdentityHash(page.pointer))
+          ) {
             return Effect.fail(
               new BodySyncError({
                 operation: 'push',
@@ -358,6 +363,10 @@ export const makeFakePageBodySyncPort = ({
               _tag: 'BodyPointer',
               pageId: command.pageId,
               bodyHash: command.nextBodyHash,
+              bodyDescriptor:
+                command.localBodyContent === undefined
+                  ? command.baseBodyPointer.bodyDescriptor
+                  : bodyDescriptorForMarkdown(command.localBodyContent),
               observedAt: page.pointer.observedAt,
             },
             safety,
