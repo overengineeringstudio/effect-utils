@@ -1,58 +1,34 @@
 # Operability: boundary span attributes + a replay-aware metrics path
 
-The v1 OTel bridge ([decision 0007](./0007-otel-bridge.md)) exports TRACES ONLY,
-and the only span attributes are the hook's `restate.invocation.{id,target}`. A
-real stress run's verdict was that the package is "not operable from Grafana — no
-metrics, no business identity on spans, no error classification on spans". This
-decision closes that gap with two additions, both behind the `./otel` subpath so
-the core stays dependency-light (R03), plus a user path on the core `Restate`
-namespace.
+The v1 OTel bridge ([decision 0007](./0007-otel-bridge.md)) exports TRACES ONLY
+with only the hook's `restate.invocation.{id,target}` attributes — a stress run's
+verdict was "not operable from Grafana: no metrics, no business identity on spans,
+no error classification on spans". This decision closes that gap, both additions
+behind `./otel` so the core stays dependency-light (R03).
 
 ## 1. Span attributes (auto identity + error class, + a user combinator)
 
-The boundary AUTO-stamps the business identity an operator slices on, onto the
-hook's `attempt <target>` span (the span the hook owns and W3C-parents):
-
-- `restate.service` (construct name), `restate.handler` (handler name),
-- `restate.object.key` (the Object/Workflow key; omitted for plain Services).
-
-On a FAILURE it ALSO stamps the classification the boundary ALREADY computes at
-`classifyOutcome` (the single source of truth `toTerminal` is built on), so an
-error-rate panel splits by classification without re-deriving it:
-
-- `restate.error.tag` — the domain error `_tag`,
-- `restate.error.class` — `terminal` | `retryable` | `cancelled`.
-
-The seam is a PURE core `BoundaryObserver` — `(BoundaryInfo) => (BoundaryOutcome)
-=> void` with NO otel type — wired into the per-invocation boundary alongside the
-existing inbound-bridge `HandlerWrap`. `./otel` supplies the implementation that
-reads `trace.getActiveSpan()` and stamps it; the otel-free core leaves it
-undefined. This mirrors the dependency-light split decision 0007 already uses for
-the inbound bridge.
-
-The USER path is `Restate.annotateSpan(attrs)` — a thin combinator over
-`Effect.annotateCurrentSpan` (otel-free, on the core `Restate` namespace) — so a
-handler stamps business attributes (e.g. `dataSourceId`) onto the current Effect
-span (reparented under the attempt span by the inbound bridge), for slicing in
-Tempo/Grafana. Use the `span.label` convention for a single primary label.
+The boundary AUTO-stamps onto the hook's `attempt <target>` span the identity an
+operator slices on (`restate.service`, `restate.handler`, `restate.object.key`),
+and on FAILURE the classification it ALREADY computes at `classifyOutcome`
+(`restate.error.tag`, `restate.error.class` ∈ `terminal`|`retryable`|`cancelled`) —
+so an error-rate panel splits by class without re-deriving it. The seam is a PURE
+core `BoundaryObserver` (`(BoundaryInfo) => (BoundaryOutcome) => void`, NO otel
+type); `./otel` supplies the `trace.getActiveSpan()` stamper, the otel-free core
+leaves it undefined — the same dependency-light split decision 0007 uses for the
+inbound bridge. The USER path is `Restate.annotateSpan(attrs)` (a thin otel-free
+combinator over `Effect.annotateCurrentSpan`); use the `span.label` convention for
+a single primary label.
 
 ## 2. Metrics path in `RestateOtel`
 
 `RestateOtel.layer({ …, metricReader?/metricExporter? })` registers a
-`MeterProvider` SHARING THE SAME `Resource` as the tracer (via
-`@effect/opentelemetry`'s `Metrics.layer` over an `@opentelemetry/sdk-metrics`
-`MetricReader` — a `PeriodicExportingMetricReader` over a consumer-provided OTLP
-metric exporter in production, an in-memory reader in a test) and binds Effect's
-`Metric` to it. When NEITHER `metricReader` nor `metricExporter` is given, no meter
-is registered — traces still work and the metrics stay in-memory, so adopting
-metrics is a purely additive config change. `@opentelemetry/sdk-metrics` is an
-`./otel` peer dep (it was already a dev dep via `otelSdkDeps`).
-
-The baseline metrics are defined as Effect `Metric`s in a CORE `Metrics.ts` module
-— `effect` is already a core dependency, so the definitions carry NO otel import,
-and the same counters/histograms are bound to the OTel meter only when
-`RestateOtel.layer` provides it. This is the cleanest way to keep otel/metrics deps
-scoped to `./otel` while emitting from core combinators.
+`MeterProvider` sharing the tracer's `Resource` and binds Effect's `Metric` to it.
+With neither given, no meter is registered — traces still work, metrics stay
+in-memory — so adopting metrics is a purely additive config change. The baseline
+metrics are defined as core Effect `Metric`s (otel-free, in `Metrics.ts`) and bound
+to the OTel meter only when `RestateOtel.layer` provides it — the cleanest way to
+keep otel deps scoped to `./otel` while emitting from core combinators.
 
 ### Replay-aware exactly-once — the subtle part
 

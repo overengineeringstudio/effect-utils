@@ -66,15 +66,7 @@ inside of a `run` closure.
 
 Status: accepted
 
-_Revised after design review (user resolution: explicit durable waits): dropped
-the transparent `Clock.sleep → ctx.sleep` global remap (broke `Effect.timeout`
-and silently journaled library sleeps); durable waits are now the explicit
-`Restate.sleep` / `Restate.timeout` / `Restate.race` combinators. Added the
-frozen-per-attempt monotonic base for the sync `unsafeCurrentTime*` reads._
-
-_Revised after empirical de-risk: simplified the `ctx.rand`-in-`run` note —
-`crypto.randomUUID()` and the journaled `Random` are both fine inside `Restate.run`
-(`run` journals the result once; the SDK's `ctx.rand`-in-`run` guard is a no-op in
-1.14.5 and is harmless either way). Determinism is validated end-to-end against
-native restate-server 1.6.2 (exactly-once `run`, replay-stable journaled reads);
-only the frozen-base sync clock stays to confirm in impl._
+_Revised: dropped the transparent `Clock.sleep → ctx.sleep` global remap (it broke
+`Effect.timeout` and silently journaled library sleeps — see Why) in favor of the
+explicit durable combinators; added the frozen-per-attempt monotonic base for the
+sync `unsafeCurrentTime*` reads._

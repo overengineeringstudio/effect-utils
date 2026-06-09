@@ -75,7 +75,6 @@ AST gotchas (documented so the implementation reads annotations correctly):
 
 Status: accepted
 
-_Revised (#3): `retryAfter` upgraded from static-only to `static | (error) =>
-DurationInput | undefined` — an instance projection read off the actual failing
-error at the boundary, mirroring `idempotencyKey`. The annotations worker shipped
-static; the projection is the final form._
+_Revised (#3): `retryAfter` upgraded from static-only to the
+`static | (error) => DurationInput | undefined` instance projection above (the
+initial annotations worker shipped static)._

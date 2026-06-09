@@ -10,28 +10,17 @@ over the admin API.
 
 ## Surface
 
-A new OPT-IN subpath `./admin` — a separate dependency-light subpath like `./otel`
-/ `./testing`, NOT on the core `.` export — exporting a `RestateAdmin` Tag +
-`layer({ adminUrl, apiKey? })`, MIRRORING the `RestateIngress` Tag/layer pattern
-(decision 0016). Every operation is an Effect failing with the existing
-`RestateError`, under a new `reason: 'AdminFailed'`.
+A new OPT-IN dependency-light subpath `./admin` (like `./otel` / `./testing`, NOT on
+core `.`) exporting a `RestateAdmin` Tag + `layer({ adminUrl, apiKey? })`, MIRRORING
+the `RestateIngress` pattern (decision 0016). Every operation is an Effect failing
+with `RestateError` under a new `reason: 'AdminFailed'`. The operations map 1:1 onto
+the admin REST endpoints — invocation control (cancel/kill/pause/.../restartAsNew),
+deployments, and `query`/`queryRaw` introspection (the spec enumerates them, all
+verified against restate-server 1.6.2, admin-api-version 3).
 
-Operations map 1:1 onto the admin REST endpoints (verified against restate-server
-1.6.2, admin-api-version 3):
-
-- **Invocations** — `cancel` / `kill` / `pause` / `resume` / `purge` /
-  `purgeJournal` / `delete` (`PATCH|DELETE /invocations/{id}/…`), and
-  `restartAsNew` (`PATCH /invocations/{id}/restart-as-new`, with `from` =
-  restart-from-journal-prefix and `deployment` = pin).
-- **Deployments** — `registerDeployment` / `listDeployments` / `getDeployment` /
-  `updateDeployment` (`POST|GET|PATCH /deployments[/{id}]`).
-- **Introspection** — `query(sql, rowSchema)` / `queryRaw(sql)` over `POST /query`
-  (SQL on the `sys_*` tables).
-
-The raw HTTP lives in ONE bare-client module (`AdminApi.ts`) that BOTH `./admin`
-and the test harness (`./testing`) consume — lifting the duplicated fetch-against-
-admin code the harness already had (`queryStateRows` / `putState` / deployment
-registration), so the two surfaces never drift on a server quirk.
+The raw HTTP lives in ONE bare-client module (`AdminApi.ts`) that BOTH `./admin` and
+the test harness consume — lifting the fetch-against-admin code the harness already
+had, so the two surfaces never drift on a server quirk.
 
 ## Typed-passthrough introspection
 

@@ -8,33 +8,24 @@ transport adapter consumes it.
 
 ## The problem it fixes
 
-Before this, each transport adapter assembled those facts SEPARATELY:
+Before this, every transport adapter (endpoint materialization, the ingress
+clients, the in-handler peer-call clients, and the harness ingress + `stateOf`)
+assembled those facts SEPARATELY, so annotation support was **partial by
+construction**: a fact added to one path did not reach the others. Two concrete P2
+bugs fell straight out of this (both caught by review), and they are why the
+centralization is load-bearing rather than cosmetic:
 
-- endpoint materialization (`Endpoint.handlerOpts`),
-- the ingress clients (`Client.call` / `objectCall` / `objectSend` /
-  `workflowSubmit` / `workflowAttach` / `workflowOutput` / `workflowCall` /
-  `result` / `resolveAwakeable`),
-- the in-handler service-to-service clients (`callRpc` / `sendRpc` /
-  `callDescriptor`),
-- the testing harness ingress + `stateOf` (which built its OWN `effectSerde`,
-  parallel to production).
+1. **Redaction cipher missing on `Client.call`** — the Service ingress `call` built
+   its serdes WITHOUT the `RedactionCipher`, so a `Restate.sensitive` contract was
+   un-callable through `RestateIngress` (encode threw), even though `objectCall` and
+   the served handler both encrypted it.
+2. **Service idempotency missing on `Client.call`** — it passed no idempotency key,
+   so a `Restate.idempotencyKey` field did NOT dedupe a retry, even though
+   `objectCall`/`objectSend` extracted it.
 
-So annotation support was **partial by construction**: a fact added to one path
-did not reach the others, and adding a new annotation meant editing every
-adapter. Two concrete P2 bugs fell straight out of this (both caught by review):
-
-1. **Redaction cipher missing on `Client.call`** — the Service ingress `call`
-   built its serdes WITHOUT the `RedactionCipher`, so a contract with a
-   `Restate.sensitive` field was un-callable through `RestateIngress` (the encode
-   threw `RedactionCipherMissingError`), even though `objectCall` and the served
-   handler both encrypted it.
-2. **Service idempotency missing on `Client.call`** — the Service ingress `call`
-   passed no idempotency key, so a `Restate.idempotencyKey` input field did NOT
-   dedupe a retry, even though `objectCall` / `objectSend` extracted it.
-
-And a third structural gap: the **harness drifted** — its ingress connected with
-no cipher and its `stateOf` used a parallel `effectSerde` path, so a harness test
-could pass while production behaved differently.
+Plus a structural gap: the **harness drifted** — its ingress connected with no
+cipher and `stateOf` used a parallel `effectSerde`, so a harness test could pass
+while production behaved differently.
 
 ## The boundary
 

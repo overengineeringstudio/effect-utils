@@ -35,21 +35,13 @@ precise typed-error + success channels survive (the escape is gone).
 ## How the mock reuses the package's real building blocks
 
 The mock is NOT a re-implementation of the semantics — it dispatches through the
-real building blocks:
-
-1. Capture `Runtime<AppR>` once from `appLayer`.
-2. Per-key State: a `Map<\`${service}/${key}\`, Map<string, unknown>>`;
-`stateOf(contract, key)` reads/writes the SAME inner map (object/workflow key
-   isolation for free), through the contract's per-key serde.
-3. A SHARED awakeable registry at ENV scope, so `resolveAwakeable` from "outside" a
-   handler completes a suspended handler (honest — it's just a promise).
-4. Dispatch: find the impl fn for `(contract, method)`, pick `handlerKind` from the
-   spec, build the in-memory `ctx` over the per-key Map + shared registry, provide
-   the SAME marker subset `materialize*` provides (the shared
-   `Endpoint.provideHandlerCaps` helper — the single source of truth for the
-   per-kind capability provision), run on the captured runtime under
-   `determinismLayer`, then classify the exit via the EXISTING
-   `classifyOutcome(cause, spec.error)`.
+package's REAL building blocks, which is what makes a green mock honest: it captures
+`Runtime<AppR>` from `appLayer`, builds the in-memory `ctx` over per-key State Maps
+and a shared awakeable registry, provides the SAME marker subset via the shared
+`Endpoint.provideHandlerCaps` (the single source of truth `materialize*` also uses),
+runs under `determinismLayer`, and classifies the exit via the EXISTING
+`classifyOutcome(cause, spec.error)`. So the mock cannot drift from the real
+boundary on capability provision or error classification.
 
 ## Honest mock-vs-real matrix
 
