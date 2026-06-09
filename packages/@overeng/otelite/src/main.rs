@@ -7,13 +7,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use otelite::inspect_cmd::{inspect, parse_attr, InspectOpts};
-use otelite::run::{run, RunOpts};
+use otelite::run::{capture, run, CaptureOpts, RunOpts};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const EX_USAGE: u8 = 64;
-/// sysexits EX_UNAVAILABLE — a real verb that isn't wired yet (distinct from a
-/// usage error, so a harness can tell "not implemented" from "you used me wrong").
-const EX_UNAVAILABLE: u8 = 69;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
@@ -28,10 +25,7 @@ fn main() -> ExitCode {
         }
         Some("run") => dispatch_run(&args[2..]),
         Some("inspect") => dispatch_inspect(&args[2..]),
-        Some("capture") => {
-            eprintln!("otelite: `capture` is not yet implemented (epic #772, M7)");
-            ExitCode::from(EX_UNAVAILABLE)
-        }
+        Some("capture") => dispatch_capture(&args[2..]),
         Some("--print-schema") => {
             // The stable output schema tags (locked by the conformance goldens).
             println!(
@@ -138,6 +132,55 @@ fn usage(msg: &str) -> ExitCode {
     eprintln!("otelite: {msg}");
     eprintln!("try: otelite run [opts] -- <cmd...>");
     ExitCode::from(EX_USAGE)
+}
+
+/// Parse `capture [--out <dir>] [--http-port N] [--grpc-port N] [--pretty]`.
+fn dispatch_capture(args: &[String]) -> ExitCode {
+    let mut out: Option<PathBuf> = None;
+    let mut http_port: Option<u16> = None;
+    let mut grpc_port: Option<u16> = None;
+    let mut pretty = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => {
+                let Some(v) = args.get(i + 1) else {
+                    return usage("--out needs a value");
+                };
+                out = Some(PathBuf::from(v));
+                i += 2;
+            }
+            "--http-port" => match args.get(i + 1).and_then(|v| v.parse().ok()) {
+                Some(p) => {
+                    http_port = Some(p);
+                    i += 2;
+                }
+                None => return usage("--http-port needs a port number"),
+            },
+            "--grpc-port" => match args.get(i + 1).and_then(|v| v.parse().ok()) {
+                Some(p) => {
+                    grpc_port = Some(p);
+                    i += 2;
+                }
+                None => return usage("--grpc-port needs a port number"),
+            },
+            "--pretty" => {
+                pretty = true;
+                i += 1;
+            }
+            other => return usage(&format!("unknown capture flag: {other}")),
+        }
+    }
+
+    let opts = CaptureOpts {
+        out,
+        http_port,
+        grpc_port,
+        pretty,
+    };
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    ExitCode::from(rt.block_on(capture(opts)))
 }
 
 /// Parse `inspect <src> [filters]`. `<src>` is a dir, a file, or `-` (stdin).
