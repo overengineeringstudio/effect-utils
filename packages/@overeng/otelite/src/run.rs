@@ -117,6 +117,92 @@ pub async fn run(opts: RunOpts) -> u8 {
     exit_code
 }
 
+/// Options for `capture` (receiver-only; no child).
+pub struct CaptureOpts {
+    pub out: Option<PathBuf>,
+    pub http_port: Option<u16>,
+    pub grpc_port: Option<u16>,
+    pub pretty: bool,
+}
+
+/// `capture`: stand up the receiver, print its endpoints to stderr, and serve
+/// until SIGINT/SIGTERM — then drain and emit the same `otelite.summary/v1`
+/// (with `child: null`). For harnesses that own the SUT lifecycle themselves.
+pub async fn capture(opts: CaptureOpts) -> u8 {
+    let out_dir = opts.out.clone().unwrap_or_else(auto_out_dir);
+    let sink = match Sink::create(&out_dir).await {
+        Ok(s) => Arc::new(s),
+        Err(SinkError::AlreadyExists(p)) => {
+            eprintln!("otelite: {}", SinkError::AlreadyExists(p));
+            return EX_UNAVAILABLE;
+        }
+        Err(SinkError::Io(e)) => {
+            eprintln!("otelite: cannot create out-dir {}: {e}", out_dir.display());
+            return EX_CANTCREAT;
+        }
+    };
+    let rx = match RunningReceiver::start_on(sink.clone(), opts.http_port, opts.grpc_port).await {
+        Ok(rx) => rx,
+        Err(e) => {
+            eprintln!("otelite: cannot bind receiver: {e}");
+            return EX_UNAVAILABLE;
+        }
+    };
+
+    // Endpoints to stderr so an external emitter can be pointed at the receiver.
+    eprintln!("otelite: capturing to {}", out_dir.display());
+    eprintln!("otelite: OTEL_EXPORTER_OTLP_ENDPOINT={}", rx.http_endpoint);
+    eprintln!("otelite: OTLP gRPC endpoint {}", rx.grpc_endpoint);
+    eprintln!("otelite: serving until SIGINT/SIGTERM…");
+
+    let start = Instant::now();
+    wait_for_signal().await;
+
+    let http_ep = rx.http_endpoint.clone();
+    let grpc_ep = rx.grpc_endpoint.clone();
+    let paths = rx.sink().paths();
+    let counts = rx.shutdown().await;
+    let summary = serde_json::json!({
+        "schema": "otelite.summary/v1",
+        "out": out_dir,
+        "endpoints": { "http": http_ep, "grpc": grpc_ep },
+        "files": { "traces": paths.traces, "metrics": paths.metrics, "logs": paths.logs },
+        "counts": { "spans": counts.spans, "metrics": counts.metrics, "logs": counts.logs },
+        "child": serde_json::Value::Null,
+        "duration_ms": start.elapsed().as_millis(),
+    });
+    let line = if opts.pretty {
+        serde_json::to_string_pretty(&summary).unwrap()
+    } else {
+        serde_json::to_string(&summary).unwrap()
+    };
+    println!("{line}");
+    0
+}
+
+/// Wait for SIGINT or SIGTERM (the harness's stop signal).
+async fn wait_for_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = term.recv() => {}
+                }
+            }
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
 /// Spawn the child with the owned/respected `OTEL_*` env and wait for it,
 /// swallowing SIGINT in otelite so the child handles it and we still drain.
 /// Returns the child's exit code (signal deaths map to 128+signo via the OS).
