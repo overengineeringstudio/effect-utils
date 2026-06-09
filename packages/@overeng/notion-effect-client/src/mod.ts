@@ -30,6 +30,7 @@ export { type BlockInsertPosition, NotionBlocks } from './blocks.ts'
 export type { NotionBodyObservation } from './body-observation.ts'
 export {
   NotionBody,
+  NotionBodyObservationChangedError,
   observeFromSnapshots as observeNotionBodyFromSnapshots,
 } from './body-observation.ts'
 // Comments

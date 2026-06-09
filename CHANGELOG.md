@@ -70,6 +70,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-effect-client**: Make live `NotionBody.observe` fail closed across concurrent remote edits by bracketing Markdown and block-tree reads with page metadata retrieval, retrying unstable observation windows up to three total attempts, and returning `NotionBodyObservationChangedError` when all attempts see `last_edited_time` change (#761).
 - **@overeng/notion-md + @overeng/notion-datasource-sync**: Fail closed when a remote Notion Markdown body observation is lossy, including endpoint truncation, empty endpoint bodies with non-empty rendered evidence, unknown blocks, unsupported body inventory, or rendered suffix content omitted after dividers and toggleable headings, so partial bodies are not adopted as clean `.nmd` bases or settled through datasource-sync body guards (#759).
 - **@overeng/notion-md**: Adopt block-tree-rendered Markdown, not endpoint Markdown reparsed through CommonMark, as the live pull clean-base body so divider/heading-dense pages do not turn paragraph blocks into `##` headings (#763).
 - **@overeng/notion-md**: Guard unified tree sync planning and destructive operations by reporting dry-run moves, blocking missing-file trash unless forced, checking tree `replace_content` races, and documenting the explicit tree/flat-batch CLI contract.
