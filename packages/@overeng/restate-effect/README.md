@@ -66,7 +66,10 @@ const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, 
       if (name === '') return yield* new EmptyName()
       const { prefix } = yield* Greeting
       // A UUID journaled once by `Restate.run`; a replay observes the same id.
-      const id = yield* Restate.run('gen-id', Effect.sync(() => crypto.randomUUID()))
+      const id = yield* Restate.run(
+        'gen-id',
+        Effect.sync(() => crypto.randomUUID()),
+      )
       return { message: `${prefix} ${name}`, id }
     }),
 })

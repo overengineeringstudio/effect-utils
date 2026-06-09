@@ -15,15 +15,15 @@ reads are replay-safe — no special API:
 ```ts
 import { Clock, Effect, Random } from 'effect'
 
-const at = yield* Clock.currentTimeMillis // journaled (ctx.date) — a replay reads the same instant
-const roll = yield* Random.nextIntBetween(1, 7) // journaled (ctx.rand) — seeded, replay-stable
+const at = yield * Clock.currentTimeMillis // journaled (ctx.date) — a replay reads the same instant
+const roll = yield * Random.nextIntBetween(1, 7) // journaled (ctx.rand) — seeded, replay-stable
 ```
 
-| Effect read | Backed by | Behavior |
-| --- | --- | --- |
-| `Clock.currentTimeMillis` (async) | `ctx.date` | reads journaled time |
+| Effect read                       | Backed by               | Behavior                                                       |
+| --------------------------------- | ----------------------- | -------------------------------------------------------------- |
+| `Clock.currentTimeMillis` (async) | `ctx.date`              | reads journaled time                                           |
 | `Clock.unsafeCurrentTime*` (sync) | per-attempt frozen base | seeded once at handler entry; does **not** advance mid-attempt |
-| `Random.*` | `ctx.rand` | seeded, journaled |
+| `Random.*`                        | `ctx.rand`              | seeded, journaled                                              |
 
 The sync `Clock.unsafeCurrentTime*` reads a per-attempt frozen base. Time not
 advancing mid-attempt is the deterministically-correct behavior: a replayed attempt
@@ -36,7 +36,12 @@ fetch) goes inside `Restate.run`, whose result is journaled once and replayed
 verbatim:
 
 ```ts
-const token = yield* Restate.run('mint-token', Effect.sync(() => crypto.randomUUID()))
+const token =
+  yield *
+  Restate.run(
+    'mint-token',
+    Effect.sync(() => crypto.randomUUID()),
+  )
 ```
 
 Inside a `run` closure, a nested `ctx.*` / `State.*` / `Restate.sleep` is a compile
@@ -51,7 +56,7 @@ Restate-durable timers/races that survive suspension and restarts. A bare
 timing).
 
 ```ts
-yield* Restate.sleep(10, 'settle') // a durable timer (lower bound; survives restarts)
+yield * Restate.sleep(10, 'settle') // a durable timer (lower bound; survives restarts)
 ```
 
 > Why not remap `Clock.sleep`? `Effect.timeout` is internally a race against
@@ -73,19 +78,22 @@ Restate.race([
 ])
 
 // bound one durable step by a deadline: the value, or undefined on timeout
-Restate.timeout(Restate.runDescriptor('slow-op', () => slow()), 1_000)
+Restate.timeout(
+  Restate.runDescriptor('slow-op', () => slow()),
+  1_000,
+)
 ```
 
 Every durable op exposes a descriptor for `all` / `race` / `any` / `timeout`:
 
-| Durable op | Descriptor |
-| --- | --- |
-| `run` | `Restate.runDescriptor(name, action)` |
-| `sleep` | `Restate.sleepDescriptor(millis, name?)` |
-| service `call` | `Restate.callDescriptor(contract, method, input)` |
-| object `call` | `Restate.objectCallDescriptor(contract, key, method, input)` |
-| durable promise | `DurablePromise.for(S).getDescriptor(name)` |
-| awakeable | `Awakeable.make(S).descriptor` |
+| Durable op      | Descriptor                                                   |
+| --------------- | ------------------------------------------------------------ |
+| `run`           | `Restate.runDescriptor(name, action)`                        |
+| `sleep`         | `Restate.sleepDescriptor(millis, name?)`                     |
+| service `call`  | `Restate.callDescriptor(contract, method, input)`            |
+| object `call`   | `Restate.objectCallDescriptor(contract, key, method, input)` |
+| durable promise | `DurablePromise.for(S).getDescriptor(name)`                  |
+| awakeable       | `Awakeable.make(S).descriptor`                               |
 
 The combinators issue descriptors synchronously in array order (fixing the journal
 order), then await the single combined `RestatePromise` exactly once. Apply
@@ -101,7 +109,7 @@ infra files, where polling / live-clock sleeps are legitimate):
 
 - **`overeng/no-raw-nondeterminism`** flags a raw `Date.now()` / `new Date()` /
   `Math.random()` / `crypto.randomUUID()` / un-journaled I/O in a handler body
-  *outside* `Restate.run` and the journaled Clock/Random. Inside a `Restate.run`
+  _outside_ `Restate.run` and the journaled Clock/Random. Inside a `Restate.run`
   closure nondeterminism is fine (it is journaled once).
 - **`overeng/no-non-durable-wait`** flags a non-durable `Effect.sleep` /
   `Effect.timeout` in a handler body (it schedules an in-process timer that does not

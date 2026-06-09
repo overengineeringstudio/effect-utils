@@ -62,14 +62,14 @@ a naive increment double-counts across attempts/replays. The single seam is
 `ctx.isProcessing()` (the SAME non-replay signal the hook uses to suppress span
 events). The seam chosen for EACH baseline metric:
 
-| Metric | Seam | Why exactly-once |
-| --- | --- | --- |
-| `restate_invocations_total{service,handler,outcome}` | boundary EXIT, final classification | gated on non-replay; a replay re-reaching the boundary is suppressed. A `retryable` failed attempt counts on every real attempt — that IS the retry-pressure signal. |
-| `restate_invocation_duration_ms{service,handler,outcome}` | boundary (monotonic start → exit) | same non-replay gate; measures the real finishing attempt. |
-| `restate_attempts_total{service,handler}` | boundary ENTRY | per real (processing) attempt; retries derive as `attempts − invocations{outcome=success\|terminal}`. |
-| `restate_durable_steps_total{step}` | inside `Restate.run` (after the journaled `ctx.run`) | the `ctx.run` body runs once on real execution and is skipped on replay, so gating the increment makes the step counted exactly once across attempts. |
-| `restate_awakeable_wait_ms` | at the awakeable `promise` resolution | gated on non-replay (a replay reproduces the journaled completion instantly — not a real wait). |
-| `restate_poll_loop_cycles_total{name,outcome}` | inside the `pollLoop` exclusive `cycle` handler | each real cycle counted once; a data/count-driven stop reads `stopped`, a `skipToNext`/`stopLoop` failure reads `error`. |
+| Metric                                                    | Seam                                                 | Why exactly-once                                                                                                                                                     |
+| --------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `restate_invocations_total{service,handler,outcome}`      | boundary EXIT, final classification                  | gated on non-replay; a replay re-reaching the boundary is suppressed. A `retryable` failed attempt counts on every real attempt — that IS the retry-pressure signal. |
+| `restate_invocation_duration_ms{service,handler,outcome}` | boundary (monotonic start → exit)                    | same non-replay gate; measures the real finishing attempt.                                                                                                           |
+| `restate_attempts_total{service,handler}`                 | boundary ENTRY                                       | per real (processing) attempt; retries derive as `attempts − invocations{outcome=success\|terminal}`.                                                                |
+| `restate_durable_steps_total{step}`                       | inside `Restate.run` (after the journaled `ctx.run`) | the `ctx.run` body runs once on real execution and is skipped on replay, so gating the increment makes the step counted exactly once across attempts.                |
+| `restate_awakeable_wait_ms`                               | at the awakeable `promise` resolution                | gated on non-replay (a replay reproduces the journaled completion instantly — not a real wait).                                                                      |
+| `restate_poll_loop_cycles_total{name,outcome}`            | inside the `pollLoop` exclusive `cycle` handler      | each real cycle counted once; a data/count-driven stop reads `stopped`, a `skipToNext`/`stopLoop` failure reads `error`.                                             |
 
 Wall-clock elapsed (`invocation_duration`, `awakeable_wait`) is read via
 `process.hrtime.bigint()` (monotonic), NOT `Date.now()` — both because monotonic is
