@@ -91,7 +91,7 @@ All notable changes to this project will be documented in this file.
 - **nix/oxc-config-plugin**: Refresh the `oxc-config` pnpm fixed-output hash so `oxlint` can build again in CI and `lint` / `devenv-perf` stop failing on the stale dependency boundary.
 
 - **nix packages**: Refresh stale pnpm dependency hashes for the Genie, megarepo, tui-stories, and notion-md CLI packages.
-- **nix packages**: Refresh the stale `megarepo`, `tui-stories`, and `notion-md` pnpm dependency hashes so `nix-check`, `nix-fod-check`, and closure-size CI jobs use the current dependency closures again.
+- **nix packages**: Refresh the stale `megarepo`, `tui-stories`, `notion-md`, and `workflow-report` pnpm dependency hashes so `nix-check`, `nix-fod-check`, closure-size, and Storybook-report CI jobs use the current dependency closures again.
 - **nix packages**: Refresh the stale `notion-cli` pnpm dependency hash after adding the datasource-sync runtime to the packaged workspace.
 - **genie/packages**: Include `@overeng/notion-datasource-sync` in the internal package catalog so generated workspace dependency metadata covers the new package.
 - **pnpm task**: Bound macOS CI pnpm install heap usage and tolerate Darwin teardown exit 137 only after node_modules materialization is complete.
