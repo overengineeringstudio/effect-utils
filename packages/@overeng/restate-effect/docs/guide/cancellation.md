@@ -8,7 +8,7 @@ next durable await point. Ordinary Effect finalizers run before the attempt
 unwinds — `acquireRelease` releases, `onInterrupt` fires, saga compensations run. The
 boundary then maps the interruption to a `CancelledError`: neither a domain failure
 nor a defect, and **not retried**. This is verified end-to-end by
-[`src/cancellation.integration.test.ts`](../../src/cancellation.integration.test.ts);
+[`src/cancellation.integration.test.ts`](../../src/runtime/cancellation.integration.test.ts);
 the example is [`examples/10-cancellation.ts`](../../examples/10-cancellation.ts).
 
 ```ts

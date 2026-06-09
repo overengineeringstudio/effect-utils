@@ -6,30 +6,32 @@
 
 The [`examples/`](../../examples) directory holds runnable `.ts` files (covered by
 the package `tsconfig` and `dt ts:check`).
-[`src/examples.integration.test.ts`](../../src/examples.integration.test.ts) imports
+[`src/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts) imports
 the example contracts/impls and drives them through the [`./testing`](./testing.md)
 harness against a real native `restate-server`, and
-[`src/scheduled.integration.test.ts`](../../src/scheduled.integration.test.ts) does
+[`src/scheduled.integration.test.ts`](../../src/scheduling/scheduled.integration.test.ts) does
 the same for the self-reschedule example. So `dt check:all` both type-checks every
 snippet and runs the documented behavior end-to-end.
 
 A doc example that does not compile or run is treated as a **defect**. Every code
 block in this handbook is drawn from one of these verified files:
 
-| Topic                            | Example file                                                                                  | Verified by                        |
-| -------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Service + typed error boundary   | [`01-service.ts`](../../examples/01-service.ts)                                               | `examples.integration.test.ts`     |
-| Virtual Object + typed State     | [`02-virtual-object.ts`](../../examples/02-virtual-object.ts)                                 | `examples.integration.test.ts`     |
-| Workflow + durable promise       | [`03-workflow.ts`](../../examples/03-workflow.ts)                                             | `examples.integration.test.ts`     |
-| Endpoint (`layer` / `serve`)     | [`04-endpoint.ts`](../../examples/04-endpoint.ts)                                             | `ts:check`                         |
-| Determinism + descriptors        | [`05-determinism.ts`](../../examples/05-determinism.ts)                                       | `ts:check`                         |
-| Typed ingress client             | [`06-ingress-client.ts`](../../examples/06-ingress-client.ts)                                 | `examples.integration.test.ts`     |
-| Calls / idempotency / awakeables | [`07-clients-idempotency-awakeables.ts`](../../examples/07-clients-idempotency-awakeables.ts) | `examples.integration.test.ts`     |
-| Annotations + redaction          | [`08-annotations.ts`](../../examples/08-annotations.ts)                                       | `ts:check`                         |
-| OTel bridge                      | [`09-otel.ts`](../../examples/09-otel.ts)                                                     | `ts:check`                         |
-| Cancellation                     | [`10-cancellation.ts`](../../examples/10-cancellation.ts)                                     | `cancellation.integration.test.ts` |
-| Testing harness                  | [`11-testing.ts`](../../examples/11-testing.ts)                                               | `examples.integration.test.ts`     |
-| Self-reschedule                  | [`12-self-reschedule.ts`](../../examples/12-self-reschedule.ts)                               | `scheduled.integration.test.ts`    |
+| Topic                            | Example file                                                                                  | Verified by                                     |
+| -------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Service + typed error boundary   | [`01-service.ts`](../../examples/01-service.ts)                                               | `examples.integration.test.ts`                  |
+| Virtual Object + typed State     | [`02-virtual-object.ts`](../../examples/02-virtual-object.ts)                                 | `examples.integration.test.ts`                  |
+| Workflow + durable promise       | [`03-workflow.ts`](../../examples/03-workflow.ts)                                             | `examples.integration.test.ts`                  |
+| Endpoint (`layer` / `serve`)     | [`04-endpoint.ts`](../../examples/04-endpoint.ts)                                             | `ts:check`                                      |
+| Determinism + descriptors        | [`05-determinism.ts`](../../examples/05-determinism.ts)                                       | `ts:check`                                      |
+| Typed ingress client             | [`06-ingress-client.ts`](../../examples/06-ingress-client.ts)                                 | `examples.integration.test.ts`                  |
+| Calls / idempotency / awakeables | [`07-clients-idempotency-awakeables.ts`](../../examples/07-clients-idempotency-awakeables.ts) | `examples.integration.test.ts`                  |
+| Annotations + redaction          | [`08-annotations.ts`](../../examples/08-annotations.ts)                                       | `ts:check`                                      |
+| OTel bridge                      | [`09-otel.ts`](../../examples/09-otel.ts)                                                     | `ts:check`                                      |
+| Cancellation                     | [`10-cancellation.ts`](../../examples/10-cancellation.ts)                                     | `cancellation.integration.test.ts`              |
+| Testing harness                  | [`11-testing.ts`](../../examples/11-testing.ts)                                               | `examples.integration.test.ts`                  |
+| Self-reschedule                  | [`12-self-reschedule.ts`](../../examples/12-self-reschedule.ts)                               | `scheduled.integration.test.ts`                 |
+| Admin operations runbook         | [`13-admin-operations.ts`](../../examples/13-admin-operations.ts)                             | `admin.integration.test.ts`                     |
+| HTTP error classification        | [`14-http-error-classification.ts`](../../examples/14-http-error-classification.ts)           | `http-error-classification.integration.test.ts` |
 
 The integration suite gracefully **skips** when no native `restate-server` binary is
 on `$PATH` (`serverAvailable`), so the unit/contract layers stay runnable anywhere;

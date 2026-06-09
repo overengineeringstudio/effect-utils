@@ -103,6 +103,51 @@ without any `orDie` scrubbing — the `E` stays exactly the declared domain unio
 > That is the one place you handle a `RestateError` in the `E` channel — typically
 > with `Effect.orDie` (an infra failure is a defect) or an explicit `catchTag`.
 
+## Worked recipe: classifying real HTTP outcomes
+
+A handler that calls an upstream HTTP API has to decide, per response, which channel
+each outcome belongs in — and the **journal makes two transient-retry strategies
+genuinely different**, which is a real consumer footgun. The full, end-to-end
+verified file is
+[`examples/14-http-error-classification.ts`](../../examples/14-http-error-classification.ts).
+
+The error union is a realistic mix of terminal and retryable members:
+
+| HTTP outcome              | Channel                            | Why                                             |
+| ------------------------- | ---------------------------------- | ----------------------------------------------- |
+| 400 / 403 / 404           | terminal domain error (`E`)        | deterministic; a retry returns the same answer  |
+| 200 but body ≠ schema     | terminal `MalformedUpstream` (`E`) | the same broken bytes fail identically on retry |
+| 429 / 5xx / network error | a retry might succeed (TRANSIENT)  | the upstream may recover                        |
+
+**The terminal members are easy:** map the status to a typed `Schema.TaggedError`
+in the handler body (`Restate.terminal(Err, { errorCode })`) so it crosses the wire
+and the caller `catchTag`s it. A `Widget` decode mismatch on a 200 is terminal too —
+distinct from a transient 5xx.
+
+**The transient member is where the journal bites.** A `Restate.run` step is
+journaled, so if you classify a 429 into a _committed_ `run` outcome, a handler-level
+retry **replays the stale 429 forever** instead of re-fetching (verified — that is
+the footgun). There are two loop-free strategies, and the example shows both:
+
+1. **Ride Restate's durable step retry** (recommended for an idempotent read). Put
+   the fetch in `Restate.run` and **fail the step** on a transient (e.g.
+   `Effect.die`), so it is _not_ committed — Restate re-runs the step (re-fetching)
+   with backoff. A definitive 2xx / 4xx-terminal outcome commits. A 429-then-200
+   upstream then succeeds because the step re-executes.
+
+2. **Surface a caller-visible `retryable` error** (when you want the _whole_
+   invocation parked in `backing-off`, operator-visible per
+   [Admin operations](./admin-operations.md)). Classify the live response in the
+   **handler body** — _not_ a committed `run` — and fail with the
+   `Restate.retryable` `UpstreamUnavailable`, with the 429's `Retry-After` **projected**
+   onto it (see [Annotations](./annotations.md#retryable-errors-and-retryafter)).
+   Because the transient response is never journaled, a handler retry re-fetches.
+
+The rule of thumb: **a journaled `run` is for a step whose result is final.** A
+transient outcome is not final, so either fail the step (strategy 1) or keep the
+classification out of the journal (strategy 2) — never commit a transient and then
+retry against it.
+
 ## Observing a durable step's outcome (sagas)
 
 To **observe** a durable step's outcome (for compensation / sagas) instead of

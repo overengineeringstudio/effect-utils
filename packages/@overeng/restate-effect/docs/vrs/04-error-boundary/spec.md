@@ -126,6 +126,16 @@ options:
 `Effect.retry` / `Schedule` remain available for pure, non-durable computation
 only (lint/doc enforced).
 
+The end-to-end terminal-vs-retryable classification of a real HTTP error union (a
+4xx/malformed terminal alongside a 429/5xx retryable with the `Retry-After`
+projection) is the public worked example `examples/14-http-error-classification.ts`,
+verified by `src/error/http-error-classification.integration.test.ts`. It also makes
+explicit the journal constraint a consumer hits: a transient outcome must NOT be
+committed to a `Restate.run` step (a replay would re-serve the stale transient
+instead of re-fetching) — either fail the step (Restate's durable step retry
+re-fetches) or classify in the handler body (the `retryable` handler retry
+re-fetches).
+
 The `name` arg of `Restate.run` is load-bearing for trace identity and journal
 labeling; duplicate names are legal but trace-confusing, so the binding should
 encourage distinct names per durable step.

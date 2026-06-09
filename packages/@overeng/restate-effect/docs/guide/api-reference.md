@@ -3,8 +3,8 @@
 [← Handbook index](./README.md)
 
 The public surface, by subpath. The authoritative list is
-[`src/mod.ts`](../../src/mod.ts) / [`src/otel.ts`](../../src/otel.ts) /
-[`src/testing.ts`](../../src/testing.ts).
+[`src/mod.ts`](../../src/mod.ts) / [`src/otel.ts`](../../src/observability/otel.ts) /
+[`src/testing.ts`](../../src/testing/testing.ts).
 
 ## `.` (core)
 

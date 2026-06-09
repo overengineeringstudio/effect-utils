@@ -121,7 +121,7 @@ export const DeliveryLive = RestateWorkflow.implement<typeof DeliveryWf>(Deliver
    * interruption so finalizers run, R31). Otherwise it delivers immediately. A real
    * consumer would instead `Restate.run` the HttpClient Discord call and fail with
    * {@link DiscordUnavailable} on a 429/5xx (Restate then backs off + retries,
-   * landing in `status = 'backing-off'`) — see `examples/13-http-classification.ts`.
+   * landing in `status = 'backing-off'`) — see `examples/14-http-error-classification.ts`.
    */
   run: ({ wedge }) =>
     Effect.gen(function* () {
