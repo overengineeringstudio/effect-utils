@@ -496,6 +496,61 @@ describe('Notion sync SQLite store', () => {
     }
   })
 
+  it('migrates v6 body pointer projections to projection payload storage', () => {
+    const path = tempDatabasePath()
+    const db = new DatabaseSync(path, { readBigInts: true })
+    try {
+      db.exec(`
+        CREATE TABLE _nds_migration_history (
+          schema_version INTEGER PRIMARY KEY,
+          migration_name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        INSERT INTO _nds_migration_history (schema_version, migration_name, applied_at)
+        VALUES (6, 'capability-data-source-scope', '${observedAt}');
+        CREATE TABLE _nds_body_pointer (
+          root_id TEXT NOT NULL,
+          page_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          base_hash TEXT NOT NULL,
+          current_hash TEXT NOT NULL,
+          sidecar_identity_proven INTEGER NOT NULL CHECK (sidecar_identity_proven IN (0, 1)),
+          own_write_materialization_ids_json TEXT NOT NULL,
+          safety_json TEXT NOT NULL,
+          observed_event_id TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (root_id, page_id)
+        )
+      `)
+    } finally {
+      db.close()
+    }
+
+    const store = openNotionSyncStore({
+      path,
+      busyTimeoutMs: 2_500,
+      now: () => new Date(observedAt),
+    })
+    store.close()
+
+    const after = new DatabaseSync(path, { readBigInts: true })
+    try {
+      const bodyColumns = after
+        .prepare(`PRAGMA table_info(_nds_body_pointer)`)
+        .all()
+        .map((row) => String(row.name))
+      const latestMigration = after
+        .prepare(`SELECT MAX(schema_version) AS schema_version FROM _nds_migration_history`)
+        .get()
+
+      expect(bodyColumns).toContain('body_projection_json')
+      expect(bodyColumns).not.toContain('safety_json')
+      expect(Number(latestMigration?.schema_version)).toBe(7)
+    } finally {
+      after.close()
+    }
+  })
+
   it('fails closed when migration history is newer than the supported schema', () => {
     const path = tempDatabasePath()
     const db = new DatabaseSync(path, { readBigInts: true })

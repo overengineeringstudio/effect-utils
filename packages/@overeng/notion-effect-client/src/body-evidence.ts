@@ -41,6 +41,22 @@ export const RemoteBodyObservationEvidence = Schema.TaggedStruct('RemoteBodyObse
 }).annotations({ identifier: 'NotionBodyEvidence.RemoteBodyObservationEvidence' })
 export type RemoteBodyObservationEvidence = typeof RemoteBodyObservationEvidence.Type
 
+const RemoteBodyObservationIdentityEvidence = Schema.Struct({
+  _tag: Schema.Literal('RemoteBodyObservationEvidence'),
+  schemaVersion: Schema.Literal(1),
+  notionApiVersion: Schema.NonEmptyTrimmedString,
+  pageId: Schema.NonEmptyTrimmedString,
+  observationWindow: Schema.Struct({
+    beforeLastEditedTime: Schema.DateTimeUtc,
+    afterLastEditedTime: Schema.DateTimeUtc,
+  }),
+  endpointMarkdown: ContentDescriptor,
+  blockTree: ContentDescriptor,
+  renderedBody: ContentDescriptor,
+  blockInventory: ContentDescriptor,
+  completeness: BodyCompletenessEvidence,
+}).annotations({ identifier: 'NotionBodyEvidence.RemoteBodyObservationIdentityEvidence' })
+
 const BlockInventoryEntryEvidence = Schema.Struct({
   id: Schema.String,
   type: Schema.String,
@@ -95,8 +111,12 @@ const treeEntries = (
 
 export const fingerprintBodyEvidence = (
   evidence: RemoteBodyObservationEvidence,
-): BodyEvidenceFingerprint =>
-  decodeFingerprint(hashCanonicalJson(RemoteBodyObservationEvidence, evidence))
+): BodyEvidenceFingerprint => {
+  const { observedAt: _observedAt, ...identityEvidence } = evidence
+  return decodeFingerprint(
+    hashCanonicalJson(RemoteBodyObservationIdentityEvidence, identityEvidence),
+  )
+}
 
 export const makeRemoteBodyObservationEvidence = (opts: {
   readonly pageId: string

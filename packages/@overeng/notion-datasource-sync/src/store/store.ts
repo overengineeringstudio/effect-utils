@@ -27,6 +27,7 @@ import {
   SurfaceKey,
   SyncEvent,
   SyncEventId,
+  SyncRootId as SyncRootIdSchema,
   type SyncRootId,
 } from '../core/events.ts'
 import { GuardName } from '../core/guards.ts'
@@ -514,6 +515,12 @@ const capabilityProjectionIsScopedByDataSource = (db: DatabaseSync): boolean =>
     .prepare(`PRAGMA table_info('_nds_capability')`)
     .all()
     .some((row) => row.name === 'data_source_id' && Number(row.pk) > 0)
+
+const bodyPointerProjectionStoresProjectionPayload = (db: DatabaseSync): boolean =>
+  db
+    .prepare(`PRAGMA table_info('_nds_body_pointer')`)
+    .all()
+    .some((row) => row.name === 'body_projection_json')
 
 /**
  * SQLite-backed store for the notion-datasource-sync event log and projections.
@@ -1926,6 +1933,7 @@ export class NotionSyncStore {
     assertSupportedSchemaVersion(this.#db)
 
     this.#db.exec(createStoreSchemaSql)
+    let replayProjections = false
     for (const statement of [
       `ALTER TABLE _nds_query_scan_checkpoint
        ADD COLUMN capped_at_limit INTEGER NOT NULL DEFAULT 0 CHECK (capped_at_limit IN (0, 1))`,
@@ -1978,12 +1986,39 @@ DROP TABLE _nds_capability;
 ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
 `)
     }
+    if (bodyPointerProjectionStoresProjectionPayload(this.#db) === false) {
+      this.#db.exec(`
+DROP TABLE _nds_body_pointer;
+CREATE TABLE _nds_body_pointer (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
+  page_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  base_hash TEXT NOT NULL,
+  current_hash TEXT NOT NULL,
+  sidecar_identity_proven INTEGER NOT NULL CHECK (sidecar_identity_proven IN (0, 1)),
+  own_write_materialization_ids_json TEXT NOT NULL,
+  body_projection_json TEXT NOT NULL,
+  observed_event_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (root_id, page_id)
+);
+`)
+      replayProjections = true
+    }
     this.#db
       .prepare(
         `INSERT OR IGNORE INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       )
-      .run(STORE_SCHEMA_VERSION, 'capability-data-source-scope', currentIso(this.#now))
+      .run(STORE_SCHEMA_VERSION, 'body-projection-payload', currentIso(this.#now))
+
+    if (replayProjections === true) {
+      for (const row of this.#db.prepare(`SELECT root_id FROM _nds_sync_root`).all()) {
+        this.#rebuildProjectionsInTransaction(
+          Schema.decodeUnknownSync(SyncRootIdSchema)(row.root_id),
+        )
+      }
+    }
   }
 
   #ensureRoot(rootId: SyncRootId): void {

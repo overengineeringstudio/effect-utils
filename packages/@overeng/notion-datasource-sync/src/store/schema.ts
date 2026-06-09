@@ -1,5 +1,5 @@
 /** SQLite schema version — incremented when a migration is needed. */
-export const STORE_SCHEMA_VERSION = 6
+export const STORE_SCHEMA_VERSION = 7
 
 /** Opaque identifier stamped into every _nds_projection_metadata row to detect when projections were built by an incompatible projector. */
 export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'

@@ -7,7 +7,10 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint } from '@overeng/notion-effect-client'
+import {
+  BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint,
+  NOTION_API_VERSION,
+} from '@overeng/notion-effect-client'
 import {
   NotionMdGateway,
   NmdStateStore,
@@ -28,12 +31,15 @@ import {
   AbsolutePath,
   BodyPointer,
   Hash,
+  bodyEvidenceFingerprintFromContentDigest,
+  bodyPointerIdentityDigest,
   renderedBodyDigest,
+  evidenceBackedBodyIdentity,
   WorkspaceRelativePath,
   type BodySafetySnapshot,
 } from '../core/domain.ts'
 import { BodySyncError } from '../core/errors.ts'
-import { RowObserved } from '../core/events.ts'
+import { RowObserved, SyncEvent } from '../core/events.ts'
 import {
   LocalWorkspacePort,
   NotionDataSourceGateway,
@@ -179,6 +185,7 @@ const assertNoGatewayMutations = (ledger: ReturnType<typeof makeFakeGatewayHarne
 const appendObservedBodyProjection = (
   store: ReturnType<typeof makeStoreFixture>['store'],
   safety: BodySafetySnapshot,
+  pointer = bodyPointer(hash('body-a')),
 ) => {
   store.appendEvent(
     decode({
@@ -210,10 +217,71 @@ const appendObservedBodyProjection = (
         pageId: testIds.pageId,
         propertiesHash: hash('properties-a'),
         bodyPointer: Schema.encodeSync(BodyPointer)({
-          ...bodyPointer(hash('body-a')),
+          ...pointer,
           safety,
         }),
         inTrash: false,
+      },
+    }),
+  )
+}
+
+const appendPlannerPreflightEvidence = (store: ReturnType<typeof makeStoreFixture>['store']) => {
+  store.appendEvent(
+    decode({
+      schema: SyncEvent,
+      value: {
+        _tag: 'ApiContractObserved',
+        eventId: 'body-adapter-api-contract',
+        rootId: testIds.rootId,
+        sequence: '0',
+        codecVersion: 'v1',
+        family: 'CompatibilityChecked',
+        eventType: 'ApiContractObserved',
+        idempotencyKey: 'body-adapter-api-contract',
+        surface: null,
+        causedByEventIds: [],
+        payloadHash: hash('body-adapter-api-contract'),
+        payload: {
+          _tag: 'VersionedJson',
+          codecVersion: 'v1',
+          canonicalJson: '{"api":true}',
+        },
+        observedAt: '2026-05-25T00:00:00.000Z',
+        apiContract: {
+          _tag: 'NotionApiContract',
+          apiVersion: NOTION_API_VERSION,
+          clientVersion: 'test-client',
+          supportedCapabilities: ['page_property_update'],
+        },
+      },
+    }),
+  )
+  store.appendEvent(
+    decode({
+      schema: SyncEvent,
+      value: {
+        _tag: 'CapabilityPreflightChecked',
+        eventId: 'body-adapter-capability',
+        rootId: testIds.rootId,
+        sequence: '0',
+        codecVersion: 'v1',
+        family: 'CompatibilityChecked',
+        eventType: 'CapabilityPreflightChecked',
+        idempotencyKey: 'body-adapter-capability',
+        surface: `data-source:${testIds.dataSourceId}`,
+        causedByEventIds: [],
+        payloadHash: hash('body-adapter-capability'),
+        payload: {
+          _tag: 'VersionedJson',
+          codecVersion: 'v1',
+          canonicalJson: '{"capability":"page_property_update"}',
+        },
+        observedAt: '2026-05-25T00:00:00.000Z',
+        dataSourceId: testIds.dataSourceId,
+        capability: 'page_property_update',
+        supported: true,
+        requestId: testIds.requestId,
       },
     }),
   )
@@ -291,6 +359,83 @@ describe('body adapter E2E boundary', () => {
         result.push.plan.enqueuedCommands + result.push.plan.conflicts + result.push.plan.blocked,
       ).toBeGreaterThan(0)
       assertNoGatewayMutations(gatewayHarness.ledger)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('plans local body edits against evidence-backed pointer identity', async () => {
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+    const gatewayHarness = makeFakeGatewayHarness()
+    const renderedHash = hash('body-a')
+    const evidenceHash = hash('body-evidence')
+    const renderedPointer = bodyPointer(renderedHash)
+    const basePointer = {
+      ...renderedPointer,
+      identity: evidenceBackedBodyIdentity({
+        rendered: renderedPointer.identity.rendered,
+        evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(evidenceHash),
+        completeness: 'complete',
+      }),
+    }
+    const baseWorkspace = makeFakeLocalWorkspacePort()
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: makeFakeClock().now,
+      })
+      appendPlannerPreflightEvidence(storeFixture.store)
+      appendObservedBodyProjection(storeFixture.store, bodySafety(), basePointer)
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).bodies).toMatchObject(
+        [
+          {
+            pageId: testIds.pageId,
+            currentHash: bodyPointerIdentityDigest(basePointer),
+          },
+        ],
+      )
+
+      const result = await runWithPorts(
+        pushOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot,
+          now: makeFakeClock().now,
+          maxExecutorSteps: 0,
+          localWorkspaceObservation: {
+            observations: [
+              presentArtifactObservation({
+                pageId: testIds.pageId,
+                path: bodyPath,
+                contentHash: hash('body-local-edit'),
+                bodyContent: '# Local edit',
+                observedAt: basePointer.observedAt,
+              }),
+            ],
+          },
+        }),
+        {
+          gateway: gatewayHarness.gateway,
+          body: makeHarnessPorts({ bodyPages: [fakeBodyPage({ pointer: basePointer })] }).body,
+          workspace: baseWorkspace,
+        },
+      )
+
+      expect(result.plan.decisions).toEqual([
+        expect.objectContaining({
+          _tag: 'EnqueueCommands',
+        }),
+      ])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
+        {
+          commandTag: 'BodyPush',
+          baseHash: bodyPointerIdentityDigest(basePointer),
+        },
+      ])
     } finally {
       storeFixture.cleanup()
     }

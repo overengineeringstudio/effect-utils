@@ -8,6 +8,7 @@ import {
 } from '../core/canonical.ts'
 import {
   Hash,
+  bodyPointerIdentityDigest,
   renderedBodyDigest,
   type LocalArtifactObservation,
   PageId,
@@ -717,7 +718,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
                     rootId: options.rootId,
                     pageId: observation.pageId,
                     surface: bodySurfaceKey(observation.pageId),
-                    baseHash: renderedBodyDigest(bodyPlan.baseBodyPointer.identity),
+                    baseHash: bodyPointerIdentityDigest(bodyPlan.baseBodyPointer),
                     localHash: bodyPlan.localBodyHash,
                     remoteHash: bodyPlan.remoteBodyHash,
                     conflictKind: 'body',
@@ -753,7 +754,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           surface: bodySurfaceKey(observation.pageId),
           pageId: observation.pageId,
           command,
-          baseHash: renderedBodyDigest(bodyPlan.baseBodyPointer.identity),
+          baseHash: bodyPointerIdentityDigest(bodyPlan.baseBodyPointer),
           desiredHash: bodyPlan.nextBodyHash,
         }
         summaries.push(
