@@ -52,6 +52,18 @@ export class NmdGatewayError extends Schema.TaggedError<NmdGatewayError>()('NmdG
   cause: Schema.optional(Schema.Defect),
 }) {}
 
+/** Raised when remote Markdown cannot safely become a clean body base. */
+export class NmdRemoteBodyLossyError extends Schema.TaggedError<NmdRemoteBodyLossyError>()(
+  'NmdRemoteBodyLossyError',
+  {
+    operation: Schema.String,
+    page_id: Schema.String,
+    path: Schema.optional(Schema.String),
+    reasons: Schema.Array(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
 /** Raised when a command needs a Notion token and none was supplied. */
 export class NmdTokenMissingError extends Schema.TaggedError<NmdTokenMissingError>()(
   'NmdTokenMissingError',
@@ -72,4 +84,5 @@ export type NmdError =
   | NmdConflictError
   | NmdFileSystemError
   | NmdGatewayError
+  | NmdRemoteBodyLossyError
   | NmdCliError

@@ -46,6 +46,9 @@
   "include": ["src/**/*"],
   "references": [
     {
+      "path": "../notion-core"
+    },
+    {
       "path": "../notion-effect-client"
     },
     {

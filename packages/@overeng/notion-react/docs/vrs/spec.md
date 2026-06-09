@@ -28,6 +28,10 @@ It does not define:
 
 - The `NotionBlocks` API surface — that lives in
   `@overeng/notion-effect-client`.
+- Markdown endpoint completeness, `.nmd` clean-base adoption, or datasource-sync
+  body guards — those live in `@overeng/notion-core`,
+  `@overeng/notion-effect-client`, `@overeng/notion-md`, and
+  `@overeng/notion-datasource-sync`.
 - The web renderer's DOM output — see that package's own docs (it is a
   non-normative preview per T05).
 - The pixeltrail migration plan — tracked in pixeltrail issues.
@@ -76,6 +80,13 @@ used by `renderToNotion` (append-only cold start). For incremental
 `sync`, the buffer's ops are discarded and the plan is produced by
 `diff(cacheTree, candidateTree)` — the buffer exists there only as a
 required host container.
+
+`@overeng/notion-react` is an owned-region writer. It reconciles the page
+regions it renders from JSX and its cache; it is not the authority for adopting
+Notion Markdown endpoint output as a clean `.nmd` base. Body-fidelity evidence
+may later be useful here for preflight or drift reporting, but guarded Markdown
+adoption and datasource-sync body settlement stay outside the React critical
+path.
 
 Flow of a single `sync` call:
 

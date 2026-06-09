@@ -3,6 +3,7 @@ import { Effect, Layer, Stream } from 'effect'
 
 import {
   NotionBlocks,
+  NotionBody,
   NotionConfig,
   NotionPages,
   type NmdStorage,
@@ -192,8 +193,8 @@ export const NotionMdGatewayLive = Layer.effect(
       pullPage: ({ pageId }) =>
         Effect.gen(function* () {
           const page = yield* provideHttp(NotionPages.retrieve({ pageId }))
-          const markdown = yield* provideHttp(NotionPages.getMarkdown({ pageId }))
-          const unknownBlocks = yield* Effect.forEach(markdown.unknown_block_ids, (blockId) =>
+          const body = yield* provideHttp(NotionBody.observe({ pageId }))
+          const unknownBlocks = yield* Effect.forEach(body.markdown.unknownBlockIds, (blockId) =>
             provideHttp(NotionBlocks.retrieve({ blockId })),
           )
           const remoteMarkdown = {
@@ -208,9 +209,10 @@ export const NotionMdGatewayLive = Layer.effect(
              * breaks intact (the gap called out in the proposal's
              * "Apply on pull too" guidance).
              */
-            markdown: canonicalizeBlockMarkdown(markdown.markdown),
-            truncated: markdown.truncated,
-            unknown_block_ids: markdown.unknown_block_ids,
+            markdown: canonicalizeBlockMarkdown(body.markdown.markdown),
+            truncated: body.markdown.truncated,
+            unknown_block_ids: body.markdown.unknownBlockIds,
+            completeness: body.completeness,
           }
 
           return unknownBlocks.length === 0
@@ -223,7 +225,7 @@ export const NotionMdGatewayLive = Layer.effect(
                 markdown: remoteMarkdown,
                 storage: storageFromUnknownBlocks({
                   blocks: unknownBlocks,
-                  placeholders: unknownPlaceholders(markdown.markdown),
+                  placeholders: unknownPlaceholders(body.markdown.markdown),
                 }),
               }
         }).pipe(

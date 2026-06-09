@@ -64,8 +64,8 @@ It does not define:
   and schema facades
 
 @overeng/notion-effect-client
-  versioned Notion HTTP API services, pagination, retries, rate limits,
-  and API error mapping
+  versioned Notion HTTP API services, live body observation, pagination,
+  retries, rate limits, and API error mapping
 
 @overeng/notion-md
   .nmd page-body implementation and public body-only facade consumed by
@@ -76,15 +76,22 @@ It does not define:
   outbox, conflicts, leases, migrations, planner, daemon, CLI commands,
   Notion gateway adapter
 
+@overeng/notion-react
+  owned-region JSX renderer/reconciler for pages; not on the guarded
+  Markdown body adoption path
+
 @overeng/notion-cli
   raw/debug/schema/codegen commands and datasource-sync command surface
 ```
 
 The package split is an ownership boundary, not just a publishing layout.
 `@overeng/notion-core` stays dependency-free and contains only pure Notion
-primitives, helpers, tuple builders, and classifiers.
+primitives, helpers, tuple builders, and classifiers, including the shared
+body-completeness vocabulary.
 `@overeng/notion-effect-schema` owns Effect Schema wire schemas and schema
-facades. `@overeng/notion-effect-client` owns the HTTP API service boundary.
+facades. `@overeng/notion-effect-client` owns the HTTP API service boundary and
+live body observation that combines Markdown endpoint output with block-tree
+evidence.
 
 Datasource-sync keeps the sync-core event store, projections, outbox, conflicts,
 leases, migrations, and datasource-sync hash helpers inside
@@ -92,7 +99,13 @@ leases, migrations, and datasource-sync hash helpers inside
 extractable. Page-body sync remains behind the NotionMD body boundary:
 datasource sync consumes the public body-only facade and owns its own
 datasource sidecars, path claims, outbox, and settlement events. It must not
-depend on private NotionMD internals.
+depend on private NotionMD internals. It maps NotionMD body-completeness
+evidence into body guards; it does not reclassify Markdown lossiness itself.
+
+`@overeng/notion-react` is deliberately deferred for this path. It may reuse
+core body-fidelity types later for preflight or drift reporting, but the
+datasource-sync planner must not route guarded Markdown adoption or settlement
+through the React reconciler.
 
 ## Authority Model
 

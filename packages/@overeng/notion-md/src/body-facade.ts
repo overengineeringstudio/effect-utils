@@ -1,8 +1,9 @@
 import { Effect, Schema } from 'effect'
 
+import type { BodyCompleteness } from '@overeng/notion-core'
 import type { Sha256Digest } from '@overeng/notion-effect-client'
 
-import { NmdFrontmatterError, type NmdError } from './errors.ts'
+import { NmdFrontmatterError, NmdRemoteBodyLossyError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { NotionMdGateway } from './model.ts'
@@ -27,6 +28,7 @@ export interface NotionMdBodySnapshot {
   readonly pageId: string
   readonly markdown: string
   readonly bodyHash: Sha256Digest
+  readonly completeness?: BodyCompleteness
 }
 
 export interface NotionMdLocalBodySnapshot extends NotionMdBodySnapshot {
@@ -43,6 +45,7 @@ export interface NotionMdVerifiedRemoteReplaceResult {
   readonly previousBodyHash: Sha256Digest
   readonly bodyHash: Sha256Digest
   readonly markdown: string
+  readonly completeness?: BodyCompleteness
 }
 
 export interface NotionMdSettledBodyPush {
@@ -60,7 +63,27 @@ const remoteBodySnapshot = (pulled: PullPageResult): NotionMdBodySnapshot => {
     pageId: pulled.page.id,
     markdown,
     bodyHash: sha256Digest(markdown),
+    ...(pulled.markdown.completeness === undefined
+      ? {}
+      : { completeness: pulled.markdown.completeness }),
   }
+}
+
+const assertSnapshotComplete = (opts: {
+  readonly operation: string
+  readonly snapshot: NotionMdBodySnapshot
+}): Effect.Effect<void, NmdRemoteBodyLossyError> => {
+  const completeness = opts.snapshot.completeness
+  if (completeness === undefined || completeness._tag === 'complete') return Effect.void
+
+  return Effect.fail(
+    new NmdRemoteBodyLossyError({
+      operation: opts.operation,
+      page_id: opts.snapshot.pageId,
+      reasons: [...completeness.reasons],
+      message: `Remote Markdown body for page ${opts.snapshot.pageId} is lossy (${completeness.reasons.join(', ')}); refusing verified body operation`,
+    }),
+  )
 }
 
 /** Observe only the current remote Markdown body for a Notion page. */
@@ -121,6 +144,10 @@ export const replaceRemoteBodyVerified = (opts: {
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
     const current = remoteBodySnapshot(yield* gateway.pullPage({ pageId: opts.pageId }))
+    yield* assertSnapshotComplete({
+      operation: 'replace_remote_body_verified',
+      snapshot: current,
+    })
     if (current.bodyHash !== opts.baseBodyHash) {
       return yield* new NotionMdBodyConflictError({
         operation: 'replace_remote_body_verified',
@@ -131,17 +158,22 @@ export const replaceRemoteBodyVerified = (opts: {
       })
     }
 
-    const updated = yield* gateway.updateMarkdown({
+    yield* gateway.updateMarkdown({
       pageId: opts.pageId,
       command: { _tag: 'replace_content', markdown: opts.markdown },
       allowDeletingContent: false,
     })
-    const markdown = normalizeMarkdownLineEndings(updated.markdown.markdown)
+    const updated = remoteBodySnapshot(yield* gateway.pullPage({ pageId: opts.pageId }))
+    yield* assertSnapshotComplete({
+      operation: 'replace_remote_body_verified',
+      snapshot: updated,
+    })
     return {
       pageId: opts.pageId,
       previousBodyHash: current.bodyHash,
-      bodyHash: sha256Digest(markdown),
-      markdown,
+      bodyHash: updated.bodyHash,
+      markdown: updated.markdown,
+      ...(updated.completeness === undefined ? {} : { completeness: updated.completeness }),
     }
   })
 

@@ -1,5 +1,6 @@
 import { Context, type Effect } from 'effect'
 
+import type { BodyCompleteness } from '@overeng/notion-core'
 import type { NmdPageState, NmdStorage } from '@overeng/notion-effect-client'
 
 import type { NmdGatewayError } from './errors.ts'
@@ -46,6 +47,7 @@ export interface RemoteMarkdownSnapshot {
   readonly markdown: string
   readonly truncated: boolean
   readonly unknown_block_ids: readonly string[]
+  readonly completeness?: BodyCompleteness
 }
 
 /** Complete remote page snapshot used by the sync engine. */

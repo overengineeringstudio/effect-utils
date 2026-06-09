@@ -168,6 +168,18 @@ content. It must not mutate row properties, data-source schema, lifecycle,
 membership, or page metadata. Surface leaks fail closed and do not settle remote
 commands.
 
+Body safety is evidence-driven. `@overeng/notion-core` owns the shared
+body-completeness vocabulary, `@overeng/notion-effect-client` owns live
+Markdown/block-tree observation, and NotionMD applies that evidence before
+exposing body pointers to datasource sync. Datasource sync maps the evidence
+into its body guards; it does not treat the React renderer or any local cache as
+a clean-base authority.
+
+Lossy body evidence blocks body planning, materialization, push settlement, and
+repair. This includes Notion-reported truncation, unknown block IDs,
+unsupported body inventory, and rendered block-tree content that the Markdown
+endpoint omitted, such as suffix content after a divider.
+
 ## Schema Writes
 
 Schema changes are detected and guarded before applying row/cell intents. The

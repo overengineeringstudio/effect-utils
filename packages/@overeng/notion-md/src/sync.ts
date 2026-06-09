@@ -18,8 +18,8 @@ import {
   NmdCliError,
   NmdConflictError,
   NmdFrontmatterError,
+  NmdRemoteBodyLossyError,
   type NmdError,
-  type NmdFileSystemError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
@@ -386,6 +386,26 @@ const emptyStorage = (): NmdStorage => ({
   comments: [],
 })
 
+const assertRemoteMarkdownComplete = (opts: {
+  readonly operation: string
+  readonly path?: string
+  readonly pageId: string
+  readonly markdown: RemoteMarkdownSnapshot
+}): Effect.Effect<void, NmdRemoteBodyLossyError> => {
+  const completeness = opts.markdown.completeness
+  if (completeness === undefined || completeness._tag === 'complete') return Effect.void
+
+  return Effect.fail(
+    new NmdRemoteBodyLossyError({
+      operation: opts.operation,
+      page_id: opts.pageId,
+      ...(opts.path === undefined ? {} : { path: opts.path }),
+      reasons: [...completeness.reasons],
+      message: `Remote Markdown body for page ${opts.pageId} is lossy (${completeness.reasons.join(', ')}); refusing to treat it as a clean notion-md base`,
+    }),
+  )
+}
+
 const unique = (values: readonly string[]): readonly string[] => [...new Set(values)]
 
 const unresolvedUnknownBlockIds = (opts: {
@@ -541,8 +561,14 @@ const writeNmdWithStoragePolicy = (opts: {
    * compares composed-vs-composed; for single-page it equals `fileBody`.
    */
   readonly baselineBody: string
-}): Effect.Effect<PullResult, NmdFileSystemError, NmdStateStore> =>
+}): Effect.Effect<PullResult, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
+    yield* assertRemoteMarkdownComplete({
+      operation: 'write_clean_base',
+      path: opts.path,
+      pageId: opts.page.id,
+      markdown: opts.markdown,
+    })
     const base = yield* writeBaseSnapshot({
       path: opts.path,
       pageId: opts.page.id,
@@ -649,6 +675,12 @@ const establishSidecarFromRemote = (opts: {
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
     const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
+    yield* assertRemoteMarkdownComplete({
+      operation: 'establish_sidecar',
+      path: opts.path,
+      pageId: opts.pageId,
+      markdown: pulled.markdown,
+    })
     const baselineBody = normalizeMarkdownLineEndings(pulled.markdown.markdown)
     const base = yield* writeBaseSnapshot({
       path: opts.path,
@@ -1068,6 +1100,13 @@ export const pushGuarded = (opts: {
       return { path, pageId: status.pageId, pushed: false, status }
     }
 
+    yield* assertRemoteMarkdownComplete({
+      operation: 'guarded_push',
+      path,
+      pageId: status.pageId,
+      markdown: remoteForStatus.markdown,
+    })
+
     if (
       containsRoughdraftReviewMarkup(local.desiredBody) === true &&
       options.allowReviewMarkup !== true
@@ -1198,6 +1237,12 @@ export const pushGuarded = (opts: {
           syncState: local.syncState,
         })
         const remote = yield* gateway.pullPage({ pageId: status.pageId })
+        yield* assertRemoteMarkdownComplete({
+          operation: 'guarded_push_preflight',
+          path,
+          pageId: status.pageId,
+          markdown: remote.markdown,
+        })
         /*
          * TOCTOU: the remote must not have changed since the status pull.
          * Compare semantically against the baseline (canonicalization-invariant).
