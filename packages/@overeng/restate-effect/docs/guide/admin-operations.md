@@ -146,4 +146,4 @@ yield * admin.updateDeployment(deploymentId, { additional_headers: { 'x-token': 
 
 - [Cancellation and lifecycle](./cancellation.md) — what a `cancel` does inside the handler.
 - [Testing (`./testing`)](./testing.md) — the typed `stateOf` State proxy over the same admin `/query`.
-- [decision 0018](../vrs/decisions/0018-admin-management-api.md) — the trust-boundary + typed-passthrough rationale.
+- [decision 0018](../vrs/.decisions/0018-admin-management-api.md) — the trust-boundary + typed-passthrough rationale.

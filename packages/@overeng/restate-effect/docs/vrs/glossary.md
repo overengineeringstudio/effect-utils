@@ -2,7 +2,7 @@
 
 Domain language for the `@overeng/restate-effect` binding. The terms are
 Restate's own model (we are a faithful binding — see
-`decisions/0001-thin-faithful-restate-binding.md`); this glossary fixes the
+`.decisions/0001-thin-faithful-restate-binding.md`); this glossary fixes the
 canonical spelling we use in code and docs.
 
 ## Constructs
@@ -154,7 +154,7 @@ the admin port (:9070). The binding owns only this port.
 ## Testing
 
 **RestateTestEnv**:
-The swappable mock⟷real façade (`./testing`, `decisions/0017`): ONE `Context.Tag`
+The swappable mock⟷real façade (`./testing`, `.decisions/0017`): ONE `Context.Tag`
 whose surface is the CONTRACT-ADDRESSED invocation level (`invokeService(contract,
 method, input)`, NEVER `impl.method(…)`), with TWO Layer impls — `RestateTestEnv.mock`
 (in-process, no server, ms) and `RestateTestEnv.real` (a thin wrapper over the **Test
@@ -194,7 +194,7 @@ a real in-memory implementation (Map-backed State, journaled-once `run`,
 deterministic clock/random, controllable `sleep`, per-`handlerKind` capability
 markers), NOT a stub and NOT a substitute for the **Test Harness**
 (durability/**Replay**/single-writer/cross-invocation need the real server). See
-`decisions/0013`.
+`.decisions/0013`.
 _Avoid_: "mock context".
 
 **withRestateServer**:
@@ -213,7 +213,7 @@ The per-invocation observability seam (`BoundaryObserver`, a pure core
 `./otel` supplies the impl that AUTO-stamps `restate.service`/`restate.handler`/
 `restate.object.key`/`restate.workflow.id`/`restate.idempotency.key` on the
 **attempt span** and, on failure, `restate.error.tag`/`restate.error.class`.
-Otel-free in the core. See `decisions/0014`, `decisions/0018`.
+Otel-free in the core. See `.decisions/0014`, `.decisions/0018`.
 
 **Span attribute (identity / error class)**:
 The boundary-stamped attributes an operator slices on in Tempo/Grafana —
@@ -235,7 +235,7 @@ metric on `ctx.isProcessing()`, so a journal **Replay**/extra attempt never
 re-increments. The auto baseline:
 `restate_invocations_total{service,handler,outcome}`, `restate_invocation_duration_ms`,
 `restate_attempts_total`, `restate_durable_steps_total`, `restate_awakeable_wait_ms`,
-`restate_poll_loop_cycles_total`. See `decisions/0014`.
+`restate_poll_loop_cycles_total`. See `.decisions/0014`.
 _Avoid_: "increment in the handler body" (double-counts across attempts).
 
 **Shared meter (MeterProvider)**:
@@ -249,7 +249,7 @@ in-handler `Effect.log*` writes to the invocation's replay-aware **`ctx.console`
 (suppressed during **Replay**, level-controlled via `RESTATE_LOGGING`, stamped with
 invocation context). On the CORE `.` export, provided alongside the **determinism
 layer**. The format is Effect's own `logfmt`; only the sink changes. See
-`decisions/0015`.
+`.decisions/0015`.
 _Avoid_: "log to console" (the default `globalThis.console` re-emits on replay).
 
 ## Security
@@ -259,20 +259,20 @@ The Restate v1 request-identity PUBLIC keys (ED25519, `publickeyv1_…`) threade
 into the SDK endpoint builder via `EndpointOptions.identityKeys`. When set, the SDK
 rejects any inbound request not signed by the matching private key — authenticating
 the server → handlers edge (the handler endpoint, :9080). Pure passthrough. See
-`decisions/0016`.
+`.decisions/0016`.
 _Avoid_: "API key" (that is the INGRESS auth; identity is the server→handlers JWT).
 
 **Ingress API key (secured ingress)**:
 The bearer credential for the you → server edge: `RestateIngress.layer({ url, apiKey })`
 sends `apiKey` (a `Redacted<string>`, never printed) as `Authorization: Bearer …`.
 Required to reach a SECURED / Restate Cloud ingress. `layerConfig` reads it from
-`RESTATE_INGRESS_KEY` (a `Config.redacted`). See `decisions/0016`.
+`RESTATE_INGRESS_KEY` (a `Config.redacted`). See `.decisions/0016`.
 _Avoid_: "request identity" (that authenticates the OTHER edge, server→handlers).
 
 ## Operations
 
 **RestateAdmin (`./admin`)**:
-The opt-in management surface (`decisions/0018`, spec §16) — a `Context.Tag` +
+The opt-in management surface (`.decisions/0018`, the 10-admin subsystem spec) — a `Context.Tag` +
 `layer({ adminUrl, apiKey? })` over the **restate-server** ADMIN REST API, MIRRORING
 `RestateIngress` but bound to the admin url. Operations (`cancel`/`kill`/`pause`/
 `resume`/`purge`/`restartAsNew`; deployment `register`/`list`/`get`/`update`;
@@ -284,7 +284,7 @@ _Avoid_: "ingress client" (that invokes handlers; admin OPERATES the deployment)
 The admin API is UNAUTHENTICATED by default and MUST NOT be exposed publicly (it can
 cancel/kill invocations, mutate **State**, and read every `sys_*` row), and is LESS
 STABLE than the SDK protocol — `./admin` is pinned to restate-server 1.6.2. A bearer
-`apiKey` (`Redacted`) secures a Cloud admin endpoint. See `decisions/0018`.
+`apiKey` (`Redacted`) secures a Cloud admin endpoint. See `.decisions/0018`.
 
 **Typed introspection (`query(sql, rowSchema)`)**:
 The `./admin` SQL-over-`sys_*` surface (`POST /query`). A THIN TYPED PASSTHROUGH: the

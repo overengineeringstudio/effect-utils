@@ -134,6 +134,6 @@ native `restate-server` by `src/examples.integration.test.ts` (under `dt check:a
 so a documented snippet that stopped working would fail CI.
 
 Design docs live under [`docs/vrs/`](./docs/vrs): [vision.md](./docs/vrs/vision.md)
-(why), [spec.md](./docs/vrs/spec.md) (the full design),
-[decisions/](./docs/vrs/decisions) (the hard-to-reverse calls), and
-[glossary.md](./docs/vrs/glossary.md) (Restate + binding vocabulary).
+(why), [spec.md](./docs/vrs/spec.md) (the architecture index, linking the ten
+subsystem specs), [.decisions/](./docs/vrs/.decisions) (the hard-to-reverse calls),
+and [glossary.md](./docs/vrs/glossary.md) (Restate + binding vocabulary).

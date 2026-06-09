@@ -253,6 +253,6 @@ waits actually elapse.
 
 - [Determinism](./determinism.md) — `alwaysReplay` surfaces journal-shape divergence.
 - [Verification + migration notes](./verification.md) — how the example suite gates CI.
-- [decision 0017](../vrs/decisions/0017-swappable-test-env.md) — the swappable `RestateTestEnv` façade.
-- [decision 0013](../vrs/decisions/0013-in-memory-test-context.md) — the in-memory context rationale.
-- [decision 0009](../vrs/decisions/0009-effect-native-testing-harness.md) — the native-server harness rationale.
+- [decision 0017](../vrs/.decisions/0017-swappable-test-env.md) — the swappable `RestateTestEnv` façade.
+- [decision 0013](../vrs/.decisions/0013-in-memory-test-context.md) — the in-memory context rationale.
+- [decision 0009](../vrs/.decisions/0009-effect-native-testing-harness.md) — the native-server harness rationale.
