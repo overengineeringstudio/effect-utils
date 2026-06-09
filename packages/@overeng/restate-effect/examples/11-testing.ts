@@ -31,7 +31,7 @@
  */
 import { Layer } from 'effect'
 
-import { RestateTestHarness, serverAvailable } from '../src/testing.ts'
+import { RestateTestHarness, serverAvailable } from '../src/testing/testing.ts'
 import { Greeting, GreeterLive } from './01-service.ts'
 import { CounterLive } from './02-virtual-object.ts'
 import { ApprovalLive } from './03-workflow.ts'

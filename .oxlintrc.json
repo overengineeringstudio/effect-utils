@@ -176,8 +176,8 @@
       "files": [
         "**/restate-effect/src/**/*.test.ts",
         "**/restate-effect/src/**/*.test.tsx",
-        "**/restate-effect/src/testing.ts",
-        "**/restate-effect/src/TestContext.ts",
+        "**/restate-effect/src/testing/testing.ts",
+        "**/restate-effect/src/testing/TestContext.ts",
         "**/restate-effect/test/**"
       ],
       "rules": {

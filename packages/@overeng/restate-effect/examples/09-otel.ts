@@ -39,7 +39,7 @@ import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base'
 import { type ConfigError, Effect, Layer } from 'effect'
 
 import { layer, Restate, type RestateError, serve } from '../src/mod.ts'
-import { RestateOtel } from '../src/otel.ts'
+import { RestateOtel } from '../src/observability/otel.ts'
 import { Greeting, GreeterLive } from './01-service.ts'
 
 /* The shared-provider Layer. In production use a `BatchSpanProcessor` over an OTLP

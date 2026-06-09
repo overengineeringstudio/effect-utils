@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **@overeng/restate-effect**: Internal `src/` reorganized into ten named subsystem subdirs (`authoring/`, `schema/`, `runtime/`, `error/`, `clients/`, `scheduling/`, `endpoint/`, `observability/`, `testing/`, `admin/`) so the code layout mirrors the VRS subsystem taxonomy. `Endpoint.ts` is split into the error-boundary classification + capability-marker machinery (`error/Boundary.ts`: `classifyOutcome` / `toTerminal` / `provideHandlerCaps` / the `Boundary*` types) and the serving/materialize layer (`endpoint/Endpoint.ts`); the shared bare admin client (`AdminApi.ts`) moves under `admin/`. Pure refactor: `mod.ts` stays the root barrel and the public export surface is unchanged — `.` / `./otel` / `./testing` / `./admin` resolve to the same exported symbols (the `package.json` `exports` map now points at the new internal paths). No behavior change; all 134 tests green.
+
 ### Added
 
 - **@overeng/notion-datasource-sync**: Replace legacy body hash pointers with typed `BodyIdentity`/`BodyProjectionPayload` semantics so remote body evidence, rendered content digests, safety, materialization, and OTel body attributes have explicit ownership boundaries and cleaner replay/testing contracts (#766).

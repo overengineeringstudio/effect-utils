@@ -65,17 +65,17 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       '.': './src/mod.ts',
-      './admin': './src/admin.ts',
-      './otel': './src/otel.ts',
-      './testing': './src/testing.ts',
+      './admin': './src/admin/admin.ts',
+      './otel': './src/observability/otel.ts',
+      './testing': './src/testing/testing.ts',
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': './dist/mod.js',
-        './admin': './dist/admin.js',
-        './otel': './dist/otel.js',
-        './testing': './dist/testing.js',
+        './admin': './dist/admin/admin.js',
+        './otel': './dist/observability/otel.js',
+        './testing': './dist/testing/testing.js',
       },
     },
   } satisfies PackageJsonData,
