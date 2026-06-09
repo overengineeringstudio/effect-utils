@@ -5,6 +5,7 @@ import {
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import contentAddressPkg from '../content-address/package.json.genie.ts'
 import notionCorePkg from '../notion-core/package.json.genie.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
@@ -28,7 +29,13 @@ const peerDepNames = [
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-md' }),
   dependencies: {
-    workspace: [notionCorePkg, notionEffectClientPkg, notionEffectSchemaPkg, utilsPkg],
+    workspace: [
+      contentAddressPkg,
+      notionCorePkg,
+      notionEffectClientPkg,
+      notionEffectSchemaPkg,
+      utilsPkg,
+    ],
     external: catalog.pick(
       'remark-gfm',
       'remark-parse',

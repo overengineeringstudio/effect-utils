@@ -12,6 +12,7 @@ import type {
 import type { ConflictPayload } from '../core/conflicts.ts'
 import { classifyConflict, type ConflictSurface } from '../core/conflicts.ts'
 import type {
+  BodyPointer,
   CommandId,
   DatabaseId,
   DataSourceId,
@@ -98,6 +99,7 @@ export type BodyPointerSurfaceSnapshot = {
   readonly path: string
   readonly baseHash: Hash
   readonly currentHash: Hash
+  readonly pointer: BodyPointer
   readonly sidecarIdentityProven: boolean
   readonly ownWriteMaterializationIds: ReadonlyArray<string>
   readonly safety: BodySafetySnapshot

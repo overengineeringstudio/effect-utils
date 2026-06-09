@@ -55,6 +55,10 @@ It does not define:
 ## Package Shape
 
 ```
+@overeng/content-address
+  reusable content identity primitives, canonical JSON bytes,
+  descriptors, and descriptor verification
+
 @overeng/notion-core
   pure dependency-free Notion primitives, helpers, tuple builders,
   and classifiers
@@ -64,8 +68,8 @@ It does not define:
   and schema facades
 
 @overeng/notion-effect-client
-  versioned Notion HTTP API services, live body observation, pagination,
-  retries, rate limits, and API error mapping
+  versioned Notion HTTP API services, raw live body observation input,
+  pagination, retries, rate limits, and API error mapping
 
 @overeng/notion-md
   .nmd page-body implementation and public body-only facade consumed by
@@ -85,13 +89,16 @@ It does not define:
 ```
 
 The package split is an ownership boundary, not just a publishing layout.
+`@overeng/content-address` owns reusable content identity, not Notion semantics:
+algorithm-tagged digests, byte descriptors, canonical JSON byte encoding, and
+descriptor verification. It deliberately does not own `.notion-md` paths,
+retention, garbage collection, datasource-sync events, or settlement rules.
 `@overeng/notion-core` stays dependency-free and contains only pure Notion
 primitives, helpers, tuple builders, and classifiers, including the shared
-body-completeness vocabulary.
+body-completeness vocabulary and body evidence schemas/builders.
 `@overeng/notion-effect-schema` owns Effect Schema wire schemas and schema
 facades. `@overeng/notion-effect-client` owns the HTTP API service boundary and
-live body observation that combines Markdown endpoint output with block-tree
-evidence.
+collects the raw API snapshots that feed the pure body evidence builder.
 
 Datasource-sync keeps the sync-core event store, projections, outbox, conflicts,
 leases, migrations, and datasource-sync hash helpers inside
@@ -102,6 +109,27 @@ datasource sidecars, path claims, outbox, and settlement events. It must not
 depend on private NotionMD internals. It maps NotionMD body-completeness
 evidence into body guards; it does not reclassify Markdown lossiness itself.
 
+Remote body evidence is immutable observation identity, not remote truth and not
+a Notion revision token. Pure evidence schemas, completeness vocabulary, and
+fingerprint construction live below transport-client code so NotionMD and
+datasource-sync can depend on the same domain contract. `@overeng/notion-effect-client`
+collects Notion API snapshots and maps them into that evidence contract; it does
+not own datasource-sync body identity or storage policy.
+
+Datasource-sync represents body write guards with typed `BodyIdentity`. Remote
+Notion body observations produce `EvidenceBackedBodyIdentity`; local desired
+Markdown may start as `RenderedBodyIdentity` until it is observed remotely.
+Evidence-backed identity is the body base used for stale-base rejection and
+read-after-write settlement. Rendered descriptors remain useful for local
+content comparison and desired-state verification, but they are not silently
+substituted for remote evidence identity.
+
+Privacy and retention remain domain-owned. Full body evidence can include
+descriptors for sensitive Markdown and block inventory; packages that store it
+must choose explicit retention policy. Hash-only evidence may be retained when a
+workflow only needs identity/integrity, but lossy or incomplete evidence cannot
+establish or refresh a clean body base.
+
 `@overeng/notion-react` is deliberately deferred for this path. It may reuse
 core body-fidelity types later for preflight or drift reporting, but the
 datasource-sync planner must not route guarded Markdown adoption or settlement
@@ -111,20 +139,20 @@ through the React reconciler.
 
 The authority model is cross-cutting: it pins down which surface owns truth for which fact, so sub-systems can be designed independently without inventing competing sources of truth. The per-sub-system specs deepen each row below.
 
-| Surface                       | Authoritative source                                          | Local representation                               | Write rule                                    |
-| ----------------------------- | ------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------- |
-| Current remote schema         | Notion after observation                                      | `schema_projection`                                | Re-read before schema-affecting writes        |
-| Current remote row properties | Notion after observation                                      | `row_projection`, `property_shadow`                | Re-read relevant row/properties before writes |
-| Current remote page body      | NotionMD remote observation                                   | `body_pointer`                                     | Delegate body guards to `PageBodySyncPort`    |
-| Local page-body desired state | NotionMD `.nmd` capture before materialize                    | body local-observation / body intent / conflict    | Preserve before overwrite; plan via body port |
-| Public local replica          | Derived from sync-control events                              | `<database-id>.sqlite` public surfaces             | User reads current state and writes intents   |
-| Local sync intent             | Entry: `rows`; ledger: `changes`; authority: SQLite event log | `changes`, `sync_event`, `outbox`                  | Commit intent before command execution        |
-| Conflicts                     | SQLite event log/projection                                   | `conflict_projection`                              | Resolve by appending events                   |
-| Tombstones                    | SQLite event log/projection                                   | `tombstone_projection`                             | Create only after direct classification       |
-| File paths                    | SQLite path claims + filesystem                               | `path_claim_projection`                            | Never overwrite another page claim            |
-| API/capability contract       | Notion client + live preflight                                | `api_contract_projection`, `capability_projection` | Block unsupported version/capability drift    |
-| Query completeness            | Notion query pages after complete scan                        | `query_scan_checkpoint`                            | Advance only after terminal page              |
-| Watch ownership               | SQLite lease                                                  | `lease_projection`                                 | Fence stale daemons                           |
+| Surface                       | Authoritative source                                           | Local representation                               | Write rule                                    |
+| ----------------------------- | -------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------- |
+| Current remote schema         | Notion after observation                                       | `schema_projection`                                | Re-read before schema-affecting writes        |
+| Current remote row properties | Notion after observation                                       | `row_projection`, `property_shadow`                | Re-read relevant row/properties before writes |
+| Current remote page body      | NotionMD remote observation with evidence-backed body identity | `body_pointer` carrying `BodyProjectionPayload`    | Re-read and compare typed body identity       |
+| Local page-body desired state | NotionMD `.nmd` capture before materialize                     | body local-observation / body intent / conflict    | Preserve before overwrite; plan via body port |
+| Public local replica          | Derived from sync-control events                               | `<database-id>.sqlite` public surfaces             | User reads current state and writes intents   |
+| Local sync intent             | Entry: `rows`; ledger: `changes`; authority: SQLite event log  | `changes`, `sync_event`, `outbox`                  | Commit intent before command execution        |
+| Conflicts                     | SQLite event log/projection                                    | `conflict_projection`                              | Resolve by appending events                   |
+| Tombstones                    | SQLite event log/projection                                    | `tombstone_projection`                             | Create only after direct classification       |
+| File paths                    | SQLite path claims + filesystem                                | `path_claim_projection`                            | Never overwrite another page claim            |
+| API/capability contract       | Notion client + live preflight                                 | `api_contract_projection`, `capability_projection` | Block unsupported version/capability drift    |
+| Query completeness            | Notion query pages after complete scan                         | `query_scan_checkpoint`                            | Advance only after terminal page              |
+| Watch ownership               | SQLite lease                                                   | `lease_projection`                                 | Fence stale daemons                           |
 
 Local authority has three invariants that apply across every sub-system:
 
@@ -140,28 +168,36 @@ Requirement trace: R52, R57-R59, R67-R73.
 
 All spans use safe, low-cardinality names, concise `span.label` values, and an allowlist of attributes. The CLI process uses `service.name=notion-datasource-sync-cli`; `sync --watch` mode uses `service.name=notion-datasource-sync-daemon`.
 
-| Span                                           | Required attributes                                                                                                                                                                                                                         |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `notion.datasource.cli`                        | span.label, command, process.role, root_id, data_source_id, dry_run, max_cycles, status.state, result                                                                                                                                       |
-| `notion.datasource.sync.init`                  | span.label, process.role, operation, root_id, data_source_id, dry_run                                                                                                                                                                       |
-| `notion.datasource.sync.pull`                  | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, query_page_count, row_count, event_count, appended_events, status.state                                                                              |
-| `notion.datasource.sync.establish-from-notion` | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, row_count, appended_events, status.state                                                                                                             |
-| `notion.datasource.sync.push`                  | span.label, process.role, operation, root_id, dry_run, max_executor_steps, lease_duration_ms, local_observation_count, enqueued_commands, executor_steps, status.state                                                                      |
-| `notion.datasource.sync.one-shot`              | span.label, process.role, operation, root_id, data_source_id, max_executor_steps, lease_duration_ms, query_complete, row_count, enqueued_commands, executor_steps, status.state                                                             |
-| `notion.datasource.observation.remote`         | span.label, process.role, operation                                                                                                                                                                                                         |
-| `notion.datasource.observation.local`          | span.label, process.role, operation                                                                                                                                                                                                         |
-| `notion.datasource.daemon.run`                 | span.label, process.role, operation, root_id, data_source_id, mode, max_cycles, cycles, completed_cycles, cancelled, result                                                                                                                 |
-| `notion.datasource.daemon.pass`                | span.label, process.role, operation, root_id, data_source_id, mode, cycle, max_executor_steps, lease_duration_ms, result                                                                                                                    |
-| `notion.datasource.sqlite.transaction`         | operation, event_count, projection_version                                                                                                                                                                                                  |
-| `notion.datasource.planner.decision`           | surface_kind, decision, guard, query_contract_hash                                                                                                                                                                                          |
-| `notion.datasource.outbox.attempt`             | span.label, process.role, operation, root_id, command_id, command_kind, page_id, data_source_id, attempt, result, guard, settlement_kind, lease_duration_ms                                                                                 |
-| `notion.datasource.outbox.observe-surface`     | span.label, process.role, operation, command_id, command_kind, page_id, data_source_id                                                                                                                                                      |
-| `notion.datasource.outbox.write-remote`        | span.label, process.role, operation, command_id, command_kind, page_id, data_source_id                                                                                                                                                      |
-| `notion.datasource.conflict`                   | conflict_kind, surface_kind, result                                                                                                                                                                                                         |
-| `notion.datasource.migration`                  | migration_kind, from_version, to_version, result                                                                                                                                                                                            |
-| `NotionHttp.<METHOD>`                          | span.label, notion.http.method, notion.http.route, notion.http.operation, notion.http.status_code, notion.http.retry.attempts, notion.http.retry.delay_ms, notion.quota.cost, notion.rate_limit.remaining, notion.rate_limit.reset_after_ms |
-| `notion.api.request`                           | span.label, process.role, operation, api_version, data_source_id, page_id, property_id, command_id, command_kind                                                                                                                            |
-| `notion.datasource.fake-gateway.request`       | span.label, process.role, operation, api_version, data_source_id, page_id                                                                                                                                                                   |
+Body spans expose selected identity semantics explicitly:
+`notion.datasource.body.identity.kind`,
+`notion.datasource.body.identity.digest`,
+`notion.datasource.body.rendered.digest`,
+`notion.datasource.body.evidence.digest`, and
+`notion.datasource.body.completeness`. They must not expose raw body text or raw
+private evidence payloads.
+
+| Span                                           | Required attributes                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `notion.datasource.cli`                        | span.label, command, process.role, root_id, data_source_id, dry_run, max_cycles, status.state, result                                                                                                                                                                                     |
+| `notion.datasource.sync.init`                  | span.label, process.role, operation, root_id, data_source_id, dry_run                                                                                                                                                                                                                     |
+| `notion.datasource.sync.pull`                  | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, query_page_count, row_count, event_count, appended_events, status.state                                                                                                                            |
+| `notion.datasource.sync.establish-from-notion` | span.label, process.role, operation, root_id, data_source_id, dry_run, query_complete, row_count, appended_events, status.state                                                                                                                                                           |
+| `notion.datasource.sync.push`                  | span.label, process.role, operation, root_id, dry_run, max_executor_steps, lease_duration_ms, local_observation_count, enqueued_commands, executor_steps, status.state                                                                                                                    |
+| `notion.datasource.sync.one-shot`              | span.label, process.role, operation, root_id, data_source_id, max_executor_steps, lease_duration_ms, query_complete, row_count, enqueued_commands, executor_steps, status.state                                                                                                           |
+| `notion.datasource.observation.remote`         | span.label, process.role, operation                                                                                                                                                                                                                                                       |
+| `notion.datasource.observation.local`          | span.label, process.role, operation                                                                                                                                                                                                                                                       |
+| `notion.datasource.daemon.run`                 | span.label, process.role, operation, root_id, data_source_id, mode, max_cycles, cycles, completed_cycles, cancelled, result                                                                                                                                                               |
+| `notion.datasource.daemon.pass`                | span.label, process.role, operation, root_id, data_source_id, mode, cycle, max_executor_steps, lease_duration_ms, result                                                                                                                                                                  |
+| `notion.datasource.sqlite.transaction`         | operation, event_count, projection_version                                                                                                                                                                                                                                                |
+| `notion.datasource.planner.decision`           | surface_kind, decision, guard, query_contract_hash                                                                                                                                                                                                                                        |
+| `notion.datasource.outbox.attempt`             | span.label, process.role, operation, root_id, command_id, command_kind, page_id, data_source_id, attempt, result, guard, settlement_kind, lease_duration_ms                                                                                                                               |
+| `notion.datasource.outbox.observe-surface`     | span.label, process.role, operation, command_id, command_kind, page_id, data_source_id, notion.datasource.body.identity.kind, notion.datasource.body.identity.digest, notion.datasource.body.rendered.digest, notion.datasource.body.evidence.digest, notion.datasource.body.completeness |
+| `notion.datasource.outbox.write-remote`        | span.label, process.role, operation, command_id, command_kind, page_id, data_source_id, notion.datasource.body.identity.kind, notion.datasource.body.identity.digest, notion.datasource.body.rendered.digest, notion.datasource.body.evidence.digest, notion.datasource.body.completeness |
+| `notion.datasource.conflict`                   | conflict_kind, surface_kind, result                                                                                                                                                                                                                                                       |
+| `notion.datasource.migration`                  | migration_kind, from_version, to_version, result                                                                                                                                                                                                                                          |
+| `NotionHttp.<METHOD>`                          | span.label, notion.http.method, notion.http.route, notion.http.operation, notion.http.status_code, notion.http.retry.attempts, notion.http.retry.delay_ms, notion.quota.cost, notion.rate_limit.remaining, notion.rate_limit.reset_after_ms                                               |
+| `notion.api.request`                           | span.label, process.role, operation, api_version, data_source_id, page_id, property_id, command_id, command_kind                                                                                                                                                                          |
+| `notion.datasource.fake-gateway.request`       | span.label, process.role, operation, api_version, data_source_id, page_id                                                                                                                                                                                                                 |
 
 Telemetry never includes raw page titles, private workspace names, full body text, raw property values, tokens, signed URLs, or local absolute paths. Notion HTTP spans use route templates such as `/data_sources/{data_source_id}/query` instead of raw URLs. IDs exposed in datasource spans are hashed unless they are already intended as non-sensitive command IDs.
 

@@ -1,5 +1,5 @@
 /** SQLite schema version — incremented when a migration is needed. */
-export const STORE_SCHEMA_VERSION = 6
+export const STORE_SCHEMA_VERSION = 7
 
 /** Opaque identifier stamped into every _nds_projection_metadata row to detect when projections were built by an incompatible projector. */
 export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'
@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS _nds_body_pointer (
   current_hash TEXT NOT NULL,
   sidecar_identity_proven INTEGER NOT NULL CHECK (sidecar_identity_proven IN (0, 1)),
   own_write_materialization_ids_json TEXT NOT NULL,
-  safety_json TEXT NOT NULL,
+  body_projection_json TEXT NOT NULL,
   observed_event_id TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (root_id, page_id)

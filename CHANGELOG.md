@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-datasource-sync**: Replace legacy body hash pointers with typed `BodyIdentity`/`BodyProjectionPayload` semantics so remote body evidence, rendered content digests, safety, materialization, and OTel body attributes have explicit ownership boundaries and cleaner replay/testing contracts (#766).
+- **@overeng/content-address + Notion body sync**: Add reusable content-address primitives (`ContentDigest`, `ContentDescriptor`, canonical JSON hashing, descriptor verification) and use Notion body observation evidence fingerprints for guarded body planning and settlement.
 - **@overeng/notion-core + @overeng/notion-effect-client**: Add shared Notion body-fidelity vocabulary and live Markdown/block-tree observation so downstream packages can distinguish complete remote bodies from lossy endpoint output.
 - **@overeng/genie**: Add `projectionArtifact.json()` for schema-versioned deterministic JSON projections, with generic validation hooks and reusable duplicate-value validators for TS-authored data projected into committed JSON.
 - **Notion docs**: Add lightweight package-level VRS requirements/spec docs for `@overeng/notion-core`, `@overeng/notion-effect-schema`, and `@overeng/notion-effect-client`; align the broader Notion VRS docs with implementation reality while keeping package READMEs user-facing.
@@ -89,6 +91,7 @@ All notable changes to this project will be documented in this file.
 - **nix/oxc-config-plugin**: Refresh the `oxc-config` pnpm fixed-output hash so `oxlint` can build again in CI and `lint` / `devenv-perf` stop failing on the stale dependency boundary.
 
 - **nix packages**: Refresh stale pnpm dependency hashes for the Genie, megarepo, tui-stories, and notion-md CLI packages.
+- **nix packages**: Refresh the stale `megarepo`, `tui-stories`, `notion-md`, and `workflow-report` pnpm dependency hashes so `nix-check`, `nix-fod-check`, closure-size, and Storybook-report CI jobs use the current dependency closures again.
 - **nix packages**: Refresh the stale `notion-cli` pnpm dependency hash after adding the datasource-sync runtime to the packaged workspace.
 - **genie/packages**: Include `@overeng/notion-datasource-sync` in the internal package catalog so generated workspace dependency metadata covers the new package.
 - **pnpm task**: Bound macOS CI pnpm install heap usage and tolerate Darwin teardown exit 137 only after node_modules materialization is complete.

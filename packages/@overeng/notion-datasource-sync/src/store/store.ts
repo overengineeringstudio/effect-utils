@@ -8,7 +8,8 @@ import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import { propertySurfaceKey } from '../core/canonical.ts'
 import { RemoteWritePlanPayload, type RemoteWriteCommand } from '../core/commands.ts'
 import {
-  BodySafetySnapshot,
+  BodyPointer,
+  bodyPointerIdentityDigest,
   CapabilityName,
   CommandId,
   DatabaseId,
@@ -18,6 +19,7 @@ import {
   PageId,
   PropertyId,
   QueryCursor,
+  WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { LocalStoreError } from '../core/errors.ts'
 import {
@@ -25,6 +27,7 @@ import {
   SurfaceKey,
   SyncEvent,
   SyncEventId,
+  SyncRootId as SyncRootIdSchema,
   type SyncRootId,
 } from '../core/events.ts'
 import { GuardName } from '../core/guards.ts'
@@ -46,7 +49,7 @@ import {
   computePayloadHash,
   computeProjectionDigest,
   DataSourceProjectionPayload,
-  BodyProjectionSafetyPayload,
+  BodyProjectionPayload,
   isCompactionBlockingOutboxState,
   OutboxState,
   PropertyCheckpointProjectionPayload,
@@ -218,6 +221,7 @@ export type OutboxSettlementInput = {
   readonly requestId: NotionRequestId
   readonly desiredHash: typeof Hash.Type
   readonly observedHash: typeof Hash.Type
+  readonly bodyPointer?: BodyPointer
   readonly createdPageId?: typeof PageId.Type
   readonly settlementKind: 'verified-success' | 'verified-no-op'
   readonly idempotencyKey?: IdempotencyKey
@@ -283,8 +287,6 @@ export type WorkspaceBindingRow = {
 
 const decodeEventFromJson = Schema.decodeSync(Schema.parseJson(SyncEvent))
 const encodeEvent = Schema.encodeSync(SyncEvent)
-const decodeBodySafetyFromJson = Schema.decodeSync(Schema.parseJson(BodySafetySnapshot))
-const encodeBodySafety = Schema.encodeSync(BodySafetySnapshot)
 const decodeCapabilityName = Schema.decodeUnknownSync(CapabilityName)
 const decodeDataSourceId = Schema.decodeSync(DataSourceId)
 const decodeDatabaseId = Schema.decodeSync(DatabaseId)
@@ -293,6 +295,7 @@ const decodeIdempotencyKey = Schema.decodeUnknownSync(IdempotencyKey)
 const decodePageId = Schema.decodeSync(PageId)
 const decodePropertyId = Schema.decodeSync(PropertyId)
 const decodeQueryCursor = Schema.decodeSync(QueryCursor)
+const decodeWorkspaceRelativePath = Schema.decodeUnknownSync(WorkspaceRelativePath)
 const decodeRemoteWritePlanPayload = Schema.decodeUnknownSync(
   Schema.parseJson(RemoteWritePlanPayload),
 )
@@ -302,9 +305,11 @@ const decodeDataSourceProjectionPayload = Schema.decodeUnknownSync(
   Schema.parseJson(DataSourceProjectionPayload),
 )
 const decodeRowProjectionPayload = Schema.decodeUnknownSync(Schema.parseJson(RowProjectionPayload))
-const decodeBodyProjectionSafetyPayload = Schema.decodeUnknownSync(
-  Schema.parseJson(BodyProjectionSafetyPayload),
+const decodeBodyProjectionPayload = Schema.decodeUnknownSync(
+  Schema.parseJson(BodyProjectionPayload),
 )
+const encodeBodyProjectionPayload = Schema.encodeSync(BodyProjectionPayload)
+const encodeBodyPointer = Schema.encodeSync(BodyPointer)
 const decodePropertyCheckpointProjectionPayload = Schema.decodeUnknownSync(
   Schema.parseJson(PropertyCheckpointProjectionPayload),
 )
@@ -319,16 +324,6 @@ const decodeConflictPayloadMessage = Schema.decodeUnknownSync(
 )
 
 const projectionName = 'core'
-
-const defaultUnsafeBodySafety: typeof BodySafetySnapshot.Type = {
-  truncated: false,
-  unknownBlockCause: 'unknown',
-  selection: 'ambiguous',
-  wouldDeleteChildren: false,
-  syncedPageUnsupported: false,
-  adapterConflict: false,
-  adapterMutationSurfaces: ['body'],
-}
 
 const decodePayload = <TValue>({
   event,
@@ -520,6 +515,12 @@ const capabilityProjectionIsScopedByDataSource = (db: DatabaseSync): boolean =>
     .prepare(`PRAGMA table_info('_nds_capability')`)
     .all()
     .some((row) => row.name === 'data_source_id' && Number(row.pk) > 0)
+
+const bodyPointerProjectionStoresProjectionPayload = (db: DatabaseSync): boolean =>
+  db
+    .prepare(`PRAGMA table_info('_nds_body_pointer')`)
+    .all()
+    .some((row) => row.name === 'body_projection_json')
 
 /**
  * SQLite-backed store for the notion-datasource-sync event log and projections.
@@ -723,6 +724,8 @@ export class NotionSyncStore {
   appendOutboxSettlement(input: OutboxSettlementInput): SyncEvent {
     this.#db.exec('BEGIN IMMEDIATE')
     try {
+      const bodyPointer =
+        input.bodyPointer === undefined ? undefined : encodeBodyPointer(input.bodyPointer)
       const event = this.#appendEventInTransaction(
         Schema.decodeUnknownSync(SyncEvent)({
           _tag: 'RemoteWriteSettled',
@@ -742,6 +745,7 @@ export class NotionSyncStore {
               settlementKind: input.settlementKind,
               desiredHash: input.desiredHash,
               observedHash: input.observedHash,
+              ...(bodyPointer === undefined ? {} : { bodyPointer }),
               ...(input.createdPageId === undefined ? {} : { createdPageId: input.createdPageId }),
             }),
           ),
@@ -752,6 +756,7 @@ export class NotionSyncStore {
           desiredHash: input.desiredHash,
           observedHash: input.observedHash,
           ...(input.createdPageId === undefined ? {} : { createdPageId: input.createdPageId }),
+          ...(bodyPointer === undefined ? {} : { bodyPointer }),
           settlementKind: input.settlementKind,
         }),
       )
@@ -1473,23 +1478,29 @@ export class NotionSyncStore {
              current_hash,
              sidecar_identity_proven,
              own_write_materialization_ids_json,
-             safety_json
+             body_projection_json
            FROM _nds_body_pointer
            WHERE root_id = ?
            ORDER BY page_id`,
         )
         .all(rootId)
-        .map((row) => ({
-          pageId: decodePageId(readString({ row: row, key: 'page_id' })),
-          path: readString({ row: row, key: 'path' }),
-          baseHash: decodeHash(readString({ row: row, key: 'base_hash' })),
-          currentHash: decodeHash(readString({ row: row, key: 'current_hash' })),
-          sidecarIdentityProven: readBoolean({ row: row, key: 'sidecar_identity_proven' }),
-          ownWriteMaterializationIds: Schema.decodeSync(
-            Schema.parseJson(Schema.Array(Schema.String)),
-          )(readString({ row: row, key: 'own_write_materialization_ids_json' })),
-          safety: decodeBodySafetyFromJson(readString({ row: row, key: 'safety_json' })),
-        })),
+        .map((row) => {
+          const payload = decodeBodyProjectionPayload(
+            readString({ row: row, key: 'body_projection_json' }),
+          )
+          return {
+            pageId: decodePageId(readString({ row: row, key: 'page_id' })),
+            path: readString({ row: row, key: 'path' }),
+            baseHash: decodeHash(readString({ row: row, key: 'base_hash' })),
+            currentHash: decodeHash(readString({ row: row, key: 'current_hash' })),
+            pointer: payload.pointer,
+            sidecarIdentityProven: readBoolean({ row: row, key: 'sidecar_identity_proven' }),
+            ownWriteMaterializationIds: Schema.decodeSync(
+              Schema.parseJson(Schema.Array(Schema.String)),
+            )(readString({ row: row, key: 'own_write_materialization_ids_json' })),
+            safety: payload.safety,
+          }
+        }),
       tombstones: this.#readTombstones(rootId),
       queries: this.#readQuerySurfaces(rootId),
       pathClaims: this.#db
@@ -1922,6 +1933,7 @@ export class NotionSyncStore {
     assertSupportedSchemaVersion(this.#db)
 
     this.#db.exec(createStoreSchemaSql)
+    let replayProjections = false
     for (const statement of [
       `ALTER TABLE _nds_query_scan_checkpoint
        ADD COLUMN capped_at_limit INTEGER NOT NULL DEFAULT 0 CHECK (capped_at_limit IN (0, 1))`,
@@ -1974,12 +1986,39 @@ DROP TABLE _nds_capability;
 ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
 `)
     }
+    if (bodyPointerProjectionStoresProjectionPayload(this.#db) === false) {
+      this.#db.exec(`
+DROP TABLE _nds_body_pointer;
+CREATE TABLE _nds_body_pointer (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
+  page_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  base_hash TEXT NOT NULL,
+  current_hash TEXT NOT NULL,
+  sidecar_identity_proven INTEGER NOT NULL CHECK (sidecar_identity_proven IN (0, 1)),
+  own_write_materialization_ids_json TEXT NOT NULL,
+  body_projection_json TEXT NOT NULL,
+  observed_event_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (root_id, page_id)
+);
+`)
+      replayProjections = true
+    }
     this.#db
       .prepare(
         `INSERT OR IGNORE INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       )
-      .run(STORE_SCHEMA_VERSION, 'capability-data-source-scope', currentIso(this.#now))
+      .run(STORE_SCHEMA_VERSION, 'body-projection-payload', currentIso(this.#now))
+
+    if (replayProjections === true) {
+      for (const row of this.#db.prepare(`SELECT root_id FROM _nds_sync_root`).all()) {
+        this.#rebuildProjectionsInTransaction(
+          Schema.decodeUnknownSync(SyncRootIdSchema)(row.root_id),
+        )
+      }
+    }
   }
 
   #ensureRoot(rootId: SyncRootId): void {
@@ -2573,13 +2612,20 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
           )
 
         if (event.bodyPointer !== undefined) {
-          const safetyPayload = decodePayload({
-            event: event,
-            decode: decodeBodyProjectionSafetyPayload,
+          const path = decodeWorkspaceRelativePath(payload?.bodyPath ?? `page:${event.pageId}:body`)
+          const safety = event.bodyPointer.safety
+          const bodyProjectionPayload = encodeBodyProjectionPayload({
+            _tag: 'BodyProjectionPayload',
+            schemaVersion: 1,
+            pointer: event.bodyPointer,
+            safety,
+            materialization: {
+              path,
+              sidecarIdentityProven: payload?.sidecarIdentityProven === true,
+              ownWriteMaterializationIds: payload?.ownWriteMaterializationIds ?? [],
+            },
           })
-          const safety =
-            event.bodyPointer.safety ?? safetyPayload?.safety ?? defaultUnsafeBodySafety
-          const bodyHash = event.bodyPointer.bodyHash
+          const bodyHash = bodyPointerIdentityDigest(event.bodyPointer)
           this.#db
             .prepare(
               `INSERT INTO _nds_body_pointer (
@@ -2590,7 +2636,7 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
                  current_hash,
                  sidecar_identity_proven,
                  own_write_materialization_ids_json,
-                 safety_json,
+                 body_projection_json,
                  observed_event_id,
                  updated_at
                )
@@ -2600,19 +2646,19 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
                  current_hash = excluded.current_hash,
                  sidecar_identity_proven = excluded.sidecar_identity_proven,
                  own_write_materialization_ids_json = excluded.own_write_materialization_ids_json,
-                 safety_json = excluded.safety_json,
+                 body_projection_json = excluded.body_projection_json,
                  observed_event_id = excluded.observed_event_id,
                  updated_at = excluded.updated_at`,
             )
             .run(
               event.rootId,
               event.pageId,
-              payload?.bodyPath ?? `page:${event.pageId}:body`,
+              path,
               bodyHash,
               bodyHash,
               payload?.sidecarIdentityProven === true ? 1 : 0,
               stringifyJson(payload?.ownWriteMaterializationIds ?? []),
-              stringifyJson(encodeBodySafety(safety)),
+              stringifyJson(bodyProjectionPayload),
               event.eventId,
               currentIso(this.#now),
             )
@@ -2750,19 +2796,53 @@ ALTER TABLE _nds_capability_v6 RENAME TO _nds_capability;
             const match = /^page:(?<pageId>.+):body$/u.exec(event.surface)
             const pageId = match?.groups?.pageId
             if (pageId !== undefined) {
+              const currentBodyProjection = this.#db
+                .prepare(
+                  `SELECT body_projection_json
+                   FROM _nds_body_pointer
+                   WHERE root_id = ?
+                     AND page_id = ?`,
+                )
+                .get(event.rootId, decodePageId(pageId))
+              const currentBodyProjectionJson = readOptionalString({
+                row: currentBodyProjection ?? {},
+                key: 'body_projection_json',
+              })
+              const currentBodyProjectionPayload =
+                currentBodyProjectionJson === undefined
+                  ? undefined
+                  : decodeBodyProjectionPayload(currentBodyProjectionJson)
+              const bodyProjectionJson =
+                event.bodyPointer === undefined || currentBodyProjectionPayload === undefined
+                  ? undefined
+                  : stringifyJson(
+                      encodeBodyProjectionPayload({
+                        _tag: 'BodyProjectionPayload',
+                        schemaVersion: 1,
+                        pointer: event.bodyPointer,
+                        safety: event.bodyPointer.safety,
+                        materialization: currentBodyProjectionPayload.materialization,
+                      }),
+                    )
+              const projectionHash =
+                event.bodyPointer === undefined
+                  ? event.observedHash
+                  : bodyPointerIdentityDigest(event.bodyPointer)
               this.#db
                 .prepare(
                   `UPDATE _nds_body_pointer
                    SET base_hash = ?,
                        current_hash = ?,
+                       body_projection_json = COALESCE(?, body_projection_json),
                        observed_event_id = ?,
                        updated_at = ?
                    WHERE root_id = ?
                      AND page_id = ?`,
                 )
                 .run(
-                  event.observedHash,
-                  event.observedHash,
+                  projectionHash,
+                  projectionHash,
+                  bodyProjectionJson ?? null,
                   event.eventId,
                   currentIso(this.#now),
                   event.rootId,

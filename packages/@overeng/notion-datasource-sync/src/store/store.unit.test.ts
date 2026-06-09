@@ -6,15 +6,20 @@ import { DatabaseSync } from 'node:sqlite'
 import { Schema } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { bodySafetySnapshot } from '../body/adapter.ts'
 import { propertySurfaceKey } from '../core/canonical.ts'
 import { PatchPagePropertiesCommand } from '../core/commands.ts'
 import {
+  BodyPointer,
   CommandId,
   DataSourceId,
   Hash,
   NotionRequestId,
   PageId,
   PropertyId,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  evidenceBackedBodyIdentity,
 } from '../core/domain.ts'
 import {
   IdempotencyKey,
@@ -32,6 +37,24 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (value: string) => decode(Hash, `sha256:${value.repeat(64).slice(0, 64)}`)
+const bodyPointer = (input: {
+  readonly pageId: string
+  readonly bodyHash: string
+  readonly observedAt: string
+}) =>
+  Schema.encodeSync(BodyPointer)(
+    decode(BodyPointer, {
+      _tag: 'BodyPointer',
+      pageId: input.pageId,
+      identity: evidenceBackedBodyIdentity({
+        rendered: bodyDescriptorForDigest(decode(Hash, input.bodyHash)),
+        evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(input.bodyHash),
+        completeness: 'complete',
+      }),
+      observedAt: input.observedAt,
+      safety: bodySafetySnapshot(),
+    }),
+  )
 const rootId = decode(SyncRootId, 'root-1')
 const otherRootId = decode(SyncRootId, 'root-2')
 const pageId = decode(PageId, 'page-1')
@@ -233,20 +256,11 @@ const rowObserved = (overrides: {
     dataSourceId: overrides.dataSourceId ?? 'data-source-1',
     pageId: overrides.pageId ?? 'page-1',
     propertiesHash: overrides.propertiesHash ?? hash('9'),
-    bodyPointer: {
-      _tag: 'BodyPointer',
+    bodyPointer: bodyPointer({
       pageId: overrides.pageId ?? 'page-1',
       bodyHash: overrides.bodyHash ?? hash('b'),
       observedAt,
-      safety: {
-        truncated: false,
-        selection: 'safe',
-        wouldDeleteChildren: false,
-        syncedPageUnsupported: false,
-        adapterConflict: false,
-        adapterMutationSurfaces: ['body'],
-      },
-    },
+    }),
     inTrash: overrides.inTrash ?? false,
   })
 
@@ -479,6 +493,61 @@ describe('Notion sync SQLite store', () => {
       expect(queryColumns).toEqual(expect.arrayContaining(['capped_at_limit', 'contract_changed']))
     } finally {
       db.close()
+    }
+  })
+
+  it('migrates v6 body pointer projections to projection payload storage', () => {
+    const path = tempDatabasePath()
+    const db = new DatabaseSync(path, { readBigInts: true })
+    try {
+      db.exec(`
+        CREATE TABLE _nds_migration_history (
+          schema_version INTEGER PRIMARY KEY,
+          migration_name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        INSERT INTO _nds_migration_history (schema_version, migration_name, applied_at)
+        VALUES (6, 'capability-data-source-scope', '${observedAt}');
+        CREATE TABLE _nds_body_pointer (
+          root_id TEXT NOT NULL,
+          page_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          base_hash TEXT NOT NULL,
+          current_hash TEXT NOT NULL,
+          sidecar_identity_proven INTEGER NOT NULL CHECK (sidecar_identity_proven IN (0, 1)),
+          own_write_materialization_ids_json TEXT NOT NULL,
+          safety_json TEXT NOT NULL,
+          observed_event_id TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (root_id, page_id)
+        )
+      `)
+    } finally {
+      db.close()
+    }
+
+    const store = openNotionSyncStore({
+      path,
+      busyTimeoutMs: 2_500,
+      now: () => new Date(observedAt),
+    })
+    store.close()
+
+    const after = new DatabaseSync(path, { readBigInts: true })
+    try {
+      const bodyColumns = after
+        .prepare(`PRAGMA table_info(_nds_body_pointer)`)
+        .all()
+        .map((row) => String(row.name))
+      const latestMigration = after
+        .prepare(`SELECT MAX(schema_version) AS schema_version FROM _nds_migration_history`)
+        .get()
+
+      expect(bodyColumns).toContain('body_projection_json')
+      expect(bodyColumns).not.toContain('safety_json')
+      expect(Number(latestMigration?.schema_version)).toBe(7)
+    } finally {
+      after.close()
     }
   })
 

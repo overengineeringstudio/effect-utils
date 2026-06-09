@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { pageSurfaceKey, propertySurfaceKey, schemaSurfaceKey } from '../core/canonical.ts'
 import { PatchDataSourceSchemaCommand, RestorePageCommand } from '../core/commands.ts'
-import { AbsolutePath, PropertyName } from '../core/domain.ts'
+import { AbsolutePath, PropertyName, renderedBodyDigest } from '../core/domain.ts'
 import { SyncEvent } from '../core/events.ts'
 import {
   LocalWorkspacePort,
@@ -439,7 +439,7 @@ describe('notion datasource sync fake-service E2E harness', () => {
         dataSourceId: dataSource.dataSourceId,
         rowCount: queryPages.flatMap((page) => page.rows).length,
         terminal: queryPages.at(-1)?.hasMore === false,
-        bodyHash: body.bodyHash,
+        bodyHash: renderedBodyDigest(body.identity),
         localObservationCount: localObservations.length,
         outbox: storeFixture.store.readOutbox(testIds.rootId),
       }).toMatchObject({

@@ -10,6 +10,12 @@ import {
 import type { PageMarkdown } from '@overeng/notion-effect-schema'
 
 import { NotionBlocks, type BlockTree } from './blocks.ts'
+import {
+  fingerprintBodyEvidence,
+  makeRemoteBodyObservationEvidence,
+  type BodyEvidenceFingerprint,
+  type RemoteBodyObservationEvidence,
+} from './body-evidence.ts'
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { NotionMarkdown } from './markdown.ts'
@@ -24,6 +30,8 @@ export interface NotionBodyObservation {
   }
   readonly inventory: BlockInventory
   readonly completeness: BodyCompleteness
+  readonly evidence: RemoteBodyObservationEvidence
+  readonly evidenceFingerprint: BodyEvidenceFingerprint
 }
 
 /** Raised when a live body observation cannot find a stable page metadata window. */
@@ -61,6 +69,9 @@ export const observeFromSnapshots = Effect.fn('NotionBody.observeFromSnapshots')
   readonly pageId: string
   readonly markdown: PageMarkdown
   readonly tree: BlockTree
+  readonly observedAt?: string
+  readonly beforeLastEditedTime?: string
+  readonly afterLastEditedTime?: string
 }) {
   const renderedMarkdown = yield* NotionMarkdown.treeToMarkdown({ tree: opts.tree })
   const markdown = {
@@ -72,11 +83,26 @@ export const observeFromSnapshots = Effect.fn('NotionBody.observeFromSnapshots')
     entries: inventoryEntries(opts.tree),
     renderedMarkdown,
   }
+  const completeness = classifyBodyCompleteness({ markdown, inventory })
+  const observedAt = opts.observedAt ?? new Date().toISOString()
+  const evidence = makeRemoteBodyObservationEvidence({
+    pageId: opts.pageId,
+    observedAt,
+    beforeLastEditedTime: opts.beforeLastEditedTime ?? observedAt,
+    afterLastEditedTime: opts.afterLastEditedTime ?? observedAt,
+    endpointMarkdown: markdown.markdown,
+    blockTree: opts.tree,
+    renderedMarkdown,
+    inventoryEntries: inventory.entries,
+    completeness: completeness._tag,
+  })
   return {
     pageId: opts.pageId,
     markdown,
     inventory,
-    completeness: classifyBodyCompleteness({ markdown, inventory }),
+    completeness,
+    evidence,
+    evidenceFingerprint: fingerprintBodyEvidence(evidence),
   }
 })
 
@@ -101,7 +127,14 @@ const observeStable = (opts: {
     const after = yield* NotionPages.retrieve({ pageId: opts.pageId })
 
     if (before.last_edited_time === after.last_edited_time) {
-      return yield* observeFromSnapshots({ pageId: opts.pageId, markdown, tree })
+      return yield* observeFromSnapshots({
+        pageId: opts.pageId,
+        markdown,
+        tree,
+        observedAt: new Date().toISOString(),
+        beforeLastEditedTime: before.last_edited_time,
+        afterLastEditedTime: after.last_edited_time,
+      })
     }
 
     if (opts.attempt + 1 < NOTION_BODY_OBSERVATION_ATTEMPTS) {

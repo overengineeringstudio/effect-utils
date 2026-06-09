@@ -11,11 +11,20 @@ import type {
   ObserveBodyInput,
 } from '../core/commands.ts'
 import type {
+  BodyIdentity,
   BodyPointer,
   BodySafetySnapshot,
   Hash,
   NotionRequestId,
   PageId,
+} from '../core/domain.ts'
+import {
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  bodyDescriptorForMarkdown,
+  bodyIdentityEquals,
+  evidenceBackedBodyIdentity,
+  renderedBodyDigest,
 } from '../core/domain.ts'
 import { BodySyncError } from '../core/errors.ts'
 import { guardBodySafety, type BodyAdapterMutationSurface, type GuardName } from '../core/guards.ts'
@@ -83,13 +92,13 @@ export const evaluateBodyAdapterContract = (
       }
 }
 
-/** Seeded per-page state for the in-memory fake `PageBodySyncPort` — the current pointer, request id, safety snapshot, and optional remote-side body hash. */
+/** Seeded per-page state for the in-memory fake `PageBodySyncPort` — the current pointer, request id, safety snapshot, and optional remote-side identity. */
 export type FakeBodyPageState = {
   readonly pageId: PageId
   readonly pointer: BodyPointer
   readonly requestId: NotionRequestId
   readonly safety?: BodySafetySnapshot
-  readonly remoteBodyHash?: Hash
+  readonly remoteIdentity?: BodyIdentity
 }
 
 /** Configuration for `makeFakePageBodySyncPort`: a list of seeded per-page states. */
@@ -131,14 +140,17 @@ const conflictFromBlocked = ({
   _tag: 'BodyConflict',
   pageId: input.pageId,
   baseBodyPointer: 'baseBodyPointer' in input ? input.baseBodyPointer : input.currentBodyPointer,
-  localBodyHash: 'localBodyHash' in input ? input.localBodyHash : input.currentBodyPointer.bodyHash,
-  remoteBodyHash: page.remoteBodyHash ?? page.pointer.bodyHash,
+  localBodyHash:
+    'localBodyHash' in input
+      ? input.localBodyHash
+      : renderedBodyDigest(input.currentBodyPointer.identity),
+  remoteBodyHash: renderedBodyDigest(page.remoteIdentity ?? page.pointer.identity),
   reason: guard,
   message,
 })
 
 const safetyForPage = (page: FakeBodyPageState): BodySafetySnapshot =>
-  page.pointer.safety ?? page.safety ?? bodySafetySnapshot()
+  page.safety ?? page.pointer.safety ?? bodySafetySnapshot()
 
 const pointerWithSafety = ({
   pointer,
@@ -168,7 +180,7 @@ const conflictFromPointer = ({
   pageId,
   baseBodyPointer: pointer,
   localBodyHash,
-  remoteBodyHash: pointer.bodyHash,
+  remoteBodyHash: renderedBodyDigest(pointer.identity),
   reason: guard,
   message,
 })
@@ -236,7 +248,7 @@ export const withBodyAdapterContract = (port: PageBodySyncPortShape): PageBodySy
         conflictFromPointer({
           pageId: input.pageId,
           pointer: pointerWithSafety({ pointer: input.currentBodyPointer, safety }),
-          localBodyHash: input.currentBodyPointer.bodyHash,
+          localBodyHash: renderedBodyDigest(input.currentBodyPointer.identity),
           guard: contract.guard,
           message: contract.message,
         }),
@@ -305,8 +317,12 @@ export const makeFakePageBodySyncPort = ({
             })
           }
 
-          const remoteBodyHash = page.remoteBodyHash ?? page.pointer.bodyHash
-          if (input.baseBodyPointer.bodyHash !== remoteBodyHash) {
+          if (
+            bodyIdentityEquals(
+              input.baseBodyPointer.identity,
+              page.remoteIdentity ?? page.pointer.identity,
+            ) === false
+          ) {
             return conflictFromBlocked({
               page,
               input,
@@ -342,8 +358,12 @@ export const makeFakePageBodySyncPort = ({
             )
           }
 
-          const remoteBodyHash = page.remoteBodyHash ?? page.pointer.bodyHash
-          if (command.baseBodyPointer.bodyHash !== remoteBodyHash) {
+          if (
+            bodyIdentityEquals(
+              command.baseBodyPointer.identity,
+              page.remoteIdentity ?? page.pointer.identity,
+            ) === false
+          ) {
             return Effect.fail(
               new BodySyncError({
                 operation: 'push',
@@ -357,15 +377,23 @@ export const makeFakePageBodySyncPort = ({
             pointer: {
               _tag: 'BodyPointer',
               pageId: command.pageId,
-              bodyHash: command.nextBodyHash,
+              identity: evidenceBackedBodyIdentity({
+                rendered:
+                  command.localBodyContent === undefined
+                    ? bodyDescriptorForDigest(command.nextBodyHash)
+                    : bodyDescriptorForMarkdown(command.localBodyContent),
+                evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(command.nextBodyHash),
+                completeness: 'complete',
+              }),
               observedAt: page.pointer.observedAt,
+              safety,
             },
             safety,
           })
           byPageId.set(command.pageId, {
             ...page,
             pointer: bodyPointer,
-            remoteBodyHash: command.nextBodyHash,
+            remoteIdentity: bodyPointer.identity,
             safety,
           })
 

@@ -5,7 +5,16 @@ import { join } from 'node:path'
 
 import { Chunk, Effect, Schema, Stream } from 'effect'
 
-import { AbsolutePath, BodyPointer, Hash, PageId, WorkspaceRelativePath } from '../core/domain.ts'
+import {
+  AbsolutePath,
+  BodyPointer,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  evidenceBackedBodyIdentity,
+  Hash,
+  PageId,
+  WorkspaceRelativePath,
+} from '../core/domain.ts'
 import type { LocalWorkspacePortShape } from '../core/ports.ts'
 
 /** Decode an unknown value against a schema using sync semantics — throws on invalid input (test-only helper, mirrors `Schema.decodeUnknownSync(schema)(value)`). */
@@ -40,8 +49,20 @@ export const testBodyPointer = ({
     value: {
       _tag: 'BodyPointer',
       pageId,
-      bodyHash,
+      identity: evidenceBackedBodyIdentity({
+        rendered: bodyDescriptorForDigest(bodyHash),
+        evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(bodyHash),
+        completeness: 'complete',
+      }),
       observedAt: '2026-05-25T00:00:00.000Z',
+      safety: {
+        truncated: false,
+        selection: 'safe',
+        wouldDeleteChildren: false,
+        syncedPageUnsupported: false,
+        adapterConflict: false,
+        adapterMutationSurfaces: ['body'],
+      },
     },
   })
 

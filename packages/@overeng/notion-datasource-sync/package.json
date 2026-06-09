@@ -56,6 +56,7 @@
     "demo:provision": "NOTION_DATASOURCE_SYNC_LIVE=1 NOTION_DATASOURCE_SYNC_REQUIRED_CAPABILITIES=data_source_retrieve,data_source_query,data_source_metadata_update,page_retrieve,page_property_paginate,page_create vitest run src/e2e/live-notion.e2e.test.ts --config vitest.config.ts -t \"credentialed automated demo showcase\""
   },
   "dependencies": {
+    "@overeng/content-address": "workspace:^",
     "@overeng/notion-core": "workspace:^",
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
@@ -113,6 +114,7 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
       "packages/@overeng/notion-core",
       "packages/@overeng/notion-datasource-sync",
       "packages/@overeng/notion-effect-client",

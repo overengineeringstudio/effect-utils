@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 
 import { Effect, Layer, Schema, Stream } from 'effect'
 
+import type { ContentDescriptor } from '@overeng/content-address'
 import type { BodyCompleteness, BodyLossyReason } from '@overeng/notion-core'
 import {
   materializeBody,
@@ -20,6 +21,10 @@ import {
 import type { BodyLocalChangeInput, BodyRepairInput, ObserveBodyInput } from '../core/commands.ts'
 import {
   BodyPointer,
+  bodyIdentityEquals,
+  evidenceBackedBodyIdentity,
+  bodyEvidenceFingerprintFromContentDigest,
+  renderedBodyDigest,
   type BodySafetySnapshot,
   Hash,
   NotionRequestId,
@@ -79,6 +84,9 @@ export type NotionMdRemoteBodyLike = {
   readonly fidelity?: NotionBodyFidelityLike
   readonly bodyFidelity?: NotionBodyFidelityLike
   readonly completeness?: BodyCompleteness
+  readonly markdown?: string | undefined
+  readonly bodyDescriptor?: ContentDescriptor | undefined
+  readonly bodyEvidenceFingerprint?: string | undefined
 }
 
 const unknownBlockCauseFromLossyReasons = (
@@ -135,15 +143,37 @@ export const notionMdBodySafetySnapshot = (body: NotionMdRemoteBodyLike): BodySa
 const bodyPointerFromRemoteBody = (input: {
   readonly pageId: PageId
   readonly bodyHash: string
+  readonly markdown?: string | undefined
+  readonly bodyDescriptor?: ContentDescriptor | undefined
+  readonly bodyEvidenceFingerprint?: string | undefined
+  readonly completeness?: BodyCompleteness
   readonly safety?: BodySafetySnapshot
-}): typeof BodyPointer.Type => {
-  return BodyPointer.make({
-    _tag: 'BodyPointer',
-    pageId: input.pageId,
-    bodyHash: hashFromNotionMdDigest(input.bodyHash),
-    observedAt: observedAtNow(),
-    safety: input.safety ?? bodySafetySnapshot({ adapterMutationSurfaces: ['body'] }),
-  })
+}): Effect.Effect<typeof BodyPointer.Type, BodySyncError> => {
+  if (input.bodyDescriptor === undefined || input.bodyEvidenceFingerprint === undefined) {
+    return Effect.fail(
+      new BodySyncError({
+        operation: 'observe',
+        pageId: input.pageId,
+        message: 'Remote NotionMD body observation is missing evidence-backed identity',
+      }),
+    )
+  }
+  const completeness = input.completeness?._tag === 'lossy' ? 'lossy' : 'complete'
+  return Effect.succeed(
+    BodyPointer.make({
+      _tag: 'BodyPointer',
+      pageId: input.pageId,
+      identity: evidenceBackedBodyIdentity({
+        rendered: input.bodyDescriptor,
+        evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(
+          input.bodyEvidenceFingerprint,
+        ),
+        completeness,
+      }),
+      observedAt: observedAtNow(),
+      safety: input.safety ?? bodySafetySnapshot({ adapterMutationSurfaces: ['body'] }),
+    }),
+  )
 }
 
 const provideNotionMdGateway =
@@ -213,10 +243,14 @@ export const makeNotionMdPageBodySyncPort = ({
     observe: (input: ObserveBodyInput) =>
       observeRemoteBody({ pageId: input.pageId }).pipe(
         provideNotionMdGateway(gateway),
-        Effect.map((body) =>
+        Effect.flatMap((body) =>
           bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            markdown: body.markdown,
+            bodyDescriptor: body.bodyDescriptor,
+            bodyEvidenceFingerprint: body.bodyEvidenceFingerprint,
+            ...(body.completeness === undefined ? {} : { completeness: body.completeness }),
             safety: notionMdBodySafetySnapshot(body),
           }),
         ),
@@ -233,49 +267,58 @@ export const makeNotionMdPageBodySyncPort = ({
     planLocalChange: (input: BodyLocalChangeInput) =>
       observeRemoteBody({ pageId: input.pageId }).pipe(
         provideNotionMdGateway(gateway),
-        Effect.map((body) => {
-          const remote = bodyPointerFromRemoteBody({
+        Effect.flatMap((body) =>
+          bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            markdown: body.markdown,
+            bodyDescriptor: body.bodyDescriptor,
+            bodyEvidenceFingerprint: body.bodyEvidenceFingerprint,
+            ...(body.completeness === undefined ? {} : { completeness: body.completeness }),
             safety: notionMdBodySafetySnapshot(body),
-          })
-          const contract = evaluateBodyAdapterContract(remote.safety ?? bodySafetySnapshot())
+          }).pipe(
+            Effect.map((remote) => {
+              const contract = evaluateBodyAdapterContract(remote.safety)
 
-          if (contract._tag === 'blocked') {
-            return {
-              _tag: 'BodyConflict' as const,
-              pageId: input.pageId,
-              baseBodyPointer: input.baseBodyPointer,
-              localBodyHash: input.localBodyHash,
-              remoteBodyHash: remote.bodyHash,
-              reason: contract.guard,
-              message: contract.message,
-            }
-          }
+              if (contract._tag === 'blocked') {
+                return {
+                  _tag: 'BodyConflict' as const,
+                  pageId: input.pageId,
+                  baseBodyPointer: input.baseBodyPointer,
+                  localBodyHash: input.localBodyHash,
+                  remoteBodyHash: renderedBodyDigest(remote.identity),
+                  reason: contract.guard,
+                  message: contract.message,
+                }
+              }
 
-          if (remote.bodyHash !== input.baseBodyPointer.bodyHash) {
-            return {
-              _tag: 'BodyConflict' as const,
-              pageId: input.pageId,
-              baseBodyPointer: input.baseBodyPointer,
-              localBodyHash: input.localBodyHash,
-              remoteBodyHash: remote.bodyHash,
-              reason: 'StaleSurfaceBase' as const,
-              message: 'Local body base does not match the current NotionMD body hash',
-            }
-          }
+              if (bodyIdentityEquals(remote.identity, input.baseBodyPointer.identity) === false) {
+                return {
+                  _tag: 'BodyConflict' as const,
+                  pageId: input.pageId,
+                  baseBodyPointer: input.baseBodyPointer,
+                  localBodyHash: input.localBodyHash,
+                  remoteBodyHash: renderedBodyDigest(remote.identity),
+                  reason: 'StaleSurfaceBase' as const,
+                  message: 'Local body base does not match the current NotionMD body hash',
+                }
+              }
 
-          return {
-            _tag: 'BodyIntent' as const,
-            pageId: input.pageId,
-            baseBodyPointer: input.baseBodyPointer,
-            nextBodyHash: input.localBodyHash,
-            ...(input.localBodyPath === undefined ? {} : { localBodyPath: input.localBodyPath }),
-            ...(input.localBodyContent === undefined
-              ? {}
-              : { localBodyContent: input.localBodyContent }),
-          }
-        }),
+              return {
+                _tag: 'BodyIntent' as const,
+                pageId: input.pageId,
+                baseBodyPointer: input.baseBodyPointer,
+                nextBodyHash: input.localBodyHash,
+                ...(input.localBodyPath === undefined
+                  ? {}
+                  : { localBodyPath: input.localBodyPath }),
+                ...(input.localBodyContent === undefined
+                  ? {}
+                  : { localBodyContent: input.localBodyContent }),
+              }
+            }),
+          ),
+        ),
         Effect.mapError(
           (cause) =>
             new BodySyncError({
@@ -299,12 +342,16 @@ export const makeNotionMdPageBodySyncPort = ({
 
         const replaced = yield* replaceRemoteBodyVerified({
           pageId: command.pageId,
-          baseBodyHash: command.baseBodyPointer.bodyHash,
+          baseBodyHash: renderedBodyDigest(command.baseBodyPointer.identity),
           markdown: command.localBodyContent,
         }).pipe(provideNotionMdGateway(gateway))
-        const bodyPointer = bodyPointerFromRemoteBody({
+        const bodyPointer = yield* bodyPointerFromRemoteBody({
           pageId: command.pageId,
           bodyHash: replaced.bodyHash,
+          markdown: replaced.markdown,
+          bodyDescriptor: replaced.bodyDescriptor,
+          bodyEvidenceFingerprint: replaced.bodyEvidenceFingerprint,
+          ...(replaced.completeness === undefined ? {} : { completeness: replaced.completeness }),
           safety: notionMdBodySafetySnapshot(replaced),
         })
 
@@ -365,10 +412,14 @@ export const makeNotionMdPageBodySyncPort = ({
     repair: (input: BodyRepairInput) =>
       observeRemoteBody({ pageId: input.pageId }).pipe(
         provideNotionMdGateway(gateway),
-        Effect.map((body) =>
+        Effect.flatMap((body) =>
           bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            markdown: body.markdown,
+            bodyDescriptor: body.bodyDescriptor,
+            bodyEvidenceFingerprint: body.bodyEvidenceFingerprint,
+            ...(body.completeness === undefined ? {} : { completeness: body.completeness }),
             safety: notionMdBodySafetySnapshot(body),
           }),
         ),
@@ -462,7 +513,7 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
         const sidecar = makeFilesystemWorkspaceSidecar({
           pageId: plan.pageId,
           path: plan.path,
-          bodyHash: plan.bodyPointer.bodyHash,
+          bodyHash: renderedBodyDigest(plan.bodyPointer.identity),
           materializedContentHash: hashFromNotionMdDigest(materialized.fileContentHash),
         })
         yield* writeJsonFile({
@@ -483,7 +534,7 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
           _tag: 'MaterializeResult' as const,
           pageId: plan.pageId,
           path: plan.path,
-          bodyHash: plan.bodyPointer.bodyHash,
+          bodyHash: renderedBodyDigest(plan.bodyPointer.identity),
           ownWriteSuppressionToken: sidecar.ownWriteSuppressionToken,
         }
       }),

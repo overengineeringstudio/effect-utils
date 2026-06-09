@@ -1,7 +1,12 @@
 import { Effect, Schema } from 'effect'
 
+import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-address'
 import type { BodyCompleteness } from '@overeng/notion-core'
-import type { Sha256Digest } from '@overeng/notion-effect-client'
+import type {
+  BodyEvidenceFingerprint,
+  RemoteBodyObservationEvidence,
+  Sha256Digest,
+} from '@overeng/notion-effect-client'
 
 import { NmdFrontmatterError, NmdRemoteBodyLossyError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
@@ -28,6 +33,9 @@ export interface NotionMdBodySnapshot {
   readonly pageId: string
   readonly markdown: string
   readonly bodyHash: Sha256Digest
+  readonly bodyDescriptor: ContentDescriptor
+  readonly bodyEvidence?: RemoteBodyObservationEvidence
+  readonly bodyEvidenceFingerprint?: BodyEvidenceFingerprint
   readonly completeness?: BodyCompleteness
 }
 
@@ -44,6 +52,9 @@ export interface NotionMdVerifiedRemoteReplaceResult {
   readonly pageId: string
   readonly previousBodyHash: Sha256Digest
   readonly bodyHash: Sha256Digest
+  readonly bodyDescriptor: ContentDescriptor
+  readonly bodyEvidence?: RemoteBodyObservationEvidence
+  readonly bodyEvidenceFingerprint?: BodyEvidenceFingerprint
   readonly markdown: string
   readonly completeness?: BodyCompleteness
 }
@@ -63,6 +74,18 @@ const remoteBodySnapshot = (pulled: PullPageResult): NotionMdBodySnapshot => {
     pageId: pulled.page.id,
     markdown,
     bodyHash: sha256Digest(markdown),
+    bodyDescriptor: descriptorForUtf8({
+      value: markdown,
+      mediaType: 'text/markdown; charset=utf-8',
+      codec: 'notion-enhanced-markdown',
+      schemaVersion: 1,
+    }),
+    ...(pulled.markdown.body_evidence === undefined
+      ? {}
+      : { bodyEvidence: pulled.markdown.body_evidence }),
+    ...(pulled.markdown.body_evidence_fingerprint === undefined
+      ? {}
+      : { bodyEvidenceFingerprint: pulled.markdown.body_evidence_fingerprint }),
     ...(pulled.markdown.completeness === undefined
       ? {}
       : { completeness: pulled.markdown.completeness }),
@@ -116,6 +139,12 @@ export const readLocalBody = (opts: {
       pageId,
       markdown: parsed.body,
       bodyHash: sha256Digest(parsed.body),
+      bodyDescriptor: descriptorForUtf8({
+        value: parsed.body,
+        mediaType: 'text/markdown; charset=utf-8',
+        codec: 'notion-enhanced-markdown',
+        schemaVersion: 1,
+      }),
       fileContentHash: sha256Digest(content),
     }
   })
@@ -172,6 +201,11 @@ export const replaceRemoteBodyVerified = (opts: {
       pageId: opts.pageId,
       previousBodyHash: current.bodyHash,
       bodyHash: updated.bodyHash,
+      bodyDescriptor: updated.bodyDescriptor,
+      ...(updated.bodyEvidence === undefined ? {} : { bodyEvidence: updated.bodyEvidence }),
+      ...(updated.bodyEvidenceFingerprint === undefined
+        ? {}
+        : { bodyEvidenceFingerprint: updated.bodyEvidenceFingerprint }),
       markdown: updated.markdown,
       ...(updated.completeness === undefined ? {} : { completeness: updated.completeness }),
     }

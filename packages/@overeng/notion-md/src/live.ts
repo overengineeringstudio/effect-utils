@@ -132,6 +132,8 @@ export const remoteMarkdownFromBodyObservation = (
     endpoint_markdown: normalizeMarkdownLineEndings(body.markdown.markdown),
     truncated: body.markdown.truncated,
     unknown_block_ids: body.markdown.unknownBlockIds,
+    body_evidence: body.evidence,
+    body_evidence_fingerprint: body.evidenceFingerprint,
     completeness:
       renderedMarkdown === undefined
         ? {

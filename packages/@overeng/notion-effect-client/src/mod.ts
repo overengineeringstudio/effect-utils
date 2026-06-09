@@ -33,6 +33,14 @@ export {
   NotionBodyObservationChangedError,
   observeFromSnapshots as observeNotionBodyFromSnapshots,
 } from './body-observation.ts'
+export type { BodyEvidenceFingerprint, RemoteBodyObservationEvidence } from './body-evidence.ts'
+export {
+  BodyEvidenceFingerprint as BodyEvidenceFingerprintSchema,
+  descriptorDigest as bodyEvidenceDescriptorDigest,
+  fingerprintBodyEvidence,
+  makeRemoteBodyObservationEvidence,
+  RemoteBodyObservationEvidence as RemoteBodyObservationEvidenceSchema,
+} from './body-evidence.ts'
 // Comments
 export type { CommentParentInput, CreateCommentOptions, ListCommentsOptions } from './comments.ts'
 export { NotionComments } from './comments.ts'

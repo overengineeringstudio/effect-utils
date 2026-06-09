@@ -15,6 +15,7 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **A07 Live verification:** Claims about Notion behavior require representative live E2E tests in an isolated temporary Notion workspace.
 - **A08 Notion drift:** Notion API behavior, connection capabilities, and workspace permissions may differ by API version, workspace, and integration configuration.
 - **A09 Local replica:** The user-facing local data API is a separate SQLite replica file, not the internal sync-control store.
+- **A10 Clean body identity break:** Body sync may break existing local SQLite control-plane stores when the body identity model changes; users re-establish sync instead of relying on compatibility shims.
 
 ## Cross-cutting Requirements
 
@@ -44,12 +45,14 @@ These constraints apply across every sub-system and stay single-sourced here.
 - **VERIFY-R07 Live Notion coverage:** Supported Notion API semantics must have isolated live E2E coverage with creation, mutation, verification, and cleanup.
 - **VERIFY-R08 Guard matrix:** Every problematic edge case must map to a named guard, expected behavior, and at least one unit, fake integration, SQLite, filesystem, daemon, or live E2E test.
 - **VERIFY-R09 No-data-loss acceptance:** Bidirectional safety tests must prove the full chain behind XC-R04: local capture before materialization, explicit base/local/remote planning, guarded outbox writes, read-after-write settlement, guarded materialization, rebuild/replay preservation, and remote mutation-ledger assertions. A correct final projection is insufficient if an unsafe local overwrite or remote mutation was attempted.
+- **VERIFY-R10 Body identity replay:** Body sync tests must prove that remote observation, stale-base rejection, body-push settlement, and projection replay preserve typed body identities rather than collapsing them into generic hashes.
 
 ## Acceptable Tradeoffs
 
 Only cross-cutting tradeoffs live here; subsystem-specific tradeoffs live in their owning sub-system slices.
 
 - **VERIFY-T01 Live test cost:** Live E2E tests may be slower and require secrets because mocks cannot prove Notion API edge semantics.
+- **STORE-T02 Local store reset for body identity:** The implementation may reject or require rebuilding old local stores instead of decoding legacy body hash/safety payload shapes. This removes compatibility branches from the active sync model at the cost of one-time local re-establishment.
 
 ## Sub-system trace index
 

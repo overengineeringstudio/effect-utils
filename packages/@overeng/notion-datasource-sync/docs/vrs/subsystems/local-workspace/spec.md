@@ -52,6 +52,6 @@ Path claims, not file names, are the source of truth. Renames append path-claim 
 
 Datasource-sync sidecars under `.notion-datasource-sync/pages/*.json` are owned
 by the local workspace subsystem. They capture datasource path identity,
-own-write suppression tokens, and last materialized body hashes for replica
+own-write suppression tokens, and last materialized body identities for replica
 planning. They are separate from NotionMD's `.notion-md/sync/{page_id}.json`
 clean-base state, which remains owned by `@overeng/notion-md`.

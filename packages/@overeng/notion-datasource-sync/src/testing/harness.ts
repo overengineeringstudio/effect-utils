@@ -34,6 +34,8 @@ import {
 } from '../core/commands.ts'
 import {
   BodyPointer,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
   CommandId,
   DatabaseId,
   DataSourceId,
@@ -43,6 +45,7 @@ import {
   PropertyId,
   PropertyName,
   type BodyPointer as BodyPointerType,
+  evidenceBackedBodyIdentity,
   type CapabilityName,
   type DataSourceSnapshot,
   type DataSourceViewSnapshot,
@@ -404,8 +407,13 @@ export const bodyPointer = (bodyHash: HashType = hash('body-a')): BodyPointerTyp
     value: {
       _tag: 'BodyPointer',
       pageId: testIds.pageId,
-      bodyHash,
+      identity: evidenceBackedBodyIdentity({
+        rendered: bodyDescriptorForDigest(bodyHash),
+        evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(bodyHash),
+        completeness: 'complete',
+      }),
       observedAt: fixedObservedAt,
+      safety: bodySafetySnapshot(),
     },
   })
 
@@ -551,6 +559,7 @@ export const buildPlannerSnapshot = (
       path: 'row--page-1.nmd',
       baseHash: hash('body-a'),
       currentHash: hash('body-a'),
+      pointer: bodyPointer(hash('body-a')),
       sidecarIdentityProven: true,
       ownWriteMaterializationIds: [],
       safety: bodySafetySnapshot(),

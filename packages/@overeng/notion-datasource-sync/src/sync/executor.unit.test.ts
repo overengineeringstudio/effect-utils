@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { bodySurfaceKey, pageSurfaceKey } from '../core/canonical.ts'
 import { RestorePageCommand } from '../core/commands.ts'
+import { renderedBodyDigest } from '../core/domain.ts'
 import {
   NotionDataSourceGateway,
   PageBodySyncPort,
@@ -223,7 +224,7 @@ describe('outbox executor', () => {
       intentEventId: testIds.intentEventId,
       surface: bodySurfaceKey(testIds.pageId),
       command,
-      baseHash: basePointer.bodyHash,
+      baseHash: renderedBodyDigest(basePointer.identity),
       desiredHash: nextBodyHash,
       preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'BodyAdapterConflict'],
     }

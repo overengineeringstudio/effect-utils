@@ -1,5 +1,11 @@
 import { Schema } from 'effect'
 
+import {
+  ContentDescriptor,
+  ContentDigest,
+  descriptorForUtf8,
+  type ContentDigest as ContentDigestType,
+} from '@overeng/content-address'
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import {
   PageId as SchemaPageId,
@@ -87,12 +93,24 @@ export const NotionRequestId = Schema.NonEmptyTrimmedString.pipe(
 export type NotionRequestId = typeof NotionRequestId.Type
 
 /** SHA-256 content hash used as a stable identity for Notion objects and local artifacts (format: `sha256:<hex64>`). */
-export const Hash = Schema.String.pipe(
-  Schema.pattern(/^sha256:[a-f0-9]{64}$/i),
+export const Hash = ContentDigest.pipe(
   Schema.brand('NotionDatasourceSync.Hash'),
   Schema.annotations({ identifier: 'NotionDatasourceSync.Hash' }),
 )
 export type Hash = typeof Hash.Type
+
+/** Body-scoped evidence fingerprint derived from a full remote body observation envelope. */
+export const BodyEvidenceFingerprint = ContentDigest.pipe(
+  Schema.brand('NotionDatasourceSync.BodyEvidenceFingerprint'),
+  Schema.annotations({ identifier: 'NotionDatasourceSync.BodyEvidenceFingerprint' }),
+)
+export type BodyEvidenceFingerprint = typeof BodyEvidenceFingerprint.Type
+
+/** Completeness classification carried by a remote body evidence-backed identity. */
+export const BodyCompletenessEvidence = Schema.Literal('complete', 'lossy').annotations({
+  identifier: 'NotionDatasourceSync.BodyCompletenessEvidence',
+})
+export type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type
 
 /** Branded absolute filesystem path to the workspace root or a local artifact. */
 export const AbsolutePath = Schema.NonEmptyTrimmedString.pipe(
@@ -275,14 +293,98 @@ export const BodySafetySnapshot = Schema.Struct({
 }).annotations({ identifier: 'NotionDatasourceSync.BodySafetySnapshot' })
 export type BodySafetySnapshot = typeof BodySafetySnapshot.Type
 
-/** Stable reference to a body observation: page ID + content hash + observation time + optional safety assessment. */
+/** Body identity derived only from rendered Markdown bytes. */
+export const RenderedBodyIdentity = Schema.TaggedStruct('RenderedBodyIdentity', {
+  rendered: ContentDescriptor,
+}).annotations({ identifier: 'NotionDatasourceSync.RenderedBodyIdentity' })
+export type RenderedBodyIdentity = typeof RenderedBodyIdentity.Type
+
+/** Body identity derived from a full remote observation evidence envelope. */
+export const EvidenceBackedBodyIdentity = Schema.TaggedStruct('EvidenceBackedBodyIdentity', {
+  evidenceFingerprint: BodyEvidenceFingerprint,
+  rendered: ContentDescriptor,
+  completeness: BodyCompletenessEvidence,
+}).annotations({ identifier: 'NotionDatasourceSync.EvidenceBackedBodyIdentity' })
+export type EvidenceBackedBodyIdentity = typeof EvidenceBackedBodyIdentity.Type
+
+/** Typed page-body identity used for body stale-base guards, settlement, replay, and telemetry. */
+export const BodyIdentity = Schema.Union(
+  RenderedBodyIdentity,
+  EvidenceBackedBodyIdentity,
+).annotations({
+  identifier: 'NotionDatasourceSync.BodyIdentity',
+})
+export type BodyIdentity = typeof BodyIdentity.Type
+
+/** Stable reference to a body observation: page ID + typed identity + observation time + safety assessment. */
 export const BodyPointer = Schema.TaggedStruct('BodyPointer', {
   pageId: PageId,
-  bodyHash: Hash,
+  identity: BodyIdentity,
   observedAt: Schema.DateTimeUtc,
-  safety: Schema.optional(BodySafetySnapshot),
+  safety: BodySafetySnapshot,
 }).annotations({ identifier: 'NotionDatasourceSync.BodyPointer' })
 export type BodyPointer = typeof BodyPointer.Type
+
+const decodeHash = Schema.decodeUnknownSync(Hash)
+const decodeBodyEvidenceFingerprint = Schema.decodeUnknownSync(BodyEvidenceFingerprint)
+const decodeContentDescriptor = Schema.decodeUnknownSync(ContentDescriptor)
+
+export const hashFromContentDigest = (digest: ContentDigestType | string): Hash =>
+  decodeHash(digest)
+
+export const bodyEvidenceFingerprintFromContentDigest = (
+  digest: ContentDigestType | string,
+): BodyEvidenceFingerprint => decodeBodyEvidenceFingerprint(digest)
+
+export const bodyDescriptorForMarkdown = (markdown: string): typeof ContentDescriptor.Type =>
+  descriptorForUtf8({
+    value: markdown,
+    mediaType: 'text/markdown; charset=utf-8',
+    codec: 'notion-enhanced-markdown',
+    schemaVersion: 1,
+  })
+
+export const bodyDescriptorForDigest = (digest: Hash): typeof ContentDescriptor.Type =>
+  decodeContentDescriptor({
+    _tag: 'ContentDescriptor',
+    digest,
+    byteLength: 0,
+    mediaType: 'text/markdown; charset=utf-8',
+    codec: 'notion-enhanced-markdown',
+    schemaVersion: 1,
+  })
+
+export const renderedBodyIdentity = (descriptor: typeof ContentDescriptor.Type): BodyIdentity =>
+  RenderedBodyIdentity.make({
+    _tag: 'RenderedBodyIdentity',
+    rendered: descriptor,
+  })
+
+export const evidenceBackedBodyIdentity = (opts: {
+  readonly rendered: typeof ContentDescriptor.Type
+  readonly evidenceFingerprint: BodyEvidenceFingerprint
+  readonly completeness: BodyCompletenessEvidence
+}): BodyIdentity =>
+  EvidenceBackedBodyIdentity.make({
+    _tag: 'EvidenceBackedBodyIdentity',
+    rendered: opts.rendered,
+    evidenceFingerprint: opts.evidenceFingerprint,
+    completeness: opts.completeness,
+  })
+
+export const bodyIdentityDigest = (identity: BodyIdentity): Hash =>
+  identity._tag === 'EvidenceBackedBodyIdentity'
+    ? hashFromContentDigest(identity.evidenceFingerprint)
+    : hashFromContentDigest(identity.rendered.digest)
+
+export const renderedBodyDigest = (identity: BodyIdentity): Hash =>
+  hashFromContentDigest(identity.rendered.digest)
+
+export const bodyIdentityEquals = (left: BodyIdentity, right: BodyIdentity): boolean =>
+  bodyIdentityDigest(left) === bodyIdentityDigest(right)
+
+export const bodyPointerIdentityDigest = (pointer: BodyPointer): Hash =>
+  bodyIdentityDigest(pointer.identity)
 
 /** Lightweight per-row snapshot returned within a query page; contains identity and change-detection fields without full property values. */
 export const RowPageSnapshot = Schema.TaggedStruct('RowPageSnapshot', {

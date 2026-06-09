@@ -204,6 +204,113 @@ describe('NotionBody.observeFromSnapshots', () => {
       'divider',
       'paragraph',
     ])
+    expect(observed.evidence).toMatchObject({
+      _tag: 'RemoteBodyObservationEvidence',
+      schemaVersion: 1,
+      pageId: '00000000-0000-4000-8000-000000000020',
+      endpointMarkdown: {
+        _tag: 'ContentDescriptor',
+        mediaType: 'text/markdown; charset=utf-8',
+        codec: 'notion-enhanced-markdown',
+        schemaVersion: 1,
+      },
+      blockInventory: {
+        _tag: 'ContentDescriptor',
+        mediaType: 'application/json',
+        codec: 'canonical-json',
+        schemaVersion: 1,
+      },
+      completeness: 'lossy',
+    })
+    expect(observed.evidenceFingerprint).toMatch(/^sha256:[a-f0-9]{64}$/)
+  })
+
+  it('changes evidence fingerprint for same rendered body with different endpoint evidence', async () => {
+    const tree: BlockTree = [
+      {
+        block: block({
+          id: '00000000-0000-4000-8000-000000000001',
+          type: 'paragraph',
+          payload: { rich_text: text('Same body') },
+        }),
+        children: [],
+      },
+    ]
+
+    const base = {
+      pageId: '00000000-0000-4000-8000-000000000020',
+      tree,
+      observedAt: '2026-06-09T00:00:00.000Z',
+      beforeLastEditedTime: '2026-06-09T00:00:00.000Z',
+      afterLastEditedTime: '2026-06-09T00:00:00.000Z',
+    } as const
+    const left = await Effect.runPromise(
+      observeFromSnapshots({
+        ...base,
+        markdown: {
+          object: 'page_markdown',
+          markdown: 'Same body',
+          truncated: false,
+          unknown_block_ids: [],
+        },
+      }),
+    )
+    const right = await Effect.runPromise(
+      observeFromSnapshots({
+        ...base,
+        markdown: {
+          object: 'page_markdown',
+          markdown: 'Same body\n',
+          truncated: false,
+          unknown_block_ids: [],
+        },
+      }),
+    )
+
+    expect(left.inventory.renderedMarkdown).toBe(right.inventory.renderedMarkdown)
+    expect(left.evidence.renderedBody.digest).toBe(right.evidence.renderedBody.digest)
+    expect(left.evidenceFingerprint).not.toBe(right.evidenceFingerprint)
+  })
+
+  it('keeps evidence fingerprint stable across observation timestamps', async () => {
+    const tree: BlockTree = [
+      {
+        block: block({
+          id: '00000000-0000-4000-8000-000000000001',
+          type: 'paragraph',
+          payload: { rich_text: text('Stable body') },
+        }),
+        children: [],
+      },
+    ]
+    const base = {
+      pageId,
+      markdown: {
+        object: 'page_markdown' as const,
+        markdown: 'Stable body',
+        truncated: false,
+        unknown_block_ids: [],
+      },
+      tree,
+      beforeLastEditedTime: '2026-06-09T00:00:00.000Z',
+      afterLastEditedTime: '2026-06-09T00:00:00.000Z',
+    }
+
+    const left = await Effect.runPromise(
+      observeFromSnapshots({
+        ...base,
+        observedAt: '2026-06-09T00:00:00.000Z',
+      }),
+    )
+    const right = await Effect.runPromise(
+      observeFromSnapshots({
+        ...base,
+        observedAt: '2026-06-09T00:01:00.000Z',
+      }),
+    )
+
+    expect(left.evidence.observedAt.toString()).not.toBe(right.evidence.observedAt.toString())
+    expect(left.evidenceFingerprint).toBe(right.evidenceFingerprint)
   })
 
   it('classifies endpoint Markdown missing heading children as lossy', async () => {
