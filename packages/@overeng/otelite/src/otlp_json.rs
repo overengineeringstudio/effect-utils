@@ -20,14 +20,15 @@ pub fn service_name(resource: &Value) -> String {
 }
 
 /// Flatten an OTLP `attributes` array to a `Record<string,string>` (uniform
-/// with span-row attrs; numeric/bool values are stringified, complex dropped).
+/// with span-row attrs). Numeric/bool values are stringified; non-scalar values
+/// (array/kvlist/bytes) flatten to `""` — matching the span path and spec, so
+/// the key is still present for the M9 Schema.
 pub fn flatten_attrs(attrs: Option<&Value>) -> Map<String, Value> {
     let mut m = Map::new();
     for kv in attrs.and_then(Value::as_array).into_iter().flatten() {
-        if let (Some(k), Some(val)) = (kv.get("key").and_then(Value::as_str), kv.get("value")) {
-            if let Some(s) = scalar_string(val) {
-                m.insert(k.to_string(), Value::String(s));
-            }
+        if let Some(k) = kv.get("key").and_then(Value::as_str) {
+            let s = kv.get("value").and_then(scalar_string).unwrap_or_default();
+            m.insert(k.to_string(), Value::String(s));
         }
     }
     m
