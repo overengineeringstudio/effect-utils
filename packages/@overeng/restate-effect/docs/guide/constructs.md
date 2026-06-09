@@ -173,6 +173,13 @@ A durable promise supports `get` / `resolve` / `reject` / `peek` /
 `getDescriptor`. A `reject` arrives terminally and can drive a `'rejected'` State
 path observable via a query.
 
+The durable-promise **key** (`'decision'` above) is a free-form string **you**
+choose to name the rendezvous; it is **distinct** from the signal handler name
+(`approve`). The `run` handler awaits `Approval.get('decision')` and the `approve`
+signal resolves `Approval.resolve('decision', …)` — they meet because they use the
+**same key string**, not because the handler is named `approve`. Pick any key; just
+keep the awaiting `get` and the resolving `resolve` on the same one.
+
 ### The Workflow ingress surface
 
 The Workflow ingress surface is `workflowSubmit` / `workflowAttach` /

@@ -103,6 +103,14 @@ Serve it (a mixed `services` array can hold Services, Objects, and Workflows on 
 endpoint), and call it. See [`examples/04-endpoint.ts`](../../examples/04-endpoint.ts)
 and [`examples/06-ingress-client.ts`](../../examples/06-ingress-client.ts).
 
+`serve` needs `NodeRuntime.runMain` to map SIGTERM → graceful shutdown, which comes
+from the `@effect/platform-node` **peer dependency** — install it before the first
+`serve` (the binding keeps platform deps off its own surface):
+
+```sh
+pnpm add @effect/platform-node
+```
+
 ```ts
 import { NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'

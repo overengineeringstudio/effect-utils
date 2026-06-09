@@ -8,7 +8,7 @@ deliveries that are wedged, and cancel/kill/retry the stuck ones. The opt-in
 `./admin` subpath wraps the `restate-server` **admin REST API** as a typed
 `RestateAdmin` service. The worked recipe is
 [`examples/13-admin-operations.ts`](../../examples/13-admin-operations.ts), verified
-end-to-end by [`src/admin.integration.test.ts`](../../src/admin.integration.test.ts).
+end-to-end by [`src/admin.integration.test.ts`](../../src/admin/admin.integration.test.ts).
 
 > **Trust boundary — read this first.** The admin API is **unauthenticated by
 > default** and lets anyone who can reach it cancel/kill invocations, mutate State,
