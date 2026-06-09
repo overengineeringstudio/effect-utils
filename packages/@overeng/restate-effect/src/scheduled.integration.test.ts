@@ -189,9 +189,6 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
     const s = await waitUntil(Basic, key, (st) => st.iteration >= 4)
     expect(s.iteration).toBeGreaterThanOrEqual(4)
     expect(s.status).toBe('running')
-    /* Exactly-once: the journaled counter equals the iteration count (no cycle ran
-     * twice or was skipped — proven against the durable counter in State). */
-    expect((await live(harness().stateOf(BasicDomain, key).get('n'))) ?? 0).toBe(s.iteration)
     await stop(Basic, key)
     const stopped = await waitUntil(Basic, key, (st) => st.status === 'stopped')
     expect(stopped.status).toBe('stopped')
@@ -199,6 +196,17 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
     const a = stopped.iteration
     await liveSleep(400)
     expect((await statusOf(Basic, key)).iteration).toBe(a)
+    /* Exactly-once, checked at QUIESCENCE. The control-plane `iteration` is bumped
+     * (Scheduled.ts) BEFORE the cycle body bumps the domain `n`, so while the loop
+     * RUNS the two counters are a moving target and lead/lag each other by up to one
+     * cycle. The `iteration === n` invariant (no cycle ran twice or was skipped) is
+     * only well-defined once the loop is QUIESCENT: after stop the in-flight cycle
+     * completes under the per-key write lock and the next armed send no-ops, so both
+     * counters are FROZEN and equal. Reading `n` here (against the stabilized
+     * `iteration` `a`) makes the comparison atomic — sampling both mid-flight against
+     * a still-advancing loop is an inherently racy invariant and was the source of an
+     * intermittent `n !== iteration` flake under CPU contention. */
+    expect((await live(harness().stateOf(BasicDomain, key).get('n'))) ?? 0).toBe(a)
   }, 40_000)
 
   it('maxIterations: runs exactly N cycles, then completed', async () => {
