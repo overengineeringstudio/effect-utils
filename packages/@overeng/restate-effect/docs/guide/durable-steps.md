@@ -10,7 +10,12 @@ it instead of re-executing. Put any side effect or raw nondeterminism inside a
 verbatim.
 
 ```ts
-const id = yield* Restate.run('gen-id', Effect.sync(() => crypto.randomUUID()))
+const id =
+  yield *
+  Restate.run(
+    'gen-id',
+    Effect.sync(() => crypto.randomUUID()),
+  )
 ```
 
 - The `name` is **load-bearing** for trace identity and journal labeling — prefer
@@ -45,23 +50,32 @@ caller crash recovers the result rather than re-issuing); `Restate.send` is one-
 
 ```ts
 // request/response to another Service, typed from `Greeter`'s contract
-const greeting = yield* Restate.call(Greeter, 'greet', { name }).pipe(Effect.orDie)
+const greeting = yield * Restate.call(Greeter, 'greet', { name }).pipe(Effect.orDie)
 // one-way send; the idempotency key is read off `requestId` automatically
-yield* Restate.send(Notifier, 'notify', { requestId: `welcome-${name}`, body: greeting.message }).pipe(Effect.orDie)
+yield *
+  Restate.send(Notifier, 'notify', { requestId: `welcome-${name}`, body: greeting.message }).pipe(
+    Effect.orDie,
+  )
 // a delayed one-way send — a durable, fault-tolerant timer
-yield* Restate.send(Notifier, 'notify', { requestId: `reminder-${name}`, body: 'still there?' }, { delayMillis: 60_000 }).pipe(Effect.orDie)
+yield *
+  Restate.send(
+    Notifier,
+    'notify',
+    { requestId: `reminder-${name}`, body: 'still there?' },
+    { delayMillis: 60_000 },
+  ).pipe(Effect.orDie)
 ```
 
 The full surface on the `Restate` namespace:
 
-| Combinator | Target | Shape |
-| --- | --- | --- |
-| `Restate.call` | Service | request/response |
-| `Restate.send` | Service | one-way (optionally `{ delayMillis }`) |
-| `Restate.objectClient` | Virtual Object | request/response (keyed) |
-| `Restate.objectSendClient` | Virtual Object | one-way (keyed) |
-| `Restate.workflowClient` | Workflow | signal/query |
-| `Restate.workflowSubmit` | Workflow | submit the `run` |
+| Combinator                 | Target         | Shape                                  |
+| -------------------------- | -------------- | -------------------------------------- |
+| `Restate.call`             | Service        | request/response                       |
+| `Restate.send`             | Service        | one-way (optionally `{ delayMillis }`) |
+| `Restate.objectClient`     | Virtual Object | request/response (keyed)               |
+| `Restate.objectSendClient` | Virtual Object | one-way (keyed)                        |
+| `Restate.workflowClient`   | Workflow       | signal/query                           |
+| `Restate.workflowSubmit`   | Workflow       | submit the `run`                       |
 
 These require `RestateContext` (handler-only) and carry a typed `RestateError`.
 
@@ -95,12 +109,12 @@ import { Awakeable } from '@overeng/restate-effect'
 const Payload = Schema.Struct({ token: Schema.String })
 
 // in a handler:
-const { id, promise } = yield* Awakeable.make(Payload)
-yield* Waiter.set('awakeableId', id) // persist `id`, hand it to the external system
-const payment = yield* promise // durably suspends until resolved
+const { id, promise } = yield * Awakeable.make(Payload)
+yield * Waiter.set('awakeableId', id) // persist `id`, hand it to the external system
+const payment = yield * promise // durably suspends until resolved
 
 // from ingress (or another handler):
-yield* ingressResolveAwakeable(Payload, id, { token: 'ok' })
+yield * ingressResolveAwakeable(Payload, id, { token: 'ok' })
 ```
 
 `Awakeable.make` returns `{ id, promise, descriptor }`. The `id` is branded and
@@ -117,12 +131,14 @@ durable promises (`DurablePromise.for(S).getDescriptor`), in-handler calls
 [`examples/05-determinism.ts`](../../examples/05-determinism.ts) (`awakeableRaceExample`).
 
 ```ts
-const { id, promise, descriptor } = yield* Awakeable.make(Schema.String)
+const { id, promise, descriptor } = yield * Awakeable.make(Schema.String)
 // resume on EITHER the external completion OR a durable deadline — replay-stable
-const winner = yield* Restate.race([
-  descriptor,
-  Restate.runDescriptor('deadline', () => Promise.resolve('__timeout__')),
-])
+const winner =
+  yield *
+  Restate.race([
+    descriptor,
+    Restate.runDescriptor('deadline', () => Promise.resolve('__timeout__')),
+  ])
 ```
 
 This replaces the in-process `Effect.raceFirst` workaround, which loses

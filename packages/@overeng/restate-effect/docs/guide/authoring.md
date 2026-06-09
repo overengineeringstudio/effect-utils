@@ -68,7 +68,13 @@ body is re-decoded into the original tagged error. The client requires a
 
 ```ts
 import { Effect } from 'effect'
-import { callTyped, objectCall, RestateIngress, workflowAttach, workflowSubmit } from '@overeng/restate-effect'
+import {
+  callTyped,
+  objectCall,
+  RestateIngress,
+  workflowAttach,
+  workflowSubmit,
+} from '@overeng/restate-effect'
 
 const IngressLayer = RestateIngress.layer({ url: 'http://localhost:8080' })
 
@@ -76,17 +82,19 @@ const IngressLayer = RestateIngress.layer({ url: 'http://localhost:8080' })
 const greet = callTyped(Greeter, 'greet', { name: 'Sarah' }).pipe(Effect.provide(IngressLayer))
 
 // A keyed Virtual Object call (the per-invocation key is the second argument).
-const addToCounter = objectCall(CounterObj, 'counter-1', 'add', 3).pipe(Effect.provide(IngressLayer))
+const addToCounter = objectCall(CounterObj, 'counter-1', 'add', 3).pipe(
+  Effect.provide(IngressLayer),
+)
 ```
 
 The ingress surface, by construct:
 
-| Construct | Request/response | One-way | Notes |
-| --- | --- | --- | --- |
-| Service | `call` / `callTyped` | — | `callTyped` adds the typed terminal decode |
-| Virtual Object | `objectCall` / `objectCallTyped` | `objectSend` | key is the 2nd argument |
-| Workflow | `workflowCall` (signals/queries), `workflowAttach`, `workflowOutput` | `workflowSubmit` | `run` is submitted, not called |
-| Awakeable | — | `ingressResolveAwakeable` / `ingressRejectAwakeable` | resolve an external token |
+| Construct      | Request/response                                                     | One-way                                              | Notes                                      |
+| -------------- | -------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------ |
+| Service        | `call` / `callTyped`                                                 | —                                                    | `callTyped` adds the typed terminal decode |
+| Virtual Object | `objectCall` / `objectCallTyped`                                     | `objectSend`                                         | key is the 2nd argument                    |
+| Workflow       | `workflowCall` (signals/queries), `workflowAttach`, `workflowOutput` | `workflowSubmit`                                     | `run` is submitted, not called             |
+| Awakeable      | —                                                                    | `ingressResolveAwakeable` / `ingressRejectAwakeable` | resolve an external token                  |
 
 `call` / `objectCall` leave the raw transport `RestateError` if you prefer to handle
 it yourself; `callTyped` / `objectCallTyped` / `workflowAttach` run the typed
@@ -120,8 +128,8 @@ one-way (optionally delayed). These are covered in detail in
 [Durable steps, calls, and awakeables](./durable-steps.md).
 
 ```ts
-const greeting = yield* Restate.call(Greeter, 'greet', { name }).pipe(Effect.orDie)
-yield* Restate.send(Notifier, 'notify', { requestId: `welcome-${name}`, body }).pipe(Effect.orDie)
+const greeting = yield * Restate.call(Greeter, 'greet', { name }).pipe(Effect.orDie)
+yield * Restate.send(Notifier, 'notify', { requestId: `welcome-${name}`, body }).pipe(Effect.orDie)
 ```
 
 The in-handler clients require `RestateContext` (they only type-check inside a

@@ -31,7 +31,10 @@ const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, 
     Effect.gen(function* () {
       if (name === '') return yield* new EmptyName()
       const { prefix } = yield* Greeting
-      const id = yield* Restate.run('gen-id', Effect.sync(() => crypto.randomUUID()))
+      const id = yield* Restate.run(
+        'gen-id',
+        Effect.sync(() => crypto.randomUUID()),
+      )
       return { message: `${prefix} ${name}`, id }
     }),
 })
@@ -76,10 +79,10 @@ const CounterLive = RestateObject.implement<typeof CounterObj>(CounterObj, {
 
 ### The exclusive/shared distinction
 
-| Handler kind | Capabilities provided | State writes |
-| --- | --- | --- |
-| exclusive (default) | `ObjectKey` + `StateRead` + `StateWrite` | allowed; serialized per key |
-| `shared: true` | `ObjectKey` + `StateRead` | a `State.set` is a **compile error** |
+| Handler kind        | Capabilities provided                    | State writes                         |
+| ------------------- | ---------------------------------------- | ------------------------------------ |
+| exclusive (default) | `ObjectKey` + `StateRead` + `StateWrite` | allowed; serialized per key          |
+| `shared: true`      | `ObjectKey` + `StateRead`                | a `State.set` is a **compile error** |
 
 The capability markers are flat services in the handler's `R` channel. A shared
 handler is simply never given `StateWrite`, so the illegal write is unrepresentable
@@ -137,11 +140,11 @@ const ApprovalLive = RestateWorkflow.implement<typeof ApprovalWf>(ApprovalWf, {
 
 The capabilities per handler kind:
 
-| Handler kind | Capabilities provided |
-| --- | --- |
-| `run` | `ObjectKey` + `StateRead` + `StateWrite` + `DurablePromise` |
-| `signal` (shared, write) | `ObjectKey` + `StateRead` + `DurablePromise` |
-| `query` (shared, read) | `ObjectKey` + `StateRead` + `DurablePromise` |
+| Handler kind             | Capabilities provided                                       |
+| ------------------------ | ----------------------------------------------------------- |
+| `run`                    | `ObjectKey` + `StateRead` + `StateWrite` + `DurablePromise` |
+| `signal` (shared, write) | `ObjectKey` + `StateRead` + `DurablePromise`                |
+| `query` (shared, read)   | `ObjectKey` + `StateRead` + `DurablePromise`                |
 
 A durable promise supports `get` / `resolve` / `reject` / `peek` /
 `getDescriptor`. A `reject` arrives terminally and can drive a `'rejected'` State

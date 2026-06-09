@@ -48,7 +48,7 @@ stateDiagram-v2
 - **`killed`**: a hard kill — compensations do **not** run.
 - **`Request.attemptCompletedSignal`** (an `AbortSignal`) fires per attempt for
   attempt-scoped cleanup (e.g. releasing a DB handle). Because the same logical
-  invocation may get a *new* attempt later, attempt-scoped cleanup must be
+  invocation may get a _new_ attempt later, attempt-scoped cleanup must be
   idempotent.
 
 The binding surfaces `Restate.cancel` (cancel another invocation) and
