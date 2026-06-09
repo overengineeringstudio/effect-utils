@@ -126,12 +126,43 @@ const StopOnError = RestateScheduled.make<typeof CounterState>({
     }),
 })
 
+/* OPTIONAL domainState (#2): the cursor is a NULLABLE `highWatermark`
+ * (`Schema.optional`) — the `notion-datasource-sync` shape. The cycle advances it
+ * for two cycles, then CLEARS it (`set(undefined)`) and stops, proving the shared
+ * optional-State handling reaches `domainState`. */
+const OptionalState = {
+  highWatermark: Schema.optional(Schema.Number),
+} as const
+const Opt = State.for(OptionalState)
+const OptionalDomain = RestateObject.contract('sched-optional', {
+  state: OptionalState,
+  handlers: { noop: { input: Schema.Void, success: Schema.Void, shared: true } },
+})
+const Optional = RestateScheduled.make<typeof OptionalState>({
+  name: 'sched-optional',
+  domainState: OptionalState,
+  schedule: RestateScheduled.Schedule.fixedDelay(40),
+  cycle: ({ iteration }) =>
+    Effect.gen(function* () {
+      /* An ABSENT optional cursor reads back as `undefined`. */
+      const hw = yield* Opt.get('highWatermark')
+      if (iteration >= 2) {
+        /* Clear the nullable cursor (write `undefined` ≡ remove the key) and stop. */
+        yield* Opt.set('highWatermark', undefined)
+        return { stop: true }
+      }
+      yield* Opt.set('highWatermark', (hw ?? 0) + 10)
+      return { stop: false }
+    }),
+})
+
 const services = [
   Basic.implementation,
   Bounded.implementation,
   DataStop.implementation,
   Skip.implementation,
   StopOnError.implementation,
+  Optional.implementation,
   NotionWatcher.implementation,
   RawWatcherLive,
 ]
@@ -224,6 +255,19 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
     expect(s.status).toBe('completed')
     /* iterations 0,1 continue; iteration 2 returns stop:true → 3 cycles attempted. */
     expect(s.iteration).toBe(3)
+  }, 40_000)
+
+  it('optional domainState: a nullable cursor advances then clears (set undefined) (#2)', async () => {
+    const key = 'opt-1'
+    /* The cursor is ABSENT before the first cycle reads it. */
+    expect(await live(harness().stateOf(OptionalDomain, key).get('highWatermark'))).toBeUndefined()
+    await start(Optional, key)
+    /* Iterations 0,1 set the nullable cursor (10, 20); iteration 2 CLEARS it
+     * (`set(undefined)` ≡ remove the key) and stops. */
+    const s = await waitUntil(Optional, key, (st) => st.status === 'completed')
+    expect(s.status).toBe('completed')
+    /* After the clearing cycle the optional key is ABSENT again (`undefined`). */
+    expect(await live(harness().stateOf(OptionalDomain, key).get('highWatermark'))).toBeUndefined()
   }, 40_000)
 
   it('stop then restart resumes the chain (generation re-arm)', async () => {

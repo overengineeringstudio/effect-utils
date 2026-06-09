@@ -15,8 +15,10 @@
  * seam is exactly-once.
  */
 import type * as restate from '@restatedev/restate-sdk'
-import { Effect, Metric, MetricBoundaries } from 'effect'
+import { Effect, Metric, MetricBoundaries, type Schema } from 'effect'
 import type { MetricKeyType, MetricState } from 'effect'
+
+import { findSensitiveFields } from '../schema/Redaction.ts'
 
 /** A histogram `Metric` over a `number` input (the shape `Metric.histogram` returns). */
 type HistogramMetric = Metric.Metric<
@@ -233,6 +235,14 @@ type AttributeValue = string | number | boolean
  * Attributes are NOT replay-suppressed (unlike span EVENTS), so prefer stable
  * identity values here; for side-effecting telemetry use a metric / span event
  * gated through `Restate.run`.
+ *
+ * REDACTION (decision 0014): a span attribute is PLAINTEXT — the serde's
+ * field-level redaction does NOT apply here, so NEVER hand this a value read from a
+ * `sensitive`/`redacted` schema field (that would leak the plaintext onto the span,
+ * bypassing the encrypt-at-encode transform). This surface takes raw primitives and
+ * cannot detect sensitivity; when annotating a PROJECTION of a decoded struct, use
+ * {@link annotateSpanFrom}, which strips the schema's sensitive fields by
+ * construction.
  */
 export const annotateSpan = (
   attributes: Readonly<Record<string, AttributeValue>>,
@@ -244,3 +254,46 @@ export const annotateSpan = (
       discard: true,
     },
   )
+
+/**
+ * Stamp span attributes PROJECTED from a decoded struct value — SAFE BY DEFAULT
+ * against the redaction rule (decision 0014): every field annotated by
+ * {@link Restate.sensitive}/`redacted` on `schema` is STRIPPED, so a sensitive
+ * value can never reach the span even if the caller forgot to exclude it. This is
+ * the schema-aware counterpart to {@link annotateSpan} for the common "annotate a
+ * few non-secret fields of my decoded input/state" case — the same
+ * `findSensitiveFields` walk the serde redaction uses is the single source of truth
+ * for which fields are sensitive, so the span projection and the serde can never
+ * disagree about what is secret.
+ *
+ * Only primitive (`string`/`number`/`boolean`) field values are stamped; an
+ * `undefined`/absent field is skipped, and a non-primitive field (object/array) is
+ * skipped (a span attribute is a scalar). Pass `pick` to annotate a SUBSET of the
+ * non-sensitive fields; omit it to annotate every non-sensitive primitive field.
+ *
+ * ```ts
+ * // `apiToken` is `Restate.sensitive(Schema.String)` — it is NEVER stamped.
+ * yield* Restate.annotateSpanFrom(InputSchema, decodedInput, ['dataSourceId'])
+ * ```
+ */
+export const annotateSpanFrom = <A, I>(
+  schema: Schema.Schema<A, I>,
+  value: A,
+  pick?: ReadonlyArray<keyof A & string>,
+): Effect.Effect<void> => {
+  if (typeof value !== 'object' || value === null) return Effect.void
+  const sensitive = new Set<string>(findSensitiveFields(schema.ast))
+  const record = value as Record<string, unknown>
+  const keys: ReadonlyArray<string> = pick ?? Object.keys(record)
+  const safe: Array<readonly [string, AttributeValue]> = []
+  for (const key of keys) {
+    /* A sensitive field is NEVER stamped — even if the caller explicitly `pick`ed it
+     * (the redaction rule wins over an accidental projection). */
+    if (sensitive.has(key) === true) continue
+    const v = record[key]
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      safe.push([key, v])
+    }
+  }
+  return Effect.forEach(safe, ([key, v]) => Effect.annotateCurrentSpan(key, v), { discard: true })
+}

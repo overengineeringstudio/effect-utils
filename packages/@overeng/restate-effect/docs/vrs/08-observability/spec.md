@@ -85,6 +85,18 @@ namespace — for business attributes (e.g. `dataSourceId`) on the current Effec
 span (reparented under the attempt span); use the `span.label` convention for a
 single primary label.
 
+A span attribute is PLAINTEXT — the serde's field-level redaction does NOT cover
+this path, so the "never a redacted value on a span" rule (decision 0014) must hold
+for the USER surface too. `Restate.annotateSpan(attrs)` takes raw primitives and
+cannot detect sensitivity, so for the common "annotate a few non-secret fields of my
+decoded input/state" case the SAFE-BY-DEFAULT surface is
+`Restate.annotateSpanFrom(schema, value, pick?)`: it projects a decoded struct to
+span attributes and STRIPS every `Restate.sensitive`/`redacted` field (even if
+explicitly `pick`ed), using the SAME `findSensitiveFields` walk the serde redaction
+uses as the single source of truth — so the span projection and the serde can never
+disagree about what is secret, closing the leak path a free-form `annotateSpan`
+otherwise left open.
+
 ## 3. Metrics path (`RestateOtel.layer({ metricReader?/metricExporter? })`)
 
 `RestateOtel.layer` registers a `MeterProvider` SHARING the tracer's `Resource`

@@ -234,6 +234,8 @@ const SourceFailedTerminal = Restate.terminal(SourceFailed)
 /** The cycle's declared error UNION (a retryable + a terminal member), classified
  * per-member at the loop boundary. */
 export const ComposedError = Schema.Union(RateLimitedRetryable, SourceFailedTerminal)
+/** The DECODED cycle-error type — the `CycleE` the typed cycle's `E` channel carries. */
+export type ComposedError = Schema.Schema.Type<typeof ComposedError>
 
 /** The composed daemon's domain State: the poll cursor, an item tally, and a
  * count of how many times it was woken early (for assertions). */
@@ -271,8 +273,11 @@ export const makeComposedDaemon = (opts: {
   readonly delayMillis: number
   readonly wake?: boolean
   readonly maxRetryBackoffs?: number
-}): ReturnType<typeof RestateScheduled.make<typeof ComposedState, never>> =>
-  RestateScheduled.make<typeof ComposedState, never>({
+}): ReturnType<typeof RestateScheduled.make<typeof ComposedState, never, ComposedError>> =>
+  /* `CycleE = ComposedError` (the decoded `errorSchema` type), so the cycle below
+   * `Effect.fail`s `RateLimited` / `SourceFailed` and composes WITHOUT a cast — the
+   * typed error channel lines up with `errorSchema` by construction (#3). */
+  RestateScheduled.make<typeof ComposedState, never, ComposedError>({
     name: opts.name,
     domainState: ComposedState,
     schedule: RestateScheduled.Schedule.fixedDelay(opts.delayMillis),
@@ -306,5 +311,5 @@ export const makeComposedDaemon = (opts: {
         yield* Composed.set('cursor', result.nextCursor)
         yield* Composed.set('itemsSeen', itemsSeen + result.itemCount)
         return result.done ? { stop: true } : { stop: false }
-      }) as Effect.Effect<{ readonly stop?: boolean }, RestateError, RestateContext>,
+      }),
   })

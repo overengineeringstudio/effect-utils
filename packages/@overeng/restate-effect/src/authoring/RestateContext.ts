@@ -500,6 +500,16 @@ const writeState = <S extends StateSchemas, K extends keyof S & string>(
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const objectCtx = ctx as restate.ObjectContext
+    /* State is K/V: an ABSENT key reads back as `undefined`. So writing `undefined`
+     * to an OPTIONAL field REMOVES the key (`set(key, undefined)` ≡ `clear(key)`),
+     * rather than encoding it — the inner serde schema is the PRESENT value type
+     * (`undefined` stripped by `normalizeStateSchema`), so a `set(undefined)` would
+     * otherwise fail to encode. This makes the "unset → undefined" semantics
+     * symmetric on read AND write (#1). */
+    if (value === undefined) {
+      objectCtx.clear(key)
+      return
+    }
     const encoded = yield* Schema.encode(normalizeStateSchema(schemas[key]!))(value).pipe(
       Effect.mapError(
         (cause) => new RestateError({ reason: 'SerdeFailed', method: `State.set(${key})`, cause }),

@@ -69,7 +69,47 @@ const CounterLive = RestateObject.implement<typeof CounterObj>(CounterObj, {
   get: () => Counter.get('count').pipe(Effect.map((c) => c ?? 0)),
 })
 
-const services = [GreeterLive, CounterLive] as const
+/* ── a cursor Object with a NULLABLE `highWatermark` (optional State field) ── */
+
+/* `highWatermark` is `Schema.optional` — an ABSENT key reads back as `undefined`,
+ * and `set(key, undefined)`/`clear(key)` REMOVES it. This is the `notion-datasource-sync`
+ * cursor shape that was previously unexpressible (optional/nullable State, #1). */
+const CursorState = {
+  highWatermark: Schema.optional(Schema.Number),
+  name: Schema.String,
+} as const
+const Cursor = State.for(CursorState)
+
+/* `peek` returns the watermark inside a STRUCT with an optional property (a valid
+ * JSON schema), since a top-level `Schema.UndefinedOr` handler return breaks
+ * `JSONSchema.make` at endpoint registration — State, not handler I/O, is the
+ * nullable surface (#1). */
+const PeekOutput = Schema.Struct({ highWatermark: Schema.optional(Schema.Number) })
+
+const CursorObj = RestateObject.contract('test-env-cursor', {
+  state: CursorState,
+  handlers: {
+    /** Set the nullable watermark to a present value. */
+    advance: { input: Schema.Number, success: Schema.Void },
+    /** Clear the watermark by writing `undefined` (≡ remove the key). */
+    reset: { input: Schema.Void, success: Schema.Void },
+    /** Read the watermark (`{ highWatermark }` omitted when unset). */
+    peek: { input: Schema.Void, success: PeekOutput, shared: true },
+  },
+})
+
+const CursorLive = RestateObject.implement<typeof CursorObj>(CursorObj, {
+  advance: (value) => Cursor.set('highWatermark', value),
+  /* `set(..., undefined)` removes the key (the symmetric write of the "absent →
+   * undefined" read) — no separate clear API needed inside the handler. */
+  reset: () => Cursor.set('highWatermark', undefined),
+  peek: () =>
+    Cursor.get('highWatermark').pipe(
+      Effect.map((highWatermark) => (highWatermark !== undefined ? { highWatermark } : {})),
+    ),
+})
+
+const services = [GreeterLive, CounterLive, CursorLive] as const
 const appLayer = Greeting.Default
 
 /* ── the SAME body, parametrized over the two backends ── */
@@ -122,6 +162,50 @@ describe.each(backends)('RestateTestEnv ($kind)', ({ kind, layer }) => {
           expect(yield* env.stateOf(CounterObj, `${kind}-a`).get('count')).toBe(42)
           expect(yield* env.stateOf(CounterObj, `${kind}-b`).get('count')).toBe(5)
         }),
+      )
+
+      it.effect(
+        'nullable State: set / get (present + absent) / clear via stateOf + handler (#1)',
+        () =>
+          Effect.gen(function* () {
+            const env = yield* RestateTestEnv
+            const key = `${kind}-cursor`
+            const proxy = env.stateOf(CursorObj, key)
+
+            /* ABSENT key reads back as `undefined` (both via stateOf AND the handler). */
+            expect(yield* proxy.get('highWatermark')).toBeUndefined()
+            expect(
+              (yield* env.invokeObject(CursorObj, key, 'peek', undefined)).highWatermark,
+            ).toBeUndefined()
+
+            /* SEED a present value via stateOf, observe it through the handler (serde
+             * round-trip across the boundary), then advance via the handler. */
+            yield* proxy.set('highWatermark', 100)
+            expect(yield* proxy.get('highWatermark')).toBe(100)
+            expect((yield* env.invokeObject(CursorObj, key, 'peek', undefined)).highWatermark).toBe(
+              100,
+            )
+            yield* env.invokeObject(CursorObj, key, 'advance', 250)
+            expect(yield* proxy.get('highWatermark')).toBe(250)
+
+            /* CLEAR via the handler's `set(undefined)` → the key is removed (absent ⇒
+             * undefined again), and a NON-optional sibling field is untouched. */
+            yield* proxy.set('name', 'watcher')
+            yield* env.invokeObject(CursorObj, key, 'reset', undefined)
+            expect(yield* proxy.get('highWatermark')).toBeUndefined()
+            expect(
+              (yield* env.invokeObject(CursorObj, key, 'peek', undefined)).highWatermark,
+            ).toBeUndefined()
+            expect(yield* proxy.get('name')).toBe('watcher')
+
+            /* CLEAR directly via the stateOf proxy (`set(undefined)` and `clear`). */
+            yield* proxy.set('highWatermark', 7)
+            yield* proxy.set('highWatermark', undefined)
+            expect(yield* proxy.get('highWatermark')).toBeUndefined()
+            yield* proxy.set('highWatermark', 9)
+            yield* proxy.clear('highWatermark')
+            expect(yield* proxy.get('highWatermark')).toBeUndefined()
+          }),
       )
     })
   })

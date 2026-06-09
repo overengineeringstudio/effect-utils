@@ -123,7 +123,10 @@ const RedactionLayer = aesGcmRedactionLayer(new Uint8Array(32).fill(7))
 > **Redaction is serde-only.** Never stamp a sensitive value onto a span attribute
 > (via `Restate.annotateSpan` or otherwise). Redaction encrypts the value _on the
 > wire/journal_; a span attribute bypasses the serde entirely and would leak the
-> plaintext into your traces. Stamp a non-sensitive identifier instead. See
+> plaintext into your traces. When annotating from a decoded struct, prefer
+> `Restate.annotateSpanFrom(schema, value, pick?)` — it STRIPS every
+> `sensitive`/`redacted` field by default (even if explicitly picked), so a secret
+> can never reach the span. Otherwise stamp a non-sensitive identifier by hand. See
 > [Observability](./observability.md).
 
 ## See also

@@ -80,7 +80,7 @@ import * as Ctx from './authoring/RestateContext.ts'
  * annotations read at the error boundary / serde).
  */
 import * as Client from './clients/Client.ts'
-import { annotateSpan } from './observability/Metrics.ts'
+import { annotateSpan, annotateSpanFrom } from './observability/Metrics.ts'
 import * as Runtime from './runtime/Runtime.ts'
 import { reschedule } from './scheduling/Reschedule.ts'
 import { pollLoop } from './scheduling/Scheduled.ts'
@@ -137,6 +137,13 @@ export const Restate = {
    * a metric / span event gated through `Restate.run`.
    */
   annotateSpan,
+  /**
+   * Stamp span attributes PROJECTED from a decoded struct, SAFE BY DEFAULT against
+   * the redaction rule (decision 0014): every `Restate.sensitive`/`redacted` field
+   * is STRIPPED so a secret can never reach the span — the schema-aware counterpart
+   * to {@link annotateSpan} for "annotate a few non-secret fields of my input/state".
+   */
+  annotateSpanFrom,
   terminal: Annotations.Restate.terminal,
   retryable: Annotations.Restate.retryable,
   serde: Annotations.Restate.serde,
