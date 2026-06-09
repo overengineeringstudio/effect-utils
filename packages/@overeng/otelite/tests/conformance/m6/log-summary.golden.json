@@ -1,0 +1,1 @@
+{"by_service":{"checkout-api":3,"payment-worker":3},"by_severity":{"ERROR":2,"INFO":3,"WARN":1},"schema":"otelite.log-summary/v1","total":6}

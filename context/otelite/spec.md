@@ -100,6 +100,12 @@ Accepts all common patterns the production OTel stack emits:
 Both decode into the same `opentelemetry-proto` message types and write through
 one sink. No bespoke wire handling. See `decisions/0002`.
 
+Known limitation: `opentelemetry-proto`'s `with-serde` drops the
+`exponentialHistogram` data oneof on the **JSON** receive path, so an exp-histogram
+emitted by a JSON-only client is captured empty; the **protobuf** path (SDK
+default) captures it fine. `inspect` therefore walks the captured JSON directly
+rather than round-tripping the proto type. Tracked as an otelite follow-up.
+
 Accepted JSON dialect: the one OTel language SDKs emit by default — hex IDs,
 string int64, integer enums. Other spec-conformant encodings (base64 IDs, string
 enums, numeric int64) are **rejected loudly** (HTTP 400 / gRPC error), never
