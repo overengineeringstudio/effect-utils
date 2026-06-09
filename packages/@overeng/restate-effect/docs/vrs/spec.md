@@ -118,6 +118,16 @@ as a follow-up issue:
   mechanism. The cancel↔interrupt mapping it relies on is NOT deferred (it ships
   in v1, [04-error-boundary](./04-error-boundary/spec.md#cancellation--interruption));
   only the packaged register-and-unwind helper is.
+- **Typed-failure-transport `Restate.run`** — a `run` variant that HONORS a typed
+  durable-step failure by journaling an encoded `fail(E)` via an error schema (so a
+  typed inner failure round-trips through the journal and reaches the outer `E`
+  channel), instead of the v1 contract where a durable step has NO catchable typed
+  failure (`Effect<A, never, R>`; domain errors live in the handler body / encoded
+  values, infra/give-up are `RestateError` defects — see
+  [04-error-boundary](./04-error-boundary/spec.md#error-boundary),
+  [.decisions/0003](./.decisions/0003-error-boundary-model.md) #4). Deferred: it needs
+  a journal-serde'able failure encoding and a boundary-classification story that does
+  not regress the clean-`E` invariant.
 - **Scheduling / cron sugar** — typed wrappers over delayed `send` +
   self-reschedule, plus `fixedRate` / `cron` schedules (v1 ships `fixedDelay`
   only, see [06-scheduling](./06-scheduling/spec.md)).

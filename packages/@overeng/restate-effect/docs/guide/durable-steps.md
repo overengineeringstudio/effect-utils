@@ -36,15 +36,19 @@ const id =
   first-time descriptor compile error. See
   [Determinism](./determinism.md#deterministic-concurrency-takes-descriptors).
 
-`Restate.run` has a **clean `E`**: only the inner effect's own domain `E` flows
-through, and a durable-op infra failure is a defect at the boundary. See the
+`Restate.run` has **no catchable typed failure**: its inner effect is
+`Effect<A, never, R>` and `run` returns `Effect<A, never, …>`. A durable-op infra
+failure is a defect at the boundary; domain errors belong in the handler body (or are
+encoded as values in the step), and to force a durable retry you **die** inside the
+step. See the
 [error boundary](./schema-and-errors.md#clean-error-channel-infra-failures-are-defects-not-typed-e).
 
 ### `Restate.runExit` — observe the outcome
 
-`Restate.runExit(name, effect)` returns `Effect<Exit<A, E>>` so you can branch on
-success / domain failure / infra die and run a compensating durable step — the
-saga building block. See
+`Restate.runExit(name, effect)` returns `Effect<Exit<A>>` so you can branch on
+success vs an infra-die / interrupt `Cause` and run a compensating durable step — the
+saga building block (the failure channel is `never`; a durable step has no typed
+domain `E`). See
 [the error boundary](./schema-and-errors.md#observing-a-durable-steps-outcome-sagas).
 
 ## In-handler service-to-service clients

@@ -73,8 +73,14 @@ terminal body when you already hold a raw `RestateError`.
 
 The durable combinators (`Restate.run` / `sleep` / `timeout` / `all` / `race` /
 `any` / `State.*` / `Awakeable.make().promise`) have a **clean `E`** — they carry
-**no** `RestateError`. Only the inner effect's own domain `E` flows through
-`Restate.run`. A durable-op infrastructure failure is classified at the boundary as
+**no** `RestateError`. A durable `Restate.run` step goes further: it carries **no
+catchable typed failure at all** — its inner effect is `Effect<A, never, R>` and
+`run` returns `Effect<A, never, …>`. The inner runs via `Runtime.runPromise` inside
+`ctx.run`, so a typed `Effect.fail` would only _reject_ the step (Restate retries; a
+give-up becomes a `RestateError` defect) and never reach the outer failure channel.
+Domain errors therefore belong in the **handler body** (classify the step's result
+there) or are encoded as **values** inside the step; to force a durable retry, **die**
+inside the step. A durable-op infrastructure failure is classified at the boundary as
 a defect (transient infra → Restate retries; a terminally-failed step → fail, no
 retry), so you never write a no-op `catchTag('RestateError', Effect.die)` to scrub
 it out of a handler's typed channel.
@@ -151,15 +157,18 @@ retry against it.
 ## Observing a durable step's outcome (sagas)
 
 To **observe** a durable step's outcome (for compensation / sagas) instead of
-letting a failure propagate, use `Restate.runExit(name, effect)` →
-`Effect<Exit<A, E>>`. The `Exit` captures success, a domain `E` failure, and an
-infra failure (a `Cause.Die` carrying the `RestateError`, via `Cause.dieOption`), so
-you can branch and run a compensating durable step without the failure escaping.
+letting a failure propagate, use `Restate.runExit(name, effect)` → `Effect<Exit<A>>`.
+The `Exit` faithfully captures the observed outcome: `Exit.succeed(A)`, or an
+`Exit.failure(Cause)` for an infra give-up (a `Cause.Die` carrying the `RestateError`,
+via `Cause.dieOption`) or an interruption (a `Cause.Interrupt`). The failure channel
+is `never` — a durable step has no typed domain `E`, so an observed failure is always
+a defect/interrupt you branch on, then run a compensating durable step without the
+failure escaping.
 
 ```ts
-const outcome = yield * Restate.runExit('charge', chargeCard)
-// outcome : Exit<ChargeReceipt, PaymentDeclined>
-// branch on success / domain failure / infra die, then run a compensating step
+const outcome = yield * Restate.runExit('charge', chargeCard) // chargeCard : Effect<ChargeReceipt>
+// outcome : Exit<ChargeReceipt, never>
+// branch on success vs an infra-die / interrupt Cause, then run a compensating step
 ```
 
 ## See also

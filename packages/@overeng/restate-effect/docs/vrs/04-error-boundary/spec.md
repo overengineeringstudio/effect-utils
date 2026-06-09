@@ -43,10 +43,17 @@ suspension (isSuspendedError)        → rethrow  → (not a failure)          r
   (transient infra → Restate retries; a terminally-failed step → fail, no retry),
   so it leaves the domain channel without a user-written `catchTag('RestateError',
 die)` (R13). The durable combinators thus have a CLEAN `E` (see
-  [03-effect-runtime](../03-effect-runtime/spec.md#determinism-layer)), and only the
-  INNER effect's own domain `E` flows through `Restate.run`. The `IngressFailed`
-  client surface (`Restate.call`/`send`, ingress) still surfaces a typed
-  `RestateError` (it pairs with the typed `decodeTerminalError` decode helper).
+  [03-effect-runtime](../03-effect-runtime/spec.md#determinism-layer)). A durable
+  `Restate.run` step carries NO catchable typed failure at all: its inner effect is
+  `Effect<A, never, R>` and `run` returns `Effect<A, never, …>`. The inner runs via
+  `Runtime.runPromise` inside `ctx.run`, so a typed `Effect.fail` would only REJECT
+  the step (Restate retries; a give-up maps to a `RestateError` defect) and never
+  reach the outer failure channel — advertising a typed `E` would be dishonest. Domain
+  errors therefore belong in the HANDLER body (classify the step's result there) or
+  are encoded as VALUES inside the step; to force a durable retry, DIE inside the step
+  (decision 0003, #4). The `IngressFailed` client surface (`Restate.call`/`send`,
+  ingress) still surfaces a typed `RestateError` (it pairs with the typed
+  `decodeTerminalError` decode helper).
 - The boundary VALIDATES a thrown domain failure against the contract's declared
   `error` union before encoding it (`Schema.encodeUnknownEither`). A failure that
   does NOT match the declared union is classification DRIFT — surfaced as a DEFECT
@@ -70,11 +77,14 @@ die)` (R13). The durable combinators thus have a CLEAN `E` (see
   via the error's `terminal`/`retryable` annotation
   ([../.decisions/0011](../.decisions/0011-restate-schema-annotations.md)).
 - Observing a durable-combinator failure for compensation is OPT-IN via
-  `Restate.runExit(name, effect)` → `Effect<Exit<A, E>>`: the `Exit` captures a
-  success, a domain `E` failure (`Cause.Fail`), AND an infra failure (a
-  `Cause.Die` carrying the `RestateError`, via `Cause.dieOption`), so a handler can
-  branch and run a compensating durable step without the failure escaping — instead
-  of the failure dying as a defect. (The default `Restate.run` keeps a clean `E`.)
+  `Restate.runExit(name, effect)` → `Effect<Exit<A>>`: the `Exit` faithfully captures
+  the OBSERVED outcome — `Exit.succeed(A)`, or an `Exit.failure(Cause)` for an infra
+  give-up (a `Cause.Die` carrying the `RestateError`, via `Cause.dieOption`) /
+  interruption (a `Cause.Interrupt`) — so a handler can branch and run a compensating
+  durable step without the failure escaping, instead of the failure dying as a defect.
+  The failure channel is `never`: a durable step has no typed domain `E`, so an
+  observed failure is always a defect/interrupt. (The default `Restate.run` lets that
+  failure die at the boundary.)
 - The ingress client's decode helper reverses the transport: it
   `JSON.parse`s the `responseText` (the message body) and re-`Schema.decode`s it
   back into the original tagged error, so callers `catchTag` typed errors (R14, see

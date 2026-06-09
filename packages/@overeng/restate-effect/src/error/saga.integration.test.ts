@@ -29,15 +29,15 @@ const ChargeLive = RestateService.implement<typeof Charge>(Charge, {
       /* Step 1: reserve (succeeds, journaled once). */
       yield* Restate.run('reserve', Effect.succeed('reserved')).pipe(Effect.orDie)
 
-      /* Step 2: pay — a flaky dependency that gives up (the inner Effect fails,
-       * `ctx.run` exhausts its bounded retries → a terminal infra defect). OBSERVE
-       * the outcome as an `Exit` instead of failing the invocation. The bounded
-       * `maxRetryAttempts` keeps the test fast (no long backoff). */
-      const payExit = yield* Restate.runExit(
-        'pay',
-        Effect.fail(new Error('payment gateway down')),
-        { maxRetryAttempts: 1 },
-      )
+      /* Step 2: pay — a flaky dependency that gives up (the inner step DIES, so the
+       * step rejects; `ctx.run` exhausts its bounded retries → a terminal infra
+       * defect). A durable step carries no catchable typed failure (#1), so forcing a
+       * retry is a DIE, not a typed `Effect.fail`. OBSERVE the outcome as an `Exit`
+       * instead of failing the invocation. The bounded `maxRetryAttempts` keeps the
+       * test fast (no long backoff). */
+      const payExit = yield* Restate.runExit('pay', Effect.die(new Error('payment gateway down')), {
+        maxRetryAttempts: 1,
+      })
 
       if (Exit.isFailure(payExit)) {
         /* The failure rode as a `Cause.Die` carrying the wrapper `RestateError`
