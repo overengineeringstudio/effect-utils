@@ -24,6 +24,7 @@
     "packages/@overeng/notion-effect-schema",
     "packages/@overeng/notion-md",
     "packages/@overeng/notion-react",
+    "packages/@overeng/otelite-effect",
     "packages/@overeng/oxc-config",
     "packages/@overeng/pty-effect",
     "packages/@overeng/react-inspector",
