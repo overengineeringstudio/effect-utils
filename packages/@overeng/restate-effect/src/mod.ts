@@ -54,7 +54,7 @@ export {
 
 /**
  * Field-level redaction for `sensitive`/`redacted` schema fields (decision 0011,
- * §4/§13). `RestateRedaction` is the pluggable cipher Tag the consumer provides;
+ * docs/vrs/02-schema-serde/spec.md). `RestateRedaction` is the pluggable cipher Tag the consumer provides;
  * `aesGcmRedactionLayer(key)` is a ready-to-use AES-256-GCM reference layer (and
  * `aesGcmCipher(key)` the bare cipher). Provide a `RestateRedaction` layer in the
  * application Layer whenever any served schema marks a field `Restate.sensitive`
@@ -102,7 +102,7 @@ export const Restate = {
   objectCallDescriptor: Client.callObjectDescriptor,
   /** The current Object / Workflow invocation key (requires `ObjectKey`). */
   key: Ctx.objectKey,
-  /* In-handler service-to-service clients (require `RestateContext`, §9.2). */
+  /* In-handler service-to-service clients (require `RestateContext`, docs/vrs/05-clients/spec.md §2). */
   call: Client.callService,
   send: Client.sendService,
   objectClient: Client.callObject,
@@ -123,13 +123,13 @@ export const Restate = {
    * `Restate.run` (there is no `retryCycle` knob).
    */
   pollLoop,
-  /* Cancellation surface (R31, §12): cancel another invocation (cooperative — the
+  /* Cancellation surface (R31, docs/vrs/10-admin/spec.md): cancel another invocation (cooperative — the
    * target surfaces an interruption so its finalizers run), and observe the
    * current invocation's cancellation (resolves only under `explicitCancellation`). */
   cancel: Runtime.cancel,
   onCancellation: Runtime.onCancellation,
   /**
-   * Stamp custom BUSINESS span attributes on the current span (R23, §10, decision
+   * Stamp custom BUSINESS span attributes on the current span (R23, docs/vrs/08-observability/spec.md, decision
    * 0014) — the USER observability path for slicing in Tempo/Grafana (e.g.
    * `dataSourceId`). A thin combinator over `Effect.annotateCurrentSpan`; otel-free
    * (no `./otel` import). Use the `span.label` convention for a single primary
@@ -149,8 +149,8 @@ export const Restate = {
   serde: Annotations.Restate.serde,
   idempotencyKey: Annotations.Restate.idempotencyKey,
   /* Retention/timeout facts on a contract / handler I/O schema → SDK options at
-   * `materialize` (decision 0011, §7), and field-level redaction (`sensitive`/
-   * `redacted`) consumed by `effectSerde` as an encrypt/decrypt transform (0011, §4). */
+   * `materialize` (decision 0011, docs/vrs/01-authoring/spec.md §4.1), and field-level redaction (`sensitive`/
+   * `redacted`) consumed by `effectSerde` as an encrypt/decrypt transform (0011, docs/vrs/02-schema-serde/spec.md §1). */
   retention: Annotations.Restate.retention,
   sensitive: Annotations.Restate.sensitive,
   redacted: Annotations.Restate.redacted,
@@ -280,7 +280,7 @@ export {
 } from './error/Boundary.ts'
 
 /**
- * The replay-aware auto baseline metric definitions (decision 0014, §10) — Effect
+ * The replay-aware auto baseline metric definitions (decision 0014, docs/vrs/08-observability/spec.md) — Effect
  * `Metric`s (no otel import) bound to the OTel meter by `RestateOtel.layer` (see
  * `./otel`). Exported so consumers can inspect / reuse them; `Restate.annotateSpan`
  * is the user span-attribute path on the `Restate` namespace.

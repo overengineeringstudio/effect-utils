@@ -7,7 +7,7 @@ import { readErrorClass, readRetryAfterMillis } from '../schema/Annotations.ts'
 /* eslint-disable @typescript-eslint/no-explicit-any -- the materialize boundary deliberately erases the contract's phantom map (invisible to users; the public Contract type stays precise) */
 
 /**
- * The boundary's classification of a handler exit (spec §5, §10). A SINGLE source
+ * The boundary's classification of a handler exit (docs/vrs/04-error-boundary/spec.md §1 + docs/vrs/08-observability/spec.md). A SINGLE source
  * of truth read by BOTH the `throw`-producing `toTerminal` and the observability
  * boundary observer ({@link BoundaryObserver}) — so the span attributes / metrics
  * an operator slices on (`restate.error.{tag,class}`, `restate_invocations_total`
@@ -21,7 +21,7 @@ import { readErrorClass, readRetryAfterMillis } from '../schema/Annotations.ts'
  *   annotation), honoring `retryAfter`. `errorTag` is the domain error's `_tag`.
  * - `cancelled` — an interruption (Restate cancellation bridged to the fiber, or
  *   an in-handler interrupt); finalizers/compensations already ran. Terminal, not
- *   retried (R31, §5a).
+ *   retried (R31, docs/vrs/04-error-boundary/spec.md §2).
  * - `suspended` — a Restate suspension (a durable op parking the attempt); NOT an
  *   outcome an operator counts (the invocation has not finished) — re-thrown as-is.
  * - `defect` — anything else; the SDK throws it as a normal error and RETRIES.
@@ -39,7 +39,7 @@ export type BoundaryErrorClass = 'terminal' | 'retryable' | 'cancelled'
 
 /**
  * Resolve the declared-error schema NODE that actually classifies `error` (spec
- * §5). The `terminal`/`retryable` annotation lives on a SINGLE error member, but a
+ * docs/vrs/04-error-boundary/spec.md §1). The `terminal`/`retryable` annotation lives on a SINGLE error member, but a
  * contract's declared `error` is commonly a `Schema.Union` of several members (e.g.
  * a `retryable` 429 alongside a `terminal` 404). The annotation lives on the UNION
  * MEMBERS, not the union node, so reading `readErrorClass(union.ast)` always misses
@@ -63,8 +63,8 @@ const resolveErrorMember = (
 }
 
 /**
- * Classify an Effect failure `Cause` into a {@link BoundaryOutcome} (spec §5,
- * §10). The throw value the SDK sees rides in `thrown`; {@link toTerminal} just
+ * Classify an Effect failure `Cause` into a {@link BoundaryOutcome} (docs/vrs/04-error-boundary/spec.md §1,
+ * docs/vrs/08-observability/spec.md). The throw value the SDK sees rides in `thrown`; {@link toTerminal} just
  * unwraps it. Reads the failing error's `terminal`/`retryable` annotation to
  * decide errorCode vs a retryable throw — resolving the matching UNION MEMBER
  * first (see {@link resolveErrorMember}) so a `retryable` member of a declared
@@ -157,7 +157,7 @@ export const classifyOutcome = (
   /* An interruption (Restate cancellation bridged to the fiber, or an in-handler
    * interrupt — incl. a durable op that rejected with `CancelledError`) is neither
    * a domain failure nor a defect: finalizers/compensations already ran.
-   * Terminalize as a `CancelledError` so the SDK does NOT retry it (R31, §5a).
+   * Terminalize as a `CancelledError` so the SDK does NOT retry it (R31, docs/vrs/04-error-boundary/spec.md §2).
    * (A suspension is already handled above as a defect, never reaching here.) */
   if (Cause.isInterrupted(cause) === true) {
     return { _tag: 'cancelled', thrown: new restate.CancelledError() }
@@ -167,7 +167,7 @@ export const classifyOutcome = (
 }
 
 /**
- * The value the SDK handler must throw for a failure `Cause` (spec §5). A thin
+ * The value the SDK handler must throw for a failure `Cause` (docs/vrs/04-error-boundary/spec.md §1). A thin
  * unwrap of {@link classifyOutcome}'s `thrown` — kept as a named export for the
  * unit tests and any direct boundary use.
  */
@@ -181,7 +181,7 @@ export const toTerminal = (
 
 /**
  * A per-invocation Effect transform applied to the user's program right before
- * it runs on the captured runtime — the inbound bridge seam (R23, §10). The
+ * it runs on the captured runtime — the inbound bridge seam (R23, docs/vrs/08-observability/spec.md). The
  * `./otel` module supplies one that captures `trace.getActiveSpan()?.spanContext()`
  * (the OTel attempt span the hook set active) and reparents the Effect program
  * under it. Pure in the core: a `<A, E, R>(effect) => Effect<A, E, R>` with NO
@@ -198,7 +198,7 @@ export type EndpointHooks = restate.HooksProvider
 
 /**
  * Per-invocation identity the boundary hands the {@link BoundaryObserver} (R23,
- * §10, decision 0014): the construct name (`service`), the handler name, the
+ * docs/vrs/08-observability/spec.md, decision 0014): the construct name (`service`), the handler name, the
  * Object/Workflow `key` (undefined for plain Services), the WORKFLOW ID (the key
  * of a Workflow handler — undefined for Services/Objects), and the IDEMPOTENCY KEY
  * (from the original invocation's `idempotency-key` header, undefined when none).
@@ -220,7 +220,7 @@ export interface BoundaryInfo {
 }
 
 /**
- * The observability seam the boundary calls ONCE PER INVOCATION (R23, §10,
+ * The observability seam the boundary calls ONCE PER INVOCATION (R23, docs/vrs/08-observability/spec.md,
  * decision 0014). A factory `(info) => (outcome) => void`: invoked at handler
  * ENTRY with the {@link BoundaryInfo} (so the `./otel` impl can stamp identity
  * attributes / start a timer), returning a callback invoked at handler EXIT with
@@ -243,7 +243,7 @@ const emptyMarker = {} as never
 
 /**
  * Which handler kind a materialized handler runs as — selects WHICH capability
- * markers are provided over the user's Effect (spec §3). The single source of
+ * markers are provided over the user's Effect (docs/vrs/01-authoring/spec.md §3). The single source of
  * truth for the per-kind marker subset, shared by the real boundary
  * ({@link provideHandlerCaps} in `runEffectHandler`) and the in-memory test
  * dispatch (`TestEnv`'s mock backend) so the two stay in lock-step.
@@ -256,7 +256,7 @@ export type HandlerMarkers =
   | 'workflowShared'
 
 /**
- * Provide the capability markers legal for `markers` (spec §3) over a handler
+ * Provide the capability markers legal for `markers` (docs/vrs/01-authoring/spec.md §3) over a handler
  * effect, EXACTLY mirroring what each `materialize*` grants per kind — the single
  * source of truth reused by both the real boundary (`runEffectHandler`) and the
  * in-memory mock dispatch (`TestEnv`). `RestateContext` itself is provided by the

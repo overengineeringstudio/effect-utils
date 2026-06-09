@@ -1,6 +1,6 @@
 /**
  * Server-free assertion that the request-identity public keys (decision 0016,
- * spec §8) reach the SDK endpoint builder. The endpoint `layer` is a thin
+ * docs/vrs/07-endpoint-deploy/spec.md §2) reach the SDK endpoint builder. The endpoint `layer` is a thin
  * pass-through: it threads `EndpointOptions.identityKeys` into
  * `createEndpointHandler({ identityKeys })`, which the SDK forwards to
  * `endpoint.withIdentityV1(...)` — limiting inbound requests to a Restate cluster

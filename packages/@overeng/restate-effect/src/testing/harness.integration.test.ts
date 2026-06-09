@@ -1,6 +1,6 @@
 /**
  * Consumer-style integration test for the `./testing` harness (decision 0009,
- * spec §11). Drives a small Virtual Object + its `appLayer` entirely THROUGH
+ * docs/vrs/09-testing/spec.md). Drives a small Virtual Object + its `appLayer` entirely THROUGH
  * `RestateTestHarness.layer` — proving the productized harness end-to-end:
  *
  * - the scoped Layer boots a native server, threads the consumer `appLayer` into

@@ -82,8 +82,8 @@ by hand:
 - New public surface: `RestateIngress.layerConfig`, `RestateOtel.layerConfig`,
   `EndpointOptions.identityKeys`, and `apiKey`/`headers` on `RestateIngress.layer`.
 - Verified server-free: the bearer header + `layerConfig` env reads
-  (`src/client-ingress.test.ts`), `identityKeys` reaching the SDK builder
-  (`src/identity.test.ts`), and the OTel `layerConfig` Config resolution
-  (`src/otel.test.ts`). A real signing handshake belongs to the integration lane.
+  (`src/clients/client-ingress.test.ts`), `identityKeys` reaching the SDK builder
+  (`src/endpoint/identity.test.ts`), and the OTel `layerConfig` Config resolution
+  (`src/observability/otel.test.ts`). A real signing handshake belongs to the integration lane.
 
 Status: accepted

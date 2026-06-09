@@ -22,8 +22,8 @@ not a replacement for, the design docs:
 Every code block in this handbook is drawn from a real, compiled-and-run example.
 The example files live in [`examples/`](../../examples), are type-checked by
 `dt ts:check`, and the runnable ones are driven against a native `restate-server`
-by [`src/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts)
-and [`src/scheduled.integration.test.ts`](../../src/scheduling/scheduled.integration.test.ts)
+by [`src/endpoint/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts)
+and [`src/scheduling/scheduled.integration.test.ts`](../../src/scheduling/scheduled.integration.test.ts)
 under `dt check:all`. A snippet that stopped compiling or running would fail CI.
 See [Verification](./verification.md) for the full story.
 

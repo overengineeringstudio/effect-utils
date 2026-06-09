@@ -5,7 +5,7 @@
  * awaits a durable promise, an `approve` / `reject` SIGNAL handler resolves or
  * rejects it, and a `status` QUERY handler reads the State. Driven via
  * `workflowSubmit` + `workflowAttach`, asserting BOTH the approved and rejected
- * outcomes (spec §1.3 — the `'rejected'` path is reachable via the query, R34).
+ * outcomes (docs/vrs/01-authoring/spec.md §1.3 — the `'rejected'` path is reachable via the query, R34).
  */
 import { Effect, Layer, Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'

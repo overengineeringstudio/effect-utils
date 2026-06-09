@@ -1,5 +1,5 @@
 /**
- * The replay-aware baseline metrics (R23, spec §10, decision 0014). These are
+ * The replay-aware baseline metrics (R23, docs/vrs/08-observability/spec.md, decision 0014). These are
  * Effect `Metric`s — `effect` is a CORE dependency, so the definitions live here
  * with NO otel import; `./otel`'s `RestateOtel.layer` binds Effect's `Metric` to
  * an OTel `MeterProvider` (`@effect/opentelemetry`'s `Metrics.layer`) so the same
@@ -220,7 +220,7 @@ type AttributeValue = string | number | boolean
 
 /**
  * Stamp custom BUSINESS attributes on the CURRENT span — the user path for
- * slicing in Tempo/Grafana (R23, §10, decision 0014). A thin Effect combinator
+ * slicing in Tempo/Grafana (R23, docs/vrs/08-observability/spec.md, decision 0014). A thin Effect combinator
  * over `Effect.annotateCurrentSpan`: in a handler the current span is the Effect
  * span reparented under the hook's `attempt <target>` span (the inbound bridge),
  * so the attributes ride the one coherent trace. Exported as `Restate.annotateSpan`.

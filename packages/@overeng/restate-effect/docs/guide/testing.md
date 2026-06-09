@@ -40,7 +40,7 @@ The key property: `invoke*` carries `RestateError | ErrorOf` (the TYPED declared
 error) on BOTH backends, so `catchTag(DomainError)` compiles AND recovers identically
 on the mock and the real server. Parametrize with `it.each(['mock', 'real'])` and gate
 the real backend with `kind === 'real' && !serverAvailable`. Verified by
-[`src/test-env.integration.test.ts`](../../src/testing/test-env.integration.test.ts).
+[`src/testing/test-env.integration.test.ts`](../../src/testing/test-env.integration.test.ts).
 
 ```ts
 import { it } from '@effect/vitest'
@@ -111,7 +111,7 @@ serves your endpoint with `appLayer` threaded into the served runtime, registers
 deployment, and exposes a typed ingress client + typed `stateOf` State inspection.
 On release it shuts the server down and removes the temp dir. The full file is
 [`examples/11-testing.ts`](../../examples/11-testing.ts); the `it.effect` assertions
-live in [`src/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts).
+live in [`src/endpoint/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts).
 
 ```ts
 import { it } from '@effect/vitest'
@@ -176,7 +176,7 @@ in-memory implementation, not a stub: State is a real `Map` (round-tripped throu
 the same serde the handler uses), `Restate.run(name, …)` executes once and memoizes
 by name (journaled-once), `ctx.date`/`ctx.rand` are deterministic (seeded), and
 `ctx.sleep` is a controllable no-op. Verified by
-[`src/TestContext.test.ts`](../../src/testing/TestContext.test.ts).
+[`src/testing/TestContext.test.ts`](../../src/testing/TestContext.test.ts).
 
 ```ts
 import { Effect } from 'effect'

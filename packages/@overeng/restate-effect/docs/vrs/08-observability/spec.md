@@ -125,7 +125,7 @@ through the SAME meter; to be exactly-once a user counter must be incremented
 INSIDE a `Restate.run` (journaled-once) or gated on non-replay (`emitWhenProcessing`
 is the reusable gate). The whole path is verified server-free with an in-memory
 `MetricReader` + `SpanExporter`, including a forced-replay no-double-count assertion
-(`src/observability.test.ts`).
+(`src/observability/observability.test.ts`).
 
 The traces + metrics deps live behind `./otel` so the core stays dependency-light
 (R03, A09). Logging (see

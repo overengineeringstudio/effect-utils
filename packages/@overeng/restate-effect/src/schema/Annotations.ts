@@ -52,8 +52,8 @@ export interface SerdeOptions {
 
 /**
  * Retention/visibility facts carried on a contract or handler value schema and
- * mapped to the SDK service/handler options at `materialize` (decision 0011, spec
- * §7). Durations are `Duration.DurationInput` (decoded to millis at the boundary).
+ * mapped to the SDK service/handler options at `materialize` (decision 0011,
+ * docs/vrs/01-authoring/spec.md §4.1). Durations are `Duration.DurationInput` (decoded to millis at the boundary).
  * `journal`/`idempotency` apply to any construct; `workflow` only to a Workflow
  * (it is dropped for Services/Objects).
  */
@@ -146,7 +146,7 @@ export const Restate = {
   /**
    * Declare retention/timeout facts on a contract or handler I/O schema, mapped
    * to the SDK `idempotencyRetention` / `journalRetention` / `workflowRetention`
-   * service/handler options at `materialize` (decision 0011, spec §7). Equivalent
+   * service/handler options at `materialize` (decision 0011, docs/vrs/01-authoring/spec.md §4.1). Equivalent
    * to setting the matching builder `options`, but kept WITH the schema so the
    * fact has one home. Builder `options` win when both are present.
    */

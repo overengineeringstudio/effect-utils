@@ -1,7 +1,7 @@
 /**
  * `@overeng/restate-effect/testing` — a FAITHFUL in-memory `RestateContext` for
  * SERVER-FREE unit tests of handler LOGIC and State transitions (decision 0013,
- * spec §11.5). It is a real in-memory implementation of the durable `ctx`, NOT a
+ * docs/vrs/09-testing/spec.md §5). It is a real in-memory implementation of the durable `ctx`, NOT a
  * stub: State is a real `Map`, `ctx.run(name, …)` executes once and MEMOIZES (so a
  * re-`run` of the same name returns the journaled value), `ctx.date`/`ctx.rand`
  * are deterministic (seeded), and `ctx.sleep` is a controllable no-op. The same
@@ -37,7 +37,7 @@
  * - JOURNAL SHAPE / determinism-divergence hunting (`alwaysReplay`): there is no
  *   journal to diverge.
  *
- * This is the `unit` row of the test-layering table (spec §11.3): server-free
+ * This is the `unit` row of the test-layering table (docs/vrs/09-testing/spec.md §3): server-free
  * handler-logic tests. The `contract` and `integration` rows still need the real
  * harness.
  */

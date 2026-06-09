@@ -194,5 +194,5 @@ A log line is NOT durable — suppressed on replay, never journaled. For
 side-effecting telemetry route it through `Restate.run` (the exactly-once seam, see
 [08-observability](../08-observability/spec.md#metrics-path)). The endpoint's OWN
 startup log (`Endpoint.ts`) is OUTSIDE a handler and keeps the process default
-logger. Verified server-free (`src/Runtime.test.ts`): routing to the matching
+logger. Verified server-free (`src/runtime/Runtime.test.ts`): routing to the matching
 `ctx.console` method + no double-emit under replay.

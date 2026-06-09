@@ -14,7 +14,7 @@ Traces: R26, R26a–d, R27, R28. See
 `RestateTestEnv` façade), and
 [../.decisions/0019](../.decisions/0019-shared-ssot-helpers.md) (the shared
 `freePort` SSOT). POC reference: `test/restate-server.ts`. `./testing` is a
-shipped opt-in subpath export (`src/testing.ts`).
+shipped opt-in subpath export (`src/testing/testing.ts`).
 
 A scoped `Layer` that, on acquire, boots a native `restate-server` (no Docker) on
 ephemeral ports against an isolated temp base dir, waits for the admin health
@@ -122,7 +122,7 @@ field (the `normalizeStateSchema` path), and CRITICALLY the redaction transform
 (`encrypt(decrypt(x)) ≡ x` by value, since a fresh IV per encrypt makes the bytes
 differ each time). Values outside the JSON-representable domain (`NaN`/`±Infinity`,
 which `JSON.stringify` emits as `null`) are excluded via `Schema.Finite` — they are
-not round-trippable by design, not a serde bug (`src/Serde.test.ts`). Deterministic-
+not round-trippable by design, not a serde bug (`src/schema/Serde.test.ts`). Deterministic-
 replay property tests (run a handler, replay it under `alwaysReplay`, assert
 identical journal/result) remain integration-lane.
 

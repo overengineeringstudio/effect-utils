@@ -1,6 +1,6 @@
 /**
  * Integration gap: `sensitive`-field redaction ON THE WIRE against a real native
- * server (decision 0011, spec §4). A `sensitive` field is a serde TRANSFORM
+ * server (decision 0011, docs/vrs/02-schema-serde/spec.md §1). A `sensitive` field is a serde TRANSFORM
  * (encrypt-at-encode / decrypt-at-decode) the server's I/O serde applies. This
  * proves the TRANSPORTED bytes are encrypted end-to-end, and that a MISSING cipher
  * fails LOUDLY (a terminal error, never silent plaintext).

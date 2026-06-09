@@ -1,6 +1,6 @@
 /**
  * Cancellation ↔ interruption integration test against a real native
- * `restate-server` (R31, decision 0003, spec §5a/§12).
+ * `restate-server` (R31, decision 0003, docs/vrs/04-error-boundary/spec.md §2).
  *
  * Proves the cancel→interrupt boundary end-to-end: a keyed Object handler that
  * suspends on a long durable `Restate.sleep`, guarded by an `acquireRelease`

@@ -1,6 +1,6 @@
 /**
  * The `./admin` management API + the Molty-consumer runbook, verified end-to-end
- * against a real native `restate-server` via the `./testing` harness (spec §12,
+ * against a real native `restate-server` via the `./testing` harness (docs/vrs/10-admin/spec.md,
  * decision 0018). Drives the EXACT contracts the runbook recipe shows
  * (`examples/13-admin-operations.ts`) and the admin flows an operator runs:
  *

@@ -1,6 +1,6 @@
 /**
  * Integration gap: `disableRetries` as an ASSERTION + the retryable surface against
- * a real native server (decision 0006, spec §7). `disableRetries` is passed
+ * a real native server (decision 0006, docs/vrs/04-error-boundary/spec.md §3). `disableRetries` is passed
  * everywhere but never asserted — here we PROVE it, and exercise the
  * `Restate.retryable` + `retryAfter` projection end-to-end:
  *

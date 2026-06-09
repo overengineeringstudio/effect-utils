@@ -15,7 +15,7 @@ export type RestateSerde<T> = restate.Serde<T>
 
 /**
  * The slot a serde governs, which decides how a decode `ParseError` is
- * classified (spec §4):
+ * classified (docs/vrs/02-schema-serde/spec.md §1):
  *
  * - `ingress` — a caller-facing input slot. A malformed payload is a
  *   deterministic bad request: throw `TerminalError(400)` (retrying cannot help).
@@ -32,7 +32,7 @@ const decoder = new TextDecoder()
  * Bridges an Effect `Schema<A, I>` to a Restate `Serde<A>`. The `serialize` /
  * `deserialize` pair is synchronous (`Schema.encodeSync` / `decodeUnknownSync`
  * + JSON), so the schema must produce a sync validate — effectful/async
- * transforms break the contract and are unsupported (spec §4).
+ * transforms break the contract and are unsupported (docs/vrs/02-schema-serde/spec.md §1).
  *
  * `contentType` / `jsonSchema` default to `application/json` /
  * `JSONSchema.make`, overridable via the `Restate.serde` annotation
@@ -48,7 +48,7 @@ export const effectSerde = <A, I>(
   slot: SerdeSlot = 'internal',
   options?: { readonly redaction?: RedactionCipher },
 ): RestateSerde<A> => {
-  /* Field-level redaction (decision 0011, spec §4/§13): for each `sensitive`/
+  /* Field-level redaction (decision 0011, docs/vrs/02-schema-serde/spec.md): for each `sensitive`/
    * `redacted` field (read ONCE on the pre-transform property signatures), wrap
    * the schema's encode/decode with an encrypt-at-encode / decrypt-at-decode
    * transform via the provided cipher. No sensitive field → the original

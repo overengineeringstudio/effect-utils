@@ -58,7 +58,7 @@ invocation protocol:
 ### 1.2 Operating a deployment — the Molty runbook
 
 The recipe (`examples/13-admin-operations.ts`, verified by
-`src/admin.integration.test.ts`) models an `incident` Virtual Object (single-writer
+`src/admin/admin.integration.test.ts`) models an `incident` Virtual Object (single-writer
 state machine) + a `delivery` Workflow that can WEDGE, and the flows a production
 consumer runs: LIST invocations (filter by `target_service_name` / `status`),
 INSPECT workflow / QUERY object State (`SELECT … FROM state` or `stateOf`), SURFACE

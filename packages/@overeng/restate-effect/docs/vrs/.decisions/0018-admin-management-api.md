@@ -75,8 +75,8 @@ invocation protocol, and the module documents it prominently:
 - New public surface: the `./admin` subpath (`RestateAdmin` + layer), a new
   `RestateError` reason `AdminFailed`, and the shared `AdminApi.ts` bare client.
 - "Admin / management wrappers" is REMOVED from the Deferred list (now shipped).
-- Verified server-free (`src/admin.test.ts`: per-op method/path/auth + typed-query
-  decode-failure) and against a real native server (`src/admin.integration.test.ts`:
+- Verified server-free (`src/admin/admin.test.ts`: per-op method/path/auth + typed-query
+  decode-failure) and against a real native server (`src/admin/admin.integration.test.ts`:
   list deployments, a typed `/query` round-trip, QUERY an incident object's State,
   and surface + cancel a wedged delivery). The runbook recipe is
   `examples/13-admin-operations.ts`.

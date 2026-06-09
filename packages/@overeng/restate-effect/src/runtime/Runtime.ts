@@ -10,7 +10,7 @@
  * capability markers — never placed in the long-lived application Layer.
  *
  * See decisions 0004 (determinism layer), 0015 (logger bridge) and 0003 (error
- * boundary), spec §6, §10.3 and §5a/§12, and requirements R17 + R31.
+ * boundary), docs/vrs/03-effect-runtime/spec.md §1 (determinism) + §2 (logging) and docs/vrs/04-error-boundary/spec.md §2 (cancellation↔interruption), and requirements R17 + R31.
  */
 import * as restate from '@restatedev/restate-sdk'
 import { Chunk, Clock, Effect, Layer, Logger, LogLevel, Random } from 'effect'
@@ -123,7 +123,7 @@ export const determinismLayer = (
     Layer.setRandom(makeJournaledRandom(ctx)),
   )
 
-/* ── logger bridge (decision 0015, spec §10.3) ───────────────────────────── */
+/* ── logger bridge (decision 0015, docs/vrs/03-effect-runtime/spec.md §2) ───────────────────────────── */
 
 /**
  * Map an Effect `LogLevel` to the `Console` method `ctx.console` exposes. The
@@ -155,7 +155,7 @@ const formatLog = Logger.logfmtLogger.log
 
 /**
  * Build the per-invocation `Logger` that routes every in-handler `Effect.log*`
- * into the invocation's `ctx.console` (decision 0015, spec §10.3). `ctx.console`
+ * into the invocation's `ctx.console` (decision 0015, docs/vrs/03-effect-runtime/spec.md §2). `ctx.console`
  * is the SDK's replay-aware console: it stamps the invocation id / target context
  * and AUTOMATICALLY suppresses output during replay, and it honors the
  * `RESTATE_LOGGING` level — so an `Effect.logInfo` in a handler no longer
@@ -182,7 +182,7 @@ const makeConsoleLogger = (ctx: restate.Context): Logger.Logger<unknown, void> =
 export const loggerLayer = (ctx: restate.Context): Layer.Layer<never> =>
   Logger.replace(Logger.defaultLogger, makeConsoleLogger(ctx))
 
-/* ── cancellation ↔ interruption bridge (R31, spec §5a/§12) ──────────────── */
+/* ── cancellation ↔ interruption bridge (R31, docs/vrs/04-error-boundary/spec.md §2) ──────────────── */
 
 /**
  * Run `effect` with the attempt's `Request.attemptCompletedSignal` bridged to
@@ -193,9 +193,9 @@ export const loggerLayer = (ctx: restate.Context): Layer.Layer<never> =>
  *
  * The signal is ATTEMPT-scoped: the same logical invocation may get a NEW
  * attempt later (replay), so attempt-scoped cleanup must be idempotent (spec
- * §5a). We interrupt the running fiber rather than failing it, so the cause is a
+ * docs/vrs/04-error-boundary/spec.md §2). We interrupt the running fiber rather than failing it, so the cause is a
  * genuine `Interrupt` (not a domain failure or defect) — `toTerminal` then
- * neither terminalizes nor retries it (spec §5/§5a).
+ * neither terminalizes nor retries it (docs/vrs/04-error-boundary/spec.md §1/§2).
  */
 export const withAttemptInterruption = <A, E, R>(
   ctx: restate.Context,
@@ -222,12 +222,12 @@ export const withAttemptInterruption = <A, E, R>(
   )
 }
 
-/* ── cancel surface (R31, spec §12) ──────────────────────────────────────── */
+/* ── cancel surface (R31, docs/vrs/10-admin/spec.md) ──────────────────────────────────────── */
 
 /**
  * Cancel ANOTHER invocation from inside a handler (cooperative cancel — the
  * target surfaces an Effect interruption at its next await point, so its
- * finalizers/compensations run; spec §12). Backed by `ctx.cancel`. The
+ * finalizers/compensations run; docs/vrs/04-error-boundary/spec.md §2). Backed by `ctx.cancel`. The
  * invocation id is the opaque handle returned by a prior `send` / submission.
  * Requires `RestateContext` (legal in any handler kind).
  */
@@ -239,7 +239,7 @@ export const cancel = (invocationId: string): Effect.Effect<void, never, Restate
 
 /**
  * Observe the current invocation's cancellation as an Effect that SUCCEEDS when
- * Restate signals cancellation (R31, spec §12). Backed by the SDK's
+ * Restate signals cancellation (R31, docs/vrs/10-admin/spec.md). Backed by the SDK's
  * `ContextInternal.cancellation()` durable promise.
  *
  * NOTE: the underlying promise only resolves when the service is configured with

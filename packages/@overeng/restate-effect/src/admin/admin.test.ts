@@ -1,6 +1,6 @@
 /**
- * Server-free assertions for the `./admin` management surface (decision 0018, spec
- * §12): each operation hits the right admin REST endpoint with the right method /
+ * Server-free assertions for the `./admin` management surface (decision 0018,
+ * docs/vrs/10-admin/spec.md): each operation hits the right admin REST endpoint with the right method /
  * path / query params, the bearer `apiKey` rides as `Authorization: Bearer …`, the
  * typed `query` decodes rows through the caller's Schema (and FAILS with a typed
  * `AdminFailed` on a decode mismatch), and a non-OK status surfaces a

@@ -1,5 +1,5 @@
 /**
- * Server-free contract-layer test of the OTel bridge (spec §10, §11.3, decision
+ * Server-free contract-layer test of the OTel bridge (docs/vrs/08-observability/spec.md + docs/vrs/09-testing/spec.md §3, decision
  * 0007). Uses an in-memory `SpanExporter` and drives the real
  * `openTelemetryHook` + the real inbound bridge by hand (no native server),
  * proving:

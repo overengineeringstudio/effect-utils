@@ -72,7 +72,7 @@ and Restate retries (instead of failing the caller). `retryAfter` sets a floor
 before the next attempt — either a **static** `Duration` shorthand or an **instance
 projection** read off the actual failing error (mirroring `idempotencyKey` — the
 fact lives on the schema, read once at the boundary). Both forms are verified in
-[`src/error-transport.test.ts`](../../src/error/error-transport.test.ts).
+[`src/error/error-transport.test.ts`](../../src/error/error-transport.test.ts).
 
 ```ts
 // static floor — a named tagged-error class (mirrors `examples/08-annotations.ts`)

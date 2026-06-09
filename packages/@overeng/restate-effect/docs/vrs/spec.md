@@ -106,7 +106,8 @@ and docs mirror each other. Each subsystem `spec.md` opens with a link up to
 
 ## Deferred (designed for later)
 
-Out of v1 scope, designed to slot in without reshaping the core:
+Out of v1 scope, designed to slot in without reshaping the core. Each is tracked
+as a follow-up issue:
 
 - **Serverless targets** — Lambda / fetch / Cloudflare Workers endpoints
   (`createEndpointHandler` over the SDK's `/lambda` and `/fetch` subpaths, with a
@@ -114,15 +115,45 @@ Out of v1 scope, designed to slot in without reshaping the core:
   node-h2c only (A08).
 - **First-class saga helper** — a `withCompensation` combinator over the
   [04-error-boundary](./04-error-boundary/spec.md#saga--compensation-future)
-  mechanism.
+  mechanism. The cancel↔interrupt mapping it relies on is NOT deferred (it ships
+  in v1, [04-error-boundary](./04-error-boundary/spec.md#cancellation--interruption));
+  only the packaged register-and-unwind helper is.
 - **Scheduling / cron sugar** — typed wrappers over delayed `send` +
-  self-reschedule.
+  self-reschedule, plus `fixedRate` / `cron` schedules (v1 ships `fixedDelay`
+  only, see [06-scheduling](./06-scheduling/spec.md)).
 - **`JournalValueCodec`** — the experimental endpoint-global WHOLE-VALUE byte
   layer below serde (compression / whole-value encryption). FIELD redaction is NOT
   part of this — that is a serde Schema transform (see
   [02-schema-serde](./02-schema-serde/spec.md),
   [.decisions/0011](./.decisions/0011-restate-schema-annotations.md)) and ships in
   v1; the codec stays fully deferred.
+- **Stream follow story** — surfacing a Restate invocation's incremental output /
+  log tail as an Effect `Stream` (e.g. follow a long-running Workflow). v1 exposes
+  only the request/response + attach/output surfaces
+  ([05-clients](./05-clients/spec.md)).
+- **Generic / untyped in-handler call** — a public escape hatch over the SDK's
+  `ctx.genericCall` for calling a service NOT described by an imported contract
+  (cross-language / dynamic targets). v1's in-handler clients are contract-typed
+  only ([05-clients](./05-clients/spec.md),
+  [.decisions/0008](./.decisions/0008-typed-client-inference.md)); `genericCall` is
+  used internally but not exposed untyped.
+- **Batch admin operations** — the BULK/BATCH invocation verbs (a filtered
+  `PATCH /invocations/{verb}`) do NOT exist on restate-server 1.6.2 (they 405) and
+  are a later-server feature; `./admin` does not offer them on a server that lacks
+  them. Deferred until a newer server is the floor (see
+  [10-admin](./10-admin/spec.md),
+  [.decisions/0018](./.decisions/0018-admin-management-api.md)).
+- **Multi-deployment suspend-straddle replay** — a FULL cross-version replay where
+  an invocation STARTED on V1 SUSPENDS mid-handler and RESUMES its journal on V2
+  after the upgrade. The registration + routing-to-latest half is proven; a
+  controllable mid-invocation suspension straddling the re-register is the residual
+  follow-up (see
+  [09-testing](./09-testing/spec.md#determinism-hunting-modes--lifecycle-contract),
+  [07-endpoint-deploy](./07-endpoint-deploy/spec.md#3-deployment-evolution)).
+- **Cosmetic Effect polish** — internal-only refactors that do not change behavior
+  or surface: `Match` over hand-rolled tag switches, `Effect.fn` for named spans,
+  `Schema.Equivalence` where value-equality is hand-derived, and `Effect.Service`
+  for the remaining `Context.Tag` + `Layer` service pairs.
 
 ## Open design questions
 
@@ -174,12 +205,12 @@ HandlerMap>` + `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed
   [.decisions/0009](./.decisions/0009-effect-native-testing-harness.md).)
 - **DQ6 Frozen monotonic base — RESOLVED.** Confirmed in implementation:
   `determinismLayer` seeds a per-attempt frozen sync base from the first
-  `ctx.date.now()`, and `src/Runtime.test.ts` asserts `Clock.unsafeCurrentTime*` is
+  `ctx.date.now()`, and `src/runtime/Runtime.test.ts` asserts `Clock.unsafeCurrentTime*` is
   FROZEN at entry (does not advance mid-attempt) while the async
   `Clock.currentTimeMillis` tracks `ctx.date`. Determinism is also validated
   end-to-end against native restate-server 1.6.2 — a `Restate.run` side effect
   fires exactly once across replays and journaled reads are replay-stable (the
-  `alwaysReplay determinism` lane in `src/examples.integration.test.ts`, see
+  `alwaysReplay determinism` lane in `src/endpoint/examples.integration.test.ts`, see
   [03-effect-runtime](./03-effect-runtime/spec.md)). (See
   [.decisions/0004](./.decisions/0004-determinism-layer.md).)
 - **DQ7 h2c prior-knowledge handshake — RESOLVED.** `http2.createServer(

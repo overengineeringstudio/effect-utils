@@ -153,7 +153,7 @@ const descriptor = <A>(
  * Whether a durable-op rejection is a Restate cancellation (`CancelledError`,
  * which `extends TerminalError`) — the cooperative-cancel signal a suspended
  * durable op (e.g. `ctx.sleep`) rejects with when the invocation is cancelled
- * (R31, spec §5a). It must NOT be wrapped into a `RestateError` defect (which
+ * (R31, docs/vrs/04-error-boundary/spec.md §2). It must NOT be wrapped into a `RestateError` defect (which
  * would be retried); it has to propagate so the boundary terminalizes it as a
  * non-retried cancellation.
  */
@@ -250,8 +250,8 @@ const awaitDurable = <A>(
 /* ── durable combinators ─────────────────────────────────────────────────── */
 
 /**
- * Per-step durable retry controls for a single `Restate.run` (decision 0006, spec
- * §7) — the SDK `RunOptions` retry knobs (the `serde` field is excluded; that is
+ * Per-step durable retry controls for a single `Restate.run` (decision 0006,
+ * docs/vrs/04-error-boundary/spec.md §3) — the SDK `RunOptions` retry knobs (the `serde` field is excluded; that is
  * the serde layer's concern). Restate retries the step with this backoff; on
  * giving up (`maxRetryAttempts`/`maxRetryDuration`), `ctx.run` converts the
  * failure to a `TerminalError` (surfaced here as a `RestateError` defect). Durable
@@ -287,7 +287,7 @@ const mapRunOptions = (o: RunRetryOptions): Record<string, unknown> => ({
  * surrounding handler scope.
  *
  * `options` surfaces Restate's per-step durable retry controls (decision 0006,
- * spec §7); when given, the step is bounded by `ctx.run`'s own retry/backoff and
+ * docs/vrs/04-error-boundary/spec.md §3); when given, the step is bounded by `ctx.run`'s own retry/backoff and
  * a give-up becomes a `RestateError` DEFECT. Never wrap a durable step in
  * `Effect.retry` — that double-retries non-durably (R21).
  *
@@ -572,7 +572,7 @@ export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext>
  * handler (which awaits it) and a shared signal handler (which resolves/rejects
  * it). Capability-gated on `DurablePromise`. The payload is decode/encode'd via
  * the contract's per-name Schema on the `internal` slot — a decode failure is a
- * corrupt-journal defect (R13, spec §4). `get` blocks until resolved; `peek` is a
+ * corrupt-journal defect (R13, docs/vrs/02-schema-serde/spec.md §1). `get` blocks until resolved; `peek` is a
  * non-blocking read (`undefined` if unresolved); `resolve`/`reject` complete it
  * (a `reject` makes the awaiting `get` fail terminally — drives the `'rejected'`
  * path, R34). `getDescriptor` issues the promise as a `Descriptor` for

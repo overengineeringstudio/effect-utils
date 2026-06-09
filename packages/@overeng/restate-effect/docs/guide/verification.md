@@ -6,10 +6,10 @@
 
 The [`examples/`](../../examples) directory holds runnable `.ts` files (covered by
 the package `tsconfig` and `dt ts:check`).
-[`src/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts) imports
+[`src/endpoint/examples.integration.test.ts`](../../src/endpoint/examples.integration.test.ts) imports
 the example contracts/impls and drives them through the [`./testing`](./testing.md)
 harness against a real native `restate-server`, and
-[`src/scheduled.integration.test.ts`](../../src/scheduling/scheduled.integration.test.ts) does
+[`src/scheduling/scheduled.integration.test.ts`](../../src/scheduling/scheduled.integration.test.ts) does
 the same for the self-reschedule example. So `dt check:all` both type-checks every
 snippet and runs the documented behavior end-to-end.
 

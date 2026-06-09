@@ -1,6 +1,6 @@
 /**
  * `@overeng/restate-effect/admin` — the opt-in Restate admin / management API
- * surface (decision 0018, spec §12). A `RestateAdmin` Tag + `layer({ adminUrl })`
+ * surface (decision 0018, docs/vrs/10-admin/spec.md). A `RestateAdmin` Tag + `layer({ adminUrl })`
  * MIRRORING the `RestateIngress` Tag/layer pattern, exposing the admin REST
  * endpoints as Effect combinators that fail with a typed
  * `RestateError({ reason: 'AdminFailed' })`.
@@ -22,8 +22,9 @@
  * This module is PINNED to **restate-server 1.6.2 (admin-api-version 3)** and the
  * shapes are verified against it. Notably the BULK/BATCH invocation verbs (a
  * filtered `PATCH /invocations/{verb}`) do NOT exist on 1.6.2 — they 405 — and are
- * a later-server feature; {@link RestateAdmin.batch} surfaces them behind that
- * explicit version caveat (see decision 0018).
+ * a later-server feature; the binding does NOT offer them on a server that lacks
+ * them, so there is no batch surface in v1 (a deferred follow-up for when a newer
+ * server is the floor — see decision 0018).
  *
  * ```ts
  * Effect.gen(function* () {
@@ -202,7 +203,7 @@ const toClientConfig = (opts: {
 })
 
 /**
- * The Restate admin / management API service (decision 0018, spec §12). Build the
+ * The Restate admin / management API service (decision 0018, docs/vrs/10-admin/spec.md). Build the
  * layer with `RestateAdmin.layer({ adminUrl, apiKey? })` (or the env-driven
  * `RestateAdmin.layerConfig`) and `yield* RestateAdmin`. MIRRORS the
  * `RestateIngress` Tag/layer pattern — but points at the admin URL, NOT the

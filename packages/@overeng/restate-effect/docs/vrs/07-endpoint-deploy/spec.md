@@ -81,8 +81,8 @@ config to wire them from the environment (R38, R39):
   the closure, R03; see [08-observability](../08-observability/spec.md)).
 
 Verified server-free: the bearer header + `layerConfig` env reads
-(`src/client-ingress.test.ts`), `identityKeys` reaching the SDK builder
-(`src/identity.test.ts`), the OTel `layerConfig` Config resolution (`src/otel.test.ts`).
+(`src/clients/client-ingress.test.ts`), `identityKeys` reaching the SDK builder
+(`src/endpoint/identity.test.ts`), the OTel `layerConfig` Config resolution (`src/observability/otel.test.ts`).
 A real signing handshake belongs to the integration lane.
 
 ## 3. Deployment evolution

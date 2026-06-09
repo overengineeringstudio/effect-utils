@@ -1,5 +1,5 @@
 /**
- * Server-free observability test (spec §10, decision 0014): span ATTRIBUTES + the
+ * Server-free observability test (docs/vrs/08-observability/spec.md, decision 0014): span ATTRIBUTES + the
  * replay-aware METRICS path, proving the package is operable from Grafana.
  *
  * 1. Span attributes — drive the real `openTelemetryHook` + the `./otel`

@@ -44,7 +44,7 @@ durable RUNTIME (which only the real server provides).
 
 ## What it does NOT model — use `RestateTestHarness` for these
 
-This is the `unit` row of the test-layering table (spec §11.3). It deliberately
+This is the `unit` row of the test-layering table (the `unit` row in [09-testing/spec.md](../09-testing/spec.md) §3). It deliberately
 does not model:
 
 - DURABILITY / REPLAY: no journal, no suspension, no re-attempt. A crash
@@ -67,7 +67,7 @@ durability/replay/single-writer/journal-shape.
   stay faithful to the real boundary's capability provision (kept in lock-step
   with `Endpoint.materialize*`).
 - The in-memory context is NOT a substitute for the harness — documented in the
-  module JSDoc, the README, and spec §11.5 so a consumer does not mistake a green
+  module JSDoc, the README, and [09-testing/spec.md](../09-testing/spec.md) §5 so a consumer does not mistake a green
   in-memory test for durability/replay coverage.
 
 Status: accepted

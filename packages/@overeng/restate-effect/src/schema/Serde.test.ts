@@ -92,7 +92,7 @@ describe('State.for optional field serde (papercut)', () => {
 })
 
 /**
- * Property-based serde round-trips (spec §4, §11.4). The claim "`decode(encode(x))
+ * Property-based serde round-trips (docs/vrs/02-schema-serde/spec.md §1 + docs/vrs/09-testing/spec.md §3). The claim "`decode(encode(x))
  * ≡ x` over an `Arbitrary` derived from the schema is first-class" is made REAL
  * here: `@effect/vitest` `it.prop` derives a `fast-check` arbitrary from each
  * schema and asserts `deserialize(serialize(x))` is equivalent to `x` for every
@@ -100,7 +100,7 @@ describe('State.for optional field serde (papercut)', () => {
  * `toStrictEqual` — so transformed/branded values compare by their decoded VALUE,
  * the property that actually matters for a serde.
  */
-describe('effectSerde property round-trips (§11.4)', () => {
+describe('effectSerde property round-trips (docs/vrs/09-testing/spec.md §3)', () => {
   /* A plain struct of primitives. */
   const Plain = Schema.Struct({
     name: Schema.String,

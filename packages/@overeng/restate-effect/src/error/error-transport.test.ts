@@ -1,6 +1,6 @@
 /**
- * Server-free contract-layer test of the error-transport round-trip (spec §5,
- * §11.3): a domain `Schema.TaggedError` → `toTerminal` (per-error errorCode,
+ * Server-free contract-layer test of the error-transport round-trip (docs/vrs/04-error-boundary/spec.md §1,
+ * docs/vrs/09-testing/spec.md §3): a domain `Schema.TaggedError` → `toTerminal` (per-error errorCode,
  * `_tag` in the message body) → a simulated ingress `HttpCallError` → the
  * `decodeTerminalError` helper → back to the typed tagged error, so a caller
  * `catchTag`s it. No native server involved.
