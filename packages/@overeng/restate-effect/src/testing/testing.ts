@@ -1,6 +1,6 @@
 /**
  * `@overeng/restate-effect/testing` — a Docker-free, Effect-native testing
- * harness (decision 0009, spec §11). Boots a real native `restate-server` (no
+ * harness (decision 0009, docs/vrs/09-testing/spec.md). Boots a real native `restate-server` (no
  * Docker) on EPHEMERAL ports against an isolated temp base dir, serves the
  * consumer's endpoint (their `appLayer` threaded into the served runtime so
  * handler `R` is satisfied), registers the deployment, and exposes a typed
@@ -88,7 +88,7 @@ import { RestateError } from '../schema/RestateError.ts'
 import { effectSerde } from '../schema/Serde.ts'
 
 /**
- * The faithful in-memory `RestateContext` (decision 0013, spec §11.5): a REAL
+ * The faithful in-memory `RestateContext` (decision 0013, docs/vrs/09-testing/spec.md §5): a REAL
  * in-memory implementation of the durable `ctx` for SERVER-FREE unit tests of
  * handler logic + State transitions. NOT a substitute for `RestateTestHarness`
  * (it deliberately does not model durability/replay/single-writer/
@@ -105,7 +105,7 @@ export {
 } from './TestContext.ts'
 
 /**
- * The swappable mock⟷real `RestateTestEnv` façade (decision 0017, spec §11): ONE
+ * The swappable mock⟷real `RestateTestEnv` façade (decision 0017, docs/vrs/09-testing/spec.md): ONE
  * contract-addressed invocation surface (`invokeService(contract, method, input)`)
  * with TWO Layer impls — `RestateTestEnv.mock` (in-process, no server, fast) and
  * `RestateTestEnv.real` (a thin wrapper over `RestateTestHarness`). The SAME test
@@ -179,7 +179,7 @@ export const serverAvailable: boolean = (() => {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-/** The native-server determinism env fragment for the two hunting modes (DQ5, spec §11.2). */
+/** The native-server determinism env fragment for the two hunting modes (DQ5, docs/vrs/09-testing/spec.md §2). */
 const determinismEnv = (opts: {
   readonly alwaysReplay?: boolean
   readonly disableRetries?: boolean
@@ -383,7 +383,7 @@ const startServer = async (opts: {
 }
 
 /* ════════════════════════════════════════════════════════════════════════
- * Typed State inspection (`stateOf`) over the Admin API (spec §11.1).
+ * Typed State inspection (`stateOf`) over the Admin API (docs/vrs/09-testing/spec.md §1).
  * ════════════════════════════════════════════════════════════════════════ */
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- generic-State boundary; the public StateProxy stays precise via the contract's `state` map */
@@ -394,7 +394,7 @@ type StatefulContract<S extends StateSchemas> =
   | WorkflowContract<string, S, any, any, any>
 
 /**
- * A typed State proxy for one Virtual Object / Workflow key (spec §11.1). `get` /
+ * A typed State proxy for one Virtual Object / Workflow key (docs/vrs/09-testing/spec.md §1). `get` /
  * `getAll` / `set` / `setAll` are key- AND value-typed against the contract's
  * `state` block, serialized via `effectSerde` (the same per-key Schema the
  * handlers use), and driven over the Admin API. Used to seed pre-conditions and
@@ -537,7 +537,7 @@ const makeStateProxy = <S extends StateSchemas>(
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /* ════════════════════════════════════════════════════════════════════════
- * The harness service + scoped Layer (spec §11, decision 0009).
+ * The harness service + scoped Layer (docs/vrs/09-testing/spec.md, decision 0009).
  * ════════════════════════════════════════════════════════════════════════ */
 
 /** The harness service value: a bound ingress + a typed `stateOf` factory. */
@@ -553,7 +553,7 @@ export interface RestateTestHarnessService {
    */
   readonly ingress: BoundIngress
   /**
-   * A typed State proxy for one Virtual Object / Workflow key (spec §11.1):
+   * A typed State proxy for one Virtual Object / Workflow key (docs/vrs/09-testing/spec.md §1):
    * `get` / `getAll` / `set` / `setAll`, key+value typed against the contract's
    * `state` block, over the Admin API. Seed pre-conditions and assert
    * post-conditions without going through a handler.
@@ -564,7 +564,7 @@ export interface RestateTestHarnessService {
   ) => StateProxy<S>
   /**
    * Serve an ADDITIONAL `services` array on a fresh ephemeral SDK port and register
-   * it as a SECOND deployment version against the running server (spec §11.2,
+   * it as a SECOND deployment version against the running server (docs/vrs/09-testing/spec.md §2,
    * multi-deployment). The new endpoint is built into the harness scope (its
    * finalizer closes before the server shuts down), so a test can register two
    * endpoint VERSIONS of the same service and assert replay/upgrade across them. The
@@ -687,7 +687,7 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
     readonly alwaysReplay?: boolean
     readonly disableRetries?: boolean
     /**
-     * Endpoint observability wiring threaded into the served endpoint (spec §10):
+     * Endpoint observability wiring threaded into the served endpoint (docs/vrs/08-observability/spec.md):
      * the Restate `hooks` (e.g. the otel `openTelemetryHook`), the per-invocation
      * `inboundBridge` (attempt-span → Effect-parent), and the `boundaryObserver`
      * (per-invocation span-stamp + outcome metric). Supply the `./otel`
@@ -724,7 +724,7 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
          * GIVEN scope registers its finalizer (close the HTTP/2 server) BEFORE the
          * server-shutdown finalizer (close endpoint → kill server → rm base dir).
          * Reused for the primary deployment AND `registerDeployment` (multi-version,
-         * spec §11.2) — each gets its own port + scope-managed endpoint. */
+         * docs/vrs/09-testing/spec.md §2) — each gets its own port + scope-managed endpoint. */
         const serveAndRegister = <AppR2, RIn2>(
           services: ReadonlyArray<AnyImplementation<AppR2>>,
           appLayer: Layer.Layer<AppR2, never, RIn2>,
@@ -825,7 +825,7 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
 }
 
 /* ════════════════════════════════════════════════════════════════════════
- * `withRestateServer` — a manual-scope harness holder (#5, spec §11.5).
+ * `withRestateServer` — a manual-scope harness holder (#5, docs/vrs/09-testing/spec.md §5).
  * ════════════════════════════════════════════════════════════════════════ */
 
 /** A held, lazily-booted harness: `setup`/`teardown` for `beforeAll`/`afterAll`, plus the live `harness` accessor. */

@@ -1,6 +1,6 @@
 /**
  * `RestateTestEnv` — ONE contract-addressed invocation surface with TWO swappable
- * backends (decision 0017, spec §11). The SAME test body
+ * backends (decision 0017, docs/vrs/09-testing/spec.md). The SAME test body
  * (`invokeService(contract, method, input)`, NEVER `impl.method(input)`) runs on
  * either backend:
  *
@@ -179,7 +179,7 @@ export class RestateTestEnv extends Context.Tag('@overeng/restate-effect/Restate
    * runtime — durability/replay/suspension, single-writer, cross-invocation,
    * serde-on-the-wire, idempotency, OTel reparenting — so a real-only behavior is
    * authored against THIS backend. `alwaysReplay` / `disableRetries` mirror the
-   * harness's determinism-hunting modes (spec §11.2).
+   * harness's determinism-hunting modes (docs/vrs/09-testing/spec.md §2).
    */
   static real = <AppR, RIn = never>(opts: {
     readonly services: ReadonlyArray<AnyImplementation<AppR>>
@@ -221,7 +221,7 @@ const realEnv = (h: RestateTestHarnessService): RestateTestEnvService => ({
  * The `.mock` backend — in-process dispatch over per-key Maps + a shared registry.
  * ════════════════════════════════════════════════════════════════════════ */
 
-/** Which handler kind a contract method materializes as (the marker subset, spec §3). */
+/** Which handler kind a contract method materializes as (the marker subset, docs/vrs/01-authoring/spec.md §3). */
 const objectHandlerKind = (spec: ObjectHandlerSpec): HandlerMarkers =>
   spec.shared === true ? 'objectShared' : 'objectExclusive'
 

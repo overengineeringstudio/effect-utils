@@ -64,7 +64,7 @@ Logger.make(({ logLevel, message, annotations, spans, … }) =>
 
 - `loggerLayer` is exported from the core (`mod.ts`) for direct testing, wired by
   every `materialize*` path via `Layer.merge(determinismLayer(…), loggerLayer(ctx))`.
-- Verified server-free (`src/Runtime.test.ts`): an in-handler `Effect.log*` routes
+- Verified server-free (`src/runtime/Runtime.test.ts`): an in-handler `Effect.log*` routes
   to the matching `ctx.console` method, and a replayed attempt (modeled by a console
   that drops calls while replaying) does NOT double-emit.
 

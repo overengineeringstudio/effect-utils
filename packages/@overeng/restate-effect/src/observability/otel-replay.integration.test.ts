@@ -1,6 +1,6 @@
 /**
  * Integration gap: OTel exactly-once per-invocation metrics + attempt-span
- * reparenting under REAL replay against a native server (decision 0014, §10). This
+ * reparenting under REAL replay against a native server (decision 0014, docs/vrs/08-observability/spec.md). This
  * was only UNIT-asserted (a fabricated hook context) before. Here the real server
  * runs a handler under `alwaysReplay` (every suspension forces a replay), with the
  * OTel hook + inbound bridge + boundary observer wired through the harness and a

@@ -1,6 +1,6 @@
 /**
  * Integration gap (HIGH): multi-deployment registration + version upgrade against a
- * real native server (spec §11.2). The harness now serves ONE primary deployment AND
+ * real native server (docs/vrs/09-testing/spec.md §2). The harness now serves ONE primary deployment AND
  * exposes `registerDeployment(...)` to serve + register a SECOND endpoint VERSION of
  * the same service on a fresh port. This proves the multi-version machinery: two
  * deployments coexist on the admin API, and a NEW invocation routes to the LATEST

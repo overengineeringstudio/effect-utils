@@ -168,7 +168,7 @@ reads an unstable internal SDK symbol.
 
 The whole path is verified server-free with an in-memory `MetricReader` +
 `SpanExporter`, including a forced-replay no-double-count assertion
-([`src/observability.test.ts`](../../src/observability/observability.test.ts)).
+([`src/observability/observability.test.ts`](../../src/observability/observability.test.ts)).
 
 ## Logging
 

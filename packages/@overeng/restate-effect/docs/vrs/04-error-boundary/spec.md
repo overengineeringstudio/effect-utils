@@ -126,6 +126,20 @@ options:
 `Effect.retry` / `Schedule` remain available for pure, non-durable computation
 only (lint/doc enforced).
 
+What the `retryPolicy` `maxAttempts` cap (and the harness `disableRetries` mode,
+which sets the SERVER DEFAULT retry policy to `max-attempts=1` + `on-max-attempts=kill`,
+see [09-testing](../09-testing/spec.md#determinism-hunting-modes--lifecycle-contract))
+actually bounds, verified against native restate-server 1.6.2
+(`src/error/retry-policy.integration.test.ts`): the INVOKER retry of a DEFECT (an
+infra throw / corrupt-journal — R13) is attempted exactly `maxAttempts` times, then
+killed. A handler that throws a `RetryableError` (the `retryable`-classified domain
+signal, R22) is RE-RUN by the retryable classification and is NOT bounded by that
+default-retry-policy cap — so `disableRetries` / a small `maxAttempts` does NOT
+fail-fast a handler-thrown `RetryableError` loop; only the defect/invoker retry path
+is bounded. A consumer that needs a retryable-classified failure to STOP must do so in
+the handler (e.g. cap re-arms itself, as the `pollLoop` `maxRetryBackoffs` does, see
+[06-scheduling](../06-scheduling/spec.md)), not via `maxAttempts`.
+
 The end-to-end terminal-vs-retryable classification of a real HTTP error union (a
 4xx/malformed terminal alongside a 429/5xx retryable with the `Retry-After`
 projection) is the public worked example `examples/14-http-error-classification.ts`,

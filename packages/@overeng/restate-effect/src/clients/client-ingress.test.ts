@@ -1,5 +1,5 @@
 /**
- * Server-free assertions for the ingress auth surface (decision 0016, spec §8/§9):
+ * Server-free assertions for the ingress auth surface (decision 0016, docs/vrs/07-endpoint-deploy/spec.md §2):
  * `RestateIngress.layer({ url, apiKey })` sends the API key as an
  * `Authorization: Bearer …` header, and `RestateIngress.layerConfig` reads the URL
  * + key from `RESTATE_INGRESS_URL` / `RESTATE_INGRESS_KEY` via `Config` (the key a

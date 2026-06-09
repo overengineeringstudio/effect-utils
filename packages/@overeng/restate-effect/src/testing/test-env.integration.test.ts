@@ -1,5 +1,5 @@
 /**
- * The swappable `RestateTestEnv` façade (decision 0017, spec §11): ONE test body,
+ * The swappable `RestateTestEnv` façade (decision 0017, docs/vrs/09-testing/spec.md): ONE test body,
  * authored ONLY against the contract-addressed `RestateTestEnv` surface
  * (`invokeService` / `invokeObject` / `stateOf` / `resolveAwakeable`), run on BOTH
  * backends via `describe.each(['mock', 'real'])`:

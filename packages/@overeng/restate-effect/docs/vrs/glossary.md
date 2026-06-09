@@ -229,6 +229,17 @@ The USER span-attribute path — a thin otel-free combinator over
 current Effect span. Attributes are NOT replay-suppressed; use the `span.label`
 convention for a single primary label.
 
+**`Restate.annotateSpanFrom`**:
+The SAFE-BY-DEFAULT schema-aware counterpart to **`Restate.annotateSpan`**:
+`annotateSpanFrom(schema, value, pick?)` projects a DECODED struct to span
+attributes and STRIPS every `Restate.sensitive`/`redacted` field — even one
+explicitly `pick`ed — using the SAME `findSensitiveFields` walk the serde redaction
+uses as the single source of truth, so the span projection and the serde can never
+disagree about what is secret. Only primitive field values are stamped. The
+preferred surface for "annotate a few non-secret fields of my decoded input/state",
+upholding the "never a redacted value on a span" rule (`.decisions/0014`) on the
+USER path that serde redaction does not cover.
+
 **Exactly-once metric emission**:
 The replay-aware seam (`emitWhenProcessing(ctx, …)`) gating every auto baseline
 metric on `ctx.isProcessing()`, so a journal **Replay**/extra attempt never
