@@ -2,6 +2,7 @@ export type BodyLossyReason =
   | 'endpoint_truncated'
   | 'unknown_blocks'
   | 'unsupported_blocks'
+  | 'rendered_markdown_unavailable'
   | 'rendered_markdown_has_unobserved_suffix'
 
 export type BodyCompleteness =

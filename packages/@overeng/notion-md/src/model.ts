@@ -44,7 +44,13 @@ export interface RemotePageSnapshot {
 
 /** Markdown export result returned by Notion's enhanced Markdown endpoint. */
 export interface RemoteMarkdownSnapshot {
+  /**
+   * Markdown body that notion-md may adopt as the local/base body when the
+   * associated completeness evidence is complete. Live pulls derive this from
+   * the block-tree renderer; endpoint Markdown remains diagnostic evidence.
+   */
   readonly markdown: string
+  readonly endpoint_markdown?: string
   readonly truncated: boolean
   readonly unknown_block_ids: readonly string[]
   readonly completeness?: BodyCompleteness

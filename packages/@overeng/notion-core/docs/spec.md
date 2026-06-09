@@ -58,10 +58,11 @@ Notion page-body observation is safe to adopt as a clean Markdown base.
 
 The classifier is intentionally conservative. A body observation is lossy when
 the Markdown endpoint reports truncation, reports unknown block IDs, the block
-inventory contains unsupported entries, or the independently rendered block
-tree proves the endpoint Markdown has an unobserved suffix. That last case
-covers the known divider truncation failure where single-page establishment
-previously treated a prefix as a clean `.nmd` base.
+inventory contains unsupported entries, rendered block-tree evidence is required
+but unavailable, or the independently rendered block tree proves the endpoint
+Markdown has an unobserved suffix. That last case covers the known divider
+truncation failure where single-page establishment previously treated a prefix
+as a clean `.nmd` base.
 
 Core does not fetch Notion data, render Markdown from blocks, write `.nmd`
 files, or decide whether a particular caller may proceed. Those policies belong

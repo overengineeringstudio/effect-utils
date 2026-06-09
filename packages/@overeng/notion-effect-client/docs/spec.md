@@ -74,12 +74,18 @@ core classifyBodyCompleteness
 NotionBodyObservation
 ```
 
-`NotionBodyObservation` is evidence, not policy. It includes the endpoint
-Markdown, the block inventory, and core `BodyCompleteness`. The client package
-does not decide whether a caller may adopt the body as a clean base, refresh a
-local file, or proceed with a write. `@overeng/notion-md` owns those decisions;
-`@overeng/notion-datasource-sync` consumes the resulting evidence through body
-guards.
+`NotionBodyObservation` is evidence, not policy. It includes endpoint Markdown,
+block inventory, independently rendered block-tree Markdown, and core
+`BodyCompleteness`. The client package does not decide whether a caller may
+adopt the body as a clean base, refresh a local file, or proceed with a write.
+`@overeng/notion-md` owns those decisions; `@overeng/notion-datasource-sync`
+consumes the resulting evidence through body guards.
+
+The rendered block-tree Markdown is the faithful body candidate for callers
+that need clean-base adoption. Endpoint Markdown remains diagnostic evidence:
+it reports truncation and unknown block IDs, and it is useful for comparing
+Notion's markdown endpoint against the block tree, but callers must not reparse
+endpoint Markdown as the canonical pull body when block-level fidelity matters.
 
 Because Markdown and block-tree reads are separate Notion API observations,
 callers that require race-free adoption should treat lossy evidence as

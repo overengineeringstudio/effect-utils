@@ -404,6 +404,18 @@ describe('body adapter contract', () => {
       }),
       'MarkdownUnknownBlocksAmbiguous',
     ],
+    [
+      'rendered Markdown unavailable',
+      notionMdBodySafetySnapshot({
+        pageId: nmdPageId,
+        bodyHash: hash('a'),
+        completeness: {
+          _tag: 'lossy',
+          reasons: ['rendered_markdown_unavailable'],
+        },
+      }),
+      'MarkdownUnknownBlocksAmbiguous',
+    ],
   ] as const)('maps NotionMD body fidelity into datasource guards: %s', (_name, safety, guard) => {
     expect(evaluateBodyAdapterContract(safety)).toMatchObject({
       _tag: 'blocked',

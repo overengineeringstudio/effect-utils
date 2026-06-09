@@ -4,6 +4,7 @@ import { Effect, Layer, Stream } from 'effect'
 import {
   NotionBlocks,
   NotionBody,
+  type NotionBodyObservation,
   NotionConfig,
   NotionPages,
   type NmdStorage,
@@ -18,6 +19,7 @@ import { normalizeMarkdownLineEndings } from './hash.ts'
 import {
   type MarkdownUpdateCommand,
   NotionMdGateway,
+  type RemoteMarkdownSnapshot,
   type RemoteChildPage,
   type RemotePageSnapshot,
 } from './model.ts'
@@ -121,6 +123,25 @@ const storageFromUnknownBlocks = (opts: {
 const unknownPlaceholders = (markdown: string): readonly string[] =>
   [...markdown.matchAll(/<unknown\b[^>]*\/>/giu)].map((match) => match[0])
 
+export const remoteMarkdownFromBodyObservation = (
+  body: NotionBodyObservation,
+): RemoteMarkdownSnapshot => {
+  const renderedMarkdown = body.inventory.renderedMarkdown
+  return {
+    markdown: normalizeMarkdownLineEndings(renderedMarkdown ?? body.markdown.markdown),
+    endpoint_markdown: normalizeMarkdownLineEndings(body.markdown.markdown),
+    truncated: body.markdown.truncated,
+    unknown_block_ids: body.markdown.unknownBlockIds,
+    completeness:
+      renderedMarkdown === undefined
+        ? {
+            _tag: 'lossy',
+            reasons: ['rendered_markdown_unavailable'],
+          }
+        : body.completeness,
+  }
+}
+
 const mapGatewayError =
   (opts: { readonly operation: string; readonly pageId?: string; readonly blockId?: string }) =>
   (cause: unknown): NmdGatewayError =>
@@ -197,23 +218,7 @@ export const NotionMdGatewayLive = Layer.effect(
           const unknownBlocks = yield* Effect.forEach(body.markdown.unknownBlockIds, (blockId) =>
             provideHttp(NotionBlocks.retrieve({ blockId })),
           )
-          const remoteMarkdown = {
-            /*
-             * Canonicalize on pull so the on-disk body, the base snapshot,
-             * and every diff `planMarkdownUpdate` sees are all in the
-             * canonical form. This makes the wire boundary canonical
-             * *by construction* for both `replace_content` and
-             * `update_content` — without it, `update_content`'s
-             * `old_str`/`new_str` would still reference user-wrap-form
-             * text and Notion would render new paragraphs with soft
-             * breaks intact (the gap called out in the proposal's
-             * "Apply on pull too" guidance).
-             */
-            markdown: canonicalizeBlockMarkdown(body.markdown.markdown),
-            truncated: body.markdown.truncated,
-            unknown_block_ids: body.markdown.unknownBlockIds,
-            completeness: body.completeness,
-          }
+          const remoteMarkdown = remoteMarkdownFromBodyObservation(body)
 
           return unknownBlocks.length === 0
             ? {
@@ -244,38 +249,43 @@ export const NotionMdGatewayLive = Layer.effect(
             }),
           ),
         ).pipe(
-          Effect.flatMap((markdownResult) => {
-            const remoteMarkdown = {
-              markdown: normalizeMarkdownLineEndings(markdownResult.markdown),
-              truncated: markdownResult.truncated,
-              unknown_block_ids: markdownResult.unknown_block_ids,
-            }
+          Effect.flatMap((markdownResult) =>
             /*
              * Compare semantically rather than byte-equal. Notion reserializes
              * received Markdown into its own block model (collapses blank
              * lines, switches list-indent style); a strict byte-equal check
              * fails on every push of non-trivial content even though the
-             * page was updated correctly. semanticEquivalent reduces both
-             * sides to whitespace-collapsed canonical tokens, so genuine
-             * content drift still trips the guard while Notion's reflow no
-             * longer does.
+             * page was updated correctly. Re-observe through NotionBody so the
+             * integrity oracle matches pull authority: block-tree-rendered
+             * Markdown, with endpoint Markdown retained as diagnostics.
              */
-            if (
-              command._tag === 'update_content' &&
-              semanticEquivalent({ a: remoteMarkdown.markdown, b: command.expectedMarkdown }) ===
-                false
-            ) {
-              return Effect.fail(
-                new NmdGatewayError({
-                  operation: 'update_markdown',
-                  page_id: pageId,
-                  message: `Notion gateway operation failed for page ${pageId}: update_markdown returned unexpected Markdown`,
+            command._tag === 'update_content'
+              ? provideHttp(NotionBody.observe({ pageId })).pipe(
+                  Effect.map(remoteMarkdownFromBodyObservation),
+                  Effect.flatMap((remoteMarkdown) =>
+                    semanticEquivalent({
+                      a: remoteMarkdown.markdown,
+                      b: command.expectedMarkdown,
+                    }) === true
+                      ? Effect.succeed({ markdown: remoteMarkdown })
+                      : Effect.fail(
+                          new NmdGatewayError({
+                            operation: 'update_markdown',
+                            page_id: pageId,
+                            message: `Notion gateway operation failed for page ${pageId}: update_markdown returned unexpected Markdown`,
+                          }),
+                        ),
+                  ),
+                )
+              : Effect.succeed({
+                  markdown: {
+                    markdown: normalizeMarkdownLineEndings(markdownResult.markdown),
+                    endpoint_markdown: normalizeMarkdownLineEndings(markdownResult.markdown),
+                    truncated: markdownResult.truncated,
+                    unknown_block_ids: markdownResult.unknown_block_ids,
+                  },
                 }),
-              )
-            }
-
-            return Effect.succeed({ markdown: remoteMarkdown })
-          }),
+          ),
           Effect.mapError((cause) =>
             cause instanceof NmdGatewayError
               ? cause

@@ -87,6 +87,7 @@ const unknownBlockCauseFromLossyReasons = (
   if (reasons.includes('rendered_markdown_has_unobserved_suffix') === true) return 'truncation'
   if (reasons.includes('unknown_blocks') === true) return 'unknown'
   if (reasons.includes('unsupported_blocks') === true) return 'unsupported'
+  if (reasons.includes('rendered_markdown_unavailable') === true) return 'unsupported'
   return undefined
 }
 
