@@ -85,7 +85,7 @@ export class RestateIngress extends Context.Tag('@overeng/restate-effect/Restate
         Effect.map((redaction) =>
           makeIngress({
             ...opts,
-            ...(Option.isSome(redaction) ? { redaction: redaction.value } : {}),
+            ...(Option.isSome(redaction) === true ? { redaction: redaction.value } : {}),
           }),
         ),
       ),
@@ -109,8 +109,8 @@ export class RestateIngress extends Context.Tag('@overeng/restate-effect/Restate
         const redaction = yield* Effect.serviceOption(RestateRedaction)
         return makeIngress({
           url: url.toString(),
-          ...(Option.isSome(apiKey) ? { apiKey: apiKey.value } : {}),
-          ...(Option.isSome(redaction) ? { redaction: redaction.value } : {}),
+          ...(Option.isSome(apiKey) === true ? { apiKey: apiKey.value } : {}),
+          ...(Option.isSome(redaction) === true ? { redaction: redaction.value } : {}),
         })
       }),
     )
@@ -644,7 +644,7 @@ export const callService = <C extends Contract<string, HandlerSpecMap>, M extend
   contract: C,
   method: M,
   input: InputOf<C, M>,
-): Effect.Effect<SuccessOf<C, M>, RestateError, RestateContext> => {
+): Effect.Effect<SuccessOf<C, M>, never, RestateContext> => {
   const spec = contract.handlers[method]!
   return inHandlerClients.callRpc<InputOf<C, M>, unknown, SuccessOf<C, M>, unknown>({
     service: contract.name,
@@ -702,7 +702,7 @@ export const callObject = <
   key: string,
   method: M,
   input: ObjectInputOf<C, M>,
-): Effect.Effect<ObjectSuccessOf<C, M>, RestateError, RestateContext> => {
+): Effect.Effect<ObjectSuccessOf<C, M>, never, RestateContext> => {
   const spec = contract.handlers[method] as HandlerSpec
   return inHandlerClients.callRpc<ObjectInputOf<C, M>, unknown, ObjectSuccessOf<C, M>, unknown>({
     service: contract.name,
@@ -785,7 +785,7 @@ export const callWorkflowSignal = <
   key: string,
   method: M,
   input: WorkflowSignalInputOf<C, M>,
-): Effect.Effect<WorkflowSignalSuccessOf<C, M>, RestateError, RestateContext> => {
+): Effect.Effect<WorkflowSignalSuccessOf<C, M>, never, RestateContext> => {
   const spec = (contract.signals[method] ?? contract.queries[method]) as HandlerSpec
   return inHandlerClients.callRpc<
     WorkflowSignalInputOf<C, M>,

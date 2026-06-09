@@ -1,19 +1,23 @@
 /**
  * Falsifying regression for the durable-await classification bug (PR #760, Codex P1).
  *
- * The standalone blocking awaits — the awakeable `promise` and the durable-promise
- * `get`/`peek` — previously wrapped EVERY rejection into a `RestateError` defect via
- * `tryPromise + orDie`, NOT routing through `awaitDurable` (the seam `run`/`sleep`
- * use to classify cancellation/suspension/terminal/infra). The fix routes them
- * through `awaitDurable`, so a `reject`'s `TerminalError` terminalizes verbatim (R34)
- * and a cancellation interrupts — instead of degrading to a retried infra defect.
+ * The standalone blocking awaits — the awakeable `promise`, the durable-promise
+ * `get`/`peek`, AND the in-handler peer `Restate.call` — previously wrapped EVERY
+ * rejection into a `RestateError` defect via `tryPromise + orDie`, NOT routing
+ * through `awaitDurable` (the seam `run`/`sleep` use to classify cancellation/
+ * suspension/terminal/infra). The fix routes them through `awaitDurable`, so a
+ * `reject`'s `TerminalError` terminalizes verbatim (R34) and a cancellation
+ * interrupts — instead of degrading to a retried infra defect.
  *
  * - TERMINAL `reject` (the decisive falsifier; default RETRYING harness + an
  *   in-process attempt counter): a `DurablePromise.reject` must make the awaiting
  *   `get` fail TERMINALLY — the `run` ends and is NOT retried (the counter stays at
  *   one). Under the BUG the reject became a `RestateError` DEFECT, which Restate
  *   RETRIES forever — the counter climbs and the run never terminalizes (the test
- *   times out). This case FAILS on the buggy code and PASSES on the fix.
+ *   times out). This case FAILS on the buggy code and PASSES on the fix. The SAME
+ *   falsifier covers the in-handler `Restate.call`: a callee that fails TERMINALLY
+ *   must terminalize the CALLER's call (the caller runs once, NOT retried) — under
+ *   the bug the callee `TerminalError` became a retried `RestateError` defect.
  * - SUSPEND + RESUME (`alwaysReplay` + `disableRetries`): a handler awaiting an
  *   awakeable — and SEPARATELY a durable promise — resolved AFTER a forced
  *   suspension must still PARK and RESUME to success. These pin the suspend/resume
@@ -36,6 +40,7 @@ import {
   Restate,
   RestateIngress,
   RestateObject,
+  RestateService,
   RestateWorkflow,
   result as ingressResult,
   State,
@@ -83,7 +88,7 @@ const PromiseValue = DurablePromise.for(Schema.String)
 /* Module-level attempt counter (the endpoint runs in-process); survives the
  * per-attempt State rollback a failed/retried attempt incurs — mirrors
  * `retry-policy.integration.test.ts`. */
-const attempts = { run: 0 }
+const attempts = { run: 0, call: 0 }
 
 const RunState = { done: Schema.Boolean } as const
 const RunS = State.for(RunState)
@@ -113,6 +118,35 @@ const PromiseWfLive = RestateWorkflow.implement<typeof PromiseWf>(PromiseWf, {
   rejectIt: (reason: string) => PromiseValue.reject('signal', reason).pipe(Effect.orDie),
 })
 
+/* ── in-handler call terminal reject: a caller `Restate.call`s a callee that fails
+ * TERMINALLY; the caller's call must terminalize VERBATIM (R34), NOT retry ─────── */
+
+/* A declared error with NO `retryable`/`terminal` annotation classifies as TERMINAL
+ * (the boundary default), so the callee's `boom` fails the invocation terminally. */
+class CalleeRejected extends Schema.TaggedError<CalleeRejected>()('CalleeRejected', {}) {}
+
+const FailingCallee = RestateService.contract('suspend-call-callee', {
+  boom: { input: Schema.Void, success: Schema.Void, error: CalleeRejected },
+})
+const FailingCalleeLive = RestateService.implement<typeof FailingCallee>(FailingCallee, {
+  boom: () => Effect.fail(new CalleeRejected()),
+})
+
+const CallCaller = RestateService.contract('suspend-call-caller', {
+  start: { input: Schema.Void, success: Schema.Void },
+})
+const CallCallerLive = RestateService.implement<typeof CallCaller>(CallCaller, {
+  /* The peer call rejects with the callee's `TerminalError`; `callRpc` routes it
+   * through `awaitDurable('terminal-reject')`, so the caller terminalizes VERBATIM
+   * and the `start` ends after ONE attempt. Under the bug the rejection was wrapped
+   * into a `RestateError` DEFECT, which Restate RETRIES — the counter climbs. */
+  start: () =>
+    Effect.gen(function* () {
+      attempts.call += 1
+      yield* Restate.call(FailingCallee, 'boom', undefined)
+    }),
+})
+
 /* The suspend-and-resume contract harness, combining:
  * - `alwaysReplay: true` (`INACTIVITY_TIMEOUT=0s`) — the server FORCES a real
  *   protocol-level suspension at EVERY yield (not a transparent same-attempt park a
@@ -129,7 +163,7 @@ const FailFastHarness = RestateTestHarness.layer({
 /* Default RETRYING harness — for the terminal-`reject` falsifier (a defect would
  * RETRY here, climbing the counter; a terminalized reject does not). */
 const RetryingHarness = RestateTestHarness.layer({
-  services: [AwLive, PromiseWfLive],
+  services: [AwLive, PromiseWfLive, FailingCalleeLive, CallCallerLive],
   appLayer: Layer.empty,
 })
 
@@ -226,6 +260,25 @@ describe.skipIf(!serverAvailable)('durable-await classification (real server)', 
         expect(yield* climbsPastOne(() => attempts.run)).toBe(false)
         expect(attempts.run).toBe(1)
       }),
+    )
+
+    it.effect(
+      'an in-handler call to a terminally-failing callee terminalizes the caller (NOT retried)',
+      () =>
+        Effect.gen(function* () {
+          attempts.call = 0
+          const harness = yield* RestateTestHarness
+
+          /* The caller `Restate.call`s a callee that fails TERMINALLY → the call fails
+           * the caller. Under the bug the callee `TerminalError` was wrapped into a
+           * `RestateError` DEFECT, which Restate RETRIES — the counter would climb. */
+          const exit = yield* Effect.exit(harness.ingress.call(CallCaller, 'start', undefined))
+          expect(exit._tag).toBe('Failure')
+
+          /* The decisive falsifier: the caller ran ONCE and terminalized — no retry. */
+          expect(yield* climbsPastOne(() => attempts.call)).toBe(false)
+          expect(attempts.call).toBe(1)
+        }),
     )
   })
 })

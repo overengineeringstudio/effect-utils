@@ -133,7 +133,16 @@ const stripUndefined = (ast: SchemaAST.AST): SchemaAST.AST => {
  */
 export interface Descriptor<A> {
   readonly _tag: 'run' | 'sleep' | 'promiseGet' | 'awakeable' | 'call'
-  readonly issue: (ctx: restate.Context) => restate.RestatePromise<A>
+  /* Issued by the effectful combinator (`all`/`race`/`any`/`timeout`) with the raw
+   * `ctx` and the ambient redaction cipher resolved at ISSUE time. The cipher is
+   * threaded here (not baked at construction) because a descriptor builder is
+   * synchronous (it sits inside a `Restate.all([...])` array) and so cannot resolve
+   * `RestateRedaction` itself — only the combinator can. Non-call descriptors ignore
+   * it. */
+  readonly issue: (
+    ctx: restate.Context,
+    redaction: RedactionCipher | undefined,
+  ) => restate.RestatePromise<A>
   /** phantom result carrier (never read at runtime) */
   readonly _A?: (a: A) => void
 }
@@ -145,7 +154,10 @@ export type ResultsOf<T extends readonly Descriptor<any>[]> = {
 
 const descriptor = <A>(
   tag: Descriptor<A>['_tag'],
-  issue: (ctx: restate.Context) => restate.RestatePromise<A>,
+  issue: (
+    ctx: restate.Context,
+    redaction: RedactionCipher | undefined,
+  ) => restate.RestatePromise<A>,
 ): Descriptor<A> => ({ _tag: tag, issue })
 
 /* ── durable-op rejection handling (cancellation/suspension preservation) ─── */
@@ -400,10 +412,11 @@ export const timeout = <A>(
 ): Effect.Effect<A | undefined, never, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
+    const redaction = yield* resolveCallRedaction
     return yield* awaitDurable(
       () =>
         descr
-          .issue(ctx)
+          .issue(ctx, redaction)
           .orTimeout(millis)
           .map((value?: A) => value),
       (cause) => new RestateError({ reason: 'RunFailed', method: `timeout(${millis})`, cause }),
@@ -431,8 +444,9 @@ const combineDescriptors =
   ): Effect.Effect<Combined, never, RestateContext> =>
     Effect.gen(function* () {
       const ctx = yield* RestateContext
+      const redaction = yield* resolveCallRedaction
       return yield* awaitDurable(
-        () => combine(descriptors.map((d) => d.issue(ctx))),
+        () => combine(descriptors.map((d) => d.issue(ctx, redaction))),
         (cause) => new RestateError({ reason: 'RunFailed', method: label, cause }),
       )
     }).pipe(Effect.withSpan(`restate.${label}`))
@@ -814,7 +828,7 @@ const callRpc = <In, InI, Out, OutI>(opts: {
   readonly outputSchema: Schema.Schema<Out, OutI>
   readonly input: In
   readonly key?: string
-}): Effect.Effect<Out, RestateError, RestateContext> =>
+}): Effect.Effect<Out, never, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const redaction = yield* resolveCallRedaction
@@ -822,8 +836,19 @@ const callRpc = <In, InI, Out, OutI>(opts: {
       opts.inputSchema as Schema.Schema<unknown, unknown>,
       opts.input,
     )
-    const result = yield* Effect.tryPromise({
-      try: () =>
+    /* Await the peer-call `InvocationPromise` through the SHARED `awaitDurable`
+     * seam (the same seam `run`/`sleep`/`promiseGet`/`all`/`race` use), NOT a plain
+     * `Effect.tryPromise`: an in-handler call that has not completed rejects the SDK
+     * `RestatePromise` with the SUSPENSION sentinel (the invocation must PARK and
+     * resume on the result) or a `CancelledError` — wrapping those in a
+     * `RestateError` would degrade a park-and-resume into a defect→retry and swallow
+     * cancellation. `awaitDurable` re-throws a suspension verbatim (the SDK parks/
+     * resumes) and maps cancellation to an interrupt. A peer call only rejects on
+     * suspension / cancellation / a callee `TerminalError`, so `'terminal-reject'`
+     * mode terminalizes a callee terminal failure VERBATIM (R34) and there is no
+     * typed failure left — matching the descriptor call path's `never`. */
+    return yield* awaitDurable(
+      () =>
         ctx.genericCall<In, Out>({
           service: opts.service,
           method: opts.handler,
@@ -833,14 +858,14 @@ const callRpc = <In, InI, Out, OutI>(opts: {
           outputSerde: clientCallSerde(opts.outputSchema, redaction),
           ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         }),
-      catch: (cause) =>
+      (cause) =>
         new RestateError({
           reason: 'IngressFailed',
           method: `call(${opts.service}.${opts.handler})`,
           cause,
         }),
-    })
-    return result as Out
+      'terminal-reject',
+    )
   }).pipe(
     Effect.withSpan('restate.client.call', {
       attributes: { 'span.label': `${opts.service}.${opts.handler}` },
@@ -896,9 +921,12 @@ const sendRpc = <In, InI>(opts: {
  *
  * The descriptor builder is SYNCHRONOUS (it returns a `Descriptor`, not an
  * Effect, so it can sit inside a `Restate.all([...])` array), so it cannot
- * `yield*` the ambient `RestateRedaction`. It therefore threads the cipher passed
- * by its caller — the public `callServiceDescriptor`/`callObjectDescriptor`
- * resolve it. A redaction cipher is OPTIONAL; absent → no cipher.
+ * `yield*` the ambient `RestateRedaction`. The serdes are therefore built LAZILY
+ * inside `issue`, which the effectful combinator (`all`/`race`/`any`/`timeout`)
+ * calls with the cipher it resolved at issue time — so a `Restate.sensitive` field
+ * in a peer call's I/O is encrypted on the descriptor path too (decision 0020),
+ * not just the direct `callRpc` path. A redaction cipher is OPTIONAL; absent → no
+ * cipher (fine unless a sensitive field is present, which then fails loudly).
  */
 const callDescriptor = <In, InI, Out, OutI>(opts: {
   readonly service: string
@@ -907,20 +935,19 @@ const callDescriptor = <In, InI, Out, OutI>(opts: {
   readonly outputSchema: Schema.Schema<Out, OutI>
   readonly input: In
   readonly key?: string
-  readonly redaction?: RedactionCipher
 }): Descriptor<Out> => {
   const idempotencyKey = invocationIdempotencyKey(
     opts.inputSchema as Schema.Schema<unknown, unknown>,
     opts.input,
   )
-  return descriptor<Out>('call', (ctx) =>
+  return descriptor<Out>('call', (ctx, redaction) =>
     ctx.genericCall<In, Out>({
       service: opts.service,
       method: opts.handler,
       parameter: opts.input,
       ...(opts.key !== undefined ? { key: opts.key } : {}),
-      inputSerde: clientCallSerde(opts.inputSchema, opts.redaction),
-      outputSerde: clientCallSerde(opts.outputSchema, opts.redaction),
+      inputSerde: clientCallSerde(opts.inputSchema, redaction),
+      outputSerde: clientCallSerde(opts.outputSchema, redaction),
       ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
     }),
   )
