@@ -10,12 +10,11 @@
  * @module
  */
 
-import { createServer } from 'node:net'
-
 import type { PlaywrightTestConfig } from '@playwright/test'
 export type { PlaywrightTestConfig }
 
 import { shouldNeverHappen } from '../../../isomorphic/core.ts'
+import { freePort } from '../../net.ts'
 /** Web server configuration for Vite. */
 export interface WebServerConfig {
   /** Command to start the dev server (use `{{port}}` placeholder) */
@@ -57,22 +56,6 @@ export interface PlaywrightConfigOptions {
   /** Number of workers (default: 1) */
   workers?: number
 }
-
-/** Find an available port for the dev server. */
-const findAvailablePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const srv = createServer()
-    srv.on('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
-      const address = srv.address()
-      if (address !== null && typeof address === 'object') {
-        const port = address.port
-        srv.close(() => resolve(port))
-      } else {
-        srv.close(() => reject(new Error('Failed to resolve available port')))
-      }
-    })
-  })
 
 /**
  * Create a Playwright config for browser integration tests.
@@ -118,7 +101,7 @@ export const createPlaywrightConfig = async (
 
   // Resolve port: read from env var if set, otherwise find available port and store it
   const envPort = process.env[portEnvVar]
-  const port = envPort !== undefined ? Number.parseInt(envPort, 10) : await findAvailablePort()
+  const port = envPort !== undefined ? Number.parseInt(envPort, 10) : await freePort()
 
   if (Number.isFinite(port) === false) {
     return shouldNeverHappen(

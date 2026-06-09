@@ -1,6 +1,8 @@
 import * as restate from '@restatedev/restate-sdk'
 import { JSONSchema, Option, ParseResult, Schema } from 'effect'
 
+import { textEncodeToArrayBuffer } from '@overeng/utils'
+
 import { readSerdeOptions } from './Annotations.ts'
 import { findSensitiveFields, type RedactionCipher, withRedaction } from './Redaction.ts'
 
@@ -24,7 +26,6 @@ export type RestateSerde<T> = restate.Serde<T>
  */
 export type SerdeSlot = 'ingress' | 'internal'
 
-const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 /**
@@ -83,7 +84,9 @@ export const effectSerde = <A, I>(
        * void/empty payload is an EMPTY body, so emit zero bytes; `deserialize`
        * reverses it (an empty body decodes back to the `undefined` value). */
       if (encoded === undefined) return new Uint8Array(0)
-      return encoder.encode(JSON.stringify(encoded))
+      /* `textEncodeToArrayBuffer` is the SSOT for byte encoding (`@overeng/utils`,
+       * isomorphic/binary.ts): UTF-8 encode guaranteed-`ArrayBuffer`-backed. */
+      return textEncodeToArrayBuffer(JSON.stringify(encoded))
     },
     deserialize: (data: Uint8Array): A => {
       try {

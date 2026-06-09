@@ -1098,7 +1098,10 @@ Lifecycle contract (R27, sharpened over the POC):
   disallowed). The native server's ingress/admin bind addresses are set per
   instance via `RESTATE_INGRESS__BIND_ADDRESS` / `RESTATE_ADMIN__BIND_ADDRESS`
   (verified), the harness-isolation mechanism behind R27. An isolated temp base
-  dir per instance.
+  dir per instance. Port allocation goes through the shared `@overeng/utils/node`
+  `freePort`/`freePorts` SSOT, and the native-server boot is RETRIED on a port
+  collision (`Address in use` / `EADDRINUSE`) with a fresh `freePorts(3)` batch —
+  closing the bind-release-rebind TOCTOU under parallel boots (decision 0019).
 - Startup: poll a defined health target with a defined timeout; on failure, dump
   the buffered server output as diagnostics (promote the POC's buffer-on-failure
   behavior into the contract).
