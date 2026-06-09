@@ -24,6 +24,8 @@ pub struct InspectOpts {
     pub attrs: Vec<(String, String)>,
     /// Emit one per-trace summary object instead of flat span rows.
     pub summary: bool,
+    /// (traces only) Project spans into spanmetrics RED metrics (decisions/0013).
+    pub derive_metrics: bool,
     /// Bound for ranked/grouped lists in `--summary`.
     pub top: usize,
     pub pretty: bool,
@@ -94,7 +96,32 @@ fn render(
 }
 
 /// Traces: group spans by trace, emit flat `otelite.span/v1` rows or `--summary`.
+/// With `--derive-metrics`, project spans into spanmetrics RED metrics instead.
 fn inspect_traces(opts: &InspectOpts, raw: &str) -> u8 {
+    if opts.derive_metrics {
+        let rows = match crate::derive_spanmetrics::derive(raw) {
+            Ok(r) => r,
+            Err(code) => return code,
+        };
+        if opts.summary {
+            let mut out = String::new();
+            emit(
+                &mut out,
+                &crate::inspect_metrics::summary_of_rows(&rows),
+                opts.pretty,
+            );
+            print!("{out}");
+        } else {
+            let mut out = String::new();
+            for row in &rows {
+                if matches(row, opts) {
+                    emit(&mut out, row, opts.pretty);
+                }
+            }
+            print!("{out}");
+        }
+        return 0;
+    }
     let traces = match group_by_trace(raw) {
         Ok(t) => t,
         Err(code) => return code,

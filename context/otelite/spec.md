@@ -12,7 +12,7 @@ shared **Capture** sink.
 
 ```
 otelite run     [--out <dir>] [--service N] [--http-port N] [--grpc-port N] [--drain-idle MS] [--pretty] -- <cmd...>
-otelite inspect <dir|file|-> [--signal traces|metrics|logs] [--service S] [--name N] [--attr k=v]... [--summary] [--pretty]
+otelite inspect <dir|file|-> [--signal traces|metrics|logs] [--derive-metrics] [--service S] [--name N] [--attr k=v]... [--summary] [--pretty]
 otelite capture [--out <dir>] [--http-port N] [--grpc-port N]      # receiver-only (no child; serves until signal)
 otelite --print-schema | --version | --help | <verb> --help
 ```
@@ -233,6 +233,42 @@ exercise the real receiver and the real binary (per house rules).
 - **Fixture emitter:** a small, deterministic OTLP emitter (drives all three
   transports) is shared across Rust integration tests and the Effect wrapper
   tests, so both layers test against the same known input.
+
+## Trace-derived metrics (spanmetrics)
+
+`inspect --signal traces --derive-metrics` projects captured spans into RED
+metrics — a faithful local port of the collector-contrib spanmetrics connector —
+so a test can assert request/error/duration facts without the SUT also emitting
+metrics (R11). Output reuses `otelite.metric/v1` (decisions/0012, 0013), so the
+rows flow through the same `--service`/`--name`/`--attr`/`--summary` machinery as
+native metrics:
+
+- **`calls`** — monotonic `sum` row, `temporality: "delta"`, `value` = span count
+  for the dimension-set.
+- **`duration`** — `histogram` row, `unit: "ms"`, default explicit bounds
+  `[2,4,6,8,10,50,100,200,400,800,1000,1400,2000,5000,10000,15000]`, with
+  `count/sum/min/max/mean/bucket_counts/explicit_bounds` (no `temporality` field,
+  so it stays byte-conformant with native histogram rows — delta is fixed).
+
+Default dimensions: `service.name` (row `service`) plus `span.name`, `span.kind`,
+`status.code` under `attrs`. Enums use the OTel proto strings
+(`SPAN_KIND_SERVER`, `STATUS_CODE_ERROR`, …), matching the connector and otelite's
+accepted dialect (decisions/0011). Errors are `calls` points carrying
+`status.code = STATUS_CODE_ERROR`; error rate is a `jq` ratio. The derivation
+reads the raw capture (integer `kind`/`status`), because `otelite.span/v1` omits
+`span.kind`. A single delta snapshot covers the whole bounded capture.
+
+Example (capture → derive → assert):
+
+```
+otelite run -- ./svc \
+  | otelite inspect - --signal traces --derive-metrics \
+  | jq -e 'select(.name=="calls" and .attrs."status.code"=="STATUS_CODE_ERROR" and .value==0)'
+```
+
+v1 covers `calls` + `duration` with the four default dimensions; exemplars,
+configurable dimensions/bounds, and service-graph derivation are deferred
+(decisions/0013).
 
 ## Scope line
 

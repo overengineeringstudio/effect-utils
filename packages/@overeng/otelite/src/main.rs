@@ -193,10 +193,15 @@ fn dispatch_inspect(args: &[String]) -> ExitCode {
     let mut summary = false;
     let mut top = 20usize;
     let mut pretty = false;
+    let mut derive_metrics = false;
 
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            "--derive-metrics" => {
+                derive_metrics = true;
+                i += 1;
+            }
             "--signal" => match args.get(i + 1) {
                 Some(v) => {
                     signal = v.clone();
@@ -263,6 +268,7 @@ fn dispatch_inspect(args: &[String]) -> ExitCode {
         summary,
         top,
         pretty,
+        derive_metrics,
     };
     ExitCode::from(inspect(opts))
 }

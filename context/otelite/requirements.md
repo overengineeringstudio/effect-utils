@@ -85,3 +85,14 @@ Replace the Grafana/Tempo-mediated verification lane · replace the production c
   same depth (flatten, filter, summarize). Trace summarize is salvaged; metric
   and log summarizers are authored fresh (no prior precedent) and held to the
   same conformance-golden discipline.
+- **R11 — Trace-derived metrics (spanmetrics).** `inspect --signal traces
+--derive-metrics` projects captured spans into RED metrics, emitting
+  `otelite.metric/v1` rows (so they flow through the same filters/`--summary` as
+  native metrics). Faithful to the collector-contrib spanmetrics connector:
+  metrics `calls` (monotonic delta sum) and `duration` (delta histogram, unit
+  `ms`, default bounds `2,4,6,8,10,50,100,200,400,800,1000,1400,2000,5000,
+10000,15000`); default dimensions `service.name`, `span.name`, `span.kind`,
+  `status.code`; enums encoded as proto strings (`SPAN_KIND_SERVER`,
+  `STATUS_CODE_ERROR`, …); errors counted via `status.code = STATUS_CODE_ERROR`.
+  The derivation reads the raw capture (integer `kind`/`status`), not the flat
+  `otelite.span/v1` rows. Held to the same conformance-golden discipline as R10.

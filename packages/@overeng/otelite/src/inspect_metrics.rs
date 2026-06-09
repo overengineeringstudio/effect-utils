@@ -203,11 +203,16 @@ struct Agg {
     has_value: bool,
 }
 
-/// One `otelite.metric-summary/v1` object: per-name rollup + totals.
+/// One `otelite.metric-summary/v1` object from a metric capture.
 pub fn summary(raw: &str) -> Result<Value, u8> {
-    let rows = rows(raw)?;
+    Ok(summary_of_rows(&rows(raw)?))
+}
+
+/// Roll up already-built `otelite.metric/v1` rows (shared by native metrics and
+/// trace-derived metrics) into an `otelite.metric-summary/v1` object.
+pub fn summary_of_rows(rows: &[Value]) -> Value {
     let mut by_name: BTreeMap<String, Agg> = BTreeMap::new();
-    for row in &rows {
+    for row in rows {
         let name = row["name"].as_str().unwrap_or("").to_string();
         let a = by_name.entry(name).or_default();
         a.ty = row["type"].as_str().unwrap_or("").to_string();
@@ -245,10 +250,10 @@ pub fn summary(raw: &str) -> Result<Value, u8> {
             o
         })
         .collect();
-    Ok(json!({
+    json!({
         "schema": "otelite.metric-summary/v1",
         "metrics": metrics,
         "total_metrics": rows.iter().map(|r| r["name"].as_str().unwrap_or("")).collect::<BTreeSet<_>>().len(),
         "total_data_points": rows.len(),
-    }))
+    })
 }
