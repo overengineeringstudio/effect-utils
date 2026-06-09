@@ -1,0 +1,7 @@
+# Rust build artifacts
+/target/
+
+# Local capture output from ad-hoc `--out ./...` runs. The default out-dir is
+# $TMPDIR/otelite-<random> (outside the repo). NOT a broad `*.ndjson` rule —
+# committed conformance goldens under tests/ are NDJSON and must stay tracked.
+/otelite-*/
