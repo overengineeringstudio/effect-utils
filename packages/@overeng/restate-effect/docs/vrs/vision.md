@@ -103,7 +103,7 @@ discourages writing the integration tests durable handlers most need.
   Restate behind a pluggable-engine facade, and it does not depend on or mirror
   `@effect/cluster` / `@effect/workflow` as the engine. Restate is the
   programming model and the engine. See
-  [decisions/0001-thin-faithful-restate-binding.md](./decisions/0001-thin-faithful-restate-binding.md).
+  [.decisions/0001-thin-faithful-restate-binding.md](./.decisions/0001-thin-faithful-restate-binding.md).
 - **Not a second durable engine for Effect.** Those who want Effect's own durable
   engine use `@effect/workflow` + `@effect/cluster`; this binding is for those
   who have chosen Restate.

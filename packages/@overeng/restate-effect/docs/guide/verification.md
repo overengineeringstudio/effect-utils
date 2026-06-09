@@ -63,7 +63,7 @@ Deferred (designed to slot in without reshaping the core):
 - **From the POC `RestateService.make`.** The original proof-of-concept combined
   contract + implementation in one `make` call. That was superseded by the separated
   `contract` + `implement` (with `define` as the single-package convenience). See
-  [decision 0010](../vrs/decisions/0010-separated-contract-impl.md). If you have
+  [decision 0010](../vrs/.decisions/0010-separated-contract-impl.md). If you have
   `make`-shaped code, split it into `contract` (the shareable artifact) +
   `implement` (the server Layer), or use `define` to keep both in one expression.
 - **From hand-rolled `ctx.run` plumbing.** Replace raw `ctx.run` / `ctx.sleep` calls
@@ -79,6 +79,6 @@ Deferred (designed to slot in without reshaping the core):
 
 ## See also
 
-- [`spec.md`](../vrs/spec.md) — the full design model.
-- [`decisions/`](../vrs/decisions/) — the hard-to-reverse design decisions.
+- [`spec.md`](../vrs/spec.md) — the architecture index over the subsystem specs.
+- [`.decisions/`](../vrs/.decisions/) — the hard-to-reverse design decisions.
 - [Testing](./testing.md) — the test layering that gates CI.
