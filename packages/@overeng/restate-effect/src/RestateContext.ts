@@ -160,6 +160,29 @@ const descriptor = <A>(
 const isCancellation = (cause: unknown): cause is restate.CancelledError =>
   cause instanceof restate.CancelledError
 
+/* A durable-op rejection that is a `restate.TerminalError` but NOT a
+ * `CancelledError` (which `extends TerminalError` and is handled separately as an
+ * interrupt). This is the signal an awaited durable promise / awakeable was
+ * `reject`'d — the awaiter must fail TERMINALLY (R34), so the boundary terminalizes
+ * the error VERBATIM rather than retrying it. */
+const isTerminalReject = (cause: unknown): cause is restate.TerminalError =>
+  cause instanceof restate.TerminalError && isCancellation(cause) === false
+
+/**
+ * How {@link awaitDurable} classifies a non-cancellation, non-suspension rejection:
+ *
+ * - `'infra'` (default — `run`/`sleep`/`timeout`/`all`/`race`/`any`): EVERY such
+ *   rejection (incl. a `ctx.run` give-up's `TerminalError`) becomes a `RestateError`
+ *   DEFECT classified at the boundary (transient → retry; terminal → fail). The
+ *   durable op is infra: a rejection never escapes as a typed failure.
+ * - `'terminal-reject'` (the blocking durable-promise `get`/`peek` + awakeable
+ *   await): a `restate.TerminalError` (the `reject` signal, R34) re-throws VERBATIM
+ *   as a defect so the boundary terminalizes it as-is (the awaiter fails terminally,
+ *   not a retried infra defect). Any OTHER rejection still becomes a `RestateError`
+ *   defect.
+ */
+type DurableRejectMode = 'infra' | 'terminal-reject'
+
 /**
  * Await a durable-op promise, classifying the rejection so a durable
  * combinator's typed `E` stays CLEAN (no `RestateError`) — infra is handled at
@@ -173,6 +196,10 @@ const isCancellation = (cause: unknown): cause is restate.CancelledError =>
  *   error AS-IS (as a defect), so `toTerminal` re-throws it verbatim and the SDK
  *   suspends/resumes. Finalizers must NOT run here — the work resumes in a new
  *   attempt (R15).
+ * - A `reject`-signal `TerminalError` UNDER `'terminal-reject'` mode (the blocking
+ *   durable-promise `get`/`peek` + awakeable await) → re-throw VERBATIM as a defect
+ *   so the boundary terminalizes it as-is (the awaiter fails terminally, R34) rather
+ *   than wrapping it into a retried `RestateError` infra defect.
  * - Any other rejection (a real infra failure / give-up after `ctx.run` retries)
  *   → DIE with the wrapper's `RestateError` (a DEFECT, never a typed failure), so
  *   it leaves the domain channel and the boundary classifies it: a transient infra
@@ -180,13 +207,15 @@ const isCancellation = (cause: unknown): cause is restate.CancelledError =>
  *   arrived terminal. A user never has to `catchTag('RestateError', die)` it away.
  *
  * This is the single seam where a durable rejection is classified, so every
- * durable combinator (`run` / `sleep` / `timeout` / `all` / `race` / `any`)
- * handles cancellation/suspension/infra identically. The opt-in `runExit` form
- * re-surfaces the defect as an observable `Exit` value for compensation/sagas.
+ * durable await (`run` / `sleep` / `timeout` / `all` / `race` / `any` / the
+ * blocking durable-promise `get`/`peek` / the awakeable await) handles
+ * cancellation/suspension identically. The opt-in `runExit` form re-surfaces the
+ * defect as an observable `Exit` value for compensation/sagas.
  */
 const awaitDurable = <A>(
   thunk: () => Promise<A>,
   onError: (cause: unknown) => RestateError,
+  mode: DurableRejectMode = 'infra',
 ): Effect.Effect<A, never, never> =>
   Effect.async<A, never>((resume) => {
     thunk().then(
@@ -200,6 +229,14 @@ const awaitDurable = <A>(
         /* Suspension → re-throw the original verbatim as a defect (the SDK
          * suspends/resumes; finalizers must NOT run — work resumes next attempt). */
         if (restate.internal.isSuspendedError(cause) === true) {
+          resume(Effect.die(cause))
+          return
+        }
+        /* `reject` signal (blocking durable-promise/awakeable await) → re-throw the
+         * `TerminalError` VERBATIM so the boundary terminalizes it as-is (R34), not a
+         * retried infra defect. Only under `'terminal-reject'` mode; `run`/`sleep`
+         * keep give-up `TerminalError`s as `RestateError` infra defects. */
+        if (mode === 'terminal-reject' && isTerminalReject(cause) === true) {
           resume(Effect.die(cause))
           return
         }
@@ -534,35 +571,41 @@ export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext>
 
 const promiseSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> => internalSerde(schema)
 
-/* A durable-promise op infra failure is a defect (clean `E`, #1). A `reject`
- * makes the awaiting `get` fail TERMINALLY (R34) — that rejection arrives as a
- * `TerminalError` the boundary terminalizes verbatim, not a typed `RestateError`. */
+/* A blocking durable-promise `get`, awaited through {@link awaitDurable} (the same
+ * seam `run`/`sleep` use) so suspension/cancellation/infra classify identically. An
+ * unresolved `get` re-throws the SDK suspension sentinel and PARKS the invocation
+ * (not a defect→retry); a `reject` makes the awaiting `get` fail TERMINALLY (R34) —
+ * that rejection arrives as a `TerminalError` the boundary terminalizes verbatim; a
+ * real infra failure is a defect (clean `E`, #1). */
 const promiseGet = <T, I>(
   name: string,
   schema: Schema.Schema<T, I>,
 ): Effect.Effect<T, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    return yield* Effect.tryPromise({
-      try: () =>
-        (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
-      catch: (cause) =>
+    return yield* awaitDurable(
+      () => (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).get(),
+      (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.get(${name})`, cause }),
-    }).pipe(Effect.orDie)
+      'terminal-reject',
+    )
   }).pipe(Effect.withSpan('restate.promise.get', { attributes: { 'span.label': name } }))
 
+/* A non-blocking read (`undefined` if unresolved — never suspends), awaited through
+ * {@link awaitDurable} so a `reject` classifies TERMINALLY like {@link promiseGet}
+ * (the suspension branch is inert here). */
 const promisePeek = <T, I>(
   name: string,
   schema: Schema.Schema<T, I>,
 ): Effect.Effect<T | undefined, never, DurablePromise | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    return yield* Effect.tryPromise({
-      try: () =>
-        (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).peek(),
-      catch: (cause) =>
+    return yield* awaitDurable(
+      () => (ctx as restate.WorkflowSharedContext).promise<T>(name, promiseSerde(schema)).peek(),
+      (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.peek(${name})`, cause }),
-    }).pipe(Effect.orDie)
+      'terminal-reject',
+    )
   }).pipe(Effect.withSpan('restate.promise.peek', { attributes: { 'span.label': name } }))
 
 const promiseResolve = <T, I>(
@@ -659,11 +702,16 @@ export const makeAwakeable = <T, I>(
     const aw = ctx.awakeable<T>(promiseSerde(schema))
     const promise = Effect.gen(function* () {
       const startMs = monotonicMs()
-      const value = yield* Effect.tryPromise({
-        try: () => aw.promise,
-        catch: (cause) =>
-          new RestateError({ reason: 'RunFailed', method: 'Awakeable.await', cause }),
-      }).pipe(Effect.orDie)
+      /* Await through {@link awaitDurable} (the same seam `run`/`sleep` use): an
+       * unresolved awakeable re-throws the SDK suspension sentinel and PARKS the
+       * invocation (not a defect→retry); a `reject` arrives as a `TerminalError`
+       * the boundary terminalizes verbatim (R33/R34); a real infra failure is a
+       * defect (clean `E`, #1). */
+      const value = yield* awaitDurable(
+        () => aw.promise,
+        (cause) => new RestateError({ reason: 'RunFailed', method: 'Awakeable.await', cause }),
+        'terminal-reject',
+      )
       /* AUTO baseline metric (decision 0014): the real external-completion wait.
        * Gated on non-replay — a replay reproduces the journaled completion
        * instantly, so the measured (monotonic) delta is only recorded on a real

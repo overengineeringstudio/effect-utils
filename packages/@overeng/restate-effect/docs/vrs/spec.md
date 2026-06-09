@@ -175,10 +175,14 @@ ObjectKey }` directly (no composite `WorkflowScope` marker — see
 [decisions/0002](./decisions/0002-typed-capability-contexts.md)); a `signal` is a
 shared write handler and a `query` is a shared read handler.
 `DurablePromise.resolve` outside a workflow handler does not typecheck (R04).
-Durable promises support `get` / `resolve` / `reject` / `peek`; a `reject`
-drives the `'rejected'` state observable via the `status` query (R34). The race
-maps its RESULT (not a branch) after a single await (R19,
-[decisions/0005](./decisions/0005-deterministic-concurrency.md)).
+Durable promises support `get` / `resolve` / `reject` / `peek`. A `resolve` carries
+a typed payload the awaiting `get` returns; a `reject` makes the awaiting `get` fail
+TERMINALLY (R34) — the rejection arrives as a `TerminalError` the boundary
+terminalizes VERBATIM (routed through `awaitDurable`), so the `run` ends terminally
+rather than retrying. (A workflow that wants an OBSERVABLE `'rejected'` outcome
+instead `resolve`s a domain "declined" payload and records it in State — see the
+`approval` example.) The race maps its RESULT (not a branch) after a single await
+(R19, [decisions/0005](./decisions/0005-deterministic-concurrency.md)).
 
 ### 1.4 Construct selection
 
@@ -779,6 +783,13 @@ yield * ingress.rejectAwakeable(id, 'declined')
 `Awakeable.make` returns a typed `{ id, promise }` with the id branded; the
 payload is serialized via the payload serde. Resolution may come from an
 in-handler caller OR from ingress (R33). See the glossary note.
+
+The `promise` await — like the blocking `DurablePromise.get`/`peek` — routes
+through the SAME `awaitDurable` seam as `run`/`sleep`, so it classifies a rejection
+identically: a suspension PARKS the invocation, a cancellation INTERRUPTS, and a
+`reject` (`ingress.rejectAwakeable` / `Awakeable.reject` / `DurablePromise.reject`)
+terminalizes the awaiter VERBATIM (R33/R34) — the awaiting handler fails terminally,
+NOT as a retried `RestateError` infra defect. The typed `E` stays clean (#1).
 
 ### 9.2 In-handler service-to-service clients
 
