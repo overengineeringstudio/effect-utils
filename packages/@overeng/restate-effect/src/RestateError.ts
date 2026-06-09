@@ -1,5 +1,7 @@
 import { Schema } from 'effect'
 
+import { formatReasonMessage } from '@overeng/utils'
+
 /**
  * Single tagged error for `@overeng/restate-effect` wrapper-level failures.
  *
@@ -39,9 +41,6 @@ export class RestateError extends Schema.TaggedError<RestateError>(
   cause: Schema.optional(Schema.Defect),
 }) {
   override get message(): string {
-    const parts: string[] = [this.reason, `(${this.method})`]
-    if (this.cause instanceof Error) parts.push(`: ${this.cause.message}`)
-    else if (this.cause !== undefined) parts.push(`: ${String(this.cause)}`)
-    return parts.join(' ')
+    return formatReasonMessage({ reason: this.reason, method: this.method, cause: this.cause })
   }
 }

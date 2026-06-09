@@ -12,13 +12,14 @@
  */
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import * as clients from '@restatedev/restate-sdk-clients'
 import { Effect, Exit, Layer, Scope } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { freePort } from '@overeng/utils/node'
 
 import {
   installComposedSource,
@@ -42,22 +43,6 @@ const serverAvailable = (() => {
     return false
   }
 })()
-
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const srv = createServer()
-    srv.unref()
-    srv.on('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address()
-      if (addr === null || typeof addr === 'string') {
-        srv.close(() => reject(new Error('no free port')))
-        return
-      }
-      const port = addr.port
-      srv.close(() => resolve(port))
-    })
-  })
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 

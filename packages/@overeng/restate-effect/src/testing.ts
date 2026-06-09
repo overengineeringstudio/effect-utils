@@ -27,12 +27,13 @@
  */
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import * as clients from '@restatedev/restate-sdk-clients'
 import { Clock, Context, Effect, Exit, Layer, type Schema, Scope } from 'effect'
+
+import { freePort, freePorts } from '@overeng/utils/node'
 
 import {
   type AdminClientConfig,
@@ -181,23 +182,6 @@ export const serverAvailable: boolean = (() => {
   }
 })()
 
-/** Ask the OS for a free TCP port (bind `:0`, read the bound port, release it). */
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const srv = createServer()
-    srv.unref()
-    srv.on('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address()
-      if (addr === null || typeof addr === 'string') {
-        srv.close(() => reject(new Error('could not allocate a free port')))
-        return
-      }
-      const port = addr.port
-      srv.close(() => resolve(port))
-    })
-  })
-
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /** The native-server determinism env fragment for the two hunting modes (DQ5, spec §11.2). */
@@ -227,11 +211,28 @@ interface ServerHandle {
 }
 
 /**
+ * The `freePort` TOCTOU (known-flakes #1): the OS hands us a port that is free at
+ * read-time but RELEASED before `restate-server` (a separate child process that
+ * must bind by NUMBER — we cannot hand it our listening socket) rebinds it, so a
+ * co-tenant can steal it in the gap. The child then exits early with an
+ * `Address already in use` in its logs. We detect that signature and RETRY the
+ * whole boot on FRESH ports rather than failing the harness — closing the gap.
+ */
+const isPortCollisionLog = (logs: string): boolean =>
+  /address (already )?in use|EADDRINUSE/i.test(logs)
+
+/** One boot attempt against fixed ports, or `'port-collision'` if the child died on a taken port. */
+type BootAttempt = ServerHandle | 'port-collision'
+
+/**
  * Spawn a native `restate-server` on EPHEMERAL ports (ingress, admin, AND the
  * internal node-to-node message-fabric port — all OS port-0, so parallel
  * instances never collide, R27) against an isolated temp base dir, poll the
  * admin `/health` endpoint until ready, and buffer all output for diagnostics.
  * On any startup failure the buffered server logs are dumped into the error.
+ *
+ * The boot is retried on a port collision ({@link isPortCollisionLog}) with fresh
+ * ports — robust under PARALLEL server boots where the `freePort` TOCTOU bites.
  */
 const startServer = async (opts: {
   readonly alwaysReplay?: boolean
@@ -239,119 +240,151 @@ const startServer = async (opts: {
 }): Promise<ServerHandle> => {
   const baseDir = await mkdtemp(join(tmpdir(), 'restate-harness-'))
   const bin = serverBin()
-  const [ingressPort, adminPort, nodePort] = await Promise.all([freePort(), freePort(), freePort()])
-  const ingressUrl = `http://localhost:${ingressPort}`
-  const adminUrl = `http://localhost:${adminPort}`
 
-  let logs = ''
-  const capture = (chunk: Buffer | string) => {
-    logs += chunk.toString()
-  }
+  /* One boot attempt: allocate a fresh, internally-collision-free port batch,
+   * spawn, and poll readiness. Returns `'port-collision'` (caller retries) if the
+   * child died early with an address-in-use; throws on any other startup failure. */
+  const bootOnce = async (): Promise<BootAttempt> => {
+    const [ingressPort, adminPort, nodePort] = await freePorts(3)
+    const ingressUrl = `http://localhost:${ingressPort}`
+    const adminUrl = `http://localhost:${adminPort}`
 
-  let child: ChildProcess
-  try {
-    child = spawn(bin, ['--base-dir', baseDir], {
-      env: {
-        ...process.env,
-        /* Ephemeral bind addresses → parallel-safe instances (R27, verified). */
-        RESTATE_INGRESS__BIND_ADDRESS: `0.0.0.0:${ingressPort}`,
-        RESTATE_ADMIN__BIND_ADDRESS: `0.0.0.0:${adminPort}`,
-        /* The internal node-to-node (message-fabric) port also needs an ephemeral
-         * bind, else concurrent instances collide on the fixed default 5122. */
-        RESTATE_BIND_ADDRESS: `0.0.0.0:${nodePort}`,
-        RESTATE_ADVERTISED_ADDRESS: `http://127.0.0.1:${nodePort}/`,
-        /* Quiet but still capture warnings/errors for diagnostics. */
-        RESTATE_LOG_FILTER: process.env['RESTATE_LOG_FILTER'] ?? 'warn',
-        ...determinismEnv(opts),
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-  } catch (cause) {
-    await rm(baseDir, { recursive: true, force: true })
-    throw new Error(`failed to spawn restate-server (bin: ${bin}): ${String(cause)}`, { cause })
-  }
-
-  child.stdout?.on('data', capture)
-  child.stderr?.on('data', capture)
-
-  let exited: { code: number | null; signal: NodeJS.Signals | null } | undefined
-  child.on('exit', (code, signal) => {
-    exited = { code, signal }
-  })
-
-  const fail = (msg: string): never => {
-    throw new Error(`${msg}\n--- restate-server output ---\n${logs}\n-----------------------------`)
-  }
-
-  /* Poll the admin health endpoint until ready (or the process dies). */
-  const deadline = Date.now() + 30_000
-  for (;;) {
-    if (exited !== undefined) {
-      await rm(baseDir, { recursive: true, force: true })
-      fail(`restate-server exited early (code=${exited.code} signal=${exited.signal}) bin=${bin}`)
+    let logs = ''
+    const capture = (chunk: Buffer | string) => {
+      logs += chunk.toString()
     }
+
+    let child: ChildProcess
     try {
-      const res = await fetch(`${adminUrl}/health`)
-      if (res.ok) break
-    } catch {
-      /* not up yet */
-    }
-    if (Date.now() >= deadline) {
-      child.kill('SIGKILL')
-      await rm(baseDir, { recursive: true, force: true })
-      fail(`restate-server did not become healthy within 30s (admin: ${adminUrl}/health)`)
-    }
-    await sleep(200)
-  }
-
-  /* Health alone is not enough for the Admin `/query` SQL endpoint (used by
-   * `stateOf`): partitions must be initialized + queryable first, else a State
-   * query 500s with `node lookup for partition N failed`. Poll a trivial query
-   * until it succeeds (mirrors testcontainers' partition-readiness wait). */
-  for (;;) {
-    if (exited !== undefined) {
-      await rm(baseDir, { recursive: true, force: true })
-      fail(`restate-server exited early (code=${exited.code} signal=${exited.signal}) bin=${bin}`)
-    }
-    try {
-      const res = await fetch(`${adminUrl}/query`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query: 'SELECT count(1) FROM sys_invocation' }),
+      child = spawn(bin, ['--base-dir', baseDir], {
+        env: {
+          ...process.env,
+          /* Ephemeral bind addresses → parallel-safe instances (R27, verified). */
+          RESTATE_INGRESS__BIND_ADDRESS: `0.0.0.0:${ingressPort}`,
+          RESTATE_ADMIN__BIND_ADDRESS: `0.0.0.0:${adminPort}`,
+          /* The internal node-to-node (message-fabric) port also needs an ephemeral
+           * bind, else concurrent instances collide on the fixed default 5122. */
+          RESTATE_BIND_ADDRESS: `0.0.0.0:${nodePort}`,
+          RESTATE_ADVERTISED_ADDRESS: `http://127.0.0.1:${nodePort}/`,
+          /* Quiet but still capture warnings/errors for diagnostics. */
+          RESTATE_LOG_FILTER: process.env['RESTATE_LOG_FILTER'] ?? 'warn',
+          ...determinismEnv(opts),
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
       })
-      if (res.ok) break
-    } catch {
-      /* partitions not ready yet */
-    }
-    if (Date.now() >= deadline) {
-      child.kill('SIGKILL')
-      await rm(baseDir, { recursive: true, force: true })
-      fail(`restate-server partitions not ready within 30s (admin: ${adminUrl}/query)`)
-    }
-    await sleep(200)
-  }
-
-  const register = async (uri: string): Promise<void> => {
-    /* Reuse the shared bare admin client (the same one `./admin` lifts) so the
-     * harness and the public admin surface never drift on the registration call. */
-    try {
-      await adminRegisterDeployment({ adminUrl }, uri, { force: true })
     } catch (cause) {
-      fail(`deployment registration failed for uri=${uri}: ${String(cause)}`)
+      throw new Error(`failed to spawn restate-server (bin: ${bin}): ${String(cause)}`, { cause })
     }
+
+    child.stdout?.on('data', capture)
+    child.stderr?.on('data', capture)
+
+    let exited: { code: number | null; signal: NodeJS.Signals | null } | undefined
+    child.on('exit', (code, signal) => {
+      exited = { code, signal }
+    })
+
+    const fail = (msg: string): never => {
+      throw new Error(
+        `${msg}\n--- restate-server output ---\n${logs}\n-----------------------------`,
+      )
+    }
+
+    /* On an early exit, distinguish a recoverable port collision (caller retries
+     * on fresh ports) from a hard startup failure (surface with logs). */
+    const earlyExit = (): BootAttempt | undefined => {
+      if (exited === undefined) return undefined
+      if (isPortCollisionLog(logs) === true) return 'port-collision'
+      return fail(
+        `restate-server exited early (code=${exited.code} signal=${exited.signal}) bin=${bin}`,
+      )
+    }
+
+    /* Poll the admin health endpoint until ready (or the process dies). */
+    const deadline = Date.now() + 30_000
+    for (;;) {
+      const exit = earlyExit()
+      if (exit !== undefined) return exit
+      try {
+        const res = await fetch(`${adminUrl}/health`)
+        if (res.ok) break
+      } catch {
+        /* not up yet */
+      }
+      if (Date.now() >= deadline) {
+        child.kill('SIGKILL')
+        fail(`restate-server did not become healthy within 30s (admin: ${adminUrl}/health)`)
+      }
+      await sleep(200)
+    }
+
+    /* Health alone is not enough for the Admin `/query` SQL endpoint (used by
+     * `stateOf`): partitions must be initialized + queryable first, else a State
+     * query 500s with `node lookup for partition N failed`. Poll a trivial query
+     * until it succeeds (mirrors testcontainers' partition-readiness wait). */
+    for (;;) {
+      const exit = earlyExit()
+      if (exit !== undefined) return exit
+      try {
+        const res = await fetch(`${adminUrl}/query`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ query: 'SELECT count(1) FROM sys_invocation' }),
+        })
+        if (res.ok) break
+      } catch {
+        /* partitions not ready yet */
+      }
+      if (Date.now() >= deadline) {
+        child.kill('SIGKILL')
+        fail(`restate-server partitions not ready within 30s (admin: ${adminUrl}/query)`)
+      }
+      await sleep(200)
+    }
+
+    const register = async (uri: string): Promise<void> => {
+      /* Reuse the shared bare admin client (the same one `./admin` lifts) so the
+       * harness and the public admin surface never drift on the registration call. */
+      try {
+        await adminRegisterDeployment({ adminUrl }, uri, { force: true })
+      } catch (cause) {
+        fail(`deployment registration failed for uri=${uri}: ${String(cause)}`)
+      }
+    }
+
+    const shutdown = async (): Promise<void> => {
+      if (exited === undefined) {
+        child.kill('SIGTERM')
+        const killDeadline = Date.now() + 5_000
+        while (exited === undefined && Date.now() < killDeadline) await sleep(50)
+        if (exited === undefined) child.kill('SIGKILL')
+      }
+      await rm(baseDir, { recursive: true, force: true })
+    }
+
+    return { ingressUrl, adminUrl, register, shutdown }
   }
 
-  const shutdown = async (): Promise<void> => {
-    if (exited === undefined) {
-      child.kill('SIGTERM')
-      const killDeadline = Date.now() + 5_000
-      while (exited === undefined && Date.now() < killDeadline) await sleep(50)
-      if (exited === undefined) child.kill('SIGKILL')
+  try {
+    /* Retry the boot on a port collision (the `freePort` TOCTOU under parallel
+     * boots) — a fresh port batch each attempt. A few attempts is ample: a real
+     * co-tenant collision is rare and uncorrelated across attempts. */
+    const maxAttempts = 6
+    for (let attempt = 1; ; attempt++) {
+      const result = await bootOnce()
+      if (result !== 'port-collision') return result
+      if (attempt >= maxAttempts) {
+        throw new Error(
+          `restate-server lost the port race ${maxAttempts}× in a row (freePort TOCTOU under parallel boot)`,
+        )
+      }
     }
+  } catch (cause) {
+    /* Any unrecoverable failure (or exhausted retries): clean up the base dir the
+     * successful path hands to `shutdown`. */
     await rm(baseDir, { recursive: true, force: true })
+    throw cause
   }
-
-  return { ingressUrl, adminUrl, register, shutdown }
 }
 
 /* ════════════════════════════════════════════════════════════════════════
