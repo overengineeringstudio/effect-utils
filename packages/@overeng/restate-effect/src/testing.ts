@@ -35,6 +35,12 @@ import * as clients from '@restatedev/restate-sdk-clients'
 import { Clock, Context, Effect, Exit, Layer, type Schema, Scope } from 'effect'
 
 import {
+  type AdminClientConfig,
+  queryStateRows as adminQueryStateRows,
+  putState as adminPutState,
+  registerDeployment as adminRegisterDeployment,
+} from './AdminApi.ts'
+import {
   call as ingressCall,
   callTyped as ingressCallTyped,
   objectCall as ingressObjectCall,
@@ -326,14 +332,12 @@ const startServer = async (opts: {
   }
 
   const register = async (uri: string): Promise<void> => {
-    const res = await fetch(`${adminUrl}/deployments`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ uri, force: true }),
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      fail(`deployment registration failed (${res.status}) for uri=${uri}: ${text}`)
+    /* Reuse the shared bare admin client (the same one `./admin` lifts) so the
+     * harness and the public admin surface never drift on the registration call. */
+    try {
+      await adminRegisterDeployment({ adminUrl }, uri, { force: true })
+    } catch (cause) {
+      fail(`deployment registration failed for uri=${uri}: ${String(cause)}`)
     }
   }
 
@@ -389,79 +393,13 @@ export interface StateProxy<S extends StateSchemas> {
   }) => Effect.Effect<void, RestateError>
 }
 
-const textEncoder = new TextEncoder()
-
 const stateError = (method: string, cause: unknown): RestateError =>
   new RestateError({ reason: 'IngressFailed', method, cause })
 
-/**
- * Read the raw `{ key, value-bytes }` pairs for one service + key via the Admin
- * `/query` SQL endpoint with `Accept: application/json` (so the binary `value`
- * column rides as a HEX string — no Apache Arrow dependency, unlike
- * testcontainers; verified against restate-server 1.6.2).
- */
-const queryStateRows = async (
-  adminUrl: string,
-  service: string,
-  serviceKey: string,
-): Promise<ReadonlyArray<{ readonly key: string; readonly value: Uint8Array }>> => {
-  const res = await fetch(`${adminUrl}/query`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({
-      query: `SELECT key, value FROM state WHERE service_name = '${service}' AND service_key = '${serviceKey}'`,
-    }),
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`admin state query failed (${res.status}): ${text}`)
-  }
-  const body = (await res.json()) as { readonly rows?: ReadonlyArray<Record<string, unknown>> }
-  const rows = body.rows ?? []
-  return rows.flatMap((row) => {
-    const key = row['key']
-    const value = row['value']
-    if (typeof key !== 'string') return []
-    return [{ key, value: decodeQueryValue(value) }]
-  })
-}
-
-/**
- * Decode a `value` cell from a JSON state query into bytes. Restate-server 1.6.2
- * emits a binary column as a HEX string in JSON mode (verified). Tolerate a
- * number[] (raw byte array) fallback so the proxy survives a future server build
- * that changes the JSON binary encoding.
- */
-const decodeQueryValue = (value: unknown): Uint8Array => {
-  if (typeof value === 'string') return Uint8Array.from(Buffer.from(value, 'hex'))
-  if (Array.isArray(value) === true) return Uint8Array.from(value as ReadonlyArray<number>)
-  return textEncoder.encode(typeof value === 'undefined' ? '' : JSON.stringify(value))
-}
-
-/**
- * Push the full `{ key → bytes }` set for one service + key to the Admin state
- * mutation endpoint (`POST /services/{service}/state`), encoding each value as a
- * byte array (the `new_state` wire form). Mirrors the testcontainers `setAll`.
- */
-const putState = async (
-  adminUrl: string,
-  service: string,
-  serviceKey: string,
-  entries: ReadonlyArray<readonly [string, Uint8Array]>,
-): Promise<void> => {
-  const res = await fetch(`${adminUrl}/services/${service}/state`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      object_key: serviceKey,
-      new_state: Object.fromEntries(entries.map(([k, v]) => [k, Array.from(v)])),
-    }),
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`admin state mutation failed (${res.status}): ${text}`)
-  }
-}
+/* The State read/write helpers now delegate to the shared bare admin client
+ * (`AdminApi.ts`) — the same SQL `/query` HEX-decode + `POST /services/{service}/state`
+ * mutation the `./admin` surface uses — so the harness and `./admin` never drift. */
+const adminConfigFor = (adminUrl: string): AdminClientConfig => ({ adminUrl })
 
 /** Build a typed `StateProxy` bound to a contract's `state` block + an Admin URL. */
 const makeStateProxy = <S extends StateSchemas>(
@@ -477,10 +415,11 @@ const makeStateProxy = <S extends StateSchemas>(
   const serdeFor = <K extends keyof S & string>(key: K) =>
     effectSerde(normalizeStateSchema(schemas[key]!))
 
+  const config = adminConfigFor(adminUrl)
   const readAll = (): Effect.Effect<ReadonlyArray<readonly [string, Uint8Array]>, RestateError> =>
     Effect.tryPromise({
       try: () =>
-        queryStateRows(adminUrl, service, serviceKey).then((rows) =>
+        adminQueryStateRows(config, service, serviceKey).then((rows) =>
           rows.map((r) => [r.key, r.value] as const),
         ),
       catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).read`, cause),
@@ -490,7 +429,7 @@ const makeStateProxy = <S extends StateSchemas>(
     entries: ReadonlyArray<readonly [string, Uint8Array]>,
   ): Effect.Effect<void, RestateError> =>
     Effect.tryPromise({
-      try: () => putState(adminUrl, service, serviceKey, entries),
+      try: () => adminPutState(config, service, serviceKey, entries),
       catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).write`, cause),
     })
 
