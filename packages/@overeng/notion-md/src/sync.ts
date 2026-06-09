@@ -993,6 +993,12 @@ export const treeNodePersist = (opts: {
     Effect.gen(function* () {
       const gateway = yield* NotionMdGateway
       const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+      yield* assertRemoteMarkdownComplete({
+        operation: 'tree_persist_post_write',
+        path: opts.path,
+        pageId: status.pageId,
+        markdown: pulled.markdown,
+      })
       yield* assertLocalBodyUnchanged({
         path: opts.path,
         pageId: status.pageId,
