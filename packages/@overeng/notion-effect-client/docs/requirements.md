@@ -43,3 +43,11 @@ and wire schemas from
   or sidecar contracts.
 - **R08 No root CLI ownership:** The client must not own user-facing root CLI
   command composition.
+
+### Must Provide Conservative Body Evidence
+
+- **R09 Conservative body observation:** Live body observation must not present
+  evidence from a known-unstable Notion read window as a stable body
+  observation. When the client can detect that the remote page changed while
+  assembling body evidence, it must retry or fail closed rather than returning
+  mixed-snapshot evidence.

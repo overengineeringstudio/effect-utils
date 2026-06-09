@@ -49,12 +49,17 @@ client package.
 
 ## Live Body Observation
 
-Requirement trace: R02-R08.
+Requirement trace: R02-R09.
 
 `@overeng/notion-effect-client` owns the live Notion observation needed to turn
 core's pure body-fidelity classifier into evidence from the real workspace.
 
 ```
+GET /pages/{page_id}
+        |
+        v
+BeforePageMetadata
+
 GET /pages/{page_id}/markdown
         |
         v
@@ -64,6 +69,11 @@ retrieve block tree -> render with client Markdown renderer
         |
         v
 BlockInventory
+
+GET /pages/{page_id}
+        |
+        v
+AfterPageMetadata
 
 MarkdownBodySnapshot + BlockInventory
         |
@@ -88,9 +98,13 @@ Notion's markdown endpoint against the block tree, but callers must not reparse
 endpoint Markdown as the canonical pull body when block-level fidelity matters.
 
 Because Markdown and block-tree reads are separate Notion API observations,
-callers that require race-free adoption should treat lossy evidence as
-authoritative and may add page timestamp rechecks around observation when their
-workflow needs stronger concurrency proof.
+the client brackets them with page metadata reads and compares
+`last_edited_time`. If the metadata changes across the observation window, the
+client retries the full window up to a small fixed bound, then fails closed with
+`NotionBodyObservationChangedError`. This makes live body observation
+conservative without changing the pure classifier: `last_edited_time` is a
+stability signal, not a transactional snapshot token, and callers still own
+adoption/write policy.
 
 ## Resource Modules
 
