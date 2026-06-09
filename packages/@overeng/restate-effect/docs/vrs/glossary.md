@@ -220,3 +220,29 @@ _Avoid_: "increment in the handler body" (double-counts across attempts).
 The OTel `MeterProvider` `RestateOtel.layer({ metricReader?/metricExporter? })`
 registers SHARING the tracer's `Resource`, binding Effect's `Metric` so the auto
 baseline + user metrics export with the same identity as the traces.
+
+**Logger bridge (`ctx.console`)**:
+The per-invocation `loggerLayer(ctx)` that replaces Effect's default logger so an
+in-handler `Effect.log*` writes to the invocation's replay-aware **`ctx.console`**
+(suppressed during **Replay**, level-controlled via `RESTATE_LOGGING`, stamped with
+invocation context). On the CORE `.` export, provided alongside the **determinism
+layer**. The format is Effect's own `logfmt`; only the sink changes. See
+`decisions/0015`.
+_Avoid_: "log to console" (the default `globalThis.console` re-emits on replay).
+
+## Security
+
+**Request identity (`identityKeys`)**:
+The Restate v1 request-identity PUBLIC keys (ED25519, `publickeyv1_…`) threaded
+into the SDK endpoint builder via `EndpointOptions.identityKeys`. When set, the SDK
+rejects any inbound request not signed by the matching private key — authenticating
+the server → handlers edge (the handler endpoint, :9080). Pure passthrough. See
+`decisions/0016`.
+_Avoid_: "API key" (that is the INGRESS auth; identity is the server→handlers JWT).
+
+**Ingress API key (secured ingress)**:
+The bearer credential for the you → server edge: `RestateIngress.layer({ url, apiKey })`
+sends `apiKey` (a `Redacted<string>`, never printed) as `Authorization: Bearer …`.
+Required to reach a SECURED / Restate Cloud ingress. `layerConfig` reads it from
+`RESTATE_INGRESS_KEY` (a `Config.redacted`). See `decisions/0016`.
+_Avoid_: "request identity" (that authenticates the OTHER edge, server→handlers).

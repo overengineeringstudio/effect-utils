@@ -1,6 +1,7 @@
 /**
  * Per-invocation handler runtime boundary: the determinism layer (journaled
- * Clock/Random backed by `ctx`) and the cancellation↔interruption bridge
+ * Clock/Random backed by `ctx`), the logger bridge (Effect `Logger` → the
+ * replay-aware `ctx.console`), and the cancellation↔interruption bridge
  * (`attemptCompletedSignal` → attempt-scoped finalization; Restate cancellation →
  * Effect interruption).
  *
@@ -8,11 +9,11 @@
  * the `materialize*` boundary (Endpoint.ts), alongside `RestateContext` and the
  * capability markers — never placed in the long-lived application Layer.
  *
- * See decisions 0004 (determinism layer) and 0003 (error boundary), spec §6 and
- * §5a/§12, and requirements R17 + R31.
+ * See decisions 0004 (determinism layer), 0015 (logger bridge) and 0003 (error
+ * boundary), spec §6, §10.3 and §5a/§12, and requirements R17 + R31.
  */
 import * as restate from '@restatedev/restate-sdk'
-import { Chunk, Clock, Effect, Layer, Random } from 'effect'
+import { Chunk, Clock, Effect, Layer, Logger, LogLevel, Random } from 'effect'
 
 import { RestateContext } from './RestateContext.ts'
 
@@ -121,6 +122,65 @@ export const determinismLayer = (
     Layer.setClock(makeJournaledClock(ctx, frozenBaseMillis)),
     Layer.setRandom(makeJournaledRandom(ctx)),
   )
+
+/* ── logger bridge (decision 0015, spec §10.3) ───────────────────────────── */
+
+/**
+ * Map an Effect `LogLevel` to the `Console` method `ctx.console` exposes. The
+ * `ctx.console` is a standard `Console`, so the five level-bearing methods cover
+ * the spectrum: `Trace`/`Debug` → `debug`, `Info`/`All` → `info`, `Warning` →
+ * `warn`, `Error`/`Fatal` → `error`. `None` never reaches a logger (Effect
+ * filters it), so it falls through to `info` defensively.
+ */
+const consoleMethodFor = (level: LogLevel.LogLevel): 'debug' | 'info' | 'warn' | 'error' => {
+  switch (level._tag) {
+    case 'Trace':
+    case 'Debug':
+      return 'debug'
+    case 'Warning':
+      return 'warn'
+    case 'Error':
+    case 'Fatal':
+      return 'error'
+    default:
+      return 'info'
+  }
+}
+
+/* Format a log line via Effect's own `logfmtLogger` (a `Logger<unknown, string>`),
+ * so the message, fiber id, annotations, spans, and cause all ride along in the
+ * one logfmt string the way Effect's default console output does — we only change
+ * the SINK (`ctx.console` instead of `globalThis.console`), not the FORMAT. */
+const formatLog = Logger.logfmtLogger.log
+
+/**
+ * Build the per-invocation `Logger` that routes every in-handler `Effect.log*`
+ * into the invocation's `ctx.console` (decision 0015, spec §10.3). `ctx.console`
+ * is the SDK's replay-aware console: it stamps the invocation id / target context
+ * and AUTOMATICALLY suppresses output during replay, and it honors the
+ * `RESTATE_LOGGING` level — so an `Effect.logInfo` in a handler no longer
+ * re-emits on every replay/attempt (the bug a plain `globalThis.console`-backed
+ * default logger has), and level control comes for free.
+ *
+ * The format is Effect's own `logfmt` (so annotations/spans/cause ride along in
+ * the message); only the SINK changes. Synchronous (`ctx.console` is sync), so it
+ * composes cleanly as a `Logger.replace` of the default logger.
+ */
+const makeConsoleLogger = (ctx: restate.Context): Logger.Logger<unknown, void> =>
+  Logger.make((options) => {
+    const line = formatLog(options)
+    ctx.console[consoleMethodFor(options.logLevel)](line)
+  })
+
+/**
+ * The per-invocation logger `Layer` (decision 0015): replaces Effect's default
+ * logger with one that writes to the invocation's replay-aware `ctx.console`.
+ * Provided over the handler effect ALONGSIDE {@link determinismLayer} in every
+ * `materialize*` path. The endpoint's OWN startup `Effect.logInfo` runs OUTSIDE a
+ * handler, so it is unaffected (it keeps the process default logger).
+ */
+export const loggerLayer = (ctx: restate.Context): Layer.Layer<never> =>
+  Logger.replace(Logger.defaultLogger, makeConsoleLogger(ctx))
 
 /* ── cancellation ↔ interruption bridge (R31, spec §5a/§12) ──────────────── */
 

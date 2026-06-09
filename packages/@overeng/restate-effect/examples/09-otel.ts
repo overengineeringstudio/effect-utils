@@ -36,7 +36,7 @@ import {
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics'
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base'
-import { Effect, Layer } from 'effect'
+import { type ConfigError, Effect, Layer } from 'effect'
 
 import { layer, Restate, type RestateError, serve } from '../src/mod.ts'
 import { RestateOtel } from '../src/otel.ts'
@@ -80,11 +80,15 @@ export const annotatedGreet = (name: string) =>
  * provided. `OtelLayer` MUST be present (it registers the global provider the hook
  * and bridge read).
  */
-export const TracedEndpointLayer: Layer.Layer<never, RestateError, never> = layer(
-  tracedEndpointOptions,
-).pipe(Layer.provide(Layer.merge(Greeting.Default, OtelLayer)))
+export const TracedEndpointLayer: Layer.Layer<
+  never,
+  RestateError | ConfigError.ConfigError,
+  never
+> = layer(tracedEndpointOptions).pipe(Layer.provide(Layer.merge(Greeting.Default, OtelLayer)))
 
 /** The traced `serve` form (wrap with `NodeRuntime.runMain` in production). */
-export const tracedServeProgram: Effect.Effect<never, RestateError, never> = serve(
-  tracedEndpointOptions,
-).pipe(Effect.provide(Layer.merge(Greeting.Default, OtelLayer)))
+export const tracedServeProgram: Effect.Effect<
+  never,
+  RestateError | ConfigError.ConfigError,
+  never
+> = serve(tracedEndpointOptions).pipe(Effect.provide(Layer.merge(Greeting.Default, OtelLayer)))

@@ -48,7 +48,7 @@ import {
   openTelemetryHook,
   type OpenTelemetryHookOptions,
 } from '@restatedev/restate-sdk-opentelemetry'
-import { Effect, Layer, type Scope } from 'effect'
+import { Config, type ConfigError, Effect, Layer, Option, type Scope } from 'effect'
 
 import type {
   BoundaryObserver,
@@ -173,6 +173,70 @@ const sharedLayer = (config: OtelLayerConfig): Layer.Layer<never, never, never> 
         return Layer.merge(tracerLayer, metricsLayer).pipe(Layer.provideMerge(resourceLayer))
       }),
     ),
+  )
+
+/**
+ * The env-driven `Config` inputs {@link layerConfig} reads (the OTel standard env
+ * vars): the service name (`OTEL_SERVICE_NAME`) and the OTLP collector endpoint
+ * (`OTEL_EXPORTER_OTLP_ENDPOINT`). Both OPTIONAL so a missing config degrades to
+ * the supplied defaults — `layerConfig` never fails the layer on absent env.
+ */
+export interface OtelConfigValues {
+  readonly serviceName: Option.Option<string>
+  readonly endpoint: Option.Option<string>
+}
+
+const otelConfig: Config.Config<OtelConfigValues> = Config.all({
+  serviceName: Config.option(Config.string('OTEL_SERVICE_NAME')),
+  endpoint: Config.option(Config.string('OTEL_EXPORTER_OTLP_ENDPOINT')),
+})
+
+/**
+ * Configuration-driven variant of {@link sharedLayer} (spec §10, decision 0014).
+ * Reads the OTel STANDARD env vars via `Config` — `OTEL_SERVICE_NAME` (service
+ * identity) and `OTEL_EXPORTER_OTLP_ENDPOINT` (the OTLP collector base URL) — then
+ * hands them to a caller-supplied `build` that returns the literal
+ * {@link OtelLayerConfig}. The binding does NOT import an OTLP exporter package
+ * (that would pull a heavy, environment-specific dep into the closure), so the
+ * EXPORTER stays the caller's choice: `build` receives the resolved endpoint and
+ * service name and constructs the exporter(s) it wants (an OTLP exporter in prod,
+ * an in-memory exporter in a test).
+ *
+ * `base.resource.serviceName` is overridden by `OTEL_SERVICE_NAME` when set, so a
+ * deployment can rename the service via env alone.
+ *
+ * ```ts
+ * RestateOtel.layerConfig({
+ *   base: { resource: { serviceName: 'greeter' } },
+ *   build: ({ endpoint }) => ({
+ *     exporter: new OTLPTraceExporter({ url: `${endpoint}/v1/traces` }),
+ *     metricExporter: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics` }),
+ *   }),
+ * })
+ * ```
+ */
+const layerConfig = (opts: {
+  readonly base: Omit<OtelLayerConfig, 'resource'> & {
+    readonly resource: OtelResourceConfig
+  }
+  readonly build?: (resolved: {
+    readonly endpoint: string | undefined
+    readonly serviceName: string
+  }) => Omit<OtelLayerConfig, 'resource'>
+}): Layer.Layer<never, ConfigError.ConfigError> =>
+  Layer.unwrapEffect(
+    Effect.gen(function* () {
+      const values = yield* otelConfig
+      const serviceName = Option.getOrElse(values.serviceName, () => opts.base.resource.serviceName)
+      const endpoint = Option.getOrUndefined(values.endpoint)
+      const built = opts.build?.({ endpoint, serviceName }) ?? {}
+      const config: OtelLayerConfig = {
+        ...opts.base,
+        ...built,
+        resource: { ...opts.base.resource, serviceName },
+      }
+      return sharedLayer(config)
+    }),
   )
 
 /** The default instrumentation-scope name for hook-emitted Restate spans. */
@@ -303,6 +367,13 @@ const withOtel = <AppR>(
  */
 export const RestateOtel = {
   layer: sharedLayer,
+  /**
+   * `Config`-driven {@link sharedLayer}: reads `OTEL_SERVICE_NAME` /
+   * `OTEL_EXPORTER_OTLP_ENDPOINT` from the environment and hands them to a
+   * caller-supplied exporter `build` (the exporter package is NOT pulled into the
+   * closure — the caller chooses it). See {@link layerConfig}.
+   */
+  layerConfig,
   hook,
   inboundBridge,
   boundaryObserver,
