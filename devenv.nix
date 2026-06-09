@@ -117,6 +117,7 @@ let
     "packages/@overeng/notion-effect-schema"
     "packages/@overeng/notion-md"
     "packages/@overeng/notion-react"
+    "packages/@overeng/otelite-effect"
     "packages/@overeng/oxc-config"
     "packages/@overeng/pty-effect"
     "packages/@overeng/react-inspector"
@@ -184,6 +185,10 @@ let
       name = "notion-react";
     }
 
+    {
+      path = "packages/@overeng/otelite-effect";
+      name = "otelite-effect";
+    }
     {
       path = "packages/@overeng/oxc-config";
       name = "oxc-config";
@@ -419,6 +424,8 @@ in
     pkgs.oxfmt
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoFlake.packages.${currentSystem}.notion-cli
+    # otelite binary on PATH so @overeng/otelite-effect tests run the real CLI.
+    repoFlake.packages.${currentSystem}.otelite
     (mkSourceCli {
       name = "genie";
       entry = "packages/@overeng/genie/bin/genie.tsx";
