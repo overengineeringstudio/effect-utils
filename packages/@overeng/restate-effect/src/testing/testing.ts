@@ -410,11 +410,18 @@ export interface StateProxy<S extends StateSchemas> {
     { readonly [K in keyof S]?: StateValueType<S[K]> },
     RestateError
   >
-  /** Seed a single typed State value (read-modify-write of the full key set). */
+  /**
+   * Seed a single typed State value (read-modify-write of the full key set).
+   * Writing `undefined` to an OPTIONAL field REMOVES the key (`set(key, undefined)`
+   * ≡ `clear(key)`), matching State's "absent key → undefined" semantics and the
+   * in-handler `State.set` (#1).
+   */
   readonly set: <K extends keyof S & string>(
     key: K,
     value: StateValueType<S[K]>,
   ) => Effect.Effect<void, RestateError>
+  /** Remove a single State key (read-modify-write of the full key set). */
+  readonly clear: <K extends keyof S & string>(key: K) => Effect.Effect<void, RestateError>
   /** Replace the entire State for the key with the given typed record. */
   readonly setAll: (values: {
     readonly [K in keyof S]?: StateValueType<S[K]>
@@ -491,12 +498,24 @@ const makeStateProxy = <S extends StateSchemas>(
     set: (key, value) =>
       Effect.gen(function* () {
         const existing = yield* readAll()
+        const others = existing.filter(([k]) => k !== key)
+        /* `set(key, undefined)` on an OPTIONAL field REMOVES the key (≡ `clear`),
+         * matching the in-handler `State.set` semantics: an absent key reads back
+         * as `undefined`, so the present-value serde is never asked to encode it. */
+        if (value === undefined) {
+          yield* writeAll(others)
+          return
+        }
         const encoded = yield* Effect.try({
           try: () => serdeFor(key).serialize(value),
           catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).set(${key})`, cause),
         })
-        const merged = [...existing.filter(([k]) => k !== key), [key, encoded] as const]
-        yield* writeAll(merged)
+        yield* writeAll([...others, [key, encoded] as const])
+      }),
+    clear: (key) =>
+      Effect.gen(function* () {
+        const existing = yield* readAll()
+        yield* writeAll(existing.filter(([k]) => k !== key))
       }),
     setAll: (values) =>
       Effect.gen(function* () {

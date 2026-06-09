@@ -41,6 +41,11 @@ const Watcher = RestateScheduled.make({ name, domainState, cycle, schedule, onCy
 // → { contract, implementation }; drive start/stop/status/wakeId via the typed clients
 ```
 
+- `domainState`: the user's per-cycle State schema (the poll cursor etc.), a
+  `StateSchemas` map handed to the `cycle` as a typed `State.for` family. A field
+  MAY be OPTIONAL (`Schema.optional`) — a nullable cursor (e.g. `highWatermark`)
+  reads back `undefined` when absent and `set(undefined)`/`clear` removes it,
+  exactly the [01-authoring](../01-authoring/spec.md) State rule (shared handling).
 - `schedule`: `Schedule.fixedDelay(ms)` only in v1 (the gap between cycles is
   exactly `ms`; never overlaps, never catches up). `fixedRate`/`cron` deferred.
 - `onCycleError`: `skipToNext` (DEFAULT — swallow a failing cycle, keep cadence) or
@@ -80,7 +85,11 @@ retry mechanism:
   no-wake shape the backoff is a delayed self-send (generation-bumped), so the lock
   is RELEASED and `stop` mid-backoff stays prompt. Depends on the per-union-member
   classification fix in
-  [04-error-boundary](../04-error-boundary/spec.md#error-boundary).
+  [04-error-boundary](../04-error-boundary/spec.md#error-boundary). The cycle's
+  error channel is `RestateError | CycleE`, where `CycleE` is the DECODED type of
+  `errorSchema` — so a typed cycle `Effect.fail`s its declared error and composes
+  WITHOUT a cast (the loop's `runCycle` absorbs the declared `E` through
+  `classifyOutcome`; `CycleE` is `never` when no `errorSchema` is declared).
 - `wake` → **awakeable early fire.** With `wake: true` the inter-cycle wait moves
   INSIDE the invocation as `Restate.race([sleepDescriptor(delay), wake.descriptor])`
   (see

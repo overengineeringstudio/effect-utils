@@ -9,7 +9,7 @@ import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { CounterLive } from '../../examples/02-virtual-object.ts'
-import { Restate, RestateObject } from '../mod.ts'
+import { Restate, RestateObject, State } from '../mod.ts'
 import { makeTestContext, makeTestContextLayer } from './TestContext.ts'
 
 describe('in-memory TestContext', () => {
@@ -46,6 +46,39 @@ describe('in-memory TestContext', () => {
         .pipe(Effect.provide(makeTestContextLayer({ state })))
       expect(next).toBe(5) // (undefined ?? 0) + 5
       expect(state.get('count')).toBe(5)
+    }).pipe(Effect.runPromise))
+
+  it('an OPTIONAL State field: set / get / clear (set undefined removes the key) (#1)', () =>
+    Effect.gen(function* () {
+      /* A nullable `highWatermark` cursor: present-value set, absent⇒undefined read,
+       * and `State.set(undefined)`/`State.clear` both REMOVE the key — exercised
+       * through the REAL `State.*` combinators against the in-memory context. */
+      const Cursor = State.for({ highWatermark: Schema.optional(Schema.Number) })
+      const Probe = RestateObject.contract('opt-probe', {
+        state: { highWatermark: Schema.optional(Schema.Number) },
+        handlers: { go: { input: Schema.Void, success: Schema.Void } },
+      })
+      const ProbeLive = RestateObject.implement<typeof Probe>(Probe, {
+        go: () =>
+          Effect.gen(function* () {
+            /* Absent ⇒ undefined. */
+            expect(yield* Cursor.get('highWatermark')).toBeUndefined()
+            /* Present value round-trips through the SAME serde the real handler uses. */
+            yield* Cursor.set('highWatermark', 42)
+            expect(yield* Cursor.get('highWatermark')).toBe(42)
+            /* `set(undefined)` removes the key (the in-memory Map deletes it). */
+            yield* Cursor.set('highWatermark', undefined)
+            expect(yield* Cursor.get('highWatermark')).toBeUndefined()
+            /* `clear` is equivalent. */
+            yield* Cursor.set('highWatermark', 7)
+            yield* Cursor.clear('highWatermark')
+            expect(yield* Cursor.get('highWatermark')).toBeUndefined()
+          }),
+      })
+      const state = new Map<string, unknown>()
+      yield* ProbeLive.impl.go(undefined).pipe(Effect.provide(makeTestContextLayer({ state })))
+      /* The backing Map holds no `highWatermark` key after the clears. */
+      expect(state.has('highWatermark')).toBe(false)
     }).pipe(Effect.runPromise))
 
   it('Restate.run executes once and is replay-stable through the handler', () =>

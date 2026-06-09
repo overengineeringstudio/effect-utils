@@ -23,7 +23,10 @@ A/T) and [../glossary.md](../glossary.md). IDs are GLOBAL and preserved.
   invocation operable from a metrics/traces backend. On the boundary span it MUST
   auto-stamp identity (`restate.service`/`restate.handler`/`restate.object.key`)
   and, on failure, the classification (`restate.error.tag`/`restate.error.class`);
-  it MUST expose `Restate.annotateSpan` for custom business attributes. It MUST
+  it MUST expose `Restate.annotateSpan` for custom business attributes. A redacted
+  (`sensitive`/`redacted`) field value MUST NEVER reach a span (it is PLAINTEXT
+  there, bypassing serde redaction); the schema-aware `Restate.annotateSpanFrom`
+  projection MUST strip such fields by default. It MUST
   register a `MeterProvider` sharing the tracer's `Resource` and emit a
   REPLAY-AWARE auto baseline (`restate_invocations_total{…,outcome}` + duration,
   per-attempt/retry, durable-step, awakeable-wait, and `pollLoop` cycle metrics)

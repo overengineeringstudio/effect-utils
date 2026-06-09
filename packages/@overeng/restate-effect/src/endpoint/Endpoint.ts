@@ -2,20 +2,10 @@ import * as http2 from 'node:http2'
 
 import * as restate from '@restatedev/restate-sdk'
 import { createEndpointHandler } from '@restatedev/restate-sdk/node'
-import type { Config } from 'effect'
-import {
-  type ConfigError,
-  Context,
-  Duration,
-  Effect,
-  Exit,
-  Layer,
-  Option,
-  Runtime,
-  Schema,
-} from 'effect'
+import type { Config, Schema } from 'effect'
+import { type ConfigError, Context, Duration, Effect, Exit, Layer, Option, Runtime } from 'effect'
 
-import { RestateContext } from '../authoring/RestateContext.ts'
+import { RestateContext, type StateSchemas } from '../authoring/RestateContext.ts'
 import type {
   Contract,
   HandlerOptions,
@@ -389,7 +379,7 @@ export const materialize = <AppR>(
  */
 export const materializeObject = <AppR>(
   implementation: ObjectImplementation<
-    ObjectContract<string, Record<string, Schema.Schema<any, any>>, ObjectHandlerSpecMap>,
+    ObjectContract<string, StateSchemas, ObjectHandlerSpecMap>,
     AppR
   >,
   runtime: Runtime.Runtime<AppR>,
@@ -454,7 +444,7 @@ export const materializeWorkflow = <AppR>(
   implementation: WorkflowImplementation<
     WorkflowContract<
       string,
-      Record<string, Schema.Schema<any, any>>,
+      StateSchemas,
       WorkflowHandlerSpec,
       WorkflowHandlerSpecMap,
       WorkflowHandlerSpecMap
@@ -521,14 +511,11 @@ export const materializeWorkflow = <AppR>(
  */
 export type AnyImplementation<AppR> =
   | ServiceImplementation<Contract<string, HandlerSpecMap>, AppR>
-  | ObjectImplementation<
-      ObjectContract<string, Record<string, Schema.Schema<any, any>>, ObjectHandlerSpecMap>,
-      AppR
-    >
+  | ObjectImplementation<ObjectContract<string, StateSchemas, ObjectHandlerSpecMap>, AppR>
   | WorkflowImplementation<
       WorkflowContract<
         string,
-        Record<string, Schema.Schema<any, any>>,
+        StateSchemas,
         WorkflowHandlerSpec,
         WorkflowHandlerSpecMap,
         WorkflowHandlerSpecMap

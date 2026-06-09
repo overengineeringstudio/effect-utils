@@ -89,6 +89,29 @@ handler is simply never given `StateWrite`, so the illegal write is unrepresenta
 rather than checked at runtime. `State.get` returns `value | undefined` (undefined =
 unset), so default it.
 
+### Nullable State (optional fields)
+
+State is a per-key key/value map, so an absent key reads back as `undefined`. To
+model a NULLABLE cursor (e.g. a `highWatermark` you may not have set yet), declare
+the field `Schema.optional`:
+
+```ts
+const Cursor = State.for({ highWatermark: Schema.optional(Schema.Number) })
+
+const wm = yield * Cursor.get('highWatermark') // number | undefined (undefined = absent)
+yield * Cursor.set('highWatermark', 42) // set a present value
+yield * Cursor.set('highWatermark', undefined) // clears the key (≡ State.clear)
+yield * Cursor.clear('highWatermark') // also clears it
+```
+
+Writing `undefined` REMOVES the key rather than storing a present-but-`undefined`
+value — read and write are symmetric around "absent ⇒ undefined". This is the one
+pattern that type-checks under both the compiler and the bundler; a bare top-level
+`Schema.UndefinedOr` handler RETURN does not (it has no JSON schema), so keep a
+nullable value in State or inside a struct field, not as a top-level handler output.
+The same `set`/`get`/`clear` semantics are available on the test `stateOf` proxy
+(`RestateTestHarness.stateOf` / `RestateTestEnv.stateOf`).
+
 ### Keying and the key accessor
 
 Call a keyed handler with the per-invocation key as the second argument:

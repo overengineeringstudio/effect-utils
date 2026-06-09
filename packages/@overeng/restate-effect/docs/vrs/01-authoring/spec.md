@@ -219,6 +219,33 @@ Calling `State.set` (requires `StateWrite`) in a shared handler (provides only
 value-typed against the contract's `state` schema (R06). `materialize` provides
 exactly the markers legal for the construct and handler kind (R05).
 
+#### Optional / nullable State (absent key ⇒ `undefined`)
+
+Restate State is a per-key K/V map; an ABSENT key reads back as `undefined`. A
+state field may therefore be declared `Schema.optional(S)` (a nullable cursor —
+e.g. a `highWatermark` watermark) and the combinator family models the "unset"
+case end-to-end as `undefined`, NOT a present-but-`undefined` value:
+
+```ts
+const Cursor = State.for({ highWatermark: Schema.optional(Schema.Number) })
+yield * Cursor.get('highWatermark') // Effect<number | undefined> — undefined when ABSENT
+yield * Cursor.set('highWatermark', 42) // present value (round-tripped via the inner serde)
+yield * Cursor.set('highWatermark', undefined) // REMOVES the key (≡ clear)
+yield * Cursor.clear('highWatermark') // also removes the key
+```
+
+`State.for` stores the optional field's INNER (present-value) schema for serde
+(`undefined` stripped), so a `set` only ever encodes a present `T`; writing
+`undefined` REMOVES the key rather than encoding it (`set(key, undefined)` ≡
+`clear(key)`), making read and write symmetric around the "absent ⇒ undefined"
+rule. The same handling reaches the test surfaces: `RestateTestHarness.stateOf` /
+`RestateTestEnv.stateOf` expose `get` (`undefined` when absent), `set` (with the
+same `undefined`-removes semantics), and `clear`. This is ONE compiler-agreed
+pattern under both `tsc` (`exactOptionalPropertyTypes`) and the bundler — a bare
+top-level `Schema.UndefinedOr` handler I/O return is NOT (`JSONSchema.make` rejects
+it at registration), so a NULLABLE projection belongs in State (or inside a struct
+field), not a top-level handler return.
+
 `Restate.run` SCRUBS the durable capabilities from its inner effect's `R`
 (`Exclude<R, RestateContext | StateRead | StateWrite | DurablePromise |
 ObjectKey>`), so a nested `ctx.*` / `State.get` / `Restate.sleep` inside a `run`

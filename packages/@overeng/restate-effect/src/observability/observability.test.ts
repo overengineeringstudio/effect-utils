@@ -17,6 +17,8 @@
  *    gate returning `true` (real execution) vs `false` (replay); assert the replay
  *    emission does NOT increment (no double-count across attempts).
  */
+import * as Resource from '@effect/opentelemetry/Resource'
+import * as EffectTracer from '@effect/opentelemetry/Tracer'
 import { context, trace } from '@opentelemetry/api'
 import {
   AggregationTemporality,
@@ -28,10 +30,11 @@ import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-tr
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 import type { Context as RestateRawContext } from '@restatedev/restate-sdk'
 import { openTelemetryHook } from '@restatedev/restate-sdk-opentelemetry'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { emitDurableStep, emitInvocationMetrics } from './Metrics.ts'
+import { Restate } from '../schema/Annotations.ts'
+import { annotateSpanFrom, emitDurableStep, emitInvocationMetrics } from './Metrics.ts'
 import { RestateOtel } from './otel.ts'
 
 /* ── span-attribute test scaffolding (mirrors otel.test.ts) ────────────────── */
@@ -150,6 +153,59 @@ describe('span attributes (server-free)', () => {
     expect(attempt.attributes['restate.idempotency.key']).toBe('intent-7f3a')
     /* The Workflow key still rides as object.key too (Workflows are keyed). */
     expect(attempt.attributes['restate.object.key']).toBe('wf-deliver-42')
+  })
+})
+
+/* ── annotateSpanFrom redaction (decision 0014, #4) ────────────────────────── */
+
+describe('annotateSpanFrom strips sensitive fields (server-free)', () => {
+  let provider: NodeTracerProvider
+  let exporter: InMemorySpanExporter
+  let tracerLayer: Layer.Layer<never>
+
+  beforeEach(() => {
+    exporter = new InMemorySpanExporter()
+    provider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] })
+    provider.register()
+    tracerLayer = EffectTracer.layer.pipe(
+      Layer.provide(Layer.succeed(EffectTracer.OtelTracerProvider, provider)),
+      Layer.provide(Resource.layer({ serviceName: 'annotate-test' })),
+    )
+  })
+  afterEach(async () => {
+    await provider.shutdown()
+    trace.disable()
+    context.disable()
+  })
+
+  /* A decoded input whose `apiToken` is `Restate.sensitive` (encrypted in the serde),
+   * alongside non-secret identity fields the operator legitimately slices on. */
+  const Input = Schema.Struct({
+    dataSourceId: Schema.String,
+    pageCount: Schema.Number,
+    apiToken: Restate.sensitive(Schema.String),
+  })
+  const value = { dataSourceId: 'ds-42', pageCount: 7, apiToken: 'secret-xyz' }
+
+  const runAndRead = async (program: Effect.Effect<void>): Promise<Record<string, unknown>> => {
+    await Effect.runPromise(Effect.withSpan('work')(program).pipe(Effect.provide(tracerLayer)))
+    return exporter.getFinishedSpans().find((s) => s.name === 'work')!.attributes
+  }
+
+  it('stamps non-sensitive fields but NEVER the sensitive one (default projection)', async () => {
+    const attrs = await runAndRead(annotateSpanFrom(Input, value))
+    expect(attrs['dataSourceId']).toBe('ds-42')
+    expect(attrs['pageCount']).toBe(7)
+    /* The redacted field is NEVER stamped — the leak path is closed by default. */
+    expect(attrs['apiToken']).toBeUndefined()
+  })
+
+  it('refuses to stamp a sensitive field even when explicitly picked (rule wins)', async () => {
+    const attrs = await runAndRead(annotateSpanFrom(Input, value, ['dataSourceId', 'apiToken']))
+    expect(attrs['dataSourceId']).toBe('ds-42')
+    expect(attrs['apiToken']).toBeUndefined()
+    /* A field NOT picked is simply absent (not stamped), distinct from being stripped. */
+    expect(attrs['pageCount']).toBeUndefined()
   })
 })
 

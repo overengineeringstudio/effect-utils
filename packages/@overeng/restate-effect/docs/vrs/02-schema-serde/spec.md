@@ -53,6 +53,15 @@ property signatures — NOT a whole-value codec (which has no field structure).
 > validate (true for non-effectful schemas). Effectful/async transforms break the
 > sync serde contract and are unsupported.
 
+A State field declared `Schema.optional(S)` is NORMALIZED to its inner present-value
+schema `S` (`undefined` stripped) before the serde is built (`normalizeStateSchema`),
+so the State serde only ever encodes/decodes a present `T`. The "unset" case is
+NOT a present-but-`undefined` value — it is an ABSENT key: a `set(undefined)` /
+`clear` REMOVES the key, and a read of an absent key returns `undefined` without
+hitting the serde (see [01-authoring](../01-authoring/spec.md) for the K/V rule).
+Keeping `undefined` in the value schema would also break `JSONSchema.make`, so the
+strip is load-bearing for both the serde and the registration JSON schema.
+
 `@restatedev/restate-sdk-core`'s `serde.schema(Schema.standardSchemaV1(...))`
 (Standard Schema) is a viable alternative seam, but the custom serde is used for:
 slot-aware error classification (400 only for ingress input, not internal slots);

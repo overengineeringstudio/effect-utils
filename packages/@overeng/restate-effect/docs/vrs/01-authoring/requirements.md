@@ -25,7 +25,11 @@ GLOBAL and preserved — do not renumber.
   handlers compile and illegal operations do not. (A02; [../.decisions/0002](../.decisions/0002-typed-capability-contexts.md).)
 - **R06 Typed State access:** Virtual Object / Workflow State access MUST be
   key- and value-typed against a declared State schema, so reading or writing an
-  unknown key or a wrong-typed value is a type error.
+  unknown key or a wrong-typed value is a type error. A state field MAY be
+  declared OPTIONAL (`Schema.optional`); since State is K/V, an absent key reads
+  back as `undefined` and writing `undefined` (or `clear`) REMOVES the key — one
+  compiler-agreed pattern under both the type-checker and the bundler, reachable
+  identically in handlers and through the test `stateOf` proxies.
 
 ### Must preserve a typed I/O and client contract
 

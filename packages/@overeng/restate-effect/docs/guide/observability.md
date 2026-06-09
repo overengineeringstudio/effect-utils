@@ -117,11 +117,23 @@ const sync = (input: SyncInput) =>
 
 Use the `span.label` convention for a single primary label.
 
+To annotate a few fields of a decoded input/state SAFELY, use
+`Restate.annotateSpanFrom(schema, value, pick?)`. It projects the struct to span
+attributes and STRIPS every `sensitive`/`redacted` field (even one explicitly
+`pick`ed), so a secret can never reach the span by accident:
+
+```ts
+// `apiToken` is `Restate.sensitive(Schema.String)` — it is NEVER stamped.
+yield * Restate.annotateSpanFrom(SyncInput, input, ['dataSourceId'])
+```
+
 > **Never stamp a sensitive value onto a span attribute.** Redaction
 > (`Restate.sensitive` / `redacted`, see [Annotations](./annotations.md#field-level-redaction))
 > is serde-only — it encrypts the value on the wire/journal. A span attribute
-> bypasses the serde and would leak the plaintext into your traces. Stamp a
-> non-sensitive identifier instead. (The auto-stamped `restate.workflow.id` /
+> bypasses the serde and would leak the plaintext into your traces. `annotateSpan`
+> takes raw primitives and cannot detect sensitivity, so prefer `annotateSpanFrom`
+> (which strips sensitive fields by construction) or stamp a non-sensitive
+> identifier by hand. (The auto-stamped `restate.workflow.id` /
 > `restate.idempotency.key` are identity keys, not field values — a redacted field
 > is encrypted in the serde and never reaches the boundary, so they are safe.)
 >
