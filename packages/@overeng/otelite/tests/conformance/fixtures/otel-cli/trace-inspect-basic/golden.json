@@ -1,0 +1,1 @@
+{"root_service":"nix","spans":[{"attributes":[],"end_time_unix_nano":5000000,"name":"nix.session","service_name":"nix","span_id":"aaaaaaaaaaaaaaaa","start_time_unix_nano":1000000,"status_code":1}],"trace_id":"0123456789abcdef0123456789abcdef"}
