@@ -32,28 +32,73 @@ pub struct InspectOpts {
 const EX_USAGE: u8 = 64;
 const EX_DATAERR: u8 = 65; // corrupt capture / decode error
 const EX_NOINPUT: u8 = 66; // missing/unreadable source
-const EX_UNAVAILABLE: u8 = 69; // signal not implemented yet
 
 pub fn inspect(opts: InspectOpts) -> u8 {
-    if opts.signal != "traces" {
-        eprintln!(
-            "otelite: inspect --signal {} is not yet implemented (epic #772, M6)",
-            opts.signal
-        );
-        return EX_UNAVAILABLE;
-    }
-
     let raw = match read_source(&opts.src, &opts.signal) {
         Ok(r) => r,
         Err(code) => return code,
     };
+    match opts.signal.as_str() {
+        "traces" => inspect_traces(&opts, &raw),
+        "metrics" => render(
+            &opts,
+            &raw,
+            crate::inspect_metrics::rows,
+            crate::inspect_metrics::summary,
+        ),
+        "logs" => render(
+            &opts,
+            &raw,
+            crate::inspect_logs::rows,
+            crate::inspect_logs::summary,
+        ),
+        other => {
+            eprintln!("otelite: unknown --signal {other} (use traces|metrics|logs)");
+            EX_USAGE
+        }
+    }
+}
 
-    // Group every captured span by traceId into one OTLP value per trace.
-    let traces = match group_by_trace(&raw) {
+/// Flat-row signals (metrics/logs): emit the summary object, or filtered rows.
+fn render(
+    opts: &InspectOpts,
+    raw: &str,
+    rows_fn: fn(&str) -> Result<Vec<Value>, u8>,
+    summary_fn: fn(&str) -> Result<Value, u8>,
+) -> u8 {
+    if opts.summary {
+        match summary_fn(raw) {
+            Ok(s) => {
+                let mut out = String::new();
+                emit(&mut out, &s, opts.pretty);
+                print!("{out}");
+                0
+            }
+            Err(code) => code,
+        }
+    } else {
+        match rows_fn(raw) {
+            Ok(rows) => {
+                let mut out = String::new();
+                for row in &rows {
+                    if matches(row, opts) {
+                        emit(&mut out, row, opts.pretty);
+                    }
+                }
+                print!("{out}");
+                0
+            }
+            Err(code) => code,
+        }
+    }
+}
+
+/// Traces: group spans by trace, emit flat `otelite.span/v1` rows or `--summary`.
+fn inspect_traces(opts: &InspectOpts, raw: &str) -> u8 {
+    let traces = match group_by_trace(raw) {
         Ok(t) => t,
         Err(code) => return code,
     };
-
     let mut out = String::new();
     for (trace_id, value) in &traces {
         let snapshot = parse_otlp_trace(value, trace_id);
@@ -66,7 +111,7 @@ pub fn inspect(opts: InspectOpts) -> u8 {
         } else {
             for span in &snapshot.spans {
                 let row = span_row(trace_id, span);
-                if !matches(&row, &opts) {
+                if !matches(&row, opts) {
                     continue;
                 }
                 emit(&mut out, &row, opts.pretty);

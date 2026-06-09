@@ -35,7 +35,7 @@ fn main() -> ExitCode {
         Some("--print-schema") => {
             // The stable output schema tags (locked by the conformance goldens).
             println!(
-                r#"{{"schemas":["otelite.summary/v1","otelite.span/v1","otelite.trace-summary/v1"]}}"#
+                r#"{{"schemas":["otelite.summary/v1","otelite.span/v1","otelite.trace-summary/v1","otelite.metric/v1","otelite.metric-summary/v1","otelite.log/v1","otelite.log-summary/v1"]}}"#
             );
             ExitCode::SUCCESS
         }
