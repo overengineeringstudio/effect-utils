@@ -7,6 +7,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Chunk, Effect, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint } from '@overeng/notion-effect-client'
 import {
   NmdStateStore,
   NmdStateStoreLive,
@@ -18,12 +19,16 @@ import {
   AbsolutePath,
   BodyPointer,
   BodyEvidenceFingerprint,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
   CommandId,
   DataSourceId,
   Hash,
   NotionRequestId,
   PageId,
   WorkspaceRelativePath,
+  evidenceBackedBodyIdentity,
+  renderedBodyDigest,
   type BodySafetySnapshot,
 } from '../core/domain.ts'
 import { RowObserved } from '../core/events.ts'
@@ -52,13 +57,32 @@ const commandId = (value: string) => decode(CommandId, value)
 const pageId = decode(PageId, 'page-1')
 const dataSourceId = decode(DataSourceId, 'data-source-1')
 const requestId = decode(NotionRequestId, 'req-1')
+const notionMdBodyEvidenceFingerprint = Schema.decodeUnknownSync(NotionMdBodyEvidenceFingerprint)
 
-const pointer = decode(BodyPointer, {
-  _tag: 'BodyPointer',
-  pageId,
-  bodyHash: hash('a'),
-  observedAt: '2026-05-25T00:00:00.000Z',
-})
+const bodyPointerFor = ({
+  pageId: pointerPageId = pageId,
+  bodyHash = hash('a'),
+  fingerprint = bodyEvidenceFingerprintFromContentDigest(bodyHash),
+  safety = bodySafetySnapshot(),
+}: {
+  readonly pageId?: typeof PageId.Type
+  readonly bodyHash?: typeof Hash.Type
+  readonly fingerprint?: typeof BodyEvidenceFingerprint.Type
+  readonly safety?: BodySafetySnapshot
+} = {}) =>
+  decode(BodyPointer, {
+    _tag: 'BodyPointer',
+    pageId: pointerPageId,
+    identity: evidenceBackedBodyIdentity({
+      rendered: bodyDescriptorForDigest(bodyHash),
+      evidenceFingerprint: fingerprint,
+      completeness: 'complete',
+    }),
+    observedAt: '2026-05-25T00:00:00.000Z',
+    safety,
+  })
+
+const pointer = bodyPointerFor()
 
 const fakePort = (safety: BodySafetySnapshot) =>
   makeFakePageBodySyncPort({
@@ -81,41 +105,39 @@ const pullPageResult = (
     readonly truncated?: boolean
     readonly unknownBlockIds?: readonly string[]
   } = {},
-): PullPageResult => ({
-  page: {
-    id: nmdPageId,
-    title: 'Adapter page',
-    title_property_key: 'Name',
-    url: undefined,
-    parent: { type: 'workspace', workspace: true },
-    icon: null,
-    cover: null,
-    in_trash: false,
-    is_locked: false,
-    last_edited_time: '2026-05-25T00:00:00.000Z',
-    properties: {},
-  },
-  markdown: {
-    markdown: input.markdown ?? '# Adapter page\n\nHello from NotionMD.\n',
-    truncated: input.truncated ?? false,
-    unknown_block_ids: input.unknownBlockIds ?? [],
-  },
-  storage: {
-    _tag: 'self_contained',
-    unsupported_blocks: [],
-    files: [],
-    comments: [],
-  },
-})
+): PullPageResult => {
+  const markdown = input.markdown ?? '# Adapter page\n\nHello from NotionMD.\n'
+  return {
+    page: {
+      id: nmdPageId,
+      title: 'Adapter page',
+      title_property_key: 'Name',
+      url: undefined,
+      parent: { type: 'workspace', workspace: true },
+      icon: null,
+      cover: null,
+      in_trash: false,
+      is_locked: false,
+      last_edited_time: '2026-05-25T00:00:00.000Z',
+      properties: {},
+    },
+    markdown: {
+      markdown,
+      truncated: input.truncated ?? false,
+      unknown_block_ids: input.unknownBlockIds ?? [],
+      body_evidence_fingerprint: notionMdBodyEvidenceFingerprint(contentHash(markdown)),
+    },
+    storage: {
+      _tag: 'self_contained',
+      unsupported_blocks: [],
+      files: [],
+      comments: [],
+    },
+  }
+}
 
 const bodyPointerFromTestMarkdown = (markdown: string) =>
-  decode(BodyPointer, {
-    _tag: 'BodyPointer',
-    pageId: nmdPageId,
-    bodyHash: contentHash(markdown),
-    observedAt: '2026-05-25T00:00:00.000Z',
-    safety: bodySafetySnapshot(),
-  })
+  bodyPointerFor({ pageId: nmdPageId, bodyHash: contentHash(markdown) })
 
 const fakeNotionMdGateway = (
   result: PullPageResult,
@@ -205,22 +227,8 @@ describe('body adapter contract', () => {
   })
 
   it('rejects stale body bases by evidence fingerprint even when body hashes match', async () => {
-    const basePointer = decode(BodyPointer, {
-      _tag: 'BodyPointer',
-      pageId,
-      bodyHash: hash('a'),
-      bodyEvidenceFingerprint: evidenceFingerprint('b'),
-      observedAt: '2026-05-25T00:00:00.000Z',
-      safety: bodySafetySnapshot(),
-    })
-    const remotePointer = decode(BodyPointer, {
-      _tag: 'BodyPointer',
-      pageId,
-      bodyHash: hash('a'),
-      bodyEvidenceFingerprint: evidenceFingerprint('c'),
-      observedAt: '2026-05-25T00:00:00.000Z',
-      safety: bodySafetySnapshot(),
-    })
+    const basePointer = bodyPointerFor({ fingerprint: evidenceFingerprint('b') })
+    const remotePointer = bodyPointerFor({ fingerprint: evidenceFingerprint('c') })
     const port = makeFakePageBodySyncPort({
       pages: [{ pageId, pointer: remotePointer, requestId }],
     })
@@ -286,7 +294,11 @@ describe('body adapter contract', () => {
           pageId,
           pointer,
           requestId,
-          remoteBodyHash: hash('c'),
+          remoteIdentity: {
+            ...pointer.identity,
+            rendered: bodyDescriptorForDigest(hash('c')),
+            evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(hash('c')),
+          },
         },
       ],
     })
@@ -331,7 +343,11 @@ describe('body adapter contract', () => {
     ).resolves.toMatchObject({
       _tag: 'BodyPushResult',
       bodyPointer: {
-        bodyHash: hash('b'),
+        identity: evidenceBackedBodyIdentity({
+          rendered: bodyDescriptorForDigest(hash('b')),
+          evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(hash('b')),
+          completeness: 'complete',
+        }),
       },
     })
 
@@ -603,7 +619,11 @@ describe('body adapter contract', () => {
       bodyPointer: {
         _tag: 'BodyPointer',
         pageId,
-        bodyHash: hash('a'),
+        identity: evidenceBackedBodyIdentity({
+          rendered: bodyDescriptorForDigest(hash('a')),
+          evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(hash('a')),
+          completeness: 'complete',
+        }),
         observedAt: '2026-05-25T00:00:00.000Z',
         safety,
       },
@@ -640,7 +660,11 @@ describe('body adapter contract', () => {
     expect(observed).toMatchObject({
       _tag: 'BodyPointer',
       pageId: nmdPageId,
-      bodyHash: contentHash(markdown),
+      identity: {
+        rendered: {
+          digest: contentHash(markdown),
+        },
+      },
       safety: {
         adapterMutationSurfaces: ['body'],
       },
@@ -670,13 +694,7 @@ describe('body adapter contract', () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'notion-ds-sync-nmd-adapter-'))
     const root = decode(AbsolutePath, rootPath)
     const markdown = '# Adapter page\n\nMaterialized through NotionMD.\n'
-    const bodyPointer = decode(BodyPointer, {
-      _tag: 'BodyPointer',
-      pageId: nmdPageId,
-      bodyHash: contentHash(markdown),
-      observedAt: '2026-05-25T00:00:00.000Z',
-      safety: bodySafetySnapshot(),
-    })
+    const bodyPointer = bodyPointerFromTestMarkdown(markdown)
     const gateway = fakeNotionMdGateway(pullPageResult({ markdown }))
 
     try {
@@ -710,7 +728,7 @@ describe('body adapter contract', () => {
         _tag: 'MaterializeResult',
         pageId: nmdPageId,
         path: nmdPath,
-        bodyHash: bodyPointer.bodyHash,
+        bodyHash: renderedBodyDigest(bodyPointer.identity),
       })
       expect(nmdContent).toContain('"page_id": "11111111-1111-4111-8111-111111111111"')
       expect(nmdContent).toContain('Materialized through NotionMD.')
@@ -718,14 +736,14 @@ describe('body adapter contract', () => {
         version: 1,
         page_id: nmdPageId,
         body: {
-          hash: bodyPointer.bodyHash,
+          hash: renderedBodyDigest(bodyPointer.identity),
         },
       })
       expect(JSON.parse(datasourceSidecar)).toMatchObject({
         version: 1,
         pageId: nmdPageId,
         path: nmdPath,
-        bodyHash: bodyPointer.bodyHash,
+        bodyHash: renderedBodyDigest(bodyPointer.identity),
       })
 
       const observations = await runWithNmdStateStore(
@@ -744,7 +762,7 @@ describe('body adapter contract', () => {
           _tag: 'LocalArtifactObservation',
           pageId: nmdPageId,
           path: nmdPath,
-          contentHash: bodyPointer.bodyHash,
+          contentHash: renderedBodyDigest(bodyPointer.identity),
           state: 'present',
           ownWriteSuppressionToken: result.ownWriteSuppressionToken,
         }),
@@ -799,6 +817,9 @@ describe('body adapter contract', () => {
                 markdown: localBodyContent,
                 truncated: false,
                 unknown_block_ids: [],
+                body_evidence_fingerprint: notionMdBodyEvidenceFingerprint(
+                  contentHash(localBodyContent),
+                ),
               },
             }
           }),
@@ -831,7 +852,11 @@ describe('body adapter contract', () => {
       _tag: 'BodyPushResult',
       pageId: nmdPageId,
       bodyPointer: {
-        bodyHash: contentHash(localBodyContent),
+        identity: {
+          rendered: {
+            digest: contentHash(localBodyContent),
+          },
+        },
         safety: bodySafetySnapshot(),
       },
     })

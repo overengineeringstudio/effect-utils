@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { Effect, Fiber, Schema, Stream, Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { makeFakePageBodySyncPort } from '../body/adapter.ts'
+import { bodySafetySnapshot, makeFakePageBodySyncPort } from '../body/adapter.ts'
 import { runCliCommand, type CliContext } from '../cli/main.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
 import {
@@ -13,6 +13,9 @@ import {
   BodyPointer,
   PageId,
   WorkspaceRelativePath,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  evidenceBackedBodyIdentity,
   type Hash as HashType,
   type PageId as PageIdType,
 } from '../core/domain.ts'
@@ -121,8 +124,13 @@ const bodyPage = ({
       value: {
         _tag: 'BodyPointer',
         pageId,
-        bodyHash,
+        identity: evidenceBackedBodyIdentity({
+          rendered: bodyDescriptorForDigest(bodyHash),
+          evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(bodyHash),
+          completeness: 'complete',
+        }),
         observedAt: fixedObservedAt,
+        safety: bodySafetySnapshot(),
       },
     }),
   })

@@ -32,34 +32,18 @@ import {
   PageId,
   PropertyId,
   type AbsolutePath,
-  BodyPointer,
-  BodySafetySnapshot,
   WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
 import type { PlanDecision, PlannerIntent } from '../planner/planner.ts'
 import { resolveConflictCommand } from '../planner/user-commands.ts'
-import {
-  BodyProjectionSafetyPayload,
-  hashStoreBytes,
-  pageLifecycleHash,
-} from '../store/projections.ts'
+import { BodyProjectionPayload, hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import type { NotionSyncStore } from '../store/store.ts'
 
 type SqlRow = Record<string, unknown>
 const decodeBodyProjectionPayloadJson = Schema.decodeUnknownSync(
-  Schema.parseJson(BodyProjectionSafetyPayload),
+  Schema.parseJson(BodyProjectionPayload),
 )
-const decodeLegacyBodySafetyJson = Schema.decodeUnknownSync(Schema.parseJson(BodySafetySnapshot))
-const decodeBodyProjectionPayloadCompat = (
-  json: string,
-): typeof BodyProjectionSafetyPayload.Type => {
-  try {
-    return decodeBodyProjectionPayloadJson(json)
-  } catch {
-    return { safety: decodeLegacyBodySafetyJson(json) }
-  }
-}
 
 /** Default file name for the on-disk SQLite replica inside a workspace. */
 export const replicaFileName = 'notion.sqlite'
@@ -550,7 +534,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       base_hash TEXT NOT NULL,
       current_hash TEXT NOT NULL,
       sidecar_identity_proven INTEGER NOT NULL,
-      safety_json TEXT NOT NULL,
+      body_projection_json TEXT NOT NULL,
       observed_event_id TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -3133,7 +3117,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
 
       for (const row of syncDb
         .prepare(
-          `SELECT page_id, path, base_hash, current_hash, sidecar_identity_proven, safety_json,
+          `SELECT page_id, path, base_hash, current_hash, sidecar_identity_proven, body_projection_json,
                   observed_event_id, updated_at
            FROM _nds_body_pointer
            WHERE root_id = ?
@@ -3143,7 +3127,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         replicaDb
           .prepare(
             `INSERT INTO _nds_replica_bodies (
-               page_id, path, base_hash, current_hash, sidecar_identity_proven, safety_json,
+               page_id, path, base_hash, current_hash, sidecar_identity_proven, body_projection_json,
                observed_event_id, updated_at
              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           )
@@ -3153,7 +3137,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readString({ row, key: 'base_hash' }),
             readString({ row, key: 'current_hash' }),
             readNumber({ row, key: 'sidecar_identity_proven' }),
-            readString({ row, key: 'safety_json' }),
+            readString({ row, key: 'body_projection_json' }),
             readString({ row, key: 'observed_event_id' }),
             readString({ row, key: 'updated_at' }),
           )
@@ -4509,7 +4493,7 @@ export const replicaChangesToPlannerIntents = ({
         }
         const body = db
           .prepare(
-            `SELECT path, current_hash, safety_json, sidecar_identity_proven
+            `SELECT path, current_hash, body_projection_json, sidecar_identity_proven
              FROM _nds_replica_bodies
              WHERE page_id = ?`,
           )
@@ -4544,10 +4528,10 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        let bodyProjectionPayload: typeof BodyProjectionSafetyPayload.Type
+        let bodyProjectionPayload: typeof BodyProjectionPayload.Type
         try {
-          bodyProjectionPayload = decodeBodyProjectionPayloadCompat(
-            readString({ row: body, key: 'safety_json' }),
+          bodyProjectionPayload = decodeBodyProjectionPayloadJson(
+            readString({ row: body, key: 'body_projection_json' }),
           )
         } catch {
           markChange({
@@ -4559,22 +4543,7 @@ export const replicaChangesToPlannerIntents = ({
           })
           continue
         }
-        const bodyPointer = decode({
-          schema: BodyPointer,
-          value: {
-            _tag: 'BodyPointer',
-            pageId,
-            bodyHash: baseHash,
-            ...(bodyProjectionPayload.bodyDescriptor === undefined
-              ? {}
-              : { bodyDescriptor: bodyProjectionPayload.bodyDescriptor }),
-            ...(bodyProjectionPayload.bodyEvidenceFingerprint === undefined
-              ? {}
-              : { bodyEvidenceFingerprint: bodyProjectionPayload.bodyEvidenceFingerprint }),
-            observedAt: new Date().toISOString(),
-            safety: bodyProjectionPayload.safety,
-          },
-        })
+        const bodyPointer = bodyProjectionPayload.pointer
         intents.push({
           _tag: 'body-edit',
           intentEventId: decode({ schema: SyncEventId, value: `replica:${change.changeId}` }),

@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS _nds_body_pointer (
   current_hash TEXT NOT NULL,
   sidecar_identity_proven INTEGER NOT NULL CHECK (sidecar_identity_proven IN (0, 1)),
   own_write_materialization_ids_json TEXT NOT NULL,
-  safety_json TEXT NOT NULL,
+  body_projection_json TEXT NOT NULL,
   observed_event_id TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (root_id, page_id)

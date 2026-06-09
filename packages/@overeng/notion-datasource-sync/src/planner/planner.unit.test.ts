@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   BodyPushCommand,
+  BodyPointer,
   CommandId,
   DatabaseId,
   DataSourceId,
@@ -16,6 +17,9 @@ import {
   PropertyName,
   SyncEventId,
   SyncRootId,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  evidenceBackedBodyIdentity,
   bodySurfaceKey,
   dataSourceMetadataSurfaceKey,
   classifyConflict,
@@ -49,6 +53,19 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (char: string) => decode(Hash, `sha256:${char.repeat(64)}`)
+
+const pointer = (bodyHash = hash('f')) =>
+  decode(BodyPointer, {
+    _tag: 'BodyPointer',
+    pageId,
+    identity: evidenceBackedBodyIdentity({
+      rendered: bodyDescriptorForDigest(bodyHash),
+      evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(bodyHash),
+      completeness: 'complete',
+    }),
+    observedAt: '2026-05-25T00:00:00.000Z',
+    safety: bodySafety(),
+  })
 
 const rootId = decode(SyncRootId, 'root-1')
 const intentEventId = decode(SyncEventId, 'intent-1')
@@ -87,12 +104,7 @@ const bodyCommand = decode(BodyPushCommand, {
   _tag: 'BodyPushCommand',
   commandId,
   pageId,
-  baseBodyPointer: {
-    _tag: 'BodyPointer',
-    pageId,
-    bodyHash: hash('f'),
-    observedAt: '2026-05-25T00:00:00.000Z',
-  },
+  baseBodyPointer: Schema.encodeSync(BodyPointer)(pointer(hash('f'))),
   nextBodyHash: hash('e'),
 })
 
@@ -166,6 +178,7 @@ const snapshot = (
       path: 'row--page-1.nmd',
       baseHash: hash('f'),
       currentHash: hash('f'),
+      pointer: pointer(hash('f')),
       sidecarIdentityProven: true,
       ownWriteMaterializationIds: [],
       safety: bodySafety(),

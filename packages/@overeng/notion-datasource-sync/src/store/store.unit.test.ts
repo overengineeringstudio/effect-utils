@@ -6,15 +6,20 @@ import { DatabaseSync } from 'node:sqlite'
 import { Schema } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { bodySafetySnapshot } from '../body/adapter.ts'
 import { propertySurfaceKey } from '../core/canonical.ts'
 import { PatchPagePropertiesCommand } from '../core/commands.ts'
 import {
+  BodyPointer,
   CommandId,
   DataSourceId,
   Hash,
   NotionRequestId,
   PageId,
   PropertyId,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  evidenceBackedBodyIdentity,
 } from '../core/domain.ts'
 import {
   IdempotencyKey,
@@ -32,6 +37,24 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (value: string) => decode(Hash, `sha256:${value.repeat(64).slice(0, 64)}`)
+const bodyPointer = (input: {
+  readonly pageId: string
+  readonly bodyHash: string
+  readonly observedAt: string
+}) =>
+  Schema.encodeSync(BodyPointer)(
+    decode(BodyPointer, {
+      _tag: 'BodyPointer',
+      pageId: input.pageId,
+      identity: evidenceBackedBodyIdentity({
+        rendered: bodyDescriptorForDigest(decode(Hash, input.bodyHash)),
+        evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(input.bodyHash),
+        completeness: 'complete',
+      }),
+      observedAt: input.observedAt,
+      safety: bodySafetySnapshot(),
+    }),
+  )
 const rootId = decode(SyncRootId, 'root-1')
 const otherRootId = decode(SyncRootId, 'root-2')
 const pageId = decode(PageId, 'page-1')
@@ -233,20 +256,11 @@ const rowObserved = (overrides: {
     dataSourceId: overrides.dataSourceId ?? 'data-source-1',
     pageId: overrides.pageId ?? 'page-1',
     propertiesHash: overrides.propertiesHash ?? hash('9'),
-    bodyPointer: {
-      _tag: 'BodyPointer',
+    bodyPointer: bodyPointer({
       pageId: overrides.pageId ?? 'page-1',
       bodyHash: overrides.bodyHash ?? hash('b'),
       observedAt,
-      safety: {
-        truncated: false,
-        selection: 'safe',
-        wouldDeleteChildren: false,
-        syncedPageUnsupported: false,
-        adapterConflict: false,
-        adapterMutationSurfaces: ['body'],
-      },
-    },
+    }),
     inTrash: overrides.inTrash ?? false,
   })
 

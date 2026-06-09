@@ -97,20 +97,20 @@ Events are immutable. Projections are disposable and must be rebuildable. Store 
 
 ## Projection Contracts
 
-| Projection                 | Primary key                                      | Derived facts                                                           | Rebuild guard                                                                               |
-| -------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `schema_projection`        | `(root_id, data_source_id, property_id)`         | current name, type, type config hash, writable/computed class           | digest must ignore display-name-only changes for row values                                 |
-| `row_projection`           | `(root_id, page_id)`                             | data-source membership, lifecycle, page parent, last observed timestamp | query absence cannot change lifecycle without tombstone event                               |
-| `property_shadow`          | `(root_id, page_id, property_id)`                | last clean base hash, current remote hash, pending local hash           | pending local hash must reference an accepted intent event and survives remote observations |
-| `body_pointer`             | `(root_id, page_id)`                             | adapter state ref, base/current hashes, truncation/unknown block flags  | adapter result must be decoded before projection update                                     |
-| `outbox`                   | `(root_id, command_id)`                          | command state, attempt count, lease token, settlement event             | settled commands are terminal                                                               |
-| `conflict_projection`      | `(root_id, conflict_id)`                         | conflict state and competing surfaces/events                            | resolution must point to a `ConflictResolved` event                                         |
-| `tombstone_projection`     | `(root_id, page_id)`                             | missing candidate or direct classifier result                           | candidate expires into repair, not delete                                                   |
-| `path_claim`               | `(root_id, relative_path)`                       | owning page, claim reason, release event                                | a path has at most one active owner                                                         |
-| `api_contract_projection`  | `(root_id, api_version)`                         | accepted API version, client version, live smoke proof event            | writes blocked when proof is missing                                                        |
-| `capability_projection`    | `(root_id, capability)`                          | preflight result, request ID, checked time                              | data failures are facts only after capability passes                                        |
-| `query_scan_checkpoint`    | `(root_id, data_source_id, query_contract_hash)` | cursor chain, terminal page, high-water mark, completeness              | incomplete scans cannot classify absence                                                    |
-| `page_property_checkpoint` | `(root_id, page_id, property_id)`                | cursor chain, terminal page, completeness, unshared relation state      | incomplete values cannot contribute clean hashes                                            |
+| Projection                 | Primary key                                      | Derived facts                                                              | Rebuild guard                                                                               |
+| -------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `schema_projection`        | `(root_id, data_source_id, property_id)`         | current name, type, type config hash, writable/computed class              | digest must ignore display-name-only changes for row values                                 |
+| `row_projection`           | `(root_id, page_id)`                             | data-source membership, lifecycle, page parent, last observed timestamp    | query absence cannot change lifecycle without tombstone event                               |
+| `property_shadow`          | `(root_id, page_id, property_id)`                | last clean base hash, current remote hash, pending local hash              | pending local hash must reference an accepted intent event and survives remote observations |
+| `body_pointer`             | `(root_id, page_id)`                             | NotionMD adapter state, typed body identity, safety, materialization state | decoded `BodyProjectionPayload` must replay exactly                                         |
+| `outbox`                   | `(root_id, command_id)`                          | command state, attempt count, lease token, settlement event                | settled commands are terminal                                                               |
+| `conflict_projection`      | `(root_id, conflict_id)`                         | conflict state and competing surfaces/events                               | resolution must point to a `ConflictResolved` event                                         |
+| `tombstone_projection`     | `(root_id, page_id)`                             | missing candidate or direct classifier result                              | candidate expires into repair, not delete                                                   |
+| `path_claim`               | `(root_id, relative_path)`                       | owning page, claim reason, release event                                   | a path has at most one active owner                                                         |
+| `api_contract_projection`  | `(root_id, api_version)`                         | accepted API version, client version, live smoke proof event               | writes blocked when proof is missing                                                        |
+| `capability_projection`    | `(root_id, capability)`                          | preflight result, request ID, checked time                                 | data failures are facts only after capability passes                                        |
+| `query_scan_checkpoint`    | `(root_id, data_source_id, query_contract_hash)` | cursor chain, terminal page, high-water mark, completeness                 | incomplete scans cannot classify absence                                                    |
+| `page_property_checkpoint` | `(root_id, page_id, property_id)`                | cursor chain, terminal page, completeness, unshared relation state         | incomplete values cannot contribute clean hashes                                            |
 
 Projection rebuild is the test oracle: dropping every projection table and replaying `sync_event` must produce the same projection digest and command eligibility as an incremental run.
 
@@ -118,9 +118,10 @@ Pending local intent shadows remote observations. A `RemoteObserved` event may u
 
 Body projection facts are updated only by real body observations or verified body
 settlement. A row observation that suppresses body observation leaves the
-`body_pointer` projection unchanged. A settled `BodyPush` command advances both
-`base_hash` and `current_hash` to the verified body hash so replay and subsequent
-local scans agree on the clean body base.
+`body_pointer` projection unchanged. A settled `BodyPush` command advances the
+body projection to the verified `BodyProjectionPayload` returned by the body
+adapter. The projection stores typed body identity as durable data; generic
+`base_hash`/`current_hash` fields are not the source of truth for body surfaces.
 
 ## Outbox Projection And State Model
 
@@ -163,6 +164,9 @@ type OutboxCommand = {
     | BodyPushCommand
   readonly baseHash: Hash
   readonly desiredHash: Hash
+  // Body commands carry typed body identities instead of generic base/desired
+  // hash semantics. Property, schema, and lifecycle commands continue to use
+  // canonical surface hashes.
   readonly preflight: readonly GuardName[]
 }
 ```

@@ -35,6 +35,30 @@ a page body, or the schema. Conflicts and base hashes are per-surface.
 The last-clean canonical hash of a **Surface** that a local edit was made
 against. A write is only safe if the current remote surface still matches it.
 
+**Body identity**:
+The typed identity used to guard a page-body base. A **Rendered body identity**
+names rendered Markdown bytes; an **Evidence-backed body identity** names a full
+remote body observation and carries the rendered descriptor it produced.
+_Avoid_: treating body identity as a generic hash.
+
+**Rendered body identity**:
+A body identity derived from the rendered Markdown descriptor only. Valid for
+local desired content and local-only comparison, but not strong enough to refresh
+a clean remote base when evidence is required.
+_Avoid_: body hash.
+
+**Evidence-backed body identity**:
+A body identity derived from a remote body evidence fingerprint plus the rendered
+body descriptor and completeness evidence. This is the only clean remote body
+base identity.
+_Avoid_: revision, remote truth, Notion version.
+
+**Body projection payload**:
+The durable projection value for a page body pointer, including the current
+**Body identity**, body safety, and materialization metadata. It is projection
+state, not raw body storage.
+_Avoid_: safety JSON.
+
 **Local desired state**:
 User-authored local content and intents captured from the **Replica** and
 NotionMD `.nmd` files before sync performs remote materialization or writes.

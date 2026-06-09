@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { NodeContext } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint } from '@overeng/notion-effect-client'
 import {
   NotionMdGateway,
   NmdStateStore,
@@ -25,7 +26,9 @@ import { bodySurfaceKey } from '../core/canonical.ts'
 import type { BodyPushCommand as BodyPushCommandType } from '../core/commands.ts'
 import {
   AbsolutePath,
+  BodyPointer,
   Hash,
+  renderedBodyDigest,
   WorkspaceRelativePath,
   type BodySafetySnapshot,
 } from '../core/domain.ts'
@@ -62,6 +65,7 @@ const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync
 const bodyPath = decode({ schema: WorkspaceRelativePath, value: 'page-1.nmd' })
 const contentHash = (content: string) =>
   decode({ schema: Hash, value: `sha256:${createHash('sha256').update(content).digest('hex')}` })
+const notionMdBodyEvidenceFingerprint = Schema.decodeUnknownSync(NotionMdBodyEvidenceFingerprint)
 const implementedBodyAdapterScenarioIds = new Set<ScenarioId>([
   'NDS-L2-body-adapter-fail-closed-boundary',
   'NDS-L6-bidi-body-local-capture-first',
@@ -148,6 +152,7 @@ const pullPageResult = (markdown: string): PullPageResult => ({
     markdown,
     truncated: false,
     unknown_block_ids: [],
+    body_evidence_fingerprint: notionMdBodyEvidenceFingerprint(contentHash(markdown)),
   },
   storage: {
     _tag: 'self_contained',
@@ -204,13 +209,10 @@ const appendObservedBodyProjection = (
         dataSourceId: testIds.dataSourceId,
         pageId: testIds.pageId,
         propertiesHash: hash('properties-a'),
-        bodyPointer: {
-          _tag: 'BodyPointer',
-          pageId: testIds.pageId,
-          bodyHash: hash('body-a'),
-          observedAt: '2026-05-25T00:00:00.000Z',
+        bodyPointer: Schema.encodeSync(BodyPointer)({
+          ...bodyPointer(hash('body-a')),
           safety,
-        },
+        }),
         inTrash: false,
       },
     }),
@@ -472,7 +474,7 @@ describe('body adapter E2E boundary', () => {
           intentEventId: testIds.intentEventId,
           surface: bodySurfaceKey(testIds.pageId),
           command,
-          baseHash: baseBodyPointer.bodyHash,
+          baseHash: renderedBodyDigest(baseBodyPointer.identity),
           desiredHash: hash('body-next'),
           preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'BodyAdapterConflict'],
         },

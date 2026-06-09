@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest'
 import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../core/commands.ts'
 import {
   AbsolutePath,
-  BodyPointer,
   WorkspaceRelativePath,
   type Hash as HashType,
   type PageId as PageIdType,
@@ -32,6 +31,7 @@ import { hashStoreBytes } from '../store/projections.ts'
 import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
 import { collectWorkspaceScan, makeTempWorkspace, testPageId } from '../testing/filesystem.ts'
 import {
+  bodyPointer,
   defaultQueryContract,
   decode,
   fixedObservedAt,
@@ -631,15 +631,7 @@ describe('realistic offline workflow E2E matrix', () => {
           _tag: 'MaterializePlan',
           pageId,
           path,
-          bodyPointer: decode({
-            schema: BodyPointer,
-            value: {
-              _tag: 'BodyPointer',
-              pageId,
-              bodyHash: hash('body-a'),
-              observedAt: fixedObservedAt,
-            },
-          }),
+          bodyPointer: { ...bodyPointer(hash('body-a')), pageId },
         }),
       )
       await removeFile(join(fixture.root, path))
@@ -657,15 +649,7 @@ describe('realistic offline workflow E2E matrix', () => {
             _tag: 'MaterializePlan',
             pageId,
             path,
-            bodyPointer: decode({
-              schema: BodyPointer,
-              value: {
-                _tag: 'BodyPointer',
-                pageId,
-                bodyHash: hash('body-b'),
-                observedAt: fixedObservedAt,
-              },
-            }),
+            bodyPointer: { ...bodyPointer(hash('body-b')), pageId },
           }),
         ),
       ).resolves.toMatchObject({ _tag: 'MaterializeResult', pageId, bodyHash: hash('body-b') })

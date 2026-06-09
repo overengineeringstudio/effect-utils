@@ -10,6 +10,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect, Option, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { BodyEvidenceFingerprintSchema as NotionMdBodyEvidenceFingerprint } from '@overeng/notion-effect-client'
 import {
   NmdStateStore,
   NmdStateStoreLive,
@@ -35,7 +36,14 @@ import {
 } from '../cli/main.ts'
 import { propertySurfaceKey } from '../core/canonical.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
-import { AbsolutePath, BodyPointer, PageId, WorkspaceRelativePath } from '../core/domain.ts'
+import {
+  AbsolutePath,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  evidenceBackedBodyIdentity,
+  PageId,
+  WorkspaceRelativePath,
+} from '../core/domain.ts'
 import { SyncEventId, type SyncEvent as SyncEventType } from '../core/events.ts'
 import {
   LocalWorkspacePort,
@@ -58,6 +66,7 @@ import {
   fakeBodyPage,
   fixedObservedAt,
   hash,
+  bodyPointer,
   makeFakeClock,
   makeFakeGatewayHarness,
   makeHarnessPorts,
@@ -75,6 +84,7 @@ const workspaceRoot = decode({ schema: AbsolutePath, value: '/tmp/notion-ds-sync
 const webhookPathPattern = /^\/notion-datasource-sync\/webhook\/notion\/[0-9a-f-]{36}$/
 const webhookSetPathPattern =
   /^--set-path=\/notion-datasource-sync\/webhook\/notion\/[0-9a-f-]{36}$/
+const notionMdBodyEvidenceFingerprint = Schema.decodeUnknownSync(NotionMdBodyEvidenceFingerprint)
 
 const schemaProperties = [
   {
@@ -117,18 +127,21 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
     },
   })
 
+const bodyPointerFor = (bodyHash = hash('body-a')) => bodyPointer(bodyHash)
+
+const bodyPointerForPage = (pageId: typeof PageId.Type, bodyHash = hash('body-a')) => ({
+  ...bodyPointer(bodyHash),
+  pageId,
+})
+
 const bodyPage = (bodyHash = hash('body-a'), remoteBodyHash = bodyHash) =>
   fakeBodyPage({
-    pointer: decode({
-      schema: BodyPointer,
-      value: {
-        _tag: 'BodyPointer',
-        pageId: testIds.pageId,
-        bodyHash,
-        observedAt: fixedObservedAt,
-      },
+    pointer: bodyPointerFor(bodyHash),
+    remoteIdentity: evidenceBackedBodyIdentity({
+      rendered: bodyDescriptorForDigest(remoteBodyHash),
+      evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(remoteBodyHash),
+      completeness: 'complete',
     }),
-    remoteBodyHash,
   })
 
 const conflictEvent = (): SyncEventType =>
@@ -1275,6 +1288,7 @@ describe('CLI command surface', () => {
         markdown,
         truncated: false,
         unknown_block_ids: [],
+        body_evidence_fingerprint: notionMdBodyEvidenceFingerprint(hash(markdown)),
       },
       storage: {
         _tag: 'self_contained',
@@ -1486,15 +1500,7 @@ describe('CLI command surface', () => {
       bodyPages: pageIds.map((pageId, index) =>
         fakeBodyPage({
           pageId,
-          pointer: decode({
-            schema: BodyPointer,
-            value: {
-              _tag: 'BodyPointer',
-              pageId,
-              bodyHash: hash(`preview-body-${index}`),
-              observedAt: fixedObservedAt,
-            },
-          }),
+          pointer: bodyPointerForPage(pageId, hash(`preview-body-${index}`)),
         }),
       ),
     })

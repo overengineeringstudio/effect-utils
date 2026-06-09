@@ -49,19 +49,19 @@ mutation may be inferred from body sync.
 
 The adapter accepts body-fidelity evidence from NotionMD without depending on
 NotionMD internals. Pure completeness vocabulary belongs below both packages in
-`@overeng/notion-core`; live Notion observation belongs in
+`@overeng/notion-core`; live Notion observation input belongs in
 `@overeng/notion-effect-client`; NotionMD translates that evidence through its
-body facade and fails closed before clean-base adoption. Datasource sync maps
-the facade evidence into `BodySafetySnapshot` and lets the existing body guards
-decide whether body planning or push is safe. Lossy evidence is pessimistic: it
-must win over any stale or optimistic body-safety metadata already attached to a
-pointer.
+body facade and fails closed before clean-base adoption. Datasource sync consumes
+a typed `BodyPointer` whose identity is either rendered-only local desired
+content or evidence-backed remote state. Lossy evidence is pessimistic: it
+cannot establish or refresh a clean remote base.
 
-`BodyPointer` may carry both the legacy rendered-body hash and a body evidence
-fingerprint. When both sides have a fingerprint, guards compare the fingerprint
-instead of the rendered-body hash so endpoint/block-tree skew with the same
-rendered Markdown still blocks stale-base adoption. Existing projections and
-events without evidence continue to compare the legacy body hash.
+`BodyPointer` carries a first-class `BodyIdentity`, never parallel hash/evidence
+fields. Remote Notion body observations must return `EvidenceBackedBodyIdentity`.
+Local desired Markdown can be represented as `RenderedBodyIdentity`, but a remote
+clean base and a remote body settlement require evidence-backed identity. If the
+adapter cannot produce complete evidence for a remote body, body writes remain
+blocked instead of falling back to rendered-hash comparison.
 
 Body evidence fingerprints are content-addressed observation envelopes, not
 Notion revisions. They are safe to use as body-scoped base identities for
@@ -80,9 +80,10 @@ the body content that was just pushed. If the file changed while the remote writ
 was in flight, the adapter fails closed instead of overwriting the newer local
 edit. Clean-base refresh is settlement bookkeeping, not a second user-visible
 body mutation, and it may settle only from a complete NotionMD body observation.
-Settlement records preserve body evidence metadata in projection payloads so a
-replay can rebuild body pointers with the same descriptor/fingerprint identity
-instead of collapsing back to a bare hash.
+Settlement records preserve the verified `BodyPointer` inside
+`BodyProjectionPayload`, including typed identity, safety, and materialization
+state. Replay rebuilds the same body pointer from events/projections; it does not
+reconstruct body identity from split hash columns or legacy safety JSON.
 
 Body materialization is subordinate to the established sync no-unwanted-data-loss
 invariant. The body adapter may provide materialization mechanics, but

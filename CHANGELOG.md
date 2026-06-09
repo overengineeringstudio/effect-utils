@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-datasource-sync**: Replace legacy body hash pointers with typed `BodyIdentity`/`BodyProjectionPayload` semantics so remote body evidence, rendered content digests, safety, materialization, and OTel body attributes have explicit ownership boundaries and cleaner replay/testing contracts (#766).
 - **@overeng/content-address + Notion body sync**: Add reusable content-address primitives (`ContentDigest`, `ContentDescriptor`, canonical JSON hashing, descriptor verification) and use Notion body observation evidence fingerprints for guarded body planning and settlement.
 - **@overeng/notion-core + @overeng/notion-effect-client**: Add shared Notion body-fidelity vocabulary and live Markdown/block-tree observation so downstream packages can distinguish complete remote bodies from lossy endpoint output.
 - **@overeng/genie**: Add `projectionArtifact.json()` for schema-versioned deterministic JSON projections, with generic validation hooks and reusable duplicate-value validators for TS-authored data projected into committed JSON.

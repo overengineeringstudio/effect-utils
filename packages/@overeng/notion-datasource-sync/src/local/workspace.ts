@@ -9,6 +9,7 @@ import {
   AbsolutePath,
   MaterializeResult,
   PageId,
+  renderedBodyDigest,
   WorkspaceRelativePath,
   type Hash as HashType,
   type LocalArtifactObservation as LocalArtifactObservationType,
@@ -906,13 +907,13 @@ export const makeFilesystemLocalWorkspacePort = ({
 
         const content = materializedBodyPlaceholder({
           pageId: plan.pageId,
-          bodyHash: plan.bodyPointer.bodyHash,
+          bodyHash: renderedBodyDigest(plan.bodyPointer.identity),
         })
         const materializedContentHash = datasourceSyncContentHash(content)
         const sidecar = makeFilesystemWorkspaceSidecar({
           pageId: plan.pageId,
           path: relativePath,
-          bodyHash: plan.bodyPointer.bodyHash,
+          bodyHash: renderedBodyDigest(plan.bodyPointer.identity),
           materializedContentHash,
         })
         const token = sidecar.ownWriteSuppressionToken
@@ -941,7 +942,7 @@ export const makeFilesystemLocalWorkspacePort = ({
             _tag: 'MaterializeResult',
             pageId: plan.pageId,
             path: relativePath,
-            bodyHash: plan.bodyPointer.bodyHash,
+            bodyHash: renderedBodyDigest(plan.bodyPointer.identity),
             ownWriteSuppressionToken: token,
           },
         })
@@ -1029,7 +1030,7 @@ export const makeFakeLocalWorkspacePort = ({
       const token = ownWriteSuppressionToken({
         pageId: plan.pageId,
         path: plan.path,
-        bodyHash: plan.bodyPointer.bodyHash,
+        bodyHash: renderedBodyDigest(plan.bodyPointer.identity),
       })
       const result = decode({
         schema: MaterializeResult,
@@ -1037,7 +1038,7 @@ export const makeFakeLocalWorkspacePort = ({
           _tag: 'MaterializeResult',
           pageId: plan.pageId,
           path: plan.path,
-          bodyHash: plan.bodyPointer.bodyHash,
+          bodyHash: renderedBodyDigest(plan.bodyPointer.identity),
           ownWriteSuppressionToken: token,
         },
       })

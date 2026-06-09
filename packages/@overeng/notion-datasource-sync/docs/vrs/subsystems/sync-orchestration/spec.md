@@ -27,8 +27,9 @@ capture local desired state
 ```
 
 Local desired state includes public SQLite `rows`/`changes` intents and
-NotionMD `.nmd` body observations, including path, page identity, base hash,
-local body hash, and local body content or recoverable content reference.
+NotionMD `.nmd` body observations, including path, page identity, captured local
+content or recoverable content reference, and typed body identity for the known
+base/local state.
 Capturing local desired state must happen before any operation that can
 overwrite user-authored local artifacts. Remote observation may refresh private
 base/remote projections before planning, but it must not materialize remote
@@ -113,6 +114,9 @@ type OutboxCommand = {
     | BodyPushCommand
   readonly baseHash: Hash
   readonly desiredHash: Hash
+  // Body commands carry typed body identities instead of generic base/desired
+  // hash semantics. Property, schema, and lifecycle commands continue to use
+  // canonical surface hashes.
   readonly preflight: readonly GuardName[]
 }
 ```
@@ -127,7 +131,8 @@ The executor sequence is:
 4. revalidate the local lease immediately before the remote write,
 5. write remotely outside a SQLite transaction,
 6. read the remote surface again,
-7. append exactly one settlement event if the observed hash equals `desiredHash`.
+7. append exactly one settlement event if the observed surface equals the desired
+   surface; body commands compare typed body identity.
 
 Steps 2-3 satisfy SYNC-R01: the executor re-reads the current remote surface and
 schema and validates `baseHash` before any write that could conflict or destroy
@@ -135,12 +140,13 @@ data. Steps 6-7 satisfy SYNC-R02: a successful write is settled only after a
 fresh read and canonical hash comparison prove the remote state equals
 `desiredHash`.
 
-For body pushes, the body adapter returns the verified post-write body pointer.
-The executor settles only against that verified body hash, and the store advances
-the body projection base/current hash to the same value. If a local `.nmd` file
-is present, the NotionMD-backed adapter also refreshes its clean base/sidecar
-after confirming the file still matches the pushed desired body, so the next
-sync observes a clean no-op instead of re-planning the same body edit.
+For body pushes, the body adapter returns the verified post-write `BodyPointer`.
+The executor settles only against that verified typed body identity, and the
+store advances the body projection to the returned `BodyProjectionPayload`. If a
+local `.nmd` file is present, the NotionMD-backed adapter also refreshes its
+clean base/sidecar after confirming the file still matches the pushed desired
+body, so the next sync observes a clean no-op instead of re-planning the same
+body edit.
 
 ## Ambiguous Command Handling
 

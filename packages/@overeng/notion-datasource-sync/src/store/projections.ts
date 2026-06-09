@@ -1,15 +1,16 @@
 import { Schema } from 'effect'
 
-import { ContentDescriptor, hashUtf8 } from '@overeng/content-address'
+import { hashUtf8 } from '@overeng/content-address'
 
 import { QueryMembershipScope } from '../core/commands.ts'
 import {
-  BodyEvidenceFingerprint,
+  BodyPointer,
   BodySafetySnapshot,
   DataSourceId,
   Hash,
   PageId,
   PropertyId,
+  WorkspaceRelativePath,
 } from '../core/domain.ts'
 import type { SyncEvent } from '../core/events.ts'
 import { type PropertyAvailability, type PropertyWriteClass } from '../core/guards.ts'
@@ -153,10 +154,19 @@ export const QueryAbsenceProjectionPayload = Schema.Struct({
 }).annotations({ identifier: 'NotionDatasourceSync.QueryAbsenceProjectionPayload' })
 export type QueryAbsenceProjectionPayload = typeof QueryAbsenceProjectionPayload.Type
 
-/** Auxiliary JSON payload stored alongside `body_pointer_projection` rows (body evidence and safety snapshot used for conflict detection). */
-export const BodyProjectionSafetyPayload = Schema.Struct({
-  safety: Schema.optional(BodySafetySnapshot),
-  bodyDescriptor: Schema.optional(ContentDescriptor),
-  bodyEvidenceFingerprint: Schema.optional(BodyEvidenceFingerprint),
-}).annotations({ identifier: 'NotionDatasourceSync.BodyProjectionSafetyPayload' })
-export type BodyProjectionSafetyPayload = typeof BodyProjectionSafetyPayload.Type
+/** Materialization metadata stored with a body pointer projection. */
+export const BodyProjectionMaterialization = Schema.Struct({
+  path: WorkspaceRelativePath,
+  sidecarIdentityProven: Schema.Boolean,
+  ownWriteMaterializationIds: Schema.Array(Schema.NonEmptyTrimmedString),
+}).annotations({ identifier: 'NotionDatasourceSync.BodyProjectionMaterialization' })
+export type BodyProjectionMaterialization = typeof BodyProjectionMaterialization.Type
+
+/** Auxiliary JSON payload stored alongside `body_pointer_projection` rows. */
+export const BodyProjectionPayload = Schema.TaggedStruct('BodyProjectionPayload', {
+  schemaVersion: Schema.Literal(1),
+  pointer: BodyPointer,
+  safety: BodySafetySnapshot,
+  materialization: BodyProjectionMaterialization,
+}).annotations({ identifier: 'NotionDatasourceSync.BodyProjectionPayload' })
+export type BodyProjectionPayload = typeof BodyProjectionPayload.Type

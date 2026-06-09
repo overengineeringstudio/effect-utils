@@ -1,7 +1,17 @@
 import { Effect, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { AbsolutePath, BodyPointer, Hash, PageId, WorkspaceRelativePath } from '../core/domain.ts'
+import { bodySafetySnapshot } from '../body/adapter.ts'
+import {
+  AbsolutePath,
+  BodyPointer,
+  Hash,
+  PageId,
+  WorkspaceRelativePath,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  evidenceBackedBodyIdentity,
+} from '../core/domain.ts'
 import {
   bodyPathForRow,
   canonicalizeWorkspaceRelativePath,
@@ -15,6 +25,18 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, val
   Schema.decodeUnknownSync(schema)(value)
 
 const hash = (char: string) => decode(Hash, `sha256:${char.repeat(64)}`)
+const bodyPointerFor = (bodyHash: typeof Hash.Type) =>
+  decode(BodyPointer, {
+    _tag: 'BodyPointer',
+    pageId,
+    identity: evidenceBackedBodyIdentity({
+      rendered: bodyDescriptorForDigest(bodyHash),
+      evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(bodyHash),
+      completeness: 'complete',
+    }),
+    observedAt: '2026-05-25T00:00:00.000Z',
+    safety: bodySafetySnapshot(),
+  })
 
 const pageId = decode(PageId, 'page-1')
 const otherPageId = decode(PageId, 'page-2')
@@ -107,12 +129,7 @@ describe('local workspace contract', () => {
 
   it('emits own-write materialization suppression tokens', async () => {
     const path = decode(WorkspaceRelativePath, 'weekly-notes--page-1.nmd')
-    const bodyPointer = decode(BodyPointer, {
-      _tag: 'BodyPointer',
-      pageId,
-      bodyHash: hash('a'),
-      observedAt: '2026-05-25T00:00:00.000Z',
-    })
+    const bodyPointer = bodyPointerFor(hash('a'))
     const workspace = makeFakeLocalWorkspacePort()
 
     const result = await Effect.runPromise(
@@ -139,12 +156,7 @@ describe('local workspace contract', () => {
 
   it('scans fake local observations through the LocalWorkspacePort shape', async () => {
     const path = decode(WorkspaceRelativePath, 'weekly-notes--page-1.nmd')
-    const bodyPointer = decode(BodyPointer, {
-      _tag: 'BodyPointer',
-      pageId,
-      bodyHash: hash('b'),
-      observedAt: '2026-05-25T00:00:00.000Z',
-    })
+    const bodyPointer = bodyPointerFor(hash('b'))
     const observation = presentArtifactObservation({
       pageId,
       path,

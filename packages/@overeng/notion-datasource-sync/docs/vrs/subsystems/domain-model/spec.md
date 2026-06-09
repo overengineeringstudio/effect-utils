@@ -53,13 +53,32 @@ type PropertySurface = {
 }
 
 type BodyPointer = {
-  readonly adapter: 'notion-md'
-  readonly path: RelativePath
-  readonly baseHash: Hash
-  readonly currentHash: Hash
+  readonly pageId: PageId
+  readonly identity: BodyIdentity
+  readonly observedAt: DateTimeUtc
+  readonly safety: BodySafetySnapshot
+}
+
+type BodyIdentity =
+  | {
+      readonly _tag: 'RenderedBodyIdentity'
+      readonly rendered: ContentDescriptor
+    }
+  | {
+      readonly _tag: 'EvidenceBackedBodyIdentity'
+      readonly evidenceFingerprint: BodyEvidenceFingerprint
+      readonly rendered: ContentDescriptor
+      readonly completeness: BodyCompletenessEvidence
+    }
+
+type BodySafetySnapshot = {
   readonly truncated: boolean
-  readonly unknownBlockIds: readonly BlockId[]
   readonly unknownBlockCause: 'truncation' | 'permission' | 'unsupported' | 'unknown' | null
+  readonly selection: 'safe' | 'ambiguous'
+  readonly wouldDeleteChildren: boolean
+  readonly syncedPageUnsupported: boolean
+  readonly adapterConflict: boolean
+  readonly adapterMutationSurfaces: readonly BodyAdapterMutationSurface[]
 }
 
 type FileReference = {
@@ -74,7 +93,13 @@ Display names are never row-value identity. Property IDs and canonical value has
 
 Relation, people, rich-text, title, and rollup values are hashable only after their paginated page-property stream reaches `hasMore=false`. If a related data source is not shared with the integration, the value is `related-data-source-unshared` and cannot be silently treated as an empty relation. Public SQLite relation writes are supported only for removal/reorder of targets already present in a complete observed base; adding new targets remains fail-closed until target accessibility is modeled.
 
-Body pointers preserve public markdown endpoint safety metadata. `unknownBlockCause` remains `unknown` unless the adapter can prove truncation, permission loss, or an unsupported block type; ambiguous unknown blocks block body writes.
+Body pointers do not carry parallel `bodyHash`, descriptor, and optional
+evidence fields. The selected body guard identity is explicit in `BodyIdentity`,
+so planning, execution, projection replay, and telemetry cannot disagree about
+whether a body write was guarded by rendered content or remote evidence.
+`unknownBlockCause` remains `unknown` unless the adapter can prove truncation,
+permission loss, or an unsupported block type; ambiguous unknown blocks block
+body writes.
 
 The completeness proofs that gate property hashing are specified in
 [../notion-gateway/spec.md](../notion-gateway/spec.md). Wire schemas and

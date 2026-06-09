@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest'
 
 import { makeFakePageBodySyncPort } from '../body/adapter.ts'
 import { PatchPagePropertiesCommand, PagePropertyItemPage } from '../core/commands.ts'
+import type { Hash } from '../core/domain.ts'
 import {
   AbsolutePath,
-  BodyPointer,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  evidenceBackedBodyIdentity,
   WorkspaceRelativePath,
   type MaterializePlan,
 } from '../core/domain.ts'
@@ -26,6 +29,7 @@ import {
   makeHarnessPorts,
   makeStoreFixture,
   pageSnapshot,
+  bodyPointer,
   propertyEditIntent,
   propertyPatchValue,
   testIds,
@@ -67,15 +71,17 @@ const propertyPage = (valueHash = hash('property-a-base')) =>
 const bodyPageFor = (pageId: typeof testIds.pageId, bodyHash = hash(`body-${pageId}`)) =>
   fakeBodyPage({
     pageId,
-    pointer: decode({
-      schema: BodyPointer,
-      value: {
-        _tag: 'BodyPointer',
-        pageId,
-        bodyHash,
-        observedAt: fixedObservedAt,
-      },
-    }),
+    pointer: {
+      ...bodyPointer(bodyHash),
+      pageId,
+    },
+  })
+
+const bodyIdentityForHash = (bodyHash: typeof Hash.Type) =>
+  evidenceBackedBodyIdentity({
+    rendered: bodyDescriptorForDigest(bodyHash),
+    evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(bodyHash),
+    completeness: 'complete',
   })
 
 const runWithPorts = <TValue, TError>(
@@ -968,7 +974,10 @@ describe('one-shot sync orchestration', () => {
 
       expect(observedBodies).toBe(1)
       expect(materializedPlans).toMatchObject([
-        { pageId: testIds.pageId, bodyPointer: { bodyHash: hash('body-a') } },
+        {
+          pageId: testIds.pageId,
+          bodyPointer: { identity: bodyPointer(hash('body-a')).identity },
+        },
       ])
       expect(gatewayHarness.ledger.successfulPatchPageProperties).toEqual([])
       expect(gatewayHarness.ledger.successfulPatchDataSourceSchemas).toEqual([])
@@ -1213,7 +1222,11 @@ describe('one-shot sync orchestration', () => {
       observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
     })
     const ports = makeHarnessPorts({
-      bodyPages: [fakeBodyPage({ remoteBodyHash: hash('body-remote') })],
+      bodyPages: [
+        fakeBodyPage({
+          remoteIdentity: bodyIdentityForHash(hash('body-remote')),
+        }),
+      ],
       localObservations: [localObservation],
     })
 

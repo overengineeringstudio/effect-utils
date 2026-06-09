@@ -7,8 +7,8 @@ import {
   querySurfaceKey,
 } from '../core/canonical.ts'
 import {
-  BodyPointer,
   Hash,
+  renderedBodyDigest,
   type LocalArtifactObservation,
   PageId,
   PropertyId,
@@ -689,20 +689,14 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           continue
         }
 
-        if (bodySurface === undefined || bodySurface.currentHash === observation.contentHash) {
+        if (
+          bodySurface === undefined ||
+          renderedBodyDigest(bodySurface.pointer.identity) === observation.contentHash
+        ) {
           continue
         }
 
-        const baseBodyPointer = decode({
-          schema: BodyPointer,
-          value: {
-            _tag: 'BodyPointer',
-            pageId: observation.pageId,
-            bodyHash: bodySurface.currentHash,
-            observedAt: now().toISOString(),
-            safety: bodySurface.safety,
-          },
-        })
+        const baseBodyPointer = bodySurface.pointer
         const bodyPlan = yield* body.planLocalChange({
           _tag: 'BodyLocalChangeInput',
           pageId: observation.pageId,
@@ -723,7 +717,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
                     rootId: options.rootId,
                     pageId: observation.pageId,
                     surface: bodySurfaceKey(observation.pageId),
-                    baseHash: bodyPlan.baseBodyPointer.bodyHash,
+                    baseHash: renderedBodyDigest(bodyPlan.baseBodyPointer.identity),
                     localHash: bodyPlan.localBodyHash,
                     remoteHash: bodyPlan.remoteBodyHash,
                     conflictKind: 'body',
@@ -759,7 +753,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           surface: bodySurfaceKey(observation.pageId),
           pageId: observation.pageId,
           command,
-          baseHash: bodyPlan.baseBodyPointer.bodyHash,
+          baseHash: renderedBodyDigest(bodyPlan.baseBodyPointer.identity),
           desiredHash: bodyPlan.nextBodyHash,
         }
         summaries.push(

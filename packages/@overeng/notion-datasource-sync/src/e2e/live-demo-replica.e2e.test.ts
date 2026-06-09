@@ -305,8 +305,8 @@ const inspectBodyMaterialization = async (workspace: string, sqlitePath: string)
       database,
       `SELECT count(*) AS count
        FROM _nds_body_pointer
-       WHERE json_extract(safety_json, '$.truncated') = 1
-          OR json_extract(safety_json, '$.unknownBlockCause') IS NOT NULL`,
+       WHERE json_extract(body_projection_json, '$.safety.truncated') = 1
+          OR json_extract(body_projection_json, '$.safety.unknownBlockCause') IS NOT NULL`,
     )
     return { bodyPointers, lossyBodyPointers, nmdFiles, contents }
   } finally {
