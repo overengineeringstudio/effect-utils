@@ -92,6 +92,9 @@ pub struct Sink {
     span_count: AtomicU64,
     metric_count: AtomicU64,
     log_count: AtomicU64,
+    /// Total export requests received (any signal). Drives `--drain-idle`:
+    /// the caller watches this for "no new export for N ms".
+    requests: AtomicU64,
 }
 
 /// Paths of the three capture files, surfaced in the run summary.
@@ -120,7 +123,14 @@ impl Sink {
             span_count: AtomicU64::new(0),
             metric_count: AtomicU64::new(0),
             log_count: AtomicU64::new(0),
+            requests: AtomicU64::new(0),
         })
+    }
+
+    /// Total export requests received so far (any signal). Monotonic; used by
+    /// `--drain-idle` to detect quiescence after the child exits.
+    pub fn requests_received(&self) -> u64 {
+        self.requests.load(Ordering::Relaxed)
     }
 
     pub fn paths(&self) -> CapturePaths {
@@ -151,6 +161,7 @@ impl Sink {
             .sum();
         self.traces.append_line(req).await?;
         self.span_count.fetch_add(n, Ordering::Relaxed);
+        self.requests.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -163,6 +174,7 @@ impl Sink {
             .sum();
         self.metrics.append_line(req).await?;
         self.metric_count.fetch_add(n, Ordering::Relaxed);
+        self.requests.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -175,6 +187,7 @@ impl Sink {
             .sum();
         self.logs.append_line(req).await?;
         self.log_count.fetch_add(n, Ordering::Relaxed);
+        self.requests.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 

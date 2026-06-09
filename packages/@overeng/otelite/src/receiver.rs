@@ -53,17 +53,28 @@ pub struct RunningReceiver {
 }
 
 impl RunningReceiver {
-    /// Bind ephemeral HTTP + gRPC ports on `127.0.0.1` and start serving against
-    /// `sink`. Returns once both listeners are bound (so a child started next is
-    /// guaranteed a live endpoint — no readiness race).
+    /// Bind ephemeral HTTP + gRPC ports on `127.0.0.1` and start serving.
     pub async fn start(sink: Arc<Sink>) -> std::io::Result<RunningReceiver> {
+        Self::start_on(sink, None, None).await
+    }
+
+    /// Like [`start`], but binds the given fixed ports when provided (`None` →
+    /// ephemeral `:0`). Returns once both listeners are bound (so a child
+    /// started next is guaranteed a live endpoint — no readiness race).
+    pub async fn start_on(
+        sink: Arc<Sink>,
+        http_port: Option<u16>,
+        grpc_port: Option<u16>,
+    ) -> std::io::Result<RunningReceiver> {
         // HTTP listener (axum serves directly from a tokio TcpListener).
-        let http_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+        let http_listener =
+            tokio::net::TcpListener::bind(("127.0.0.1", http_port.unwrap_or(0))).await?;
         let http_addr = http_listener.local_addr()?;
 
         // gRPC listener: bind a tokio TcpListener and hand it to tonic as a
         // pre-bound incoming — no drop/rebind window.
-        let grpc_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+        let grpc_listener =
+            tokio::net::TcpListener::bind(("127.0.0.1", grpc_port.unwrap_or(0))).await?;
         let grpc_addr: SocketAddr = grpc_listener.local_addr()?;
         let grpc_incoming =
             tonic::transport::server::TcpIncoming::from_listener(grpc_listener, true, None)
