@@ -280,6 +280,51 @@ export type BoundaryObserver = (info: BoundaryInfo) => (outcome: BoundaryOutcome
 const emptyMarker = {} as never
 
 /**
+ * Which handler kind a materialized handler runs as — selects WHICH capability
+ * markers are provided over the user's Effect (spec §3). The single source of
+ * truth for the per-kind marker subset, shared by the real boundary
+ * ({@link provideHandlerCaps} in `runEffectHandler`) and the in-memory test
+ * dispatch (`TestEnv`'s mock backend) so the two stay in lock-step.
+ */
+export type HandlerMarkers =
+  | 'service'
+  | 'objectExclusive'
+  | 'objectShared'
+  | 'workflowRun'
+  | 'workflowShared'
+
+/**
+ * Provide the capability markers legal for `markers` (spec §3) over a handler
+ * effect, EXACTLY mirroring what each `materialize*` grants per kind — the single
+ * source of truth reused by both the real boundary (`runEffectHandler`) and the
+ * in-memory mock dispatch (`TestEnv`). `RestateContext` itself is provided by the
+ * caller (it differs per backend: the raw SDK `ctx` on the server, the in-memory
+ * fake on the mock). The markers are phantom empty values; only their presence
+ * gates type-legality, so an illegal `State.set` in a shared handler is a COMPILE
+ * error and the residual `R` collapses to `AppR` at runtime.
+ */
+export const provideHandlerCaps = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  markers: HandlerMarkers,
+  key: string | undefined,
+): Effect.Effect<A, E, R> => {
+  let provided = effect
+  if (markers !== 'service') {
+    provided = provided.pipe(
+      Effect.provideService(ObjectKey, { key: key ?? '' }),
+      Effect.provideService(StateRead, emptyMarker),
+    )
+  }
+  if (markers === 'objectExclusive' || markers === 'workflowRun') {
+    provided = provided.pipe(Effect.provideService(StateWrite, emptyMarker))
+  }
+  if (markers === 'workflowRun' || markers === 'workflowShared') {
+    provided = provided.pipe(Effect.provideService(DurablePromise, emptyMarker))
+  }
+  return provided
+}
+
+/**
  * Provide `RestateContext` (always) plus the capability markers legal for this
  * handler kind (spec §3), the per-invocation determinism layer (journaled
  * Clock/Random, R17) and the cancellation↔interruption bridge (R31), run the
@@ -299,12 +344,7 @@ const runEffectHandler =
     readonly run: EffectHandler
     readonly errorSchema: Schema.Schema<any, any> | undefined
     readonly runtime: Runtime.Runtime<AppR>
-    readonly markers:
-      | 'service'
-      | 'objectExclusive'
-      | 'objectShared'
-      | 'workflowRun'
-      | 'workflowShared'
+    readonly markers: HandlerMarkers
     /* The inbound-bridge transform (`./otel` supplies it; undefined in the
      * otel-free core). Applied INSIDE the handler so `trace.getActiveSpan()`
      * (the hook's attempt span, set active via `context.with` around this fn)
@@ -340,19 +380,11 @@ const runEffectHandler =
     Runtime.runSync(opts.runtime)(
       emitAttempt(ctx, { service: opts.service, handler: opts.handler }),
     )
-    let effect = opts.run(input).pipe(Effect.provideService(RestateContext, ctx))
-    if (opts.markers !== 'service') {
-      effect = effect.pipe(
-        Effect.provideService(ObjectKey, { key: (ctx as restate.ObjectContext).key }),
-        Effect.provideService(StateRead, emptyMarker),
-      )
-    }
-    if (opts.markers === 'objectExclusive' || opts.markers === 'workflowRun') {
-      effect = effect.pipe(Effect.provideService(StateWrite, emptyMarker))
-    }
-    if (opts.markers === 'workflowRun' || opts.markers === 'workflowShared') {
-      effect = effect.pipe(Effect.provideService(DurablePromise, emptyMarker))
-    }
+    const effect = provideHandlerCaps(
+      opts.run(input).pipe(Effect.provideService(RestateContext, ctx)),
+      opts.markers,
+      opts.markers !== 'service' ? (ctx as restate.ObjectContext).key : undefined,
+    )
     /* Bridge the attempt-completed signal to interruption (R31), then provide the
      * journaled Clock/Random (R17) AND the replay-aware logger (decision 0015 —
      * routes `Effect.log*` through `ctx.console`, suppressed on replay) over the

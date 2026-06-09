@@ -40,6 +40,7 @@ import {
   objectCall as ingressObjectCall,
   objectCallTyped as ingressObjectCallTyped,
   objectSend as ingressObjectSend,
+  resolveAwakeable as ingressResolveAwakeable,
   RestateIngress,
   type RestateIngressService,
   result as ingressResult,
@@ -48,8 +49,19 @@ import {
   workflowOutput as ingressWorkflowOutput,
   workflowSubmit as ingressWorkflowSubmit,
 } from './Client.ts'
-import { type AnyImplementation, layer as endpointLayer } from './Endpoint.ts'
-import { normalizeStateSchema, type StateSchemas, type StateValueType } from './RestateContext.ts'
+import {
+  type AnyImplementation,
+  type BoundaryObserver,
+  type EndpointHooks,
+  type HandlerWrap,
+  layer as endpointLayer,
+} from './Endpoint.ts'
+import {
+  type AwakeableId,
+  normalizeStateSchema,
+  type StateSchemas,
+  type StateValueType,
+} from './RestateContext.ts'
 import { RestateError } from './RestateError.ts'
 import { effectSerde } from './Serde.ts'
 import type {
@@ -81,12 +93,26 @@ import type {
  * cross-invocation) — see `TestContext.ts` for the full contract.
  */
 export {
+  type AwakeableRegistry,
+  makeAwakeableRegistry,
   makeTestContext,
   makeTestContextLayer,
   type TestContextHandle,
   type TestContextOptions,
   type TestHandlerKind,
 } from './TestContext.ts'
+
+/**
+ * The swappable mock⟷real `RestateTestEnv` façade (decision 0017, spec §11): ONE
+ * contract-addressed invocation surface (`invokeService(contract, method, input)`)
+ * with TWO Layer impls — `RestateTestEnv.mock` (in-process, no server, fast) and
+ * `RestateTestEnv.real` (a thin wrapper over `RestateTestHarness`). The SAME test
+ * body runs on either backend; `invoke*` carries `RestateError | ErrorOf` (the
+ * TYPED declared error) on BOTH, so a `catchTag(DomainError)` compiles identically.
+ * The lower-level `RestateTestHarness` + `makeTestContextLayer` primitives stay
+ * available (additive — `RestateTestEnv` composes over them).
+ */
+export { RestateTestEnv, type RestateTestEnvService } from './TestEnv.ts'
 
 /* ════════════════════════════════════════════════════════════════════════
  * Live-clock test util (docs-worker friction #3).
@@ -128,7 +154,12 @@ export const withLiveClock = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.E
  * ════════════════════════════════════════════════════════════════════════ */
 
 /** Resolve the `restate-server` binary (built from `nix/restate.nix`), or `$PATH`. */
-const serverBin = (): string => process.env['RESTATE_SERVER_BIN'] ?? 'restate-server'
+const serverBin = (): string => {
+  const override = process.env['RESTATE_SERVER_BIN']
+  /* An empty/whitespace override is treated as UNSET (an empty `RESTATE_SERVER_BIN=`
+   * must not become `execFile('')`, which throws `ERR_INVALID_ARG_VALUE`). */
+  return override !== undefined && override.trim() !== '' ? override : 'restate-server'
+}
 
 /**
  * Whether a usable native `restate-server` binary is available without spawning
@@ -545,6 +576,19 @@ export interface RestateTestHarnessService {
     contract: StatefulContract<S>,
     key: string,
   ) => StateProxy<S>
+  /**
+   * Serve an ADDITIONAL `services` array on a fresh ephemeral SDK port and register
+   * it as a SECOND deployment version against the running server (spec §11.2,
+   * multi-deployment). The new endpoint is built into the harness scope (its
+   * finalizer closes before the server shuts down), so a test can register two
+   * endpoint VERSIONS of the same service and assert replay/upgrade across them. The
+   * new version's `appLayer` is threaded into its served runtime. Returns the served
+   * SDK URL of the new deployment.
+   */
+  readonly registerDeployment: <AppR2, RIn2 = never>(opts: {
+    readonly services: ReadonlyArray<AnyImplementation<AppR2>>
+    readonly appLayer: Layer.Layer<AppR2, never, RIn2>
+  }) => Effect.Effect<string, RestateError, RIn2>
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- contract phantoms, matching the `Client` signatures these mirror */
@@ -621,6 +665,11 @@ export interface BoundIngress {
     send: clients.Send<unknown> | clients.WorkflowSubmission<unknown>,
     outputSchema: Schema.Schema<T, I>,
   ) => Effect.Effect<T, RestateError, never>
+  readonly resolveAwakeable: <T, I>(
+    schema: Schema.Schema<T, I>,
+    id: AwakeableId<T>,
+    payload: T,
+  ) => Effect.Effect<void, RestateError, never>
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -651,6 +700,17 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
     readonly appLayer: Layer.Layer<AppR, never, RIn>
     readonly alwaysReplay?: boolean
     readonly disableRetries?: boolean
+    /**
+     * Endpoint observability wiring threaded into the served endpoint (spec §10):
+     * the Restate `hooks` (e.g. the otel `openTelemetryHook`), the per-invocation
+     * `inboundBridge` (attempt-span → Effect-parent), and the `boundaryObserver`
+     * (per-invocation span-stamp + outcome metric). Supply the `./otel`
+     * `RestateOtel.{hook,inboundBridge,boundaryObserver}` here to exercise OTel
+     * end-to-end against the real server (gap: OTel reparenting under REAL replay).
+     */
+    readonly hooks?: ReadonlyArray<EndpointHooks>
+    readonly inboundBridge?: HandlerWrap
+    readonly boundaryObserver?: BoundaryObserver
   }): Layer.Layer<RestateTestHarness, RestateError, RIn> =>
     Layer.scoped(
       RestateTestHarness,
@@ -672,31 +732,52 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
           (s) => Effect.promise(() => s.shutdown()),
         )
 
-        /* 2. Serve the consumer's endpoint on an ephemeral SDK port, with their
-         * `appLayer` provided so handler `R` is discharged. The endpoint `layer`
-         * is itself scoped — building it into THIS scope registers its finalizer
-         * (close the HTTP/2 server) BEFORE the server-shutdown finalizer runs
-         * (close endpoint → kill server → rm base dir). */
-        const sdkPort = yield* Effect.promise(() => freePort())
-        yield* endpointLayer({ services: opts.services, port: sdkPort }).pipe(
-          Layer.provide(opts.appLayer),
-          /* The endpoint layer's channel is `RestateError | ConfigError`, but the
-           * `ConfigError` arm fires ONLY for a `Config<number>` port — here the port
-           * is a literal `number`, so it is structurally impossible. Re-fail a real
-           * `RestateError` (a bind/listen failure) and die on the unreachable
-           * `ConfigError`, keeping the harness's channel `RestateError` clean. */
-          Layer.catchAll((cause) =>
-            cause instanceof RestateError ? Layer.fail(cause) : Layer.die(cause),
-          ),
-          Layer.build,
-        )
+        /* Serve one `services` array on a fresh ephemeral SDK port (the consumer's
+         * `appLayer` provided so handler `R` is discharged) and register it as a
+         * deployment. The endpoint `layer` is itself scoped — building it into the
+         * GIVEN scope registers its finalizer (close the HTTP/2 server) BEFORE the
+         * server-shutdown finalizer (close endpoint → kill server → rm base dir).
+         * Reused for the primary deployment AND `registerDeployment` (multi-version,
+         * spec §11.2) — each gets its own port + scope-managed endpoint. */
+        const serveAndRegister = <AppR2, RIn2>(
+          services: ReadonlyArray<AnyImplementation<AppR2>>,
+          appLayer: Layer.Layer<AppR2, never, RIn2>,
+          endpointScope: Scope.Scope,
+        ): Effect.Effect<string, RestateError, RIn2> =>
+          Effect.gen(function* () {
+            const port = yield* Effect.promise(() => freePort())
+            yield* endpointLayer({
+              services,
+              port,
+              ...(opts.hooks !== undefined ? { hooks: opts.hooks } : {}),
+              ...(opts.inboundBridge !== undefined ? { inboundBridge: opts.inboundBridge } : {}),
+              ...(opts.boundaryObserver !== undefined
+                ? { boundaryObserver: opts.boundaryObserver }
+                : {}),
+            }).pipe(
+              Layer.provide(appLayer),
+              /* The endpoint layer's channel is `RestateError | ConfigError`, but
+               * the `ConfigError` arm fires ONLY for a `Config<number>` port — here
+               * the port is a literal `number`, so it is structurally impossible.
+               * Re-fail a real `RestateError` (a bind/listen failure) and die on the
+               * unreachable `ConfigError`, keeping the harness channel clean. */
+              Layer.catchAll((cause) =>
+                cause instanceof RestateError ? Layer.fail(cause) : Layer.die(cause),
+              ),
+              Layer.buildWithScope(endpointScope),
+            )
+            const uri = `http://localhost:${port}`
+            yield* Effect.tryPromise({
+              try: () => server.register(uri),
+              catch: (cause) =>
+                new RestateError({ reason: 'EndpointFailed', method: 'register', cause }),
+            })
+            return uri
+          })
 
-        /* 3. Register the deployment against the admin API. */
-        yield* Effect.tryPromise({
-          try: () => server.register(`http://localhost:${sdkPort}`),
-          catch: (cause) =>
-            new RestateError({ reason: 'EndpointFailed', method: 'register', cause }),
-        })
+        /* 2.+3. Serve + register the primary deployment into the harness scope. */
+        const harnessScope = yield* Effect.scope
+        yield* serveAndRegister(opts.services, opts.appLayer, harnessScope)
 
         /* 4. Build the connected ingress runtime once, so the bound call surface
          * provides `RestateIngress` internally (the test never threads it). */
@@ -733,6 +814,8 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
             provideIngress(ingressWorkflowCall(...a))) as BoundIngress['workflowCall'],
           result: ((...a: Parameters<typeof ingressResult>) =>
             provideIngress(ingressResult(...a))) as BoundIngress['result'],
+          resolveAwakeable: ((...a: Parameters<typeof ingressResolveAwakeable>) =>
+            provideIngress(ingressResolveAwakeable(...a))) as BoundIngress['resolveAwakeable'],
         }
 
         return {
@@ -741,6 +824,15 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
           ingress: bound,
           stateOf: <S extends StateSchemas>(contract: StatefulContract<S>, key: string) =>
             makeStateProxy(server.adminUrl, contract, key),
+          registerDeployment: (<AppR2, RIn2>(deployOpts: {
+            readonly services: ReadonlyArray<AnyImplementation<AppR2>>
+            readonly appLayer: Layer.Layer<AppR2, never, RIn2>
+          }) =>
+            serveAndRegister(
+              deployOpts.services,
+              deployOpts.appLayer,
+              harnessScope,
+            )) as RestateTestHarnessService['registerDeployment'],
         }
       }),
     )
