@@ -300,6 +300,10 @@ const errorClassOf = (
  * business identity an operator slices on in Tempo/Grafana:
  *
  * - `restate.object.key` (the Object/Workflow key; omitted for plain Services),
+ * - `restate.workflow.id` (the Workflow key; omitted for Services/Objects),
+ * - `restate.idempotency.key` (the original-invocation idempotency key; omitted
+ *   when none) — so a consumer slices on the end-to-end dedup identity without
+ *   hand-rolling it (#5),
  * - `restate.service` (the construct name), `restate.handler` (the handler name).
  *
  * On a FAILURE outcome it ALSO stamps the classification the boundary already read
@@ -308,6 +312,10 @@ const errorClassOf = (
  * panels can split by classification WITHOUT re-deriving it. Stamps onto the
  * attempt span directly (NOT the Effect span), so the attributes ride the span the
  * hook owns. A no-op when no span is active (the hook is not installed).
+ *
+ * `workflowId` / `idempotencyKey` are IDENTITY values, never a `sensitive`/redacted
+ * FIELD (a redacted field is encrypted in the serde and never reaches this seam),
+ * so the "never a redacted field on a span" rule (decision 0014) holds.
  */
 const boundaryObserver: BoundaryObserver = (info) => {
   /* Read the active attempt span ONCE at entry (the hook set it active via
@@ -318,6 +326,10 @@ const boundaryObserver: BoundaryObserver = (info) => {
   span.setAttribute('restate.service', info.service)
   span.setAttribute('restate.handler', info.handler)
   if (info.key !== undefined) span.setAttribute('restate.object.key', info.key)
+  if (info.workflowId !== undefined) span.setAttribute('restate.workflow.id', info.workflowId)
+  if (info.idempotencyKey !== undefined) {
+    span.setAttribute('restate.idempotency.key', info.idempotencyKey)
+  }
   return (outcome) => {
     const errorClass = errorClassOf(outcome)
     if (errorClass !== undefined) span.setAttribute('restate.error.class', errorClass)

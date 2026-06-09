@@ -60,6 +60,20 @@ the durable-op types (`Descriptor`/`DurableCaps`/`ResultsOf`/`RunRetryOptions`/
 `Restate.annotateSpan(attrs)` (on the core `Restate` namespace) is the user
 span-attribute path.
 
+## `./admin`
+
+The opt-in management API over the `restate-server` admin REST endpoints.
+**Trust boundary:** unauthenticated by default — never expose publicly; pinned to
+restate-server 1.6.2. See [Operations](./admin-operations.md).
+
+| Symbol                                                                          | What                                                             |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `RestateAdmin.layer({ adminUrl, apiKey? })`                                     | the admin-API service Layer (mirrors `RestateIngress.layer`)     |
+| `RestateAdmin.layerConfig()`                                                    | env-driven (`RESTATE_ADMIN_URL` / `RESTATE_ADMIN_KEY`)           |
+| `cancel`/`kill`/`pause`/`resume`/`purge`/`purgeJournal`/`delete`/`restartAsNew` | invocation lifecycle ops (`PATCH\|DELETE /invocations/{id}[/…]`) |
+| `registerDeployment`/`listDeployments`/`getDeployment`/`updateDeployment`       | deployment management (`POST\|GET\|PATCH /deployments[/{id}]`)   |
+| `query(sql, rowSchema)` / `queryRaw(sql)`                                       | typed / raw SQL introspection over `sys_*` (`POST /query`)       |
+
 ## `./testing`
 
 | Symbol                                                         | What                                                                        |

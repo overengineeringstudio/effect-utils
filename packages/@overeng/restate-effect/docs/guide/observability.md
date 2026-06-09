@@ -93,6 +93,11 @@ on:
 
 - `restate.service` (construct name), `restate.handler` (handler name),
   `restate.object.key` (Objects/Workflows; omitted for plain Services);
+- `restate.workflow.id` (the Workflow key; omitted for Services/Objects) and
+  `restate.idempotency.key` (the original-invocation `idempotency-key` header;
+  omitted when none) — so you slice on the end-to-end identity (producer intent →
+  workflow id → idempotency key) **without hand-rolling** them via
+  `Restate.annotateSpan`;
 - on a **failure**: `restate.error.tag` (the domain error `_tag`) +
   `restate.error.class` (`terminal` | `retryable` | `cancelled`), read from the same
   `classifyOutcome` the SDK outcome is built on (so the span class matches exactly).
@@ -116,7 +121,9 @@ Use the `span.label` convention for a single primary label.
 > (`Restate.sensitive` / `redacted`, see [Annotations](./annotations.md#field-level-redaction))
 > is serde-only — it encrypts the value on the wire/journal. A span attribute
 > bypasses the serde and would leak the plaintext into your traces. Stamp a
-> non-sensitive identifier instead.
+> non-sensitive identifier instead. (The auto-stamped `restate.workflow.id` /
+> `restate.idempotency.key` are identity keys, not field values — a redacted field
+> is encrypted in the serde and never reaches the boundary, so they are safe.)
 >
 > `Restate.annotateSpan` attributes are **not** replay-suppressed. For
 > side-effecting telemetry (a span event, a metric increment), route it through
