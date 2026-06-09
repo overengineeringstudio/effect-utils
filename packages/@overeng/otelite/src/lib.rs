@@ -3,4 +3,5 @@
 //! (`src/main.rs`) wraps it in the `run` / `inspect` / `capture` CLI.
 
 pub mod receiver;
+pub mod run;
 pub mod sink;

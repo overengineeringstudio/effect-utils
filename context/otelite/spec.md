@@ -65,6 +65,12 @@ use `sysexits.h`, disambiguated from a child code by empty stdout:
 | `74`     | receiver bind error (port in use) / write failure |
 | `75`     | `--drain-idle` timeout exceeded                   |
 | `70`     | internal otelite bug                              |
+| `69`     | a verb that isn't implemented yet                 |
+
+A signal-killed child is reported faithfully as `128 + signo` (so a segfault or
+OOM-kill isn't mistaken for SIGINT), in both `child.exit_code` and the process
+exit. A `--drain-idle` that never quiesces exits `75`, overriding the child code,
+but still emits the summary so the capture stays usable.
 
 `capture` is the receiver-only verb (no child): it prints its endpoints, serves
 until SIGINT/SIGTERM, then emits the same `otelite.summary/v1`. For when the test
@@ -137,7 +143,11 @@ passes through everything else the caller set (least surprise):
 - **Owned (always overwritten):** `OTEL_EXPORTER_OTLP_ENDPOINT` (receiver base
   URL), `OTEL_EXPORTER_OTLP_PROTOCOL` (`http/protobuf` by default; the OTLP spec
   default). These point the emitter at otelite — letting a stale parent value
-  win would silently send telemetry elsewhere.
+  win would silently send telemetry elsewhere. The **per-signal overrides**
+  (`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,PROTOCOL}`) take
+  precedence over the base in the OTLP spec, so they are **cleared** — otherwise
+  a parent `*_TRACES_ENDPOINT` pointing at a real collector would silently
+  misroute traces away from otelite.
 - **Respected (pass-through):** `OTEL_RESOURCE_ATTRIBUTES`, and
   `OTEL_SERVICE_NAME` unless `--service` is given (which wins). Other `OTEL_*`
   the caller set flow through untouched.
@@ -152,6 +162,11 @@ After the Child exits, otelite finishes serving in-flight exports, then closes �
 no timer by default. `--drain-idle <ms>` (bounded) is the opt-in for
 fire-and-forget emitters; otelite **never** waits unbounded. See
 `decisions/0006` for the evidence.
+
+`run` swallows terminal Ctrl-C (the child shares the process group and receives
+it too) so otelite stays up to drain and still emit the summary. Limitation: a
+`SIGTERM` sent directly to otelite's PID (not the group) is not caught — the
+child is orphaned. A forwarding SIGTERM handler is future work.
 
 The guarantee depends on **durability before ack**: otelite writes each export to
 the sink and flushes _before_ returning the OTLP success response (with
