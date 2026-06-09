@@ -6,13 +6,13 @@ decisively on every axis that matters for a test-capture tool.
 
 ## Measured comparison
 
-| Axis | Native (scratch) | Collector-contrib wrap |
-| --- | --- | --- |
-| Footprint | 5.1 MB binary (94 crates) | 321.7 MiB closure |
-| Startup → listening | ~5 ms | ~100 ms warm / ~600 ms cold |
-| Code owned | 424 LOC (one `main.rs`) | ~150 LOC wrapper + YAML schema coupling |
-| Ephemeral `:0` ports | yes | no — must pre-pick (TOCTOU-racy) |
-| Transports verified | HTTP json+proto + gRPC | same (free) |
+| Axis                 | Native (scratch)          | Collector-contrib wrap                  |
+| -------------------- | ------------------------- | --------------------------------------- |
+| Footprint            | 5.1 MB binary (94 crates) | 321.7 MiB closure                       |
+| Startup → listening  | ~5 ms                     | ~100 ms warm / ~600 ms cold             |
+| Code owned           | 424 LOC (one `main.rs`)   | ~150 LOC wrapper + YAML schema coupling |
+| Ephemeral `:0` ports | yes                       | no — must pre-pick (TOCTOU-racy)        |
+| Transports verified  | HTTP json+proto + gRPC    | same (free)                             |
 
 All three transports were verified end-to-end against real emitters in the
 native build using the official `opentelemetry-proto` (`gen-tonic`) generated

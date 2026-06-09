@@ -55,16 +55,16 @@ Design borrows from `rg --json`, `gh --json`+jq, `kubectl -o json`, BSD
 `run` preserves the Child's exit code on the happy path. otelite's own failures
 use `sysexits.h`, disambiguated from a child code by empty stdout:
 
-| Code | Meaning |
-| --- | --- |
-| `0..255` | `run` happy path = Child's exit code |
-| `64` | bad flags / missing `--` cmd / unknown verb |
-| `65` | decode error (malformed OTLP / corrupt capture) |
-| `66` | inspect source missing/unreadable |
-| `73` | cannot create/write out-dir |
-| `74` | receiver bind error (port in use) / write failure |
-| `75` | `--drain-idle` timeout exceeded |
-| `70` | internal otelite bug |
+| Code     | Meaning                                           |
+| -------- | ------------------------------------------------- |
+| `0..255` | `run` happy path = Child's exit code              |
+| `64`     | bad flags / missing `--` cmd / unknown verb       |
+| `65`     | decode error (malformed OTLP / corrupt capture)   |
+| `66`     | inspect source missing/unreadable                 |
+| `73`     | cannot create/write out-dir                       |
+| `74`     | receiver bind error (port in use) / write failure |
+| `75`     | `--drain-idle` timeout exceeded                   |
+| `70`     | internal otelite bug                              |
 
 `capture` is the receiver-only verb (no child): it prints its endpoints, serves
 until SIGINT/SIGTERM, then emits the same `otelite.summary/v1`. For when the test
@@ -102,7 +102,7 @@ identities provide that, and nothing else is shared:
 
 - **Ephemeral `:0` ports.** Bind HTTP and gRPC to independent `:0` ports; read
   the actual ports back (clean `local_addr()`) and inject them into the Child
-  env. Because otelite *owns* the Child env there is no port-discovery problem,
+  env. Because otelite _owns_ the Child env there is no port-discovery problem,
   so ephemeral is strictly best — no hash-port scheme (that exists in the devenv
   stack only because emitter and receiver are configured separately).
   `--http-port` / `--grpc-port` force fixed ports for deterministic/debug runs.
@@ -154,7 +154,7 @@ fire-and-forget emitters; otelite **never** waits unbounded. See
 `decisions/0006` for the evidence.
 
 The guarantee depends on **durability before ack**: otelite writes each export to
-the sink and flushes *before* returning the OTLP success response (with
+the sink and flushes _before_ returning the OTLP success response (with
 `sync_all` on shutdown). So a synchronous emitter that awaits its ack — or any
 SDK that flushes on shutdown — is guaranteed its span is durably captured by the
 time the Child exits, making in-flight drain sufficient (`decisions/0010`). To
@@ -169,7 +169,7 @@ Effect helper for the Effect/TS test harness. The helper is built
 **Effect-native** (`/sk-effect`):
 
 - Spawns the CLI via `@effect/platform` `Command` (`Command.make("otelite",
-  ...)` + `CommandExecutor`), not `node:child_process`. Receiver lifecycle is a
+...)` + `CommandExecutor`), not `node:child_process`. Receiver lifecycle is a
   scoped resource so the Child + capture are released deterministically.
 - Decodes the `run` summary and `inspect` rows with `Schema` — `Schema.decode`
   over the CLI's JSON contract — so consumers get typed `Summary` / `SpanRow`

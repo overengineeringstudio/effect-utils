@@ -37,6 +37,6 @@ Reading a **Capture** back into a normalized, filtered view (flat spans, or a
 summary) for assertions. otelite normalizes; it does not assert.
 
 **Lane**:
-A verification path. otelite is the *local-file capture lane* (fast, no stack).
-The *Grafana/Tempo-mediated lane* is what operators see. The real collector is
-the *production lane*. otelite is not a substitute for either.
+A verification path. otelite is the _local-file capture lane_ (fast, no stack).
+The _Grafana/Tempo-mediated lane_ is what operators see. The real collector is
+the _production lane_. otelite is not a substitute for either.
