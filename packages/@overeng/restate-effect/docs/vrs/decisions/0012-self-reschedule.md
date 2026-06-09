@@ -108,6 +108,83 @@ The shipped guidance: wrap the fallible work in a BOUNDED `Restate.run(name,
 action, { maxRetryAttempts })`. That is where per-cycle retry lives; the policy
 then decides skip vs stop on the bounded give-up.
 
+## Composition: Retry-After re-arm + webhook wake
+
+The narrow primitive composes two more behaviors a real watcher needs, both opt-in
+on `make` (validated by `src/scheduled-compose.integration.test.ts`,
+productizing `tmp/restate-spike-pollloop-compose`). Crucially, neither is a NEW
+retry mechanism — they thread the EXISTING boundary classification + descriptor
+primitives into the loop cadence, so there is still ONE source of truth for "is
+this error retryable + how long to back off".
+
+### `errorSchema` → Retry-After re-arm (the SINGLE source of truth)
+
+`make({ errorSchema })` declares the cycle's error union (a `Schema.TaggedError` /
+`Schema.Union`, annotated `Restate.retryable(...)` / `Restate.terminal(...)`). A
+cycle failure is routed through the boundary's `classifyOutcome` — the SAME
+classifier the endpoint uses — instead of a blanket catch:
+
+- A `retryable` member RE-ARMS the next cycle after its PROJECTED `retryAfter`
+  floor (read off the failing instance, e.g. a 429's `retryAfterMillis`), with the
+  cursor AND iteration FROZEN — it is the SAME logical cycle retrying, not an
+  advance. The floor is read back off the `RetryableError` `classifyOutcome`
+  produced, so the projection is computed ONCE and is identical to what the
+  boundary would have used had the error escaped a plain handler.
+- A `terminal` member / defect / give-up falls to the existing `onCycleError`
+  policy (skip / stop).
+- An interrupt is re-raised (cancel/suspension semantics stand).
+- `maxRetryBackoffs?` (default unbounded) caps consecutive backoffs for one logical
+  cycle; past the cap the retryable failure is DEMOTED to `onCycleError`, so a
+  permanently-429 source eventually skips/stops instead of backing off forever.
+
+The re-arm is implemented WITHOUT un-sending the pre-armed `delayMillis` send: the
+committed "re-arm-before-fallible-work" ordering pre-arms a `delayMillis` send, so
+on a retryable outcome the cycle BUMPS the generation and arms a FRESH `retryAfter`
+send under the new generation — the already-armed `delayMillis` send then lands and
+no-ops via the generation guard. The backoff is therefore a DELAYED SELF-SEND in
+the no-wake shape, so the per-key write lock is RELEASED during the backoff and a
+`stop` mid-backoff completes promptly (measured ~3ms into a 3000ms backoff).
+
+This required ONE boundary fix: `classifyOutcome` previously read the
+`terminal`/`retryable` annotation off the declared schema's top-level AST, which
+for a `Schema.Union` is the un-annotated union node — so a retryable union member
+(a 429 alongside a terminal error, the realistic case) silently mis-classified as
+terminal. The classifier now resolves the matching union MEMBER for the actual
+failing error (the one whose `encodeUnknownEither` accepts it) before reading the
+class. This is a general boundary correctness fix (it affects any union-typed error
+channel, not just pollLoop); see spec §5.
+
+### `wake` → awakeable-driven early fire
+
+`make({ wake: true })` lets a webhook cut the inter-cycle wait short. The
+inter-cycle wait then moves INSIDE the invocation as
+`Restate.race([sleepDescriptor(delay), wake.descriptor])` (the deterministic
+descriptor combinator, decision 0005). Each cycle opens a FRESH awakeable, persists
+its id in State, and exposes it via a `wakeId` SHARED handler (readable while the
+exclusive cycle holds the lock). An external webhook reads the id and resolves it
+via ingress `resolveAwakeable`; the race ends early and the next cycle re-arms with
+delay 0. The wake reason is threaded to the next cycle as `wokenBy` (a one-shot
+payload). The id is ROTATED per cycle; a stale id resolves harmlessly (its
+awakeable belongs to a completed invocation).
+
+TRADEOFF (documented): wake mode HOLDS the per-key write lock during the
+inter-cycle wait (the race is in-invocation), so an exclusive `stop`/`start` queues
+behind it, bounded by the sleep leg (~3s in the probe). The default NO-WAKE shape
+stays the WEDGE-FREE delayed-send path (lock released between cycles). Recommend
+pairing wake with SHORT `retryAfter` floors, or preferring no-wake when a long 429
+floor and prompt `stop` matter more than early fire.
+
+### Two materialized loop bodies
+
+The no-wake delayed-send shape and the wake held-race shape differ enough that
+`make` materializes TWO distinct `cycle` bodies behind one config (selected on
+`wake`), rather than branching deep inside one body — the cleanest structure given
+the durability reasoning differs (no-wake relies on the pre-armed delayed send; wake
+relies on the journaled held race + the persisted generation). Durability holds for
+both: a SIGKILL mid inter-cycle wait resumes after restart (the held race's timer /
+the pending delayed send survives), verified by
+`src/scheduled-durability.integration.test.ts`.
+
 ## p99 latency teaching
 
 A blocking ingress `call` into a per-key Virtual Object serializes behind that

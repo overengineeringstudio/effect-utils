@@ -139,6 +139,35 @@ describe('error transport (contract layer, server-free)', () => {
     expect((out as restate.RetryableError).retryAfter).toBeUndefined()
   })
 
+  it('a union error schema classifies per-MEMBER (retryable member ≠ terminal member)', () => {
+    /* The declared error is a `Schema.Union` of a RETRYABLE 429 + a TERMINAL 404.
+     * The per-member `terminal`/`retryable` annotation lives on the MEMBERS, not the
+     * union node, so the boundary must resolve the matching member for the actual
+     * failing error before reading the class — else the retryable member is silently
+     * mis-classified as terminal (the pollLoop compose blocker). */
+    class RateLimited extends Schema.TaggedError<RateLimited>('test/RateLimited2')('RateLimited', {
+      retryAfterMillis: Schema.Number,
+    }) {}
+    class Gone extends Schema.TaggedError<Gone>('test/Gone')('Gone', { id: Schema.String }) {}
+    const UnionSchema = Schema.Union(
+      Restate.retryable(Schema.asSchema(RateLimited), { retryAfter: (e) => e.retryAfterMillis }),
+      Restate.terminal(Schema.asSchema(Gone), { errorCode: 404 }),
+    )
+
+    /* The RETRYABLE member → a RetryableError honoring its projected retryAfter. */
+    const retry = toTerminal(Cause.fail(new RateLimited({ retryAfterMillis: 1_200 })), UnionSchema)
+    expect(retry).toBeInstanceOf(restate.RetryableError)
+    expect(retry).not.toBeInstanceOf(restate.TerminalError)
+    expect((retry as restate.RetryableError).retryAfter).toBe(1_200)
+
+    /* The TERMINAL member → a TerminalError with its per-member errorCode (404). */
+    const terminal = toTerminal(Cause.fail(new Gone({ id: 'g_1' })), UnionSchema)
+    expect(terminal).toBeInstanceOf(restate.TerminalError)
+    const t = terminal as restate.TerminalError
+    expect(t.code).toBe(404)
+    expect((JSON.parse(t.message) as { _tag: string })._tag).toBe('Gone')
+  })
+
   it('a failure NOT matching the declared error union is a DEFECT, not a mis-encode', () => {
     /* `Registry.lookup` declares `NotFound`; a foreign tagged error must not be
      * silently encoded into a terminal body — it is error-classification drift and
