@@ -646,11 +646,11 @@ and starts listening; the finalizer closes the server (R29).
 
 Three distinct ports are in play; do not conflate them:
 
-| Port             | Owner                 | Default | Role                                       |
-| ---------------- | --------------------- | ------- | ------------------------------------------ |
-| ingress          | `restate-server`      | 8080    | external entry point (callers → server)    |
-| admin            | `restate-server`      | 9070    | health, deployment registration, State API |
-| handler ENDPOINT | this binding's server | 9080    | discovery + invoke (server → handlers)     |
+| Port             | Owner                 | Default | Role                                                                           |
+| ---------------- | --------------------- | ------- | ------------------------------------------------------------------------------ |
+| ingress          | `restate-server`      | 8080    | external entry point (callers → server)                                        |
+| admin            | `restate-server`      | 9070    | health, deployment registration, State API, management (`./admin`, section 16) |
+| handler ENDPOINT | this binding's server | 9080    | discovery + invoke (server → handlers)                                         |
 
 The binding owns ONLY the handler-endpoint port (the SDK server it serves);
 8080/9070 belong to `restate-server`. (The testing harness uses OS port-0 for all
@@ -946,6 +946,13 @@ hook's `attempt <target>` span (decision 0014):
 
 - `restate.service` (construct name), `restate.handler` (handler name),
   `restate.object.key` (Object/Workflow key; omitted for plain Services).
+- `restate.workflow.id` (the Workflow key; omitted for Services/Objects) and
+  `restate.idempotency.key` (the original-invocation `idempotency-key` header;
+  omitted when none) — auto-stamped so a consumer slices on the end-to-end
+  identity (producer intent → workflow id → idempotency key) WITHOUT hand-rolling
+  them. These are IDENTITY values, never a `sensitive`/redacted FIELD (a redacted
+  field is encrypted in the serde and never reaches the boundary seam), so the
+  "never a redacted value on a span" rule holds.
 - On a FAILURE: `restate.error.tag` (the domain error `_tag`) + `restate.error.class`
   (`terminal` | `retryable` | `cancelled`) — read from the boundary's
   `classifyOutcome` (the single source of truth `toTerminal` is built on, so the
@@ -1270,7 +1277,9 @@ stateDiagram-v2
   attempt-scoped cleanup (idempotent, since a new attempt may follow).
 
 The binding surfaces `ctx.cancel` (cancel another invocation) and the interruption
-edge; it does NOT own the state machine (A01) — the `restate-server` does.
+edge; it does NOT own the state machine (A01) — the `restate-server` does. An
+OPERATOR drives these edges from OUTSIDE a handler via the `./admin` management
+surface (`RestateAdmin.cancel` / `kill` / …, section 16).
 
 ## 13. Schema annotation namespace
 
@@ -1346,6 +1355,68 @@ expressible by hand with `Restate.run` + Effect finalizers, relying on the
 section-5a guarantee. Compensations must themselves be durable steps
 (`Restate.run`) so they survive replay.
 
+## 16. Operations / management API (`./admin`)
+
+Traces: R31. See [decisions/0018](./decisions/0018-admin-management-api.md).
+
+An opt-in `./admin` subpath (a separate dependency-light subpath like `./otel` /
+`./testing`, NOT on the core `.` export) exposes a typed surface over the
+`restate-server` ADMIN REST API for OPERATING a running deployment. `RestateAdmin`
+is the Tag; `RestateAdmin.layer({ adminUrl, apiKey? })` (or `layerConfig` reading
+`RESTATE_ADMIN_URL` / `RESTATE_ADMIN_KEY`) the layer — MIRRORING the
+`RestateIngress` pattern (section 9, decision 0016) but bound to the ADMIN url, not
+ingress. Every operation is an Effect failing with `RestateError({ reason:
+'AdminFailed' })`.
+
+| Group         | Operations                                                                      | Endpoint(s)                                |
+| ------------- | ------------------------------------------------------------------------------- | ------------------------------------------ |
+| Invocations   | `cancel` / `kill` / `pause` / `resume` / `purge` / `purgeJournal` / `delete`    | `PATCH\|DELETE /invocations/{id}[/{verb}]` |
+| Invocations   | `restartAsNew({ from?, deployment? })` → `{ newInvocationId }`                  | `PATCH /invocations/{id}/restart-as-new`   |
+| Deployments   | `registerDeployment` / `listDeployments` / `getDeployment` / `updateDeployment` | `POST\|GET\|PATCH /deployments[/{id}]`     |
+| Introspection | `query(sql, rowSchema)` (typed) / `queryRaw(sql)`                               | `POST /query` (SQL over `sys_*`)           |
+
+- **Typed-passthrough introspection.** The `/query` SQL rows are the server's shape
+  (the `sys_*` columns), which the binding does NOT own. `query` is a thin TYPED
+  passthrough: the caller supplies the SQL AND the row Schema, and the binding only
+  threads them through and `Schema.decodeUnknown`s each row (a decode mismatch →
+  `AdminFailed`). `queryRaw` is the untyped escape hatch. This keeps the binding
+  from owning — and evolving with — the `sys_*` schema.
+- **One bare client, no drift.** The raw HTTP lives in ONE module (`AdminApi.ts`)
+  that BOTH `./admin` and the harness (`./testing`'s `stateOf` + deployment
+  registration) consume — lifting the harness's previously-duplicated
+  fetch-against-admin code.
+
+### 16.1 Trust boundary
+
+The admin API is a DIFFERENT, more dangerous trust boundary than the SDK
+invocation protocol:
+
+- **Unauthenticated by default — never expose it publicly.** Reaching the admin
+  port lets anyone cancel/kill invocations, mutate State, and read every `sys_*`
+  row. Keep it on a trusted network or behind an authenticating proxy; for a
+  secured / Cloud admin endpoint pass a bearer `apiKey` (`Redacted<string>`,
+  unwrapped only at the request boundary — decision 0016).
+- **Less stable than the SDK protocol — pinned.** Endpoint shapes, query params,
+  and the `sys_*` SQL schema change across server versions; `./admin` is pinned to
+  **restate-server 1.6.2 (admin-api-version 3)** and verified against it.
+
+### 16.2 Operating a deployment — the Molty runbook
+
+The recipe (`examples/13-admin-operations.ts`, verified by
+`src/admin.integration.test.ts`) models an `incident` Virtual Object (single-writer
+state machine) + a `delivery` Workflow that can WEDGE, and the flows a production
+consumer runs: LIST invocations (filter by `target_service_name` / `status`),
+INSPECT workflow / QUERY object State (`SELECT … FROM state` or `stateOf`), SURFACE
+STUCK deliveries (non-terminal invocations, ranked by `retry_count`), and
+CANCEL/KILL/restart a wedged invocation. See the guide's
+[admin operations](../guide/admin-operations.md) page.
+
+Version caveats verified against 1.6.2: the BULK/BATCH invocation verbs (a filtered
+`PATCH /invocations/{verb}`) do NOT exist (they 405) — a later-server feature; and
+a WORKFLOW `run` blocked on a long durable wait reports `status = 'running'` (not
+`suspended` like an Object handler), so "stuck" is non-terminal-ranked-by-retries,
+not a single status.
+
 ---
 
 ## Deferred (designed for later)
@@ -1365,8 +1436,6 @@ Out of v1 scope, designed to slot in without reshaping the core:
   part of this — that is a serde Schema transform (section 13,
   [decisions/0011](./decisions/0011-restate-schema-annotations.md)) and ships in
   v1; the codec stays fully deferred.
-- **Admin / management wrappers** — typed wrappers over the admin API
-  (registration, invocation cancel/kill/pause/resume, attach).
 
 ## Open design questions
 

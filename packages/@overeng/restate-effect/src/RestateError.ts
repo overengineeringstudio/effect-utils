@@ -21,6 +21,7 @@ import { Schema } from 'effect'
  * - `EndpointFailed`     — the HTTP/2 endpoint server failed to bind/serve
  * - `RegistrationFailed` — deployment registration with the admin API failed
  * - `IngressFailed`      — an external ingress client call failed
+ * - `AdminFailed`        — an admin / management API call failed (`./admin`)
  */
 export class RestateError extends Schema.TaggedError<RestateError>(
   '@overeng/restate-effect/RestateError',
@@ -32,6 +33,7 @@ export class RestateError extends Schema.TaggedError<RestateError>(
     'EndpointFailed',
     'RegistrationFailed',
     'IngressFailed',
+    'AdminFailed',
   ),
   method: Schema.String,
   cause: Schema.optional(Schema.Defect),

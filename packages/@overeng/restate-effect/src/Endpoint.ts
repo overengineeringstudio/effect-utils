@@ -2,10 +2,10 @@ import * as http2 from 'node:http2'
 
 import * as restate from '@restatedev/restate-sdk'
 import { createEndpointHandler } from '@restatedev/restate-sdk/node'
+import type { Config } from 'effect'
 import {
   Cause,
   Chunk,
-  Config,
   type ConfigError,
   Context,
   Duration,
@@ -226,6 +226,36 @@ export const toTerminal = (
 /* An untyped Effect handler bound to a single contract handler. */
 type EffectHandler = (input: unknown) => Effect.Effect<unknown, unknown, any>
 
+/* The original-invocation header carrying the idempotency key (verified against
+ * `@restatedev/restate-sdk-clients` 1.14.5: `IDEMPOTENCY_KEY_HEADER`). Lower-cased
+ * — HTTP header names are case-insensitive and the SDK stores them lower-cased. */
+const IDEMPOTENCY_KEY_HEADER = 'idempotency-key'
+
+/**
+ * Read the idempotency key off the ORIGINAL invocation request headers (decision
+ * 0014, #5). It rides as the `idempotency-key` header on the original invocation
+ * (NOT the attempt headers), so it is replay-stable across attempts. Defensive:
+ * `ctx.request()` may be unavailable on a non-handler context shape — returns
+ * `undefined` rather than throwing, so the boundary never fails on a missing key.
+ */
+const readIdempotencyKeyHeader = (ctx: restate.Context): string | undefined => {
+  try {
+    const headers = (
+      ctx as { request?: () => { headers?: ReadonlyMap<string, string> } }
+    ).request?.()?.headers
+    if (headers === undefined) return undefined
+    const direct = headers.get(IDEMPOTENCY_KEY_HEADER)
+    if (direct !== undefined) return direct
+    /* Be tolerant of a non-lower-cased header key. */
+    for (const [k, v] of headers) {
+      if (k.toLowerCase() === IDEMPOTENCY_KEY_HEADER) return v
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * A per-invocation Effect transform applied to the user's program right before
  * it runs on the captured runtime — the inbound bridge seam (R23, §10). The
@@ -246,15 +276,24 @@ export type EndpointHooks = restate.HooksProvider
 /**
  * Per-invocation identity the boundary hands the {@link BoundaryObserver} (R23,
  * §10, decision 0014): the construct name (`service`), the handler name, the
- * Object/Workflow `key` (undefined for plain Services), and whether the marker
- * kind is keyed. The `./otel` observer stamps these as span attributes
- * (`restate.service` / `restate.handler` / `restate.object.key`) and metric
- * labels. PURE in the core (no otel type).
+ * Object/Workflow `key` (undefined for plain Services), the WORKFLOW ID (the key
+ * of a Workflow handler — undefined for Services/Objects), and the IDEMPOTENCY KEY
+ * (from the original invocation's `idempotency-key` header, undefined when none).
+ * The `./otel` observer stamps these as span attributes (`restate.service` /
+ * `restate.handler` / `restate.object.key` / `restate.workflow.id` /
+ * `restate.idempotency.key`) and metric labels. PURE in the core (no otel type).
+ *
+ * `workflowId` / `idempotencyKey` are IDENTITY values (an opaque key + a
+ * caller-chosen dedup key), never a `sensitive`/redacted FIELD value — so stamping
+ * them does not violate the "never a redacted field on a span" rule (decision
+ * 0014): a redacted field is encrypted in the serde and never reaches this seam.
  */
 export interface BoundaryInfo {
   readonly service: string
   readonly handler: string
   readonly key: string | undefined
+  readonly workflowId: string | undefined
+  readonly idempotencyKey: string | undefined
 }
 
 /**
@@ -361,13 +400,20 @@ const runEffectHandler =
     const frozenBaseMillis = await ctx.date.now()
     /* Open the boundary observation at handler ENTRY (the hook's attempt span is
      * active here), with the construct/handler identity + Object/Workflow key. A
-     * plain Service has no `key` (undefined). */
+     * plain Service has no `key` (undefined). The WORKFLOW ID is the key of a
+     * Workflow handler (markers `workflowRun`/`workflowShared`); the IDEMPOTENCY KEY
+     * comes from the original-invocation header (auto-stamped so consumers do not
+     * hand-roll them, #5). */
+    const key = opts.markers !== 'service' ? (ctx as restate.ObjectContext).key : undefined
+    const isWorkflow = opts.markers === 'workflowRun' || opts.markers === 'workflowShared'
     const onOutcome =
       opts.boundaryObserver !== undefined
         ? opts.boundaryObserver({
             service: opts.service,
             handler: opts.handler,
-            key: opts.markers !== 'service' ? (ctx as restate.ObjectContext).key : undefined,
+            key,
+            workflowId: isWorkflow ? key : undefined,
+            idempotencyKey: readIdempotencyKeyHeader(ctx),
           })
         : undefined
     /* AUTO baseline metrics (decision 0014): the per-attempt counter at ENTRY +

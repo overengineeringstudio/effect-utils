@@ -83,6 +83,8 @@ describe('span attributes (server-free)', () => {
         service: 'Counter',
         handler: 'bump',
         key: 'user-42',
+        workflowId: undefined,
+        idempotencyKey: undefined,
       })
       onOutcome({
         _tag: 'terminal',
@@ -109,6 +111,8 @@ describe('span attributes (server-free)', () => {
         service: 'Greeter',
         handler: 'greet',
         key: undefined,
+        workflowId: undefined,
+        idempotencyKey: undefined,
       })
       onOutcome({ _tag: 'success' })
     })
@@ -117,8 +121,35 @@ describe('span attributes (server-free)', () => {
     expect(attempt.attributes['restate.service']).toBe('Greeter')
     expect(attempt.attributes['restate.handler']).toBe('greet')
     expect(attempt.attributes['restate.object.key']).toBeUndefined()
+    expect(attempt.attributes['restate.workflow.id']).toBeUndefined()
+    expect(attempt.attributes['restate.idempotency.key']).toBeUndefined()
     expect(attempt.attributes['restate.error.class']).toBeUndefined()
     expect(attempt.attributes['restate.error.tag']).toBeUndefined()
+  })
+
+  it('auto-stamps workflow.id + idempotency.key on the attempt span (#5)', async () => {
+    const hook = openTelemetryHook({ tracer: trace.getTracer('@overeng/restate-effect') })
+    const interceptor = hook(makeHookCtx('Approval/run')).interceptor!
+
+    await interceptor.handler!(async () => {
+      /* A Workflow `run`: its `key` is the workflow id, and the original
+       * invocation carried an idempotency key — both auto-stamped by the boundary. */
+      const onOutcome = RestateOtel.boundaryObserver({
+        service: 'Approval',
+        handler: 'run',
+        key: 'wf-deliver-42',
+        workflowId: 'wf-deliver-42',
+        idempotencyKey: 'intent-7f3a',
+      })
+      onOutcome({ _tag: 'success' })
+    })
+
+    const attempt = exporter.getFinishedSpans().find((s) => s.name === 'attempt Approval/run')!
+    expect(attempt).toBeDefined()
+    expect(attempt.attributes['restate.workflow.id']).toBe('wf-deliver-42')
+    expect(attempt.attributes['restate.idempotency.key']).toBe('intent-7f3a')
+    /* The Workflow key still rides as object.key too (Workflows are keyed). */
+    expect(attempt.attributes['restate.object.key']).toBe('wf-deliver-42')
   })
 })
 
