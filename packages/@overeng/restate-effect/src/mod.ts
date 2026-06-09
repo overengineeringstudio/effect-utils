@@ -43,14 +43,14 @@
  * this core `.` surface.
  */
 
-export { RestateError } from './RestateError.ts'
+export { RestateError } from './schema/RestateError.ts'
 export {
   effectSerde,
   ingressSerde,
   internalSerde,
   type RestateSerde,
   type SerdeSlot,
-} from './Serde.ts'
+} from './schema/Serde.ts'
 
 /**
  * Field-level redaction for `sensitive`/`redacted` schema fields (decision 0011,
@@ -68,22 +68,22 @@ export {
   aesGcmRedactionLayer,
   RedactionCipherMissingError,
   type RedactionCipher,
-} from './Redaction.ts'
+} from './schema/Redaction.ts'
 
-import * as Annotations from './Annotations.ts'
-export type { RetentionOptions, SerdeOptions, ErrorClass } from './Annotations.ts'
+import * as Annotations from './schema/Annotations.ts'
+export type { RetentionOptions, SerdeOptions, ErrorClass } from './schema/Annotations.ts'
+import * as Ctx from './authoring/RestateContext.ts'
 /**
  * Durable combinators + Restate Schema annotations under one `Restate`
  * namespace: `Restate.run` / `.sleep` / `.timeout` / `.all` / `.race` / `.any`
  * (durable ops), and `Restate.terminal` / `.retryable` / `.serde` (Schema
  * annotations read at the error boundary / serde).
  */
-import * as Client from './Client.ts'
-import { annotateSpan } from './Metrics.ts'
-import { reschedule } from './Reschedule.ts'
-import * as Ctx from './RestateContext.ts'
-import * as Runtime from './Runtime.ts'
-import { pollLoop } from './Scheduled.ts'
+import * as Client from './clients/Client.ts'
+import { annotateSpan } from './observability/Metrics.ts'
+import * as Runtime from './runtime/Runtime.ts'
+import { reschedule } from './scheduling/Reschedule.ts'
+import { pollLoop } from './scheduling/Scheduled.ts'
 
 export const Restate = {
   run: Ctx.run,
@@ -149,10 +149,10 @@ export const Restate = {
   redacted: Annotations.Restate.redacted,
 } as const
 
-export { RestateContext, StateRead, StateWrite, ObjectKey } from './RestateContext.ts'
+export { RestateContext, StateRead, StateWrite, ObjectKey } from './authoring/RestateContext.ts'
 /* `DurablePromise` is the capability MARKER Tag (type only — used in handler `R`
  * channels); the public combinator namespace is the `DurablePromise` const below. */
-export type { DurablePromise as DurablePromiseCapability } from './RestateContext.ts'
+export type { DurablePromise as DurablePromiseCapability } from './authoring/RestateContext.ts'
 export type {
   AwakeableId,
   Descriptor,
@@ -162,7 +162,7 @@ export type {
   SendOptions,
   StateSchemas,
   StateValueType,
-} from './RestateContext.ts'
+} from './authoring/RestateContext.ts'
 
 /** Typed, capability-gated State combinators bound to a contract's `state` block. */
 export const State = { for: Ctx.stateFor } as const
@@ -181,17 +181,17 @@ export const State = { for: Ctx.stateFor } as const
  * per-cycle retry lives inside a bounded `Restate.run`. `WakePayload` is the wake
  * awakeable schema (resolved via ingress `resolveAwakeable`).
  */
-export { RestateScheduled, Schedule, OnCycleError, WakePayload } from './Scheduled.ts'
+export { RestateScheduled, Schedule, OnCycleError, WakePayload } from './scheduling/Scheduled.ts'
 export type {
   Scheduled,
   ScheduledConfig,
   CycleEffect,
   LoopStatusTag,
   StatusOutput as ScheduledStatus,
-} from './Scheduled.ts'
+} from './scheduling/Scheduled.ts'
 
 /** The typed durable self-send building block (#4, decision 0012). */
-export { reschedule } from './Reschedule.ts'
+export { reschedule } from './scheduling/Reschedule.ts'
 
 /**
  * Typed, capability-gated Workflow durable-promise combinators bound to a payload
@@ -247,7 +247,7 @@ export {
   type WorkflowSignalQueryOf,
   type WorkflowSignalInputOf,
   type WorkflowSignalSuccessOf,
-} from './Service.ts'
+} from './authoring/Service.ts'
 
 export {
   layer,
@@ -256,18 +256,21 @@ export {
   materializeObject,
   materializeWorkflow,
   materializeAny,
+  type AnyImplementation,
+  type EndpointOptions,
+  type MaterializeWiring,
+} from './endpoint/Endpoint.ts'
+
+export {
   toTerminal,
   classifyOutcome,
-  type AnyImplementation,
   type BoundaryErrorClass,
   type BoundaryInfo,
   type BoundaryObserver,
   type BoundaryOutcome,
-  type EndpointOptions,
   type EndpointHooks,
   type HandlerWrap,
-  type MaterializeWiring,
-} from './Endpoint.ts'
+} from './error/Boundary.ts'
 
 /**
  * The replay-aware auto baseline metric definitions (decision 0014, §10) — Effect
@@ -282,7 +285,7 @@ export {
   durableStepsTotal,
   awakeableWaitMs,
   pollLoopCyclesTotal,
-} from './Metrics.ts'
+} from './observability/Metrics.ts'
 
 /**
  * Per-invocation runtime boundary helpers (R17, R31, decision 0015).
@@ -292,7 +295,7 @@ export {
  * suppressed on replay); `withAttemptInterruption` bridges `attemptCompletedSignal`
  * to interruption. All wired by `materialize*`; exported for direct testing.
  */
-export { determinismLayer, loggerLayer, withAttemptInterruption } from './Runtime.ts'
+export { determinismLayer, loggerLayer, withAttemptInterruption } from './runtime/Runtime.ts'
 
 /**
  * The typed external ingress client. `RestateIngress` is the connected-ingress
@@ -321,4 +324,4 @@ export {
   resolveAwakeable as ingressResolveAwakeable,
   rejectAwakeable as ingressRejectAwakeable,
   result,
-} from './Client.ts'
+} from './clients/Client.ts'
