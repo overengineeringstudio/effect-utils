@@ -1,0 +1,130 @@
+# OpenTelemetry (`./otel`)
+
+[← Handbook index](./README.md)
+
+The opt-in OTel bridge wires the external caller, the Restate server spans, the SDK
+attempt/`run` spans, and your in-handler Effect spans into **one coherent trace** —
+AND makes an invocation operable from Grafana with span attributes + metrics. The
+otel packages live behind this subpath, so the core `.` export stays
+dependency-light. The full file is [`examples/09-otel.ts`](../../examples/09-otel.ts).
+
+```
+[external caller traceparent]
+        │ W3C extract (server)
+        ▼
+restate-server:  ingress_invoke ── invoke         (server spans)
+        │ injects traceparent into attemptHeaders
+        ▼
+openTelemetryHook:  attempt <target> ── run (<name>)   (replay-aware)
+        │ context.with(attemptContext)
+        ▼  bridge: trace.getActiveSpan().spanContext() → Tracer.withSpanContext
+Effect spans (Effect.withSpan on boundary ops)
+```
+
+## Wiring it up
+
+```ts
+import { NodeRuntime } from '@effect/platform-node'
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
+import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base'
+import { Effect } from 'effect'
+import { serve } from '@overeng/restate-effect'
+import { RestateOtel } from '@overeng/restate-effect/otel'
+
+// `layer` registers ONE global TracerProvider + a global context manager (the
+// load-bearing step that makes the attempt span resolve at handler entry), binds
+// Effect's tracer to the same provider, AND — when a metric exporter/reader is
+// given — registers a MeterProvider sharing the same Resource and binds Effect's
+// `Metric` to it. Omit the metric config for a traces-only setup.
+const OtelLayer = RestateOtel.layer({
+  resource: { serviceName: 'greeter' },
+  exporter: new ConsoleSpanExporter(), // a BatchSpanProcessor over OTLP in prod
+  metricExporter: new OTLPMetricExporter({ url: 'http://localhost:4318/v1/metrics' }),
+})
+
+// `withOtel` attaches the hook + inbound span-context bridge + the boundary
+// observer (span-attribute stamping) to every handler.
+serve(RestateOtel.withOtel({ services: [GreeterLive], port: 9080 })).pipe(
+  Effect.provide(Greeting.Default),
+  Effect.provide(OtelLayer),
+  NodeRuntime.runMain,
+)
+```
+
+`RestateOtel.layer` MUST be present — it registers the global `TracerProvider` **and
+a global context manager** (`AsyncLocalStorageContextManager`), the load-bearing step
+that makes the hook's active span resolve at handler entry. Without the global
+context manager, `getActiveSpan()` returns `undefined` and the inbound bridge is fed
+nothing, leaving orphaned Effect spans. (Neither `NodeSdk.layer` nor
+`Tracer.layerGlobal` alone register a context manager — `./otel` owns this.)
+
+## Span attributes
+
+The boundary auto-stamps the **attempt span** with the identity an operator slices
+on:
+
+- `restate.service` (construct name), `restate.handler` (handler name),
+  `restate.object.key` (Objects/Workflows; omitted for plain Services);
+- on a **failure**: `restate.error.tag` (the domain error `_tag`) +
+  `restate.error.class` (`terminal` | `retryable` | `cancelled`), read from the same
+  `classifyOutcome` the SDK outcome is built on (so the span class matches exactly).
+
+For custom **business** attributes, use `Restate.annotateSpan` in a handler — a thin
+otel-free combinator over `Effect.annotateCurrentSpan` on the core namespace:
+
+```ts
+import { Restate } from '@overeng/restate-effect'
+
+const sync = (input: SyncInput) =>
+  Effect.gen(function* () {
+    yield* Restate.annotateSpan({ dataSourceId: input.dataSourceId })
+    // … now every span in this invocation is sliceable by `dataSourceId` in Tempo.
+  })
+```
+
+Use the `span.label` convention for a single primary label.
+
+> **Never stamp a sensitive value onto a span attribute.** Redaction
+> (`Restate.sensitive` / `redacted`, see [Annotations](./annotations.md#field-level-redaction))
+> is serde-only — it encrypts the value on the wire/journal. A span attribute
+> bypasses the serde and would leak the plaintext into your traces. Stamp a
+> non-sensitive identifier instead.
+>
+> `Restate.annotateSpan` attributes are **not** replay-suppressed. For
+> side-effecting telemetry (a span event, a metric increment), route it through
+> `Restate.run` so it runs once on real execution and is skipped on replay.
+
+## Metrics
+
+When a `metricExporter`/`metricReader` is configured, the bridge emits a
+REPLAY-AWARE auto baseline (exactly-once across attempts/replays):
+
+| Metric | Labels |
+| --- | --- |
+| `restate_invocations_total` | `service`, `handler`, `outcome` (`success`/`terminal`/`retryable`/`cancelled`) |
+| `restate_invocation_duration_ms` | `service`, `handler`, `outcome` |
+| `restate_attempts_total` | `service`, `handler` (retries = attempts − success/terminal) |
+| `restate_durable_steps_total` | `step` (the `Restate.run` name) |
+| `restate_awakeable_wait_ms` | — |
+| `restate_poll_loop_cycles_total` | `name`, `outcome` (`ok`/`error`/`stopped`) |
+
+The auto baseline is built from core Effect `Metric`s (otel-free), bound to OTel only
+when the meter is registered — so adoption is additive (omit the metric config for an
+in-memory-metrics, traces-only setup). Wall-clock elapsed is read via
+`process.hrtime.bigint()` (a monotonic, non-journaled side-channel), never
+`Date.now()`.
+
+User counters/histograms export through the SAME meter (any Effect `Metric`). For
+exactly-once custom telemetry, increment **inside** a `Restate.run` (journaled-once)
+or gate on non-replay — preferred over the version-fragile `isReplaying` flag, which
+reads an unstable internal SDK symbol.
+
+The whole path is verified server-free with an in-memory `MetricReader` +
+`SpanExporter`, including a forced-replay no-double-count assertion
+([`src/observability.test.ts`](../../src/observability.test.ts)).
+
+## See also
+
+- [Annotations and redaction](./annotations.md) — the redaction rule referenced above.
+- [Durable steps](./durable-steps.md) — `Restate.run` as the exactly-once seam.
+- [decision 0014](../vrs/decisions/0014-observability-metrics-and-attrs.md) — the metrics + attrs rationale.
