@@ -26,7 +26,6 @@ import {
 } from '../examples/11-testing.ts'
 import {
   type AwakeableId,
-  callTyped,
   ingressResolveAwakeable,
   RestateIngress,
   result as ingressResult,
@@ -55,15 +54,15 @@ describe.skipIf(!serverAvailable)('examples (verified end-to-end)', () => {
         expect(ok.message).toBe('Hello Sarah')
         expect(ok.id).toMatch(/^[0-9a-f-]{36}$/)
 
-        /* The typed error boundary: `EmptyName` crosses the wire as a terminal
-         * error and decodes back into the tagged error for `catchTag`. The
-         * standalone `callTyped` carries the precise `RestateError | EmptyName`
-         * channel (the harness `ingress.*` shorthand widens the typed-error union —
-         * see the README "API friction" note); provide the harness ingress URL. */
-        const recovered = yield* callTyped(Greeter, 'greet', { name: '' }).pipe(
+        /* The typed error boundary: `EmptyName` crosses the wire as a terminal error
+         * and decodes back into the tagged error for `catchTag`. The harness
+         * `ingress.callTyped` now carries the precise `RestateError | EmptyName`
+         * channel (the bound surface mirrors each `Client` function's generic
+         * signature, so the per-call typed error survives — no escape to the
+         * standalone `callTyped` needed). */
+        const recovered = yield* harness.ingress.callTyped(Greeter, 'greet', { name: '' }).pipe(
           Effect.map(() => 'unexpected' as const),
           Effect.catchTag('EmptyName', () => Effect.succeed('recovered' as const)),
-          Effect.provide(RestateIngress.layer({ url: harness.ingressUrl })),
         )
         expect(recovered).toBe('recovered')
       }),

@@ -149,11 +149,26 @@ the admin port (:9070). The binding owns only this port.
 
 ## Testing
 
+**RestateTestEnv**:
+The swappable mock⟷real façade (`./testing`, `decisions/0017`): ONE `Context.Tag`
+whose surface is the CONTRACT-ADDRESSED invocation level (`invokeService(contract,
+method, input)`, NEVER `impl.method(…)`), with TWO Layer impls — `RestateTestEnv.mock`
+(in-process, no server, ms) and `RestateTestEnv.real` (a thin wrapper over the **Test
+Harness**). The SAME test body runs on either backend; `invoke*` carries
+`RestateError | ErrorOf` (the TYPED declared error) on BOTH, so `catchTag(DomainError)`
+compiles + recovers identically. The front door over the two lower-level primitives
+(**In-memory TestContext** + **Test Harness**), which stay available.
+_Avoid_: "mock vs real are different APIs" (the body is identical; only the Layer swaps).
+
 **Test Harness**:
 The Docker-free scoped `Layer` (`./testing`) that boots a native
 **restate-server** on ephemeral ports in an isolated base dir, serves the
 endpoint, registers the deployment, and exposes the typed ingress client +
 `stateOf`. The Effect-native counterpart to `RestateTestEnvironment`.
+`registerDeployment({ services, appLayer })` serves + registers an additional
+endpoint VERSION (multi-deployment upgrade); the `layer` also accepts endpoint
+observability wiring (`hooks`/`inboundBridge`/`boundaryObserver`) for OTel
+end-to-end.
 
 **alwaysReplay**:
 A harness mode that forces **Replay** at every **Suspension**, surfacing
