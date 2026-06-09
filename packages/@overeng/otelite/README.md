@@ -55,12 +55,12 @@ or the `@overeng/otelite-effect` typed wrapper) owns the assertions.
 Every `inspect` row / summary carries a `schema` tag (locked by conformance
 goldens), so consumers can version-pin:
 
-| Verb | stdout |
-| --- | --- |
-| `run` / `capture` | one `otelite.summary/v1` line |
-| `inspect --signal traces` | `otelite.span/v1` rows, or `otelite.trace-summary/v1` |
+| Verb                       | stdout                                                   |
+| -------------------------- | -------------------------------------------------------- |
+| `run` / `capture`          | one `otelite.summary/v1` line                            |
+| `inspect --signal traces`  | `otelite.span/v1` rows, or `otelite.trace-summary/v1`    |
 | `inspect --signal metrics` | `otelite.metric/v1` rows, or `otelite.metric-summary/v1` |
-| `inspect --signal logs` | `otelite.log/v1` rows, or `otelite.log-summary/v1` |
+| `inspect --signal logs`    | `otelite.log/v1` rows, or `otelite.log-summary/v1`       |
 
 Metric rows are per data point (gauge/sum `value`; histogram
 `count/sum/min/max/mean/bucket_counts/explicit_bounds`; exp-histogram
