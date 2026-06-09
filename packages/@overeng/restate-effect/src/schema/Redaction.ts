@@ -7,14 +7,14 @@ import { SensitiveId } from './Annotations.ts'
 
 /**
  * Field-level redaction for `sensitive`/`redacted` struct fields (decision 0011,
- * spec §4/§13). A `sensitive` annotation is NOT a passive fact — it is consumed
+ * docs/vrs/02-schema-serde/spec.md). A `sensitive` annotation is NOT a passive fact — it is consumed
  * as a serde TRANSFORM: the annotated field's value is ENCRYPTED at encode and
  * DECRYPTED at decode, so the wire/journal bytes hold ciphertext for that field
  * while every other field stays plaintext.
  *
  * The cipher is a PLUGGABLE Effect service (`RestateRedaction`) the consumer
- * provides. The serde runs synchronously (`encodeSync`/`decodeUnknownSync` — spec
- * §4), so the cipher is a SYNCHRONOUS byte transform, resolved ONCE from the
+ * provides. The serde runs synchronously (`encodeSync`/`decodeUnknownSync` —
+ * docs/vrs/02-schema-serde/spec.md §1), so the cipher is a SYNCHRONOUS byte transform, resolved ONCE from the
  * captured runtime's context at `materialize` time and threaded into the serde.
  *
  * Field redaction MUST live here, not in the deferred whole-value

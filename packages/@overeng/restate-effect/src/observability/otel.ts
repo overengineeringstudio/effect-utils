@@ -1,6 +1,6 @@
 /**
  * `@overeng/restate-effect/otel` — the opt-in OpenTelemetry bridge (R23–R25,
- * decision 0007, spec §10). Imported behind the `./otel` subpath so the otel
+ * decision 0007, docs/vrs/08-observability/spec.md). Imported behind the `./otel` subpath so the otel
  * packages (`@effect/opentelemetry`, `@restatedev/restate-sdk-opentelemetry`,
  * `@opentelemetry/*`) stay OUT of the dependency-light core.
  *
@@ -192,7 +192,7 @@ const otelConfig: Config.Config<OtelConfigValues> = Config.all({
 })
 
 /**
- * Configuration-driven variant of {@link sharedLayer} (spec §10, decision 0014).
+ * Configuration-driven variant of {@link sharedLayer} (docs/vrs/08-observability/spec.md, decision 0014).
  * Reads the OTel STANDARD env vars via `Config` — `OTEL_SERVICE_NAME` (service
  * identity) and `OTEL_EXPORTER_OTLP_ENDPOINT` (the OTLP collector base URL) — then
  * hands them to a caller-supplied `build` that returns the literal
@@ -264,7 +264,7 @@ const hook = (options?: Partial<OpenTelemetryHookOptions>): EndpointHooks =>
   } as OpenTelemetryHookOptions)
 
 /**
- * The inbound bridge (R23, §10) as a core {@link HandlerWrap}. Run INSIDE the
+ * The inbound bridge (R23, docs/vrs/08-observability/spec.md) as a core {@link HandlerWrap}. Run INSIDE the
  * handler (the hook has set the attempt span active via `context.with`), it
  * reads `trace.getActiveSpan()?.spanContext()` and reparents the Effect program
  * under it via `Tracer.withSpanContext` — so every in-handler `Effect.withSpan`
@@ -295,7 +295,7 @@ const errorClassOf = (
 }
 
 /**
- * The boundary observer (R23, §10, decision 0014) as a core {@link BoundaryObserver}.
+ * The boundary observer (R23, docs/vrs/08-observability/spec.md, decision 0014) as a core {@link BoundaryObserver}.
  * At handler entry it captures the hook's ACTIVE attempt span and AUTO-stamps the
  * business identity an operator slices on in Tempo/Grafana:
  *
@@ -408,7 +408,7 @@ export {
 } from './Metrics.ts'
 
 /**
- * Whether the current invocation is REPLAYING journaled work (R25, §10).
+ * Whether the current invocation is REPLAYING journaled work (R25, docs/vrs/08-observability/spec.md).
  *
  * Sourced from the SDK's internal `isProcessing()` (negated) on the raw
  * `restate.Context`. VERSION-FRAGILE: it reads an internal, unstable surface

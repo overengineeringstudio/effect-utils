@@ -75,7 +75,7 @@ const readIdempotencyKeyHeader = (ctx: restate.Context): string | undefined => {
 
 /**
  * Provide `RestateContext` (always) plus the capability markers legal for this
- * handler kind (spec §3), the per-invocation determinism layer (journaled
+ * handler kind (docs/vrs/01-authoring/spec.md §3), the per-invocation determinism layer (journaled
  * Clock/Random, R17) and the cancellation↔interruption bridge (R31), run the
  * user's Effect on the captured runtime, and map the exit to a return value or a
  * thrown `TerminalError`/retryable error. The `provide` set is per-kind so an
@@ -97,7 +97,7 @@ const runEffectHandler =
     /* The inbound-bridge transform (`./otel` supplies it; undefined in the
      * otel-free core). Applied INSIDE the handler so `trace.getActiveSpan()`
      * (the hook's attempt span, set active via `context.with` around this fn)
-     * resolves at capture time and reparents the Effect program (R23, §10). */
+     * resolves at capture time and reparents the Effect program (R23, docs/vrs/08-observability/spec.md). */
     readonly inboundBridge: HandlerWrap | undefined
     /* The observability boundary observer (`./otel` supplies it; undefined in the
      * otel-free core). Invoked at entry with the per-invocation identity, then at
@@ -189,7 +189,7 @@ const runEffectHandler =
   }
 
 /* Map the typed `retryPolicy` option to the SDK `RetryPolicy` (decision 0006,
- * spec §7). Intervals are already millis (the SDK accepts a number = millis). */
+ * docs/vrs/04-error-boundary/spec.md §3). Intervals are already millis (the SDK accepts a number = millis). */
 const mapRetryPolicy = (p: RetryPolicyOptions): Record<string, unknown> => ({
   ...(p.maxAttempts !== undefined ? { maxAttempts: p.maxAttempts } : {}),
   ...(p.onMaxAttempts !== undefined ? { onMaxAttempts: p.onMaxAttempts } : {}),
@@ -222,7 +222,7 @@ const mapRetention = (
  * bag. The `retention` annotation on the handler's INPUT schema (decision 0011)
  * is folded in first; explicit `spec.options` (incl. its own retention) win.
  * `redaction` (resolved from the runtime context at `materialize`) is threaded
- * into the I/O serdes so `sensitive` fields are encrypted on the wire (spec §4).
+ * into the I/O serdes so `sensitive` fields are encrypted on the wire (docs/vrs/02-schema-serde/spec.md §1).
  */
 const handlerOpts = (
   spec: {
@@ -290,7 +290,7 @@ export interface MaterializeWiring {
 
 /**
  * Resolve the optional `RestateRedaction` cipher from the captured runtime's
- * context (decision 0011, spec §4). It is OPTIONAL: a schema with no `sensitive`
+ * context (decision 0011, docs/vrs/02-schema-serde/spec.md §1). It is OPTIONAL: a schema with no `sensitive`
  * field never needs it, so the application Layer need not provide one. When a
  * served schema DOES have a sensitive field but the cipher is absent, the serde
  * fails with a clear `RedactionCipherMissingError` at encode/decode — never
@@ -575,25 +575,25 @@ export interface EndpointOptions<AppR> {
   /**
    * Restate `HooksProvider`s attached SERVICE-level to every materialized
    * service (so they wrap every handler). The `./otel` module supplies the
-   * `openTelemetryHook` here; the otel-free core leaves this undefined (§10).
+   * `openTelemetryHook` here; the otel-free core leaves this undefined (docs/vrs/08-observability/spec.md).
    */
   readonly hooks?: ReadonlyArray<EndpointHooks>
   /**
    * Per-invocation inbound-bridge transform applied to every handler's program
-   * (the `./otel` module's attempt-span → Effect-parent bridge, R23 §10). A pure
+   * (the `./otel` module's attempt-span → Effect-parent bridge, R23 docs/vrs/08-observability/spec.md). A pure
    * `<A, E, R>(effect) => Effect<A, E, R>`; undefined in the otel-free core.
    */
   readonly inboundBridge?: HandlerWrap
   /**
    * Per-invocation observability observer (the `./otel` module's boundary span
-   * stamping + per-invocation outcome metric, R23 §10, decision 0014). A pure
+   * stamping + per-invocation outcome metric, R23 docs/vrs/08-observability/spec.md, decision 0014). A pure
    * `(BoundaryInfo) => (BoundaryOutcome) => void`; undefined in the otel-free core.
    */
   readonly boundaryObserver?: BoundaryObserver
   /**
    * Restate REQUEST-IDENTITY public keys (ED25519, v1 — e.g.
    * `publickeyv1_2G8dCQhArfvGpzPw5Vx2ALciR4xCLHfS5YaT93XjNxX9`), threaded into the
-   * SDK endpoint's `identityKeys` (spec §8, decision 0016). When set, the SDK
+   * SDK endpoint's `identityKeys` (docs/vrs/07-endpoint-deploy/spec.md §2, decision 0016). When set, the SDK
    * REJECTS any inbound request not signed by the matching private key (the
    * `x-restate-signature-scheme: v1` + `x-restate-jwt-v1` JWT check) — closing the
    * otherwise-unauthenticated handler-endpoint hole. Pure passthrough; the SDK
@@ -619,7 +619,7 @@ export interface EndpointOptions<AppR> {
  * one).
  *
  * `bidirectional` is left UNSET so the SDK negotiates full `BIDI_STREAM` over
- * h2c prior-knowledge (DQ7, spec §8).
+ * h2c prior-knowledge (DQ7, docs/vrs/07-endpoint-deploy/spec.md §2).
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- the services-tuple AppR extractor */
 export const layer = <const S extends ReadonlyArray<AnyImplementation<any>>>(

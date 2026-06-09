@@ -1,6 +1,6 @@
 /**
  * Server-free unit tests for the FAITHFUL in-memory `RestateContext` (decision
- * 0013, spec §11.5). These prove the in-memory context drives the REAL handler
+ * 0013, docs/vrs/09-testing/spec.md §5). These prove the in-memory context drives the REAL handler
  * combinators verbatim — no native server, no Docker — for fast logic + State
  * transition tests. The real-server harness (`testing.ts`) is tested separately
  * against an actual `restate-server`.

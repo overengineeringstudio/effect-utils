@@ -83,7 +83,7 @@ into the journal, which this is not).
 User counters/histograms are exposed through the SAME shared meter (any Effect
 `Metric` exports once `RestateOtel.layer` binds the meter). To be exactly-once a
 user counter must be incremented INSIDE a `Restate.run` (journaled-once) or gated
-on non-replay — documented in the README + spec §10; `emitWhenProcessing` is the
+on non-replay — documented in the README + [08-observability/spec.md](../08-observability/spec.md); `emitWhenProcessing` is the
 reusable gate.
 
 ## Why
@@ -111,6 +111,6 @@ reusable gate.
   drift.
 - The metrics seam is verified server-free with an in-memory `MetricReader` +
   `SpanExporter`, including a forced-replay assertion that the durable-step counter
-  does NOT double-count (`src/observability.test.ts`).
+  does NOT double-count (`src/observability/observability.test.ts`).
 
 Status: accepted

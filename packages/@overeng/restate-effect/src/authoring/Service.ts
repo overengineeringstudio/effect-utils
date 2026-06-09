@@ -22,7 +22,7 @@ export interface HandlerSpec {
   readonly input: Schema.Schema<any, any>
   readonly success: Schema.Schema<any, any>
   readonly error?: Schema.Schema<any, any>
-  /** Per-handler SDK options (retry policy, retention, timeouts, …; R35, spec §7). */
+  /** Per-handler SDK options (retry policy, retention, timeouts, …; R35, docs/vrs/04-error-boundary/spec.md §3). */
   readonly options?: HandlerOptions
 }
 
@@ -42,7 +42,7 @@ export interface Contract<Name extends string, H extends HandlerSpecMap> {
   readonly _tag: 'Contract'
   readonly name: Name
   readonly handlers: H
-  /** Service-level SDK options (retry policy, retention, timeouts, …; R35, spec §7). */
+  /** Service-level SDK options (retry policy, retention, timeouts, …; R35, docs/vrs/04-error-boundary/spec.md §3). */
   readonly options?: ServiceLevelOptions
   /* Phantom (covariant) carrier so the precise `H` survives even when `handlers`
    * is read at a widened runtime type; `InputOf`/`SuccessOf`/`ErrorOf` recover it
@@ -294,7 +294,7 @@ export interface WorkflowContract<
   readonly _Phantom?: readonly [S, Run, Signals, Queries]
 }
 
-/* Capability sets per Workflow handler kind (spec §3): `run` is the full set;
+/* Capability sets per Workflow handler kind (docs/vrs/01-authoring/spec.md §3): `run` is the full set;
  * signals/queries are shared (read-only State) but may resolve/await durable
  * promises. A `State.set` in a signal/query is therefore a compile error. */
 type WorkflowRunCaps = RestateContext | ObjectKey | StateRead | StateWrite | DurablePromise
@@ -400,14 +400,14 @@ export const RestateWorkflow = { contract: workflowContract, implement: workflow
 
 /* ════════════════════════════════════════════════════════════════════════
  * Surfaced SDK options (R35). The idempotency/journal/timeout/ingressPrivate/
- * cancellation knobs, plus the retry surfacing (decision 0006, spec §7): a typed
+ * cancellation knobs, plus the retry surfacing (decision 0006, docs/vrs/04-error-boundary/spec.md §3): a typed
  * `retryPolicy` and an `asTerminalError` hook mapped to the SDK at `materialize`.
  * ════════════════════════════════════════════════════════════════════════ */
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the `asTerminalError` arg is the raw thrown error (any), matching the SDK signature */
 
 /**
- * Restate's durable retry policy (decision 0006, spec §7). Durable retries are
+ * Restate's durable retry policy (decision 0006, docs/vrs/04-error-boundary/spec.md §3). Durable retries are
  * Restate's — `Effect.retry`/`Schedule` are for PURE logic only (the
  * `overeng/no-raw-nondeterminism` lint guards against wrapping durable ops). This
  * mirrors the SDK `RetryPolicy`: intervals are millis (decoded by the boundary);
@@ -432,13 +432,13 @@ export interface HandlerOptions {
   readonly ingressPrivate?: boolean
   readonly enableLazyState?: boolean
   readonly explicitCancellation?: boolean
-  /** Restate's durable retry policy for this handler (spec §7). */
+  /** Restate's durable retry policy for this handler (docs/vrs/04-error-boundary/spec.md §3). */
   readonly retryPolicy?: RetryPolicyOptions
   /**
    * Map a thrown (non-`TerminalError`) error to a `TerminalError` so Restate does
    * NOT retry it — the SDK-level escape hatch for "this raw throw is terminal".
    * Domain errors should prefer the `Restate.terminal`/`retryable` annotation; this
-   * is for foreign throws from inside `ctx.run` etc. (spec §7).
+   * is for foreign throws from inside `ctx.run` etc. (docs/vrs/04-error-boundary/spec.md §3).
    */
   readonly asTerminalError?: (error: any) => restateTerminalError | undefined
 }
@@ -453,9 +453,9 @@ export interface ServiceLevelOptions {
   readonly enableLazyState?: boolean
   readonly workflowRetentionMillis?: number
   readonly explicitCancellation?: boolean
-  /** Restate's durable retry policy for every handler of this construct (spec §7). */
+  /** Restate's durable retry policy for every handler of this construct (docs/vrs/04-error-boundary/spec.md §3). */
   readonly retryPolicy?: RetryPolicyOptions
-  /** Service-level `asTerminalError` mapping (spec §7). */
+  /** Service-level `asTerminalError` mapping (docs/vrs/04-error-boundary/spec.md §3). */
   readonly asTerminalError?: (error: any) => restateTerminalError | undefined
 }
 

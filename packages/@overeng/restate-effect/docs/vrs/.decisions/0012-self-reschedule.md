@@ -111,7 +111,7 @@ then decides skip vs stop on the bounded give-up.
 ## Composition: Retry-After re-arm + webhook wake
 
 The narrow primitive composes two more behaviors a real watcher needs, both opt-in
-on `make` (validated by `src/scheduled-compose.integration.test.ts`,
+on `make` (validated by `src/scheduling/scheduled-compose.integration.test.ts`,
 productizing `tmp/restate-spike-pollloop-compose`). Crucially, neither is a NEW
 retry mechanism — they thread the EXISTING boundary classification + descriptor
 primitives into the loop cadence, so there is still ONE source of truth for "is
@@ -152,7 +152,7 @@ for a `Schema.Union` is the un-annotated union node — so a retryable union mem
 terminal. The classifier now resolves the matching union MEMBER for the actual
 failing error (the one whose `encodeUnknownEither` accepts it) before reading the
 class. This is a general boundary correctness fix (it affects any union-typed error
-channel, not just pollLoop); see spec §5.
+channel, not just pollLoop); see [04-error-boundary/spec.md](../04-error-boundary/spec.md) §1.
 
 ### `wake` → awakeable-driven early fire
 
@@ -183,7 +183,7 @@ the durability reasoning differs (no-wake relies on the pre-armed delayed send; 
 relies on the journaled held race + the persisted generation). Durability holds for
 both: a SIGKILL mid inter-cycle wait resumes after restart (the held race's timer /
 the pending delayed send survives), verified by
-`src/scheduled-durability.integration.test.ts`.
+`src/scheduling/scheduled-durability.integration.test.ts`.
 
 ## p99 latency teaching
 
