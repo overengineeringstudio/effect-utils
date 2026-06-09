@@ -51,8 +51,8 @@ export default oxlintConfig({
         // The `./testing` harness manages the native restate-server lifecycle
         // (poll deadlines, ephemeral ports, the live-clock sleep util) — server
         // infra, not handler code. The in-memory TestContext is likewise test infra.
-        '**/restate-effect/src/testing.ts',
-        '**/restate-effect/src/TestContext.ts',
+        '**/restate-effect/src/testing/testing.ts',
+        '**/restate-effect/src/testing/TestContext.ts',
         '**/restate-effect/test/**',
       ],
       rules: {
