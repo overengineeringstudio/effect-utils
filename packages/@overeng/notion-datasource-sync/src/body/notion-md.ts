@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 
 import { Effect, Layer, Schema, Stream } from 'effect'
 
+import type { BodyCompleteness, BodyLossyReason } from '@overeng/notion-core'
 import {
   materializeBody,
   NotionMdGateway,
@@ -19,6 +20,7 @@ import {
 import type { BodyLocalChangeInput, BodyRepairInput, ObserveBodyInput } from '../core/commands.ts'
 import {
   BodyPointer,
+  type BodySafetySnapshot,
   Hash,
   NotionRequestId,
   type AbsolutePath,
@@ -62,18 +64,85 @@ const hashFromNotionMdDigest = (value: string): Hash => decode({ schema: Hash, v
 
 const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date().toISOString() })
 
+export type NotionBodyFidelityLike = {
+  readonly markdown?: {
+    readonly truncated?: boolean
+    readonly unknownBlockIds?: readonly string[]
+  }
+  readonly completeness?: BodyCompleteness
+}
+
+export type NotionMdRemoteBodyLike = {
+  readonly pageId: string
+  readonly bodyHash: string
+  readonly safety?: BodySafetySnapshot
+  readonly fidelity?: NotionBodyFidelityLike
+  readonly bodyFidelity?: NotionBodyFidelityLike
+  readonly completeness?: BodyCompleteness
+}
+
+const unknownBlockCauseFromLossyReasons = (
+  reasons: readonly BodyLossyReason[],
+): BodySafetySnapshot['unknownBlockCause'] => {
+  if (reasons.includes('rendered_markdown_has_unobserved_suffix') === true) return 'truncation'
+  if (reasons.includes('unknown_blocks') === true) return 'unknown'
+  if (reasons.includes('unsupported_blocks') === true) return 'unsupported'
+  if (reasons.includes('rendered_markdown_unavailable') === true) return 'unsupported'
+  return undefined
+}
+
+const safetyFromNotionMdFidelity = (body: NotionMdRemoteBodyLike): Partial<BodySafetySnapshot> => {
+  const fidelity = body.fidelity ?? body.bodyFidelity
+  const completeness = body.completeness ?? fidelity?.completeness
+  const reasons = completeness?._tag === 'lossy' ? completeness.reasons : []
+  const unknownBlockIds = fidelity?.markdown?.unknownBlockIds ?? []
+  return {
+    truncated:
+      fidelity?.markdown?.truncated === true ||
+      reasons.includes('endpoint_truncated') ||
+      reasons.includes('rendered_markdown_has_unobserved_suffix'),
+    unknownBlockCause:
+      unknownBlockIds.length > 0 ? 'unknown' : unknownBlockCauseFromLossyReasons(reasons),
+  }
+}
+
+const mergeNotionMdSafety = (opts: {
+  readonly existing: BodySafetySnapshot | undefined
+  readonly fidelity: Partial<BodySafetySnapshot>
+}): BodySafetySnapshot =>
+  bodySafetySnapshot({
+    ...opts.existing,
+    truncated: opts.existing?.truncated === true || opts.fidelity.truncated === true,
+    unknownBlockCause: opts.existing?.unknownBlockCause ?? opts.fidelity.unknownBlockCause,
+    adapterMutationSurfaces: ['body'],
+    ...(opts.existing === undefined
+      ? {}
+      : {
+          adapterMutationSurfaces:
+            opts.existing.adapterMutationSurfaces.includes('body') === true
+              ? opts.existing.adapterMutationSurfaces
+              : ['body', ...opts.existing.adapterMutationSurfaces],
+        }),
+  })
+
+/** Convert optional NotionMD/core body-fidelity evidence into datasource-sync's body guard snapshot. */
+export const notionMdBodySafetySnapshot = (body: NotionMdRemoteBodyLike): BodySafetySnapshot =>
+  mergeNotionMdSafety({
+    existing: body.safety,
+    fidelity: safetyFromNotionMdFidelity(body),
+  })
+
 const bodyPointerFromRemoteBody = (input: {
   readonly pageId: PageId
   readonly bodyHash: string
+  readonly safety?: BodySafetySnapshot
 }): typeof BodyPointer.Type => {
   return BodyPointer.make({
     _tag: 'BodyPointer',
     pageId: input.pageId,
     bodyHash: hashFromNotionMdDigest(input.bodyHash),
     observedAt: observedAtNow(),
-    safety: bodySafetySnapshot({
-      adapterMutationSurfaces: ['body'],
-    }),
+    safety: input.safety ?? bodySafetySnapshot({ adapterMutationSurfaces: ['body'] }),
   })
 }
 
@@ -148,6 +217,7 @@ export const makeNotionMdPageBodySyncPort = ({
           bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            safety: notionMdBodySafetySnapshot(body),
           }),
         ),
         Effect.mapError(
@@ -167,6 +237,7 @@ export const makeNotionMdPageBodySyncPort = ({
           const remote = bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            safety: notionMdBodySafetySnapshot(body),
           })
           const contract = evaluateBodyAdapterContract(remote.safety ?? bodySafetySnapshot())
 
@@ -234,6 +305,7 @@ export const makeNotionMdPageBodySyncPort = ({
         const bodyPointer = bodyPointerFromRemoteBody({
           pageId: command.pageId,
           bodyHash: replaced.bodyHash,
+          safety: notionMdBodySafetySnapshot(replaced),
         })
 
         if (root !== undefined && stateStore !== undefined) {
@@ -297,6 +369,7 @@ export const makeNotionMdPageBodySyncPort = ({
           bodyPointerFromRemoteBody({
             pageId: input.pageId,
             bodyHash: body.bodyHash,
+            safety: notionMdBodySafetySnapshot(body),
           }),
         ),
         Effect.mapError(

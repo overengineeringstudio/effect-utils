@@ -25,6 +25,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@overeng/notion-core": "workspace:^",
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
     "@overeng/utils": "workspace:^",

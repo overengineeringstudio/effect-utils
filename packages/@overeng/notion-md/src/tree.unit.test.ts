@@ -6,6 +6,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import type { BodyCompleteness } from '@overeng/notion-core'
 import { NOTION_API_VERSION, type NmdPageState } from '@overeng/notion-effect-client'
 
 import {
@@ -31,6 +32,7 @@ const rootPageId = '00000000-0000-4000-8000-000000000001'
 interface FakePageState {
   title: string
   markdown: string
+  completeness: BodyCompleteness
   parentId: string | undefined
   inTrash: boolean
 }
@@ -38,12 +40,14 @@ interface FakePageState {
 /** In-memory Notion subtree fake exercising create/move/archive/list verbs. */
 class FakeTreeNotion {
   private readonly pages = new Map<string, FakePageState>()
+  private readonly lossyAfterNextUpdate = new Map<string, BodyCompleteness>()
   private counter = 1
 
   constructor() {
     this.pages.set(rootPageId, {
       title: 'Root',
       markdown: '# Root\n',
+      completeness: { _tag: 'complete' },
       parentId: undefined,
       inTrash: false,
     })
@@ -56,6 +60,11 @@ class FakeTreeNotion {
   /** Simulate a concurrent remote edit (someone edited the page on Notion). */
   mutateRemote(id: string, markdown: string): void {
     this.require(id).markdown = markdown
+  }
+
+  /** Simulate a write that succeeds but whose refreshed Markdown observation is lossy. */
+  markRemoteBodyLossyAfterNextUpdate(id: string, completeness: BodyCompleteness): void {
+    this.lossyAfterNextUpdate.set(id, completeness)
   }
 
   childTitles(id: string): readonly string[] {
@@ -82,6 +91,7 @@ class FakeTreeNotion {
     this.pages.set(id, {
       title: opts.title,
       markdown: opts.markdown,
+      completeness: { _tag: 'complete' },
       parentId: opts.parentId,
       inTrash: false,
     })
@@ -119,7 +129,12 @@ class FakeTreeNotion {
   private pull(id: string): PullPageResult {
     return {
       page: this.snapshot(id),
-      markdown: { markdown: this.require(id).markdown, truncated: false, unknown_block_ids: [] },
+      markdown: {
+        markdown: this.require(id).markdown,
+        truncated: false,
+        unknown_block_ids: [],
+        completeness: this.require(id).completeness,
+      },
     }
   }
 
@@ -140,6 +155,11 @@ class FakeTreeNotion {
             page.markdown,
           )
         }
+        const lossyAfterUpdate = this.lossyAfterNextUpdate.get(pageId)
+        if (lossyAfterUpdate !== undefined) {
+          page.completeness = lossyAfterUpdate
+          this.lossyAfterNextUpdate.delete(pageId)
+        }
         return {
           markdown: { markdown: page.markdown, truncated: false, unknown_block_ids: [] },
         }
@@ -157,7 +177,13 @@ class FakeTreeNotion {
         this.counter += 1
         this.createCount += 1
         const id = `00000000-0000-4000-8000-0000000${String(this.counter).padStart(5, '0')}`
-        this.pages.set(id, { title, markdown, parentId: parentPageId, inTrash: false })
+        this.pages.set(id, {
+          title,
+          markdown,
+          completeness: { _tag: 'complete' },
+          parentId: parentPageId,
+          inTrash: false,
+        })
         return this.snapshot(id)
       }),
     movePage: ({ pageId, parentPageId }) =>
@@ -805,6 +831,29 @@ describe('notion-md tree reconcile lifecycle', () => {
       expect(await readFile(join(dir, 'alpha.nmd.conflict.roughdraft.md'), 'utf8')).toContain(
         'Body conflict',
       )
+    })
+  })
+
+  it('refuses to settle a tree body write when the post-write remote body is lossy', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root body.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Original alpha.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      const alphaPath = join(dir, 'alpha.nmd')
+      const alphaId = /"page_id": "([^"]+)"/u.exec(await readFile(alphaPath, 'utf8'))?.[1]
+      expect(alphaId).toBeDefined()
+
+      const alphaContent = await readFile(alphaPath, 'utf8')
+      await writeFile(alphaPath, alphaContent.replace('Original alpha.', 'Local alpha.\n\n---'))
+      fake.markRemoteBodyLossyAfterNextUpdate(alphaId ?? '', {
+        _tag: 'lossy',
+        reasons: ['rendered_markdown_has_unobserved_suffix'],
+      })
+
+      await expect(run(syncTree({ root: dir }), fake)).rejects.toThrow('Remote Markdown body')
+      expect(await readFile(alphaPath, 'utf8')).toContain('Local alpha')
     })
   })
 

@@ -47,12 +47,27 @@ truncated or unknown-block bodies, and any adapter attempt to mutate non-body
 surfaces remain unsupported: no body push settlement occurs and no non-body
 mutation may be inferred from body sync.
 
+The adapter accepts body-fidelity evidence from NotionMD without depending on
+NotionMD internals. Pure completeness vocabulary belongs below both packages in
+`@overeng/notion-core`; live Notion observation belongs in
+`@overeng/notion-effect-client`; NotionMD translates that evidence through its
+body facade and fails closed before clean-base adoption. Datasource sync maps
+the facade evidence into `BodySafetySnapshot` and lets the existing body guards
+decide whether body planning or push is safe. Lossy evidence is pessimistic: it
+must win over any stale or optimistic body-safety metadata already attached to a
+pointer.
+
+`@overeng/notion-react` is intentionally not in this path: it is an owned-region
+writer and may later reuse core classifiers or fingerprints for preflight/drift
+reporting, but datasource-sync must not route guarded Markdown adoption through
+the React reconciler.
+
 After a verified body push, the NotionMD-backed adapter refreshes the local
 `.nmd` clean base and datasource-sync sidecar only if the file still represents
 the body content that was just pushed. If the file changed while the remote write
 was in flight, the adapter fails closed instead of overwriting the newer local
 edit. Clean-base refresh is settlement bookkeeping, not a second user-visible
-body mutation.
+body mutation, and it may settle only from a complete NotionMD body observation.
 
 Body materialization is subordinate to the established sync no-unwanted-data-loss
 invariant. The body adapter may provide materialization mechanics, but

@@ -56,6 +56,13 @@ compose with `.nmd` files. The facade depends on `NotionMdGateway` and
 `NmdStateStore`; it does not expose sync coordinator decisions or page metadata
 mutation as an adapter surface.
 
+Remote body observations carry `@overeng/notion-core` body-completeness
+evidence produced by `@overeng/notion-effect-client` live observation.
+`notion-md` is the package that turns that evidence into clean-base policy:
+single-page establishment, tree materialization, clean-base refresh, and the
+body facade must refuse to treat a lossy Markdown observation as a clean `.nmd`
+base.
+
 Batch and folder support do not change the ownership unit: one `.nmd` file maps
 to one Notion page, and every mutation still passes through the same page-local
 guards. The batch layer only owns target discovery, duplicate page-id preflight,
@@ -235,16 +242,16 @@ The implementation currently supports self-contained storage and content-address
 
 Requirement trace: R01-R05, R11-R15.
 
-| Surface            | Local state                    | Pull API                   | Push API                    | Conflict unit      | Current status              |
-| ------------------ | ------------------------------ | -------------------------- | --------------------------- | ------------------ | --------------------------- |
-| Body               | `.nmd` body + `base_snapshot`  | `GET /pages/{id}/markdown` | Markdown update endpoint    | canonical Markdown | implemented                 |
-| Page metadata      | frontmatter page fields        | `GET /pages/{id}`          | `PATCH /pages/{id}`         | field              | title/lock/trash/icon/cover |
-| Properties         | frontmatter property map       | `GET /pages/{id}`          | `PATCH /pages/{id}`         | property           | modeled writable forms      |
-| Unsupported blocks | frontmatter/object storage     | Markdown + block API       | preserve or explicit delete | block id           | guard + preserve metadata   |
-| Data-source schema | external datasource-sync state | datasource-sync package    | datasource-sync package     | schema hash        | owned by datasource sync    |
-| Comments           | future comment payload         | comments API               | comments API                | discussion/comment | designed, not implemented   |
-| Files              | future file payload            | block/file APIs            | file upload APIs            | content hash       | modeled, not implemented    |
-| Review             | Roughdraft local markup        | local only or comments API | explicit bridge only        | review id          | guard implemented           |
+| Surface            | Local state                    | Pull API                              | Push API                    | Conflict unit      | Current status              |
+| ------------------ | ------------------------------ | ------------------------------------- | --------------------------- | ------------------ | --------------------------- |
+| Body               | `.nmd` body + `base_snapshot`  | block-tree render + endpoint evidence | Markdown update endpoint    | canonical Markdown | implemented                 |
+| Page metadata      | frontmatter page fields        | `GET /pages/{id}`                     | `PATCH /pages/{id}`         | field              | title/lock/trash/icon/cover |
+| Properties         | frontmatter property map       | `GET /pages/{id}`                     | `PATCH /pages/{id}`         | property           | modeled writable forms      |
+| Unsupported blocks | frontmatter/object storage     | Markdown + block API                  | preserve or explicit delete | block id           | guard + preserve metadata   |
+| Data-source schema | external datasource-sync state | datasource-sync package               | datasource-sync package     | schema hash        | owned by datasource sync    |
+| Comments           | future comment payload         | comments API                          | comments API                | discussion/comment | designed, not implemented   |
+| Files              | future file payload            | block/file APIs                       | file upload APIs            | content hash       | modeled, not implemented    |
+| Review             | Roughdraft local markup        | local only or comments API            | explicit bridge only        | review id          | guard implemented           |
 
 Body conflicts do not block property-only pushes. Property-only pushes across a concurrent remote body edit patch properties, then refresh the local `.nmd` body and base from the current remote state.
 
@@ -252,13 +259,16 @@ Body conflicts do not block property-only pushes. Property-only pushes across a 
 
 1. Decode CLI options.
 2. Retrieve Notion page metadata.
-3. Retrieve body Markdown.
-4. Retrieve unknown block payloads through the block API when Markdown reports unknown/truncated blocks.
-5. Canonicalize Markdown and compute the body hash.
-6. Build a strict frontmatter envelope.
-7. Write base snapshot and storage objects.
-8. Write the `.nmd` file.
-9. Emit a pull result with storage mode and object refs.
+3. Observe the remote body through the Notion body observation service.
+4. Reject clean-base adoption if the observation is lossy.
+5. Adopt the block-tree-rendered Markdown as the local body and base snapshot;
+   keep endpoint Markdown only as diagnostic evidence.
+6. Retrieve unknown block payloads through the block API when Markdown reports unknown/truncated blocks.
+7. Compute the body hash over the adopted rendered body.
+8. Build a strict frontmatter envelope.
+9. Write base snapshot and storage objects.
+10. Write the `.nmd` file.
+11. Emit a pull result with storage mode and object refs.
 
 Future selected surfaces add data-source schema, comments, and files before the write commit.
 
@@ -276,16 +286,32 @@ Status distinguishes `remoteBodyChanged` from `remotePageMetadataChanged`. The c
 
 1. Read and decode `.nmd` once.
 2. Pull remote state once for status.
-3. Reject unresolved Roughdraft review markup unless explicitly allowed.
-4. Reject body pushes that could delete unknown blocks unless destructive intent is explicit.
-5. If only page metadata or properties changed and the remote body changed, patch those surfaces and refresh local body from remote.
-6. If the remote body changed and local body changed, attempt a conservative three-way merge.
-7. If merge succeeds, update Markdown and then properties.
-8. If merge fails, write a Roughdraft conflict artifact and leave remote unchanged.
-9. If remote body is still at base, use a targeted Markdown update when safe or guarded replace when necessary.
-10. Pull remote after writes and rewrite `.nmd` with fresh body, base, page metadata, and storage.
+3. Reject clean-base use of any lossy remote body observation.
+4. Reject unresolved Roughdraft review markup unless explicitly allowed.
+5. Reject body pushes that could delete unknown blocks unless destructive intent is explicit.
+6. If only page metadata or properties changed and the remote body changed, patch those surfaces and refresh local body from remote only when the refreshed body is complete.
+7. If the remote body changed and local body changed, attempt a conservative three-way merge.
+8. If merge succeeds, update Markdown and then properties.
+9. If merge fails, write a Roughdraft conflict artifact and leave remote unchanged.
+10. If remote body is still at base, use a targeted Markdown update when safe or guarded replace when necessary.
+11. Re-observe the remote body after writes and rewrite `.nmd` with fresh body, base, page metadata, storage, and completeness evidence.
 
 The local file is read once for a push decision to avoid local snapshot drift. Remote body is re-read immediately before guarded Markdown updates to catch races between status and write.
+
+Clean-base writes are allowed only from complete body observations with
+block-tree-rendered Markdown available. Endpoint truncation, unknown block IDs,
+unsupported inventory entries, missing rendered evidence, or a rendered
+block-tree suffix not present in the endpoint Markdown all block establishment,
+tree materialization, facade settlement, and post-write clean-base refresh. A
+successful remote write is not considered settled until the refreshed
+observation is complete; otherwise the local `.nmd` base remains untrusted and
+the caller receives a typed lossy-remote-body error.
+
+Pull adoption is block-aware. Notion's Markdown endpoint may omit blank block
+boundaries around heading/paragraph/divider sequences; reparsing that endpoint
+Markdown through CommonMark can promote prose paragraphs to Setext/ATX headings.
+`notion-md` therefore treats endpoint Markdown as evidence and adopts the
+client block-tree renderer output as the clean body.
 
 ## Merge And Conflict Policy
 
@@ -354,6 +380,12 @@ Known Notion enhanced Markdown limitations:
 - Notion normalizes valid Markdown on pull.
 - Page title and properties are not included in Markdown body output.
 - Some blocks pull as `<unknown>` with `unknown_block_ids`.
+- The Markdown endpoint can return a prefix of the rendered block tree, such as
+  content before a divider; that response is lossy and cannot become a clean
+  `.nmd` base.
+- The Markdown endpoint can omit separators around block boundaries; the clean
+  pull body is rendered from the block tree so paragraphs adjacent to headings
+  and dividers keep their block type.
 - Signed file URLs expire and are not durable identity.
 - Comments support inline Markdown-like content but are separate from body Markdown.
 - `allow_deleting_content` can delete child pages/databases and unsupported blocks; the default is non-destructive.
@@ -486,17 +518,19 @@ watch primitives instead of raw runtime callbacks.
 
 Requirement trace: R01-R24.
 
-| Area                        | Decision                                                                                                                                                                    |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Inline equations            | Treat inline equations conservatively until raw rich-text evidence proves Notion's Markdown endpoint preserves equation semantics. If not, preserve spans outside the body. |
-| Page/data-source references | Use stock enhanced Markdown where Notion round-trips references. Preserve unsupported references with block API snapshots and object refs.                                  |
-| Property merge bases        | Keep compact bases inline; move large or volatile bases into content-addressed objects by policy.                                                                           |
-| Comment anchoring           | Bridge Roughdraft comments only when exact selected text is unique in a known block; otherwise fall back to page-level comments.                                            |
-| Store index                 | Derive reachability from `.nmd` frontmatter and object refs. Add a JSON index only when repo-scale GC or multi-page watch needs it.                                         |
-| Batch sync                  | Keep the page/file sync engine as the correctness boundary. Batch and folder modes are orchestration only, with duplicate page-id preflight and per-file results.           |
-| Webhooks                    | Polling remains the correctness baseline. A local daemon/tunnel may accelerate refresh; hosted relay is a separate product/security decision.                               |
-| CLI output                  | Use explicit output modes with versioned envelopes. Watch mode uses NDJSON events.                                                                                          |
-| Watch events                | Use Effect Platform streams plus a deterministic reducer/queue policy. Avoid raw `fs.watch` ownership in package code.                                                      |
+| Area                        | Decision                                                                                                                                                                         |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inline equations            | Treat inline equations conservatively until raw rich-text evidence proves Notion's Markdown endpoint preserves equation semantics. If not, preserve spans outside the body.      |
+| Page/data-source references | Use stock enhanced Markdown where Notion round-trips references. Preserve unsupported references with block API snapshots and object refs.                                       |
+| Property merge bases        | Keep compact bases inline; move large or volatile bases into content-addressed objects by policy.                                                                                |
+| Comment anchoring           | Bridge Roughdraft comments only when exact selected text is unique in a known block; otherwise fall back to page-level comments.                                                 |
+| Store index                 | Derive reachability from `.nmd` frontmatter and object refs. Add a JSON index only when repo-scale GC or multi-page watch needs it.                                              |
+| Batch sync                  | Keep the page/file sync engine as the correctness boundary. Batch and folder modes are orchestration only, with duplicate page-id preflight and per-file results.                |
+| Body completeness           | Keep pure vocabulary in `@overeng/notion-core`, live observation in `@overeng/notion-effect-client`, and clean-base adoption/write policy in `@overeng/notion-md`.               |
+| Pull body authority         | Adopt block-tree-rendered Markdown as the clean `.nmd` body; retain endpoint Markdown as diagnostic evidence for truncation, unknown blocks, and endpoint/block-tree comparison. |
+| Webhooks                    | Polling remains the correctness baseline. A local daemon/tunnel may accelerate refresh; hosted relay is a separate product/security decision.                                    |
+| CLI output                  | Use explicit output modes with versioned envelopes. Watch mode uses NDJSON events.                                                                                               |
+| Watch events                | Use Effect Platform streams plus a deterministic reducer/queue policy. Avoid raw `fs.watch` ownership in package code.                                                           |
 
 ## OpenTelemetry
 

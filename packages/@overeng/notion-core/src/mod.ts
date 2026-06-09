@@ -42,3 +42,14 @@ export {
 } from './properties.ts'
 
 export { richTextPlainText } from './rich-text.ts'
+
+export {
+  classifyBodyCompleteness,
+  type BlockInventory,
+  type BlockInventoryEntry,
+  type BodyCompleteness,
+  type BodyFidelityObservation,
+  type BodyLossyReason,
+  type MarkdownBodySnapshot,
+  stableBodyFidelityStringify,
+} from './body-fidelity.ts'

@@ -7,6 +7,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Deferred, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import type { BodyCompleteness } from '@overeng/notion-core'
 import type { NmdPageState, NmdStorage, NmdSyncStateV1 } from '@overeng/notion-effect-client'
 
 import { resolveNmdTargets, runBatchWatch, syncMany } from './batch.ts'
@@ -62,6 +63,7 @@ interface FakePage {
   readonly storage?: NmdStorage
   readonly properties?: Record<string, unknown>
   readonly unknownBlockIds?: readonly string[]
+  readonly completeness?: BodyCompleteness
   readonly lastEditedTime?: string
 }
 
@@ -132,6 +134,7 @@ class FakeNotion {
         },
         properties: {},
         unknownBlockIds: [],
+        completeness: { _tag: 'complete' },
         childPageIds: [],
         icon: null,
         cover: null,
@@ -274,6 +277,7 @@ class FakeNotion {
           storage: { _tag: 'self_contained', unsupported_blocks: [], files: [], comments: [] },
           properties: {},
           unknownBlockIds: [],
+          completeness: { _tag: 'complete' },
         })
         this.pages.set(parentPageId, {
           ...parent,
@@ -405,6 +409,7 @@ class FakeNotion {
         markdown: normalizeMarkdownLineEndings(page.markdown),
         truncated: page.unknownBlockIds.length > 0,
         unknown_block_ids: page.unknownBlockIds,
+        completeness: page.completeness,
       },
       storage: page.storage,
     }
@@ -697,6 +702,31 @@ describe('notion-md e2e prototype', () => {
       expect(result.pageId).toBe(pageId)
       expect(parsed.frontmatter.notion_md.page_id).toBe(pageId)
       expect(parsed.body).toContain('Body')
+    })
+  })
+
+  it('refuses to establish a clean base from a lossy remote Markdown body', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Divider truncation',
+          markdown: '> Intro\n\n---',
+          completeness: {
+            _tag: 'lossy',
+            reasons: ['rendered_markdown_has_unobserved_suffix'],
+          },
+        },
+      ])
+      const path = join(dir, 'lossy.nmd')
+
+      await expect(runWithFake(pullPage({ pageId, outPath: path }), fake)).rejects.toThrow(
+        'Remote Markdown body',
+      )
+      await expect(readFile(path, 'utf8')).rejects.toThrow()
+      await expect(
+        readFile(join(dir, '.notion-md', 'sync', `${pageId}.json`), 'utf8'),
+      ).rejects.toThrow()
     })
   })
 

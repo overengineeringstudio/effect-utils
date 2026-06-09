@@ -12,10 +12,15 @@ import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { titleSlug } from '@overeng/utils'
 
 import { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
-import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
+import {
+  NmdCliError,
+  NmdFileSystemError,
+  NmdRemoteBodyLossyError,
+  type NmdError,
+} from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
-import { NotionMdGateway, type RemotePageSnapshot } from './model.ts'
+import { NotionMdGateway, type RemoteMarkdownSnapshot, type RemotePageSnapshot } from './model.ts'
 import {
   NmdStateStore,
   readSyncStateOptional,
@@ -77,6 +82,26 @@ const ROOT_FILE_CANDIDATES = ['index.nmd', 'README.nmd'] as const
  * `<root>/.notion-md/` so all tree sidecars share one root, keyed by page id.
  */
 const treeStateAnchor = (root: string): string => join(root, '.tree')
+
+const assertRemoteMarkdownComplete = (opts: {
+  readonly operation: string
+  readonly relPath?: string
+  readonly pageId: string
+  readonly markdown: RemoteMarkdownSnapshot
+}): Effect.Effect<void, NmdRemoteBodyLossyError> => {
+  const completeness = opts.markdown.completeness
+  if (completeness === undefined || completeness._tag === 'complete') return Effect.void
+
+  return Effect.fail(
+    new NmdRemoteBodyLossyError({
+      operation: opts.operation,
+      page_id: opts.pageId,
+      ...(opts.relPath === undefined ? {} : { path: opts.relPath }),
+      reasons: [...completeness.reasons],
+      message: `Remote Markdown body for page ${opts.pageId} is lossy (${completeness.reasons.join(', ')}); refusing to treat it as a clean notion-md tree base`,
+    }),
+  )
+}
 
 /** A local source page discovered in the directory tree. */
 interface LocalTreePage {
@@ -816,6 +841,12 @@ const syncTreeLocal = (opts: {
       (yield* readSyncStateOptional({ path: stateAnchor, pageId: rootPageId })) !== undefined
     if (rootHasBaseline === false) {
       const rootRemote = yield* gateway.pullPage({ pageId: rootPageId })
+      yield* assertRemoteMarkdownComplete({
+        operation: 'tree_establish_root_baseline',
+        relPath: rootRel,
+        pageId: rootPageId,
+        markdown: rootRemote.markdown,
+      })
       yield* establishBaseline({
         statePath: stateAnchor,
         page: rootRemote.page,
@@ -849,6 +880,12 @@ const syncTreeLocal = (opts: {
        */
       let syncState = yield* readSyncStateOptional({ path: stateAnchor, pageId })
       if (syncState === undefined) {
+        yield* assertRemoteMarkdownComplete({
+          operation: 'tree_establish_missing_baseline',
+          relPath: page.relPath,
+          pageId,
+          markdown: remoteForStatus.markdown,
+        })
         yield* establishBaseline({
           statePath: stateAnchor,
           page: remoteForStatus.page,
@@ -1130,6 +1167,12 @@ const materializeRemoteTreeNode = (opts: {
     const store = yield* NmdStateStore
     const path = filePathFor({ root: opts.root, relPath: opts.node.relPath })
     const pulled = yield* gateway.pullPage({ pageId: opts.node.pageId })
+    yield* assertRemoteMarkdownComplete({
+      operation: 'tree_materialize_remote',
+      relPath: opts.node.relPath,
+      pageId: opts.node.pageId,
+      markdown: pulled.markdown,
+    })
     const bareBody = stripChildAnchors(pulled.markdown.markdown)
     const baselineBody = composePushBody({
       resolvedBody: bareBody,

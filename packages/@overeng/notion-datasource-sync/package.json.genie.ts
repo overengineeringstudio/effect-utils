@@ -5,6 +5,7 @@ import {
   workspaceMember,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import notionCorePkg from '../notion-core/package.json.genie.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
 import notionMdPkg from '../notion-md/package.json.genie.ts'
@@ -27,7 +28,14 @@ const peerDepNames = [
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-datasource-sync' }),
   dependencies: {
-    workspace: [notionEffectClientPkg, notionEffectSchemaPkg, notionMdPkg, tuiReactPkg, utilsPkg],
+    workspace: [
+      notionCorePkg,
+      notionEffectClientPkg,
+      notionEffectSchemaPkg,
+      notionMdPkg,
+      tuiReactPkg,
+      utilsPkg,
+    ],
     external: catalog.pick('react'),
   },
   devDependencies: {

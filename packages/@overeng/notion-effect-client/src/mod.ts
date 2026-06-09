@@ -27,6 +27,11 @@ export type {
   UpdateBlockOptions,
 } from './blocks.ts'
 export { type BlockInsertPosition, NotionBlocks } from './blocks.ts'
+export type { NotionBodyObservation } from './body-observation.ts'
+export {
+  NotionBody,
+  observeFromSnapshots as observeNotionBodyFromSnapshots,
+} from './body-observation.ts'
 // Comments
 export type { CommentParentInput, CreateCommentOptions, ListCommentsOptions } from './comments.ts'
 export { NotionComments } from './comments.ts'

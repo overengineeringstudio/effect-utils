@@ -283,6 +283,15 @@ const quoteLines = (text: string): string =>
     .map((line) => `> ${line}`)
     .join('\n')
 
+const renderHeading = (opts: {
+  readonly level: number
+  readonly block: BlockWithData
+  readonly children: string
+}): string => {
+  const text = `${'#'.repeat(opts.level)} ${richTextToMd(getBlockRichText(opts.block))}`
+  return opts.children !== '' ? `${text}\n\n${opts.children}` : text
+}
+
 /** Default transformers for all block types */
 // oxlint-disable overeng/named-args -- callback implementations for BlockTransformer interface
 const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
@@ -291,10 +300,10 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
     return children !== '' ? `${text}\n\n${children}` : text
   },
 
-  heading_1: (block) => `# ${richTextToMd(getBlockRichText(block))}`,
-  heading_2: (block) => `## ${richTextToMd(getBlockRichText(block))}`,
-  heading_3: (block) => `### ${richTextToMd(getBlockRichText(block))}`,
-  heading_4: (block) => `#### ${richTextToMd(getBlockRichText(block))}`,
+  heading_1: (block, children) => renderHeading({ level: 1, block, children }),
+  heading_2: (block, children) => renderHeading({ level: 2, block, children }),
+  heading_3: (block, children) => renderHeading({ level: 3, block, children }),
+  heading_4: (block, children) => renderHeading({ level: 4, block, children }),
 
   bulleted_list_item: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))

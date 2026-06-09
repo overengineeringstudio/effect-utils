@@ -31,6 +31,22 @@ Conflict artifacts are written beside the `.nmd` file using Roughdraft markup.
 Resolve by editing the `.nmd` body to the intended final content, then rerun
 `status` or `sync`.
 
+## Body Completeness
+
+`notion-md` only treats a remote body as a clean base when the body observation
+is complete. The completeness vocabulary lives in `@overeng/notion-core`; live
+Markdown plus block-tree observation lives in `@overeng/notion-effect-client`;
+`notion-md` owns the fail-closed policy.
+
+Clean-base adoption is blocked when Notion reports truncation, reports endpoint
+unknown block IDs, the block inventory contains unsupported body content, or the
+rendered block tree proves the Markdown endpoint omitted a suffix. This prevents
+single-page establishment from silently writing a partial `.nmd` body when the
+Markdown endpoint stops at a divider or another unsupported boundary.
+
+The same rule applies after verified writes. A remote write is not settled into
+the local base until the refreshed remote body observation is complete.
+
 ## Roughdraft Review Markup
 
 Unresolved Roughdraft markers are local review state:
@@ -52,6 +68,12 @@ frontmatter or object storage.
 Normal sync refuses body updates that could delete unresolved unknown blocks. Use
 `--allow-delete-unknown-blocks` only after deciding that deleting those Notion
 blocks is acceptable.
+
+Notion-reported endpoint unknown block IDs also make a remote body unsuitable
+as a clean base. This is separate from notion-md's self-contained storage path,
+which can preserve some unsupported Notion blocks outside the Markdown body and
+continues to block destructive body pushes until those placeholders are
+resolved or deletion is explicitly allowed.
 
 ## Property-Only Edits
 

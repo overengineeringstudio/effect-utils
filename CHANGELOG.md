@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-core + @overeng/notion-effect-client**: Add shared Notion body-fidelity vocabulary and live Markdown/block-tree observation so downstream packages can distinguish complete remote bodies from lossy endpoint output.
 - **@overeng/genie**: Add `projectionArtifact.json()` for schema-versioned deterministic JSON projections, with generic validation hooks and reusable duplicate-value validators for TS-authored data projected into committed JSON.
 - **Notion docs**: Add lightweight package-level VRS requirements/spec docs for `@overeng/notion-core`, `@overeng/notion-effect-schema`, and `@overeng/notion-effect-client`; align the broader Notion VRS docs with implementation reality while keeping package READMEs user-facing.
 - **@overeng/notion-core**: Add a dependency-free shared primitive package for Notion API constants, UUID helpers, color/property tuples, property write-class classification, and raw rich-text plain-text extraction.
@@ -69,6 +70,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-md + @overeng/notion-datasource-sync**: Fail closed when a remote Notion Markdown body observation is lossy, including endpoint truncation, empty endpoint bodies with non-empty rendered evidence, unknown blocks, unsupported body inventory, or rendered suffix content omitted after dividers and toggleable headings, so partial bodies are not adopted as clean `.nmd` bases or settled through datasource-sync body guards (#759).
+- **@overeng/notion-md**: Adopt block-tree-rendered Markdown, not endpoint Markdown reparsed through CommonMark, as the live pull clean-base body so divider/heading-dense pages do not turn paragraph blocks into `##` headings (#763).
 - **@overeng/notion-md**: Guard unified tree sync planning and destructive operations by reporting dry-run moves, blocking missing-file trash unless forced, checking tree `replace_content` races, and documenting the explicit tree/flat-batch CLI contract.
 - **@overeng/notion-md**: Deduplicate `--from-remote` materialized paths for colliding Notion titles, strip derived child anchors from tree file bodies while preserving composed baselines, and keep tree sync pinned to the current strict index schema.
 - **CI / Nix packages**: Refresh stale pnpm fixed-output hashes for `oxc-config`, `genie`, `notion-cli`, `notion-md`, `megarepo`, `workflow-report`, and `tui-stories`; register `notion-core` in workspace checks; format PR-touched files and keep oxlint fatal for error-level diagnostics while the existing warning backlog is tracked separately.

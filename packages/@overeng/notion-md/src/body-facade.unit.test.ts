@@ -251,6 +251,7 @@ describe('notion-md body facade', () => {
         allowDeletingContent: false,
       },
     ])
+    expect(gateway.pullPageCalls).toEqual([{ pageId }, { pageId }])
     expect(gateway.metadataUpdateCalls).toEqual([])
   })
 

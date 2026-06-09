@@ -35,6 +35,7 @@ import {
 import {
   makeNotionMdMaterializingLocalWorkspacePort,
   makeNotionMdPageBodySyncPort,
+  notionMdBodySafetySnapshot,
 } from './notion-md.ts'
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(schema: TSchema, value: unknown) =>
@@ -116,10 +117,11 @@ const bodyPointerFromTestMarkdown = (markdown: string) =>
 const fakeNotionMdGateway = (
   result: PullPageResult,
   input: {
+    readonly pullPage?: NotionMdGatewayShape['pullPage']
     readonly updateMarkdown?: NotionMdGatewayShape['updateMarkdown']
   } = {},
 ): NotionMdGatewayShape => ({
-  pullPage: () => Effect.succeed(result),
+  pullPage: input.pullPage ?? (() => Effect.succeed(result)),
   updateMarkdown:
     input.updateMarkdown ??
     (() => Effect.die('updateMarkdown should not be called by these tests')),
@@ -338,6 +340,106 @@ describe('body adapter contract', () => {
     expect(evaluateBodyAdapterContract(observed.safety ?? bodySafetySnapshot())).toMatchObject({
       _tag: 'blocked',
       guard: 'MarkdownUnknownBlocksAmbiguous',
+    })
+  })
+
+  it.each([
+    [
+      'endpoint truncation',
+      notionMdBodySafetySnapshot({
+        pageId: nmdPageId,
+        bodyHash: hash('a'),
+        fidelity: {
+          markdown: {
+            truncated: true,
+            unknownBlockIds: [],
+          },
+          completeness: {
+            _tag: 'lossy',
+            reasons: ['endpoint_truncated'],
+          },
+        },
+      }),
+      'BodyLossyRemote',
+    ],
+    [
+      'unobserved rendered suffix',
+      notionMdBodySafetySnapshot({
+        pageId: nmdPageId,
+        bodyHash: hash('a'),
+        completeness: {
+          _tag: 'lossy',
+          reasons: ['rendered_markdown_has_unobserved_suffix'],
+        },
+      }),
+      'BodyLossyRemote',
+    ],
+    [
+      'unknown blocks',
+      notionMdBodySafetySnapshot({
+        pageId: nmdPageId,
+        bodyHash: hash('a'),
+        bodyFidelity: {
+          markdown: {
+            truncated: false,
+            unknownBlockIds: ['22222222-2222-4222-8222-222222222222'],
+          },
+          completeness: {
+            _tag: 'lossy',
+            reasons: ['unknown_blocks'],
+          },
+        },
+      }),
+      'MarkdownUnknownBlocksAmbiguous',
+    ],
+    [
+      'unsupported blocks',
+      notionMdBodySafetySnapshot({
+        pageId: nmdPageId,
+        bodyHash: hash('a'),
+        completeness: {
+          _tag: 'lossy',
+          reasons: ['unsupported_blocks'],
+        },
+      }),
+      'MarkdownUnknownBlocksAmbiguous',
+    ],
+    [
+      'rendered Markdown unavailable',
+      notionMdBodySafetySnapshot({
+        pageId: nmdPageId,
+        bodyHash: hash('a'),
+        completeness: {
+          _tag: 'lossy',
+          reasons: ['rendered_markdown_unavailable'],
+        },
+      }),
+      'MarkdownUnknownBlocksAmbiguous',
+    ],
+  ] as const)('maps NotionMD body fidelity into datasource guards: %s', (_name, safety, guard) => {
+    expect(evaluateBodyAdapterContract(safety)).toMatchObject({
+      _tag: 'blocked',
+      guard,
+    })
+  })
+
+  it('preserves NotionMD-provided safety metadata while enforcing a body mutation surface', () => {
+    const safety = notionMdBodySafetySnapshot({
+      pageId: nmdPageId,
+      bodyHash: hash('a'),
+      safety: bodySafetySnapshot({
+        truncated: true,
+        adapterMutationSurfaces: ['page-metadata'],
+      }),
+    })
+
+    expect(safety).toMatchObject({
+      truncated: true,
+      adapterMutationSurfaces: ['body', 'page-metadata'],
+    })
+    expect(evaluateBodyAdapterContract(safety)).toMatchObject({
+      _tag: 'blocked',
+      guard: 'BodyAdapterNonBodyMutation',
     })
   })
 
@@ -644,11 +746,14 @@ describe('body adapter contract', () => {
   it('pushes NotionMD body content when the command carries the local path and markdown body', async () => {
     const localBodyContent = '# Adapter page\n\nPushed through datasource-sync.\n'
     const updates: Parameters<NotionMdGatewayShape['updateMarkdown']>[0][] = []
+    let remote = pullPageResult()
     const port = makeNotionMdPageBodySyncPort({
-      gateway: fakeNotionMdGateway(pullPageResult(), {
+      gateway: fakeNotionMdGateway(remote, {
+        pullPage: () => Effect.sync(() => remote),
         updateMarkdown: (opts) =>
           Effect.sync(() => {
             updates.push(opts)
+            remote = pullPageResult({ markdown: localBodyContent })
             return {
               markdown: {
                 markdown: localBodyContent,

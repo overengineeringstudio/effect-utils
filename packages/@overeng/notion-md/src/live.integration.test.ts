@@ -386,7 +386,95 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
     })
   })
 
-  liveIt('refuses to push over unresolved unknown blocks against Notion', async () => {
+  liveIt('materializes divider bodies completely or fails closed against Notion', async () => {
+    await withScratchPage('divider-completeness', async (pageId) => {
+      await runLive(
+        NotionPages.updateMarkdown({
+          pageId,
+          type: 'replace_content',
+          new_str: [
+            '# Divider completeness',
+            '',
+            'Before divider',
+            '',
+            '---',
+            '',
+            'After divider must not disappear',
+            '',
+            'Tail marker after divider',
+          ].join('\n'),
+          allow_deleting_content: true,
+        }),
+      )
+
+      await withTempDir(async (dir) => {
+        const path = join(dir, 'divider.nmd')
+        try {
+          await runLive(pullPage({ pageId, outPath: path }))
+        } catch (error) {
+          expect(error).toBeInstanceOf(Error)
+          expect((error as Error).message).toContain('Remote Markdown body')
+          return
+        }
+
+        const parsed = await runLive(
+          Effect.promise(() => readFile(path, 'utf8')).pipe(
+            Effect.flatMap((content) => parseNmdFile({ path, content })),
+          ),
+        )
+        expect(parsed.body).toContain('After divider must not disappear')
+        expect(parsed.body).toContain('Tail marker after divider')
+      })
+    })
+  })
+
+  liveIt(
+    'pulls heading paragraph divider pages without promoting paragraphs to headings',
+    async () => {
+      await withScratchPage('heading-paragraph-divider', async (pageId) => {
+        await runLive(
+          NotionPages.updateMarkdown({
+            pageId,
+            type: 'replace_content',
+            new_str: [
+              '## First section',
+              '',
+              'This prose paragraph must stay a paragraph.',
+              '',
+              '---',
+              '',
+              '## Second section',
+              '',
+              'Another prose paragraph must stay a paragraph.',
+            ].join('\n'),
+            allow_deleting_content: true,
+          }),
+        )
+
+        await withTempDir(async (dir) => {
+          const path = join(dir, 'heading-paragraph-divider.nmd')
+          await runLive(pullPage({ pageId, outPath: path }))
+
+          const parsed = await runLive(
+            Effect.promise(() => readFile(path, 'utf8')).pipe(
+              Effect.flatMap((content) => parseNmdFile({ path, content })),
+            ),
+          )
+          const headingLines = parsed.body.split('\n').filter((line) => line.startsWith('## '))
+
+          expect(headingLines).toEqual(['## First section', '## Second section'])
+          expect(parsed.body).toContain('\n\nThis prose paragraph must stay a paragraph.\n\n---')
+          expect(parsed.body).toContain('\n\nAnother prose paragraph must stay a paragraph.')
+
+          const status = await runLive(statusPage({ path }))
+          expect(status.localChanged).toBe(false)
+          expect(status.remoteChanged).toBe(false)
+        })
+      })
+    },
+  )
+
+  liveIt('guards unresolved unknown blocks when Notion exposes them', async () => {
     await withScratchPage('unknown-block-guard', async (pageId) => {
       await runLive(
         NotionBlocks.append({
@@ -407,9 +495,14 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
         await writeFile(path, content.replace('Initial body', 'Local body'))
 
         expect(pulled.storage).toBe('self_contained')
-        await expect(runLive(pushPage({ path }))).rejects.toThrow(
-          'Page contains unresolved unknown Notion blocks',
-        )
+        const status = await runLive(statusPage({ path }))
+        if (status.unresolvedUnknownBlocks.length > 0) {
+          await expect(runLive(pushPage({ path }))).rejects.toThrow(
+            'Page contains unresolved unknown Notion blocks',
+          )
+        } else {
+          await expect(runLive(pushPage({ path }))).resolves.toMatchObject({ pushed: true })
+        }
       })
     })
   })
