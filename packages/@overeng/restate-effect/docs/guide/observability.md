@@ -196,4 +196,4 @@ handler and uses the process default logger, unaffected by this bridge.
 
 - [Annotations and redaction](./annotations.md) — the redaction rule referenced above.
 - [Durable steps](./durable-steps.md) — `Restate.run` as the exactly-once seam.
-- [decision 0014](../vrs/decisions/0014-observability-metrics-and-attrs.md) — the metrics + attrs rationale.
+- [decision 0014](../vrs/.decisions/0014-observability-metrics-and-attrs.md) — the metrics + attrs rationale.

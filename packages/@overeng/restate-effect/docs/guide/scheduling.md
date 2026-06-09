@@ -135,4 +135,4 @@ awakeable belongs to a completed invocation).
 
 - [Durable steps](./durable-steps.md) — the bounded `Restate.run` that holds per-cycle retry.
 - [The endpoint and serving](./endpoint.md) — the daemon latency teaching in context.
-- [decision 0012](../vrs/decisions/0012-self-reschedule.md) — the self-reschedule rationale.
+- [decision 0012](../vrs/.decisions/0012-self-reschedule.md) — the self-reschedule rationale.

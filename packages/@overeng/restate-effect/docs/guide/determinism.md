@@ -62,7 +62,7 @@ yield * Restate.sleep(10, 'settle') // a durable timer (lower bound; survives re
 > Why not remap `Clock.sleep`? `Effect.timeout` is internally a race against
 > `Clock.sleep` + interruption — remapping would suspend/interleave
 > nondeterministically — and library/AppLayer sleeps would silently journal durable
-> timers. See [decision 0004](../vrs/decisions/0004-determinism-layer.md).
+> timers. See [decision 0004](../vrs/.decisions/0004-determinism-layer.md).
 
 ## Deterministic concurrency takes descriptors
 

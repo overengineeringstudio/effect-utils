@@ -24,7 +24,7 @@ const id =
   `maxRetryDuration`, intervals, factor). **Never** wrap a durable step in
   `Effect.retry` — that double-retries non-durably. Durable retries are Restate's;
   see [Annotations](./annotations.md#retry-and-timeout-knobs) and the
-  [retry decision](../vrs/decisions/0006-restate-owns-retries.md).
+  [retry decision](../vrs/.decisions/0006-restate-owns-retries.md).
 - Inside a `run` closure, a nested `ctx.*` / `State.*` / `Restate.sleep` is a
   **compile error** (the durable capabilities are scrubbed) — mirroring Restate's
   "no nested `ctx.*` inside `run`" rule.

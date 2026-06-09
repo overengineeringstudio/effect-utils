@@ -14,7 +14,8 @@ not a replacement for, the design docs:
 - This handbook is the practical, page-per-concern reference.
 - [`docs/vrs/`](../vrs/) is the authoritative design model — [`vision.md`](../vrs/vision.md)
   (why), [`requirements.md`](../vrs/requirements.md) (what), [`spec.md`](../vrs/spec.md)
-  (how), and [`decisions/`](../vrs/decisions/) (the hard-to-reverse calls).
+  (the architecture index over the ten subsystem specs), and
+  [`.decisions/`](../vrs/.decisions/) (the hard-to-reverse calls).
 
 ## Every example is verified
 
