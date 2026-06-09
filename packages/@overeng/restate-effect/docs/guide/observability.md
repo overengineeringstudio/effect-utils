@@ -99,14 +99,14 @@ Use the `span.label` convention for a single primary label.
 When a `metricExporter`/`metricReader` is configured, the bridge emits a
 REPLAY-AWARE auto baseline (exactly-once across attempts/replays):
 
-| Metric | Labels |
-| --- | --- |
-| `restate_invocations_total` | `service`, `handler`, `outcome` (`success`/`terminal`/`retryable`/`cancelled`) |
-| `restate_invocation_duration_ms` | `service`, `handler`, `outcome` |
-| `restate_attempts_total` | `service`, `handler` (retries = attempts − success/terminal) |
-| `restate_durable_steps_total` | `step` (the `Restate.run` name) |
-| `restate_awakeable_wait_ms` | — |
-| `restate_poll_loop_cycles_total` | `name`, `outcome` (`ok`/`error`/`stopped`) |
+| Metric                           | Labels                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| `restate_invocations_total`      | `service`, `handler`, `outcome` (`success`/`terminal`/`retryable`/`cancelled`) |
+| `restate_invocation_duration_ms` | `service`, `handler`, `outcome`                                                |
+| `restate_attempts_total`         | `service`, `handler` (retries = attempts − success/terminal)                   |
+| `restate_durable_steps_total`    | `step` (the `Restate.run` name)                                                |
+| `restate_awakeable_wait_ms`      | —                                                                              |
+| `restate_poll_loop_cycles_total` | `name`, `outcome` (`ok`/`error`/`stopped`)                                     |
 
 The auto baseline is built from core Effect `Metric`s (otel-free), bound to OTel only
 when the meter is registered — so adoption is additive (omit the metric config for an

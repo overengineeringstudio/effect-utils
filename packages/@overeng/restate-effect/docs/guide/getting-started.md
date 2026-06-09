@@ -39,8 +39,8 @@ those handlers Effect programs without dropping any of Restate's vocabulary.
                                       └───────────────────────────────────┘
 ```
 
-**Two artifacts per construct:** a *contract* (shareable, client-side, no server
-deps) and an *implementation* (the server-side Layer). The endpoint materializes
+**Two artifacts per construct:** a _contract_ (shareable, client-side, no server
+deps) and an _implementation_ (the server-side Layer). The endpoint materializes
 implementations against one shared application runtime and runs each invocation
 through a single boundary that decodes the input, provides the per-invocation
 context + capability markers + a journaled `Clock`/`Random`, runs your Effect, and

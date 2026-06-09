@@ -11,11 +11,11 @@ harness** (no Docker) for true end-to-end paths, and a **faithful in-memory
 The two core guarantees are server-free testable; only true end-to-end paths need
 the integration job.
 
-| Layer       | Needs server?       | Covers |
-| ----------- | ------------------- | --- |
+| Layer       | Needs server?       | Covers                                                                                                                                                          |
+| ----------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | unit        | no                  | serde round-trips, `toTerminal`, pure combinators, annotation read-back; AND server-free handler-logic / State-transition tests via the in-memory `TestContext` |
-| contract    | no                  | error-transport round-trip (decode over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter` |
-| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises, single-writer, cross-invocation (calls/sends/`reschedule`/`pollLoop`), journal-shape (`alwaysReplay`) |
+| contract    | no                  | error-transport round-trip (decode over a constructed `TerminalError`); OTel exactly-once via an in-memory `SpanExporter`                                       |
+| integration | yes (native server) | real invoke/replay, State, awakeables, durable promises, single-writer, cross-invocation (calls/sends/`reschedule`/`pollLoop`), journal-shape (`alwaysReplay`)  |
 
 ## The native-server harness
 

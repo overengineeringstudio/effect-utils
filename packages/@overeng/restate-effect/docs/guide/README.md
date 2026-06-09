@@ -28,22 +28,22 @@ See [Verification](./verification.md) for the full story.
 
 ## Pages
 
-| Page | What it covers |
-| --- | --- |
-| [Getting started](./getting-started.md) | Install, the mental model, and a first Service end-to-end (contract → implement → endpoint → typed ingress call). |
-| [The three constructs](./constructs.md) | Services, Virtual Objects (typed `State`, exclusive vs shared, `objectKey`), and Workflows (run + signals/queries, durable promises). |
-| [Authoring: contract, implement, define](./authoring.md) | The two-artifact model, the typed clients (ingress + in-handler), calls/sends, and idempotency. |
-| [Schema I/O and the typed error boundary](./schema-and-errors.md) | The Schema↔Restate serde, slot-based decode classification, and how domain errors decode back into typed errors on the caller. |
-| [Durable steps, calls, and awakeables](./durable-steps.md) | `Restate.run`/`runExit`, in-handler clients, idempotency, and awakeables (create + `descriptor` + ingress resolve). |
-| [Determinism](./determinism.md) | Journaled Clock/Random, explicit `Restate.sleep`/`timeout`/`race`, descriptors, and the durability lints. |
-| [Annotations and redaction](./annotations.md) | `terminal`/`retryable` + `retryAfter`, `retention`, and field-level redaction (`sensitive`/`redacted`). |
-| [The endpoint and serving](./endpoint.md) | The endpoint as a scoped Layer, `serve` + graceful shutdown, and the daemon latency teaching. |
-| [Self-reschedule and durable scheduling](./scheduling.md) | `Restate.reschedule` + `RestateScheduled`/`pollLoop`. (Composition example pending a refinement.) |
-| [Cancellation and lifecycle](./cancellation.md) | Cancel ↔ interruption, finalizers/compensations, and graceful shutdown. |
-| [OpenTelemetry (`./otel`)](./observability.md) | `RestateOtel.layer` (traces + metrics), span attributes, `Restate.annotateSpan`, and the replay-aware metrics. |
-| [Testing (`./testing`)](./testing.md) | The in-memory `TestContext`, the native-server harness, live-clock utils, and the unit/contract/integration layering. |
-| [API reference](./api-reference.md) | The public surface from `mod.ts` + `./otel` + `./testing`. |
-| [Verification + migration notes](./verification.md) | How examples are verified, what is stable vs deferred, and migration notes. |
+| Page                                                              | What it covers                                                                                                                        |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| [Getting started](./getting-started.md)                           | Install, the mental model, and a first Service end-to-end (contract → implement → endpoint → typed ingress call).                     |
+| [The three constructs](./constructs.md)                           | Services, Virtual Objects (typed `State`, exclusive vs shared, `objectKey`), and Workflows (run + signals/queries, durable promises). |
+| [Authoring: contract, implement, define](./authoring.md)          | The two-artifact model, the typed clients (ingress + in-handler), calls/sends, and idempotency.                                       |
+| [Schema I/O and the typed error boundary](./schema-and-errors.md) | The Schema↔Restate serde, slot-based decode classification, and how domain errors decode back into typed errors on the caller.        |
+| [Durable steps, calls, and awakeables](./durable-steps.md)        | `Restate.run`/`runExit`, in-handler clients, idempotency, and awakeables (create + `descriptor` + ingress resolve).                   |
+| [Determinism](./determinism.md)                                   | Journaled Clock/Random, explicit `Restate.sleep`/`timeout`/`race`, descriptors, and the durability lints.                             |
+| [Annotations and redaction](./annotations.md)                     | `terminal`/`retryable` + `retryAfter`, `retention`, and field-level redaction (`sensitive`/`redacted`).                               |
+| [The endpoint and serving](./endpoint.md)                         | The endpoint as a scoped Layer, `serve` + graceful shutdown, and the daemon latency teaching.                                         |
+| [Self-reschedule and durable scheduling](./scheduling.md)         | `Restate.reschedule` + `RestateScheduled`/`pollLoop`. (Composition example pending a refinement.)                                     |
+| [Cancellation and lifecycle](./cancellation.md)                   | Cancel ↔ interruption, finalizers/compensations, and graceful shutdown.                                                               |
+| [OpenTelemetry (`./otel`)](./observability.md)                    | `RestateOtel.layer` (traces + metrics), span attributes, `Restate.annotateSpan`, and the replay-aware metrics.                        |
+| [Testing (`./testing`)](./testing.md)                             | The in-memory `TestContext`, the native-server harness, live-clock utils, and the unit/contract/integration layering.                 |
+| [API reference](./api-reference.md)                               | The public surface from `mod.ts` + `./otel` + `./testing`.                                                                            |
+| [Verification + migration notes](./verification.md)               | How examples are verified, what is stable vs deferred, and migration notes.                                                           |
 
 ## When to use this binding
 

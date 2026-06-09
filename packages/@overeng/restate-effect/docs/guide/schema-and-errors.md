@@ -85,7 +85,10 @@ greet: ({ name }) =>
     if (name === '') return yield* new EmptyName() // domain error → handler `E`
     // No `.orDie` needed: `Restate.run`'s `E` is `never` here (the closure declares
     // no domain error), and an infra failure is a defect handled at the boundary.
-    const id = yield* Restate.run('gen-id', Effect.sync(() => crypto.randomUUID()))
+    const id = yield* Restate.run(
+      'gen-id',
+      Effect.sync(() => crypto.randomUUID()),
+    )
     return { message: `Hello ${name}`, id }
   })
 ```
@@ -109,7 +112,7 @@ infra failure (a `Cause.Die` carrying the `RestateError`, via `Cause.dieOption`)
 you can branch and run a compensating durable step without the failure escaping.
 
 ```ts
-const outcome = yield* Restate.runExit('charge', chargeCard)
+const outcome = yield * Restate.runExit('charge', chargeCard)
 // outcome : Exit<ChargeReceipt, PaymentDeclined>
 // branch on success / domain failure / infra die, then run a compensating step
 ```

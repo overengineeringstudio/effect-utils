@@ -6,14 +6,14 @@ Restate-specific facts are carried on the schema and read once at the site that
 owns the fact. Each `Restate.*` annotation returns the same schema with the fact
 attached. The full file is [`examples/08-annotations.ts`](../../examples/08-annotations.ts).
 
-| Annotation                  | On                   | Drives                                     |
-| --------------------------- | -------------------- | ------------------------------------------ |
-| `terminal({ errorCode })`   | `Schema.TaggedError` | per-error status code (non-retryable)      |
-| `retryable({ retryAfter? })`| `Schema.TaggedError` | Restate retries instead of propagating     |
-| `serde({ contentType, … })` | value schema         | overrides `application/json` / JSON Schema |
-| `retention({ journal, … })` | contract / I/O       | journal/idempotency/workflow retention     |
-| `idempotencyKey`            | input struct field   | the single idempotency-key source          |
-| `sensitive` / `redacted`    | value field          | encrypt the field on the wire/journal      |
+| Annotation                   | On                   | Drives                                     |
+| ---------------------------- | -------------------- | ------------------------------------------ |
+| `terminal({ errorCode })`    | `Schema.TaggedError` | per-error status code (non-retryable)      |
+| `retryable({ retryAfter? })` | `Schema.TaggedError` | Restate retries instead of propagating     |
+| `serde({ contentType, … })`  | value schema         | overrides `application/json` / JSON Schema |
+| `retention({ journal, … })`  | contract / I/O       | journal/idempotency/workflow retention     |
+| `idempotencyKey`             | input struct field   | the single idempotency-key source          |
+| `sensitive` / `redacted`     | value field          | encrypt the field on the wire/journal      |
 
 ```ts
 import { Restate, aesGcmRedactionLayer } from '@overeng/restate-effect'
@@ -113,16 +113,16 @@ import { aesGcmRedactionLayer } from '@overeng/restate-effect'
 const RedactionLayer = aesGcmRedactionLayer(new Uint8Array(32).fill(7))
 ```
 
-| Symbol | What |
-| --- | --- |
-| `RestateRedaction` | the pluggable cipher Tag the consumer provides |
-| `aesGcmRedactionLayer(key)` | a ready AES-256-GCM reference Layer |
-| `aesGcmCipher(key)` | the bare cipher (for a custom Layer) |
+| Symbol                        | What                                               |
+| ----------------------------- | -------------------------------------------------- |
+| `RestateRedaction`            | the pluggable cipher Tag the consumer provides     |
+| `aesGcmRedactionLayer(key)`   | a ready AES-256-GCM reference Layer                |
+| `aesGcmCipher(key)`           | the bare cipher (for a custom Layer)               |
 | `RedactionCipherMissingError` | raised on encode/decode when no cipher is provided |
 
 > **Redaction is serde-only.** Never stamp a sensitive value onto a span attribute
-> (via `Restate.annotateSpan` or otherwise). Redaction encrypts the value *on the
-> wire/journal*; a span attribute bypasses the serde entirely and would leak the
+> (via `Restate.annotateSpan` or otherwise). Redaction encrypts the value _on the
+> wire/journal_; a span attribute bypasses the serde entirely and would leak the
 > plaintext into your traces. Stamp a non-sensitive identifier instead. See
 > [Observability](./observability.md).
 
