@@ -173,10 +173,15 @@ export const State = { for: Ctx.stateFor } as const
  * a Virtual Object that runs a chain of bounded delayed self-sends. `fixedDelay`
  * scheduling, `OnCycleError` (default `skipToNext`), stop via
  * `stopWhen`/`maxIterations`/in-cycle `{ stop: true }`, generation-token re-arm,
- * and the safe re-arm-before-fallible-work ordering. `fixedRate`/`cron`/runtime
- * reconfigure are deferred; per-cycle retry lives inside a bounded `Restate.run`.
+ * and the safe re-arm-before-fallible-work ordering. Composes a declared
+ * `errorSchema` (a `retryable` failure RE-ARMS after its projected `retryAfter`,
+ * bounded by `maxRetryBackoffs`) and an opt-in awakeable `wake` (a webhook cuts the
+ * inter-cycle wait short via the `wakeId` shared handler; the reason rides into the
+ * next cycle as `wokenBy`). `fixedRate`/`cron`/runtime reconfigure are deferred;
+ * per-cycle retry lives inside a bounded `Restate.run`. `WakePayload` is the wake
+ * awakeable schema (resolved via ingress `resolveAwakeable`).
  */
-export { RestateScheduled, Schedule, OnCycleError } from './Scheduled.ts'
+export { RestateScheduled, Schedule, OnCycleError, WakePayload } from './Scheduled.ts'
 export type {
   Scheduled,
   ScheduledConfig,

@@ -80,10 +80,37 @@ export type BoundaryOutcome =
 export type BoundaryErrorClass = 'terminal' | 'retryable' | 'cancelled'
 
 /**
+ * Resolve the declared-error schema NODE that actually classifies `error` (spec
+ * §5). The `terminal`/`retryable` annotation lives on a SINGLE error member, but a
+ * contract's declared `error` is commonly a `Schema.Union` of several members (e.g.
+ * a `retryable` 429 alongside a `terminal` 404). The annotation lives on the UNION
+ * MEMBERS, not the union node, so reading `readErrorClass(union.ast)` always misses
+ * it and mis-classifies every retryable member as the default `terminal`. We pick
+ * the member whose `encodeUnknownEither` accepts the failing error and read the
+ * annotation off THAT member; a non-union schema (or no match) passes through
+ * unchanged. The encode itself still uses the original schema (the union encodes
+ * fine), so only the CLASSIFICATION read is narrowed.
+ */
+const resolveErrorMember = (
+  errorSchema: Schema.Schema<any, any>,
+  error: unknown,
+): Schema.Schema<any, any> => {
+  const ast = errorSchema.ast
+  if (ast._tag !== 'Union') return errorSchema
+  for (const member of ast.types) {
+    const memberSchema = Schema.make(member)
+    if (Schema.encodeUnknownEither(memberSchema)(error)._tag === 'Right') return memberSchema
+  }
+  return errorSchema
+}
+
+/**
  * Classify an Effect failure `Cause` into a {@link BoundaryOutcome} (spec §5,
  * §10). The throw value the SDK sees rides in `thrown`; {@link toTerminal} just
  * unwraps it. Reads the failing error's `terminal`/`retryable` annotation to
- * decide errorCode vs a retryable throw:
+ * decide errorCode vs a retryable throw — resolving the matching UNION MEMBER
+ * first (see {@link resolveErrorMember}) so a `retryable` member of a declared
+ * error UNION is honored, not silently mis-classified as terminal:
  *
  * - Typed domain failure (declared `error` schema): encode it and produce a
  *   `restate.TerminalError`. The encoded body AND its `_tag` ride in the message
@@ -132,9 +159,14 @@ export const classifyOutcome = (
       return { _tag: 'defect', thrown: Cause.squash(cause) }
     }
 
+    /* Read the classification off the matching union MEMBER (or the schema itself
+     * when it is not a union), so a `retryable` member of a declared error union is
+     * honored rather than read off the un-annotated union node. */
     const classification =
       errorSchema !== undefined
-        ? readErrorClass(errorSchema.ast).pipe(Option.getOrElse(() => undefined))
+        ? readErrorClass(resolveErrorMember(errorSchema, error).ast).pipe(
+            Option.getOrElse(() => undefined),
+          )
         : undefined
     const tag =
       typeof error === 'object' && error !== null && '_tag' in error

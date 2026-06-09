@@ -402,6 +402,15 @@ die)` (R13). The durable combinators thus have a CLEAN `E` (§6), and only the
   does NOT match the declared union is classification DRIFT — surfaced as a DEFECT
   (the squashed cause, so the SDK retries and the bug is visible) rather than
   mis-encoding garbage into the terminal body.
+- `terminal`/`retryable` is read PER UNION MEMBER. The annotation lives on a single
+  error member, but a declared `error` is commonly a `Schema.Union` (e.g. a
+  retryable 429 alongside a terminal 404) and the annotation sits on the MEMBERS,
+  not the union node. `classifyOutcome` therefore resolves the matching member for
+  the actual failing error (the one whose `encodeUnknownEither` accepts it) and
+  reads the class off THAT member; a non-union schema (or no match) passes through
+  unchanged, and the encode still uses the declared schema. Without this, every
+  retryable member of a union mis-classifies as the default terminal (the bug the
+  composed `pollLoop` `errorSchema` re-arm depends on; see §9.3, decision 0012).
 - The encoded error AND its `_tag` travel in the `TerminalError` `message` BODY —
   `TerminalError(message, options)` has no separate body channel, and an ingress
   caller only sees `status` + `responseText` (the message), so `metadata` is
@@ -528,7 +537,11 @@ expose a descriptor for the deterministic combinators (#2), so any of them joins
 The awakeable's completion promise is itself a `RestatePromise`, so its descriptor
 just hands the existing promise to the combinator. This replaces the in-process
 `Effect.raceFirst` workaround (which would await an awakeable on a forked fiber,
-losing journal-order determinism — THAT was the bug).
+losing journal-order determinism — THAT was the bug). The composed `pollLoop` wake
+mode (§9.3, decision 0012) is exactly this pattern: its inter-cycle wait is
+`Restate.race([sleepDescriptor(delay), wake.descriptor])`, a deterministic race of
+a durable timer against an awakeable, so a webhook resolution cuts the wait short
+while replay stays journal-deterministic.
 
 This is deliberately NOT `Effect.all` over `[Effect.tryPromise(ctx.run…), …]`:
 that path never calls `RestatePromise.all`, and Effect's own thunk-scheduling — not
@@ -777,8 +790,8 @@ a Virtual Object that owns the recurring lifecycle; the user writes ONE `cycle`
 effect.
 
 ```ts
-const Watcher = RestateScheduled.make({ name, domainState, cycle, schedule, onCycleError?, stopWhen?, maxIterations? })
-// → { contract, implementation }; drive start/stop/status via the typed clients
+const Watcher = RestateScheduled.make({ name, domainState, cycle, schedule, onCycleError?, stopWhen?, maxIterations?, errorSchema?, wake?, maxRetryBackoffs? })
+// → { contract, implementation }; drive start/stop/status/wakeId via the typed clients
 ```
 
 - `schedule`: `Schedule.fixedDelay(ms)` only in v1 (the gap between cycles is
@@ -803,6 +816,30 @@ retry belongs INSIDE the cycle's BOUNDED `Restate.run` (`{ maxRetryAttempts }`):
 Restate journals a give-up that a primitive cannot honestly re-run, and an
 UNBOUNDED `Restate.run` retries forever and WEDGES the per-key write lock so
 `start`/`stop` block (decision 0012).
+
+**Composition (decision 0012).** Two opt-in behaviors thread the existing boundary
+classification + descriptor primitives into the loop cadence — neither is a new
+retry mechanism:
+
+- `errorSchema` → **Retry-After re-arm.** A declared error union routes a cycle
+  failure through the boundary's `classifyOutcome` (the SINGLE source of truth, §5).
+  A `retryable` member RE-ARMS the next cycle after its projected `retryAfter` floor
+  (read off the failing instance), cursor + iteration FROZEN (the SAME logical cycle
+  retries); a `terminal` member / defect falls to `onCycleError`. `maxRetryBackoffs?`
+  (default unbounded) caps consecutive backoffs before demoting to `onCycleError`. In
+  the no-wake shape the backoff is a delayed self-send (generation-bumped), so the
+  lock is RELEASED and `stop` mid-backoff stays prompt. Depends on the per-union-member
+  classification fix in §5.
+- `wake` → **awakeable early fire.** With `wake: true` the inter-cycle wait moves
+  INSIDE the invocation as `Restate.race([sleepDescriptor(delay), wake.descriptor])`
+  (§6.2). Each cycle opens a fresh awakeable, persists its id (`wakeId`, a SHARED
+  read-only handler so a webhook can read it under the held lock), and threads the
+  wake reason to the next cycle as `wokenBy`. An ingress `resolveAwakeable` cuts the
+  wait short. The id ROTATES per cycle; a stale id resolves harmlessly. TRADEOFF: wake
+  mode HOLDS the write lock during the wait, so exclusive `stop`/`start` queue behind
+  it (bounded by the sleep leg) — pair with short `retryAfter` floors; the default
+  no-wake shape is wedge-free. The two shapes are materialized as two distinct `cycle`
+  bodies. Durability holds for both (SIGKILL mid-wait resumes after restart).
 
 **p99 latency rule.** A durable daemon uses a one-way SEND + delayed self-send,
 NEVER a blocking ingress `call`. A blocking call into a per-key Virtual Object
@@ -893,14 +930,14 @@ OTel only when the meter is registered — keeping the otel/metrics deps scoped 
 The auto baseline, with the REPLAY-AWARE exactly-once seam chosen per metric (all
 gated through `emitWhenProcessing(ctx, …)` on `ctx.isProcessing()`):
 
-| Metric | Seam (exactly-once) |
-| --- | --- |
-| `restate_invocations_total{service,handler,outcome}` | boundary EXIT, final classification; a `retryable` failed attempt counts per real attempt (retry pressure). |
-| `restate_invocation_duration_ms{service,handler,outcome}` | boundary (monotonic start → exit). |
-| `restate_attempts_total{service,handler}` | boundary ENTRY; retries derive as `attempts − invocations{success\|terminal}`. |
-| `restate_durable_steps_total{step}` | inside `Restate.run` (the `ctx.run` body runs once / skipped on replay). |
-| `restate_awakeable_wait_ms` | at awakeable resolution (replay reproduces instantly — not a real wait). |
-| `restate_poll_loop_cycles_total{name,outcome}` | inside the `pollLoop` `cycle` handler (`ok`/`error`/`stopped`). |
+| Metric                                                    | Seam (exactly-once)                                                                                         |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `restate_invocations_total{service,handler,outcome}`      | boundary EXIT, final classification; a `retryable` failed attempt counts per real attempt (retry pressure). |
+| `restate_invocation_duration_ms{service,handler,outcome}` | boundary (monotonic start → exit).                                                                          |
+| `restate_attempts_total{service,handler}`                 | boundary ENTRY; retries derive as `attempts − invocations{success\|terminal}`.                              |
+| `restate_durable_steps_total{step}`                       | inside `Restate.run` (the `ctx.run` body runs once / skipped on replay).                                    |
+| `restate_awakeable_wait_ms`                               | at awakeable resolution (replay reproduces instantly — not a real wait).                                    |
+| `restate_poll_loop_cycles_total{name,outcome}`            | inside the `pollLoop` `cycle` handler (`ok`/`error`/`stopped`).                                             |
 
 Wall-clock elapsed is read via `process.hrtime.bigint()` (monotonic, non-journaled
 side-channel — never feeds journaled state), not `Date.now()`. USER metrics export
