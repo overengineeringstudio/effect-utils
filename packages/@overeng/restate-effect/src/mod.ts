@@ -87,7 +87,7 @@ import { pollLoop } from './scheduling/Scheduled.ts'
 
 export const Restate = {
   run: Ctx.run,
-  /** Observe a `Restate.run`'s outcome (success / domain `E` / infra defect) as an `Exit` value (compensation/sagas, decision 0003). */
+  /** Observe a `Restate.run`'s outcome (success / infra defect / interrupt) as an `Exit` value (compensation/sagas, decision 0003). */
   runExit: Ctx.runExit,
   sleep: Ctx.sleep,
   timeout: Ctx.timeout,

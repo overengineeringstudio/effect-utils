@@ -27,7 +27,7 @@
  */
 import { Effect, Schema } from 'effect'
 
-import type { RestateContext, RestateError } from '../src/mod.ts'
+import type { RestateContext } from '../src/mod.ts'
 import { Restate, RestateObject, RestateScheduled, State } from '../src/mod.ts'
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -246,13 +246,14 @@ export const ComposedState = {
 } as const
 const Composed = State.for(ComposedState)
 
-/** Poll the stub inside a BOUNDED `Restate.run` (journaled + bounded retry). The
- * declared 429 / terminal are RETURNED as tagged values, then `Effect.fail`ed in
- * the cycle so they travel the typed `E` to the loop's classification. */
+/** Poll the stub inside a BOUNDED `Restate.run` (journaled + bounded retry). A
+ * durable step carries no typed failure (#1), so the declared 429 / terminal are
+ * RETURNED as tagged VALUES (`run`'s `E` is `never`), then `Effect.fail`ed in the
+ * cycle BODY so they travel the cycle's typed `E` to the loop's classification. */
 const pollComposedSource = (
   key: string,
   cursor: number,
-): Effect.Effect<ComposedSourceResult, RestateError, RestateContext> =>
+): Effect.Effect<ComposedSourceResult, never, RestateContext> =>
   Restate.run(
     `poll(${key}@${cursor})`,
     Effect.sync((): ComposedSourceResult => {

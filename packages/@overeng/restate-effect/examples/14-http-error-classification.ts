@@ -189,12 +189,16 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
   {
     /**
      * RECOMMENDED for an idempotent read. The fetch is a JOURNALED `Restate.run`
-     * step. A DEFINITIVE outcome (2xx / 4xx-terminal) COMMITS — a replay reproduces
-     * it. A TRANSIENT (429 / 5xx / network) FAILS the step, so it is NOT committed
-     * and RESTATE'S DURABLE STEP RETRY re-fetches with backoff (the give-up after
-     * `maxRetryAttempts` becomes a defect Restate retries at the invocation level).
-     * A `Widget` decode mismatch is a `MalformedUpstream` failure inside the closure,
-     * which the handler observes via `runExit` and re-raises terminally.
+     * step whose closure carries NO typed failure (`Effect<Definitive>`, #1): a
+     * DEFINITIVE outcome (2xx / 4xx-terminal / a decode mismatch) is returned as a
+     * tagged `Definitive` VALUE that COMMITS — a replay reproduces it — and the
+     * handler BODY classifies it (the `switch` below), raising the typed terminal
+     * error there. A TRANSIENT (429 / 5xx / network) DIES inside the step, so the
+     * step rejects and is NOT committed — RESTATE'S DURABLE STEP RETRY re-fetches
+     * with backoff (the give-up after `maxRetryAttempts` becomes a defect Restate
+     * retries at the invocation level). A `Widget` decode mismatch is caught into the
+     * `{ _tag: 'malformed' }` value (terminal, not transient — the same bytes fail
+     * identically on a retry), which the handler re-raises terminally.
      */
     fetch: ({ baseUrl, widgetId }) =>
       Effect.gen(function* () {

@@ -11,7 +11,7 @@
  * It is included by `tsconfig`'s `src/**` glob, so `tsc` checks it; it is not a
  * `*.test.ts`, so vitest never runs it.
  */
-import { Effect, Schema } from 'effect'
+import { Effect, type Exit, Schema } from 'effect'
 
 import { call, callTyped, objectCall, workflowSubmit } from '../clients/Client.ts'
 import { DurablePromise, Restate, RestateObject, RestateWorkflow, State } from '../mod.ts'
@@ -89,6 +89,31 @@ const _runNestedState = Restate.run('bad', CounterStateApi.get('count'))
 /* NEGATIVE: a nested Restate.sleep inside `run` — inner R has RestateContext. */
 // @ts-expect-error — durable capability (RestateContext) is not allowed inside Restate.run
 const _runNestedSleep = Restate.run('bad', Restate.sleep(1000))
+
+/* ── Restate.run has NO catchable typed failure (decision 0003, #1) ────────── */
+
+/* NEGATIVE: a typed-`E` inner effect is rejected — a durable step carries no
+ * catchable typed failure, so the inner must be `Effect<A, never, R>`. Domain
+ * errors belong in the handler body / encoded as values; to force a durable retry,
+ * DIE inside the step. */
+// @ts-expect-error — a durable step has no typed failure channel; the inner effect's E must be `never`
+const _runTypedFail = Restate.run('bad', Effect.fail(new EmptyName({})))
+
+/* POSITIVE: `run` erases the typed failure channel — the result `E` is `never`. */
+const _runCleanE = Restate.run(
+  'gen',
+  Effect.sync(() => 1),
+)
+type _R1 = Assert<Equals<Effect.Effect.Error<typeof _runCleanE>, never>>
+
+/* POSITIVE: `runExit` honestly OBSERVES the outcome as `Exit<A>` (failure channel
+ * `never` — an observed failure is a defect/interrupt `Cause`, not a typed `E`). */
+const _runExitObserve = Restate.runExit(
+  'gen',
+  Effect.sync(() => 'value'),
+)
+type _R2 = Assert<Equals<Effect.Effect.Success<typeof _runExitObserve>, Exit.Exit<string, never>>>
+type _R3 = Assert<Equals<Effect.Effect.Error<typeof _runExitObserve>, never>>
 
 /* ── determinism-hazard verification (stress-run round 2) ──────────────────── */
 /*

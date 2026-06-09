@@ -60,10 +60,10 @@ failure is a DEFECT classified at the boundary, never a typed failure a user mus
 `catchTag('RestateError', Effect.die)` away. Explicit signatures:
 
 ```ts
-Restate.run<A, E, R>(name, effect: Effect<A, E, R>, options?)
-                          : Effect<A, E, Exclude<R, DurableCaps> | RestateContext>  // inner E only
-Restate.runExit<A, E, R>(name, effect, options?)
-                          : Effect<Exit<A, E>, never, Exclude<R, DurableCaps> | RestateContext>  // observe
+Restate.run<A, R>(name, effect: Effect<A, never, R>, options?)
+                          : Effect<A, never, Exclude<R, DurableCaps> | RestateContext>  // no typed failure
+Restate.runExit<A, R>(name, effect, options?)
+                          : Effect<Exit<A>, never, Exclude<R, DurableCaps> | RestateContext>  // observe
 Restate.sleep(millis, name?)     : Effect<void,           never, RestateContext>
 Restate.timeout<A>(descr, millis): Effect<A | undefined,  never, RestateContext>
 Restate.all/race/any<T>(descrs)  : Effect<ResultsOf<T>[…], never, RestateContext>
@@ -73,14 +73,16 @@ Awakeable.make(S).promise        : Effect<T, never, never>
 
 `Restate.run` journals the raw success `A` (the contract's serde-friendly value),
 NOT a wrapped `Exit`/`Cause` (which the SDK's default journal serde cannot
-round-trip). Only the inner effect's own domain `E` is carried in the type; in
-practice the inner is `E = never` (domain errors are checked in the HANDLER body,
-not inside a `run` closure — see the examples). A durable-op infra failure (incl. a
-give-up after `ctx.run`'s own retries) is `Effect.die`'d as a `RestateError` at the
-single `awaitDurable` seam, so the boundary classifies it (transient → retry;
-terminal → fail). The `IngressFailed` client surface (`Restate.call`/`send`,
-ingress) still carries a typed `RestateError` — it pairs with the typed
-`decodeTerminalError` decode helper, a caller-facing boundary, not a journaled op.
+round-trip). A durable step carries NO catchable typed failure — its inner effect is
+`Effect<A, never, R>` and `run` returns `Effect<A, never, …>` (#4, below). A
+durable-op infra failure (incl. a give-up after `ctx.run`'s own retries) is
+`Effect.die`'d as a `RestateError` at the single `awaitDurable` seam, so the boundary
+classifies it (transient → retry; terminal → fail). Domain errors belong in the
+HANDLER body (classify the step's result there) or are encoded as VALUES inside the
+step; to force a durable retry, DIE inside the step. The `IngressFailed` client
+surface (`Restate.call`/`send`, ingress) still carries a typed `RestateError` — it
+pairs with the typed `decodeTerminalError` decode helper, a caller-facing boundary,
+not a journaled op.
 
 The STANDALONE blocking awaits — `Awakeable.make(S).promise` and
 `DurablePromise.for(S).get`/`peek` — route through the SAME `awaitDurable` seam as
@@ -94,8 +96,11 @@ give-up's `TerminalError` is deliberately the exception: `run` keeps it an infra
 DEFECT, since a step give-up is infra, not a domain `reject`.)
 
 Compensation/sagas OBSERVE a durable step via `Restate.runExit(name, effect)` →
-`Effect<Exit<A, E>>`: the `Exit` captures success, a domain `E` failure, AND the
-infra failure (a `Cause.Die` carrying the `RestateError`, via `Cause.dieOption`).
+`Effect<Exit<A>>`: the `Exit` faithfully captures what happened at the durable-step
+boundary — `Exit.succeed(A)`, or an `Exit.failure(Cause)` for an infra give-up (a
+`Cause.Die` carrying the `RestateError`, via `Cause.dieOption`) / interruption (a
+`Cause.Interrupt`). The failure channel is `never`: a durable step has no typed
+domain `E`, so an observed failure is always a defect/interrupt.
 
 ## Consequences
 
@@ -117,3 +122,17 @@ _Revised (#1): the durable combinators carry a CLEAN typed `E` (no `RestateError
 the boundary, the no-op `catchTag('RestateError', die)` is gone, and `Restate.runExit`
 is the opt-in observe form for compensation. The boundary also validates a thrown
 failure against the declared `error` union (non-match → defect, no mis-encode)._
+
+_Revised (#4 — CORRECTS the earlier "keep the inner effect's OWN domain `E` flowing
+through `run`"): a durable `run` step has NO catchable typed failure. Its inner
+effect is `Effect<A, never, R>` and `run` returns `Effect<A, never, …>` — because the
+inner runs via `Runtime.runPromise` inside `ctx.run`, a typed `Effect.fail` only
+REJECTS the step (Restate retries; a give-up maps to a `RestateError` DEFECT), so it
+never reaches the outer failure channel; advertising a typed `E` was dishonest
+(`catchTag`/`catchAll` would typecheck but never fire). Domain errors now belong in
+the HANDLER body (classify the step's result there) or are encoded as VALUES inside
+the step; to force a durable retry, DIE inside the step. `runExit` is the honest
+OBSERVATION form — `Effect<Exit<A>>`, failure channel `never`, an observed failure is
+a defect/interrupt `Cause`. A typed-failure-transport `run` (journaling an encoded
+`fail(E)` via an error schema so a typed durable-step failure round-trips) is a
+DEFERRED alternative (see [../spec.md](../spec.md) Deferred), not the v1 contract._

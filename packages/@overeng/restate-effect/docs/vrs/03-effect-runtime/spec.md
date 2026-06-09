@@ -46,13 +46,15 @@ to `ctx.sleep` (T02, R18):
 Every durable combinator has a CLEAN `E` (no `RestateError`, see
 [04-error-boundary](../04-error-boundary/spec.md#error-boundary), item #1): an
 infra failure is a defect classified at the boundary, so a handler with no
-declared domain error keeps `E = never`. Explicit signatures:
+declared domain error keeps `E = never`. A durable `Restate.run` step goes further:
+it carries NO catchable typed failure at all — its inner effect is `Effect<A, never,
+R>` and it returns `Effect<A, never, …>` (decision 0003, #4). Explicit signatures:
 
 ```ts
-Restate.run<A, E, R>(name, effect: Effect<A, E, R>, options?)
-                                : Effect<A, E,    Exclude<R, DurableCaps> | RestateContext>  // inner E only
-Restate.runExit<A, E, R>(name, effect, options?)
-                                : Effect<Exit<A, E>, never, Exclude<R, DurableCaps> | RestateContext>  // observe (sagas)
+Restate.run<A, R>(name, effect: Effect<A, never, R>, options?)
+                                : Effect<A, never, Exclude<R, DurableCaps> | RestateContext>  // no typed failure
+Restate.runExit<A, R>(name, effect, options?)
+                                : Effect<Exit<A>, never, Exclude<R, DurableCaps> | RestateContext>  // observe (sagas)
 Restate.sleep(millis, name?)    : Effect<void,            never, RestateContext>
 Restate.timeout<A>(descr, millis): Effect<A | undefined,  never, RestateContext>
 Restate.all<T>(descriptors)     : Effect<ResultsOf<T>,         never, RestateContext>

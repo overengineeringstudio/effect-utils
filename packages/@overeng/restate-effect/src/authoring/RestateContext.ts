@@ -292,36 +292,42 @@ const mapRunOptions = (o: RunRetryOptions): Record<string, unknown> => ({
  * a give-up becomes a `RestateError` DEFECT. Never wrap a durable step in
  * `Effect.retry` — that double-retries non-durably (R21).
  *
- * The `E` channel stays CLEAN: only the inner effect's OWN domain `E` flows
- * through (#1, decision 0003). A durable-op infra failure (incl. a give-up after
- * `ctx.run`'s own retries) becomes a `RestateError` DEFECT, classified at the
- * boundary (transient → retry; terminal → fail) — never a typed failure the user
- * must `catchTag('RestateError', die)` away. Use {@link runExit} to OBSERVE the
- * outcome (incl. the infra defect) as a value for compensation/sagas.
+ * The inner effect carries NO catchable typed failure (`Effect<A, never, …>`) and
+ * `run` returns `Effect<A, never, …>` (#1, decision 0003). A durable step is
+ * journaled and replayed by Restate, so its only outcomes are a journaled success
+ * `A` or an infra failure: a closure that DIES (or whose `ctx.run` gives up after
+ * its own retries) REJECTS the step, which Restate retries per its policy and which
+ * — once terminal — `awaitDurable` surfaces as a `RestateError` DEFECT classified at
+ * the boundary, never a typed failure the user must `catchTag('RestateError', die)`
+ * away. Domain errors therefore belong in the HANDLER body (classify the step's
+ * result there) or are encoded as VALUES inside the step (a tagged success the
+ * handler branches on); to force a durable retry, DIE inside the step (a defect →
+ * step rejection → retry). Use {@link runExit} to OBSERVE the outcome (success, or
+ * the failure/defect `Cause` — incl. the give-up `RestateError` and interruption) as
+ * a value for compensation/sagas.
  *
  * The journaled value is the raw success `A` (the contract's serde-friendly
  * value), NOT a wrapped `Exit` — so the SDK's default journal serde stays correct
  * and a replay reproduces it verbatim. A nested `Exit`/`Cause` would not be
- * JSON-journalable. A domain failure or defect inside the closure REJECTS the
- * `ctx.run` step (so it is journaled as a step failure, retried by Restate per its
- * retry policy) — domain errors therefore belong in the HANDLER body, not inside a
- * `Restate.run` closure (see the examples), and the inner `E` is `never` in
- * practice. The typed `E` is preserved in the signature for the rare typed-inner
- * case and re-surfaced from the rejection.
+ * JSON-journalable.
+ *
+ * A typed-failure-transport `run` (journaling an encoded `fail(E)` via an error
+ * schema, so a typed durable-step failure round-trips) is a DEFERRED alternative
+ * (docs/vrs/spec.md Deferred, decision 0003) — not the v1 contract.
  */
-export const run = <A, E, R>(
+export const run = <A, R>(
   name: string,
-  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, E, R> : never,
+  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, never, R> : never,
   options?: RunRetryOptions,
-): Effect.Effect<A, E, Exclude<R, DurableCaps> | RestateContext> =>
+): Effect.Effect<A, never, Exclude<R, DurableCaps> | RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     const runtime = yield* Effect.runtime<Exclude<R, DurableCaps>>()
     /* The `[R] extends [Exclude<R, DurableCaps>]` guard guarantees `R` carries no
      * durable capability, so the captured `Exclude<R, DurableCaps>` runtime can
      * run it; the cast just reconciles the conditional type. The inner runs to a
-     * raw `A` (journaled by the SDK); a failure/defect rejects the step. */
-    const inner = effect as Effect.Effect<A, E, Exclude<R, DurableCaps>>
+     * raw `A` (journaled by the SDK); a defect rejects the step. */
+    const inner = effect as Effect.Effect<A, never, Exclude<R, DurableCaps>>
     const action = (): Promise<A> => Runtime.runPromise(runtime)(inner)
     const result = yield* awaitDurable(
       () =>
@@ -338,19 +344,23 @@ export const run = <A, E, R>(
   }).pipe(Effect.withSpan('restate.run', { attributes: { 'span.label': name } }))
 
 /**
- * Observe a `Restate.run`'s outcome as an `Exit` VALUE instead of failing — the
- * opt-in seam for compensation / sagas (decision 0003). The `Exit` captures a
- * success, a domain `E` failure (`Cause.Fail`), AND a durable-op infra failure
- * (a `Cause.Die` carrying the `RestateError`, read via `Cause.dieOption`), so the
- * caller can branch on the outcome and run a compensating durable step without the
- * failure escaping. The inner step is still journaled exactly once.
+ * Observe a `Restate.run`'s OBSERVED outcome as an `Exit` VALUE instead of failing
+ * — the opt-in seam for compensation / sagas (decision 0003). The `Exit` faithfully
+ * captures what actually happened at the durable-step boundary: `Exit.succeed(A)`
+ * for a journaled success, or an `Exit.failure(Cause)` for the failure/defect as
+ * observed there — a durable-op give-up arrives as a `Cause.Die` carrying the
+ * `RestateError` (read via `Cause.dieOption`), and an interruption as a
+ * `Cause.Interrupt`. There is NO typed domain `E` (a durable step carries no
+ * catchable typed failure, #1), so the failure channel is `never` and an observed
+ * failure is always a defect/interrupt the caller branches on. The inner step is
+ * still journaled exactly once.
  */
-export const runExit = <A, E, R>(
+export const runExit = <A, R>(
   name: string,
-  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, E, R> : never,
+  effect: [R] extends [Exclude<R, DurableCaps>] ? Effect.Effect<A, never, R> : never,
   options?: RunRetryOptions,
-): Effect.Effect<Exit.Exit<A, E>, never, Exclude<R, DurableCaps> | RestateContext> =>
-  Effect.exit(run<A, E, R>(name, effect, options))
+): Effect.Effect<Exit.Exit<A>, never, Exclude<R, DurableCaps> | RestateContext> =>
+  Effect.exit(run<A, R>(name, effect, options))
 
 /** A `run` descriptor for use inside `Restate.all`/`race`/`any`. */
 export const runDescriptor = <A>(

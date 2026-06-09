@@ -17,8 +17,10 @@
  * The durable combinators have a CLEAN `E` channel (no `RestateError`, #1): a
  * durable-op infra failure is classified at the boundary as a defect (transient →
  * the SDK retries; terminal → fail), so a handler with no declared domain error
- * keeps `E = never` and never needs a `catchTag('RestateError', die)`. Only the
- * INNER effect's own domain `E` flows through `Restate.run`.
+ * keeps `E = never` and never needs a `catchTag('RestateError', die)`. A `Restate.run`
+ * step carries NO catchable typed failure at all (its inner is `Effect<A, never, R>`):
+ * domain errors live in the handler body / encoded values, and forcing a durable
+ * retry is a DIE inside the step.
  *
  * (The `overeng/no-raw-nondeterminism` lint flags a raw `Date.now()` /
  * `Math.random()` in a handler body OUTSIDE `Restate.run` as an advisory backstop.)
