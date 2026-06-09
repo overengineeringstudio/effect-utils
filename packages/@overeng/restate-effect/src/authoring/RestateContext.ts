@@ -3,8 +3,9 @@ import type { Brand, Exit } from 'effect'
 import { Context, Effect, Option, Runtime, Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
+import { contractSerdeFactory, invocationIdempotencyKey } from '../clients/InvocationPolicy.ts'
 import { emitAwakeableWait, emitDurableStep, monotonicMs } from '../observability/Metrics.ts'
-import { readIdempotencyKey } from '../schema/Annotations.ts'
+import { type RedactionCipher, RestateRedaction } from '../schema/Redaction.ts'
 import { RestateError } from '../schema/RestateError.ts'
 import { internalSerde } from '../schema/Serde.ts'
 
@@ -769,8 +770,26 @@ export const rejectAwakeable = <T>(
  * option. `key` routes to a Virtual Object / Workflow instance.
  */
 
-const clientCallSerde = <T, I>(schema: Schema.Schema<T, I>): restate.Serde<T> =>
-  internalSerde(schema)
+/* The in-handler peer-call serde, built through the SHARED contract-invocation
+ * policy (decision 0020) so the redaction cipher is threaded identically to the
+ * ingress path — a `Restate.sensitive` field in a peer call's input/output is
+ * encrypted on the service-to-service wire. The slot stays `internal`: a peer
+ * call is journaled, so a decode failure is a corrupt-journal defect (not a 400
+ * to the current caller). The cipher is resolved once from the handler's app
+ * context (`RestateRedaction`); absent → no cipher (fine unless a sensitive field
+ * is present, which then fails loudly). */
+const clientCallSerde = <T, I>(
+  schema: Schema.Schema<T, I>,
+  redaction: RedactionCipher | undefined,
+): restate.Serde<T> =>
+  contractSerdeFactory(redaction).forSchema(
+    schema as Schema.Schema<unknown, unknown>,
+    'internal',
+  ) as restate.Serde<T>
+
+/** Resolve the optional in-handler redaction cipher from the app context. */
+const resolveCallRedaction: Effect.Effect<RedactionCipher | undefined, never, never> =
+  Effect.serviceOption(RestateRedaction).pipe(Effect.map(Option.getOrUndefined))
 
 /** Options threaded through an in-handler one-way `send` (delay only — key is positional). */
 export interface SendOptions {
@@ -788,8 +807,10 @@ const callRpc = <In, InI, Out, OutI>(opts: {
 }): Effect.Effect<Out, RestateError, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    const idempotencyKey = readIdempotencyKey(opts.inputSchema.ast, opts.input).pipe(
-      Option.getOrUndefined,
+    const redaction = yield* resolveCallRedaction
+    const idempotencyKey = invocationIdempotencyKey(
+      opts.inputSchema as Schema.Schema<unknown, unknown>,
+      opts.input,
     )
     const result = yield* Effect.tryPromise({
       try: () =>
@@ -798,8 +819,8 @@ const callRpc = <In, InI, Out, OutI>(opts: {
           method: opts.handler,
           parameter: opts.input,
           ...(opts.key !== undefined ? { key: opts.key } : {}),
-          inputSerde: clientCallSerde(opts.inputSchema),
-          outputSerde: clientCallSerde(opts.outputSchema),
+          inputSerde: clientCallSerde(opts.inputSchema, redaction),
+          outputSerde: clientCallSerde(opts.outputSchema, redaction),
           ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         }),
       catch: (cause) =>
@@ -826,8 +847,10 @@ const sendRpc = <In, InI>(opts: {
 }): Effect.Effect<void, RestateError, RestateContext> =>
   Effect.gen(function* () {
     const ctx = yield* RestateContext
-    const idempotencyKey = readIdempotencyKey(opts.inputSchema.ast, opts.input).pipe(
-      Option.getOrUndefined,
+    const redaction = yield* resolveCallRedaction
+    const idempotencyKey = invocationIdempotencyKey(
+      opts.inputSchema as Schema.Schema<unknown, unknown>,
+      opts.input,
     )
     yield* Effect.try({
       try: () =>
@@ -836,7 +859,7 @@ const sendRpc = <In, InI>(opts: {
           method: opts.handler,
           parameter: opts.input,
           ...(opts.key !== undefined ? { key: opts.key } : {}),
-          inputSerde: clientCallSerde(opts.inputSchema),
+          inputSerde: clientCallSerde(opts.inputSchema, redaction),
           ...(opts.delayMillis !== undefined ? { delay: opts.delayMillis } : {}),
           ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         }),
@@ -858,8 +881,14 @@ const sendRpc = <In, InI>(opts: {
  * `Descriptor` so it joins `Restate.all`/`race`/`any` deterministically (#2). The
  * `genericCall` returns an `InvocationPromise` (a `RestatePromise`), issued in
  * source order with the other descriptors. Input encoded / output decoded via the
- * target's serde; the idempotency key is read from the annotated input field (the
- * same path as `callRpc`).
+ * target's serde (the SHARED policy); the idempotency key is read from the
+ * annotated input field (the same path as `callRpc`).
+ *
+ * The descriptor builder is SYNCHRONOUS (it returns a `Descriptor`, not an
+ * Effect, so it can sit inside a `Restate.all([...])` array), so it cannot
+ * `yield*` the ambient `RestateRedaction`. It therefore threads the cipher passed
+ * by its caller — the public `callServiceDescriptor`/`callObjectDescriptor`
+ * resolve it. A redaction cipher is OPTIONAL; absent → no cipher.
  */
 const callDescriptor = <In, InI, Out, OutI>(opts: {
   readonly service: string
@@ -868,9 +897,11 @@ const callDescriptor = <In, InI, Out, OutI>(opts: {
   readonly outputSchema: Schema.Schema<Out, OutI>
   readonly input: In
   readonly key?: string
+  readonly redaction?: RedactionCipher
 }): Descriptor<Out> => {
-  const idempotencyKey = readIdempotencyKey(opts.inputSchema.ast, opts.input).pipe(
-    Option.getOrUndefined,
+  const idempotencyKey = invocationIdempotencyKey(
+    opts.inputSchema as Schema.Schema<unknown, unknown>,
+    opts.input,
   )
   return descriptor<Out>('call', (ctx) =>
     ctx.genericCall<In, Out>({
@@ -878,8 +909,8 @@ const callDescriptor = <In, InI, Out, OutI>(opts: {
       method: opts.handler,
       parameter: opts.input,
       ...(opts.key !== undefined ? { key: opts.key } : {}),
-      inputSerde: clientCallSerde(opts.inputSchema),
-      outputSerde: clientCallSerde(opts.outputSchema),
+      inputSerde: clientCallSerde(opts.inputSchema, opts.redaction),
+      outputSerde: clientCallSerde(opts.outputSchema, opts.redaction),
       ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
     }),
   )

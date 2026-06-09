@@ -31,7 +31,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import * as clients from '@restatedev/restate-sdk-clients'
-import { Clock, Context, Effect, Exit, Layer, type Schema, Scope } from 'effect'
+import { Clock, Context, Effect, Exit, Layer, Option, type Schema, Scope } from 'effect'
 
 import { freePort, freePorts } from '@overeng/utils/node'
 
@@ -82,10 +82,11 @@ import {
   workflowOutput as ingressWorkflowOutput,
   workflowSubmit as ingressWorkflowSubmit,
 } from '../clients/Client.ts'
+import { contractSerdeFactory } from '../clients/InvocationPolicy.ts'
 import { type AnyImplementation, layer as endpointLayer } from '../endpoint/Endpoint.ts'
 import { type BoundaryObserver, type EndpointHooks, type HandlerWrap } from '../error/Boundary.ts'
+import { type RedactionCipher, RestateRedaction } from '../schema/Redaction.ts'
 import { RestateError } from '../schema/RestateError.ts'
-import { effectSerde } from '../schema/Serde.ts'
 
 /**
  * The faithful in-memory `RestateContext` (decision 0013, docs/vrs/09-testing/spec.md §5): a REAL
@@ -441,14 +442,22 @@ const makeStateProxy = <S extends StateSchemas>(
   adminUrl: string,
   contract: StatefulContract<S>,
   serviceKey: string,
+  redaction: RedactionCipher | undefined,
 ): StateProxy<S> => {
   const schemas = contract.state
   const service = contract.name
-  /* The per-key serde is the SAME `effectSerde` the handlers use for State (with
-   * the same optional-field normalization), so a seed written here decodes
-   * identically inside a handler and vice-versa. */
+  /* The per-key serde is built through the SAME shared contract-invocation policy
+   * the handlers use for State (decision 0020) — the redaction cipher threaded on
+   * the `internal` slot (State is journaled), with the same optional-field
+   * normalization — so a seed written here decodes identically inside a handler and
+   * vice-versa, AND a `Restate.sensitive` State field is encrypted at rest exactly
+   * as the handler writes it (no parallel `effectSerde` drift). */
+  const serdes = contractSerdeFactory(redaction)
   const serdeFor = <K extends keyof S & string>(key: K) =>
-    effectSerde(normalizeStateSchema(schemas[key]!))
+    serdes.forSchema(
+      normalizeStateSchema(schemas[key]!) as Schema.Schema<unknown, unknown>,
+      'internal',
+    )
 
   const config = adminConfigFor(adminUrl)
   const readAll = (): Effect.Effect<ReadonlyArray<readonly [string, Uint8Array]>, RestateError> =>
@@ -486,10 +495,7 @@ const makeStateProxy = <S extends StateSchemas>(
           Effect.try({
             try: () =>
               Object.fromEntries(
-                rows.map(([k, bytes]) => [
-                  k,
-                  effectSerde(normalizeStateSchema(schemas[k]!)).deserialize(bytes),
-                ]),
+                rows.map(([k, bytes]) => [k, serdeFor(k as keyof S & string).deserialize(bytes)]),
               ) as { readonly [K in keyof S]?: StateValueType<S[K]> },
             catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).getAll`, cause),
           }),
@@ -523,10 +529,7 @@ const makeStateProxy = <S extends StateSchemas>(
           try: () =>
             Object.entries(values)
               .filter(([, v]) => v !== undefined)
-              .map(
-                ([k, v]) =>
-                  [k, effectSerde(normalizeStateSchema(schemas[k]!)).serialize(v)] as const,
-              ),
+              .map(([k, v]) => [k, serdeFor(k as keyof S & string).serialize(v)] as const),
           catch: (cause) => stateError(`stateOf(${service}/${serviceKey}).setAll`, cause),
         })
         yield* writeAll(entries)
@@ -761,14 +764,33 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
             return uri
           })
 
-        /* 2.+3. Serve + register the primary deployment into the harness scope. */
+        /* MEMOIZE the primary `appLayer` so it is built EXACTLY ONCE into the
+         * harness scope and shared by (a) the served endpoint and (b) the redaction
+         * read below — no double-acquisition of resourceful app services. The
+         * memoized layer is provided to the endpoint AND read for `RestateRedaction`,
+         * so the harness uses the SAME cipher instance the handlers do. */
         const harnessScope = yield* Effect.scope
-        yield* serveAndRegister(opts.services, opts.appLayer, harnessScope)
+        const memoAppLayer = yield* Layer.memoize(opts.appLayer)
+
+        /* 2.+3. Serve + register the primary deployment into the harness scope. */
+        yield* serveAndRegister(opts.services, memoAppLayer, harnessScope)
+
+        /* Resolve the OPTIONAL `RestateRedaction` cipher from the consumer's
+         * `appLayer` — the SAME cipher the served endpoint resolves (decision 0020),
+         * so the harness ingress + `stateOf` use the IDENTICAL contract-invocation
+         * policy as production rather than a parallel `effectSerde` path (closes the
+         * harness-drift gap). Read from the memoized build; absent → no cipher. */
+        const redaction = yield* Layer.build(memoAppLayer).pipe(
+          Effect.map((ctx) => Context.getOption(ctx, RestateRedaction).pipe(Option.getOrUndefined)),
+        )
 
         /* 4. Build the connected ingress runtime once, so the bound call surface
-         * provides `RestateIngress` internally (the test never threads it). */
+         * provides `RestateIngress` internally (the test never threads it). The
+         * redaction cipher rides on the ingress service, so a `Restate.sensitive`
+         * field is encrypted on the wire through the SAME policy as production. */
         const ingressService: RestateIngressService = {
           ingress: clients.connect({ url: server.ingressUrl }),
+          ...(redaction !== undefined ? { redaction } : {}),
         }
         const provideIngress = <X, E, R>(
           effect: Effect.Effect<X, E, R>,
@@ -809,7 +831,7 @@ export class RestateTestHarness extends Context.Tag('@overeng/restate-effect/Res
           adminUrl: server.adminUrl,
           ingress: bound,
           stateOf: <S extends StateSchemas>(contract: StatefulContract<S>, key: string) =>
-            makeStateProxy(server.adminUrl, contract, key),
+            makeStateProxy(server.adminUrl, contract, key, redaction),
           registerDeployment: (<AppR2, RIn2>(deployOpts: {
             readonly services: ReadonlyArray<AnyImplementation<AppR2>>
             readonly appLayer: Layer.Layer<AppR2, never, RIn2>

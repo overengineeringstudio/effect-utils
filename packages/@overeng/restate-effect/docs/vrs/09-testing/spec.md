@@ -38,10 +38,19 @@ it.effect('greet round-trips', () =>
 
 `harness.stateOf(contract, key)` returns a typed proxy with
 `get` / `getAll` / `set` / `setAll`, key- AND value-typed against the contract's
-`state` block, serialized via `effectSerde` and driven over the Admin API. This
-is stable public API (mirrors the testcontainers `StateProxy`, but typed against
-the contract instead of a free `TState` generic). Used to seed pre-conditions and
-assert post-conditions without going through a handler.
+`state` block, serialized via the SHARED contract-invocation policy
+(`clients/InvocationPolicy.ts`,
+[../.decisions/0020](../.decisions/0020-contract-invocation-policy.md)) and driven
+over the Admin API. This is stable public API (mirrors the testcontainers
+`StateProxy`, but typed against the contract instead of a free `TState` generic).
+Used to seed pre-conditions and assert post-conditions without going through a
+handler.
+
+The harness ingress AND `stateOf` use the SAME policy as production — the
+`RestateRedaction` cipher is resolved from the consumer's `appLayer` and threaded
+into both, so a `Restate.sensitive` field round-trips encrypted through the
+harness exactly as on a live server (no parallel `effectSerde` path that could let
+a harness test pass while production differs).
 
 ## 2. Determinism-hunting modes + lifecycle contract (R26a, R27)
 

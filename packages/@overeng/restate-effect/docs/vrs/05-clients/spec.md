@@ -11,6 +11,24 @@ Traces: R10, R14, R32, R33. See
 [../.decisions/0008](../.decisions/0008-typed-client-inference.md). From a contract
 alone (no hand-declared handler shape), the binding derives fully typed clients.
 
+### Contract-invocation policy (the single transport boundary)
+
+The annotation-derived facts that govern HOW a contract handler is invoked — the
+input/output serde (incl. the `sensitive`-field redaction transform), the
+`idempotencyKey`-field extraction, the terminal-error decode, and the SDK opts
+bag — are derived in ONE place (`clients/InvocationPolicy.ts`,
+[../.decisions/0020](../.decisions/0020-contract-invocation-policy.md)) and EVERY
+adapter consumes it: endpoint materialization, all ingress client paths, the
+in-handler service-to-service clients, AND the testing harness. So an annotation
+behaves **consistently at every public entrypoint** (a `sensitive` field is
+encrypted on the wire whether the call goes through `call`, `objectCall`,
+`workflowSubmit`, an in-handler `Restate.call`, or the served handler; an
+`idempotencyKey` field dedupes identically on Service `call` and `objectCall`),
+and adding a new transport-policy fact is a one-file change. `RestateIngress`
+carries the optional `RedactionCipher` (resolved from a `RestateRedaction` layer
+in context), so the ingress client serdes encrypt `sensitive` fields too — not
+just the served handler.
+
 ## 1. External ingress client
 
 `@restatedev/restate-sdk-clients`'s ingress wrapped as an Effect service:

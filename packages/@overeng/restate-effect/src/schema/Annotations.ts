@@ -248,3 +248,101 @@ export const readIdempotencyKey = (ast: SchemaAST.AST, input: unknown): Option.O
     ),
     Option.filter((value): value is string => typeof value === 'string'),
   )
+
+/* ── annotation-placement validation (decision 0020) ──────────────────────── */
+
+/**
+ * Every field name carrying the `idempotencyKey` annotation. Like
+ * {@link findIdempotencyKeyField} but returns ALL hits so a DUPLICATE
+ * (two annotated fields → an ambiguous key) is detectable, not silently
+ * resolved to the first.
+ */
+const allIdempotencyKeyFields = (ast: SchemaAST.AST): ReadonlyArray<string> => {
+  if (ast._tag !== 'TypeLiteral') return []
+  const fields: string[] = []
+  for (const prop of ast.propertySignatures) {
+    if (typeof prop.name !== 'string') continue
+    if (Option.isSome(SchemaAST.getAnnotation<true>(IdempotencyKeyId)(prop.type)) === true) {
+      fields.push(prop.name)
+    }
+  }
+  return fields
+}
+
+/**
+ * Whether a STRUCT-LEVEL (wrong-node) `idempotencyKey`/`sensitive` annotation is
+ * present — i.e. the annotation was applied to `Schema.Struct({...})` itself
+ * instead of a FIELD's value schema (decision 0011 requires the field). On a
+ * `TypeLiteral` such an annotation lands on the struct AST and is silently
+ * ignored by the field-walking readers — a foot-gun this surfaces.
+ */
+const structLevelFieldAnnotation = (
+  ast: SchemaAST.AST,
+): { readonly idempotencyKey: boolean; readonly sensitive: boolean } => {
+  if (ast._tag !== 'TypeLiteral') return { idempotencyKey: false, sensitive: false }
+  return {
+    idempotencyKey: Option.isSome(SchemaAST.getAnnotation<true>(IdempotencyKeyId)(ast)),
+    sensitive: Option.isSome(SchemaAST.getAnnotation<true>(SensitiveId)(ast)),
+  }
+}
+
+/**
+ * A contract-annotation placement diagnostic (decision 0020). A field-level
+ * annotation (`idempotencyKey`/`sensitive`) applied to the wrong AST node, or a
+ * duplicate idempotency key, would otherwise be a SILENT no-op (the readers walk
+ * `propertySignatures` and never see a struct-level annotation; the first
+ * idempotency hit wins). {@link validateInputAnnotations} returns one of these so
+ * the binding can FAIL LOUDLY at materialization with a clear, actionable message.
+ */
+export interface AnnotationViolation {
+  readonly _tag: 'idempotencyKeyOnStruct' | 'sensitiveOnStruct' | 'duplicateIdempotencyKey'
+  readonly message: string
+}
+
+/**
+ * Validate a handler INPUT schema's field-annotation placement (decision 0020):
+ *
+ * - `Restate.idempotencyKey` / `Restate.sensitive` applied to the STRUCT instead
+ *   of a field's value schema (wrong AST node → silent no-op) → a violation.
+ * - MORE THAN ONE field carrying `Restate.idempotencyKey` (an ambiguous key) → a
+ *   violation.
+ *
+ * Returns every violation found (empty when the placement is correct). The label
+ * (`contract.handler`) is woven into the message so the diagnostic points at the
+ * offending handler.
+ */
+export const validateInputAnnotations = (
+  ast: SchemaAST.AST,
+  label: string,
+): ReadonlyArray<AnnotationViolation> => {
+  const violations: AnnotationViolation[] = []
+  const onStruct = structLevelFieldAnnotation(ast)
+  if (onStruct.idempotencyKey === true) {
+    violations.push({
+      _tag: 'idempotencyKeyOnStruct',
+      message:
+        `${label}: Restate.idempotencyKey is applied to the input STRUCT, not a field — ` +
+        `it must wrap a FIELD's value schema (e.g. \`{ key: Restate.idempotencyKey(Schema.String) }\`). ` +
+        `On the struct it is silently ignored (no idempotency key extracted).`,
+    })
+  }
+  if (onStruct.sensitive === true) {
+    violations.push({
+      _tag: 'sensitiveOnStruct',
+      message:
+        `${label}: Restate.sensitive/redacted is applied to the input STRUCT, not a field — ` +
+        `it must wrap a FIELD's value schema (e.g. \`{ token: Restate.sensitive(Schema.String) }\`). ` +
+        `On the struct it is silently ignored (the field is NOT encrypted on the wire).`,
+    })
+  }
+  const idemFields = allIdempotencyKeyFields(ast)
+  if (idemFields.length > 1) {
+    violations.push({
+      _tag: 'duplicateIdempotencyKey',
+      message:
+        `${label}: ${idemFields.length} fields carry Restate.idempotencyKey ([${idemFields.join(', ')}]) — ` +
+        `the idempotency key is a SINGLE source, so exactly one field may be annotated.`,
+    })
+  }
+  return violations
+}

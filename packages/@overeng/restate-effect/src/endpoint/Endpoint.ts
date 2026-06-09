@@ -23,6 +23,7 @@ import type {
   WorkflowHandlerSpecMap,
   WorkflowImplementation,
 } from '../authoring/Service.ts'
+import { contractSerdeFactory } from '../clients/InvocationPolicy.ts'
 import {
   type BoundaryObserver,
   classifyOutcome,
@@ -33,10 +34,13 @@ import {
 } from '../error/Boundary.ts'
 import { emitAttempt, emitInvocationMetrics, monotonicMs } from '../observability/Metrics.ts'
 import { determinismLayer, loggerLayer, withAttemptInterruption } from '../runtime/Runtime.ts'
-import { readRetention, type RetentionOptions } from '../schema/Annotations.ts'
+import {
+  readRetention,
+  type RetentionOptions,
+  validateInputAnnotations,
+} from '../schema/Annotations.ts'
 import { type RedactionCipher, RestateRedaction } from '../schema/Redaction.ts'
 import { RestateError } from '../schema/RestateError.ts'
-import { ingressSerde } from '../schema/Serde.ts'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the materialize boundary deliberately erases the contract's phantom map (invisible to users; the public Contract type stays precise) */
 
@@ -232,13 +236,45 @@ const handlerOpts = (
   },
   redaction: RedactionCipher | undefined,
 ): Record<string, unknown> => {
-  const serdeOpts = redaction !== undefined ? { redaction } : undefined
+  /* Derive the redaction-threaded I/O serdes through the SHARED contract-invocation
+   * policy (decision 0020) — the SAME factory the ingress + in-handler clients use,
+   * so a `Restate.sensitive` field is encrypted identically on the served handler's
+   * I/O. Handler I/O is a caller-facing boundary → the `ingress` slot. */
+  const { input, output } = contractSerdeFactory(redaction).forHandler(spec, 'ingress')
   const annotated = readRetention(spec.input.ast).pipe(Option.getOrUndefined)
   return {
-    input: ingressSerde(spec.input, serdeOpts),
-    output: ingressSerde(spec.success, serdeOpts),
+    input,
+    output,
     ...(annotated !== undefined ? mapRetention(annotated, false) : {}),
     ...mapHandlerOptions(spec.options),
+  }
+}
+
+/**
+ * Validate the field-annotation placement of every handler input in a contract
+ * (decision 0020) — a `Restate.idempotencyKey`/`sensitive` on the STRUCT (wrong
+ * AST node → silent no-op) or a DUPLICATE idempotency field. A misplacement is a
+ * latent bug (the annotation does nothing), so `materialize*` FAILS LOUDLY here
+ * with a clear, aggregated diagnostic rather than serving a contract whose
+ * annotation silently does nothing. Runs once per `materialize*` (cheap — an AST
+ * walk over the already-built schemas).
+ */
+const validateContractAnnotations = (
+  contractName: string,
+  handlerInputs: ReadonlyArray<readonly [string, Schema.Schema<any, any>]>,
+): void => {
+  const violations = handlerInputs.flatMap(([handler, input]) =>
+    validateInputAnnotations(input.ast, `${contractName}.${handler}`),
+  )
+  if (violations.length > 0) {
+    throw new RestateError({
+      reason: 'EndpointFailed',
+      method: `materialize(${contractName})`,
+      cause: new Error(
+        `invalid Restate annotation placement:\n` +
+          violations.map((v) => `  - ${v.message}`).join('\n'),
+      ),
+    })
   }
 }
 
@@ -337,6 +373,10 @@ export const materialize = <AppR>(
   wiring?: MaterializeWiring,
 ): restate.ServiceDefinition<string, unknown> => {
   const { contract, impl } = implementation
+  validateContractAnnotations(
+    contract.name,
+    Object.entries(contract.handlers).map(([n, s]: [string, HandlerSpec]) => [n, s.input] as const),
+  )
   const redaction = resolveRedaction(runtime)
   const handlers = Object.fromEntries(
     Object.entries(contract.handlers).map(([name, spec]: [string, HandlerSpec]) => {
@@ -386,6 +426,12 @@ export const materializeObject = <AppR>(
   wiring?: MaterializeWiring,
 ): restate.VirtualObjectDefinition<string, unknown> => {
   const { contract, impl } = implementation
+  validateContractAnnotations(
+    contract.name,
+    Object.entries(contract.handlers).map(
+      ([n, s]: [string, ObjectHandlerSpec]) => [n, s.input] as const,
+    ),
+  )
   const redaction = resolveRedaction(runtime)
   const handlers = Object.fromEntries(
     Object.entries(contract.handlers).map(([name, spec]: [string, ObjectHandlerSpec]) => {
@@ -455,6 +501,15 @@ export const materializeWorkflow = <AppR>(
   wiring?: MaterializeWiring,
 ): restate.WorkflowDefinition<string, unknown> => {
   const { contract, impl } = implementation
+  validateContractAnnotations(contract.name, [
+    ['run', contract.run.input] as const,
+    ...Object.entries(contract.signals).map(
+      ([n, s]: [string, WorkflowHandlerSpec]) => [n, s.input] as const,
+    ),
+    ...Object.entries(contract.queries).map(
+      ([n, s]: [string, WorkflowHandlerSpec]) => [n, s.input] as const,
+    ),
+  ])
   const redaction = resolveRedaction(runtime)
   const implMap = impl as Record<string, EffectHandler>
   const runSpec = contract.run
