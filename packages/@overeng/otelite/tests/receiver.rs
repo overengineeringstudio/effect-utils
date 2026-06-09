@@ -80,7 +80,11 @@ async fn non_default_dialect_rejected_loudly() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 400, "non-default dialect must be rejected loudly");
+    assert_eq!(
+        resp.status(),
+        400,
+        "non-default dialect must be rejected loudly"
+    );
     let counts = rx.shutdown().await;
     assert_eq!(counts.spans, 0, "rejected payload must not be captured");
     let captured = std::fs::read_to_string(dir.path().join("traces.ndjson")).unwrap();

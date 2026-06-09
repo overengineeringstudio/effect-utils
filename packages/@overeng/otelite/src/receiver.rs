@@ -36,6 +36,11 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
 
 use crate::sink::{Counts, Sink};
 
+/// Max accepted OTLP payload per request. Real batches can exceed axum's 2 MiB
+/// and tonic's 4 MiB defaults; a capture tool must not 413/abort a legitimate
+/// batch. Generous but bounded (vs. unbounded) to avoid OOM from a runaway body.
+const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
+
 /// A running receiver: both servers bound and serving, the child not yet spawned.
 pub struct RunningReceiver {
     pub http_endpoint: String,
@@ -72,6 +77,7 @@ impl RunningReceiver {
             .route("/v1/traces", post(http_traces))
             .route("/v1/metrics", post(http_metrics))
             .route("/v1/logs", post(http_logs))
+            .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY_BYTES))
             .with_state(sink.clone());
         let (http_shutdown, http_rx) = oneshot::channel::<()>();
         let http_task = tokio::spawn(async move {
@@ -88,9 +94,16 @@ impl RunningReceiver {
         let (grpc_shutdown, grpc_rx) = oneshot::channel::<()>();
         let grpc_task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(TraceServiceServer::new(svc.clone()))
-                .add_service(MetricsServiceServer::new(svc.clone()))
-                .add_service(LogsServiceServer::new(svc.clone()))
+                .add_service(
+                    TraceServiceServer::new(svc.clone()).max_decoding_message_size(MAX_BODY_BYTES),
+                )
+                .add_service(
+                    MetricsServiceServer::new(svc.clone())
+                        .max_decoding_message_size(MAX_BODY_BYTES),
+                )
+                .add_service(
+                    LogsServiceServer::new(svc.clone()).max_decoding_message_size(MAX_BODY_BYTES),
+                )
                 .serve_with_incoming_shutdown(grpc_incoming, async {
                     let _ = grpc_rx.await;
                 })
@@ -232,7 +245,10 @@ async fn http_traces(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: By
     };
     maybe_test_panic();
     if let Err(e) = sink.write_traces(&req).await {
-        return (StatusCode::INTERNAL_SERVER_ERROR, format!("capture write failed: {e}"))
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("capture write failed: {e}"),
+        )
             .into_response();
     }
     ok_response(proto, ExportTraceServiceResponse::default().encode_to_vec())
@@ -246,10 +262,16 @@ async fn http_metrics(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: B
     };
     maybe_test_panic();
     if let Err(e) = sink.write_metrics(&req).await {
-        return (StatusCode::INTERNAL_SERVER_ERROR, format!("capture write failed: {e}"))
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("capture write failed: {e}"),
+        )
             .into_response();
     }
-    ok_response(proto, ExportMetricsServiceResponse::default().encode_to_vec())
+    ok_response(
+        proto,
+        ExportMetricsServiceResponse::default().encode_to_vec(),
+    )
 }
 
 async fn http_logs(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: Bytes) -> Response {
@@ -260,7 +282,10 @@ async fn http_logs(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: Byte
     };
     maybe_test_panic();
     if let Err(e) = sink.write_logs(&req).await {
-        return (StatusCode::INTERNAL_SERVER_ERROR, format!("capture write failed: {e}"))
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("capture write failed: {e}"),
+        )
             .into_response();
     }
     ok_response(proto, ExportLogsServiceResponse::default().encode_to_vec())
