@@ -10,9 +10,11 @@ participates in graceful shutdown. The full file is
 
 ## Two surfaces: `layer` and `serve`
 
-- **`layer(opts)`** — the scoped `Layer<never, RestateError, AppR>`. Compose it like
-  any Layer; provide the application Layer (`AppR`) to discharge handler
-  requirements. Use this when composing into a larger Layer graph, or in tests.
+- **`layer(opts)`** — the scoped `Layer<never, RestateError | ConfigError, AppR>`.
+  Compose it like any Layer; provide the application Layer (`AppR`) to discharge
+  handler requirements. The `ConfigError` arm only fails when `port` is a
+  `Config<number>` the environment does not satisfy (a literal-`number` port never
+  produces one). Use this when composing into a larger Layer graph, or in tests.
 - **`serve(opts)`** — `Layer.launch(layer(opts))`: a long-lived `Effect` that blocks
   until interrupted, running finalizers (server close + every scoped application
   resource) on SIGTERM. This is the production entrypoint.
@@ -46,6 +48,8 @@ shares the same `AppR`. A construct's `AppR` is the explicit type param to
   implement it.
 
 ```ts
+import { type EndpointOptions } from '@overeng/restate-effect'
+
 // A mixed endpoint of constructs that share `AppR = never` (an Object + a Workflow).
 export const mixedEndpointOptions: EndpointOptions<never> = {
   services: [CounterLive, ApprovalLive],
@@ -77,6 +81,62 @@ The binding owns only the handler-endpoint port (the `port` you pass to `serve`)
 8080/9070 belong to `restate-server`; callers connect to 8080, never to the handler
 endpoint directly. (The testing harness uses OS port-0 for all three — see
 [Testing](./testing.md).)
+
+## Configuration from the environment
+
+Three surfaces read configuration from `Config` so a deployment can wire them from
+the environment without threading values by hand:
+
+- **Port.** `port` accepts a literal `number` **or** a `Config<number>` (e.g.
+  `Config.integer('PORT')`), resolved on layer acquisition. A `Config` the
+  environment does not satisfy fails the layer with a `ConfigError`.
+- **Ingress client.** `RestateIngress.layerConfig()` reads the ingress URL from
+  `RESTATE_INGRESS_URL` and an **optional** API key from `RESTATE_INGRESS_KEY` (a
+  `Config.redacted`, so the secret stays a `Redacted` and never prints).
+- **OTel.** `RestateOtel.layerConfig` reads `OTEL_SERVICE_NAME` /
+  `OTEL_EXPORTER_OTLP_ENDPOINT` (see [Observability](./observability.md)).
+
+```ts
+import { Config } from 'effect'
+
+serve({ services: [GreeterLive], port: Config.integer('PORT') }).pipe(/* … */)
+```
+
+## Securing the endpoint
+
+By default the handler-endpoint port (9080) is **unauthenticated** — anything that
+can reach it can invoke a handler. Two independent surfaces close that hole for a
+secured / Restate Cloud deployment:
+
+- **Request identity (server → handlers).** Pass `identityKeys` — ED25519 public
+  keys in the SDK's `publickeyv1_…` format — to `serve` / `layer`. The SDK then
+  rejects any inbound request not signed by the matching private key (the
+  `x-restate-signature-scheme: v1` + `x-restate-jwt-v1` JWT check), so only your
+  Restate cluster can invoke the endpoint. Pure passthrough — the SDK owns the
+  verification. Leave it unset on a trusted local network.
+
+  ```ts
+  serve({
+    services: [GreeterLive],
+    port: Config.integer('PORT'),
+    identityKeys: ['publickeyv1_2G8dCQhArfvGpzPw5Vx2ALciR4xCLHfS5YaT93XjNxX9'],
+  })
+  ```
+
+- **Ingress auth (you → server).** A secured ingress (Restate Cloud) needs a bearer
+  API key on every ingress request. `RestateIngress.layer({ url, apiKey })` (or the
+  env-driven `RestateIngress.layerConfig()`) sends it as `Authorization: Bearer …`.
+  The `apiKey` is a `Redacted<string>`, so it never prints in logs or errors.
+
+  ```ts
+  import { Config, Redacted } from 'effect'
+
+  // literal: apiKey as a Redacted (never printed)
+  RestateIngress.layer({ url: 'https://…/ingress', apiKey: Redacted.make(key) })
+
+  // env-driven: RESTATE_INGRESS_URL + (optional) RESTATE_INGRESS_KEY
+  RestateIngress.layerConfig()
+  ```
 
 ## The daemon latency teaching
 

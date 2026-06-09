@@ -25,7 +25,11 @@ Effect spans (Effect.withSpan on boundary ops)
 
 ```ts
 import { NodeRuntime } from '@effect/platform-node'
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  PeriodicExportingMetricReader,
+} from '@opentelemetry/sdk-metrics'
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base'
 import { Effect } from 'effect'
 import { serve } from '@overeng/restate-effect'
@@ -33,13 +37,17 @@ import { RestateOtel } from '@overeng/restate-effect/otel'
 
 // `layer` registers ONE global TracerProvider + a global context manager (the
 // load-bearing step that makes the attempt span resolve at handler entry), binds
-// Effect's tracer to the same provider, AND — when a metric exporter/reader is
+// Effect's tracer to the same provider, AND — when a metric reader/exporter is
 // given — registers a MeterProvider sharing the same Resource and binds Effect's
 // `Metric` to it. Omit the metric config for a traces-only setup.
 const OtelLayer = RestateOtel.layer({
   resource: { serviceName: 'greeter' },
   exporter: new ConsoleSpanExporter(), // a BatchSpanProcessor over OTLP in prod
-  metricExporter: new OTLPMetricExporter({ url: 'http://localhost:4318/v1/metrics' }),
+  // In prod wrap a `PeriodicExportingMetricReader` over an OTLP metric exporter;
+  // the in-memory reader shows the auto-baseline metrics locally without a peer dep.
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+  }),
 })
 
 // `withOtel` attaches the hook + inbound span-context bridge + the boundary
@@ -49,6 +57,26 @@ serve(RestateOtel.withOtel({ services: [GreeterLive], port: 9080 })).pipe(
   Effect.provide(OtelLayer),
   NodeRuntime.runMain,
 )
+```
+
+For an env-driven setup, `RestateOtel.layerConfig` reads `OTEL_SERVICE_NAME` and
+`OTEL_EXPORTER_OTLP_ENDPOINT` from `Config` and hands the resolved endpoint to a
+`build` you supply. The OTLP exporter package (`@opentelemetry/exporter-trace-otlp-http`,
+`@opentelemetry/exporter-metrics-otlp-http`) is **your** choice — it is deliberately
+not pulled into the binding's closure, so you install only the exporter your
+collector needs:
+
+```ts
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
+
+const OtelLayer = RestateOtel.layerConfig({
+  base: { resource: { serviceName: 'greeter' } }, // overridden by OTEL_SERVICE_NAME
+  build: ({ endpoint }) => ({
+    exporter: new OTLPTraceExporter({ url: `${endpoint}/v1/traces` }),
+    metricExporter: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics` }),
+  }),
+})
 ```
 
 `RestateOtel.layer` MUST be present — it registers the global `TracerProvider` **and
@@ -122,6 +150,40 @@ reads an unstable internal SDK symbol.
 The whole path is verified server-free with an in-memory `MetricReader` +
 `SpanExporter`, including a forced-replay no-double-count assertion
 ([`src/observability.test.ts`](../../src/observability.test.ts)).
+
+## Logging
+
+In-handler `Effect.log*` (`logInfo` / `logWarning` / `logError` / `logDebug`) is
+bridged to the invocation's **replay-aware `ctx.console`** — automatically, on the
+core `.` export (no `./otel` needed). The per-invocation logger layer is provided
+over every handler alongside the journaled `Clock`/`Random`, so:
+
+- **Replayed logs are suppressed.** `ctx.console` excludes output during replay, so
+  an `Effect.logInfo` does **not** re-emit on every replay/attempt — the line is
+  written once, on the real execution. (A plain default logger writing to
+  `globalThis.console` would re-print on each replay.)
+- **Level control is free.** `ctx.console` honors the SDK's `RESTATE_LOGGING`
+  level, and the bridge maps the Effect `LogLevel` to the matching console method:
+  `Trace`/`Debug` → `debug`, `Info` → `info`, `Warning` → `warn`,
+  `Error`/`Fatal` → `error`.
+- **Context is stamped.** `ctx.console` annotates each line with the invoked
+  service/handler + invocation id; the message keeps Effect's `logfmt` format, so
+  log annotations (`Effect.annotateLogs`) and spans ride along.
+
+```ts
+const greet = (input: Greet) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo('greeting').pipe(Effect.annotateLogs('name', input.name))
+    return `Hello, ${input.name}!`
+  })
+```
+
+A log line is **not** a durable side effect — it is suppressed on replay but never
+journaled. For side-effecting telemetry (writing to an external sink, incrementing
+a business counter), route it through `Restate.run` so it runs exactly once on real
+execution and is skipped on replay — the same exactly-once seam the metrics path
+uses. The endpoint's own startup log (`"… endpoint listening on …"`) is outside any
+handler and uses the process default logger, unaffected by this bridge.
 
 ## See also
 
