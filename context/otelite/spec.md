@@ -88,6 +88,12 @@ Accepts all common patterns the production OTel stack emits:
 Both decode into the same `opentelemetry-proto` message types and write through
 one sink. No bespoke wire handling. See `decisions/0002`.
 
+Accepted JSON dialect: the one OTel language SDKs emit by default — hex IDs,
+string int64, integer enums. Other spec-conformant encodings (base64 IDs, string
+enums, numeric int64) are **rejected loudly** (HTTP 400 / gRPC error), never
+silently dropped — a decode failure must be visible, not mistaken for "no
+telemetry." See `decisions/0011`.
+
 ## Isolation (coordination-free parallel use)
 
 Many independent agents must run otelite concurrently with **zero cross-agent
@@ -148,10 +154,13 @@ fire-and-forget emitters; otelite **never** waits unbounded. See
 `decisions/0006` for the evidence.
 
 The guarantee depends on **durability before ack**: otelite writes each export to
-the sink (flush; `sync_all` on shutdown) *before* returning the OTLP success
-response. So a synchronous emitter that awaits its ack — or any SDK that flushes
-on shutdown — is guaranteed its span is durably captured by the time the Child
-exits, making in-flight drain sufficient (`decisions/0010`).
+the sink and flushes *before* returning the OTLP success response (with
+`sync_all` on shutdown). So a synchronous emitter that awaits its ack — or any
+SDK that flushes on shutdown — is guaranteed its span is durably captured by the
+time the Child exits, making in-flight drain sufficient (`decisions/0010`). To
+avoid serializing throughput, the flush is a batched / notify-after-fsync barrier
+rather than a per-export fsync held under the sink lock (a review spike measured
+~600× latency inflation for the naive form on contended storage).
 
 ## Effect wrapper (`@overeng/otelite-effect`)
 
