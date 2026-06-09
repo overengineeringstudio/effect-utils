@@ -50,11 +50,36 @@ let
       "${config.devenv.root}/.devenv/pnpm-home"
     else
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
-  defaultPnpmStoreDir =
+  # Per-host store-location trait (fleet decision 0002).
+  #
+  # On ext4/Linux hosts (dev3, dev4) `clone-or-copy` degrades to a full copy
+  # because the root NVMe has no reflink, so every worktree duplicates the JS
+  # dependency closure (~750G measured fleet-wide). There we move the store to
+  # one shared host-level location on the same filesystem as the worktrees and
+  # import packages with `hardlink`, collapsing all per-worktree stores into a
+  # single content-addressed store with ~0 marginal cost per worktree. pnpm
+  # keys `projects/` and `links/` by absolute project path, so a store shared
+  # across worktrees stays correct.
+  #
+  # On APFS/macOS (mbp2025, mbp2021) `clone`/reflink is already cheap natively,
+  # so the bloat is a Linux/ext4 problem only; the trait must not regress mac —
+  # it keeps the per-worktree `.devenv` store + committed `clone-or-copy`.
+  #
+  # CI is unaffected: it sets its own `PNPM_STORE_DIR` (job-local) which always
+  # wins over this default, and the hardlink flag is gated on `[ -z "$CI" ]`.
+  useSharedStore = pkgs.stdenv.hostPlatform.isLinux;
+  # Resolved at shell-eval time so `$HOME` expands per host, not at Nix eval.
+  sharedStoreRootExpr = ''"''${PNPM_SHARED_STORE_DIR:-$HOME/.local/share/pnpm/store-shared-v1}"'';
+  perWorktreePnpmStoreDir =
     if workspaceRoot == "." then
       "${config.devenv.root}/.devenv/pnpm-store-pure-v1"
     else
       "${config.devenv.root}/.devenv/pnpm-store-pure-v1/${workspaceCacheName}";
+  # Shell expression yielding the default store dir for this host. On ext4/Linux
+  # all worktrees + sub-workspaces share one content-addressed store root; on
+  # APFS/macOS each worktree (and sub-workspace) keeps its own `.devenv` store.
+  defaultPnpmStoreDirExpr =
+    if useSharedStore then sharedStoreRootExpr else lib.escapeShellArg perWorktreePnpmStoreDir;
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -154,16 +179,31 @@ let
   '';
   ensureLocalPnpmStoreDirFn = ''
     _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-}}}"
-    if [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "$_pnpm_store_dir" ]; then
-      case "$_pnpm_store_dir" in
-        */${workspaceCacheName}) ;;
-        *) _pnpm_store_dir="$_pnpm_store_dir/${workspaceCacheName}" ;;
-      esac
-    elif [ -n "$_pnpm_store_dir" ]; then
-      :
-    else
-      _pnpm_store_dir=${lib.escapeShellArg defaultPnpmStoreDir}
-    fi
+    ${
+      if useSharedStore then
+        ''
+          # Shared-store hosts (ext4/Linux): every workspace points at the one
+          # shared store root. No per-workspace suffix — that would re-fragment
+          # the store and defeat the disk win. pnpm keys projects/ by absolute
+          # project path, so one store across worktrees+sub-workspaces is safe.
+          if [ -z "$_pnpm_store_dir" ]; then
+            _pnpm_store_dir=${defaultPnpmStoreDirExpr}
+          fi
+        ''
+      else
+        ''
+          if [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "$_pnpm_store_dir" ]; then
+            case "$_pnpm_store_dir" in
+              */${workspaceCacheName}) ;;
+              *) _pnpm_store_dir="$_pnpm_store_dir/${workspaceCacheName}" ;;
+            esac
+          elif [ -n "$_pnpm_store_dir" ]; then
+            :
+          else
+            _pnpm_store_dir=${defaultPnpmStoreDirExpr}
+          fi
+        ''
+    }
     export PNPM_STORE_DIR="$_pnpm_store_dir"
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"
@@ -174,6 +214,13 @@ let
       if [ -n "''${CI:-}" ]; then
         return 0
       fi
+      ${lib.optionalString useSharedStore ''
+        # Shared-store hosts already keep the entire store (files/, index, links/,
+        # projects/) on the shared host path, so the files-only split symlink is
+        # redundant and would point one shared store's files/ at a *different*
+        # shared blob. Skip it.
+        return 0
+      ''}
       if [ -z "''${npm_config_store_dir:-}" ]; then
         echo "[pnpm] npm_config_store_dir is empty; cannot prepare split store" >&2
         exit 1
@@ -292,6 +339,21 @@ let
       local install_args
       reject_impure_pnpm_install_args "$@" ${installFlagsString}
       install_args=(install "$@" ${installFlagsString} ${pureInstallFlagsString} "--config.store-dir=$npm_config_store_dir")
+
+      ${lib.optionalString useSharedStore ''
+        # Shared-store hosts (ext4/Linux): import by hardlink so node_modules are
+        # hardlinks into the one shared content-addressed store (~0 marginal disk
+        # per worktree) instead of the committed `clone-or-copy`, which is a full
+        # copy on ext4 (no reflink). pnpm still imports packages with lifecycle
+        # scripts (node-pty, sharp, ...) by *copy* regardless of this flag, so
+        # in-place build steps cannot mutate shared store content. CI keeps the
+        # committed policy: it sets CI and never reaches this branch via the
+        # CI-gated install path, and CI store-dir is job-local. The flag is
+        # appended by the module after the impurity guard, like --config.store-dir.
+        if [ -z "''${CI:-}" ]; then
+          install_args+=("--config.package-import-method=hardlink")
+        fi
+      ''}
 
       ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
         if [ -n "''${CI:-}" ]; then
@@ -572,7 +634,9 @@ let
         ${ensureLocalPnpmStoreDirFn}
         ${ensureSharedPnpmFilesStoreFn}
         ensure_shared_pnpm_files_store
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false --pm-on-fail=ignore --config.store-dir="$npm_config_store_dir"${
+          lib.optionalString useSharedStore '' --config.package-import-method=hardlink''
+        }
         echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
@@ -614,20 +678,33 @@ in
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"
-    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}}}"
+    _pnpm_store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-${defaultPnpmStoreDirExpr}}}}"
     export PNPM_STORE_DIR="$_pnpm_store_dir"
     export PNPM_CONFIG_STORE_DIR="$_pnpm_store_dir"
     export npm_config_store_dir="$_pnpm_store_dir"
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_pm_on_fail=ignore
-    if [ -z "''${CI:-}" ]; then
-      _pnpm_shared_files="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
-      mkdir -p "$PNPM_STORE_DIR/v11" "$_pnpm_shared_files"
-      if [ ! -e "$PNPM_STORE_DIR/v11/files" ] && [ ! -L "$PNPM_STORE_DIR/v11/files" ]; then
-        ln -s "$_pnpm_shared_files" "$PNPM_STORE_DIR/v11/files"
-      fi
-      unset _pnpm_shared_files
-    fi
+    ${
+      if useSharedStore then
+        ''
+          # Shared-store hosts (ext4/Linux): the entire store already lives on the
+          # shared host path, so no files-only split symlink is needed.
+          if [ -z "''${CI:-}" ]; then
+            mkdir -p "$PNPM_STORE_DIR/v11"
+          fi
+        ''
+      else
+        ''
+          if [ -z "''${CI:-}" ]; then
+            _pnpm_shared_files="''${PNPM_SHARED_FILES_DIR:-$HOME/.local/share/pnpm/shared-files}/v11"
+            mkdir -p "$PNPM_STORE_DIR/v11" "$_pnpm_shared_files"
+            if [ ! -e "$PNPM_STORE_DIR/v11/files" ] && [ ! -L "$PNPM_STORE_DIR/v11/files" ]; then
+              ln -s "$_pnpm_shared_files" "$PNPM_STORE_DIR/v11/files"
+            fi
+            unset _pnpm_shared_files
+          fi
+        ''
+    }
     unset _pnpm_store_dir
   '';
 
