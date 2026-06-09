@@ -95,6 +95,15 @@ Every durable op exposes a descriptor for `all` / `race` / `any` / `timeout`:
 | durable promise | `DurablePromise.for(S).getDescriptor(name)`                  |
 | awakeable       | `Awakeable.make(S).descriptor`                               |
 
+> **`runDescriptor` takes a thunk, `run` takes an Effect.** `Restate.run(name, effect)`
+> takes an **Effect** (run via the captured runtime); `Restate.runDescriptor(name, action)`
+> takes a **thunk** `() => Promise<A>` (or `() => A`) that **returns a Promise** (or a
+> raw value), because a descriptor is issued synchronously by the SDK. So inside a
+> descriptor you write `() => fetchA()` (a thunk returning a Promise), not the
+> `Effect` you would pass to `run`. This is the most common first-time compile
+> stumble — if a descriptor errors on the type, you likely passed an `Effect` where
+> a `() => Promise` was expected.
+
 The combinators issue descriptors synchronously in array order (fixing the journal
 order), then await the single combined `RestatePromise` exactly once. Apply
 transforms with `.map` to the **result**, never `.then`-chained pre-await — the SDK

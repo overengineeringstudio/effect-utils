@@ -28,6 +28,13 @@ const id =
 - Inside a `run` closure, a nested `ctx.*` / `State.*` / `Restate.sleep` is a
   **compile error** (the durable capabilities are scrubbed) — mirroring Restate's
   "no nested `ctx.*` inside `run`" rule.
+- `Restate.run` takes an **Effect**. Its descriptor sibling
+  `Restate.runDescriptor(name, action)` (for `all` / `race` / `any` /
+  `timeout`) instead takes a **thunk** `() => Promise<A>` (or `() => A`) that
+  **returns a Promise** — a descriptor is issued synchronously, so it cannot take
+  an Effect. Passing an `Effect` where a `() => Promise` is expected is the common
+  first-time descriptor compile error. See
+  [Determinism](./determinism.md#deterministic-concurrency-takes-descriptors).
 
 `Restate.run` has a **clean `E`**: only the inner effect's own domain `E` flows
 through, and a durable-op infra failure is a defect at the boundary. See the
@@ -94,6 +101,53 @@ const NotifyInput = Schema.Struct({
 
 Idempotency keys dedupe across calls/sends; the send's output is retained and
 attachable via `result` once the invocation completes.
+
+### End-to-end idempotency: one identity across the layers
+
+Deduplication is only as good as the **identity** you thread through it. A real
+pipeline crosses several constructs — a producer emits an intent, a Virtual Object
+records an incident, a Workflow drives a long-running delivery — and each layer has
+its own notion of "key". The discipline: derive **one logical identity** from the
+producer's intent and reuse the **same string** at every layer, so a re-submitted
+intent dedupes end-to-end instead of forking a second pipeline.
+
+```
+producer intent-id  "intent-42"
+        │  (the single source — the producer's natural request id)
+        ▼
+Virtual-Object key  objectCall(IncidentObj, "intent-42", "open", …)   ← incident key
+        ▼
+Workflow id         Restate.workflowSubmit(DeliveryWf, "intent-42", …) ← workflow id
+        ▼
+delivery send       Restate.idempotencyKey field = "intent-42"        ← send dedupe key
+```
+
+The **single source** is the producer's intent-id. `Restate.idempotencyKey` declares
+it once on the input field that carries it; every downstream layer keys off that same
+value:
+
+```ts
+const DeliverInput = Schema.Struct({
+  intentId: Restate.idempotencyKey(Schema.String), // the ONE identity, declared once
+  body: Schema.String,
+})
+
+// All four layers key off the SAME `intentId` string:
+yield * Restate.objectSendClient(IncidentObj, intentId, 'open', { note }) // VO key = intentId
+yield * Restate.workflowSubmit(DeliveryWf, intentId, payload) // workflow id = intentId (idempotent submit)
+yield * Restate.send(Notifier, 'deliver', { intentId, body }) // send dedupe key = intentId
+```
+
+A re-submitted `intent-42` then hits the SAME incident key, the SAME workflow id
+(`workflowSubmit` is idempotent — a second submit attaches to the running one rather
+than starting a new run), and the SAME send key — so the whole pipeline dedupes.
+
+**The misuse to avoid:** minting a _fresh_ key at each layer (a new UUID per send, a
+random workflow id), or keying a downstream layer off a _derived_ value that is not
+stable across a retry (a timestamp, a `crypto.randomUUID()` outside `Restate.run`).
+Different keys at different layers means a re-submitted intent **forks** — a second
+incident, a second workflow run, a duplicate delivery — which is the exact bug
+idempotency was meant to prevent. Thread the one producer identity all the way down.
 
 ## Awakeables — external completion tokens
 

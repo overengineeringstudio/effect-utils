@@ -72,21 +72,20 @@ and Restate retries (instead of failing the caller). `retryAfter` sets a floor
 before the next attempt — either a **static** `Duration` shorthand or an **instance
 projection** read off the actual failing error (mirroring `idempotencyKey` — the
 fact lives on the schema, read once at the boundary). Both forms are verified in
-[`src/error-transport.test.ts`](../../src/error-transport.test.ts).
+[`src/error-transport.test.ts`](../../src/error/error-transport.test.ts).
 
 ```ts
-// static floor
-const Throttled = Restate.retryable(
-  Schema.asSchema(class extends Schema.TaggedError<any>()('Throttled', {}) {}),
-  { retryAfter: '30 seconds' },
-)
+// static floor — a named tagged-error class (mirrors `examples/08-annotations.ts`)
+class Throttled extends Schema.TaggedError<Throttled>('example/Throttled')('Throttled', {}) {}
+const ThrottledRetryable = Restate.retryable(Throttled, { retryAfter: '30 seconds' })
 
-// projection: read the floor off THIS error instance (e.g. a 429's header)
-class RateLimited extends Schema.TaggedError<RateLimited>()('RateLimited', {
+// projection: read the floor off THIS error instance (e.g. a 429's header).
+// The named class is what makes `e` typed in the projection below.
+class RateLimited extends Schema.TaggedError<RateLimited>('example/RateLimited')('RateLimited', {
   retryAfterMillis: Schema.Number,
 }) {}
-const RateLimitedSchema = Restate.retryable(Schema.asSchema(RateLimited), {
-  retryAfter: (e) => e.retryAfterMillis, // typed against the error; undefined → default backoff
+const RateLimitedRetryable = Restate.retryable(RateLimited, {
+  retryAfter: (e) => e.retryAfterMillis, // `e: RateLimited` — typed; undefined → default backoff
 })
 ```
 
