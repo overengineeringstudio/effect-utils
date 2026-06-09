@@ -29,7 +29,8 @@
  * single-writer/concurrency, cross-invocation calls/sends/reschedule/pollLoop,
  * admin-cancel, idempotency-keyed result attach, OTel attempt-span reparenting.
  */
-import { Cause, Context, Effect, Exit, Layer, Option, Runtime, Schema, Scope } from 'effect'
+import type { Scope } from 'effect'
+import { Cause, Context, Effect, Exit, Layer, Option, Runtime, Schema } from 'effect'
 
 import {
   normalizeStateSchema,
@@ -242,7 +243,7 @@ const classifyMockExit = (
   exit: Exit.Exit<unknown, unknown>,
   errorSchema: Schema.Schema<unknown, unknown> | undefined,
 ): Effect.Effect<unknown, unknown> => {
-  if (Exit.isSuccess(exit)) return Effect.succeed(exit.value)
+  if (Exit.isSuccess(exit) === true) return Effect.succeed(exit.value)
   const outcome = classifyOutcome(exit.cause, errorSchema)
   /* A declared domain failure: recover the typed error by round-tripping the
    * ORIGINAL failure value through `errorSchema` (the same decode an ingress caller
@@ -254,7 +255,7 @@ const classifyMockExit = (
     errorSchema !== undefined
   ) {
     const failure = Cause.failureOption(exit.cause)
-    if (Option.isSome(failure)) {
+    if (Option.isSome(failure) === true) {
       return Schema.encodeUnknown(errorSchema)(failure.value).pipe(
         Effect.flatMap((encoded) => Schema.decodeUnknown(errorSchema)(encoded)),
         Effect.catchAll(() => Effect.succeed(failure.value)),
@@ -291,7 +292,7 @@ const mockStateProxy = <S extends StateSchemas>(
     new RestateError({ reason: 'SerdeFailed', method, cause })
   return {
     get: (key) =>
-      state.has(key)
+      state.has(key) === true
         ? Schema.decodeUnknown(schemaFor(key))(state.get(key)).pipe(
             Effect.mapError(stateErr(`stateOf(${contract.name}).get(${key})`)),
           )
@@ -307,12 +308,23 @@ const mockStateProxy = <S extends StateSchemas>(
         Effect.mapError(stateErr(`stateOf(${contract.name}).getAll`)),
       ),
     set: (key, value) =>
-      Schema.encode(schemaFor(key))(value).pipe(
-        Effect.map((encoded) => {
-          state.set(key, encoded)
-        }),
-        Effect.mapError(stateErr(`stateOf(${contract.name}).set(${key})`)),
-      ),
+      /* `set(key, undefined)` on an OPTIONAL field REMOVES the key (≡ `clear`),
+       * matching the in-handler `State.set` semantics: an absent key reads back as
+       * `undefined`, so the present-value serde is never asked to encode it (#1). */
+      value === undefined
+        ? Effect.sync(() => {
+            state.delete(key)
+          })
+        : Schema.encode(schemaFor(key))(value).pipe(
+            Effect.map((encoded) => {
+              state.set(key, encoded)
+            }),
+            Effect.mapError(stateErr(`stateOf(${contract.name}).set(${key})`)),
+          ),
+    clear: (key) =>
+      Effect.sync(() => {
+        state.delete(key)
+      }),
     setAll: (values) =>
       Effect.forEach(
         Object.entries(values).filter(([, v]) => v !== undefined),

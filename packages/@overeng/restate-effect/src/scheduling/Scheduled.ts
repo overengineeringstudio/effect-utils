@@ -47,7 +47,7 @@
  */
 import { Cause, Effect, Schema } from 'effect'
 
-import type { ObjectKey, StateRead, StateWrite } from '../authoring/RestateContext.ts'
+import type { ObjectKey, StateRead, StateSchemas, StateWrite } from '../authoring/RestateContext.ts'
 import {
   makeAwakeable,
   objectKey,
@@ -222,31 +222,28 @@ type CycleCaps = RestateContext | ObjectKey | StateRead | StateWrite
  * since the cycle already has the data). Return `{ stop: false }` or `void` to
  * continue.
  *
- * The cycle's `E` is the CLEAN `RestateError` channel (decision 0003). A declared
- * domain failure (when `errorSchema` is given) that ESCAPES is classified at the
- * loop boundary: a `retryable` member re-arms after `retryAfter`; a `terminal`
- * member / defect is governed by `onCycleError`.
+ * The cycle's `E` is `RestateError | CycleE` — the CLEAN infra channel (decision
+ * 0003) PLUS the cycle's DECLARED domain error `CycleE` (the decoded type of
+ * `errorSchema`, `never` when none is declared). A declared domain failure that
+ * ESCAPES is classified at the loop boundary: a `retryable` member re-arms after
+ * `retryAfter`; a `terminal` member / defect is governed by `onCycleError`. Typing
+ * `CycleE` on the cycle's error channel lets a typed cycle compose WITHOUT a cast —
+ * the consumer `Effect.fail`s its declared error directly (#3).
  */
-export type CycleEffect<
-  DomainState extends Record<string, Schema.Schema<any, any>>,
-  AppR,
-> = (args: {
+export type CycleEffect<DomainState extends StateSchemas, AppR, CycleE = never> = (args: {
   readonly key: string
   readonly iteration: number
   readonly state: ReturnType<typeof stateFor<DomainState>>
   readonly wokenBy?: WakePayload
-}) => Effect.Effect<{ readonly stop?: boolean } | void, RestateError, AppR | CycleCaps>
+}) => Effect.Effect<{ readonly stop?: boolean } | void, RestateError | CycleE, AppR | CycleCaps>
 
-export interface ScheduledConfig<
-  DomainState extends Record<string, Schema.Schema<any, any>>,
-  AppR,
-> {
+export interface ScheduledConfig<DomainState extends StateSchemas, AppR, CycleE = never> {
   /** The Object name (the materialized service name). */
   readonly name: string
   /** The user's domain State schema (the cursor etc.); merged with the control plane. */
   readonly domainState: DomainState
   /** One cycle of work. */
-  readonly cycle: CycleEffect<DomainState, AppR>
+  readonly cycle: CycleEffect<DomainState, AppR, CycleE>
   /** The schedule shape (v1: `Schedule.fixedDelay(ms)`). */
   readonly schedule: Schedule
   /** Per-cycle error policy. DEFAULT: `skipToNext`. */
@@ -266,8 +263,12 @@ export interface ScheduledConfig<
    * iteration FROZEN — the SAME logical cycle retries) instead of advancing. When
    * absent, every cycle failure is `terminal`/defect and the `onCycleError` policy
    * governs it (full back-compat).
+   *
+   * Its decoded type IS the cycle's `CycleE`, so the cycle's error channel and this
+   * schema are kept in sync by the compiler — a typed cycle `Effect.fail`s its
+   * declared error and composes WITHOUT a cast (#3).
    */
-  readonly errorSchema?: Schema.Schema<any, any>
+  readonly errorSchema?: Schema.Schema<CycleE, any>
   /**
    * Cap consecutive `retryable` backoffs for ONE logical cycle. Past the cap the
    * retryable failure is DEMOTED to the `onCycleError` policy (so a permanently-429
@@ -384,8 +385,8 @@ export const RestateScheduled = {
    * Build a durable recurring loop as a Virtual Object. `AppR` is the explicit app
    * environment the served runtime satisfies (decision 0002 mirror).
    */
-  make: <DomainState extends Record<string, Schema.Schema<any, any>>, AppR = never>(
-    config: ScheduledConfig<DomainState, AppR>,
+  make: <DomainState extends StateSchemas, AppR = never, CycleE = never>(
+    config: ScheduledConfig<DomainState, AppR, CycleE>,
   ): Scheduled<AppR> => {
     const onError: OnCycleError = config.onCycleError ?? OnCycleError.skipToNext()
     const contract = buildContract(config.name)
@@ -442,29 +443,31 @@ export const RestateScheduled = {
      * skips the boundary classification (no retry path can fire) and goes straight
      * to the policy — matching the legacy no-`errorSchema` behavior exactly. */
     const runCycle = (
-      args: Parameters<CycleEffect<DomainState, AppR>>[0],
+      args: Parameters<CycleEffect<DomainState, AppR, CycleE>>[0],
       backoffsSoFar: number,
-    ): Effect.Effect<CycleOutcome, never, AppR | CycleCaps> => {
-      const cycleEffect = config.cycle(args) as Effect.Effect<
-        { readonly stop?: boolean } | void,
-        RestateError,
-        RestateContext
-      >
-      return cycleEffect.pipe(
+    ): Effect.Effect<CycleOutcome, never, AppR | CycleCaps> =>
+      /* The cycle's declared `E` (`RestateError | CycleE`) is absorbed HERE by
+       * `catchAllCause`: a declared domain failure is routed through `classifyOutcome`
+       * (against `errorSchema`), so the loop's outcome channel is `never`-typed. The
+       * cycle's `R` is the legal `AppR | CycleCaps` directly (no cast) — the consumer
+       * therefore composes a typed cycle without an `as unknown as` (#3). */
+      config.cycle(args).pipe(
         Effect.map((r): CycleOutcome => ({ _tag: 'ok', stop: isStop(r) })),
         Effect.catchAllCause((cause) =>
           Cause.isInterruptedOnly(cause) === true
-            ? Effect.failCause(cause)
+            ? /* An interrupt-only cause carries NO typed error (the declared `E` is
+               * absent here), so re-raising it keeps the outcome channel `never` — the
+               * `Cause<never>` narrowing is sound under `isInterruptedOnly`. */
+              Effect.failCause(cause as Cause.Cause<never>)
             : Effect.succeed(
                 retryable
                   ? classifyCycleFailure(cause, backoffsSoFar)
-                  : ((onError._tag === 'stopLoop'
-                      ? { _tag: 'failed', error: causeStr(cause) }
-                      : { _tag: 'skipped', error: causeStr(cause) }) as CycleOutcome),
+                  : onError._tag === 'stopLoop'
+                    ? ({ _tag: 'failed', error: causeStr(cause) } as CycleOutcome)
+                    : ({ _tag: 'skipped', error: causeStr(cause) } as CycleOutcome),
               ),
         ),
-      ) as Effect.Effect<CycleOutcome, never, AppR | CycleCaps>
-    }
+      )
 
     /* AUTO baseline metric (decision 0014): one cycle executed, by loop name and
      * outcome (`ok` | `error` | `stopped`). Gated on non-replay (inside `emit`) so a
@@ -688,10 +691,16 @@ export const RestateScheduled = {
         }).pipe(Effect.orDie),
     }
 
+    /* The remaining cast is materialization GLUE, not the typed-cycle reconciliation
+     * (#3): `impl` is built as `any` (the control-plane handler record), and
+     * `ObjectImplementation` is INVARIANT in its precise contract `C`, so the precise
+     * `ObjectImplementation<typeof contract>` widens to the `AnyImplementation` arm
+     * with a single `as`. No `as unknown as` is needed anywhere — the cycle's typed
+     * `E`/`R` line up by construction (see `CycleEffect` / `runCycle`). */
     const implementation = RestateObject.implement<typeof contract, AppR>(
       contract,
       impl,
-    ) as unknown as AnyImplementation<AppR>
+    ) as AnyImplementation<AppR>
 
     return { contract, implementation }
   },
