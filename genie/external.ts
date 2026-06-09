@@ -142,14 +142,18 @@ export const otelSdkDeps = [
 /** Catalog versions - single source of truth for dependency versions */
 export const catalog = defineCatalog({
   // Observability
+  // The @opentelemetry/sdk-* packages are pinned at 2.7.1 (semconv 1.41.1,
+  // sdk-logs 0.218.0) so they transitively bring @opentelemetry/core >= 2.6.0,
+  // which @restatedev/restate-sdk-opentelemetry@1.14.5 requires as a peer.
+  // @effect/opentelemetry@0.63 accepts ^2.0.0, so utils + restate-effect both stay compatible.
   '@opentelemetry/api': '1.9.0',
-  '@opentelemetry/resources': '2.2.0',
-  '@opentelemetry/sdk-logs': '0.208.0',
-  '@opentelemetry/sdk-metrics': '2.2.0',
-  '@opentelemetry/sdk-trace-base': '2.2.0',
-  '@opentelemetry/sdk-trace-node': '2.2.0',
-  '@opentelemetry/sdk-trace-web': '2.2.0',
-  '@opentelemetry/semantic-conventions': '1.38.0',
+  '@opentelemetry/resources': '2.7.1',
+  '@opentelemetry/sdk-logs': '0.218.0',
+  '@opentelemetry/sdk-metrics': '2.7.1',
+  '@opentelemetry/sdk-trace-base': '2.7.1',
+  '@opentelemetry/sdk-trace-node': '2.7.1',
+  '@opentelemetry/sdk-trace-web': '2.7.1',
+  '@opentelemetry/semantic-conventions': '1.41.1',
 
   // Schema
   '@standard-schema/spec': '1.1.0',
@@ -190,6 +194,11 @@ export const catalog = defineCatalog({
 
   // PTY
   '@myobie/pty': '0.9.0',
+
+  // Restate (durable execution) — see packages/@overeng/restate-effect
+  '@restatedev/restate-sdk': '1.14.5',
+  '@restatedev/restate-sdk-clients': '1.14.5',
+  '@restatedev/restate-sdk-opentelemetry': '1.14.5',
 
   // Type definitions
   '@types/react': '19.2.7',

@@ -27,6 +27,39 @@ export default oxlintConfig({
       files: ['**/genie/src/runtime/**/*.test.ts'],
       rules: { 'overeng/no-external-imports': 'off' },
     },
+    // restate-effect: ban raw nondeterminism in SOURCE handler code (R20, decision
+    // 0004). The journaled Clock/Random + explicit durable combinators are the
+    // primary guarantee; this lint is an advisory backstop. Scoped to `src/` only —
+    // the follow-up override re-disables it for test setup + the `./testing`
+    // harness so they can use Date.now / random freely.
+    {
+      files: ['**/restate-effect/src/**'],
+      rules: {
+        'overeng/no-raw-nondeterminism': 'error',
+        // Ban non-durable Effect.sleep/timeout in handler src (steer to
+        // Restate.sleep/timeout, which journal a durable timer that survives
+        // suspension/replay). EXEMPT for the same test + harness/testing infra
+        // files below — that lifecycle code (live-clock sleeps, in-memory context)
+        // is not a durable handler.
+        'overeng/no-non-durable-wait': 'error',
+      },
+    },
+    {
+      files: [
+        '**/restate-effect/src/**/*.test.ts',
+        '**/restate-effect/src/**/*.test.tsx',
+        // The `./testing` harness manages the native restate-server lifecycle
+        // (poll deadlines, ephemeral ports, the live-clock sleep util) — server
+        // infra, not handler code. The in-memory TestContext is likewise test infra.
+        '**/restate-effect/src/testing/testing.ts',
+        '**/restate-effect/src/testing/TestContext.ts',
+        '**/restate-effect/test/**',
+      ],
+      rules: {
+        'overeng/no-raw-nondeterminism': 'off',
+        'overeng/no-non-durable-wait': 'off',
+      },
+    },
     // effect-utils specific: react-inspector is a fork with its own style
     {
       files: ['**/react-inspector/**'],

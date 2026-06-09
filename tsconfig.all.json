@@ -79,6 +79,9 @@
       "path": "./packages/@overeng/react-inspector"
     },
     {
+      "path": "./packages/@overeng/restate-effect"
+    },
+    {
       "path": "./packages/@overeng/tui-core"
     },
     {

@@ -166,6 +166,26 @@
       }
     },
     {
+      "files": ["**/restate-effect/src/**"],
+      "rules": {
+        "overeng/no-raw-nondeterminism": "error",
+        "overeng/no-non-durable-wait": "error"
+      }
+    },
+    {
+      "files": [
+        "**/restate-effect/src/**/*.test.ts",
+        "**/restate-effect/src/**/*.test.tsx",
+        "**/restate-effect/src/testing/testing.ts",
+        "**/restate-effect/src/testing/TestContext.ts",
+        "**/restate-effect/test/**"
+      ],
+      "rules": {
+        "overeng/no-raw-nondeterminism": "off",
+        "overeng/no-non-durable-wait": "off"
+      }
+    },
+    {
       "files": ["**/react-inspector/**"],
       "rules": {
         "func-style": "off",

@@ -1,0 +1,67 @@
+{
+  "name": "@overeng/restate-effect",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./admin": "./src/admin/admin.ts",
+    "./otel": "./src/observability/otel.ts",
+    "./testing": "./src/testing/testing.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js",
+      "./admin": "./dist/admin/admin.js",
+      "./otel": "./dist/observability/otel.js",
+      "./testing": "./dist/testing/testing.js"
+    }
+  },
+  "dependencies": {
+    "@restatedev/restate-sdk": "1.14.5",
+    "@restatedev/restate-sdk-clients": "1.14.5"
+  },
+  "devDependencies": {
+    "@effect/opentelemetry": "0.63.0",
+    "@effect/vitest": "0.29.0",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/resources": "2.7.1",
+    "@opentelemetry/sdk-logs": "0.218.0",
+    "@opentelemetry/sdk-metrics": "2.7.1",
+    "@opentelemetry/sdk-trace-base": "2.7.1",
+    "@opentelemetry/sdk-trace-node": "2.7.1",
+    "@opentelemetry/sdk-trace-web": "2.7.1",
+    "@opentelemetry/semantic-conventions": "1.41.1",
+    "@overeng/utils": "workspace:^",
+    "@overeng/utils-dev": "workspace:^",
+    "@restatedev/restate-sdk-opentelemetry": "1.14.5",
+    "@types/node": "25.3.3",
+    "effect": "3.21.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "peerDependencies": {
+    "@effect/cluster": "^0.58.2",
+    "@effect/experimental": "^0.60.0",
+    "@effect/opentelemetry": "^0.63.0",
+    "@effect/platform": "^0.96.1",
+    "@effect/platform-node": "^0.106.0",
+    "@effect/rpc": "^0.75.1",
+    "@effect/workflow": "^0.18.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-metrics": "^2.7.1",
+    "@playwright/test": "^1.59.1",
+    "@restatedev/restate-sdk-opentelemetry": "^1.14.5",
+    "effect": "^3.21.2"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/restate-effect",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
+    ]
+  }
+}
