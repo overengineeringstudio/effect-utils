@@ -106,6 +106,20 @@ schema marks a field sensitive — otherwise encode/decode **fails** with a clea
 `RedactionCipherMissingError` (never silently plaintext). `aesGcmRedactionLayer(key)`
 is a ready AES-256-GCM reference; the 32-byte key is your secret.
 
+The cipher reaches **every** invocation path through one shared boundary (the
+contract-invocation policy, decision 0020): the served handler, all ingress
+clients (`call`/`objectCall`/`workflowSubmit`/…), in-handler `Restate.call`/`send`,
+and the testing harness. So a `sensitive` field is encrypted consistently however
+the call is made — provide the same `RestateRedaction` layer wherever you build a
+`RestateIngress` and it carries the cipher into the client serdes too.
+
+> **Place the annotation on the FIELD, not the struct.** `Restate.sensitive` /
+> `Restate.idempotencyKey` must wrap a field's value schema
+> (`{ token: Restate.sensitive(Schema.String) }`), not the whole
+> `Schema.Struct({...})` — on the struct the annotation is silently ignored. The
+> binding catches this at `materialize` and FAILS LOUDLY (it also rejects two
+> fields carrying `idempotencyKey`, since the key is a single source).
+
 ```ts
 import { aesGcmRedactionLayer } from '@overeng/restate-effect'
 

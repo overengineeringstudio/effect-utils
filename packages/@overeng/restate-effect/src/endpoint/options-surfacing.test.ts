@@ -189,3 +189,63 @@ describe('redaction cipher resolution at materialize', () => {
     expect(wire.pin).not.toBe('1234')
   })
 })
+
+describe('materialize REJECTS misplaced field annotations (decision 0020)', () => {
+  it('rejects Restate.idempotencyKey applied to the input STRUCT (wrong AST node)', () => {
+    const impl = RestateService.define(
+      'BadIdemStruct',
+      {
+        go: {
+          input: Restate.idempotencyKey(Schema.Struct({ k: Schema.String })),
+          success: Schema.Void,
+        },
+      },
+      { go: () => Effect.void },
+    )
+    expect(() => materialize(impl, Runtime.defaultRuntime)).toThrow(/idempotencyKey.*STRUCT/s)
+  })
+
+  it('rejects Restate.sensitive applied to the input STRUCT (wrong AST node)', () => {
+    const impl = RestateService.define(
+      'BadSensitiveStruct',
+      {
+        go: { input: Restate.sensitive(Schema.Struct({ k: Schema.String })), success: Schema.Void },
+      },
+      { go: () => Effect.void },
+    )
+    expect(() => materialize(impl, Runtime.defaultRuntime)).toThrow(/sensitive.*STRUCT/s)
+  })
+
+  it('rejects DUPLICATE idempotency-key fields (ambiguous single source)', () => {
+    const impl = RestateService.define(
+      'DupIdem',
+      {
+        go: {
+          input: Schema.Struct({
+            a: Restate.idempotencyKey(Schema.String),
+            b: Restate.idempotencyKey(Schema.String),
+          }),
+          success: Schema.Void,
+        },
+      },
+      { go: () => Effect.void },
+    )
+    expect(() => materialize(impl, Runtime.defaultRuntime)).toThrow(
+      /idempotencyKey.*SINGLE source/s,
+    )
+  })
+
+  it('a correctly-placed field annotation materializes cleanly', () => {
+    const impl = RestateService.define(
+      'GoodPlacement',
+      {
+        go: {
+          input: Schema.Struct({ k: Restate.idempotencyKey(Schema.String) }),
+          success: Schema.Void,
+        },
+      },
+      { go: () => Effect.void },
+    )
+    expect(() => materialize(impl, Runtime.defaultRuntime)).not.toThrow()
+  })
+})

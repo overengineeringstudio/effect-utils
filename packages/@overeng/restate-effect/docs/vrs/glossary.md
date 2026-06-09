@@ -71,7 +71,18 @@ compensations. Everything else retries. The boundary between Effect's typed erro
 channel and Restate retry semantics maps onto this distinction.
 
 **Idempotency Key**:
-A caller-supplied key that dedupes an invocation across retries/calls.
+A caller-supplied key that dedupes an invocation across retries/calls. The SINGLE
+source is the input field carrying the `Restate.idempotencyKey` annotation (read
+via the **Contract-invocation policy**), not a call-site option.
+
+**Contract-invocation policy**:
+The single boundary (`clients/InvocationPolicy.ts`, `.decisions/0020`) that derives
+every annotation-driven transport fact — the input/output **Serde** (incl. the
+`sensitive`-field **Redaction** transform), the `idempotencyKey`-field extraction,
+and the SDK opts bag — in ONE place. EVERY adapter (endpoint materialization, the
+ingress clients, the in-handler service-to-service clients, the **Test Harness**)
+consumes it, so an annotation behaves consistently at every public entrypoint.
+_Avoid_: "each client builds its own serde" (they share this one policy).
 
 **Suspension**:
 An invocation pausing (holding zero resources) while awaiting a durable

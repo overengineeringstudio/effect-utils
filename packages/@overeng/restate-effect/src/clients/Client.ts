@@ -30,16 +30,26 @@ import type {
   WorkflowSignalQueryOf,
   WorkflowSignalSuccessOf,
 } from '../authoring/Service.ts'
-import { readIdempotencyKey } from '../schema/Annotations.ts'
+import { type RedactionCipher, RestateRedaction } from '../schema/Redaction.ts'
 import { RestateError } from '../schema/RestateError.ts'
-import { ingressSerde } from '../schema/Serde.ts'
+import {
+  type ContractSerdeFactory,
+  contractSerdeFactory,
+  ingressCallOpts,
+  ingressSendOpts,
+} from './InvocationPolicy.ts'
 
 /**
  * The service shape held by the `RestateIngress` Tag — the connected SDK
- * ingress used by `call` / `callTyped`.
+ * ingress used by `call` / `callTyped`, PLUS the redaction cipher threaded into
+ * every client serde via the contract-invocation policy (decision 0020). The
+ * cipher is OPTIONAL: a contract with no `Restate.sensitive` field never needs
+ * one; a contract WITH a sensitive field fails LOUDLY at encode/decode when the
+ * cipher is absent (`RedactionCipherMissingError`), never silent plaintext.
  */
 export interface RestateIngressService {
   readonly ingress: clients.Ingress
+  readonly redaction?: RedactionCipher
 }
 
 /* Service to make typed ingress calls against a `restate-server` ingress URL.
@@ -64,7 +74,22 @@ export class RestateIngress extends Context.Tag('@overeng/restate-effect/Restate
     readonly url: string
     readonly apiKey?: Redacted.Redacted<string>
     readonly headers?: Readonly<Record<string, string>>
-  }): Layer.Layer<RestateIngress> => Layer.succeed(RestateIngress, makeIngress(opts))
+  }): Layer.Layer<RestateIngress> =>
+    /* Resolve an OPTIONAL `RestateRedaction` cipher from the surrounding context
+     * and thread it into the ingress, so a `Restate.sensitive` field is encrypted
+     * on the wire (decision 0020). Absent → no cipher (fine unless a served
+     * contract marks a field sensitive, which then fails loudly at encode/decode). */
+    Layer.effect(
+      RestateIngress,
+      Effect.serviceOption(RestateRedaction).pipe(
+        Effect.map((redaction) =>
+          makeIngress({
+            ...opts,
+            ...(Option.isSome(redaction) ? { redaction: redaction.value } : {}),
+          }),
+        ),
+      ),
+    )
 
   /**
    * Build a `RestateIngress` layer from `Config` (env-driven): the ingress URL
@@ -81,9 +106,11 @@ export class RestateIngress extends Context.Tag('@overeng/restate-effect/Restate
       Effect.gen(function* () {
         const url = yield* Config.url('RESTATE_INGRESS_URL')
         const apiKey = yield* Config.option(Config.redacted('RESTATE_INGRESS_KEY'))
+        const redaction = yield* Effect.serviceOption(RestateRedaction)
         return makeIngress({
           url: url.toString(),
           ...(Option.isSome(apiKey) ? { apiKey: apiKey.value } : {}),
+          ...(Option.isSome(redaction) ? { redaction: redaction.value } : {}),
         })
       }),
     )
@@ -91,11 +118,14 @@ export class RestateIngress extends Context.Tag('@overeng/restate-effect/Restate
 
 /* Connect the SDK ingress client, threading an optional bearer API key + extra
  * headers into `clients.connect({ headers })`. The `apiKey` is unwrapped from its
- * `Redacted` only HERE, at the connect boundary (never logged). */
+ * `Redacted` only HERE, at the connect boundary (never logged). The optional
+ * `redaction` cipher rides on the service so every client serde encrypts a
+ * `Restate.sensitive` field on the wire (decision 0020). */
 const makeIngress = (opts: {
   readonly url: string
   readonly apiKey?: Redacted.Redacted<string>
   readonly headers?: Readonly<Record<string, string>>
+  readonly redaction?: RedactionCipher
 }): RestateIngressService => {
   const headers: Record<string, string> = {
     ...opts.headers,
@@ -108,8 +138,15 @@ const makeIngress = (opts: {
       url: opts.url,
       ...(Object.keys(headers).length > 0 ? { headers } : {}),
     }),
+    ...(opts.redaction !== undefined ? { redaction: opts.redaction } : {}),
   }
 }
+
+/* The contract-invocation policy's serde factory bound to this ingress's
+ * (optional) redaction cipher (decision 0020) — the SINGLE place every ingress
+ * client path derives its redaction-threaded serdes + idempotency opts from. */
+const serdesOf = (self: RestateIngressService): ContractSerdeFactory =>
+  contractSerdeFactory(self.redaction)
 
 /**
  * Typed request-response ingress call derived from the contract + method
@@ -132,9 +169,15 @@ export const call = <C extends Contract<string, HandlerSpecMap>, M extends Metho
           service: contract.name,
           handler: method,
           parameter: input,
-          opts: clients.Opts.from({
-            input: ingressSerde(spec.input),
-            output: ingressSerde(spec.success),
+          /* The contract-invocation policy folds the redaction-threaded I/O serdes
+           * AND the `Restate.idempotencyKey`-field extraction into one opts bag
+           * (decision 0020) — so a Service `call` encrypts a `sensitive` field and
+           * dedupes on its idempotency key, exactly like `objectCall`. */
+          opts: ingressCallOpts({
+            serdes: serdesOf(self),
+            inputSchema: spec.input,
+            outputSchema: spec.success,
+            input,
           }),
         }),
       catch: (cause) =>
@@ -261,17 +304,12 @@ const httpErrorBody = (cause: unknown): string | undefined =>
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- generic-ingress boundary; the public Object/Workflow types stay precise */
 
-/** The idempotency key from the annotated input field (decision 0011), or undefined. */
-const idempotencyKeyOf = (
-  inputSchema: Schema.Schema<any, any>,
-  input: unknown,
-): string | undefined => readIdempotencyKey(inputSchema.ast, input).pipe(Option.getOrUndefined)
-
 /**
  * Typed request-response call to a Virtual Object handler, routed by the
  * contract's name + the per-invocation `key` (decision 0008). Input encoded /
  * success decoded via the contract's serde; the idempotency key is read from the
- * annotated input field. A `TerminalError` body is NOT auto-decoded here — use
+ * annotated input field. Same contract-invocation policy as Service `call`
+ * (decision 0020). A `TerminalError` body is NOT auto-decoded here — use
  * `objectCallTyped` to recover the typed tagged error.
  */
 export const objectCall = <
@@ -286,7 +324,6 @@ export const objectCall = <
   Effect.gen(function* () {
     const self = yield* RestateIngress
     const spec = contract.handlers[method] as HandlerSpec
-    const idempotencyKey = idempotencyKeyOf(spec.input, input)
     const result = yield* Effect.tryPromise({
       try: () =>
         self.ingress.call<unknown, unknown>({
@@ -294,10 +331,11 @@ export const objectCall = <
           handler: method,
           parameter: input,
           key,
-          opts: clients.Opts.from({
-            input: ingressSerde(spec.input),
-            output: ingressSerde(spec.success),
-            ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+          opts: ingressCallOpts({
+            serdes: serdesOf(self),
+            inputSchema: spec.input,
+            outputSchema: spec.success,
+            input,
           }),
         }),
       catch: (cause) =>
@@ -347,7 +385,6 @@ export const objectSend = <
   Effect.gen(function* () {
     const self = yield* RestateIngress
     const spec = contract.handlers[method] as HandlerSpec
-    const idempotencyKey = idempotencyKeyOf(spec.input, input)
     return yield* Effect.tryPromise({
       try: () =>
         self.ingress.send<unknown>({
@@ -355,10 +392,11 @@ export const objectSend = <
           handler: method,
           parameter: input,
           key,
-          opts: clients.SendOpts.from({
-            input: ingressSerde(spec.input),
-            ...(opts?.delayMillis !== undefined ? { delay: opts.delayMillis } : {}),
-            ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+          opts: ingressSendOpts({
+            serdes: serdesOf(self),
+            inputSchema: spec.input,
+            input,
+            ...(opts?.delayMillis !== undefined ? { delayMillis: opts.delayMillis } : {}),
           }),
         }),
       catch: (cause) =>
@@ -406,15 +444,15 @@ export const workflowSubmit = <C extends WorkflowContract<string, any, any, any,
 > =>
   Effect.gen(function* () {
     const self = yield* RestateIngress
-    const idempotencyKey = idempotencyKeyOf(contract.run.input, input)
     const client = workflowClient(self, contract, key)
     return yield* Effect.tryPromise({
       try: () =>
         client.workflowSubmit(
           input,
-          clients.SendOpts.from({
-            input: ingressSerde(contract.run.input),
-            ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+          ingressSendOpts({
+            serdes: serdesOf(self),
+            inputSchema: contract.run.input,
+            input,
           }),
         ) as Promise<clients.WorkflowSubmission<WorkflowRunSuccessOf<C>>>,
       catch: (cause) =>
@@ -441,7 +479,9 @@ export const workflowAttach = <C extends WorkflowContract<string, any, any, any,
     return yield* Effect.tryPromise({
       try: () =>
         client.workflowAttach(
-          clients.Opts.from({ output: ingressSerde(contract.run.success) }),
+          clients.Opts.from({
+            output: serdesOf(self).forSchema(contract.run.success, 'ingress'),
+          }),
         ) as Promise<WorkflowRunSuccessOf<C>>,
       catch: (cause) =>
         new RestateError({
@@ -475,7 +515,9 @@ export const workflowOutput = <C extends WorkflowContract<string, any, any, any,
     return yield* Effect.tryPromise({
       try: () =>
         client.workflowOutput(
-          clients.Opts.from({ output: ingressSerde(contract.run.success) }),
+          clients.Opts.from({
+            output: serdesOf(self).forSchema(contract.run.success, 'ingress'),
+          }),
         ) as Promise<clients.Output<WorkflowRunSuccessOf<C>>>,
       catch: (cause) =>
         new RestateError({
@@ -510,9 +552,11 @@ export const workflowCall = <
           handler: method,
           parameter: input,
           key,
-          opts: clients.Opts.from({
-            input: ingressSerde(spec.input),
-            output: ingressSerde(spec.success),
+          opts: ingressCallOpts({
+            serdes: serdesOf(self),
+            inputSchema: spec.input,
+            outputSchema: spec.success,
+            input,
           }),
         }),
       catch: (cause) =>
@@ -538,7 +582,12 @@ export const resolveAwakeable = <T, I>(
   Effect.gen(function* () {
     const self = yield* RestateIngress
     yield* Effect.tryPromise({
-      try: () => self.ingress.resolveAwakeable<T>(id, payload, ingressSerde(schema)),
+      try: () =>
+        self.ingress.resolveAwakeable<T>(
+          id,
+          payload,
+          serdesOf(self).forSchema(schema as Schema.Schema<unknown, unknown>, 'ingress') as never,
+        ),
       catch: (cause) =>
         new RestateError({ reason: 'IngressFailed', method: `resolveAwakeable(${id})`, cause }),
     })
@@ -573,7 +622,14 @@ export const result = <T, I>(
   Effect.gen(function* () {
     const self = yield* RestateIngress
     return yield* Effect.tryPromise({
-      try: () => self.ingress.result<T>(send as clients.Send<T>, ingressSerde(outputSchema)),
+      try: () =>
+        self.ingress.result<T>(
+          send as clients.Send<T>,
+          serdesOf(self).forSchema(
+            outputSchema as Schema.Schema<unknown, unknown>,
+            'ingress',
+          ) as never,
+        ),
       catch: (cause) => new RestateError({ reason: 'IngressFailed', method: 'result', cause }),
     })
   })

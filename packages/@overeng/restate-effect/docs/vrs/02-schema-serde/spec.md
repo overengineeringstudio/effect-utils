@@ -49,6 +49,16 @@ default `application/json` content type and `JSONSchema.make` (see
 TRANSFORM (encrypt-at-encode / decrypt-at-decode), read once on the pre-transform
 property signatures — NOT a whole-value codec (which has no field structure).
 
+The redaction cipher is threaded into the serde through the SHARED
+contract-invocation policy (`clients/InvocationPolicy.ts`,
+[../.decisions/0020](../.decisions/0020-contract-invocation-policy.md)), not
+re-assembled per call site — so EVERY adapter (served handler, all ingress
+clients, in-handler peer calls, the testing harness) encrypts a `sensitive` field
+identically. A misplaced field annotation (`sensitive`/`idempotencyKey` applied to
+the STRUCT instead of a FIELD, or two `idempotencyKey` fields) is otherwise a
+SILENT no-op, so `materialize*` validates placement and FAILS LOUDLY with a clear
+diagnostic.
+
 > `serialize`/`deserialize` are synchronous, so the schema must produce a sync
 > validate (true for non-effectful schemas). Effectful/async transforms break the
 > sync serde contract and are unsupported.
