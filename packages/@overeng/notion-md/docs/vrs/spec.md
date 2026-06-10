@@ -99,22 +99,33 @@ git's staging, commits, and branches are rejected entirely — there is no `add`
 #### `sync` dispatch table (per file)
 
 The action is decided per file from `source`, the presence of `page_id`, and a
-live compare (R33). This refuse-on-wrong-direction is what makes a
-wrong-direction push **structurally impossible** (R30): a `remote` file has no
-push path; a `local` file refuses rather than clobbering.
+live compare (R33). Wrong-direction push is **structurally impossible** (R30):
+direction is the file's `source`, so a `remote` file has no push branch and a
+`local` file's write is the declared mirror operation, never a flag-decided
+clobber.
 
-| `source` | `page_id`   | live compare (R33)                   | action                                                                           |
-| -------- | ----------- | ------------------------------------ | -------------------------------------------------------------------------------- |
-| local    | null/absent | —                                    | create remote page under `parent`, write `page_id` back                          |
-| local    | set         | equivalent                           | noop                                                                             |
-| local    | set         | local changed, remote == last render | push (guarded live re-read, R11)                                                 |
-| local    | set         | remote moved underneath              | REFUSE (would clobber unseen remote edit); suggest `clone --as shared`           |
-| remote   | set         | equivalent                           | noop                                                                             |
-| remote   | set         | remote changed                       | pull (overwrite local body)                                                      |
-| remote   | set         | local hand-edited                    | REFUSE + warn ("source: remote; local edits aren't pushed — set source: shared") |
-| remote   | absent      | —                                    | error (a remote-tracked file must carry `page_id`)                               |
-| shared   | set         | 3-way merge vs base                  | noop / merge / `conflict.roughdraft`                                             |
-| shared   | absent      | —                                    | error (`shared` requires an established `page_id`)                               |
+| `source` | `page_id`   | live compare (R33) | action                                                  |
+| -------- | ----------- | ------------------ | ------------------------------------------------------- |
+| local    | null/absent | —                  | create remote page under `parent`, write `page_id` back |
+| local    | set         | equivalent         | noop                                                    |
+| local    | set         | local ≢ remote     | push (mirror local → remote)                            |
+| remote   | set         | equivalent         | noop                                                    |
+| remote   | set         | local ≢ remote     | pull (mirror remote → local body)                       |
+| remote   | absent      | —                  | error (a remote-tracked file must carry `page_id`)      |
+| shared   | set         | 3-way merge vs base | noop / merge / `conflict.roughdraft`                   |
+| shared   | absent      | —                  | error (`shared` requires an established `page_id`)      |
+
+> **Statelessness boundary (R31/R32).** Single-source pages carry no stored base,
+> so the engine cannot distinguish "I edited locally" from "the other side moved"
+> — both present as `local ≢ remote`. The declared `source` therefore decides the
+> winner unconditionally: `local` is authoritative (a `local` page silently
+> mirrors over any remote drift), `remote` is authoritative (a `remote` page
+> silently refreshes the local mirror, discarding stray local edits — recoverable
+> from git). **Concurrent-edit *detection and refusal* is exclusively the
+> `source: shared` story** — it is the one mode with a stored base able to tell
+> the two cases apart, and is the safety net a user opts into when both sides
+> genuinely author. Attempting drift-refusal for single-source would require the
+> very stored marker R31 forbids (and that caused the poisoned-`noop`).
 
 #### Frontmatter schema (one file shape for all three `source` values)
 
