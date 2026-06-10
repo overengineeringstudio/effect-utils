@@ -371,7 +371,14 @@ const preflightPageIds = (opts: {
     }
   })
 
-const runBatch = <A>(opts: {
+/**
+ * Tree/batch orchestration primitive: discover targets, run the duplicate
+ * `page_id` preflight (reject collisions before any mutation), then map `run`
+ * over each runnable file with bounded concurrency, aggregating per-file
+ * results. Direction-agnostic — the source-aware reconcile core decides
+ * direction per file (spec "Internal layering").
+ */
+export const runBatch = <A>(opts: {
   readonly operation: BatchOperation
   readonly targets: readonly string[]
   readonly recursive?: boolean | undefined
