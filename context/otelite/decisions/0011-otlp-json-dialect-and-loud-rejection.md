@@ -30,3 +30,30 @@ cross-transport equivalence gate, spec M5).
 The cross-transport equivalence invariant is scoped to the accepted dialect, and
 the accepted-dialect boundary is documented in the spec and `--help`. Widening
 the dialect later is additive (a more lenient deserializer) and non-breaking.
+
+## Metrics JSON: persist the validated raw body (lossless)
+
+The `with-serde` deserialize used as the dialect gate is also **lossy** for
+metrics: it silently drops the string-form int64 value oneof (`"asInt":"7"`),
+the regular `histogram` data oneof, and the `exponentialHistogram` data oneof.
+On the **JSON** receive path the sink previously re-serialized that degraded
+proto value, so those metrics were captured with a null value or omitted
+entirely — a HTTP 200 + counted but silently mis-captured export, the exact
+"loud, never silent" violation this decision forbids.
+
+Fix (JSON metrics path only): the incoming body is already canonical OTLP/JSON
+in the accepted dialect, and `inspect` walks raw JSON. So `http_metrics` still
+runs the `with-serde` deserialize purely as the **validator** (Err → 400 +
+`note_rejected`, gate unchanged), then on Ok persists the **validated raw body**
+re-emitted through `serde_json::Value` (via `Sink::write_metrics_json`) instead
+of the lossy proto value, counting metrics from the JSON structure. The JSON
+metrics path is now lossless for string-int64 sums/gauges, histograms, and
+exponential histograms. Traces/logs JSON paths and all protobuf/gRPC paths are
+unchanged (already lossless; proto decode has no such ambiguity).
+
+Caveat: the upstream metrics `with-serde` deserializer is far more lenient than
+the trace one — it tolerates most non-default dialect shapes (numeric int64
+nanos, string enums) rather than erroring. For metrics the validator gate is
+therefore effectively structural (malformed JSON / hard field-type mismatches),
+not the full dialect gate that traces enjoy. A stricter metrics dialect gate
+would need a bespoke validator and is left as a follow-up.

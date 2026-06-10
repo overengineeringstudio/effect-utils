@@ -147,10 +147,10 @@ async fn grpc_metrics_and_logs_capture() {
         .contains("hello-grpc-log"));
 }
 
-/// Exponential histograms survive only the protobuf receive path (the JSON path
-/// drops them — an upstream `opentelemetry-proto` deserialize gap, documented in
-/// the README). This gates the path SDKs actually use (protobuf default):
-/// receive → capture → `inspect --signal metrics` exposes the exp-hist stats.
+/// Exponential histograms survive the protobuf receive path: receive → capture →
+/// `inspect --signal metrics` exposes the exp-hist stats. (The JSON path now
+/// survives them too — see `http_json_metrics_lossless`, which persists the
+/// validated raw body instead of the lossy proto re-serialization.)
 #[tokio::test]
 async fn exponential_histogram_round_trips_over_protobuf() {
     use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
@@ -230,6 +230,105 @@ async fn exponential_histogram_round_trips_over_protobuf() {
         eh["positive_buckets"]["bucket_counts"],
         serde_json::json!([1, 2, 2])
     );
+}
+
+/// HTTP-JSON metrics are lossless: a string-form int64 `sum`, a regular
+/// `histogram`, and an `exponentialHistogram` in one JSON export all survive
+/// receive → capture → `inspect --signal metrics`. Before the fix the
+/// `with-serde` deserialize that built the persisted proto value silently
+/// dropped the string-int64 value, the histogram oneof, and the exp-hist oneof;
+/// persisting the validated raw body keeps them (decisions/0011).
+#[tokio::test]
+async fn http_json_metrics_lossless() {
+    let body = r#"{"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"p"}}]},"scopeMetrics":[{"scope":{"name":"p"},"metrics":[
+ {"name":"a","sum":{"aggregationTemporality":2,"isMonotonic":true,"dataPoints":[{"asInt":"7","startTimeUnixNano":"1","timeUnixNano":"2","attributes":[]}]}},
+ {"name":"lat","unit":"ms","histogram":{"aggregationTemporality":2,"dataPoints":[{"count":"3","sum":42.5,"min":1.0,"max":30.0,"bucketCounts":["1","1","1"],"explicitBounds":[5.0,20.0],"startTimeUnixNano":"1","timeUnixNano":"2","attributes":[]}]}},
+ {"name":"eh","unit":"ms","exponentialHistogram":{"aggregationTemporality":2,"dataPoints":[{"count":"6","sum":42.0,"scale":3,"zeroCount":"1","positive":{"offset":2,"bucketCounts":["1","2","2"]},"startTimeUnixNano":"1","timeUnixNano":"2","attributes":[]}]}}
+]}]}]}"#;
+
+    let dir = tempfile::tempdir().unwrap();
+    let rx = start(dir.path()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{}/v1/metrics", rx.http_endpoint))
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let counts = rx.shutdown().await;
+    assert_eq!(counts.metrics, 3, "all three metrics counted");
+    assert_eq!(counts.rejected, 0, "default-dialect JSON is not rejected");
+
+    let raw = std::fs::read_to_string(dir.path().join("metrics.ndjson")).unwrap();
+    let rows = otelite::inspect_metrics::rows(&raw).expect("flatten metric rows");
+
+    // BUG-1: the string-form int64 sum value must be captured as 7, not null.
+    let sum = rows
+        .iter()
+        .find(|r| r["name"] == "a")
+        .expect("sum row present");
+    assert_eq!(sum["type"], "sum");
+    assert_eq!(sum["value"], 7);
+
+    // BUG-2: the regular histogram must be present with its stats.
+    let hist = rows
+        .iter()
+        .find(|r| r["name"] == "lat")
+        .expect("histogram row present (not dropped)");
+    assert_eq!(hist["type"], "histogram");
+    assert_eq!(hist["count"], 3);
+    assert_eq!(hist["sum"], 42.5);
+    assert_eq!(hist["min"], 1.0);
+    assert_eq!(hist["max"], 30.0);
+    assert_eq!(hist["bucket_counts"], serde_json::json!([1, 1, 1]));
+    assert_eq!(hist["explicit_bounds"], serde_json::json!([5.0, 20.0]));
+
+    // Exp-histogram-on-JSON (previously documented as lossy) now survives too.
+    let eh = rows
+        .iter()
+        .find(|r| r["type"] == "exphistogram")
+        .expect("exp-histogram row survived the JSON path");
+    assert_eq!(eh["count"], 6);
+    assert_eq!(eh["scale"], 3);
+    assert_eq!(eh["zero_count"], 1);
+    assert_eq!(eh["positive_buckets"]["offset"], 2);
+    assert_eq!(
+        eh["positive_buckets"]["bucket_counts"],
+        serde_json::json!([1, 2, 2])
+    );
+}
+
+/// A metrics JSON body the `with-serde` validator rejects (here a hard type
+/// error: `name` as a number) is still rejected loudly (400) and captured
+/// nowhere — the validator gate is preserved even though the JSON path now
+/// persists the raw body on success.
+///
+/// Note: the upstream metrics `with-serde` deserializer is far more lenient than
+/// the trace one — it tolerates most non-default dialect shapes (numeric int64
+/// nanos, string enums) rather than erroring, so for metrics this gate is
+/// effectively structural (malformed JSON / wrong field types), not a full
+/// dialect gate. See decisions/0011.
+#[tokio::test]
+async fn http_json_metrics_non_default_dialect_rejected_loudly() {
+    let dir = tempfile::tempdir().unwrap();
+    let rx = start(dir.path()).await;
+    // `name` as a JSON number is a hard type mismatch the deserializer rejects.
+    let body = r#"{"resourceMetrics":[{"scopeMetrics":[{"metrics":[{"name":5,"sum":{"isMonotonic":true,"aggregationTemporality":2,"dataPoints":[{"asInt":"7"}]}}]}]}]}"#;
+    let resp = reqwest::Client::new()
+        .post(format!("{}/v1/metrics", rx.http_endpoint))
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "non-default dialect must be rejected");
+    let counts = rx.shutdown().await;
+    assert_eq!(counts.metrics, 0, "rejected payload must not be captured");
+    assert_eq!(counts.rejected, 1);
+    assert!(std::fs::read_to_string(dir.path().join("metrics.ndjson"))
+        .unwrap()
+        .is_empty());
 }
 
 /// A second sink on the same out-dir fails loudly (O_EXCL) instead of

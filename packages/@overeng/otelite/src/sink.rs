@@ -78,6 +78,16 @@ impl SignalFile {
         f.write_all(&line).await
     }
 
+    /// Append one pre-built `serde_json::Value` line. Used by the HTTP-JSON
+    /// metrics path, which persists the validated incoming body verbatim
+    /// (re-emitted as canonical JSON) instead of a lossy proto re-serialization.
+    async fn append_json(&self, value: &serde_json::Value) -> std::io::Result<()> {
+        let mut line = serde_json::to_vec(value).expect("JSON value serializes");
+        line.push(b'\n');
+        let mut f = self.file.lock().await;
+        f.write_all(&line).await
+    }
+
     async fn sync(&self) {
         let f = self.file.lock().await;
         let _ = f.sync_all().await;
@@ -185,6 +195,40 @@ impl Sink {
             .map(|sm| sm.metrics.len() as u64)
             .sum();
         self.metrics.append_line(req).await?;
+        self.metric_count.fetch_add(n, Ordering::Relaxed);
+        self.requests.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    /// Write a metrics export from its already-validated OTLP/JSON body, persisted
+    /// verbatim (canonical JSON) rather than via the lossy proto re-serialization.
+    ///
+    /// The `opentelemetry-proto` `with-serde` deserialize silently drops several
+    /// JSON shapes (string-form `asInt`, regular `histogram`, `exponentialHistogram`),
+    /// so re-serializing the proto type would lose them. The incoming body is
+    /// already canonical OTLP/JSON in the accepted dialect (the caller validates
+    /// it via the same deserialize before calling this), and `inspect` walks raw
+    /// JSON — so persisting the body keeps the JSON metrics path lossless. The
+    /// metric count is taken from the JSON structure for the same reason.
+    pub async fn write_metrics_json(&self, body: &serde_json::Value) -> std::io::Result<()> {
+        let n: u64 = body
+            .get("resourceMetrics")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .flat_map(|rm| {
+                rm.get("scopeMetrics")
+                    .and_then(serde_json::Value::as_array)
+                    .into_iter()
+                    .flatten()
+            })
+            .map(|sm| {
+                sm.get("metrics")
+                    .and_then(serde_json::Value::as_array)
+                    .map_or(0, |m| m.len() as u64)
+            })
+            .sum();
+        self.metrics.append_json(body).await?;
         self.metric_count.fetch_add(n, Ordering::Relaxed);
         self.requests.fetch_add(1, Ordering::Relaxed);
         Ok(())

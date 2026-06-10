@@ -104,14 +104,19 @@ Accepts all common patterns the production OTel stack emits:
   (`gen-tonic`) generated `TraceService` / `MetricsService` / `LogsService`,
   served by tonic.
 
-Both decode into the same `opentelemetry-proto` message types and write through
-one sink. No bespoke wire handling. See `decisions/0002`.
+Traces, logs, and all protobuf/gRPC paths decode into the same
+`opentelemetry-proto` message types and write through one sink (no bespoke wire
+handling). See `decisions/0002`.
 
-Known limitation: `opentelemetry-proto`'s `with-serde` drops the
-`exponentialHistogram` data oneof on the **JSON** receive path, so an exp-histogram
-emitted by a JSON-only client is captured empty; the **protobuf** path (SDK
-default) captures it fine. `inspect` therefore walks the captured JSON directly
-rather than round-tripping the proto type. Tracked as an otelite follow-up.
+Metrics on the **JSON** receive path are special: `opentelemetry-proto`'s
+`with-serde` deserialize silently drops several JSON shapes — string-form int64
+values (`"asInt":"7"`), the regular `histogram` oneof, and the
+`exponentialHistogram` oneof — so re-serializing that proto value would lose
+them. The JSON metrics path therefore runs `with-serde` only as the dialect
+**validator** (Err → 400) and persists the **validated raw body** verbatim
+(re-emitted as canonical JSON via `write_metrics_json`); `inspect` walks that
+JSON. This makes the JSON metrics path lossless for string-int64 sums/gauges,
+histograms, and exponential histograms. See `decisions/0011`.
 
 Accepted JSON dialect: the one OTel language SDKs emit by default — hex IDs,
 string int64, integer enums. Other spec-conformant encodings (base64 IDs, string
@@ -148,11 +153,13 @@ nothing else is shared.
 ## Capture format
 
 One file per signal in `<dir>`: `traces.ndjson`, `metrics.ndjson`,
-`logs.ndjson`. Each line is one received export as **canonical OTLP/JSON** (the
-`Export*ServiceRequest` via `opentelemetry-proto` `with-serde`) — losslessly,
-regardless of whether it arrived as JSON, protobuf, or gRPC. NDJSON (one export
-per line, append-only) so capture is streaming and crash-tolerant. `inspect`
-owns all denesting/flattening; the capture stays raw and faithful.
+`logs.ndjson`. Each line is one received export as **canonical OTLP/JSON** —
+losslessly, regardless of whether it arrived as JSON, protobuf, or gRPC. Most
+paths serialize the `Export*ServiceRequest` proto type via `opentelemetry-proto`
+`with-serde`; the JSON metrics path instead persists the validated raw body
+(since `with-serde` is lossy for some metric JSON shapes — see above). NDJSON
+(one export per line, append-only) so capture is streaming and crash-tolerant.
+`inspect` owns all denesting/flattening; the capture stays raw and faithful.
 
 ## Child env injection
 

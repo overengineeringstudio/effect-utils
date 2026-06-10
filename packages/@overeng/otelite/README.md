@@ -94,6 +94,15 @@ every row.
 
 ## Limitation
 
-Exponential histograms only survive the protobuf receive path; the OTLP/JSON
-receive path drops them (an upstream `opentelemetry-proto` deserialize gap).
-SDKs default to protobuf, so this rarely bites.
+The metrics OTLP/JSON receive path is lossless for the data shapes the upstream
+`opentelemetry-proto` `with-serde` deserialize silently drops — string-form
+int64 sum/gauge values (`"asInt":"7"`), regular histograms, and exponential
+histograms. otelite uses that deserialize only to validate the dialect and then
+persists the validated raw JSON body verbatim, so those metrics survive. (The
+protobuf path was always lossless; its decode has no such ambiguity.)
+
+Residual limitation: for metrics, the upstream `with-serde` deserialize is more
+lenient than the trace one, so the JSON dialect gate is effectively structural
+(it rejects malformed JSON and hard field-type mismatches, but tolerates some
+non-default dialect shapes like numeric int64 nanos or string enums rather than
+rejecting them loudly). A stricter metrics dialect gate is a follow-up.

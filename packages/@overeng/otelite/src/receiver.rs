@@ -270,6 +270,12 @@ async fn http_traces(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: By
 
 async fn http_metrics(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: Bytes) -> Response {
     let proto = is_protobuf(&headers);
+    // Validate the dialect either way: the `with-serde` deserialize is otelite's
+    // dialect gate (base64 IDs / string enums / numeric timestamps → 400 +
+    // note_rejected). For JSON it is ONLY a validator — the value it builds is
+    // lossy (drops string-form `asInt`, `histogram`, `exponentialHistogram`), so
+    // on success we persist the validated raw body verbatim instead of that proto
+    // value, keeping the JSON metrics path lossless (decisions/0011).
     let req: ExportMetricsServiceRequest = match decode(proto, &body) {
         Ok(r) => r,
         Err(e) => {
@@ -278,7 +284,17 @@ async fn http_metrics(State(sink): State<Arc<Sink>>, headers: HeaderMap, body: B
         }
     };
     maybe_test_panic();
-    if let Err(e) = sink.write_metrics(&req).await {
+
+    let write = if proto {
+        sink.write_metrics(&req).await
+    } else {
+        // The body already validated as canonical OTLP/JSON above; re-emit it
+        // through `serde_json::Value` so the persisted line is well-formed.
+        let value: serde_json::Value =
+            serde_json::from_slice(&body).expect("body re-parses after dialect validation");
+        sink.write_metrics_json(&value).await
+    };
+    if let Err(e) = write {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("capture write failed: {e}"),
