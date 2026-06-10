@@ -34,7 +34,13 @@ otelite inspect ./cap --signal metrics --attr http.status_code=500
 otelite inspect ./cap --signal logs --summary                  # by_severity / by_service
 
 # Receiver-only, when the test harness owns the SUT lifecycle:
-otelite capture --out ./cap     # serves until SIGINT/SIGTERM, then prints the summary
+otelite capture --out ./cap     # serves until SIGINT/SIGTERM or stdin EOF
+#   stdout is a tagged event stream: the first line is the bound endpoints,
+#   the last line is the summary. An in-process parent reads the endpoints with
+#   no scraping and stops the receiver by closing the child's stdin.
+#   {"schema":"otelite.endpoints/v1","http":"http://127.0.0.1:PORT","grpc":"http://127.0.0.1:PORT","out":"/abs/cap"}
+#   …
+#   {"schema":"otelite.summary/v1",...}
 
 otelite --print-schema          # the stable output schema tags
 ```
@@ -60,7 +66,8 @@ goldens), so consumers can version-pin:
 
 | Verb                       | stdout                                                   |
 | -------------------------- | -------------------------------------------------------- |
-| `run` / `capture`          | one `otelite.summary/v1` line                            |
+| `run`                      | one `otelite.summary/v1` line                            |
+| `capture`                  | `otelite.endpoints/v1` line, then `otelite.summary/v1`   |
 | `inspect --signal traces`  | `otelite.span/v1` rows, or `otelite.trace-summary/v1`    |
 | `inspect --signal metrics` | `otelite.metric/v1` rows, or `otelite.metric-summary/v1` |
 | `inspect --signal logs`    | `otelite.log/v1` rows, or `otelite.log-summary/v1`       |

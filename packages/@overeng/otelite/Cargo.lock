@@ -809,6 +809,7 @@ name = "otelite"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "libc",
  "opentelemetry-proto",
  "proptest",
  "prost",

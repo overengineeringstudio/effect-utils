@@ -13,7 +13,7 @@ shared **Capture** sink.
 ```
 otelite run     [--out <dir>] [--service N] [--http-port N] [--grpc-port N] [--drain-idle MS] [--pretty] -- <cmd...>
 otelite inspect <dir|file|-> [--signal traces|metrics|logs] [--derive-metrics] [--service S] [--name N] [--attr k=v]... [--summary] [--pretty]
-otelite capture [--out <dir>] [--http-port N] [--grpc-port N]      # receiver-only (no child; serves until signal)
+otelite capture [--out <dir>] [--http-port N] [--grpc-port N]      # receiver-only (no child; stdout event stream; serves until signal or stdin EOF)
 otelite --print-schema | --version | --help | <verb> --help
 ```
 
@@ -34,10 +34,13 @@ inspect <src>:
 Design borrows from `rg --json`, `gh --json`+jq, `kubectl -o json`, BSD
 `sysexits.h`. See `decisions/0009`.
 
-- **stdout = machine JSON only.** `run`/`capture` emit one `otelite.summary/v1`
-  line; `inspect` emits NDJSON `otelite.span/v1` rows (or one report object under
-  `--summary`). Every object carries a `schema: "name/vN"` tag, locked by the
-  conformance goldens.
+- **stdout = machine JSON only.** `run` emits one `otelite.summary/v1` line.
+  `capture` emits a **tagged event stream**: one `otelite.endpoints/v1` line the
+  instant both listeners bind, then one `otelite.summary/v1` line at the end —
+  consumers dispatch by `schema`, so an in-process parent learns the ephemeral
+  endpoint with no string/regex scraping. `inspect` emits NDJSON `otelite.span/v1`
+  rows (or one report object under `--summary`). Every object carries a
+  `schema: "name/vN"` tag, locked by the conformance goldens.
 - **stderr = everything human.** Endpoints, progress, drain notices, and the
   **Child's own stdout** route to stderr, so `run | jq` and `run | inspect -`
   stay clean.
@@ -78,9 +81,13 @@ OOM-kill isn't mistaken for SIGINT), in both `child.exit_code` and the process
 exit. A `--drain-idle` that never quiesces exits `75`, overriding the child code,
 but still emits the summary so the capture stays usable.
 
-`capture` is the receiver-only verb (no child): it prints its endpoints, serves
-until SIGINT/SIGTERM, then emits the same `otelite.summary/v1`. For when the test
-harness owns the SUT lifecycle itself.
+`capture` is the receiver-only verb (no child): the instant both listeners bind
+it emits an `otelite.endpoints/v1` stdout line (`http`/`grpc`/`out`), serves until
+SIGINT/SIGTERM **or stdin EOF** (a non-TTY parent stops the receiver by closing
+the child's stdin — no signal/PID plumbing), then emits the same
+`otelite.summary/v1` as the final stdout line. For when the test harness owns the
+SUT lifecycle itself. The endpoints line is `capture`-only; `run`'s stdout stays
+exactly one summary line so `run | inspect -` is unaffected.
 
 `inspect` covers **all three signals at parity** — traces, metrics, logs each get
 flatten + filter + `--summary`. Trace summarize is salvaged from the proven trace

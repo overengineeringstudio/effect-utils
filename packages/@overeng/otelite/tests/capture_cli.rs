@@ -1,5 +1,5 @@
 //! M7 `capture` verb: receiver-only, driven by an external emitter and stopped
-//! with a signal. Exercised against the real binary (no mocks).
+//! by closing stdin (EOF). Exercised against the real binary (no mocks).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -24,48 +24,49 @@ fn post(addr: &str) {
     );
 }
 
+/// stdout is a tagged event stream: the first line is `otelite.endpoints/v1`
+/// (emitted the instant both listeners bind — parsed as JSON, no scraping); the
+/// receiver is stopped by closing stdin (EOF); the final stdout line is
+/// `otelite.summary/v1`.
 #[test]
-fn capture_serves_until_signal() {
+fn capture_endpoints_stream_and_eof_stop() {
     let dir = tempfile::tempdir().unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_otelite"))
         .arg("capture")
         .arg("--out")
         .arg(dir.path())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
         .unwrap();
 
-    // Read stderr until the receiver announces its HTTP endpoint.
-    let stderr = BufReader::new(child.stderr.take().unwrap());
-    let mut addr = None;
-    for line in stderr.lines().map_while(Result::ok) {
-        if let Some(ep) = line.split("OTEL_EXPORTER_OTLP_ENDPOINT=").nth(1) {
-            addr = ep.strip_prefix("http://").map(str::to_string);
-            break;
-        }
-    }
-    let addr = addr.expect("capture printed its endpoint");
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+
+    // First stdout line = the endpoints event; parse it as JSON (no scraping).
+    let mut first = String::new();
+    stdout.read_line(&mut first).unwrap();
+    let endpoints: serde_json::Value = serde_json::from_str(first.trim()).unwrap();
+    assert_eq!(endpoints["schema"], "otelite.endpoints/v1");
+    let addr = endpoints["http"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("http://")
+        .unwrap()
+        .to_string();
 
     post(&addr);
 
-    // Stop it with SIGTERM; capture drains + emits the summary.
-    Command::new("kill")
-        .arg("-TERM")
-        .arg(child.id().to_string())
-        .status()
-        .unwrap();
+    // Stop by closing stdin (EOF) — no signal/PID plumbing needed.
+    drop(child.stdin.take());
 
-    let mut stdout = String::new();
-    child
-        .stdout
-        .take()
-        .unwrap()
-        .read_to_string(&mut stdout)
-        .unwrap();
+    // Read the remaining stdout; the final line is the summary event.
+    let mut rest = String::new();
+    stdout.read_to_string(&mut rest).unwrap();
     child.wait().unwrap();
 
-    let summary: serde_json::Value = serde_json::from_str(stdout.lines().next().unwrap()).unwrap();
+    let last = rest.lines().last().expect("capture emitted a summary line");
+    let summary: serde_json::Value = serde_json::from_str(last).unwrap();
     assert_eq!(summary["schema"], "otelite.summary/v1");
     assert_eq!(summary["counts"]["spans"], 1);
     assert!(summary["child"].is_null(), "capture has no child");

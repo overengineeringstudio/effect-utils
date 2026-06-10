@@ -22,6 +22,7 @@ fn print_schema_lists_all() {
         .map(|s| s.as_str().unwrap())
         .collect();
     let want: BTreeSet<&str> = [
+        "otelite.endpoints/v1",
         "otelite.summary/v1",
         "otelite.span/v1",
         "otelite.trace-summary/v1",

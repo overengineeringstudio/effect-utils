@@ -40,6 +40,11 @@ opentelemetry-proto = { version = "0.27", default-features = false, features = [
   "with-serde",
 ] }
 
+# Non-blocking fd setup for cancel-safe stdin-EOF stop (capture). Already in the
+# tree transitively; pinned here as a direct dep.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.186"
+
 [dev-dependencies]
 # Test-only OTLP clients driving the receiver end-to-end (no mocks).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }

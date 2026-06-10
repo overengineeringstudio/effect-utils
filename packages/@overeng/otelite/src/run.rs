@@ -134,9 +134,12 @@ pub struct CaptureOpts {
     pub pretty: bool,
 }
 
-/// `capture`: stand up the receiver, print its endpoints to stderr, and serve
-/// until SIGINT/SIGTERM — then drain and emit the same `otelite.summary/v1`
-/// (with `child: null`). For harnesses that own the SUT lifecycle themselves.
+/// `capture`: stand up the receiver, emit an `otelite.endpoints/v1` event line
+/// the instant both listeners bind, and serve until SIGINT/SIGTERM or stdin EOF
+/// — then drain and emit the same `otelite.summary/v1` (with `child: null`) as
+/// the final stdout line. stdout is a tagged event stream (dispatch by `schema`)
+/// so an in-process parent learns the ephemeral endpoint with no scraping. For
+/// harnesses that own the SUT lifecycle themselves.
 pub async fn capture(opts: CaptureOpts) -> u8 {
     let out_dir = opts.out.clone().unwrap_or_else(auto_out_dir);
     let sink = match Sink::create(&out_dir).await {
@@ -158,14 +161,26 @@ pub async fn capture(opts: CaptureOpts) -> u8 {
         }
     };
 
-    // Endpoints to stderr so an external emitter can be pointed at the receiver.
+    // The instant both listeners are bound, emit ONE compact NDJSON event line to
+    // stdout. stdout is a tagged event stream: `otelite.endpoints/v1` now,
+    // `otelite.summary/v1` at the end. Consumers dispatch by `schema`, so an
+    // in-process parent learns the ephemeral endpoint with no string scraping.
+    let endpoints = serde_json::json!({
+        "schema": "otelite.endpoints/v1",
+        "http": rx.http_endpoint,
+        "grpc": rx.grpc_endpoint,
+        "out": out_dir,
+    });
+    println!("{}", serde_json::to_string(&endpoints).unwrap());
+
+    // Endpoints to stderr too so a human / external emitter can read them.
     eprintln!("otelite: capturing to {}", out_dir.display());
     eprintln!("otelite: OTEL_EXPORTER_OTLP_ENDPOINT={}", rx.http_endpoint);
     eprintln!("otelite: OTLP gRPC endpoint {}", rx.grpc_endpoint);
-    eprintln!("otelite: serving until SIGINT/SIGTERM…");
+    eprintln!("otelite: serving until SIGINT/SIGTERM or stdin EOF…");
 
     let start = Instant::now();
-    wait_for_signal().await;
+    wait_for_stop().await;
 
     let http_ep = rx.http_endpoint.clone();
     let grpc_ep = rx.grpc_endpoint.clone();
@@ -195,26 +210,101 @@ pub async fn capture(opts: CaptureOpts) -> u8 {
     0
 }
 
-/// Wait for SIGINT or SIGTERM (the harness's stop signal).
-async fn wait_for_signal() {
+/// Wait for the harness's stop request: SIGINT, SIGTERM, or — when stdin is a
+/// pipe (not a TTY) — EOF on stdin. EOF-stop lets an in-process parent stop the
+/// receiver by simply closing the child's stdin (no signal/PID plumbing); a TTY
+/// stdin is left to the signal path so an interactive run isn't stopped by the
+/// terminal reporting EOF.
+async fn wait_for_stop() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};
+        // The stdin-EOF future must be *cancellable* on a signal without leaving
+        // a parked OS thread: tokio's blocking `io::stdin()` read would keep the
+        // runtime from shutting down (it blocks `Runtime::drop`). `wait_stdin_eof`
+        // registers fd 0 as a non-blocking `AsyncFd`, so its future drops cleanly
+        // when another select arm wins.
         match signal(SignalKind::terminate()) {
             Ok(mut term) => {
                 tokio::select! {
                     _ = tokio::signal::ctrl_c() => {}
                     _ = term.recv() => {}
+                    _ = wait_stdin_eof() => {}
                 }
             }
             Err(_) => {
-                let _ = tokio::signal::ctrl_c().await;
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = wait_stdin_eof() => {}
+                }
             }
         }
     }
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// Resolve when stdin reaches EOF (a non-TTY stdin closing), or never for a TTY.
+/// Uses a non-blocking `AsyncFd` over fd 0 so the future is cancel-safe: when a
+/// signal arm of the outer `select!` wins, this future is dropped without any
+/// parked blocking thread keeping the tokio runtime alive.
+#[cfg(unix)]
+async fn wait_stdin_eof() {
+    use std::os::unix::io::RawFd;
+    use std::os::unix::io::{AsRawFd, BorrowedFd};
+
+    let stdin = std::io::stdin();
+    if std::io::IsTerminal::is_terminal(&stdin) {
+        std::future::pending::<()>().await;
+        return;
+    }
+    let fd: RawFd = stdin.as_raw_fd();
+
+    // Put fd 0 into non-blocking mode so `read` can return WouldBlock instead of
+    // parking. (We restore nothing: the process is about to stop on EOF anyway.)
+    // SAFETY: fcntl on a valid borrowed fd; we only set O_NONBLOCK.
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags >= 0 {
+            let _ = libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+    }
+
+    // SAFETY: fd 0 is owned by the process for its lifetime; we only borrow it.
+    let borrowed = unsafe { BorrowedFd::borrow_raw(fd) };
+    let async_fd = match tokio::io::unix::AsyncFd::new(borrowed) {
+        Ok(a) => a,
+        // If fd 0 can't be registered (e.g. a regular file), fall back to never
+        // resolving — the signal path still stops the receiver.
+        Err(_) => {
+            std::future::pending::<()>().await;
+            return;
+        }
+    };
+
+    let mut buf = [0u8; 256];
+    loop {
+        let mut guard = match async_fd.readable().await {
+            Ok(g) => g,
+            Err(_) => return, // treat a registration error as EOF/stop
+        };
+        // SAFETY: reading into a stack buffer from a valid fd.
+        let n = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+        if n == 0 {
+            return; // EOF → stop
+        } else if n < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::WouldBlock {
+                guard.clear_ready();
+                continue;
+            }
+            return; // any other read error → stop
+        } else {
+            // Discard data and keep waiting for EOF.
+            guard.clear_ready();
+        }
     }
 }
 
