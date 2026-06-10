@@ -42,6 +42,7 @@ const frontmatter = (title: string): NmdFrontmatterV2 => ({
     version: 2,
     api_version: NOTION_API_VERSION,
     object: 'page',
+    source: 'local',
     page_id: pageId,
     url: 'https://notion.so/page',
     parent: { _tag: 'workspace' },

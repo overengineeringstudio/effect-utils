@@ -586,6 +586,7 @@ export const buildFrontmatterV2 = (opts: {
     version: 2,
     api_version: NOTION_API_VERSION,
     object: 'page',
+    source: 'local',
     page_id: opts.page.id,
     url: opts.page.url,
     parent: toParentRef(opts.page),

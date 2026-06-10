@@ -12,6 +12,7 @@ const frontmatter: NmdFrontmatterV2 = {
     version: 2,
     api_version: '2026-03-11',
     object: 'page',
+    source: 'local',
     page_id: pageId,
     url: 'https://www.notion.so/test',
     parent: { _tag: 'page', id: pageId },

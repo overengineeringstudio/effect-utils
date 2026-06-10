@@ -112,6 +112,25 @@ export const makeNmdObjectRef = (opts: {
     byte_length: utf8ByteLength(opts.content),
   })
 
+/**
+ * Sync direction declared by a self-describing `.nmd` file (R34).
+ *
+ * The engine dispatches on this value, never on CLI flags or invocation
+ * arity:
+ *
+ * - `local`  — authored locally, pushed to Notion. The only value that may be
+ *   unbound (`page_id: null` ⇒ create-on-push).
+ * - `remote` — authored in Notion, pulled to local. Local hand-edits are not
+ *   pushed; must carry a `page_id`.
+ * - `shared` — bidirectional. The ONLY value that engages the base snapshot +
+ *   3-way merge apparatus (R32); must carry a `page_id`.
+ */
+export const NmdSource = Schema.Literal('local', 'remote', 'shared').annotations({
+  identifier: 'NotionMd.Source',
+})
+
+export type NmdSource = typeof NmdSource.Type
+
 /** Parent location of a synced Notion page. */
 export const NmdParentRef = Schema.Union(
   Schema.TaggedStruct('page', {
@@ -446,17 +465,36 @@ export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
  * next pass and writes the real id back through the canonical renderer.
  * A bound (`page_id !== null`) file participates in guarded two-way sync.
  */
+/**
+ * The `notion_md` envelope body. `source` defaults to `local` so legacy files
+ * written before the v-next field still decode, and a struct-level filter
+ * enforces the self-describing invariant (R34): a `remote`/`shared` file MUST
+ * carry a `page_id` (a null/absent page id is the create-on-push case, legal
+ * only for `source: local`).
+ */
+const NmdFrontmatterBody = Schema.Struct({
+  version: Schema.Literal(2),
+  api_version: Schema.Literal(NOTION_API_VERSION),
+  object: Schema.Literal('page'),
+  source: Schema.optionalWith(NmdSource, { default: () => 'local', nullable: true }),
+  page_id: Schema.NullOr(NotionUUID),
+  url: Schema.optional(Schema.NullOr(Schema.String)),
+  parent: NmdParentRef,
+  page: NmdPageState,
+  properties: Schema.Record({ key: Schema.String, value: NmdWritablePropertyValue }),
+}).pipe(
+  Schema.filter((body) =>
+    body.source !== 'local' && body.page_id === null
+      ? {
+          path: ['page_id'],
+          message: `source: ${body.source} requires a page_id (only source: local may be unbound / create-on-push)`,
+        }
+      : undefined,
+  ),
+)
+
 export const NmdFrontmatterV2 = Schema.Struct({
-  notion_md: Schema.Struct({
-    version: Schema.Literal(2),
-    api_version: Schema.Literal(NOTION_API_VERSION),
-    object: Schema.Literal('page'),
-    page_id: Schema.NullOr(NotionUUID),
-    url: Schema.optional(Schema.NullOr(Schema.String)),
-    parent: NmdParentRef,
-    page: NmdPageState,
-    properties: Schema.Record({ key: Schema.String, value: NmdWritablePropertyValue }),
-  }),
+  notion_md: NmdFrontmatterBody,
 }).annotations({ identifier: 'NotionMd.FrontmatterV2' })
 
 export type NmdFrontmatterV2 = typeof NmdFrontmatterV2.Type
@@ -510,6 +548,124 @@ export const decodeNmdFrontmatterV2Sync = Schema.decodeUnknownSync(
 
 /** Decode sidecar sync state with strict excess-property checks. */
 export const decodeNmdSyncStateV1 = Schema.decodeUnknown(NmdSyncStateV1, nmdStrictParseOptions)
+
+/**
+ * Result of pairing a decoded `.nmd` frontmatter with its (optional) page-id
+ * keyed sidecar sync state, gated by the statelessness invariant (R31/R32,
+ * DQ-2).
+ *
+ * This tagged union is the structural enforcement of single-source
+ * statelessness: only the `shared-bound` branch carries a `syncState` (hence a
+ * base snapshot ref). The `local`/`remote` branches make a base
+ * *unconstructible* at the type level — a single-source code path that wanted
+ * to read a base would have no field to read it from. R31/R32 are therefore a
+ * type property, not a discipline.
+ */
+type NotionUUIDValue = typeof NotionUUID.Type
+
+export type NmdLocalState =
+  | {
+      readonly _tag: 'local-unbound'
+      readonly frontmatter: NmdFrontmatterV2
+    }
+  | {
+      readonly _tag: 'local-bound'
+      readonly frontmatter: NmdFrontmatterV2
+      readonly pageId: NotionUUIDValue
+    }
+  | {
+      readonly _tag: 'remote'
+      readonly frontmatter: NmdFrontmatterV2
+      readonly pageId: NotionUUIDValue
+    }
+  | {
+      readonly _tag: 'shared-bound'
+      readonly frontmatter: NmdFrontmatterV2
+      readonly pageId: NotionUUIDValue
+      readonly syncState: NmdSyncStateV1
+    }
+
+/** Reason a frontmatter + sidecar pair violates the statelessness gate. */
+export class NmdStatelessnessError extends Schema.TaggedError<NmdStatelessnessError>()(
+  'NotionMd.StatelessnessError',
+  {
+    source: NmdSource,
+    page_id: Schema.NullOr(NotionUUID),
+    has_sidecar: Schema.Boolean,
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Pair a decoded frontmatter with its optional sidecar and enforce R31/R32:
+ *
+ * - `source: local | remote` MUST NOT carry a sidecar (stored base) — a single
+ *   source page is stateless, so a present base is a schema violation, not a
+ *   recoverable condition.
+ * - a bound `source: shared` MUST carry a sidecar (it needs the base for the
+ *   3-way merge).
+ *
+ * `source: remote | shared` with no `page_id` is already a frontmatter decode
+ * error (see `NmdFrontmatterBody`), so this gate only sees those bound.
+ */
+const unboundDirectionError = (source: 'remote' | 'shared'): NmdStatelessnessError =>
+  new NmdStatelessnessError({
+    source,
+    page_id: null,
+    has_sidecar: false,
+    message: `source: ${source} requires a page_id (only source: local may be unbound)`,
+  })
+
+export const gateNmdLocalState = (input: {
+  readonly frontmatter: NmdFrontmatterV2
+  readonly syncState: NmdSyncStateV1 | undefined
+}): NmdLocalState | NmdStatelessnessError => {
+  const { source, page_id } = input.frontmatter.notion_md
+  const hasSidecar = input.syncState !== undefined
+
+  switch (source) {
+    case 'local':
+    case 'remote': {
+      if (hasSidecar === true) {
+        return new NmdStatelessnessError({
+          source,
+          page_id,
+          has_sidecar: true,
+          message: `source: ${source} is single-source and must be stateless, but a stored base snapshot (sidecar) was found; single-source pages carry no .notion-md/ sidecar (R31)`,
+        })
+      }
+      if (source === 'local') {
+        return page_id === null
+          ? { _tag: 'local-unbound', frontmatter: input.frontmatter }
+          : { _tag: 'local-bound', frontmatter: input.frontmatter, pageId: page_id }
+      }
+      /*
+       * source === 'remote' — the frontmatter gate already rejects a null
+       * page_id, so this is unreachable; the explicit check both gives TS the
+       * narrowing and is defense-in-depth if the frontmatter gate is bypassed.
+       */
+      if (page_id === null) return unboundDirectionError(source)
+      return { _tag: 'remote', frontmatter: input.frontmatter, pageId: page_id }
+    }
+    case 'shared': {
+      if (page_id === null) return unboundDirectionError(source)
+      if (input.syncState === undefined) {
+        return new NmdStatelessnessError({
+          source,
+          page_id,
+          has_sidecar: false,
+          message: `source: shared requires an established base snapshot (sidecar) for the 3-way merge, but none was found (R32)`,
+        })
+      }
+      return {
+        _tag: 'shared-bound',
+        frontmatter: input.frontmatter,
+        pageId: page_id,
+        syncState: input.syncState,
+      }
+    }
+  }
+}
 
 /** Size class for deciding whether `.nmd` metadata can stay in frontmatter. */
 export type NmdFrontmatterPayloadClass = 'small' | 'large' | 'too_large'
