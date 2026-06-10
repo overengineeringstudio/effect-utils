@@ -45,7 +45,7 @@ last line.
 _Avoid_: ready line, banner, port file.
 
 **In-process capture**:
-The mode where the **Emitter** is the *parent* test process itself (not a
+The mode where the **Emitter** is the _parent_ test process itself (not a
 **Child** otelite spawns). The parent discovers the **Receiver** via the
 **Endpoints event** and stops it by closing stdin (EOF). Contrast with `run`,
 where the emitter is a child and otelite owns its env.

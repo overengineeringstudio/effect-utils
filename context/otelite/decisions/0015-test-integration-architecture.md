@@ -24,8 +24,8 @@ T03.
 ## In-process capture primitive (D2)
 
 A scoped `capture` on the `Otelite` service boots `otelite capture`, reads the
-`otelite.endpoints/v1` event (no scraping), yields the endpoints to the *test
-process* for in-process emission, stops by closing stdin (EOF), drains the
+`otelite.endpoints/v1` event (no scraping), yields the endpoints to the _test
+process_ for in-process emission, stops by closing stdin (EOF), drains the
 `otelite.summary/v1`, and inspects the out-dir as typed rows. The vitest bridge
 wires this into the existing OTEL test layer (which points its OTLP exporter at
 the captured endpoint). Built on the 0014 contract; no stderr scraping, no SIGINT.
@@ -38,7 +38,7 @@ isolation loss and zero cross-talk over 8000+ assertions; per-test / per-file /
 per-worker share the same flat FD/port profile (peak concurrent receivers =
 worker count, ~14 FDs each). Default **per-file**; **per-test** opt-in for small
 suites that want zero disambiguation logic (~12 ms/test spawn tax); **per-worker**
-only for massive suites that accept `isolate:false` + a *process-level* teardown
+only for massive suites that accept `isolate:false` + a _process-level_ teardown
 (under vitest's default `isolate:true` it silently degrades to per-file, and a
 file-level teardown breaks every test after the first). per-suite/global is
 infeasible — an in-process receiver cannot cross forked workers.
