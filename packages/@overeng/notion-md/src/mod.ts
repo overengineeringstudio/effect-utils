@@ -66,6 +66,8 @@ export type {
   SyncResult,
 } from './sync.ts'
 export { canonicalHash, canonicalize, semanticEqual } from './canonicalizer.ts'
+export { corpusEntry, fidelityCorpus } from './corpus.ts'
+export type { Corpus, CorpusEntry } from './corpus.ts'
 export { decideReconcile, porcelainStatus } from './reconcile-core.ts'
 export type { PorcelainStatus, ReconcileCompare, ReconcileDecision } from './reconcile-core.ts'
 export { decideShared, reconcileShared, sharedPorcelain } from './reconcile-shared.ts'
