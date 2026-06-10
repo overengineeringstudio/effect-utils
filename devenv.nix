@@ -226,6 +226,10 @@ let
       name = "utils";
     }
     {
+      path = "packages/@overeng/utils-dev";
+      name = "utils-dev";
+    }
+    {
       path = "packages/@overeng/workflow-report";
       name = "workflow-report";
     }
@@ -440,6 +444,8 @@ in
     restate
     # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
     repoFlake.packages.${currentSystem}.notion-cli
+    # otelite binary on PATH so @overeng/utils-dev/otelite tests run the real CLI.
+    repoFlake.packages.${currentSystem}.otelite
     (mkSourceCli {
       name = "genie";
       entry = "packages/@overeng/genie/bin/genie.tsx";
@@ -453,6 +459,14 @@ in
       name = "tui-stories";
       entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
     })
+    # Rust toolchain for the otelite crate (effect-utils' first Rust package).
+    # Nix builds use pkgs.rustPlatform; these give local dev + the cargo CI lane
+    # cargo/clippy/rustfmt/rust-analyzer matching nixpkgs' stable rust.
+    pkgs.cargo
+    pkgs.rustc
+    pkgs.clippy
+    pkgs.rustfmt
+    pkgs.rust-analyzer
   ];
 
   # actionlint binary path for genie's workflow validation (also used by tests)

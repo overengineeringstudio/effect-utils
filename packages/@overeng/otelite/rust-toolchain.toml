@@ -1,0 +1,5 @@
+# Documents the toolchain for local dev (devenv provides matching nixpkgs rust;
+# Nix builds use pkgs.rustPlatform, which ignores this file).
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

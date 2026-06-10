@@ -47,6 +47,11 @@
           bun = pkgs.bun;
           src = self;
         };
+        # otelite — effect-utils' first Rust package (local OTLP capture tool).
+        # Built via rustPlatform.buildRustPackage, separate from the Bun CLIs.
+        otelite = import (rootPath + "/packages/@overeng/otelite/nix/build.nix") {
+          inherit pkgs;
+        };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -138,6 +143,7 @@
       in
       {
         packages = cliPackages // {
+          inherit otelite;
           cli-build-stamp = cliBuildStamp.package;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           genie-dirty = cliPackagesDirty.genie;
@@ -187,6 +193,7 @@
         apps.update-bun-hashes = flake-utils.lib.mkApp {
           drv = import ./nix/workspace-tools/lib/update-bun-hashes.nix { inherit pkgs; };
         };
+        apps.otelite = flake-utils.lib.mkApp { drv = otelite; };
       }
     )
     // {

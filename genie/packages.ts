@@ -45,3 +45,29 @@ export type InternalPackageName = (typeof internalPackages)[number]
 export const internalPackageCatalogEntries = Object.fromEntries(
   internalPackages.map((name) => [`@overeng/${name}`, 'workspace:^'] as const),
 ) as Record<`@overeng/${InternalPackageName}`, 'workspace:^'>
+
+/**
+ * Nix-only @overeng/* packages that participate in the Nix/flake topology but
+ * are NOT part of the pnpm workspace.
+ *
+ * These intentionally live outside `internalPackages` because they have no
+ * `package.json`: adding them to the pnpm catalog (`@overeng/<name>` ->
+ * `workspace:^`) would invent a phantom workspace member and break pnpm
+ * resolution. They are registered here so genie-generated config and CI can be
+ * aware of them through a single source of truth.
+ *
+ * `flakeRef` is the attribute exposed by `flake.nix` (`packages.<flakeRef>` /
+ * `apps.<flakeRef>`); `cratePath` is the repo-relative crate root.
+ */
+export const nixOnlyPackages = [
+  {
+    name: 'otelite',
+    /** Rust crate: local OTLP capture tool for E2E and instrumentation tests. */
+    kind: 'rust-crate',
+    flakeRef: 'otelite',
+    cratePath: 'packages/@overeng/otelite',
+  },
+] as const
+
+/** Short name of a nix-only (non-pnpm) @overeng/* package. */
+export type NixOnlyPackageName = (typeof nixOnlyPackages)[number]['name']

@@ -1,0 +1,1 @@
+{"metrics":[{"data_points":4,"name":"calls","services":["checkout","payment"],"type":"sum","unit":"","value_max":2.0,"value_min":1.0,"value_sum":5.0},{"data_points":4,"name":"duration","services":["checkout","payment"],"type":"histogram","unit":"ms"}],"schema":"otelite.metric-summary/v1","total_data_points":8,"total_metrics":2}

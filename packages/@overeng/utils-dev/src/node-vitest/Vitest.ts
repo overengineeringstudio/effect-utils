@@ -47,17 +47,41 @@ export const IS_CI = process.env.CI === 'true'
 export interface OtelVitestConfig {
   /** Service name for OTEL traces. @default 'vitest' */
   serviceName?: string
-  /** Environment variable containing the OTLP endpoint URL. @default 'OTEL_EXPORTER_OTLP_ENDPOINT' */
+  /** Environment variable containing the OTLP **base** endpoint URL. @default 'OTEL_EXPORTER_OTLP_ENDPOINT' */
   endpointEnvVar?: string
+  /**
+   * Explicit OTLP **base** endpoint URL (e.g. `http://127.0.0.1:4318`). Wins
+   * over `endpointEnvVar`; used by the otelite capture bridge to point the
+   * exporter at the in-process receiver.
+   */
+  endpoint?: string
   /** Tracer export interval in milliseconds. @default 250 */
   exportInterval?: number
 }
 
 /**
+ * Builds the full OTLP/HTTP traces URL from a base endpoint.
+ *
+ * `OtlpTracer.layer({ url })` POSTs to `url` VERBATIM — the per-signal layer
+ * does NOT append a signal path (only the combined `Otlp.layer({ baseUrl })`
+ * does, via `appendUrl(baseUrl, '/v1/traces')`). The same is true of
+ * `OtlpLogger.layer` / `OtlpMetrics.layer`: each takes a full `url` and POSTs
+ * it verbatim through the shared `otlpExporter` (`HttpClientRequest.post(url)`).
+ * So a bare base endpoint must get the `/v1/traces` suffix here, or the
+ * exporter POSTs to the receiver root, 404s, and self-disables silently.
+ *
+ * Exported so the suffix is one source of truth (the bridge + a regression test
+ * lock it).
+ */
+export const otlpTracesUrl = (baseEndpoint: string): string =>
+  `${baseEndpoint.replace(/\/$/, '')}/v1/traces`
+
+/**
  * Creates an OTEL layer for Vitest tests.
  *
- * Always wraps the test in a root span. When an OTEL endpoint is configured,
- * also sets up the OTLP exporter to send traces.
+ * Always wraps the test in a root span. When an OTEL endpoint is configured
+ * (explicit `endpoint` or the `endpointEnvVar`), also sets up the OTLP trace
+ * exporter pointed at `${endpoint}/v1/traces` (see {@link otlpTracesUrl}).
  * Use `DEBUGGER_ACTIVE` or `forceOtel` to enable OTEL in local dev.
  */
 export const makeOtelVitestLayer = (
@@ -66,19 +90,21 @@ export const makeOtelVitestLayer = (
   const {
     serviceName = 'vitest',
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
+    endpoint: explicitEndpoint,
     exportInterval = 250,
     rootSpanName,
   } = config
 
   return Layer.unwrapEffect(
     Effect.sync(() => {
-      const endpoint = process.env[endpointEnvVar]
+      const endpoint = explicitEndpoint ?? process.env[endpointEnvVar]
       if (endpoint === undefined) {
         return Layer.span(rootSpanName)
       }
 
       const exporterLive = OtlpTracer.layer({
-        url: endpoint,
+        // Full traces URL: OtlpTracer POSTs `url` verbatim (no suffix appended).
+        url: otlpTracesUrl(endpoint),
         resource: { serviceName },
         exportInterval,
       }).pipe(
