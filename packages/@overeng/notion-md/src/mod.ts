@@ -65,6 +65,7 @@ export type {
   SyncOptions,
   SyncResult,
 } from './sync.ts'
+export { canonicalHash, canonicalize, semanticEqual } from './canonicalizer.ts'
 export { NOTION_MD_VERSION } from './version.ts'
 export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
 export type { TreeOp, TreeSyncResult } from './tree.ts'
