@@ -25,3 +25,10 @@ channel — per `/sk-effect`. Receiver/child lifecycle is a scoped resource.
 A second package (TS) joins the Rust crate. Accepted: it's a thin adapter over a
 stable JSON contract, and the typed surface is the point for the Effect harness.
 If non-Effect consumers appear, they use the CLI directly — no helper needed.
+
+## Status
+
+The CLI-as-source-of-truth + thin-wrapper principle stands. The wrapper's **home**
+was later revised: it folds from the standalone `@overeng/otelite-effect` package
+into the `@overeng/utils-dev/otelite` subpath (no non-test consumer justified a
+separate package). See [0015].

@@ -62,8 +62,11 @@ Testable constraints for the local OTLP capture tool. See `vision.md` for why,
 - **T03.** Vendor the salvaged trace model into otelite rather than a shared
   lib — accept a later mechanical extraction to avoid freezing a public lib API
   before a second consumer exists. [0005]
-- **T04.** CLI + Effect wrapper = two packages — accept a thin typed adapter over
-  a stable JSON contract; the CLI stays the source of truth. [0007]
+- **T04.** CLI + a thin typed Effect wrapper (the CLI's JSON stays the source of
+  truth). The wrapper lives as the `@overeng/utils-dev/otelite` subpath — folded
+  in from a standalone package, co-located with the vitest test layer it
+  integrates, since no non-test consumer justified a separate package. Re-extract
+  if a runtime consumer appears. [0007, 0015]
 - **T05.** In-flight-drain default can drop fire-and-forget spans — accepted (it
   signals a SUT flush failure); bounded `--drain-idle` is the opt-in. [0006]
 - **T06.** `capture` stdout becomes a tagged event stream (endpoints line, then
@@ -123,3 +126,9 @@ Replace the Grafana/Tempo-mediated verification lane · replace the production c
   subprocess) is already covered by R03/R09; R13 is the in-process complement,
   built on the R12 contract. The end-to-end wire round-trip through the wrapper is
   proven for the child path; the scoped in-process `capture` is the next increment.
+  The wrapper + vitest bridge live in `@overeng/utils-dev/otelite`; the receiver
+  lifecycle defaults to **per-file** (per-test/per-worker opt-in — measured
+  ~40–65× cheaper at scale, no isolation loss), and the capture/assert helper does
+  a bounded retry to absorb read-after-write visibility lag under load. Real-
+  consumer span tests live in the consumer's own suite against the shared helper.
+  [0015]
