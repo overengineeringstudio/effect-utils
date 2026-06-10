@@ -34,3 +34,5 @@ export {
   Counts,
   Child,
 } from './schema.ts'
+export { OteliteCapture, makeOteliteCaptureLayer, flushCaptureSpans } from './vitest-bridge.ts'
+export type { OteliteCaptureLayerOptions } from './vitest-bridge.ts'
