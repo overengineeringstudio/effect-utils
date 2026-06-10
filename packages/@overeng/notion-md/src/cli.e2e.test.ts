@@ -7,6 +7,15 @@ import { promisify } from 'node:util'
 
 import { describe, expect, it } from 'vitest'
 
+/*
+ * CLI boundary tests for the decided v-next surface: three verbs `clone` /
+ * `status` / `sync` over self-describing files. These were revised from the
+ * pre-redesign surface (`plan`, `--from-remote`, `--root`, `--root-file`,
+ * two-arg `sync`) which the v-next redesign explicitly DROPS — direction lives
+ * in each file's frontmatter `source`, not in flags (R34). The old assertions
+ * encoded the superseded engine and would contradict the decided spec.
+ */
+
 const execFileAsync = promisify(execFile)
 const packageDir = fileURLToPath(new URL('..', import.meta.url))
 const cliProcessTimeoutMs = 20_000
@@ -34,17 +43,26 @@ describe('notion-md CLI boundary', () => {
   }
 
   it(
-    'renders top-level help with the canonical command modes',
+    'renders top-level help with the three decided verbs',
     async () => {
       const { stdout } = await runCli(['--help'])
 
+      expect(stdout).toContain('clone')
       expect(stdout).toContain('status')
-      expect(stdout).toContain('plan')
       expect(stdout).toContain('sync')
-      expect(stdout).toContain('--from-remote')
-      expect(stdout).toContain('--root')
-      expect(stdout).toContain('--root-file')
-      expect(stdout).toContain('--recursive')
+    },
+    cliTestTimeoutMs,
+  )
+
+  it(
+    'no longer exposes the dropped tree/direction flags or the plan verb',
+    async () => {
+      const { stdout } = await runCli(['--help'])
+
+      expect(stdout).not.toContain('--from-remote')
+      expect(stdout).not.toContain('--root')
+      expect(stdout).not.toContain('--root-file')
+      expect(stdout).not.toContain('plan')
     },
     cliTestTimeoutMs,
   )
@@ -54,14 +72,22 @@ describe('notion-md CLI boundary', () => {
     async () => {
       const { stdout } = await runCli(['sync', '--help'])
 
-      expect(stdout).toContain('Sync a local target')
       expect(stdout).toContain('--watch')
       expect(stdout).toContain('--poll-interval-ms')
       expect(stdout).toContain('--recursive')
       expect(stdout).toContain('--concurrency')
-      expect(stdout).toContain('--from-remote')
-      expect(stdout).toContain('--root')
-      expect(stdout).toContain('--root-file')
+      expect(stdout).toContain('--force')
+    },
+    cliTestTimeoutMs,
+  )
+
+  it(
+    'renders clone help with --as direction option',
+    async () => {
+      const { stdout } = await runCli(['clone', '--help'])
+
+      expect(stdout).toContain('--as')
+      expect(stdout).toContain('page-id-or-url')
     },
     cliTestTimeoutMs,
   )
@@ -69,7 +95,7 @@ describe('notion-md CLI boundary', () => {
   it(
     'validates missing sync targets before resolving Notion credentials',
     async () => {
-      await expect(runCli(['sync'])).rejects.toThrow('Missing argument <source>')
+      await expect(runCli(['sync'])).rejects.toThrow('Missing argument <path>')
     },
     cliTestTimeoutMs,
   )
@@ -85,62 +111,14 @@ describe('notion-md CLI boundary', () => {
   )
 
   it(
-    'rejects from-remote flat batch mode before resolving Notion credentials',
-    async () => {
-      await withTempDir(async (dir) => {
-        await expect(
-          runCli([
-            'sync',
-            dir,
-            '--recursive',
-            '--from-remote',
-            '--root',
-            '00000000000040008000000000000001',
-          ]),
-        ).rejects.toMatchObject({
-          stdout: expect.stringContaining('Cannot combine --recursive and --from-remote'),
-        })
-      })
-    },
-    cliTestTimeoutMs,
-  )
-
-  it(
-    'rejects from-remote file targets before resolving Notion credentials',
+    'rejects a non-page-id clone argument before resolving Notion credentials',
     async () => {
       await withTempDir(async (dir) => {
         const filePath = join(dir, 'page.nmd')
         writeFileSync(filePath, '')
 
-        await expect(runCli(['sync', filePath, '--from-remote'])).rejects.toMatchObject({
-          stdout: expect.stringContaining('--from-remote is directory-tree only'),
-        })
-      })
-    },
-    cliTestTimeoutMs,
-  )
-
-  it(
-    'rejects from-remote directory imports without a root or existing tree index',
-    async () => {
-      await withTempDir(async (dir) => {
-        await expect(runCli(['sync', dir, '--from-remote'])).rejects.toMatchObject({
-          stdout: expect.stringContaining('--from-remote requires --root'),
-        })
-      })
-    },
-    cliTestTimeoutMs,
-  )
-
-  it(
-    'rejects file plan targets before resolving Notion credentials',
-    async () => {
-      await withTempDir(async (dir) => {
-        const filePath = join(dir, 'page.nmd')
-        writeFileSync(filePath, '')
-
-        await expect(runCli(['plan', filePath])).rejects.toMatchObject({
-          stdout: expect.stringContaining('plan is directory-tree only'),
+        await expect(runCli(['clone', filePath])).rejects.toMatchObject({
+          stdout: expect.stringContaining('Invalid Notion page id/url'),
         })
       })
     },

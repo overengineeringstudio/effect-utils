@@ -1,6 +1,7 @@
 import { basename } from 'node:path'
 
-import type { FileSystem, Path } from '@effect/platform'
+import type { Path } from '@effect/platform'
+import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 
 import {
@@ -488,6 +489,96 @@ const settleSharedBase = (opts: {
       },
     })
   })
+
+/** Result of bootstrapping a local file from an existing Notion page. */
+export interface CloneResult {
+  readonly path: string
+  readonly pageId: string
+  readonly source: NmdFrontmatterV2['notion_md']['source']
+}
+
+/**
+ * `clone <id|url> [path]` — bootstrap a local `.nmd` file from an existing
+ * Notion page (spec). The ONLY operation that takes a page id. Writes
+ * self-describing frontmatter with the chosen `source` (default `remote` — you
+ * cloned FROM Notion). Fail-closed on a lossy/truncated remote observation: no
+ * clean base from a lossy body. For `--as shared` it also establishes the base
+ * sidecar so the file is a valid `shared-bound` from the first sync.
+ */
+export const clonePage = (opts: {
+  readonly pageId: string
+  readonly outPath: string
+  readonly source: NmdFrontmatterV2['notion_md']['source']
+}): Effect.Effect<CloneResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
+  Effect.gen(function* () {
+    const gateway = yield* NotionMdGateway
+    const fs = yield* FileSystem.FileSystem
+    const exists = yield* fs.exists(opts.outPath).pipe(Effect.orElseSucceed(() => false))
+    if (exists === true) {
+      // refuse to overwrite a file already bound to a different page
+      const store = yield* NmdStateStore
+      const existing = yield* store.readNmdFile({ path: opts.outPath }).pipe(Effect.either)
+      if (existing._tag === 'Right') {
+        const parsed = yield* parseNmdFile({ path: opts.outPath, content: existing.right })
+        const boundId = parsed.frontmatter.notion_md.page_id
+        if (boundId !== null && boundId !== opts.pageId) {
+          return yield* new NmdFrontmatterError({
+            path: opts.outPath,
+            message: `${opts.outPath} is already bound to a different page (${boundId}); refusing to overwrite with ${opts.pageId}`,
+          })
+        }
+      }
+    }
+
+    const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
+    const completeness = pulled.markdown.completeness
+    if (completeness !== undefined && completeness._tag !== 'complete') {
+      return yield* new NmdFrontmatterError({
+        path: opts.outPath,
+        message: `Refusing to clone a lossy remote body for ${opts.pageId} (${completeness.reasons.join(', ')}); no clean base from a truncated observation`,
+      })
+    }
+    const body = normalizeMarkdownLineEndings(pulled.markdown.markdown)
+    yield* writeFile({
+      path: opts.outPath,
+      frontmatter: remoteFrontmatter({ source: opts.source, page: pulled.page }),
+      body,
+    })
+
+    if (opts.source === 'shared') {
+      const store = yield* NmdStateStore
+      const base = yield* store.writeBaseSnapshot({
+        path: opts.outPath,
+        pageId: opts.pageId,
+        body,
+      })
+      yield* store.writeSyncState({
+        path: opts.outPath,
+        syncState: {
+          version: 1,
+          page_id: opts.pageId,
+          body: {
+            format: 'notion-enhanced-markdown',
+            hash: sha256Digest(body),
+            base,
+            last_pulled_at: new Date().toISOString(),
+            remote_last_edited_time: pulled.page.last_edited_time,
+            truncated: pulled.markdown.truncated,
+            unknown_block_ids: [...pulled.markdown.unknown_block_ids],
+          },
+          storage: { _tag: 'self_contained', unsupported_blocks: [], files: [], comments: [] },
+          read_only_properties: {},
+          data_source: null,
+        },
+      })
+    }
+
+    return { path: opts.outPath, pageId: opts.pageId, source: opts.source }
+  }).pipe(
+    Effect.withSpan('notion-md.clone-page', {
+      attributes: { 'span.label': opts.pageId.slice(0, 8), 'notion_md.clone.source': opts.source },
+    }),
+  )
 
 /*
  * Tree orchestration (spec "Internal layering"): discover `.nmd` files,
