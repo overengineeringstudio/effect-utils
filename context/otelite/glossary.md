@@ -36,6 +36,21 @@ complete. Distinct from a timed wait.
 Reading a **Capture** back into a normalized, filtered view (flat spans, or a
 summary) for assertions. otelite normalizes; it does not assert.
 
+**Endpoints event**:
+The first stdout line `capture` emits the instant the **Receiver** binds —
+`{"schema":"otelite.endpoints/v1","http":…,"grpc":…,"out":…}` — so a parent
+process learns the ephemeral endpoint by dispatching on `schema`, with no
+scraping. One half of `capture`'s stdout event stream; the **summary** is the
+last line.
+_Avoid_: ready line, banner, port file.
+
+**In-process capture**:
+The mode where the **Emitter** is the *parent* test process itself (not a
+**Child** otelite spawns). The parent discovers the **Receiver** via the
+**Endpoints event** and stops it by closing stdin (EOF). Contrast with `run`,
+where the emitter is a child and otelite owns its env.
+_Avoid_: embedded, library mode.
+
 **Lane**:
 A verification path. otelite is the _local-file capture lane_ (fast, no stack).
 The _Grafana/Tempo-mediated lane_ is what operators see. The real collector is

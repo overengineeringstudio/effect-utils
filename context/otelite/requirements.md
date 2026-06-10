@@ -41,8 +41,12 @@ Testable constraints for the local OTLP capture tool. See `vision.md` for why,
   explicit opt-in. An un-flushed span is treated as a SUT bug to surface.
 - **A02.** Consumers want faithful canonical OTLP on disk; all denesting and
   analysis happens in `inspect`, not at capture time.
-- **A03.** otelite owns the child env, so there is no port-discovery problem —
-  ephemeral `:0` ports are sufficient and strictly best for isolation.
+- **A03.** For `run`, otelite owns the child env, so there is no port-discovery
+  problem — ephemeral `:0` ports are sufficient and strictly best for isolation.
+  The in-process `capture` path (the emitter is the *parent*, not a child otelite
+  spawns) does not have that luxury; discovery is resolved by the
+  `otelite.endpoints/v1` stdout event (R12), so ports stay ephemeral — not fixed —
+  and parallelism (R04) is preserved. See [0014].
 - **A04.** Public repo, used by private repos: no sensitive data in code or
   fixtures; redaction is the application's responsibility (non-goal here).
 
@@ -62,6 +66,12 @@ Testable constraints for the local OTLP capture tool. See `vision.md` for why,
   a stable JSON contract; the CLI stays the source of truth. [0007]
 - **T05.** In-flight-drain default can drop fire-and-forget spans — accepted (it
   signals a SUT flush failure); bounded `--drain-idle` is the opt-in. [0006]
+- **T06.** `capture` stdout becomes a tagged event stream (endpoints line, then
+  summary line) instead of a single summary line — accept the contract change (and
+  the test/golden update) to give in-process parents scrape-free ephemeral-endpoint
+  discovery on the channel they already read. Rejected a side-file (a second
+  discovery mechanism + existence/atomicity polling) and a stdin command channel
+  (no gain given write-before-ack). `run` stays one line. [0014]
 
 ## Non-goals
 
@@ -96,3 +106,20 @@ Replace the Grafana/Tempo-mediated verification lane · replace the production c
   `STATUS_CODE_ERROR`, …); errors counted via `status.code = STATUS_CODE_ERROR`.
   The derivation reads the raw capture (integer `kind`/`status`), not the flat
   `otelite.span/v1` rows. Held to the same conformance-golden discipline as R10.
+- **R12 — Machine-first `capture` contract.** `capture`'s stdout is a tagged
+  NDJSON event stream: an `otelite.endpoints/v1` line (`http`/`grpc`/`out`)
+  emitted the instant both listeners bind, then `otelite.summary/v1` as the final
+  line — so a *parent* process (not a child otelite spawns) learns the ephemeral
+  endpoint by dispatching on `schema`, with no string/regex scraping, from any
+  language. The receiver stops on SIGINT/SIGTERM **or** stdin EOF (a non-TTY
+  parent closes the child's stdin — no signal/PID plumbing). `run`'s one-line
+  summary contract and `run | inspect -` are unchanged. [0014]
+- **R13 — In-process capture for test assertions.** The Effect wrapper exposes a
+  scoped `capture` that boots a receiver, yields its endpoints to the *test
+  process* for in-process emission, drains and stops on scope close, and inspects
+  the capture as typed rows — the shared primitive for harness-level
+  span/metric/log assertions, whether the spans come from a synthetic emitter or
+  a real instrumented consumer. Child-based capture (a workload that *can* be a
+  subprocess) is already covered by R03/R09; R13 is the in-process complement,
+  built on the R12 contract. The end-to-end wire round-trip through the wrapper is
+  proven for the child path; the scoped in-process `capture` is the next increment.
