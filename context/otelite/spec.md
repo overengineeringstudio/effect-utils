@@ -206,7 +206,7 @@ avoid serializing throughput, the flush is a batched / notify-after-fsync barrie
 rather than a per-export fsync held under the sink lock (a review spike measured
 ~600× latency inflation for the naive form on contended storage).
 
-## Effect wrapper (`@overeng/otelite-effect`)
+## Effect wrapper (`@overeng/utils-dev/otelite`)
 
 Tests consume otelite two ways: the raw CLI (language-agnostic) and a typed
 Effect helper for the Effect/TS test harness. The helper is built

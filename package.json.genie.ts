@@ -21,7 +21,6 @@ import notionEffectClientPkg from './packages/@overeng/notion-effect-client/pack
 import notionEffectSchemaPkg from './packages/@overeng/notion-effect-schema/package.json.genie.ts'
 import notionMdPkg from './packages/@overeng/notion-md/package.json.genie.ts'
 import notionReactPkg from './packages/@overeng/notion-react/package.json.genie.ts'
-import oteliteEffectPkg from './packages/@overeng/otelite-effect/package.json.genie.ts'
 import oxcConfigPkg from './packages/@overeng/oxc-config/package.json.genie.ts'
 import ptyEffectPkg from './packages/@overeng/pty-effect/package.json.genie.ts'
 import reactInspectorPkg from './packages/@overeng/react-inspector/package.json.genie.ts'
@@ -56,7 +55,6 @@ export const rootWorkspacePackages = [
   notionEffectSchemaPkg,
   notionMdPkg,
   notionReactPkg,
-  oteliteEffectPkg,
   oxcConfigPkg,
   ptyEffectPkg,
   opentuiPkg,

@@ -1,14 +1,14 @@
 import { Schema } from 'effect'
 
 /**
- * Tagged errors on the `@overeng/otelite-effect` error channel. The CLI's
+ * Tagged errors on the `@overeng/utils-dev/otelite` error channel. The CLI's
  * `sysexits.h` taxonomy (see otelite spec "Exit codes") maps onto these — a
  * non-zero otelite exit becomes a tagged failure, never a defect.
  */
 
 /** Failed to spawn the `otelite` binary at all (e.g. not on `PATH`). */
 export class OteliteSpawnError extends Schema.TaggedError<OteliteSpawnError>(
-  '@overeng/otelite-effect/OteliteSpawnError',
+  '@overeng/utils-dev/otelite/OteliteSpawnError',
 )('OteliteSpawnError', {
   /** The full argv otelite was invoked with. */
   argv: Schema.Array(Schema.String),
@@ -25,7 +25,7 @@ export class OteliteSpawnError extends Schema.TaggedError<OteliteSpawnError>(
  * {@link OteliteCliError} instead, disambiguated by otelite's empty stdout.
  */
 export class OteliteChildFailed extends Schema.TaggedError<OteliteChildFailed>(
-  '@overeng/otelite-effect/OteliteChildFailed',
+  '@overeng/utils-dev/otelite/OteliteChildFailed',
 )('OteliteChildFailed', {
   /** The child's exit code (a signal-killed child is reported as `128 + signo`). */
   exitCode: Schema.Int,
@@ -43,7 +43,7 @@ export class OteliteChildFailed extends Schema.TaggedError<OteliteChildFailed>(
  * from the otelite exit-code table.
  */
 export class OteliteCliError extends Schema.TaggedError<OteliteCliError>(
-  '@overeng/otelite-effect/OteliteCliError',
+  '@overeng/utils-dev/otelite/OteliteCliError',
 )('OteliteCliError', {
   /** The raw otelite exit code (one of the `sysexits.h` values). */
   exitCode: Schema.Int,
@@ -69,7 +69,7 @@ export class OteliteCliError extends Schema.TaggedError<OteliteCliError>(
 
 /** otelite stdout did not decode against the expected `Schema`. */
 export class OteliteDecodeError extends Schema.TaggedError<OteliteDecodeError>(
-  '@overeng/otelite-effect/OteliteDecodeError',
+  '@overeng/utils-dev/otelite/OteliteDecodeError',
 )('OteliteDecodeError', {
   /** Which CLI output we tried to decode. */
   kind: Schema.Literal(

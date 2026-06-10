@@ -46,7 +46,7 @@ otelite --print-schema          # the stable output schema tags
 ```
 
 `inspect` normalizes; it does not assert — your test framework (`jq -e`, vitest,
-or the `@overeng/otelite-effect` typed wrapper) owns the assertions.
+or the `@overeng/utils-dev/otelite` typed wrapper) owns the assertions.
 
 ## What it captures
 

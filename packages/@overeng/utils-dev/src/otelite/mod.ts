@@ -1,5 +1,5 @@
 /**
- * `@overeng/otelite-effect` — a thin, Effect-native wrapper around the
+ * `@overeng/utils-dev/otelite` — a thin, Effect-native wrapper around the
  * `otelite` CLI (the Rust local-OTLP-capture binary in this repo).
  *
  * The CLI's machine-readable JSON output is the single source of truth: this

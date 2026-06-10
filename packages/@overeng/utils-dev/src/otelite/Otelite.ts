@@ -84,7 +84,7 @@ const summaryKind = {
  * The `otelite` binary is resolved from `PATH`. Tests put the nix-built binary
  * on `PATH` (see the package README).
  */
-export class Otelite extends Effect.Service<Otelite>()('@overeng/otelite-effect/Otelite', {
+export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/otelite/Otelite', {
   accessors: true,
   effect: Effect.gen(function* () {
     const executor = yield* CommandExecutor.CommandExecutor

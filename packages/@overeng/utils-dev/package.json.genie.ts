@@ -33,11 +33,13 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       './node-vitest': './src/node-vitest/mod.ts',
+      './otelite': './src/otelite/mod.ts',
     },
     publishConfig: {
       access: 'public',
       exports: {
         './node-vitest': './dist/node-vitest/mod.js',
+        './otelite': './dist/otelite/mod.js',
       },
     },
   },

@@ -4,8 +4,8 @@ import { NodeContext } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Schema } from 'effect'
 
-import { Otelite, OteliteChildFailed, OteliteCliError, Summary, TraceSummary } from '../src/mod.ts'
 import { SERVICE_NAME, SPAN_NAME } from './emitter.ts'
+import { Otelite, OteliteChildFailed, OteliteCliError, Summary, TraceSummary } from './mod.ts'
 
 /** Real otelite binary (from `PATH`, see README) + Node platform layer. */
 const TestLayer = Otelite.Default.pipe(Layer.provideMerge(NodeContext.layer))
