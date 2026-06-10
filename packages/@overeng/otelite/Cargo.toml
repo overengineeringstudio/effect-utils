@@ -44,6 +44,8 @@ opentelemetry-proto = { version = "0.27", default-features = false, features = [
 # Test-only OTLP clients driving the receiver end-to-end (no mocks).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tempfile = "3"
+# Property-based tests for the derivation/summarize invariants (tests/properties.rs).
+proptest = "1"
 
 [profile.release]
 opt-level = 3
