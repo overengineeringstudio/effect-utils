@@ -66,6 +66,12 @@ export type {
   SyncResult,
 } from './sync.ts'
 export { canonicalHash, canonicalize, semanticEqual } from './canonicalizer.ts'
+export { decideReconcile, porcelainStatus } from './reconcile-core.ts'
+export type { PorcelainStatus, ReconcileCompare, ReconcileDecision } from './reconcile-core.ts'
+export { decideShared, reconcileShared, sharedPorcelain } from './reconcile-shared.ts'
+export type { SharedOutcome } from './reconcile-shared.ts'
+export { reconcileFile, reconcileTree, statusFile, statusTree } from './reconcile.ts'
+export type { ReconcileResult, ReconcileStatus } from './reconcile.ts'
 export { NOTION_MD_VERSION } from './version.ts'
 export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
 export type { TreeOp, TreeSyncResult } from './tree.ts'
