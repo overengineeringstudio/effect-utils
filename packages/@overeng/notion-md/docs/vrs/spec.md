@@ -6,6 +6,103 @@ This document specifies the Notion Markdown sync system. It builds on [requireme
 
 Draft -- the implemented `@overeng/notion-md` package covers the core body/property sync path, strict `.nmd` frontmatter, content-addressed local state, guarded push/sync/watch behavior, batch multi-file and recursive folder orchestration, Effect Platform file watching, and live Notion E2E coverage. File bytes, comment projection, and webhook delivery are designed surfaces that remain outside the implemented core. Full data-source sync is owned by the standalone [Notion datasource sync spec](../../../notion-datasource-sync/docs/vrs/spec.md).
 
+## Target redesign (v-next): frictionless, progressively-disclosed sync
+
+> This section is the forward-looking redesign target. It is the entry point for
+> the next iteration and supersedes parts of the current-model spec below (see
+> the supersession table). The sections after it document the **currently
+> implemented** model and remain accurate for what ships today; do not read them
+> as the target. The **definitive** v-next spec sections are an OUTPUT of the
+> bake-off described here, not hand-frozen in this section.
+
+Traces requirements [R09](./requirements.md), [R11](./requirements.md), and
+[R30–R36](./requirements.md).
+
+### North star
+
+Make notion-md frictionless: the common single-source path (author on one side,
+mirror to the other) pays _zero_ stored-state complexity; bidirectional power is
+opt-in and progressively disclosed. The engine dispatches on self-describing
+files, not on CLI flags.
+
+### Candidate-to-beat CLI (NOT ordained)
+
+The leading design is three single-purpose, near-flagless verbs. This is the
+**candidate to beat** in the bake-off — recorded so alternatives have a concrete
+baseline to outscore, not a mandate.
+
+| Verb                     | Argument             | Behavior                                                                                                                                                                  |
+| ------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clone <id\|url> [path]` | a Notion page id/url | The ONLY command taking a page id. Bootstraps a local file/subtree from an existing Notion page. Writes self-describing frontmatter (`page_id`, `parent`, `source`).      |
+| `status <path>`          | a local path         | Read-only preview, safe-by-construction. Reports the live in-sync decision per file; never mutates.                                                                       |
+| `sync <path>`            | a local path         | Reconciles self-describing files: push / pull / shared per frontmatter `source`. Creates remote pages for unbound local files. `--force` overrides a `shared` drift only. |
+
+This sheds, from the steady-state surface, `--from-remote`, `--root`,
+`--root-file`, the two-arg `sync`, and the file-vs-tree branching — direction and
+identity live in frontmatter (R34).
+
+### Internal layering (candidate)
+
+```
+sync <path>  /  status <path>
+      |
+      v
+Tree orchestration                  maps the per-page core over a directory
+      |                             (target discovery, dup page-id preflight, bounded concurrency)
+      v
+Per-page reconcile core (stateless) renders local <-> reads current remote,
+      |                             decides via semantic equivalence (R33). No stored base.
+      |
+      +--(only when source: shared)--> Shared strategy
+                                       wraps the core with base-store + 3-way merge
+                                       + conflict.roughdraft. The ONLY path that
+                                       touches base/merge code (R32).
+```
+
+Merge/base code is a leaf reached only via `source: shared`. Single-source
+push/pull never constructs or reads a base.
+
+### Mandatory method: competing-designs bake-off
+
+The implementing agents must NOT simply build this sketch. They must run a
+competing-designs bake-off:
+
+1. Generate N candidate realizations (CLI shape + internal layering), including
+   the candidate-to-beat above.
+2. Score each against the requirement invariants and a **measurable simplicity
+   bar** ([R36](./requirements.md)): verb count, flag count, number of
+   mental-model concepts a user must hold for the common path,
+   steps-to-first-success, and an adversarial "can you trigger a known footgun?"
+   pass ([R30](./requirements.md)) that must score zero.
+3. Write the WINNER into the definitive spec sections (replacing the superseded
+   sections below). The candidate-to-beat wins only if nothing outscores it.
+
+### Supersession map
+
+When the bake-off lands, the winning spec is expected to supersede these current
+sections. They stay authoritative until then.
+
+| Current section                                                                        | Superseded by                                                                                         |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [CLI](#cli) (`--from-remote`, `--root`, two-arg `sync`, file-vs-tree branching)        | `clone` / `status` / `sync` on self-describing files (R34)                                            |
+| [Push Flow](#push-flow) + [Status Flow](#status-flow) (always-on base re-read + merge) | stateless live-reconcile for single-source; base+merge only for `source: shared` (R09, R11, R31, R32) |
+| [Merge And Conflict Policy](#merge-and-conflict-policy) (base/3-way as default)        | merge apparatus relocated to the `shared` strategy leaf (R32)                                         |
+| [Local Format](#local-format) base-snapshot-per-pull / sidecar-always                  | sidecar/base only for `source: shared`; single-source carries none (R31)                              |
+| in-sync as body-hash equality                                                          | in-sync as semantic equivalence under a specified canonical relation (R33)                            |
+
+### Open design questions
+
+- **DQ-VNEXT-1:** The exact canonical normalization for the semantic-equivalence
+  relation (R33) — which Notion-side normalizations to fold (emphasis markers,
+  list renumbering, loose/tight lists, table alignment) and proof that the
+  relation is reflexive/symmetric/transitive. Resolved by the property-test suite
+  plus golden-corpus agreement.
+- **DQ-VNEXT-2:** Whether `shared` lives as a `source` value on the same file or
+  needs a distinct on-disk shape once base + merge state attaches. Resolved by
+  the bake-off's simplicity scoring.
+- **DQ-VNEXT-3:** Concrete thresholds for the R36 simplicity bar (max verbs, max
+  flags, max concepts, max steps-to-first-success). Resolved by the bake-off.
+
 ## Scope
 
 This spec defines:
