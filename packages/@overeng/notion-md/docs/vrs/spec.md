@@ -12,8 +12,9 @@ Draft -- the implemented `@overeng/notion-md` package covers the core body/prope
 > the next iteration and supersedes parts of the current-model spec below (see
 > the supersession table). The sections after it document the **currently
 > implemented** model and remain accurate for what ships today; do not read them
-> as the target. The **definitive** v-next spec sections are an OUTPUT of the
-> bake-off described here, not hand-frozen in this section.
+> as the target. The decided v-next surface below is the output of the
+> competing-designs bake-off; its record is preserved as the auditable evidence
+> trail for the decision.
 
 Traces requirements [R09](./requirements.md), [R11](./requirements.md), and
 [R30–R36](./requirements.md).
@@ -25,85 +26,241 @@ mirror to the other) pays _zero_ stored-state complexity; bidirectional power is
 opt-in and progressively disclosed. The engine dispatches on self-describing
 files, not on CLI flags.
 
-### Candidate-to-beat CLI (NOT ordained)
+### Decided surface (bake-off outcome)
 
-The leading design is three single-purpose, near-flagless verbs. This is the
-**candidate to beat** in the bake-off — recorded so alternatives have a concrete
-baseline to outscore, not a mandate.
+The decided surface is three single-purpose, near-flagless verbs:
+`clone` / `status` / `sync`. These are git words users already own. Direction
+and identity live in each file's frontmatter, not in flags (R34).
 
-| Verb                     | Argument             | Behavior                                                                                                                                                                  |
-| ------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clone <id\|url> [path]` | a Notion page id/url | The ONLY command taking a page id. Bootstraps a local file/subtree from an existing Notion page. Writes self-describing frontmatter (`page_id`, `parent`, `source`).      |
-| `status <path>`          | a local path         | Read-only preview, safe-by-construction. Reports the live in-sync decision per file; never mutates.                                                                       |
-| `sync <path>`            | a local path         | Reconciles self-describing files: push / pull / shared per frontmatter `source`. Creates remote pages for unbound local files. `--force` overrides a `shared` drift only. |
+| Verb                     | Argument             | Behavior                                                                                                                                                                               |
+| ------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clone <id\|url> [path]` | a Notion page id/url | The ONLY command taking a page id. Bootstraps a local file/subtree from an existing Notion page. Writes self-describing frontmatter (`page_id`, `parent`, `source`).                   |
+| `status [path...]`       | local paths          | Read-only, **safe by construction** (no write path in its call graph). Reports the live in-sync decision per file in git-porcelain vocabulary; never mutates.                          |
+| `sync [path...]`         | local paths          | Reconciles self-describing files; dispatches per file on frontmatter `source`, never on flags/arity. Creates remote pages for unbound local files. Always moves a file toward in-sync. |
 
-This sheds, from the steady-state surface, `--from-remote`, `--root`,
-`--root-file`, the two-arg `sync`, and the file-vs-tree branching — direction and
-identity live in frontmatter (R34).
+#### `clone <id|url> [path]`
 
-### Internal layering (candidate)
+Bootstraps a local file/subtree from an existing Notion page and writes
+self-describing frontmatter (`page_id`, `parent`, `source`).
+
+- `--as local|remote|shared` — default `remote` (you cloned _from_ Notion).
+- `--recursive` — clone a page plus its child subpages into a directory.
+- Fail-closed on lossy remote observation: no clean base from a truncated or
+  lossy body.
+- Refuses to overwrite an existing file bound to a different page.
+
+#### `status [path...]`
+
+Read-only and safe by construction — the apply tail is unreachable from
+`status` (no write path in its call graph). This is the decided home of
+`--dry-run`-equivalent safety: a preview lives on a non-mutating verb, never a
+flag on a mutating one.
+
+- Default target is cwd; a directory means "everything under it" (no
+  `--recursive` needed for the steady state). `--recursive` / `--concurrency`
+  remain available for trees, matching the existing batch ergonomics.
+- Per file reports the live in-sync decision in git-porcelain vocabulary:
+  `in-sync` / `local-ahead` (would push) / `remote-ahead` (would pull) /
+  `diverged` (shared only) / `unbound` (would create).
+- `--json` for machine output.
+
+#### `sync [path...]`
+
+Reconciles self-describing files. Dispatch is per file on frontmatter `source`,
+never on flags or argument arity. Common-path flags: zero.
+
+| Flag                            | Effect                                                                                                                                                                             |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--watch`                       | Continuous reconcile loop.                                                                                                                                                         |
+| `--poll-interval-ms`            | Remote poll cadence under `--watch`.                                                                                                                                               |
+| `--concurrency`                 | Bounded per-file parallelism for trees.                                                                                                                                            |
+| `--force`                       | ONLY overrides a `shared` 3-way-merge divergence. Hard error / inert on single-source — single-source push already refuses on remote drift, so there is no single-source override. |
+| `--allow-delete-unknown-blocks` | R12 destructive-intent gate.                                                                                                                                                       |
+| `--allow-review-markup`         | R13 destructive-intent gate.                                                                                                                                                       |
+| `--output human\|json\|ndjson`  | Output contract.                                                                                                                                                                   |
+
+Dropped versus today, all subsumed by frontmatter dispatch: `--from-remote`,
+`--root`, `--root-file`, the two-arg `sync`, the separate `plan` verb (folded
+into `status`), and file-vs-tree flag branching.
+
+#### Git-native framing
+
+`clone` / `status` / `sync` reuse git words and git porcelain (`ahead` /
+`diverged`). There is deliberately **no `push` / `pull` verb**: direction lives
+in each file's `source` — the per-file upstream-tracking config, analogous to
+git's `branch.<x>.remote`. `status` and `sync` surface the one-line explainer:
+
+> no push/pull — direction is each file's `source`; `sync` always moves toward
+> in-sync, `source` decides which way.
+
+git's staging, commits, and branches are rejected entirely — there is no `add`,
+`commit`, or `log`.
+
+#### `sync` dispatch table (per file)
+
+The action is decided per file from `source`, the presence of `page_id`, and a
+live compare (R33). This refuse-on-wrong-direction is what makes a
+wrong-direction push **structurally impossible** (R30): a `remote` file has no
+push path; a `local` file refuses rather than clobbering.
+
+| `source` | `page_id`   | live compare (R33)                   | action                                                                           |
+| -------- | ----------- | ------------------------------------ | -------------------------------------------------------------------------------- |
+| local    | null/absent | —                                    | create remote page under `parent`, write `page_id` back                          |
+| local    | set         | equivalent                           | noop                                                                             |
+| local    | set         | local changed, remote == last render | push (guarded live re-read, R11)                                                 |
+| local    | set         | remote moved underneath              | REFUSE (would clobber unseen remote edit); suggest `clone --as shared`           |
+| remote   | set         | equivalent                           | noop                                                                             |
+| remote   | set         | remote changed                       | pull (overwrite local body)                                                      |
+| remote   | set         | local hand-edited                    | REFUSE + warn ("source: remote; local edits aren't pushed — set source: shared") |
+| remote   | absent      | —                                    | error (a remote-tracked file must carry `page_id`)                               |
+| shared   | set         | 3-way merge vs base                  | noop / merge / `conflict.roughdraft`                                             |
+| shared   | absent      | —                                    | error (`shared` requires an established `page_id`)                               |
+
+#### Frontmatter schema (one file shape for all three `source` values)
+
+`notion_md` carries `version`, `api_version`, `object`,
+`source: 'local'|'remote'|'shared'` (default `local`),
+`page_id: NotionId | null` (null/absent ⇒ unbound ⇒ create-on-push, legal ONLY
+for `source: local`), `url?`, `parent: ParentRef`, `page: PageState`, and
+`properties`.
+
+**Schema-gated statelessness.** Single-source files (`source: local|remote`)
+carry NO base/hash/last-pulled fields and NO `.notion-md/` sidecar entry. A
+`shared` base is referenced only via the page-id-keyed sidecar
+`.notion-md/sync/<page_id>.json` (an `object_ref` to a content-addressed
+`base_snapshot`). The schema REJECTS a base on a non-`shared` file and REQUIRES
+one for a bound `shared` file — single-source statelessness (R31) is a
+structural/type property, not convention. `source: remote|shared` with no
+`page_id` is a decode error.
+
+### Internal layering
 
 ```
-sync <path>  /  status <path>
+sync [path...]  /  status [path...]
       |
       v
-Tree orchestration                  maps the per-page core over a directory
-      |                             (target discovery, dup page-id preflight, bounded concurrency)
+Tree orchestration                  maps the per-page core over each file
+      |                             (target discovery file|dir, dup page-id preflight,
+      |                             bounded concurrency, per-file result aggregation).
+      |                             Direction-agnostic.
       v
-Per-page reconcile core (stateless) renders local <-> reads current remote,
-      |                             decides via semantic equivalence (R33). No stored base.
+Per-page reconcile core (stateless) render(local) <-> read(current remote),
+      |                             canonical-normalize both (R33), decide
+      |                             noop|push|pull|create|refuse|shared-defer.
+      |                             Depends on the Notion gateway + canonicalizer ONLY;
+      |                             no dependency on the merge planner or base reads.
+      |                             local/remote terminate in a direct apply; shared defers.
       |
-      +--(only when source: shared)--> Shared strategy
-                                       wraps the core with base-store + 3-way merge
-                                       + conflict.roughdraft. The ONLY path that
-                                       touches base/merge code (R32).
+      +--(only when source: shared)--> Shared strategy (leaf)
+                                       SOLE importer of the merge planner and SOLE
+                                       reader/writer of base_snapshot objects. Wraps
+                                       the core with base-load + 3-way merge +
+                                       conflict.roughdraft; re-settles a fresh base
+                                       after every clean apply. Reached only via
+                                       source: shared (R32).
 ```
 
-Merge/base code is a leaf reached only via `source: shared`. Single-source
-push/pull never constructs or reads a base.
+Three layers; merge/base code is a compile-time-isolated leaf:
 
-### Mandatory method: competing-designs bake-off
+- **Tree orchestration** — target discovery (file|dir), duplicate-`page_id`
+  preflight (reject before any mutation), bounded concurrency, per-file result
+  aggregation. Direction-agnostic; maps the per-page core over each file.
+- **Stateless per-page reconcile core** —
+  `render(local) ⇄ read(current remote)` → canonical-normalize both (R33) →
+  decide `noop|push|pull|create|refuse|shared-defer`. Depends on the Notion gateway +
+  canonicalizer only; has NO dependency on the merge planner or base reads, so
+  single-source cannot construct a base (R31/R32 enforced by the dependency
+  graph). For `local`/`remote` it terminates in a direct apply; for `shared` it
+  defers.
+- **Shared strategy (leaf)** — the SOLE importer of the merge planner and SOLE
+  reader/writer of `base_snapshot` objects. Wraps the core with base-load +
+  3-way merge + `conflict.roughdraft`; re-settles a fresh base after every clean
+  apply. Reached only via `source: shared` (R32).
 
-The implementing agents must NOT simply build this sketch. They must run a
-competing-designs bake-off:
+`--dry-run`-equivalent safety is achieved at the `status` verb — a read-only
+entry that never reaches the apply tail — not at a flag.
 
-1. Generate N candidate realizations (CLI shape + internal layering), including
-   the candidate-to-beat above.
-2. Score each against the requirement invariants and a **measurable simplicity
-   bar** ([R36](./requirements.md)): verb count, flag count, number of
-   mental-model concepts a user must hold for the common path,
-   steps-to-first-success, and an adversarial "can you trigger a known footgun?"
-   pass ([R30](./requirements.md)) that must score zero.
-3. Write the WINNER into the definitive spec sections (replacing the superseded
-   sections below). The candidate-to-beat wins only if nothing outscores it.
+### Bake-off record
+
+Four candidate realizations (CLI shape + internal layering) were designed and
+adversarially self-scored against the requirement invariants and the R36
+simplicity bar:
+
+| Candidate | Shape                  | Verbs                          | Note                                                        |
+| --------- | ---------------------- | ------------------------------ | ----------------------------------------------------------- |
+| A         | refined 3-verb         | `clone` / `status` / `sync`    | Structural rigor: schema-gated single-source statelessness. |
+| B         | 2-verb minimal floor   | `clone` / `sync` (`sync -n`)   | Folds preview into `--dry-run` on the mutating verb.        |
+| C         | git-native 3-verb      | `clone` / `status` / `sync`    | git porcelain framing; direction as per-file `source`.      |
+| D         | inference-first 2-verb | `clone` / `sync` (`--dry-run`) | Frontmatter-inferred direction; preview as a flag.          |
+
+Consolidated scorecard (lower is simpler except where noted; ✗ fails the gate):
+
+| Metric (R36)               | Bar | A   | B   | C   | D   |
+| -------------------------- | --- | --- | --- | --- | --- |
+| Verbs                      | ≤ 3 | 3   | 2   | 3   | 2   |
+| Common-path flags          | 0   | 0   | 0   | 0   | 0   |
+| Total flags                | ≤ 8 | ≤ 8 | ≤ 8 | ≤ 8 | ≤ 8 |
+| Common-path concepts       | ≤ 4 | 3   | 3   | 3   | 3   |
+| Steps-to-first-success     | ≤ 2 | 2   | 2   | 2   | 2   |
+| Adversarial footguns (R30) | 0   | 0   | ✗ 1 | 0   | ✗ 1 |
+
+**Decision.** The 3-verb surface wins. The 2-verb designs (B, D) save exactly
+one verb by folding the safe preview into a `--dry-run` / `-n` flag — which puts
+the safe-preview on a _mutating_ verb. That flag is forgettable, making it a
+newcomer footgun, and fails R30's zero-footgun gate; B itself recommended
+stopping at the 3-verb surface. The winner synthesizes A's structural rigor
+(schema-gated single-source statelessness), C's git-native framing (no
+push/pull; direction as per-file `source`; porcelain `status`), and D's
+inference discipline (dispatch on frontmatter, never flags). Safe preview lives
+on `status`, a verb with no write path in its call graph, so it cannot be
+forgotten into a mutation.
 
 ### Supersession map
 
-When the bake-off lands, the winning spec is expected to supersede these current
-sections. They stay authoritative until then.
+The decided v-next surface supersedes these current sections. They stay
+authoritative until the v-next implementation lands.
 
-| Current section                                                                        | Superseded by                                                                                         |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [CLI](#cli) (`--from-remote`, `--root`, two-arg `sync`, file-vs-tree branching)        | `clone` / `status` / `sync` on self-describing files (R34)                                            |
-| [Push Flow](#push-flow) + [Status Flow](#status-flow) (always-on base re-read + merge) | stateless live-reconcile for single-source; base+merge only for `source: shared` (R09, R11, R31, R32) |
-| [Merge And Conflict Policy](#merge-and-conflict-policy) (base/3-way as default)        | merge apparatus relocated to the `shared` strategy leaf (R32)                                         |
-| [Local Format](#local-format) base-snapshot-per-pull / sidecar-always                  | sidecar/base only for `source: shared`; single-source carries none (R31)                              |
-| in-sync as body-hash equality                                                          | in-sync as semantic equivalence under a specified canonical relation (R33)                            |
+| Current section                                                                                                 | Superseded by                                                                                         |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [CLI](#cli) (`--from-remote`, `--root`, `--root-file`, two-arg `sync`, separate `plan`, file-vs-tree branching) | `clone` / `status` / `sync` on self-describing files; `plan` folded into `status` (R34)               |
+| [Push Flow](#push-flow) + [Status Flow](#status-flow) (always-on base re-read + merge)                          | stateless live-reconcile for single-source; base+merge only for `source: shared` (R09, R11, R31, R32) |
+| [Merge And Conflict Policy](#merge-and-conflict-policy) (base/3-way as default)                                 | merge apparatus relocated to the `shared` strategy leaf (R32)                                         |
+| [Local Format](#local-format) base-snapshot-per-pull / sidecar-always                                           | sidecar/base only for `source: shared`; single-source carries none (R31)                              |
+| in-sync as body-hash equality                                                                                   | in-sync as semantic equivalence under a specified canonical relation (R33)                            |
+| multi-mode `sync` (direction by flag/arity)                                                                     | single `sync` that dispatches per file on frontmatter `source` (R34)                                  |
 
-### Open design questions
+### Resolved design decisions
 
-- **DQ-VNEXT-1:** The exact canonical normalization for the semantic-equivalence
-  relation (R33) — which Notion-side normalizations to fold (emphasis markers,
-  list renumbering, loose/tight lists, table alignment) and proof that the
-  relation is reflexive/symmetric/transitive. Resolved by the property-test suite
-  plus golden-corpus agreement.
-- **DQ-VNEXT-2:** Whether `shared` lives as a `source` value on the same file or
-  needs a distinct on-disk shape once base + merge state attaches. Resolved by
-  the bake-off's simplicity scoring.
-- **DQ-VNEXT-3:** Concrete thresholds for the R36 simplicity bar (max verbs, max
-  flags, max concepts, max steps-to-first-success). Resolved by the bake-off.
+- **DQ-VNEXT-1 (canonical normalization for R33).** Normalize BOTH sides
+  (applied to the block-tree-rendered body, not raw lossy endpoint markdown) by
+  folding presentation-only differences: emphasis-marker choice (`*`↔`_`,
+  `**`↔`__`), ordered-list renumbering (`2.`→`1.` resequencing), loose-vs-tight
+  list spacing, table-alignment/padding whitespace, and trailing-whitespace +
+  blank-line-run collapse. Do NOT fold semantic/block-type differences (heading
+  level, divider presence, paragraph-vs-heading adjacency, code-fence language,
+  list ordinal order) — those are the #756/#759/#763 shapes that must stay
+  distinct. The relation is equality of the canonical normal form, hence
+  reflexive/symmetric/transitive by construction; the proof obligation is
+  property tests (`normalize(normalize(x)) == normalize(x)`; equivalence via
+  canonical hash) plus golden-corpus agreement. It lives in a pure
+  `Canonicalizer` module shared verbatim by `status` and `sync`, so preview and
+  apply can never disagree.
+- **DQ-VNEXT-2 (is `shared` a distinct on-disk shape?).** No — `shared` is a
+  `source` VALUE on the same file shape. Base/merge state attaches only via the
+  page-id-keyed sidecar `.notion-md/sync/<page_id>.json`, established lazily on
+  first `shared` sync and GC-able when a file leaves `shared`. This keeps
+  dispatch uniform and the common single-source file free of merge cruft.
+- **DQ-VNEXT-3 (concrete R36 thresholds).** verbs ≤ 3; common-path flags = 0;
+  total flags ≤ 8; mental-model concepts on the common path ≤ 4;
+  steps-to-first-success ≤ 2; adversarial footgun pass = 0 triggerable. The
+  decided design scores 3 verbs / 0 common-path flags / ≤ 8 total flags / 3
+  concepts / 2 steps / 0 footguns.
 
 ## Scope
+
+> The sections from here down describe the **current engine** as implemented,
+> pending the v-next implementation. The decided v-next surface above supersedes
+> the parts listed in the supersession map.
 
 This spec defines:
 
