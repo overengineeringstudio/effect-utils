@@ -24,6 +24,20 @@ export const Endpoints = Schema.Struct({
   grpc: Schema.String,
 }).annotations({ identifier: 'Otelite.Endpoints' })
 
+/**
+ * `otelite.endpoints/v1` — the FIRST stdout line `capture` emits the instant
+ * both receivers bind. Distinct from {@link Endpoints} (the summary's `http`/
+ * `grpc` sub-object): this is the standalone tagged event the in-process parent
+ * decodes to learn the ephemeral endpoints + out-dir with no string scraping.
+ */
+export const EndpointsEvent = Schema.Struct({
+  schema: Schema.Literal('otelite.endpoints/v1'),
+  http: Schema.String,
+  grpc: Schema.String,
+  out: Schema.String,
+}).annotations({ identifier: 'Otelite.EndpointsEvent' })
+export type EndpointsEvent = typeof EndpointsEvent.Type
+
 /** Per-signal capture file paths. */
 export const CaptureFiles = Schema.Struct({
   traces: Schema.String,

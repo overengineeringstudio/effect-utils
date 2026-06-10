@@ -12,7 +12,7 @@
  * `PATH`.
  */
 export { Otelite } from './Otelite.ts'
-export type { RunOptions, Signal } from './Otelite.ts'
+export type { CaptureHandle, CaptureOptions, RunOptions, Signal } from './Otelite.ts'
 export {
   OteliteSpawnError,
   OteliteChildFailed,
@@ -29,6 +29,7 @@ export {
   MetricSummary,
   LogSummary,
   Endpoints,
+  EndpointsEvent,
   CaptureFiles,
   Counts,
   Child,

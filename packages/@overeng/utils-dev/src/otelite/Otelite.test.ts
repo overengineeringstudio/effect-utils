@@ -1,11 +1,46 @@
 import { access } from 'node:fs/promises'
 
+import { Command } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, expect, it } from '@effect/vitest'
 import { Effect, Exit, Layer, Schema } from 'effect'
 
 import { SERVICE_NAME, SPAN_NAME } from './emitter.ts'
-import { Otelite, OteliteChildFailed, OteliteCliError, Summary, TraceSummary } from './mod.ts'
+import {
+  Otelite,
+  OteliteChildFailed,
+  OteliteCliError,
+  type SpanRow,
+  Summary,
+  TraceSummary,
+} from './mod.ts'
+
+/** One OTLP/JSON span in the SDK dialect the receiver decodes; raw-POSTed by the
+ * capture tests so the primitive is validated without an OTel exporter. */
+const captureSpanPayload = (name: string, service: string) =>
+  JSON.stringify({
+    resourceSpans: [
+      {
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: service } }] },
+        scopeSpans: [
+          {
+            scope: { name: 'otelite-capture-e2e' },
+            spans: [
+              {
+                traceId: '5b8efff798038103d269b633813fc60c',
+                spanId: 'eee19b7ec3c1b174',
+                name,
+                kind: 2,
+                startTimeUnixNano: '1000000000',
+                endTimeUnixNano: '1003000000',
+                attributes: [{ key: 'cap.marker', value: { stringValue: 'ok' } }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  })
 
 /** Real otelite binary (from `PATH`, see README) + Node platform layer. */
 const TestLayer = Otelite.Default.pipe(Layer.provideMerge(NodeContext.layer))
@@ -145,6 +180,89 @@ describe('Otelite', () => {
       expect(report.span_count).toBe(1)
       expect(report.root_service).toBe(SERVICE_NAME)
       expect(Schema.is(TraceSummary)(report)).toBe(true)
+    }).pipe(Effect.provide(TestLayer)),
+  )
+})
+
+/** Raw OTLP/JSON POST at a live receiver (no exporter — the primitive under test). */
+const postSpan = (httpEndpoint: string, name: string, service: string) =>
+  Effect.promise(() =>
+    fetch(`${httpEndpoint}/v1/traces`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: captureSpanPayload(name, service),
+    }),
+  )
+
+describe('Otelite.capture', () => {
+  // The primitive's core loop while the receiver is LIVE: open the scoped
+  // capture, raw-POST a known OTLP span (no exporter — that's the next phase),
+  // assert the typed row round-trips through the handle's `inspect`. The bounded
+  // retry inside `inspect` absorbs any sub-ms visibility lag; running this a few
+  // times exercises that it doesn't flake.
+  it.scoped('capture() serves a live receiver: a raw OTLP POST round-trips through inspect', () =>
+    Effect.gen(function* () {
+      const otelite = yield* Otelite
+      const handle = yield* otelite.capture()
+
+      expect(handle.endpoints.http).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      expect(handle.endpoints.grpc).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+
+      const res = yield* postSpan(handle.endpoints.http, SPAN_NAME, SERVICE_NAME)
+      expect(res.status).toBe(200)
+
+      const rows: ReadonlyArray<SpanRow> = yield* handle.inspect({ signal: 'traces' })
+      expect(rows).toHaveLength(1)
+      const span = rows[0]!
+      expect(span.schema).toBe('otelite.span/v1')
+      expect(span.name).toBe(SPAN_NAME)
+      expect(span.service).toBe(SERVICE_NAME)
+      expect(span.attrs).toEqual({ 'cap.marker': 'ok' })
+    }).pipe(Effect.provide(TestLayer)),
+  )
+
+  // The drained `otelite.summary/v1`: opened in a child scope so its finalizer
+  // stops + drains the receiver; `handle.summary` (a Deferred) only resolves
+  // after that, so we await it AFTER the scope closes.
+  it.effect('the drained summary counts the captured span after the scope closes', () =>
+    Effect.gen(function* () {
+      const otelite = yield* Otelite
+      const summary = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const handle = yield* otelite.capture()
+          yield* postSpan(handle.endpoints.http, SPAN_NAME, SERVICE_NAME)
+          return handle.summary
+        }),
+      ).pipe(Effect.flatten)
+
+      expect(summary.schema).toBe('otelite.summary/v1')
+      expect(summary.child).toBeNull()
+      expect(summary.counts.spans).toBe(1)
+      expect(Schema.is(Summary)(summary)).toBe(true)
+    }).pipe(Effect.provide(TestLayer)),
+  )
+
+  // Lifecycle: after the capture scope closes, the auto-minted out-dir is gone
+  // (proves the finalizer ran) and no `otelite` process still references it (no
+  // orphaned child). The out-dir path is unique per capture, so this stays
+  // robust under concurrent test runs.
+  it.effect('the capture scope closes cleanly: out-dir removed, no orphaned process', () =>
+    Effect.gen(function* () {
+      const otelite = yield* Otelite
+      const outDir = yield* Effect.scoped(otelite.capture().pipe(Effect.map((h) => h.outDir)))
+
+      const exists = yield* Effect.promise(() =>
+        access(outDir)
+          .then(() => true)
+          .catch(() => false),
+      )
+      expect(exists).toBe(false)
+
+      const psOut = yield* Command.string(Command.make('ps', '-eo', 'args'))
+      const orphaned = psOut
+        .split('\n')
+        .some((line) => line.includes('otelite') && line.includes(outDir))
+      expect(orphaned).toBe(false)
     }).pipe(Effect.provide(TestLayer)),
   )
 })
