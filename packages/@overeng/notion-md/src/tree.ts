@@ -611,6 +611,7 @@ const frontmatterForRemotePage = (page: RemotePageSnapshot): NmdFrontmatterV2 =>
     version: 2,
     api_version: NOTION_API_VERSION,
     object: 'page',
+    source: 'local',
     page_id: page.id,
     url: page.url,
     parent: toParentRef(page),
