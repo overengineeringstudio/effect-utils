@@ -75,7 +75,13 @@ impl SignalFile {
         let mut line = serde_json::to_vec(value).expect("OTLP message serializes");
         line.push(b'\n');
         let mut f = self.file.lock().await;
-        f.write_all(&line).await
+        f.write_all(&line).await?;
+        // `tokio::fs::File` buffers writes — `write_all` alone does not guarantee
+        // the bytes reached the kernel, so an independent reader (or a crash)
+        // before the next flush would not see them. Flush so the data is on the
+        // kernel before we ack (durability-before-ack, R05). This is a flush, not
+        // an fsync: `sync_all` (physical durability) stays deferred to shutdown.
+        f.flush().await
     }
 
     /// Append one pre-built `serde_json::Value` line. Used by the HTTP-JSON
@@ -85,7 +91,9 @@ impl SignalFile {
         let mut line = serde_json::to_vec(value).expect("JSON value serializes");
         line.push(b'\n');
         let mut f = self.file.lock().await;
-        f.write_all(&line).await
+        f.write_all(&line).await?;
+        // Flush to the kernel before the ack (see `append_line`).
+        f.flush().await
     }
 
     async fn sync(&self) {
