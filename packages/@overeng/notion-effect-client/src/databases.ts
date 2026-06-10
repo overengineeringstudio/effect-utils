@@ -84,8 +84,14 @@ export interface CreateDatabaseOptions {
     | { readonly type: 'workspace'; readonly workspace: true }
   /** Database title rich text */
   readonly title: readonly unknown[]
-  /** Property schema definitions */
+  /**
+   * Property schema definitions. In API 2026-03-11 these live on the database's
+   * initial data source, not on the database object; `create` nests them under
+   * `initial_data_source` for you (see {@link create}).
+   */
   readonly properties: Record<string, unknown>
+  /** Optional title for the initial data source (defaults to the database title) */
+  readonly initialDataSourceTitle?: readonly unknown[]
   /** Database description rich text */
   readonly description?: readonly unknown[]
   /** Whether the database should be displayed inline */
@@ -170,13 +176,23 @@ export const retrieve = Effect.fn('NotionDatabases.retrieve')(function* (
 /**
  * Create a database.
  *
+ * In API 2026-03-11 the property schema lives on the database's **initial data
+ * source**, not on the database object: a top-level `properties` key is silently
+ * dropped, yielding an empty `Name`-only database. This nests `opts.properties`
+ * under `initial_data_source` so callers keep passing a flat property map.
+ *
  * @see https://developers.notion.com/reference/create-a-database
  */
 export const create = Effect.fn('NotionDatabases.create')(function* (opts: CreateDatabaseOptions) {
+  const initialDataSource: Record<string, unknown> = { properties: opts.properties }
+  if (opts.initialDataSourceTitle !== undefined) {
+    initialDataSource.title = opts.initialDataSourceTitle
+  }
+
   const body: Record<string, unknown> = {
     parent: opts.parent,
     title: opts.title,
-    properties: opts.properties,
+    initial_data_source: initialDataSource,
   }
 
   if (opts.description !== undefined) body.description = opts.description
