@@ -14,6 +14,8 @@
 
 ## The Vision
 
+- notion-md is a simple, elegant, and reliable CLI that makes local Markdown a first-class way to work with Notion — enabling seamless authoring, collaboration, and integration between local files and Notion pages.
+- It serves the natural directions of that work: keeping local Markdown as the source of truth and syncing it up to Notion; keeping Notion as the source of truth and syncing it down to Markdown; and bidirectional collaboration where the same page evolves on both sides and is reconciled.
 - Notion enhanced Markdown is the canonical interchange format for page body content.
 - A synced page is modeled as multiple explicit surfaces: body, page metadata, properties, data-source schema, comments, files, unsupported blocks, and local review state.
 - Local state is durable, inspectable, and portable through versioned `.nmd` files plus a content-addressed object store for large or volatile artifacts.
