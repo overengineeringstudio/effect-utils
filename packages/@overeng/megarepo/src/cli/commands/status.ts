@@ -7,7 +7,7 @@
 import * as Cli from '@effect/cli'
 import type { CommandExecutor } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, type ParseResult } from 'effect'
+import { Clock, Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -320,7 +320,11 @@ export const statusCommand = Cli.Command.make(
         EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
       )
       const lockFileOpt = yield* readLockFile(lockPath)
-      yield* refreshWorkspaceRegistry({ workspaceRoot: root.value, store })
+      yield* refreshWorkspaceRegistry({
+        workspaceRoot: root.value,
+        store,
+        now: yield* Clock.currentTimeMillis,
+      })
       let lastSyncTime: Date | undefined = undefined
       let lockStaleness:
         | {

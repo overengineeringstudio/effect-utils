@@ -6,7 +6,7 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Effect, Layer, Option } from 'effect'
+import { Clock, Effect, Layer, Option } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -35,6 +35,7 @@ import {
 } from '../../lib/lock.ts'
 import { classifyRef } from '../../lib/ref.ts'
 import { runPreflightChecks } from '../../lib/store-hygiene.ts'
+import { refreshWorkspaceRegistry } from '../../lib/store-liveness.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import {
@@ -327,6 +328,14 @@ export const pinCommand = Cli.Command.make(
               yield* writeLockFile({ lockPath, lockFile })
             }
 
+            // Keep the store liveness record fresh after repinning so a
+            // concurrent gc sees the new target as live (decision 0010).
+            yield* refreshWorkspaceRegistry({
+              workspaceRoot: root.value,
+              store,
+              now: yield* Clock.currentTimeMillis,
+            })
+
             tui.dispatch({
               _tag: 'SetSuccess',
               member,
@@ -450,6 +459,15 @@ export const pinCommand = Cli.Command.make(
               yield* fs.symlink(commitWorktreePath.replace(/\/$/, ''), memberPathNormalized)
             }
           }
+
+          // Keep the store liveness record fresh after pinning (the symlink may
+          // have been repointed to the commit worktree) so a concurrent gc sees
+          // the new target as live (decision 0010).
+          yield* refreshWorkspaceRegistry({
+            workspaceRoot: root.value,
+            store,
+            now: yield* Clock.currentTimeMillis,
+          })
 
           tui.dispatch({
             _tag: 'SetSuccess',

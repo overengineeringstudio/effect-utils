@@ -288,7 +288,7 @@ describe('mr store gc', () => {
 
           const env = { MEGAREPO_STORE: storePath }
           const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
-          yield* refreshWorkspaceRegistry({ workspaceRoot: workspaceB, store })
+          yield* refreshWorkspaceRegistry({ workspaceRoot: workspaceB, store, now: Date.now() })
           const statusB = yield* runMrCommand({
             cwd: workspaceB,
             command: ['status', '--output', 'json'],
@@ -352,7 +352,7 @@ describe('mr store gc', () => {
             EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/repo')),
           )
           const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
-          yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store })
+          yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: Date.now() })
 
           const gc = yield* runMrCommand({
             cwd: workspacePath,

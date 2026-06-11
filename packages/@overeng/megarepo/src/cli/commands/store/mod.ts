@@ -6,7 +6,7 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, Schedule, Stream } from 'effect'
+import { Clock, Effect, Option, Schedule, Stream } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -420,11 +420,13 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     const fs = yield* FileSystem.FileSystem
 
     const root = yield* findMegarepoRoot(cwd)
+    const now = yield* Clock.currentTimeMillis
     const liveSet = yield* collectStoreLiveSet({
       store,
       ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
       pruneStaleRegistry: true,
       refreshCurrentWorkspace: true,
+      now,
     })
 
     // List all repos and analyze worktrees in parallel
@@ -857,6 +859,7 @@ const storeGcCommand = Cli.Command.make(
             ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
             pruneStaleRegistry: dryRun === false,
             refreshCurrentWorkspace: dryRun === false,
+            now: yield* Clock.currentTimeMillis,
           })
           liveSetForMetrics = liveSet
 
