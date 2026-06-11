@@ -1,9 +1,9 @@
 /**
  * no-raw-otel-primitives oxlint rule.
  *
- * Bans direct use of raw Effect OpenTelemetry span primitives in production code.
- * Product code should route spans through schema-backed contracts from
- * `@overeng/otel-contract` so span names, labels, attributes, and future
+ * Bans direct use of raw Effect OpenTelemetry span/metric primitives in production code.
+ * Product code should route telemetry through schema-backed contracts from
+ * `@overeng/otel-contract` so span names, labels, attributes, metrics, and future
  * cardinality policy have one source of truth.
  *
  * Tracked calls:
@@ -11,12 +11,15 @@
  * - `Effect.withSpan(...)`
  * - `Stream.withSpan(...)`
  * - `Effect.annotateCurrentSpan(...)`
+ * - `Metric.counter(...)`
+ * - `Metric.histogram(...)`
+ * - `Metric.tagged(...)`
+ * - `Metric.increment(...)` / `Metric.incrementBy(...)`
+ * - `Metric.update(...)`
  * - Aliased namespace imports, e.g. `import { Effect as E } from 'effect'`
  * - Namespace imports, e.g. `EffectLib.Effect.withSpan(...)`
  * - Direct imported identifiers from `effect`, e.g. `withSpan(...)`
  *
- * This first enforcement tier intentionally does not ban raw Metric APIs. Metrics
- * need a schema-backed contract before static enforcement can be principled.
  */
 
 // NOTE: Using `any` types because oxlint JS plugin API doesn't have TypeScript definitions yet
@@ -24,16 +27,26 @@
 type EffectImportTracker = {
   readonly effectNamespaces: Set<string>
   readonly streamNamespaces: Set<string>
+  readonly metricNamespaces: Set<string>
   readonly effectModuleNamespaces: Set<string>
   readonly directRawCalls: Set<string>
 }
 
 const rawEffectMembers = new Set(['withSpan', 'annotateCurrentSpan'])
 const rawStreamMembers = new Set(['withSpan'])
+const rawMetricMembers = new Set([
+  'counter',
+  'histogram',
+  'tagged',
+  'increment',
+  'incrementBy',
+  'update',
+])
 
 const createTracker = (): EffectImportTracker => ({
   effectNamespaces: new Set(),
   streamNamespaces: new Set(),
+  metricNamespaces: new Set(),
   effectModuleNamespaces: new Set(),
   directRawCalls: new Set(),
 })
@@ -59,9 +72,11 @@ const trackEffectImport = (tracker: EffectImportTracker, node: any): void => {
 
     if (importedName === 'Effect') tracker.effectNamespaces.add(localName)
     if (importedName === 'Stream') tracker.streamNamespaces.add(localName)
+    if (importedName === 'Metric') tracker.metricNamespaces.add(localName)
     if (
       rawEffectMembers.has(importedName) === true ||
-      rawStreamMembers.has(importedName) === true
+      rawStreamMembers.has(importedName) === true ||
+      rawMetricMembers.has(importedName) === true
     ) {
       tracker.directRawCalls.add(localName)
     }
@@ -80,6 +95,7 @@ const rawOtelCallSource = (tracker: EffectImportTracker, node: any): string | un
 
   if (callee?.type === 'Identifier' && tracker.directRawCalls.has(callee.name) === true) {
     if (callee.name === 'annotateCurrentSpan') return 'Effect.annotateCurrentSpan()'
+    if (rawMetricMembers.has(callee.name) === true) return `Metric.${callee.name}()`
     return 'Effect.withSpan() / Stream.withSpan()'
   }
 
@@ -102,6 +118,13 @@ const rawOtelCallSource = (tracker: EffectImportTracker, node: any): string | un
       rawStreamMembers.has(propertyName) === true
     ) {
       return `Stream.${propertyName}()`
+    }
+
+    if (
+      tracker.metricNamespaces.has(object.name) === true &&
+      rawMetricMembers.has(propertyName) === true
+    ) {
+      return `Metric.${propertyName}()`
     }
   }
 
@@ -132,6 +155,9 @@ const rawOtelNamespaceCallSource = (
   if (namespaceName === 'Stream' && rawStreamMembers.has(propertyName) === true) {
     return `Stream.${propertyName}()`
   }
+  if (namespaceName === 'Metric' && rawMetricMembers.has(propertyName) === true) {
+    return `Metric.${propertyName}()`
+  }
 
   return undefined
 }
@@ -142,12 +168,12 @@ export const noRawOtelPrimitivesRule = {
     type: 'problem' as const,
     docs: {
       description:
-        'Ban raw Effect/Stream OpenTelemetry span primitives outside schema-backed OTEL contract boundaries',
+        'Ban raw Effect/Stream/Metric OpenTelemetry primitives outside schema-backed OTEL contract boundaries',
       recommended: false,
     },
     messages: {
       rawOtelPrimitive:
-        'Raw OTEL primitive `{{source}}` bypasses the schema-first telemetry contract. Define an `OtelOperation`/`OtelSpan` contract in package observability code and use that instead.',
+        'Raw OTEL primitive `{{source}}` bypasses the schema-first telemetry contract. Define an `OtelOperation`/`OtelSpan`/`OtelMetric` contract in package observability code and use that instead.',
     },
     schema: [],
   },

@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/utils-dev/otelite**: Resolve the `otelite` binary from `OTELITE_BIN` before falling back to `PATH`, and document the plain-shell Nix workflow for focused wrapper tests.
 
+- **@overeng/otel-contract**: Add branded/refined OTEL name schemas (`OtelAttributeKey`, `OtelSpanName`, `OtelMetricName`, `OtelServiceName`), validate contract names/keys at definition time, add an Effect `Metric` runtime bridge for schema-first metric contracts, and extend the raw-OTEL lint rule to ban raw Effect `Metric.*` APIs outside approved contract/test boundaries.
+
+- **OTEL devenv module**: Stop requiring the retired legacy `otel` CLI in `OTEL_MODE=system`; dashboard refresh is now best-effort when a compatible legacy CLI is present, while shell setup still succeeds with the shared system stack.
+
 - **@overeng/otelite-effect → @overeng/utils-dev/otelite**: Folded the standalone `@overeng/otelite-effect` wrapper package into `@overeng/utils-dev` as a new `./otelite` subpath export and deleted the standalone package. The wrapper is a dev/test util with no non-test consumer, and `utils-dev` already declares every dependency it needs (`@effect/platform`, `@effect/platform-node`, `@effect/opentelemetry`, `@effect/vitest`) and already uses subpath exports — co-locating it removes a `utils-dev ⇄ otelite-effect` cycle. The source moved to `packages/@overeng/utils-dev/src/otelite/` and the tests (incl. the D1 wire-level e2e) to `src/otelite/*.test.ts`. The public API is unchanged; consumers now import from `@overeng/utils-dev/otelite`. The `Otelite` service tag and the `Otelite*` error tags are renamespaced to `@overeng/utils-dev/otelite/*`. The tests still run the real nix-built `otelite` binary on `PATH` (provided by the dev shell). See `context/otelite/decisions/0015`.
 
 - **CI / Nix packages**: Refresh the stale `genie`, `megarepo`, `notion-md`, and `tui-stories` pnpm fixed-output hashes after the schema-first OTEL contract change updated the workspace dependency closure.

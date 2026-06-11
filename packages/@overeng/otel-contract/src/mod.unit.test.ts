@@ -1,4 +1,4 @@
-import { DateTime, Duration, Effect, Option, Redacted, Schema, Stream } from 'effect'
+import { DateTime, Duration, Effect, Metric, Option, Redacted, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { expectTrace } from '@overeng/utils-dev/otelite'
@@ -8,10 +8,74 @@ import {
   OtelAttrEncodeError,
   OtelAttrPlanError,
   OtelAttrs,
+  OtelAttributeKey,
   OtelMetric,
+  OtelMetricName,
   OtelOperation,
+  OtelServiceName,
   OtelSpan,
+  OtelSpanName,
 } from './mod.ts'
+
+describe('OTEL schema names', () => {
+  it('exports branded refined schemas for contract names and keys', async () => {
+    await expect(
+      Effect.runPromise(Schema.decodeUnknown(OtelAttributeKey)('service.name')),
+    ).resolves.toBe('service.name')
+    await expect(
+      Effect.runPromise(Schema.decodeUnknown(OtelAttributeKey)('notion-react.page_id')),
+    ).resolves.toBe('notion-react.page_id')
+    await expect(
+      Effect.runPromise(Schema.decodeUnknown(OtelSpanName)('notion-md.pull-page')),
+    ).resolves.toBe('notion-md.pull-page')
+    await expect(
+      Effect.runPromise(Schema.decodeUnknown(OtelMetricName)('restate_invocations_total')),
+    ).resolves.toBe('restate_invocations_total')
+    await expect(
+      Effect.runPromise(Schema.decodeUnknown(OtelServiceName)('notion-md-cli')),
+    ).resolves.toBe('notion-md-cli')
+  })
+
+  it('rejects invalid contract names and attribute keys at definition time', async () => {
+    await expect(
+      Effect.runPromise(
+        Effect.either(
+          OtelAttrs.define(
+            Schema.Struct({
+              value: OtelAttr.string('bad key'),
+            }),
+          ),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: 'Left',
+      left: expect.any(OtelAttrPlanError),
+    })
+
+    const SpanAttrs = OtelAttrs.defineSync(
+      Schema.Struct({
+        label: OtelAttr.string('span.label', { role: 'span.label' }),
+      }),
+    )
+
+    expect(() => OtelSpan.define({ name: ' ', attributes: SpanAttrs })).toThrow(OtelAttrPlanError)
+    expect(() =>
+      OtelOperation.define({
+        name: 'bad\noperation',
+        schema: Schema.Struct({ value: OtelAttr.string('test.value') }),
+        label: ({ value }) => value,
+      }),
+    ).toThrow(OtelAttrPlanError)
+    expect(() =>
+      OtelMetric.counter({
+        name: 'bad metric',
+        labels: Schema.Struct({
+          status: OtelAttr.literal('status', 'ok', 'failed'),
+        }),
+      }),
+    ).toThrow(OtelAttrPlanError)
+  })
+})
 
 describe('OtelAttrs', () => {
   it('derives primitive, literal, uuid, option, date, duration, and explicit array attributes', async () => {
@@ -680,6 +744,38 @@ describe('OtelMetric', () => {
         "unit": "1",
       }
     `)
+
+    await expect(
+      Effect.runPromise(
+        Invocations.tagPairs({
+          service: 'notion-sync',
+          handler: 'pull',
+          outcome: 'success',
+          cacheHit: true,
+        }),
+      ),
+    ).resolves.toEqual([
+      ['restate.service', 'notion-sync'],
+      ['restate.handler', 'pull'],
+      ['restate.outcome', 'success'],
+      ['restate.cache_hit', 'true'],
+    ])
+
+    await expect(
+      Effect.runPromise(
+        Invocations.trustedTagPairs({
+          service: 'notion-sync',
+          handler: 'pull',
+          outcome: 'success',
+          cacheHit: true,
+        }),
+      ),
+    ).resolves.toEqual([
+      ['restate.service', 'notion-sync'],
+      ['restate.handler', 'pull'],
+      ['restate.outcome', 'success'],
+      ['restate.cache_hit', 'true'],
+    ])
   })
 
   it('defines histogram metadata without owning runtime emission', () => {
@@ -706,6 +802,57 @@ describe('OtelMetric', () => {
       labelKeys: ['operation'],
       boundaries: [10, 50, 100, 500, 1000],
     })
+  })
+
+  it('bridges schema-first counters to tagged Effect metrics', async () => {
+    const Counter = OtelMetric.counter({
+      name: 'otel_contract_test_bridge_counter_total',
+      description: 'Test counter bridge.',
+      labels: Schema.Struct({
+        service: OtelAttr.string('service', { cardinality: 'bounded' }),
+        cacheHit: OtelAttr.boolean('cache_hit'),
+      }),
+    })
+    const bridge = OtelMetric.effect.counter(Counter)
+
+    await Effect.runPromise(
+      Effect.all(
+        [
+          bridge.incrementBy({ service: 'api', cacheHit: true }, 2),
+          bridge.trustedIncrement({ service: 'api', cacheHit: true }),
+        ],
+        { discard: true },
+      ),
+    )
+
+    const pair = Metric.unsafeSnapshot(undefined).find((entry) => {
+      if (entry.metricKey.name !== 'otel_contract_test_bridge_counter_total') return false
+      const tags = Object.fromEntries(entry.metricKey.tags.map((tag) => [tag.key, tag.value]))
+      return tags.service === 'api' && tags.cache_hit === 'true'
+    })
+    expect(pair?.metricState).toMatchObject({ count: 3 })
+  })
+
+  it('bridges schema-first histograms to tagged Effect metrics', async () => {
+    const Histogram = OtelMetric.histogram({
+      name: 'otel_contract_test_bridge_duration_ms',
+      description: 'Test histogram bridge.',
+      unit: 'ms',
+      boundaries: [10, 100, 1000],
+      labels: Schema.Struct({
+        route: OtelAttr.literal('route', 'sync', 'async'),
+      }),
+    })
+    const bridge = OtelMetric.effect.histogram(Histogram)
+
+    await Effect.runPromise(bridge.trustedRecord({ route: 'sync' }, 42))
+
+    const pair = Metric.unsafeSnapshot(undefined).find((entry) => {
+      if (entry.metricKey.name !== 'otel_contract_test_bridge_duration_ms') return false
+      const tags = Object.fromEntries(entry.metricKey.tags.map((tag) => [tag.key, tag.value]))
+      return tags.route === 'sync'
+    })
+    expect(pair?.metricState).toMatchObject({ count: 1, min: 42, max: 42, sum: 42 })
   })
 
   it('rejects high-cardinality and unspecified-cardinality metric labels', () => {

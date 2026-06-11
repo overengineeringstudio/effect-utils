@@ -56,6 +56,10 @@ const PollLoopCycleLabels = Schema.Struct({
   outcome: OtelAttr.literal('outcome', 'ok', 'error', 'stopped'),
 })
 
+export const RestateDurationMetricBoundariesMs = [
+  1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000, 60_000, 300_000,
+] as const
+
 export const RestateMetrics = {
   invocationsTotal: OtelMetric.counter({
     name: 'restate_invocations_total',
@@ -67,6 +71,7 @@ export const RestateMetrics = {
     description:
       'Wall-clock duration of a real invocation attempt (ms), by service/handler/outcome.',
     unit: 'ms',
+    boundaries: RestateDurationMetricBoundariesMs,
     labels: InvocationLabels,
   }),
   attemptsTotal: OtelMetric.counter({
@@ -84,6 +89,7 @@ export const RestateMetrics = {
     name: 'restate_awakeable_wait_ms',
     description: 'Wall-clock wait for an awakeable to be externally resolved (ms).',
     unit: 'ms',
+    boundaries: RestateDurationMetricBoundariesMs,
     labels: NoLabels,
   }),
   pollLoopCyclesTotal: OtelMetric.counter({

@@ -47,7 +47,7 @@ mode = "auto" (default)
   └── not set?            → "local": starts per-project Collector/Tempo/Grafana
 ```
 
-When in system mode, this module requires `OTEL_STATE_DIR`, `OTEL_EXPORTER_OTLP_ENDPOINT`, and the `otel` CLI. Shell entry fails immediately if any are missing. Dashboards are synced by invoking `otel dash sync` on shell entry, targeting `$OTEL_STATE_DIR/dashboards`.
+When in system mode, this module requires `OTEL_STATE_DIR`, `OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_GRAFANA_URL`. Shell entry fails immediately if those required environment variables are missing. Dashboard sync is best-effort: when a compatible legacy `otel` CLI is available, shell entry invokes `otel dash sync` against `$OTEL_STATE_DIR/dashboards`; otherwise it warns and continues.
 
 ## Environment Variables
 
@@ -190,7 +190,7 @@ jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
 
 ### Project Dashboards (`.otel/dashboards.json`)
 
-Projects define their own dashboards in `.otel/dashboards.json`. In system mode, dashboard syncing is delegated to `otel dash sync` on shell entry. `extraDashboards` is local-mode only and is rejected in system mode.
+Projects define their own dashboards in `.otel/dashboards.json`. In system mode, dashboard syncing is best-effort on shell entry when a compatible legacy `otel` CLI is available; missing dashboard sync tooling must not block the shell because the standalone `otel` binary is retired. `extraDashboards` is local-mode only and is rejected in system mode.
 
 ## Data Storage
 

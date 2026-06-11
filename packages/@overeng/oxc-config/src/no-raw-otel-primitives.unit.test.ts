@@ -30,7 +30,7 @@ const rule = plugin.rules['no-raw-otel-primitives']
 
 /** The exact rendered message for a flagged `Effect.withSpan`. */
 const effectWithSpanMessage =
-  'Raw OTEL primitive `Effect.withSpan()` bypasses the schema-first telemetry contract. Define an `OtelOperation`/`OtelSpan` contract in package observability code and use that instead.'
+  'Raw OTEL primitive `Effect.withSpan()` bypasses the schema-first telemetry contract. Define an `OtelOperation`/`OtelSpan`/`OtelMetric` contract in package observability code and use that instead.'
 
 ruleTester.run('no-raw-otel-primitives: valid contract usage and unrelated calls', rule, {
   valid: [
@@ -54,6 +54,10 @@ Effect.withSpan('local')`,
       code: `import { OtelOperation } from '@overeng/otel-contract'
 const Operation = OtelOperation.define({ name: 'x', schema, label: () => 'x' })
 effect.pipe(Operation.with({ label: 'x' }))`,
+    },
+    {
+      code: `import { OtelMetric } from '@overeng/otel-contract'
+const Invocations = OtelMetric.counter({ name: 'invocations_total', labels })`,
     },
   ],
   invalid: [],
@@ -108,6 +112,11 @@ const program = EffectLib.Stream.withSpan('raw')`,
 const program = EffectLib.Effect.annotateCurrentSpan('span.label', 'raw')`,
       errors: [{ messageId: 'rawOtelPrimitive' }],
     },
+    {
+      code: `import * as EffectLib from 'effect'
+const metric = EffectLib.Metric.counter('raw_total')`,
+      errors: [{ messageId: 'rawOtelPrimitive' }],
+    },
   ],
 })
 
@@ -127,6 +136,47 @@ const program = rawWithSpan('raw')`,
     {
       code: `import { annotateCurrentSpan as annotate } from 'effect'
 annotate('span.label', 'raw')`,
+      errors: [{ messageId: 'rawOtelPrimitive' }],
+    },
+    {
+      code: `import { counter } from 'effect'
+const metric = counter('raw_total')`,
+      errors: [{ messageId: 'rawOtelPrimitive' }],
+    },
+  ],
+})
+
+ruleTester.run('no-raw-otel-primitives: invalid raw Metric APIs', rule, {
+  valid: [],
+  invalid: [
+    {
+      code: `import { Metric } from 'effect'
+const metric = Metric.counter('raw_total')`,
+      errors: [{ messageId: 'rawOtelPrimitive' }],
+    },
+    {
+      code: `import { Metric as M } from 'effect'
+const metric = M.histogram('raw_ms', boundaries)`,
+      errors: [{ messageId: 'rawOtelPrimitive' }],
+    },
+    {
+      code: `import { Metric } from 'effect'
+const tagged = Metric.tagged(metric, 'service', 'api')`,
+      errors: [{ messageId: 'rawOtelPrimitive' }],
+    },
+    {
+      code: `import { Metric } from 'effect'
+const program = Metric.increment(metric)`,
+      errors: [{ messageId: 'rawOtelPrimitive' }],
+    },
+    {
+      code: `import { Metric } from 'effect'
+const program = Metric.incrementBy(metric, 2)`,
+      errors: [{ messageId: 'rawOtelPrimitive' }],
+    },
+    {
+      code: `import { Metric } from 'effect'
+const program = Metric.update(metric, 42)`,
       errors: [{ messageId: 'rawOtelPrimitive' }],
     },
   ],

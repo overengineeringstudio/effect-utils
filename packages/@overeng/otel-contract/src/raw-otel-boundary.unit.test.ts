@@ -8,6 +8,7 @@ const repoRoot = resolve(import.meta.dirname, '../../..', '..')
 const packagesRoot = resolve(repoRoot, 'packages/@overeng')
 
 const rawOtelCall = /\b(?:Effect|Stream)\.(?:withSpan|annotateCurrentSpan)\s*\(/g
+const rawMetricCall = /\bMetric\.(?:counter|histogram|tagged|increment|incrementBy|update)\s*\(/g
 
 const allowedRawOtelFiles = new Set([
   'packages/@overeng/otel-contract/src/mod.ts',
@@ -51,6 +52,18 @@ describe('raw OTEL boundary', () => {
 
       const source = removeComments(readFileSync(path, 'utf8'))
       return [...source.matchAll(rawOtelCall)].map((match) => `${relativePath}:${match[0]}`)
+    })
+
+    expect(violations).toEqual([])
+  })
+
+  it('routes production metric instrumentation through schema-backed helpers', () => {
+    const violations = sourceFiles(packagesRoot).flatMap((path) => {
+      const relativePath = relative(repoRoot, path)
+      if (allowedRawOtelFiles.has(relativePath) === true) return []
+
+      const source = removeComments(readFileSync(path, 'utf8'))
+      return [...source.matchAll(rawMetricCall)].map((match) => `${relativePath}:${match[0]}`)
     })
 
     expect(violations).toEqual([])

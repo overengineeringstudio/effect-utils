@@ -15,26 +15,12 @@
  * seam is exactly-once.
  */
 import type * as restate from '@restatedev/restate-sdk'
-import { Effect, Metric, MetricBoundaries, type Schema } from 'effect'
-import type { MetricKeyType, MetricState } from 'effect'
+import { Effect, type Schema } from 'effect'
 
-import { OtelSpan, type OtelAttributeMap, type OtelAttrEncodeError } from '@overeng/otel-contract'
+import { OtelMetric, OtelSpan } from '@overeng/otel-contract'
 
 import { findSensitiveFields } from '../schema/Redaction.ts'
 import { RestateMetrics } from './contract.ts'
-
-/** A histogram `Metric` over a `number` input (the shape `Metric.histogram` returns). */
-type HistogramMetric = Metric.Metric<
-  MetricKeyType.MetricKeyType.Histogram,
-  number,
-  MetricState.MetricState.Histogram
->
-
-/* Duration histogram bucket boundaries (milliseconds) — a log-ish spread from
- * sub-ms to ~5 min, covering fast handlers and long durable waits. */
-const durationBoundariesMs = MetricBoundaries.fromIterable([
-  1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000, 60_000, 300_000,
-])
 
 /**
  * Per-invocation OUTCOME counter (`restate_invocations_total`), labelled
@@ -44,16 +30,12 @@ const durationBoundariesMs = MetricBoundaries.fromIterable([
  * NOT re-increment. A `retryable` attempt counts on every real failed attempt —
  * that is the retry-pressure signal (retries derive as the `retryable` rate).
  */
-export const invocationsTotal = Metric.counter('restate_invocations_total', {
-  description: RestateMetrics.invocationsTotal.description,
-})
+const invocationsTotalBridge = OtelMetric.effect.counter(RestateMetrics.invocationsTotal)
+export const invocationsTotal = invocationsTotalBridge.metric
 
 /** Per-invocation DURATION histogram (`restate_invocation_duration_ms`), gated on non-replay. */
-export const invocationDurationMs = Metric.histogram(
-  'restate_invocation_duration_ms',
-  durationBoundariesMs,
-  RestateMetrics.invocationDurationMs.description,
-)
+const invocationDurationMsBridge = OtelMetric.effect.histogram(RestateMetrics.invocationDurationMs)
+export const invocationDurationMs = invocationDurationMsBridge.metric
 
 /**
  * Per-ATTEMPT counter (`restate_attempts_total`), labelled `service` / `handler`.
@@ -62,9 +44,8 @@ export const invocationDurationMs = Metric.histogram(
  * (the extra attempts are the retries). Gated on non-replay so a journal replay —
  * which re-runs the handler body without being a new attempt — is not counted.
  */
-export const attemptsTotal = Metric.counter('restate_attempts_total', {
-  description: RestateMetrics.attemptsTotal.description,
-})
+const attemptsTotalBridge = OtelMetric.effect.counter(RestateMetrics.attemptsTotal)
+export const attemptsTotal = attemptsTotalBridge.metric
 
 /**
  * Durable-step counter (`restate_durable_steps_total`), labelled `step` (the
@@ -74,9 +55,8 @@ export const attemptsTotal = Metric.counter('restate_attempts_total', {
  * across all attempts. Not labelled by service/handler (the invocation span
  * already carries those) to keep cardinality bounded.
  */
-export const durableStepsTotal = Metric.counter('restate_durable_steps_total', {
-  description: RestateMetrics.durableStepsTotal.description,
-})
+const durableStepsTotalBridge = OtelMetric.effect.counter(RestateMetrics.durableStepsTotal)
+export const durableStepsTotal = durableStepsTotalBridge.metric
 
 /**
  * Awakeable wait-latency histogram (`restate_awakeable_wait_ms`). Emitted when an
@@ -84,11 +64,8 @@ export const durableStepsTotal = Metric.counter('restate_durable_steps_total', {
  * non-replay (a replay reproduces the journaled completion instantly — not a real
  * wait). Captures external-completion latency (e.g. a webhook callback round-trip).
  */
-export const awakeableWaitMs = Metric.histogram(
-  'restate_awakeable_wait_ms',
-  durationBoundariesMs,
-  RestateMetrics.awakeableWaitMs.description,
-)
+const awakeableWaitMsBridge = OtelMetric.effect.histogram(RestateMetrics.awakeableWaitMs)
+export const awakeableWaitMs = awakeableWaitMsBridge.metric
 
 /**
  * `pollLoop` cycle counter (`restate_poll_loop_cycles_total`), labelled `name`
@@ -96,9 +73,8 @@ export const awakeableWaitMs = Metric.histogram(
  * Emitted inside the loop's exclusive `cycle` handler gated on non-replay, so each
  * real cycle execution is counted exactly once.
  */
-export const pollLoopCyclesTotal = Metric.counter('restate_poll_loop_cycles_total', {
-  description: RestateMetrics.pollLoopCyclesTotal.description,
-})
+const pollLoopCyclesTotalBridge = OtelMetric.effect.counter(RestateMetrics.pollLoopCyclesTotal)
+export const pollLoopCyclesTotal = pollLoopCyclesTotalBridge.metric
 
 /**
  * A MONOTONIC wall-clock reading (milliseconds) for duration measurement. Uses
@@ -133,37 +109,6 @@ export const emitWhenProcessing = (
   emit: Effect.Effect<void>,
 ): Effect.Effect<void> => (isProcessing(ctx) === true ? emit : Effect.void)
 
-/** Label a counter increment with the given tag pairs and emit it once. */
-const incrementTagged = (
-  metric: Metric.Metric.Counter<number>,
-  tags: ReadonlyArray<readonly [string, string]>,
-): Effect.Effect<void> =>
-  Metric.increment(
-    tags.reduce<Metric.Metric.Counter<number>>((m, [k, v]) => Metric.tagged(m, k, v), metric),
-  )
-
-/** Record a value into a histogram labelled with the given tag pairs. */
-const recordTagged = (
-  metric: HistogramMetric,
-  tags: ReadonlyArray<readonly [string, string]>,
-  value: number,
-): Effect.Effect<void> =>
-  Metric.update(
-    tags.reduce<HistogramMetric>((m, [k, v]) => Metric.tagged(m, k, v), metric),
-    value,
-  )
-
-const trustedMetricTags = <A>(
-  encodeLabels: (value: A) => Effect.Effect<OtelAttributeMap, OtelAttrEncodeError>,
-  labels: A,
-): Effect.Effect<ReadonlyArray<readonly [string, string]>> =>
-  encodeLabels(labels).pipe(
-    Effect.map((encoded) =>
-      Object.entries(encoded).map(([key, value]) => [key, String(value)] as const),
-    ),
-    Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
-  )
-
 /**
  * Emit the per-invocation outcome counter + duration histogram + the per-attempt
  * counter for ONE real attempt, gated on non-replay. `outcome` is the boundary's
@@ -180,20 +125,24 @@ export const emitInvocationMetrics = (
 ): Effect.Effect<void> => {
   return emitWhenProcessing(
     ctx,
-    Effect.gen(function* () {
-      const labels = yield* trustedMetricTags(RestateMetrics.invocationsTotal.encodeLabels, {
-        service: args.service,
-        handler: args.handler,
-        outcome: args.outcome,
-      })
-      yield* Effect.all(
-        [
-          incrementTagged(invocationsTotal, labels),
-          recordTagged(invocationDurationMs, labels, args.durationMs),
-        ],
-        { discard: true },
-      )
-    }),
+    Effect.all(
+      [
+        invocationsTotalBridge.trustedIncrement({
+          service: args.service,
+          handler: args.handler,
+          outcome: args.outcome,
+        }),
+        invocationDurationMsBridge.trustedRecord(
+          {
+            service: args.service,
+            handler: args.handler,
+            outcome: args.outcome,
+          },
+          args.durationMs,
+        ),
+      ],
+      { discard: true },
+    ),
   )
 }
 
@@ -204,12 +153,9 @@ export const emitAttempt = (
 ): Effect.Effect<void> =>
   emitWhenProcessing(
     ctx,
-    Effect.gen(function* () {
-      const labels = yield* trustedMetricTags(RestateMetrics.attemptsTotal.encodeLabels, {
-        service: args.service,
-        handler: args.handler,
-      })
-      yield* incrementTagged(attemptsTotal, labels)
+    attemptsTotalBridge.trustedIncrement({
+      service: args.service,
+      handler: args.handler,
     }),
   )
 
@@ -217,23 +163,14 @@ export const emitAttempt = (
 export const emitDurableStep = (ctx: restate.Context, step: string): Effect.Effect<void> =>
   emitWhenProcessing(
     ctx,
-    Effect.gen(function* () {
-      const labels = yield* trustedMetricTags(RestateMetrics.durableStepsTotal.encodeLabels, {
-        step,
-      })
-      yield* incrementTagged(durableStepsTotal, labels)
+    durableStepsTotalBridge.trustedIncrement({
+      step,
     }),
   )
 
 /** Record an awakeable wait latency, gated on non-replay. */
 export const emitAwakeableWait = (ctx: restate.Context, waitMs: number): Effect.Effect<void> =>
-  emitWhenProcessing(
-    ctx,
-    Effect.gen(function* () {
-      const labels = yield* trustedMetricTags(RestateMetrics.awakeableWaitMs.encodeLabels, {})
-      yield* recordTagged(awakeableWaitMs, labels, waitMs)
-    }),
-  )
+  emitWhenProcessing(ctx, awakeableWaitMsBridge.trustedRecord({}, waitMs))
 
 /** Emit a `pollLoop` cycle outcome counter, gated on non-replay. */
 export const emitPollLoopCycle = (
@@ -242,12 +179,9 @@ export const emitPollLoopCycle = (
 ): Effect.Effect<void> =>
   emitWhenProcessing(
     ctx,
-    Effect.gen(function* () {
-      const labels = yield* trustedMetricTags(RestateMetrics.pollLoopCyclesTotal.encodeLabels, {
-        name: args.name,
-        outcome: args.outcome,
-      })
-      yield* incrementTagged(pollLoopCyclesTotal, labels)
+    pollLoopCyclesTotalBridge.trustedIncrement({
+      name: args.name,
+      outcome: args.outcome,
     }),
   )
 
