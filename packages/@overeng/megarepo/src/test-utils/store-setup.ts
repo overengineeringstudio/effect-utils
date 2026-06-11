@@ -423,6 +423,38 @@ export const repinWorkspace = ({
   })
 
 /**
+ * Re-materialize a fixture worktree as a NON-DETACHED `refs/heads/<branch>`
+ * worktree — the exact shape production creates (`createWorktree({createBranch:
+ * false})`), as opposed to the `--detach` worktrees `createStoreFixture`
+ * defaults to. Removes the detached worktree, creates the branch ref, then adds
+ * a worktree that has that branch checked out (so `git branch -D` is refused
+ * until HEAD is detached). Returns the (unchanged) worktree path.
+ */
+export const materializeNonDetachedBranchWorktree = ({
+  bareRepoPath,
+  worktreePath,
+  branch,
+  commit,
+}: {
+  bareRepoPath: AbsoluteDirPath
+  worktreePath: AbsoluteDirPath
+  branch: string
+  commit: string
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    // Drop the detached worktree the fixture created at this path.
+    yield* runGitCommand(bareRepoPath, 'worktree', 'remove', '--force', worktreePath)
+    yield* fs
+      .remove(worktreePath, { recursive: true, force: true })
+      .pipe(Effect.catchAll(() => Effect.void))
+    // Create the branch ref and check it out in a fresh worktree (non-detached).
+    yield* runGitCommand(bareRepoPath, 'branch', branch, commit)
+    yield* runGitCommand(bareRepoPath, 'worktree', 'add', worktreePath, branch)
+    return worktreePath
+  })
+
+/**
  * Create a valid archive entry (`<repoRoot>/.archive/<branch>--<ISO8601>/`)
  * registered as a worktree of the bare repo (proper gitlink), for exercising
  * retention/reap. `archivedAt` controls the trailing timestamp segment used by

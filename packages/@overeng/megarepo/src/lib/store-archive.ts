@@ -28,12 +28,14 @@
  * on this persistence path.
  */
 
-import { CommandExecutor, FileSystem, type Error as PlatformError } from '@effect/platform'
+import type { CommandExecutor } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Effect, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from './git.ts'
+import { writeFileAtomic } from './store-fs-atomic.ts'
 
 /** Relative directory name of the per-repo archive holding area. */
 export const ARCHIVE_DIR_NAME = '.archive'
@@ -87,7 +89,7 @@ export const parseArchiveDirName = (
   const archivedAtMs = Date.parse(ts)
   // Reject non-instants AND values that do not round-trip back to the same ISO
   // string (e.g. an out-of-range day that `Date.parse` would normalize).
-  if (Number.isNaN(archivedAtMs) || new Date(archivedAtMs).toISOString() !== ts) {
+  if (Number.isNaN(archivedAtMs) === true || new Date(archivedAtMs).toISOString() !== ts) {
     return Option.none()
   }
 
@@ -98,6 +100,23 @@ const archiveDirPath = (repoRoot: AbsoluteDirPath): AbsoluteDirPath =>
   EffectPath.ops.join(repoRoot, EffectPath.unsafe.relativeDir(`${ARCHIVE_DIR_NAME}/`))
 
 /**
+ * Result of {@link archiveWorktree} once the (irreversible) move has succeeded.
+ *
+ * The move is the point of no return: once the worktree directory lives under
+ * `.archive/`, the data is recoverable there regardless of what happens to the
+ * post-move bookkeeping. `warnings` records any best-effort post-move step that
+ * failed (branch not freed, README not updated) so the caller surfaces the
+ * `.archive/` location AND tells the operator about the residual state instead
+ * of mislabeling a moved worktree as an untouched no-op.
+ */
+export interface ArchiveOutcome {
+  /** The `.archive/` destination the worktree was moved to (recovery location). */
+  readonly destPath: AbsoluteDirPath
+  /** Non-fatal post-move issues (e.g. branch still referenced, README append failed). */
+  readonly warnings: ReadonlyArray<string>
+}
+
+/**
  * Archive a cold worktree: move it under `<repoRoot>/.archive/`, free its branch,
  * and record metadata.
  *
@@ -106,15 +125,21 @@ const archiveDirPath = (repoRoot: AbsoluteDirPath): AbsoluteDirPath =>
  *    destination's parent to exist.
  * 2. `git -C <bare> worktree move <src> <dest>` — preserves dirty + untracked
  *    work (it travels with the directory) and rewrites the gitlink to the new
- *    absolute path, so no `git worktree repair` is needed afterwards.
- * 3. FREE the branch via `git -C <bare> branch -D <branch>` so `mr apply` can
- *    re-materialize it; the commit stays reachable through the remote-tracking
- *    ref (guaranteed by the lossless floor's invariant 2a, checked upstream).
- * 4. Append `branch, ISO(now), commit, reason` to `<repoRoot>/.archive/README.md`.
+ *    absolute path, so no `git worktree repair` is needed afterwards. This is the
+ *    POINT OF NO RETURN; failing here means nothing moved (caller: keep+error).
+ * 3. DETACH the moved worktree's HEAD (`git -C <dest> checkout --detach`) then
+ *    FREE the branch (`git -C <bare> branch -D <branch>`) so `mr apply` can
+ *    re-materialize it (invariant 4). Production named-branch worktrees are
+ *    NON-DETACHED, so without the detach `git branch -D` is refused (`cannot
+ *    delete branch used by worktree`). The commit stays reachable via the
+ *    remote-tracking ref (lossless floor invariant 2a, checked upstream).
+ * 4. Append `branch, ISO(now), commit, reason` to `<repoRoot>/.archive/README.md`
+ *    (atomic write-temp-then-rename so a concurrent reader never sees a torn log).
  *
- * Returns the destination path so the caller can surface a recovery hint. Any
- * git/fs failure propagates so the caller can report keep+error and leave the
- * original worktree intact.
+ * Steps 3 and 4 are BEST-EFFORT-BUT-REPORTED: a failure after the move does not
+ * fail the effect (the data is already safe in `.archive/`); instead it is
+ * recorded in {@link ArchiveOutcome.warnings}. Only a pre-move failure (step 1/2)
+ * propagates as an error, leaving the original worktree intact.
  */
 export const archiveWorktree = (args: {
   /** The repo root in the store: `<store>/<host>/<owner>/<repo>/`. */
@@ -132,7 +157,7 @@ export const archiveWorktree = (args: {
   /** Epoch-ms decision time; drives the archive dir name + README timestamp. */
   readonly now: number
 }): Effect.Effect<
-  AbsoluteDirPath,
+  ArchiveOutcome,
   Git.GitCommandError | PlatformError.PlatformError,
   FileSystem.FileSystem | CommandExecutor.CommandExecutor
 > =>
@@ -152,28 +177,53 @@ export const archiveWorktree = (args: {
     const destParent = EffectPath.ops.parent(destPath) ?? archiveDir
     yield* fs.makeDirectory(destParent, { recursive: true })
 
-    // (2) Move the worktree — dirty + untracked work travels intact, gitlink fixed.
+    // (2) Move the worktree — dirty + untracked work travels intact, gitlink
+    // fixed. POINT OF NO RETURN: a failure here propagates (nothing moved).
     yield* Git.moveWorktree({
       repoPath: args.bareRepoPath,
       fromPath: args.worktreePath,
       toPath: destPath,
     })
 
-    // (3) Free the branch so `mr apply` can re-materialize it (invariant 4).
-    yield* Git.deleteBranch({ repoPath: args.bareRepoPath, branch: args.branch, force: true })
+    // From here on the data is safe in `.archive/`. Post-move steps are
+    // best-effort: any failure becomes a warning, never an error.
+    const warnings: Array<string> = []
 
-    // (4) Append a metadata line to the archive README.
+    // (3) Detach the moved worktree's HEAD, then free the branch so `mr apply`
+    // can re-materialize it (invariant 4). The detach is required because the
+    // moved worktree still has the branch checked out (non-detached in prod), so
+    // `git branch -D` would otherwise be refused.
+    yield* Git.detachWorktreeHead({ worktreePath: destPath }).pipe(
+      Effect.flatMap(() =>
+        Git.deleteBranch({ repoPath: args.bareRepoPath, branch: args.branch, force: true }),
+      ),
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          warnings.push(
+            `branch '${args.branch}' could not be freed (re-add may fail until cleaned up): ${error.message}`,
+          )
+        }),
+      ),
+    )
+
+    // (4) Append a metadata line to the archive README via an atomic write
+    // (write-temp-then-rename) so a concurrent reader never sees a torn log.
     const readmePath = EffectPath.ops.join(
       archiveDir,
       EffectPath.unsafe.relativeFile(ARCHIVE_README_NAME),
     )
-    const existing = yield* fs
-      .readFileString(readmePath)
-      .pipe(Effect.catchAll(() => Effect.succeed('')))
     const line = `${args.branch}\t${iso}\t${args.commit}\t${args.reason}\n`
-    yield* fs.writeFileString(readmePath, existing + line)
+    yield* fs.readFileString(readmePath).pipe(
+      Effect.catchAll(() => Effect.succeed('')),
+      Effect.flatMap((existing) => writeFileAtomic({ path: readmePath, content: existing + line })),
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          warnings.push(`archive README metadata not recorded: ${error.message}`)
+        }),
+      ),
+    )
 
-    return destPath
+    return { destPath, warnings }
   }).pipe(
     Effect.withSpan('megarepo/store/gc/archive-worktree', {
       attributes: { 'span.label': args.branch, branch: args.branch, reason: args.reason },
@@ -210,7 +260,7 @@ export const scanArchives = (args: {
       // git reports worktree paths without a trailing slash; normalize so the
       // prefix test cannot match a sibling like `.archive-old/`.
       const normalized = EffectPath.unsafe.absoluteDir(
-        worktree.path.endsWith('/') ? worktree.path : `${worktree.path}/`,
+        worktree.path.endsWith('/') === true ? worktree.path : `${worktree.path}/`,
       )
       if (normalized.startsWith(archivePrefix) === false) continue
 
@@ -219,7 +269,7 @@ export const scanArchives = (args: {
       // and the full `feature/x` must be recovered, trailing slash stripped.
       const relative = normalized.slice(archivePrefix.length).replace(/\/+$/u, '')
       const parsed = parseArchiveDirName(relative)
-      if (Option.isNone(parsed)) continue
+      if (Option.isNone(parsed) === true) continue
 
       entries.push({
         path: normalized,

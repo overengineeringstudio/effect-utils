@@ -23,6 +23,7 @@ import {
 } from './config.ts'
 import { LOCK_FILE_NAME, readLockFile } from './lock.ts'
 import * as Observability from './observability.ts'
+import { writeFileAtomic } from './store-fs-atomic.ts'
 import type { MegarepoStore } from './store.ts'
 
 const REGISTRY_VERSION = 1
@@ -243,7 +244,13 @@ export const refreshWorkspaceRegistry = ({
     const content = yield* Schema.encode(Schema.parseJson(StoreWorkspaceRecord, { space: 2 }))(
       record,
     )
-    yield* fs.writeFileString(workspaceRecordPath({ store, workspaceRoot }), content + '\n')
+    // Atomic (write-temp-then-rename): a concurrent reader (e.g. an under-lock
+    // reconcile in another gc process) must never observe a half-written record
+    // and silently drop this workspace's live-set veto (decision 0010).
+    yield* writeFileAtomic({
+      path: workspaceRecordPath({ store, workspaceRoot }),
+      content: content + '\n',
+    })
     return record
   }).pipe(
     Observability.withWorkspaceSpan({
@@ -342,7 +349,9 @@ const readRegistryRecords = ({
         const content = yield* Schema.encode(Schema.parseJson(StoreWorkspaceRecord, { space: 2 }))(
           record,
         )
-        yield* fs.writeFileString(recordPath, content + '\n')
+        // Atomic rewrite so a concurrent reader never sees a torn record and
+        // drops a live workspace's veto right before deletion (decision 0010).
+        yield* writeFileAtomic({ path: recordPath, content: content + '\n' })
         records.push(record)
       } else {
         records.push(parsed)

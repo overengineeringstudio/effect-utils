@@ -148,6 +148,14 @@ const openPr = (branch: string): GhPr => ({
   closedAt: null,
 })
 
+const closedPr = (branch: string, closedAt: number): GhPr => ({
+  number: 3,
+  state: 'CLOSED',
+  headRefName: branch,
+  mergedAt: null,
+  closedAt: new Date(closedAt).toISOString(),
+})
+
 /** Materialize a real `refs/heads/<branch>` ref for a fixture (detached) worktree. */
 const materializeBranchRef = ({
   bareRepoPath,
@@ -840,6 +848,111 @@ describe('mr store gc — cold named-branch reclamation', () => {
   )
 
   it.effect(
+    'veto re-check at archive: a merged+clean+grace-met worktree that is live ⇒ kept, not archived',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          { ...REPO, branches: ['feature/contested-archive'], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const worktreePath = worktreePaths[`${REPO_KEY}#feature/contested-archive`]!
+        const commit = yield* getWorktreeCommit(worktreePath)
+        yield* materializeBranchRef({
+          bareRepoPath,
+          branch: 'feature/contested-archive',
+          commit,
+        })
+
+        // Make the worktree archive-eligible: cold long enough that absence grace
+        // is satisfied, with a long-merged PR (past post-merge grace).
+        yield* seedColdObservation({ cwd: yield* outsideCwd(), storePath })
+
+        // Register a workspace whose symlink points AT the would-be-archived
+        // worktree. The fresh under-lock reconcile (invariant 1) must find it live
+        // and refuse to archive — mirrors the reap-veto test for the archive path.
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: { widget: 'acme/widget#feature/contested-archive' },
+        })
+        yield* fs.makeDirectory(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/')),
+          { recursive: true },
+        )
+        yield* fs.symlink(
+          worktreePath.replace(/\/+$/, ''),
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/widget')),
+        )
+        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: NOW })
+
+        const cwd = yield* outsideCwd()
+        const { results } = yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [
+            {
+              relativePath: REPO_RELATIVE,
+              prs: [mergedPr('feature/contested-archive', NOW - 30 * DAY_MS)],
+            },
+          ],
+        })
+
+        const result = findByRef(results, 'feature/contested-archive')
+        expect(result?.status).toBe('kept')
+        expect(result?.reason).toBe('live')
+        // The worktree and its branch are untouched.
+        expect(yield* fs.exists(worktreePath)).toBe(true)
+        expect(
+          yield* Git.refExists({
+            repoPath: bareRepoPath,
+            ref: 'refs/heads/feature/contested-archive',
+          }),
+        ).toBe(true)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'closed (unmerged) PR + clean + reachable + grace-met ⇒ archived, reason closed (no post-close grace)',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          { ...REPO, branches: ['feature/closed'], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const worktreePath = worktreePaths[`${REPO_KEY}#feature/closed`]!
+        const commit = yield* getWorktreeCommit(worktreePath)
+        yield* materializeBranchRef({ bareRepoPath, branch: 'feature/closed', commit })
+
+        const cwd = yield* outsideCwd()
+        yield* seedColdObservation({ cwd, storePath })
+        // Closed only ONE day ago: decision 0009 has NO post-close grace, so a
+        // recently-closed PR still archives once absence grace is met.
+        const { results } = yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [
+            { relativePath: REPO_RELATIVE, prs: [closedPr('feature/closed', NOW - 1 * DAY_MS)] },
+          ],
+        })
+
+        const result = findByRef(results, 'feature/closed')
+        expect(result?.status).toBe('archived')
+        expect(result?.reason).toBe('closed')
+        expect(yield* fs.exists(worktreePath)).toBe(false)
+        expect(
+          yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/feature/closed' }),
+        ).toBe(false)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'dry-run ⇒ reports archive/reap intent without mutating disk',
     Effect.fnUntraced(
       function* () {
@@ -875,6 +988,118 @@ describe('mr store gc — cold named-branch reclamation', () => {
         expect(
           yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/feature/merged' }),
         ).toBe(true)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'dry-run ⇒ reports reap intent for a past-retention archive WITHOUT removing it',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          { ...REPO, branches: ['live/keep'], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const repoRoot = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir(`${REPO_KEY}/`),
+        )
+        const commit = yield* getWorktreeCommit(worktreePaths[`${REPO_KEY}#live/keep`]!)
+
+        // Past-retention archive (40d > 30d): reap-eligible.
+        const { archivePath } = yield* createArchiveEntry({
+          bareRepoPath,
+          repoRoot,
+          branch: 'feature/stale-dry',
+          commit,
+          archivedAt: new Date(NOW - 40 * DAY_MS),
+        })
+
+        const cwd = yield* outsideCwd()
+        const { results } = yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
+          args: ['--dry-run'],
+        })
+
+        // Reap intent reported but the archive dir is left on disk.
+        expect(results.some((r) => r.status === 'reaped' && r.ref === 'feature/stale-dry')).toBe(
+          true,
+        )
+        expect(yield* fs.exists(archivePath)).toBe(true)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'unclean reconcile withholds absence grace: a later clean run restarts the clock (kept absence-grace)',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          { ...REPO, branches: ['feature/unclean'], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const worktreePath = worktreePaths[`${REPO_KEY}#feature/unclean`]!
+        const commit = yield* getWorktreeCommit(worktreePath)
+        yield* materializeBranchRef({ bareRepoPath, branch: 'feature/unclean', commit })
+
+        // A workspace that DOES NOT consume this worktree (its symlink points
+        // elsewhere) but whose strict reconcile fails this run — flagging a path
+        // unclean so absence grace must NOT advance for it (decision 0010 / B2).
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: { other: 'acme/widget#feature/other' },
+        })
+        const reposDir = EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/'))
+        yield* fs.makeDirectory(reposDir, { recursive: true })
+        yield* fs.symlink(
+          worktreePath.replace(/\/+$/, ''),
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/other')),
+        )
+        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: NOW })
+
+        // First run, 20d in the past, but with the workspace UNREADABLE so the
+        // reconcile is unclean: its live path stays protected, but absence grace
+        // is withheld (firstSeenColdAtMs is NOT recorded for the protected path).
+        yield* fs.chmod(reposDir, 0o000)
+        const firstRun = yield* runGc({
+          cwd: yield* outsideCwd(),
+          storePath,
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
+          now: NOW - 20 * DAY_MS,
+        }).pipe(Effect.ensuring(fs.chmod(reposDir, 0o755).pipe(Effect.ignore)))
+        // While unclean it is protected as live, never advanced toward archive.
+        expect(findByRef(firstRun.results, 'feature/unclean')?.status).toBe('kept')
+
+        // Second run now CLEAN: the worktree is no longer live (symlink readable
+        // again, points at it — so still live). Make it NOT live by repointing the
+        // symlink away, so this run is its FIRST clean cold observation ⇒ absence
+        // grace clock starts here, not 20d ago.
+        yield* fs.remove(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/other')),
+          { force: true },
+        )
+        const cwd = yield* outsideCwd()
+        const { results } = yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [
+            { relativePath: REPO_RELATIVE, prs: [mergedPr('feature/unclean', NOW - 30 * DAY_MS)] },
+          ],
+        })
+
+        const result = findByRef(results, 'feature/unclean')
+        expect(result?.status).toBe('kept')
+        // Grace restarted: kept on absence-grace, NOT archived.
+        expect(result?.reason).toBe('absence-grace')
+        expect(yield* fs.exists(worktreePath)).toBe(true)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
