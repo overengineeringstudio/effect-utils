@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 
 import { Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
 
 export const pageAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -153,6 +153,126 @@ export const metadataUpdateAttrs = OtelAttrs.defineSync(
     isLocked: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.is_locked' })),
   }),
 )
+
+export const pushDecisionAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    decision: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.decision' })),
+  }),
+)
+
+export const pushMarkdownCommandAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    markdownCommand: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.markdown_command' })),
+  }),
+)
+
+export const pushDecisionMarkdownCommandAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    decision: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.decision' })),
+    markdownCommand: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.markdown_command' })),
+  }),
+)
+
+export const StatusPathSpan = OtelSpan.define({
+  name: 'notion-md.status-path',
+  attributes: pathRecursiveAttrs,
+})
+
+export const PlanPathSpan = OtelSpan.define({
+  name: 'notion-md.plan-path',
+  attributes: pathPlanAttrs,
+})
+
+export const SyncPathSpan = OtelSpan.define({
+  name: 'notion-md.sync-path',
+  attributes: pathSyncAttrs,
+})
+
+export const stateFileSpan = (operation: string) =>
+  OtelSpan.define({
+    name: `notion-md.state.${operation}`,
+    attributes: stateFileAttrs,
+  })
+
+export const ReadNmdStateSpan = OtelSpan.define({
+  name: 'notion-md.state.read-nmd',
+  attributes: stateFileAttrs,
+})
+
+export const WriteObjectStateSpan = OtelSpan.define({
+  name: 'notion-md.state.write-object',
+  attributes: objectRoleAttrs,
+})
+
+export const ReadObjectStateSpan = OtelSpan.define({
+  name: 'notion-md.state.read-object',
+  attributes: objectRoleAttrs,
+})
+
+export const PullPageSpan = OtelSpan.define({
+  name: 'notion-md.pull-page',
+  attributes: pagePathAttrs,
+})
+
+export const EstablishSidecarSpan = OtelSpan.define({
+  name: 'notion-md.establish-sidecar',
+  attributes: pageAttrs,
+})
+
+export const StatusPageSpan = OtelSpan.define({
+  name: 'notion-md.status-page',
+  attributes: pathAttrs,
+})
+
+export const PushPageSpan = OtelSpan.define({
+  name: 'notion-md.push-page',
+  attributes: pushSpanAttrs,
+})
+
+export const SyncPageSpan = OtelSpan.define({
+  name: 'notion-md.sync-page',
+  attributes: pathAttrs,
+})
+
+export const GatewayPullPageSpan = OtelSpan.define({
+  name: 'notion-md.gateway.pull-page',
+  attributes: pageAttrs,
+})
+
+export const GatewayUpdateMarkdownSpan = OtelSpan.define({
+  name: 'notion-md.gateway.update-markdown',
+  attributes: markdownUpdateAttrs,
+})
+
+export const GatewayUpdatePagePropertiesSpan = OtelSpan.define({
+  name: 'notion-md.gateway.update-page-properties',
+  attributes: pageAttrs,
+})
+
+export const GatewayUpdatePageMetadataSpan = OtelSpan.define({
+  name: 'notion-md.gateway.update-page-metadata',
+  attributes: metadataUpdateAttrs,
+})
+
+export const GatewayListChildPagesSpan = OtelSpan.define({
+  name: 'notion-md.gateway.list-child-pages',
+  attributes: pageAttrs,
+})
+
+export const GatewayCreatePageSpan = OtelSpan.define({
+  name: 'notion-md.gateway.create-page',
+  attributes: parentPageAttrs,
+})
+
+export const GatewayMovePageSpan = OtelSpan.define({
+  name: 'notion-md.gateway.move-page',
+  attributes: pageAttrs,
+})
+
+export const GatewayArchivePageSpan = OtelSpan.define({
+  name: 'notion-md.gateway.archive-page',
+  attributes: pageAttrs,
+})
 
 export const page = (pageId: string) =>
   pageAttrs.unsafeEncode({ label: pageId.slice(0, 8), pageId })

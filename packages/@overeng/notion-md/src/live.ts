@@ -12,6 +12,7 @@ import {
 } from '@overeng/notion-effect-client'
 import type { Page } from '@overeng/notion-effect-schema'
 import type { Block } from '@overeng/notion-effect-schema'
+import { OtelSpan } from '@overeng/otel-contract'
 
 import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markdown.ts'
 import { NmdGatewayError } from './errors.ts'
@@ -238,8 +239,12 @@ export const NotionMdGatewayLive = Layer.effect(
               }
         }).pipe(
           Effect.mapError(mapGatewayError({ operation: 'pull_page', pageId })),
-          Effect.withSpan('notion-md.gateway.pull-page', {
-            attributes: Observability.page(pageId),
+          OtelSpan.unsafeWith({
+            span: Observability.GatewayPullPageSpan,
+            attributes: {
+              label: pageId.slice(0, 8),
+              pageId,
+            },
           }),
         ),
       updateMarkdown: ({ pageId, command, allowDeletingContent }) =>
@@ -294,23 +299,28 @@ export const NotionMdGatewayLive = Layer.effect(
               ? cause
               : mapGatewayError({ operation: 'update_markdown', pageId })(cause),
           ),
-          Effect.withSpan('notion-md.gateway.update-markdown', {
-            attributes: Observability.markdownUpdateAttrs.unsafeEncode({
+          OtelSpan.unsafeWith({
+            span: Observability.GatewayUpdateMarkdownSpan,
+            attributes: {
               label: pageId.slice(0, 8),
               pageId,
               type: command._tag,
               allowDeletingContent,
               contentUpdateCount:
                 command._tag === 'update_content' ? command.contentUpdates.length : 0,
-            }),
+            },
           }),
         ),
       updatePageProperties: ({ pageId, properties }) =>
         provideHttp(NotionPages.update({ pageId, properties })).pipe(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'update_page_properties', pageId })),
-          Effect.withSpan('notion-md.gateway.update-page-properties', {
-            attributes: Observability.page(pageId),
+          OtelSpan.unsafeWith({
+            span: Observability.GatewayUpdatePagePropertiesSpan,
+            attributes: {
+              label: pageId.slice(0, 8),
+              pageId,
+            },
           }),
         ),
       updatePageMetadata: ({ pageId, metadata }) =>
@@ -341,8 +351,9 @@ export const NotionMdGatewayLive = Layer.effect(
         ).pipe(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'update_page_metadata', pageId })),
-          Effect.withSpan('notion-md.gateway.update-page-metadata', {
-            attributes: Observability.metadataUpdateAttrs.unsafeEncode({
+          OtelSpan.unsafeWith({
+            span: Observability.GatewayUpdatePageMetadataSpan,
+            attributes: {
               label: pageId.slice(0, 8),
               pageId,
               hasTitle: metadata.title !== undefined,
@@ -350,7 +361,7 @@ export const NotionMdGatewayLive = Layer.effect(
               hasCover: metadata.cover !== undefined,
               inTrash: metadata.in_trash !== undefined,
               isLocked: metadata.is_locked !== undefined,
-            }),
+            },
           }),
         ),
       listChildPages: ({ pageId }) =>
@@ -365,8 +376,12 @@ export const NotionMdGatewayLive = Layer.effect(
             }),
           ),
           Effect.mapError(mapGatewayError({ operation: 'list_child_pages', pageId })),
-          Effect.withSpan('notion-md.gateway.list-child-pages', {
-            attributes: Observability.page(pageId),
+          OtelSpan.unsafeWith({
+            span: Observability.GatewayListChildPagesSpan,
+            attributes: {
+              label: pageId.slice(0, 8),
+              pageId,
+            },
           }),
         ),
       createPage: ({ parentPageId, title, markdown }) =>
@@ -384,8 +399,12 @@ export const NotionMdGatewayLive = Layer.effect(
         ).pipe(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'create_page', pageId: parentPageId })),
-          Effect.withSpan('notion-md.gateway.create-page', {
-            attributes: Observability.parentPage(parentPageId),
+          OtelSpan.unsafeWith({
+            span: Observability.GatewayCreatePageSpan,
+            attributes: {
+              label: parentPageId.slice(0, 8),
+              parentPageId,
+            },
           }),
         ),
       movePage: ({ pageId, parentPageId }) =>
@@ -394,16 +413,24 @@ export const NotionMdGatewayLive = Layer.effect(
         ).pipe(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'move_page', pageId })),
-          Effect.withSpan('notion-md.gateway.move-page', {
-            attributes: Observability.page(pageId),
+          OtelSpan.unsafeWith({
+            span: Observability.GatewayMovePageSpan,
+            attributes: {
+              label: pageId.slice(0, 8),
+              pageId,
+            },
           }),
         ),
       archivePage: ({ pageId }) =>
         provideHttp(NotionPages.update({ pageId, in_trash: true })).pipe(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'archive_page', pageId })),
-          Effect.withSpan('notion-md.gateway.archive-page', {
-            attributes: Observability.page(pageId),
+          OtelSpan.unsafeWith({
+            span: Observability.GatewayArchivePageSpan,
+            attributes: {
+              label: pageId.slice(0, 8),
+              pageId,
+            },
           }),
         ),
     }

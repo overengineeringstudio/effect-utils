@@ -16,6 +16,7 @@ import {
   type NmdStorage,
   type NmdSyncStateV1,
 } from '@overeng/notion-effect-client'
+import { OtelSpan } from '@overeng/otel-contract'
 
 import { NmdFileSystemError, NmdObjectStoreError } from './errors.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
@@ -292,12 +293,13 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to write ${opts.label} ${opts.path}`,
           }),
         ),
-        Effect.withSpan(`notion-md.state.${opts.operation}`, {
-          attributes: Observability.stateFileAttrs.unsafeEncode({
+        OtelSpan.unsafeWith({
+          span: Observability.stateFileSpan(opts.operation),
+          attributes: {
             label: path.basename(opts.path),
             operation: opts.operation,
             basename: path.basename(opts.path),
-          }),
+          },
         }),
       )
 
@@ -311,12 +313,13 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to read .nmd file ${opts.path}`,
           }),
         ),
-        Effect.withSpan('notion-md.state.read-nmd', {
-          attributes: Observability.stateFileAttrs.unsafeEncode({
+        OtelSpan.unsafeWith({
+          span: Observability.ReadNmdStateSpan,
+          attributes: {
             label: path.basename(opts.path),
             operation: 'read_nmd',
             basename: path.basename(opts.path),
-          }),
+          },
         }),
       )
 
@@ -335,17 +338,19 @@ export const NmdStateStoreLive = Layer.effect(
           content,
           label: '.notion-md object',
         })
-        yield* Effect.annotateCurrentSpan(
-          Observability.objectHashAttrs.unsafeEncode({ hashPrefix: hash.slice(0, 18) }),
-        )
+        yield* OtelSpan.unsafeAnnotate({
+          attributes: Observability.objectHashAttrs,
+          value: { hashPrefix: hash.slice(0, 18) },
+        })
         return makeNmdObjectRef({ role: opts.role, hash, content })
       }).pipe(
-        Effect.withSpan('notion-md.state.write-object', {
-          attributes: Observability.objectRoleAttrs.unsafeEncode({
+        OtelSpan.unsafeWith({
+          span: Observability.WriteObjectStateSpan,
+          attributes: {
             label: opts.role,
             role: opts.role,
             basename: path.basename(opts.path),
-          }),
+          },
         }),
       )
 
@@ -376,12 +381,13 @@ export const NmdStateStoreLive = Layer.effect(
         }
         return content
       }).pipe(
-        Effect.withSpan('notion-md.state.read-object', {
-          attributes: Observability.objectRoleAttrs.unsafeEncode({
+        OtelSpan.unsafeWith({
+          span: Observability.ReadObjectStateSpan,
+          attributes: {
             label: opts.object.role,
             role: opts.object.role,
             hashPrefix: opts.object.hash.slice(0, 18),
-          }),
+          },
         }),
       )
 
