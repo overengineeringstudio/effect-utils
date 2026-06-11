@@ -1133,8 +1133,11 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
     const excludeMembers = options.excludeMembers ?? new Set()
     const scope = options.scope ?? 'direct'
 
-    // Build a map of megarepo member URLs to their locked data
-    const megarepoMembers = options.lockFile.members
+    // Excluded members are outside the active graph for this invocation:
+    // they are neither lock-sync targets nor source authorities.
+    const megarepoMembers = Object.fromEntries(
+      Object.entries(options.lockFile.members).filter(([name]) => !excludeMembers.has(name)),
+    )
 
     const memberNames = Object.keys(options.config.members).filter(
       (name) => !excludeMembers.has(name),
@@ -1166,11 +1169,15 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
 
     // Preflight: validate shared input source before any writes
     const sharedInputSource = options.config.lockSync?.sharedInputSource
+    const activeSharedInputSource =
+      sharedInputSource !== undefined && excludeMembers.has(sharedInputSource) === false
+        ? sharedInputSource
+        : undefined
     const validatedSharedInputSource =
-      sharedInputSource !== undefined
+      activeSharedInputSource !== undefined
         ? yield* validateSharedInputSource({
             megarepoRoot: options.megarepoRoot,
-            sourceMemberName: sharedInputSource,
+            sourceMemberName: activeSharedInputSource,
           })
         : undefined
 

@@ -1475,6 +1475,42 @@ describe('nested megarepo.lock sync scope', () => {
   )
 
   it.effect(
+    'should not use skipped members as nested lock-sync authorities',
+    Effect.fnUntraced(
+      function* () {
+        const { parentPath, childPath, storePath, staleNestedCommit } =
+          yield* createNestedWorkspaceFixture()
+
+        const nestedLockPath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const beforeNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(beforeNestedLockOpt)).toBe(true)
+        const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
+        expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+
+        const result = yield* runFetchApplyCommand({
+          cwd: parentPath,
+          args: ['--output', 'json', '--all', '--skip', 'shared'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(afterNestedLockOpt)).toBe(true)
+        const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
+        expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+    { timeout: 15_000 },
+  )
+
+  it.effect(
     'should not sync member megarepo.lock in --all mode when member is not a megarepo',
     Effect.fnUntraced(
       function* () {
