@@ -11,6 +11,8 @@
 
 import { type Duration, Effect, Schedule, Schema } from 'effect'
 
+import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
+
 /** Error thrown when a polling wait operation times out */
 export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()(
   'PwWaitTimeoutError',
@@ -19,6 +21,25 @@ export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()
     timeout: Schema.String,
   },
 ) {}
+
+const PwWaitSpan = OtelSpan.defineSync({
+  name: 'pw.wait.until',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    waitLabel: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.label' })),
+    pollInterval: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.pollInterval' })),
+    timeout: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.timeout' })),
+  }),
+})
+
+const PwWaitAttemptAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    attempt: Schema.Number.pipe(OtelAttr.key({ key: 'pw.wait.attempt' })),
+  }),
+)
+
+const annotateWaitAttempt = (attempt: number) =>
+  OtelSpan.unsafeAnnotate({ attributes: PwWaitAttemptAttrs, value: { attempt } })
 
 const hasTag = (error: unknown): error is { _tag: string } => {
   if (typeof error !== 'object' || error === null) return false
@@ -55,17 +76,11 @@ export const until = <TResult, TError, TContext>(args: {
   const { label, check, pollInterval, timeout, while: while_ } = args
 
   return Effect.gen(function* () {
-    yield* Effect.annotateCurrentSpan({
-      'pw.wait.label': label,
-      'pw.wait.pollInterval': String(pollInterval),
-      'pw.wait.timeout': String(timeout),
-    })
-
     let attempt = 0
 
     const checkWithTelemetry = Effect.gen(function* () {
       attempt += 1
-      yield* Effect.annotateCurrentSpan({ 'pw.wait.attempt': attempt })
+      yield* annotateWaitAttempt(attempt)
       return yield* check
     }).pipe(
       Effect.tapError((error) =>
@@ -85,5 +100,15 @@ export const until = <TResult, TError, TContext>(args: {
         onTimeout: () => new PwWaitTimeoutError({ label, timeout: String(timeout) }),
       }),
     )
-  }).pipe(Effect.withSpan('pw.wait.until'))
+  }).pipe(
+    OtelSpan.unsafeWith({
+      span: PwWaitSpan,
+      attributes: {
+        label,
+        waitLabel: label,
+        pollInterval: String(pollInterval),
+        timeout: String(timeout),
+      },
+    }),
+  )
 }

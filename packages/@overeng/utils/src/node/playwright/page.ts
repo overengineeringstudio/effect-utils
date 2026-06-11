@@ -5,14 +5,74 @@
  */
 
 import type { Page } from '@playwright/test'
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, Schema } from 'effect'
 
+import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
 import { type PwOpError, tryPw } from './op.ts'
 import { PwPage } from './tags.ts'
 
 type WaitUntil = NonNullable<Parameters<Page['goto']>[1]>['waitUntil']
 type LoadState = Parameters<Page['waitForLoadState']>[0]
 type URLMatch = Parameters<Page['waitForURL']>[0]
+
+const PwPageAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    url: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.url' }))),
+    waitUntil: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.waitUntil' }))),
+    loadState: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.loadState' }))),
+    timeoutMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.timeout.ms' }))),
+    urlMatch: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.urlMatch' }))),
+    jitterMsMin: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.jitter.msMin' }))),
+    jitterMsMax: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.jitter.msMax' }))),
+    viewportWidth: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.viewport.width' }))),
+    viewportHeight: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'pw.viewport.height' })),
+    ),
+    screenshotPath: Schema.optional(
+      Schema.String.pipe(OtelAttr.key({ key: 'pw.screenshot.path' })),
+    ),
+    screenshotFullPage: Schema.optional(
+      Schema.Boolean.pipe(OtelAttr.key({ key: 'pw.screenshot.fullPage' })),
+    ),
+  }),
+)
+
+const PwPageUrlSpan = OtelSpan.defineSync({
+  name: 'pw.page.url',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+})
+
+const PwPageIsClosedSpan = OtelSpan.defineSync({
+  name: 'pw.page.isClosed',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+})
+
+const annotatePage = (
+  value: Partial<{
+    url: string
+    waitUntil: string
+    loadState: string
+    timeoutMs: number
+    urlMatch: string
+    jitterMsMin: number
+    jitterMsMax: number
+    viewportWidth: number
+    viewportHeight: number
+    screenshotPath: string
+    screenshotFullPage: boolean
+  }>,
+) => OtelSpan.unsafeAnnotate({ attributes: PwPageAttrs, value })
+
+const urlMatchLabel = (urlMatch: URLMatch) =>
+  typeof urlMatch === 'string'
+    ? urlMatch
+    : urlMatch instanceof RegExp
+      ? urlMatch.source
+      : 'function'
 
 /**
  * Navigates to a URL.
@@ -33,9 +93,9 @@ export const goto: (args: {
         page.goto(url, waitUntil !== undefined ? { waitUntil } : {}).then(() => undefined),
     }).pipe(
       Effect.tap(() =>
-        Effect.annotateCurrentSpan({
-          'pw.url': url,
-          'pw.waitUntil': waitUntil ?? '',
+        annotatePage({
+          url,
+          waitUntil: waitUntil ?? '',
         }),
       ),
     )
@@ -53,7 +113,7 @@ export const url: Effect.Effect<string, PwOpError, PwPage> = Effect.gen(function
     op: 'pw.page.url',
     effect: () => Promise.resolve(page.url()),
   })
-}).pipe(Effect.withSpan('pw.page.url'))
+}).pipe(OtelSpan.unsafeWith({ span: PwPageUrlSpan, attributes: { label: 'url' } }))
 
 /** Waits for a specific load state. */
 export const waitForLoadState: (args: {
@@ -65,7 +125,7 @@ export const waitForLoadState: (args: {
     yield* tryPw({
       op: 'pw.page.waitForLoadState',
       effect: () => page.waitForLoadState(state),
-    }).pipe(Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.loadState': String(state) })))
+    }).pipe(Effect.tap(() => annotatePage({ loadState: String(state) })))
   }),
 )
 
@@ -100,9 +160,9 @@ export const waitForURLChange: (args: {
             .then(() => undefined),
       }).pipe(
         Effect.tap(() =>
-          Effect.annotateCurrentSpan({
-            'pw.waitUntil': waitUntil ?? '',
-            'pw.url': currentUrl,
+          annotatePage({
+            waitUntil: waitUntil ?? '',
+            url: currentUrl,
           }),
         ),
       )
@@ -136,15 +196,10 @@ export const waitForURL: (args: {
             .then(() => undefined),
       }).pipe(
         Effect.tap(() =>
-          Effect.annotateCurrentSpan({
-            'pw.waitUntil': waitUntil ?? '',
-            'pw.timeout.ms': timeoutMs ?? 0,
-            'pw.urlMatch':
-              typeof urlMatch === 'string'
-                ? urlMatch
-                : urlMatch instanceof RegExp
-                  ? urlMatch.source
-                  : 'function',
+          annotatePage({
+            waitUntil: waitUntil ?? '',
+            timeoutMs: timeoutMs ?? 0,
+            urlMatch: urlMatchLabel(urlMatch),
           }),
         ),
       )
@@ -185,7 +240,7 @@ export const waitForTimeout: (args: {
     yield* tryPw({
       op: 'pw.page.waitForTimeout',
       effect: () => page.waitForTimeout(ms),
-    }).pipe(Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.timeout.ms': ms })))
+    }).pipe(Effect.tap(() => annotatePage({ timeoutMs: ms })))
   }),
 )
 
@@ -204,21 +259,14 @@ export const jitter: (args?: {
   const msMax = args?.msMax ?? 420
   return waitForTimeout({
     ms: Math.floor(Math.random() * (msMax - msMin + 1)) + msMin,
-  }).pipe(
-    Effect.tap(() =>
-      Effect.annotateCurrentSpan({
-        'pw.jitter.msMin': msMin,
-        'pw.jitter.msMax': msMax,
-      }),
-    ),
-  )
+  }).pipe(Effect.tap(() => annotatePage({ jitterMsMin: msMin, jitterMsMax: msMax })))
 })
 
 /** Returns whether the page is already closed. */
 export const isClosed: Effect.Effect<boolean, never, PwPage> = Effect.gen(function* () {
   const page = yield* PwPage
   return page.isClosed()
-}).pipe(Effect.withSpan('pw.page.isClosed'))
+}).pipe(OtelSpan.unsafeWith({ span: PwPageIsClosedSpan, attributes: { label: 'isClosed' } }))
 
 /** Sets the page viewport size. */
 export const setViewportSize: (args: {
@@ -235,9 +283,9 @@ export const setViewportSize: (args: {
         effect: () => page.setViewportSize({ width, height }),
       }).pipe(
         Effect.tap(() =>
-          Effect.annotateCurrentSpan({
-            'pw.viewport.width': width,
-            'pw.viewport.height': height,
+          annotatePage({
+            viewportWidth: width,
+            viewportHeight: height,
           }),
         ),
       )
@@ -310,9 +358,9 @@ export const screenshot: (options?: ScreenshotOptions) => Effect.Effect<Buffer, 
         effect: () => page.screenshot(options),
       }).pipe(
         Effect.tap(() =>
-          Effect.annotateCurrentSpan({
-            'pw.screenshot.path': options?.path ?? '',
-            'pw.screenshot.fullPage': options?.fullPage ?? false,
+          annotatePage({
+            screenshotPath: options?.path ?? '',
+            screenshotFullPage: options?.fullPage ?? false,
           }),
         ),
       )

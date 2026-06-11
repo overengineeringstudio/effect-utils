@@ -5,10 +5,29 @@
  */
 
 import type { Cookie } from '@playwright/test'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
+import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
 import { type PwOpError, tryPw } from './op.ts'
 import { PwBrowserContext } from './tags.ts'
+
+const PwContextAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    cookieCount: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.cookie.count' }))),
+    cookiesUrl: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.cookies.url' }))),
+    storageStatePath: Schema.optional(
+      Schema.String.pipe(OtelAttr.key({ key: 'pw.storageState.path' })),
+    ),
+  }),
+)
+
+const annotateContext = (
+  value: Partial<{
+    cookieCount: number
+    cookiesUrl: string
+    storageStatePath: string
+  }>,
+) => OtelSpan.unsafeAnnotate({ attributes: PwContextAttrs, value })
 
 /**
  * Reads cookies from the current browser context.
@@ -28,9 +47,9 @@ export const cookies: (args: {
       effect: () => (url !== undefined ? context.cookies(url) : context.cookies()),
     }).pipe(
       Effect.tap((cs) =>
-        Effect.annotateCurrentSpan({
-          'pw.cookie.count': cs.length,
-          'pw.cookies.url':
+        annotateContext({
+          cookieCount: cs.length,
+          cookiesUrl:
             url !== undefined ? (Array.isArray(url) === true ? url.join(' | ') : url) : '',
         }),
       ),
@@ -53,7 +72,7 @@ export const storageState: (args: {
       yield* tryPw({
         op: 'pw.context.storageState',
         effect: () => context.storageState({ path }).then(() => undefined),
-      }).pipe(Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.storageState.path': path })))
+      }).pipe(Effect.tap(() => annotateContext({ storageStatePath: path })))
     }),
 )
 
@@ -70,9 +89,7 @@ export const addCookies: (args: {
       yield* tryPw({
         op: 'pw.context.addCookies',
         effect: () => context.addCookies(cookiesToAdd),
-      }).pipe(
-        Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.cookie.count': cookiesToAdd.length })),
-      )
+      }).pipe(Effect.tap(() => annotateContext({ cookieCount: cookiesToAdd.length })))
     }),
 )
 

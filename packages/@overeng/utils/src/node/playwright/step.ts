@@ -5,7 +5,22 @@
  */
 
 import { test } from '@playwright/test'
-import { Effect, Exit, Function as F } from 'effect'
+import { Effect, Exit, Function as F, Schema } from 'effect'
+
+import { OtelAttr, OtelSpan } from '../otel-attrs.ts'
+
+const PwStepSpan = (name: string) =>
+  OtelSpan.defineSync({
+    name,
+    schema: Schema.Struct({
+      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+      step: Schema.Boolean.pipe(OtelAttr.key({ key: 'pw.step' })),
+      stepName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.step.name' })),
+      parentSpanTag: Schema.optional(
+        Schema.String.pipe(OtelAttr.key({ key: 'pw.step.parentSpan._tag' })),
+      ),
+    }),
+  })
 
 /**
  * Runs an Effect inside a Playwright `test.step(...)` boundary.
@@ -39,13 +54,13 @@ export const step: {
       const run =
         parentSpan._tag === 'Some' ? self.pipe(Effect.withParentSpan(parentSpan.value)) : self
       const traced = run.pipe(
-        Effect.withSpan(name, {
+        OtelSpan.unsafeWith({
+          span: PwStepSpan(name),
           attributes: {
-            'pw.step': true,
-            'pw.step.name': name,
-            ...(parentSpan._tag === 'Some'
-              ? { 'pw.step.parentSpan._tag': parentSpan.value._tag }
-              : {}),
+            label: name,
+            step: true,
+            stepName: name,
+            ...(parentSpan._tag === 'Some' ? { parentSpanTag: parentSpan.value._tag } : {}),
           },
         }),
       )
