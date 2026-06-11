@@ -9,7 +9,7 @@
  *
  * Requires a `CommandExecutor` + `FileSystem` in context (e.g.
  * `NodeContext.layer` from `@effect/platform-node`) and the `otelite` binary on
- * `PATH`.
+ * `PATH`, or an absolute binary path in `OTELITE_BIN`.
  */
 export { Otelite } from './Otelite.ts'
 export type { CaptureHandle, CaptureOptions, RunOptions, Signal } from './Otelite.ts'

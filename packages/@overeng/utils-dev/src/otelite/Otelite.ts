@@ -142,8 +142,9 @@ const summaryKind = {
  * tagged errors. The CLI's JSON output is the single source of truth — this
  * service never reimplements capture/inspect logic.
  *
- * The `otelite` binary is resolved from `PATH`. Tests put the nix-built binary
- * on `PATH` (see the package README).
+ * The `otelite` binary is resolved from `OTELITE_BIN` first, then `PATH`.
+ * Tests normally get the nix-built binary from the devenv `PATH`; raw-shell
+ * runs can set `OTELITE_BIN="$(nix build --no-link --print-out-paths .#otelite)/bin/otelite"`.
  */
 export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/otelite/Otelite', {
   accessors: true,
@@ -151,7 +152,7 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
     const executor = yield* CommandExecutor.CommandExecutor
     const fs = yield* FileSystem.FileSystem
 
-    const binary = 'otelite'
+    const binary = process.env.OTELITE_BIN ?? 'otelite'
 
     /**
      * Run otelite and collect its stdout + exit code. Spawn failures become

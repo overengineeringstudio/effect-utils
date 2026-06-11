@@ -16,6 +16,16 @@ nix run github:overengineeringstudio/effect-utils#otelite -- --version
 # or in a flake: inputs.effect-utils.packages.<system>.otelite
 ```
 
+Inside this repo's `devenv` shell, `otelite` is already on `PATH` for
+`@overeng/utils-dev/otelite` tests. From a plain shell, either run the app
+directly with `nix run .#otelite -- ...`, prepend the built package to `PATH`,
+or point the typed wrapper at it explicitly:
+
+```bash
+export OTELITE_BIN="$(nix build --no-link --print-out-paths .#otelite)/bin/otelite"
+CI=1 pnpm --dir packages/@overeng/utils-dev exec vitest run --config vitest.config.ts src/otelite/Otelite.test.ts
+```
+
 ## Usage
 
 ```bash
