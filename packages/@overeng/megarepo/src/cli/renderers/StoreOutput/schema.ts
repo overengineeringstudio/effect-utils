@@ -29,14 +29,44 @@ export const StoreFetchResult = Schema.Struct({
 /** Inferred type for a store fetch result. */
 export type StoreFetchResult = Schema.Schema.Type<typeof StoreFetchResult>
 
+/**
+ * Status of a single GC result.
+ *
+ * `removed`/`skipped_dirty`/`skipped_in_use`/`error` are the legacy
+ * commit-worktree + `--all` outcomes. The cold named-branch path (decisions
+ * 0001–0010) adds three more: `archived` (moved to `.archive/`, recoverable),
+ * `reaped` (an archive past retention hard-deleted), and `kept` (a cold named
+ * worktree deliberately left in place, e.g. live/not-stale/lossless/grace).
+ */
+export const StoreGcResultStatus = Schema.Literal(
+  'removed',
+  'skipped_dirty',
+  'skipped_in_use',
+  'error',
+  'archived',
+  'reaped',
+  'kept',
+)
+
+/** Inferred type for a GC result status. */
+export type StoreGcResultStatus = Schema.Schema.Type<typeof StoreGcResultStatus>
+
 /** Schema for the result of garbage-collecting a single worktree. */
 export const StoreGcResult = Schema.Struct({
   repo: Schema.String,
   ref: Schema.String,
   refType: Schema.Literal('heads', 'tags', 'commits'),
   path: Schema.String,
-  status: Schema.Literal('removed', 'skipped_dirty', 'skipped_in_use', 'error'),
+  status: StoreGcResultStatus,
   message: Schema.optional(Schema.String),
+  /**
+   * Why a cold named worktree was kept/archived/reaped (e.g. `live`,
+   * `not-stale`, `unrecoverable-local-work`, `merged`, `closed`, `ref_mismatch`).
+   * Distinct from `message` (free-form detail); `reason` is the stable tag.
+   */
+  reason: Schema.optional(Schema.String),
+  /** For `archived`: the `.archive/` location the worktree was moved to (recovery hint). */
+  recoverPath: Schema.optional(Schema.String),
 })
 
 /** Inferred type for a store GC result. */

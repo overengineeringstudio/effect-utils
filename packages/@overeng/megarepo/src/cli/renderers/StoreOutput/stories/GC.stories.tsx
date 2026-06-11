@@ -692,3 +692,36 @@ const LargeCleanupRender = (args: StoryArgs) => {
 export const LargeCleanup: Story = {
   render: LargeCleanupRender,
 }
+
+const ColdReclamationRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fixtures.exampleColdGcResults,
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
+export const ColdReclamation: Story = {
+  render: ColdReclamationRender,
+}
