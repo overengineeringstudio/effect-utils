@@ -36,3 +36,24 @@ export {
 } from './schema.ts'
 export { OteliteCapture, makeOteliteCaptureLayer, flushCaptureSpans } from './vitest-bridge.ts'
 export type { OteliteCaptureLayerOptions } from './vitest-bridge.ts'
+export {
+  captureEnvTrace,
+  captureInProcessTrace,
+  captureTest,
+  OteliteTestHarness,
+} from './test-harness.ts'
+export type {
+  OteliteEnvOptions,
+  OteliteTestHandle,
+  OteliteTestHarnessOptions,
+  OteliteTraceOptions,
+  TraceInspectOptions,
+} from './test-harness.ts'
+export { attr, expectTrace, spanLabel, TraceExpect, TraceExpectError } from './trace-expect.ts'
+export type {
+  AttrExpectations,
+  AttrMatcher,
+  AttrPredicate,
+  AttrPrimitive,
+  SpanSelector,
+} from './trace-expect.ts'
