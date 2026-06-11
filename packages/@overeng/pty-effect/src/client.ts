@@ -57,7 +57,7 @@ const PtyTags = Schema.Record({ key: Schema.String, value: Schema.String })
 const PtyClientNameAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    name: PtyName.pipe(OtelAttr.key({ key: 'pty.name' })),
+    name: Schema.String.pipe(OtelAttr.key({ key: 'pty.name' })),
   }),
 )
 
@@ -70,12 +70,12 @@ const PtyClientOperationAttrs = OtelAttrs.defineSync(
 const PtyClientWaitAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    name: PtyName.pipe(OtelAttr.key({ key: 'pty.name' })),
+    name: Schema.String.pipe(OtelAttr.key({ key: 'pty.name' })),
     needle: Schema.String.pipe(OtelAttr.key({ key: 'pty.wait.needle' })),
   }),
 )
 
-const withPtyNameSpan = (spanName: string, name: PtyName) =>
+const withPtyNameSpan = (spanName: string, name: string) =>
   OtelSpan.unsafeWith({
     span: { name: spanName, attributes: PtyClientNameAttrs },
     attributes: { label: name, name },
