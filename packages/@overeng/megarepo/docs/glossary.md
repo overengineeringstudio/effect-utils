@@ -35,9 +35,9 @@ state has been captured (archived) first. Distinct from staleness — the floor 
 about safety, staleness about timing.
 
 **Staleness**:
-Positive evidence that a worktree's work is done. Primary signal: the branch's
-GitHub **PR is merged**. Absence of merged evidence is not staleness — it means
-"keep". Not derivable from `git` ancestry here because the repos squash-merge.
+Positive evidence that a worktree's work is done. Signal: the branch's GitHub PR
+is **merged or closed** (an OPEN PR or no PR is not staleness — it means "keep").
+Not derivable from `git` ancestry here because the repos squash-merge.
 
 **Grace window**:
 The minimum duration a worktree must be continuously absent from all live sets
