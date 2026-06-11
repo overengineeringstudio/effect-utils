@@ -143,6 +143,39 @@ describe('OtelAttrs', () => {
     })
   })
 
+  it('only allows redacted-safe policies for redacted values', async () => {
+    await expect(
+      Effect.runPromise(
+        Effect.either(
+          OtelAttrs.define(
+            Schema.Struct({
+              secret: Schema.Redacted(Schema.String).pipe(
+                OtelAttr.key({ key: 'secret', encode: 'json' }),
+              ),
+            }),
+          ),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      _tag: 'Left',
+      left: expect.any(OtelAttrPlanError),
+    })
+
+    const attrs = await Effect.runPromise(
+      OtelAttrs.define(
+        Schema.Struct({
+          secret: Schema.Redacted(Schema.String).pipe(
+            OtelAttr.key({ key: 'secret', encode: 'drop' }),
+          ),
+        }),
+      ),
+    )
+
+    await expect(
+      Effect.runPromise(attrs.encode({ secret: Redacted.make('do-not-leak') })),
+    ).resolves.toEqual({})
+  })
+
   it('surfaces encoding errors on the error channel', async () => {
     const Attrs = Schema.Struct({
       count: Schema.Number.pipe(OtelAttr.key({ key: 'count' })),
@@ -305,6 +338,17 @@ describe('OtelSpan', () => {
     expect(() => OtelSpan.define({ name: 'test.no-label', attributes: WithoutLabel })).toThrow(
       OtelAttrPlanError,
     )
+
+    const AccidentalLabel = await Effect.runPromise(
+      OtelAttrs.define(
+        Schema.Struct({
+          value: Schema.String.pipe(OtelAttr.key({ key: 'span.label' })),
+        }),
+      ),
+    )
+    expect(() =>
+      OtelSpan.define({ name: 'test.accidental-label', attributes: AccidentalLabel }),
+    ).toThrow(OtelAttrPlanError)
 
     const WithOptionalLabel = await Effect.runPromise(
       OtelAttrs.define(

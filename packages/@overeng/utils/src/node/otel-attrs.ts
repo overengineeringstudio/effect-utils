@@ -56,6 +56,7 @@ type FieldEncoder = (
 interface FieldPlan {
   readonly sourceKey: PropertyKey
   readonly attrKey: string
+  readonly role?: OtelAttrMetadata['role']
   readonly optional: boolean
   readonly encode: FieldEncoder
 }
@@ -64,6 +65,7 @@ interface FieldPlan {
 export interface OtelAttrs<S extends Schema.Schema.AnyNoContext> {
   readonly schema: S
   readonly keys: ReadonlySet<string>
+  readonly hasSpanLabel: boolean
   readonly encode: (
     value: Schema.Schema.Type<S>,
   ) => Effect.Effect<OtelAttributeMap, OtelAttrEncodeError>
@@ -402,6 +404,19 @@ const compileField = (
   const attrKey = metadata?.key ?? String(field.name)
   const fieldSchema = Schema.make<unknown, unknown, never>(field.type)
   return Effect.gen(function* () {
+    const tag = typeConstructorTagDeep(field.type)
+    if (
+      tag === 'effect/Redacted' &&
+      metadata?.encode !== undefined &&
+      metadata.encode !== 'auto' &&
+      metadata.encode !== 'redacted' &&
+      metadata.encode !== 'drop'
+    ) {
+      return yield* unsupported({
+        path: [field.name],
+        message: 'Redacted attributes only support OtelAttr.encode("redacted") or "drop"',
+      })
+    }
     const encode =
       metadata?.encode === undefined || metadata.encode === 'auto'
         ? yield* compileAutoEncoder({ attrKey, path: [field.name], schema: fieldSchema })
@@ -409,6 +424,7 @@ const compileField = (
     return {
       sourceKey: field.name,
       attrKey,
+      ...(metadata?.role === undefined ? {} : { role: metadata.role }),
       optional: field.isOptional || isUndefinedAst(field.type),
       encode,
     }
@@ -468,6 +484,9 @@ export const OtelAttrs = {
       return {
         schema,
         keys: new Set(plan.map((field) => field.attrKey)),
+        hasSpanLabel: plan.some(
+          (field) => field.attrKey === 'span.label' && field.role === 'span.label',
+        ),
         encode,
         unsafeEncode: (value) => Effect.runSync(encode(value).pipe(Effect.orDie)),
       }
@@ -513,10 +532,10 @@ export const OtelSpan = {
     readonly attributes: OtelAttrs<S>
     readonly root?: boolean
   }): OtelSpanDefinition<S> {
-    if (options.attributes.keys.has('span.label') === false) {
+    if (options.attributes.hasSpanLabel !== true) {
       throw new OtelAttrPlanError({
         path: ['span.label'],
-        message: 'OtelSpan.define requires a span.label attribute',
+        message: 'OtelSpan.define requires an OtelAttr.spanLabel() attribute',
       })
     }
     return {
