@@ -629,7 +629,7 @@ const coldReclaimRepo = ({
             if (isPathProtected({ liveSet: freshLiveSet, path: worktree.path }) === true) {
               return { _tag: 'kept-live' as const }
             }
-            const dest = yield* archiveWorktree({
+            const outcome = yield* archiveWorktree({
               repoRoot: repoFullPath,
               bareRepoPath,
               worktreePath: worktree.path,
@@ -638,7 +638,11 @@ const coldReclaimRepo = ({
               reason: decision.reason,
               now,
             })
-            return { _tag: 'archived' as const, recoverPath: dest }
+            return {
+              _tag: 'archived' as const,
+              recoverPath: outcome.destPath,
+              warnings: outcome.warnings,
+            }
           }),
         )
         .pipe(
@@ -653,7 +657,9 @@ const coldReclaimRepo = ({
       if (archiveOutcome._tag === 'kept-live') {
         results.push(coldResult({ target, status: 'kept', reason: 'live' }))
       } else if (archiveOutcome._tag === 'error') {
-        // Archive failed mid-flight: the original worktree is left intact.
+        // Only a PRE-move failure reaches here (post-move steps are best-effort
+        // and reported as warnings, never errors), so the original worktree is
+        // genuinely left intact.
         results.push(
           coldResult({
             target,
@@ -663,12 +669,17 @@ const coldReclaimRepo = ({
           }),
         )
       } else {
+        // The move succeeded: report `archived` + the real `.archive/` recovery
+        // path even if a best-effort post-move step (branch free / README) failed.
         results.push(
           coldResult({
             target,
             status: 'archived',
             reason: decision.reason,
             recoverPath: archiveOutcome.recoverPath,
+            ...(archiveOutcome.warnings.length > 0
+              ? { message: archiveOutcome.warnings.join('; ') }
+              : {}),
           }),
         )
       }
