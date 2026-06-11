@@ -35,7 +35,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { Restate } from '../schema/Annotations.ts'
 import { BoundaryAttemptAttrs, BoundaryOutcomeAttrs, RestateMetrics } from './contract.ts'
-import { annotateSpanFrom, emitDurableStep, emitInvocationMetrics } from './Metrics.ts'
+import {
+  annotateSpanFrom,
+  emitAttempt,
+  emitAwakeableWait,
+  emitDurableStep,
+  emitInvocationMetrics,
+  emitPollLoopCycle,
+} from './Metrics.ts'
 import { RestateOtel } from './otel.ts'
 
 /* ── span-attribute test scaffolding (mirrors otel.test.ts) ────────────────── */
@@ -105,6 +112,26 @@ describe('schema-first observability contracts', () => {
       handler: 'bump',
       outcome: 'success',
     })
+  })
+
+  it('declares every baseline metric through the schema-first metric contract', () => {
+    const contracts = [
+      RestateMetrics.invocationsTotal,
+      RestateMetrics.invocationDurationMs,
+      RestateMetrics.attemptsTotal,
+      RestateMetrics.durableStepsTotal,
+      RestateMetrics.awakeableWaitMs,
+      RestateMetrics.pollLoopCyclesTotal,
+    ]
+    expect(contracts.map((contract) => contract.name)).toEqual([
+      'restate_invocations_total',
+      'restate_invocation_duration_ms',
+      'restate_attempts_total',
+      'restate_durable_steps_total',
+      'restate_awakeable_wait_ms',
+      'restate_poll_loop_cycles_total',
+    ])
+    expect(contracts.every((contract) => (contract.description ?? '').length > 0)).toBe(true)
   })
 })
 
@@ -314,6 +341,10 @@ describe('replay-aware baseline metrics', () => {
       const ctx = fakeCtx(true)
       await Effect.runPromise(
         Effect.all([
+          emitAttempt(ctx, {
+            service: 'Counter',
+            handler: 'bump',
+          }),
           emitInvocationMetrics(ctx, {
             service: 'Counter',
             handler: 'bump',
@@ -321,6 +352,8 @@ describe('replay-aware baseline metrics', () => {
             durationMs: 12,
           }),
           emitDurableStep(ctx, 'charge'),
+          emitAwakeableWait(ctx, 42),
+          emitPollLoopCycle(ctx, { name: 'invoice-poller', outcome: 'ok' }),
         ]),
       )
       return reader.collect()
@@ -337,6 +370,22 @@ describe('replay-aware baseline metrics', () => {
 
     const step = pointFor(metrics, 'restate_durable_steps_total', { step: 'charge' })
     expect(step?.value).toBe(1)
+
+    const attempt = pointFor(metrics, 'restate_attempts_total', {
+      service: 'Counter',
+      handler: 'bump',
+    })
+    expect(attempt?.value).toBe(1)
+
+    const awakeable = pointFor(metrics, 'restate_awakeable_wait_ms', {})
+    expect(awakeable).toBeDefined()
+    expect((awakeable!.value as { count: number }).count).toBeGreaterThanOrEqual(1)
+
+    const pollLoop = pointFor(metrics, 'restate_poll_loop_cycles_total', {
+      name: 'invoice-poller',
+      outcome: 'ok',
+    })
+    expect(pollLoop?.value).toBe(1)
 
     /* The duration histogram recorded one sample for this label set. */
     const duration = pointFor(metrics, 'restate_invocation_duration_ms', {
