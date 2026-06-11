@@ -46,6 +46,7 @@ import {
   MemberNotSyncedError,
   NoLockFileError,
 } from '../errors.ts'
+import * as Observability from '../observability.ts'
 import { PinApp, PinView } from '../renderers/PinOutput/mod.ts'
 
 /**
@@ -461,7 +462,14 @@ export const pinCommand = Cli.Command.make(
       { view: React.createElement(PinView, { stateAtom: PinApp.stateAtom }) },
     ).pipe(
       Effect.provide(Layer.merge(outputModeLayer(output), StoreLayer)),
-      Effect.withSpan('megarepo/pin'),
+      Observability.withCommandSpan({
+        name: 'megarepo/pin',
+        command: 'pin',
+        label: member,
+        output,
+        dryRun,
+        member,
+      }),
     ),
 ).pipe(Cli.Command.withDescription('Pin a member to a specific ref'))
 
@@ -635,6 +643,12 @@ export const unpinCommand = Cli.Command.make(
       { view: React.createElement(PinView, { stateAtom: PinApp.stateAtom }) },
     ).pipe(
       Effect.provide(Layer.merge(outputModeLayer(output), StoreLayer)),
-      Effect.withSpan('megarepo/unpin'),
+      Observability.withCommandSpan({
+        name: 'megarepo/unpin',
+        command: 'unpin',
+        label: member,
+        output,
+        member,
+      }),
     ),
 ).pipe(Cli.Command.withDescription('Unpin a member to allow updates'))

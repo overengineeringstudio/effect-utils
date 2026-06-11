@@ -1,6 +1,8 @@
 import { Session as UpstreamSession } from '@myobie/pty/testing'
-import { Effect, Option, Predicate, Schedule, Stream, pipe } from 'effect'
+import { Effect, Option, Predicate, Schedule, Schema, Stream, pipe } from 'effect'
 import type { Scope } from 'effect'
+
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
 
 import { PtyError } from './PtyError.ts'
 import type { Key } from './PtyKey.ts'
@@ -60,6 +62,13 @@ export interface PtySession {
 
 /** Default polling schedule for `waitFor*` (50ms fixed). */
 export const defaultPollSchedule: Schedule.Schedule<unknown> = Schedule.spaced('50 millis')
+
+const PtySessionMakeAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    mode: Schema.Literal('Spawn', 'Server').pipe(OtelAttr.key({ key: 'pty.session.mode' })),
+  }),
+)
 
 interface WrapSyncOpts<A> {
   readonly method: string
@@ -273,4 +282,9 @@ export const make = (spec: PtySpec): Effect.Effect<PtySession, PtyError, Scope.S
       waitForAbsent,
     }
     return session
-  }).pipe(Effect.withSpan('pty-session.make', { attributes: { 'span.label': spec._tag } }))
+  }).pipe(
+    OtelSpan.unsafeWith({
+      span: { name: 'pty-session.make', attributes: PtySessionMakeAttrs },
+      attributes: { label: spec._tag, mode: spec._tag },
+    }),
+  )

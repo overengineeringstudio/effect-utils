@@ -24,6 +24,7 @@ import {
 } from '../../../lib/config.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { NotInMegarepoError } from '../../errors.ts'
+import * as Observability from '../../observability.ts'
 import { PushRefsApp, PushRefsView } from '../../renderers/PushRefsOutput/mod.ts'
 
 // =============================================================================
@@ -71,6 +72,14 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
     only: Option.Option<string>
   }) =>
     Effect.gen(function* () {
+      yield* Effect.annotateCurrentSpan(
+        Observability.commandAttrs.unsafeEncode({
+          label: options.nestedName,
+          command: 'config push-refs nested',
+          member: options.nestedName,
+          dryRun: options.dryRun,
+        }),
+      )
       const configPath = yield* findConfigPath(options.nestedRoot)
       if (configPath === undefined) return undefined
 
@@ -247,7 +256,17 @@ export const pushRefsCommand = Cli.Command.make(
           }
         }),
       { view: React.createElement(PushRefsView, { stateAtom: PushRefsApp.stateAtom }) },
-    ).pipe(Effect.provide(outputModeLayer(output)), Effect.withSpan('megarepo/config/push-refs')),
+    ).pipe(
+      Effect.provide(outputModeLayer(output)),
+      Observability.withCommandSpan({
+        name: 'megarepo/config/push-refs',
+        command: 'config push-refs',
+        label: all === true ? 'push-refs-all' : 'push-refs',
+        output,
+        all,
+        dryRun,
+      }),
+    ),
 ).pipe(
   Cli.Command.withDescription(
     'Propagate member refs from this megarepo to nested megarepo configs',

@@ -59,6 +59,7 @@ import {
   StaleLockFileError,
   InvalidOptionsError,
 } from '../errors.ts'
+import * as Observability from '../observability.ts'
 import {
   SyncApp,
   SyncView,
@@ -522,8 +523,13 @@ export const syncMegarepo = <R = never>({
       lockSyncResults: nixLockResult,
     } satisfies MegarepoSyncResult
   }).pipe(
-    Effect.withSpan('megarepo/sync', {
-      attributes: { 'span.label': megarepoRoot, root: megarepoRoot, mode: options.mode, depth },
+    Observability.withSyncSpan({
+      megarepoRoot,
+      mode: options.mode,
+      depth,
+      dryRun: options.dryRun,
+      all: options.all,
+      force: options.force,
     }),
   )
 

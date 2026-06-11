@@ -33,6 +33,7 @@ import {
   type WritablePageCover,
   type WritablePageIcon,
 } from './model.ts'
+import * as Observability from './observability.ts'
 import {
   NmdStateStore,
   readBaseSnapshot,
@@ -653,11 +654,7 @@ export const pullPage = (
     })
   }).pipe(
     Effect.withSpan('notion-md.pull-page', {
-      attributes: {
-        'span.label': opts.pageId.slice(0, 8),
-        'notion_md.page_id': opts.pageId,
-        'notion_md.path.basename': basename(opts.outPath),
-      },
+      attributes: Observability.pagePath({ pageId: opts.pageId, path: opts.outPath }),
     }),
   )
 
@@ -699,7 +696,7 @@ const establishSidecarFromRemote = (opts: {
     })
   }).pipe(
     Effect.withSpan('notion-md.establish-sidecar', {
-      attributes: { 'span.label': opts.pageId.slice(0, 8), 'notion_md.page_id': opts.pageId },
+      attributes: Observability.page(opts.pageId),
     }),
   )
 
@@ -894,22 +891,21 @@ export const statusPage = (
     return statusFromSnapshots({ path: opts.path, local, remote })
   }).pipe(
     Effect.tap((status) =>
-      Effect.annotateCurrentSpan({
-        'notion_md.page_id': status.pageId,
-        'notion_md.status.local_changed': status.localChanged,
-        'notion_md.status.local_page_metadata_changed': status.localPageMetadataChanged,
-        'notion_md.status.local_properties_changed': status.localPropertiesChanged,
-        'notion_md.status.remote_changed': status.remoteChanged,
-        'notion_md.status.remote_body_changed': status.remoteBodyChanged,
-        'notion_md.status.remote_page_metadata_changed': status.remotePageMetadataChanged,
-        'notion_md.status.unknown_block_count': status.unresolvedUnknownBlocks.length,
-      }),
+      Effect.annotateCurrentSpan(
+        Observability.statusAttrs.unsafeEncode({
+          pageId: status.pageId,
+          localChanged: status.localChanged,
+          localPageMetadataChanged: status.localPageMetadataChanged,
+          localPropertiesChanged: status.localPropertiesChanged,
+          remoteChanged: status.remoteChanged,
+          remoteBodyChanged: status.remoteBodyChanged,
+          remotePageMetadataChanged: status.remotePageMetadataChanged,
+          unknownBlockCount: status.unresolvedUnknownBlocks.length,
+        }),
+      ),
     ),
     Effect.withSpan('notion-md.status-page', {
-      attributes: {
-        'span.label': basename(opts.path),
-        'notion_md.path.basename': basename(opts.path),
-      },
+      attributes: Observability.path(opts.path),
     }),
   )
 
@@ -1337,18 +1333,20 @@ export const pushPageWithPolicy = (
     })
   }).pipe(
     Effect.tap((result) =>
-      Effect.annotateCurrentSpan({
-        'notion_md.page_id': result.pageId,
-        'notion_md.push.pushed': result.pushed,
-      }),
+      Effect.annotateCurrentSpan(
+        Observability.pushResultAttrs.unsafeEncode({
+          pageId: result.pageId,
+          pushed: result.pushed,
+        }),
+      ),
     ),
     Effect.withSpan('notion-md.push-page', {
-      attributes: {
-        'span.label': basename(opts.path),
-        'notion_md.path.basename': basename(opts.path),
-        'notion_md.push.force': opts.force === true,
-        'notion_md.push.allow_delete_unknown_blocks': opts.allowDeletingUnknownBlocks === true,
-      },
+      attributes: Observability.pushSpanAttrs.unsafeEncode({
+        label: basename(opts.path),
+        basename: basename(opts.path),
+        force: opts.force === true,
+        allowDeleteUnknownBlocks: opts.allowDeletingUnknownBlocks === true,
+      }),
     }),
   )
 
@@ -1399,15 +1397,14 @@ export const syncPage = (
     } as const
   }).pipe(
     Effect.tap((result) =>
-      Effect.annotateCurrentSpan({
-        'notion_md.page_id': result.pageId,
-        'notion_md.sync.result': result._tag,
-      }),
+      Effect.annotateCurrentSpan(
+        Observability.syncResultAttrs.unsafeEncode({
+          pageId: result.pageId,
+          result: result._tag,
+        }),
+      ),
     ),
     Effect.withSpan('notion-md.sync-page', {
-      attributes: {
-        'span.label': basename(opts.path),
-        'notion_md.path.basename': basename(opts.path),
-      },
+      attributes: Observability.path(opts.path),
     }),
   )

@@ -6,6 +6,8 @@
 
 import { Effect, Schema } from 'effect'
 
+import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
+
 /**
  * Canonical error type for Playwright promise bridging.
  *
@@ -18,6 +20,31 @@ export class PwOpError extends Schema.TaggedError<PwOpError>()('PwOpError', {
   /** Underlying Playwright/Node defect. */
   cause: Schema.Defect,
 }) {}
+
+const PwOpAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    op: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.op' })),
+  }),
+)
+
+const PwTryAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    op: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.try.op' })),
+  }),
+)
+
+const PwExpectAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    assertion: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.expect.assertion' })),
+  }),
+)
+
+const PwOpSpan = (op: string) =>
+  OtelSpan.define({
+    name: op,
+    attributes: PwOpAttrs,
+  })
 
 /**
  * Internal helper to wrap Playwright promises into Effects.
@@ -37,7 +64,7 @@ export const tryPw = <TA>({
   Effect.tryPromise({
     try: effect,
     catch: (cause) => new PwOpError({ op, cause }),
-  }).pipe(Effect.withSpan(op, { attributes: { 'pw.op': op } }))
+  }).pipe(OtelSpan.unsafeWith({ span: PwOpSpan(op), attributes: { label: op, op } }))
 
 /**
  * Generic fallback for wrapping any Playwright promise into an Effect.
@@ -61,7 +88,7 @@ export const try_: <A>(opts: {
   effect: () => PromiseLike<A>
 }) => Effect.Effect<A, PwOpError> = ({ op, effect }) =>
   tryPw({ op: `pw.try.${op}`, effect }).pipe(
-    Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.try.op': op })),
+    Effect.tap(() => OtelSpan.unsafeAnnotate({ attributes: PwTryAttrs, value: { op } })),
   )
 
 /**
@@ -80,5 +107,5 @@ export const expect_: <A>(opts: {
   expectPromise: PromiseLike<A>
 }) => Effect.Effect<A, PwOpError> = ({ assertion, expectPromise }) =>
   tryPw({ op: `pw.expect.${assertion}`, effect: () => expectPromise }).pipe(
-    Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.expect.assertion': assertion })),
+    Effect.tap(() => OtelSpan.unsafeAnnotate({ attributes: PwExpectAttrs, value: { assertion } })),
   )

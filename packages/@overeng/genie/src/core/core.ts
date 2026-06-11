@@ -21,6 +21,7 @@ import {
   type LoadedGenieFile,
   isTdzError,
 } from './generation.ts'
+import * as Observability from './observability.ts'
 import type { GenieFileStatus, GenieSummary } from './schema.ts'
 import type { GenerateSuccess } from './types.ts'
 import { runGenieValidation } from './validation.ts'
@@ -40,6 +41,7 @@ export const resolveOxfmtConfigPath = Effect.fn('resolveOxfmtConfigPath')(functi
   explicitPath: Option.Option<string>
   cwd: string
 }) {
+  yield* Observability.annotatePath({ label: 'oxfmt', path: cwd })
   if (Option.isSome(explicitPath) === true) return explicitPath
   const fs = yield* FileSystem.FileSystem
   for (const conventionPath of OXFMT_CONFIG_CONVENTION_PATHS) {
@@ -95,6 +97,7 @@ export type GenieGenerateResult = {
 
 /** Discover genie files and assert no duplicate targets. */
 const discoverAndValidate = Effect.fn('genie/discoverAndValidate')(function* (cwd: string) {
+  yield* Observability.annotatePath({ label: 'discover', path: cwd })
   const genieFiles = yield* findGenieFiles(cwd)
 
   const targetCounts = new Map<string, number>()
@@ -139,6 +142,7 @@ const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* ({
   genieFiles?: ReadonlyArray<string>
   preloadedFiles?: ReadonlyArray<LoadedGenieFile>
 }) {
+  yield* Observability.annotatePath({ label: 'validate', path: cwd })
   const validationResult = yield* runGenieValidation({
     cwd,
     ...(genieFiles !== undefined ? { genieFiles } : {}),
@@ -332,7 +336,14 @@ export const generateAll = ({
 
     yield* emit({ _tag: 'Complete', summary })
     return { summary, files: successes }
-  }).pipe(Effect.withSpan('genie/generateAll'))
+  }).pipe(
+    Observability.withCommandSpan({
+      label: dryRun === true ? 'dry-run' : readOnly === true ? 'generate' : 'generate-writable',
+      cwd,
+      readOnly,
+      dryRun,
+    }),
+  )
 
 /** Check that all generated files are up to date. */
 export const checkAll = ({
@@ -352,6 +363,13 @@ export const checkAll = ({
           : os.cpus().length,
         12,
       ),
+    )
+    yield* Effect.annotateCurrentSpan(
+      Observability.commandSpan.attributes.unsafeEncode({
+        label: 'check',
+        cwd,
+        concurrency: checkConcurrency,
+      }),
     )
 
     const genieFiles = yield* discoverAndValidate(cwd)
@@ -397,6 +415,14 @@ export const checkAll = ({
       path: string
       result: FileCheckResult
     }) {
+      yield* Effect.annotateCurrentSpan(
+        Observability.fileSpan.attributes.unsafeEncode({
+          label: Observability.relativePath({ cwd, filePath }),
+          cwd,
+          genieFilePath: filePath,
+          targetFilePath: filePath.replace('.genie.ts', ''),
+        }),
+      )
       yield* emit({
         _tag: 'FileCompleted',
         path: filePath,
@@ -546,4 +572,9 @@ export const checkAll = ({
       failed: 0,
     }
     yield* emit({ _tag: 'Complete', summary })
-  }).pipe(Effect.withSpan('genie/checkAll'))
+  }).pipe(
+    Observability.withCommandSpan({
+      label: 'check',
+      cwd,
+    }),
+  )

@@ -45,6 +45,7 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/effect-react",
+      "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

@@ -591,6 +591,9 @@ importers:
       '@overeng/kdl-effect':
         specifier: workspace:^
         version: link:../kdl-effect
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       '@overeng/tui-react':
         specifier: workspace:^
         version: link:../tui-react
@@ -721,6 +724,9 @@ importers:
       '@overeng/notion-md':
         specifier: workspace:^
         version: link:../notion-md
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       '@overeng/tui-core':
         specifier: workspace:^
         version: link:../tui-core
@@ -818,6 +824,9 @@ importers:
       '@overeng/notion-md':
         specifier: workspace:^
         version: link:../notion-md
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       '@overeng/tui-react':
         specifier: workspace:^
         version: link:../tui-react
@@ -998,6 +1007,9 @@ importers:
       '@overeng/notion-effect-schema':
         specifier: workspace:^
         version: link:../notion-effect-schema
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -1131,6 +1143,9 @@ importers:
       '@overeng/notion-effect-schema':
         specifier: workspace:^
         version: link:../notion-effect-schema
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       '@playwright/test':
         specifier: 1.59.1
         version: 1.59.1
@@ -1196,6 +1211,24 @@ importers:
         specifier: 7.3.1
         version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
+  packages/@overeng/otel-contract:
+    devDependencies:
+      '@overeng/utils-dev':
+        specifier: workspace:^
+        version: link:../utils-dev
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      effect:
+        specifier: 3.21.2
+        version: 3.21.2
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
+
   packages/@overeng/oxc-config:
     dependencies:
       eslint-plugin-storybook:
@@ -1232,6 +1265,9 @@ importers:
       '@myobie/pty':
         specifier: 0.9.0
         version: 0.9.0
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
@@ -1351,6 +1387,9 @@ importers:
       '@effect/workflow':
         specifier: ^0.18.0
         version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       '@playwright/test':
         specifier: ^1.59.1
         version: 1.59.1
@@ -1666,6 +1705,9 @@ importers:
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       effect:
         specifier: 3.21.2
         version: 3.21.2

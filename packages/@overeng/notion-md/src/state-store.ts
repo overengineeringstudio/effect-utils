@@ -19,6 +19,7 @@ import {
 
 import { NmdFileSystemError, NmdObjectStoreError } from './errors.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
+import * as Observability from './observability.ts'
 
 const compareStrings = new Intl.Collator().compare
 
@@ -292,11 +293,11 @@ export const NmdStateStoreLive = Layer.effect(
           }),
         ),
         Effect.withSpan(`notion-md.state.${opts.operation}`, {
-          attributes: {
-            'span.label': path.basename(opts.path),
-            'notion_md.state.operation': opts.operation,
-            'notion_md.path.basename': path.basename(opts.path),
-          },
+          attributes: Observability.stateFileAttrs.unsafeEncode({
+            label: path.basename(opts.path),
+            operation: opts.operation,
+            basename: path.basename(opts.path),
+          }),
         }),
       )
 
@@ -311,11 +312,11 @@ export const NmdStateStoreLive = Layer.effect(
           }),
         ),
         Effect.withSpan('notion-md.state.read-nmd', {
-          attributes: {
-            'span.label': path.basename(opts.path),
-            'notion_md.state.operation': 'read_nmd',
-            'notion_md.path.basename': path.basename(opts.path),
-          },
+          attributes: Observability.stateFileAttrs.unsafeEncode({
+            label: path.basename(opts.path),
+            operation: 'read_nmd',
+            basename: path.basename(opts.path),
+          }),
         }),
       )
 
@@ -334,15 +335,17 @@ export const NmdStateStoreLive = Layer.effect(
           content,
           label: '.notion-md object',
         })
-        yield* Effect.annotateCurrentSpan('notion_md.object.hash_prefix', hash.slice(0, 18))
+        yield* Effect.annotateCurrentSpan(
+          Observability.objectHashAttrs.unsafeEncode({ hashPrefix: hash.slice(0, 18) }),
+        )
         return makeNmdObjectRef({ role: opts.role, hash, content })
       }).pipe(
         Effect.withSpan('notion-md.state.write-object', {
-          attributes: {
-            'span.label': opts.role,
-            'notion_md.object.role': opts.role,
-            'notion_md.path.basename': path.basename(opts.path),
-          },
+          attributes: Observability.objectRoleAttrs.unsafeEncode({
+            label: opts.role,
+            role: opts.role,
+            basename: path.basename(opts.path),
+          }),
         }),
       )
 
@@ -374,11 +377,11 @@ export const NmdStateStoreLive = Layer.effect(
         return content
       }).pipe(
         Effect.withSpan('notion-md.state.read-object', {
-          attributes: {
-            'span.label': opts.object.role,
-            'notion_md.object.role': opts.object.role,
-            'notion_md.object.hash_prefix': opts.object.hash.slice(0, 18),
-          },
+          attributes: Observability.objectRoleAttrs.unsafeEncode({
+            label: opts.object.role,
+            role: opts.object.role,
+            hashPrefix: opts.object.hash.slice(0, 18),
+          }),
         }),
       )
 

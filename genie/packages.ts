@@ -23,6 +23,7 @@ export const internalPackages = [
   'notion-effect-client',
   'notion-effect-schema',
   'notion-react',
+  'otel-contract',
   'pty-effect',
   'restate-effect',
   'tui-core',

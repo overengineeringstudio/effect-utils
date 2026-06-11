@@ -1,4 +1,8 @@
-import type { OneShotSyncStatus } from '../core/status.ts'
+import { Schema } from 'effect'
+
+import { OtelAttr, OtelAttrs, OtelSpan, type OtelAttributeValue } from '@overeng/otel-contract'
+
+import type { OneShotStatusState, OneShotSyncStatus } from '../core/status.ts'
 
 /** OTel service names used when registering the CLI and daemon tracer providers. */
 export const otelServiceNames = {
@@ -79,22 +83,134 @@ export const spanAttr = {
   statusState: 'notion.datasource.status.state',
 } as const
 
+/** Canonical OTel span attribute keys emitted by this package. */
+export type SpanAttributeKey = (typeof spanAttr)[keyof typeof spanAttr]
+
 /** Scalar types accepted as OTel span attribute values. */
-export type SpanAttributeValue = string | number | boolean
+export type SpanAttributeValue = OtelAttributeValue
 
 /** Identifies the kind of process emitting a span, recorded on `spanAttr.processRole`. */
 export type ProcessRole = 'cli' | 'daemon' | 'fake-gateway' | 'library'
 
+const SpanAttributeValueSchema = Schema.Union(Schema.String, Schema.Number, Schema.Boolean)
+
+const optionalAttr = (key: SpanAttributeKey) =>
+  Schema.optional(SpanAttributeValueSchema.pipe(OtelAttr.key({ key })))
+
+const SpanAttributesSchema = Schema.Struct({
+  [spanAttr.agentIterationId]: optionalAttr(spanAttr.agentIterationId),
+  [spanAttr.apiVersion]: optionalAttr(spanAttr.apiVersion),
+  [spanAttr.appendedEvents]: optionalAttr(spanAttr.appendedEvents),
+  [spanAttr.attempt]: optionalAttr(spanAttr.attempt),
+  [spanAttr.blockedCount]: optionalAttr(spanAttr.blockedCount),
+  [spanAttr.bodyCompleteness]: optionalAttr(spanAttr.bodyCompleteness),
+  [spanAttr.bodyEvidenceDigest]: optionalAttr(spanAttr.bodyEvidenceDigest),
+  [spanAttr.bodyIdentityDigest]: optionalAttr(spanAttr.bodyIdentityDigest),
+  [spanAttr.bodyIdentityKind]: optionalAttr(spanAttr.bodyIdentityKind),
+  [spanAttr.bodyRenderedDigest]: optionalAttr(spanAttr.bodyRenderedDigest),
+  [spanAttr.cancelled]: optionalAttr(spanAttr.cancelled),
+  [spanAttr.cappedAtLimit]: optionalAttr(spanAttr.cappedAtLimit),
+  [spanAttr.command]: optionalAttr(spanAttr.command),
+  [spanAttr.commandId]: optionalAttr(spanAttr.commandId),
+  [spanAttr.commandKind]: optionalAttr(spanAttr.commandKind),
+  [spanAttr.completedCycles]: optionalAttr(spanAttr.completedCycles),
+  [spanAttr.conflictCount]: optionalAttr(spanAttr.conflictCount),
+  [spanAttr.cycle]: optionalAttr(spanAttr.cycle),
+  [spanAttr.cycles]: optionalAttr(spanAttr.cycles),
+  [spanAttr.dataSourceId]: optionalAttr(spanAttr.dataSourceId),
+  [spanAttr.dryRun]: optionalAttr(spanAttr.dryRun),
+  [spanAttr.enqueuedCommands]: optionalAttr(spanAttr.enqueuedCommands),
+  [spanAttr.eventCount]: optionalAttr(spanAttr.eventCount),
+  [spanAttr.executorSteps]: optionalAttr(spanAttr.executorSteps),
+  [spanAttr.guard]: optionalAttr(spanAttr.guard),
+  [spanAttr.incompletePropertyCount]: optionalAttr(spanAttr.incompletePropertyCount),
+  [spanAttr.leaseDurationMs]: optionalAttr(spanAttr.leaseDurationMs),
+  [spanAttr.localObservationCount]: optionalAttr(spanAttr.localObservationCount),
+  [spanAttr.maxCycles]: optionalAttr(spanAttr.maxCycles),
+  [spanAttr.maxExecutorSteps]: optionalAttr(spanAttr.maxExecutorSteps),
+  [spanAttr.maxStepsReached]: optionalAttr(spanAttr.maxStepsReached),
+  [spanAttr.mode]: optionalAttr(spanAttr.mode),
+  [spanAttr.operation]: optionalAttr(spanAttr.operation),
+  [spanAttr.outboxAmbiguousCount]: optionalAttr(spanAttr.outboxAmbiguousCount),
+  [spanAttr.outboxBlockedCount]: optionalAttr(spanAttr.outboxBlockedCount),
+  [spanAttr.outboxQueuedCount]: optionalAttr(spanAttr.outboxQueuedCount),
+  [spanAttr.outboxRetryableCount]: optionalAttr(spanAttr.outboxRetryableCount),
+  [spanAttr.outboxRunningCount]: optionalAttr(spanAttr.outboxRunningCount),
+  [spanAttr.pageId]: optionalAttr(spanAttr.pageId),
+  [spanAttr.processRole]: optionalAttr(spanAttr.processRole),
+  [spanAttr.propertyId]: optionalAttr(spanAttr.propertyId),
+  [spanAttr.queryComplete]: optionalAttr(spanAttr.queryComplete),
+  [spanAttr.queryPageCount]: optionalAttr(spanAttr.queryPageCount),
+  [spanAttr.result]: optionalAttr(spanAttr.result),
+  [spanAttr.rootId]: optionalAttr(spanAttr.rootId),
+  [spanAttr.rowCount]: optionalAttr(spanAttr.rowCount),
+  [spanAttr.settlementKind]: optionalAttr(spanAttr.settlementKind),
+  [spanAttr.spanLabel]: Schema.optional(Schema.String.pipe(OtelAttr.spanLabel())),
+  [spanAttr.statusState]: optionalAttr(spanAttr.statusState),
+})
+
+/** Schema-backed contract for package-level span attributes keyed by their emitted OTel names. */
+export const notionDatasourceSpanAttributes = OtelAttrs.defineSync(SpanAttributesSchema)
+
+const RequiredSpanLabelAttributes = OtelAttrs.defineSync(
+  Schema.Struct({
+    [spanAttr.spanLabel]: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+)
+
+/** Schema-backed span contracts for the existing span catalog; these do not create wrapper spans. */
+export const spanContracts = Object.fromEntries(
+  Object.entries(spanNames).map(([key, name]) => [
+    key,
+    OtelSpan.define({
+      name,
+      attributes: RequiredSpanLabelAttributes,
+    }),
+  ]),
+) as {
+  readonly [K in keyof typeof spanNames]: ReturnType<
+    typeof OtelSpan.define<typeof RequiredSpanLabelAttributes.schema>
+  >
+}
+
+const StatusSpanAttributesSchema = Schema.Struct({
+  state: Schema.Literal('clean', 'pending', 'conflict', 'blocked').pipe(
+    OtelAttr.key({ key: spanAttr.statusState }),
+  ),
+  blockedCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.blockedCount })),
+  conflictCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.conflictCount })),
+  outboxAmbiguousCount: Schema.NonNegativeInt.pipe(
+    OtelAttr.key({ key: spanAttr.outboxAmbiguousCount }),
+  ),
+  outboxBlockedCount: Schema.NonNegativeInt.pipe(
+    OtelAttr.key({ key: spanAttr.outboxBlockedCount }),
+  ),
+  outboxQueuedCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: spanAttr.outboxQueuedCount })),
+  outboxRetryableCount: Schema.NonNegativeInt.pipe(
+    OtelAttr.key({ key: spanAttr.outboxRetryableCount }),
+  ),
+  outboxRunningCount: Schema.NonNegativeInt.pipe(
+    OtelAttr.key({ key: spanAttr.outboxRunningCount }),
+  ),
+})
+
+/** Schema-backed contract for status summary attributes emitted on sync result spans. */
+export const statusSpanAttrs = OtelAttrs.defineSync(StatusSpanAttributesSchema)
+
+const CorrelationSpanAttributesSchema = Schema.Struct({
+  agentIterationId: Schema.optional(
+    Schema.String.pipe(OtelAttr.key({ key: spanAttr.agentIterationId })),
+  ),
+})
+
+/** Schema-backed contract for agent correlation attributes copied onto command spans. */
+export const correlationSpanAttrs = OtelAttrs.defineSync(CorrelationSpanAttributesSchema)
+
 /** Filters out `undefined` values from an attribute map so it can be passed directly to OTel span APIs. */
 export const spanAttributes = (
-  attributes: Record<string, SpanAttributeValue | undefined>,
+  attributes: Partial<Record<SpanAttributeKey, SpanAttributeValue | undefined>>,
 ): Record<string, SpanAttributeValue> =>
-  Object.fromEntries(
-    Object.entries(attributes).filter((entry): entry is [string, SpanAttributeValue] => {
-      const value = entry[1]
-      return value !== undefined
-    }),
-  )
+  notionDatasourceSpanAttributes.unsafeEncode(attributes as typeof SpanAttributesSchema.Type)
 
 /** Truncates a span / root ID to at most 12 characters for use in human-readable `span.label` values. */
 export const shortSpanId = (value: string): string =>
@@ -140,15 +256,15 @@ export const otelServiceNameForCliArgv = (argv: ReadonlyArray<string>): string =
 export const statusSpanAttributes = (
   status: OneShotSyncStatus,
 ): Record<string, SpanAttributeValue> =>
-  spanAttributes({
-    [spanAttr.statusState]: status.state,
-    [spanAttr.blockedCount]: status.counts.blocked,
-    [spanAttr.conflictCount]: status.counts.conflict,
-    [spanAttr.outboxAmbiguousCount]: status.counts.outbox.ambiguous,
-    [spanAttr.outboxBlockedCount]: status.counts.outbox.blocked,
-    [spanAttr.outboxQueuedCount]: status.counts.outbox.queued,
-    [spanAttr.outboxRetryableCount]: status.counts.outbox.retryable,
-    [spanAttr.outboxRunningCount]: status.counts.outbox.running,
+  statusSpanAttrs.unsafeEncode({
+    state: status.state satisfies OneShotStatusState,
+    blockedCount: status.counts.blocked,
+    conflictCount: status.counts.conflict,
+    outboxAmbiguousCount: status.counts.outbox.ambiguous,
+    outboxBlockedCount: status.counts.outbox.blocked,
+    outboxQueuedCount: status.counts.outbox.queued,
+    outboxRetryableCount: status.counts.outbox.retryable,
+    outboxRunningCount: status.counts.outbox.running,
   })
 
 const resourceAttributeValue = ({
@@ -175,8 +291,8 @@ export const otelCorrelationSpanAttributes = (input: {
   readonly agentRunId?: string | undefined
   readonly resourceAttributes?: string | undefined
 }): Record<string, SpanAttributeValue> =>
-  spanAttributes({
-    [spanAttr.agentIterationId]:
+  correlationSpanAttrs.unsafeEncode({
+    agentIterationId:
       input.agentRunId ??
       resourceAttributeValue({ input: input.resourceAttributes, key: spanAttr.agentIterationId }),
   })

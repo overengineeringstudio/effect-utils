@@ -7,6 +7,7 @@ import { Effect } from 'effect'
 import { statusMany, syncMany, type BatchResult } from './batch.ts'
 import { NmdCliError, type NmdError } from './errors.ts'
 import type { NotionMdGateway } from './model.ts'
+import * as Observability from './observability.ts'
 import type { NmdStateStore } from './state-store.ts'
 import {
   statusPage,
@@ -82,10 +83,10 @@ export const statusPath = (
     return yield* syncManyStatus(opts)
   }).pipe(
     Effect.withSpan('notion-md.status-path', {
-      attributes: {
-        'span.label': basename(opts.path),
-        'notion_md.path.recursive': opts.recursive === true,
-      },
+      attributes: Observability.pathRecursiveAttrs.unsafeEncode({
+        label: basename(opts.path),
+        recursive: opts.recursive === true,
+      }),
     }),
   )
 
@@ -123,10 +124,10 @@ export const planPath = (
     })
   }).pipe(
     Effect.withSpan('notion-md.plan-path', {
-      attributes: {
-        'span.label': basename(opts.path),
-        'notion_md.tree.from_remote': opts.fromRemote === true,
-      },
+      attributes: Observability.pathPlanAttrs.unsafeEncode({
+        label: basename(opts.path),
+        fromRemote: opts.fromRemote === true,
+      }),
     }),
   )
 
@@ -183,11 +184,11 @@ export const syncPath = (
     return yield* syncPage({ path: opts.path, ...pushSafety(opts) })
   }).pipe(
     Effect.withSpan('notion-md.sync-path', {
-      attributes: {
-        'span.label': basename(opts.path),
-        'notion_md.path.recursive': opts.recursive === true,
-        'notion_md.tree.from_remote': opts.fromRemote === true,
-      },
+      attributes: Observability.pathSyncAttrs.unsafeEncode({
+        label: basename(opts.path),
+        recursive: opts.recursive === true,
+        fromRemote: opts.fromRemote === true,
+      }),
     }),
   )
 

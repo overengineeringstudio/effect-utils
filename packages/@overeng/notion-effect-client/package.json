@@ -47,6 +47,7 @@
       "packages/@overeng/notion-core",
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",
+      "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

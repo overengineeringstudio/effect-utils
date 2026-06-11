@@ -48,6 +48,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/effect-schema-form",
       "packages/@overeng/effect-schema-form-aria",
+      "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

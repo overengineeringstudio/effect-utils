@@ -27,6 +27,7 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../lock.ts'
+import * as Observability from '../observability.ts'
 import {
   parseNixFlakeUrl,
   getRef,
@@ -231,7 +232,12 @@ export const fetchNixFlakeMetadata = ({
     }
   }).pipe(
     Effect.withSpan('fetchNixFlakeMetadata', {
-      attributes: { 'span.label': `${owner}/${repo}@${rev.slice(0, 8)}`, owner, repo, rev },
+      attributes: Observability.nixFlakeMetadataAttrs.unsafeEncode({
+        label: `${owner}/${repo}@${rev.slice(0, 8)}`,
+        owner,
+        repo,
+        rev,
+      }),
     }),
   )
 
@@ -495,7 +501,11 @@ const syncSingleLockFile = ({
     }
   }).pipe(
     Effect.withSpan('megarepo/nix-lock/file', {
-      attributes: { 'span.label': lockPath, path: lockPath, type: lockType },
+      attributes: Observability.nixLockFileAttrs.unsafeEncode({
+        label: lockPath.split('/').findLast((part) => part.length > 0) ?? lockPath,
+        path: lockPath,
+        type: lockType,
+      }),
     }),
   )
 
@@ -1112,7 +1122,7 @@ const syncMemberRefs = ({
     return results
   }).pipe(
     Effect.withSpan('megarepo/nix-lock/ref-sync', {
-      attributes: { 'span.label': memberPath },
+      attributes: Observability.label(memberPath),
     }),
   )
 

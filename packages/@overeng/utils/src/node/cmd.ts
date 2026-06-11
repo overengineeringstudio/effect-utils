@@ -25,10 +25,41 @@ import {
 import { isNotUndefined } from '../isomorphic/mod.ts'
 import { applyLoggingToCommand } from './cmd-log.ts'
 import * as FileLogger from './FileLogger.ts'
+import { OtelAttr, OtelAttrs, OtelSpan } from './otel-attrs.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
 // Branded zero value so we can compare exit codes without touching internals.
 const SUCCESS_EXIT_CODE: CommandExecutor.ExitCode = 0 as CommandExecutor.ExitCode
+
+const CmdRunAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    cwd: Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' })),
+    command: Schema.String.pipe(OtelAttr.key({ key: 'cmd.command' })),
+    args: Schema.Array(Schema.String).pipe(OtelAttr.key({ key: 'cmd.args', encode: 'json' })),
+    logDir: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'cmd.log_dir' }))),
+    shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
+  }),
+)
+
+const CmdCollectSpan = OtelSpan.defineSync({
+  name: 'cmd.collect',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    cwd: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' }))),
+    shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
+  }),
+})
+
+const CmdLoggingSpan = OtelSpan.defineSync({
+  name: 'cmd.run-with-logging',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    cwd: Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' })),
+    logPath: Schema.String.pipe(OtelAttr.key({ key: 'cmd.log_path' })),
+    shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
+  }),
+})
 
 /**
  * Run a command to completion and return its exit code.
@@ -111,12 +142,16 @@ export const cmd: (
   const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
-  yield* Effect.annotateCurrentSpan({
-    'span.label': commandDebugStr,
-    cwd,
-    command,
-    args,
-    logDir: options?.logDir,
+  yield* OtelSpan.unsafeAnnotate({
+    attributes: CmdRunAttrs,
+    value: {
+      label: commandDebugStr,
+      cwd,
+      command,
+      args,
+      ...(options?.logDir === undefined ? {} : { logDir: options.logDir }),
+      shell: useShell,
+    },
   })
 
   const baseArgs = {
@@ -211,11 +246,15 @@ export const cmdStart: (
   const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Starting '${commandDebugStr}' in '${cwd}'${subshellStr}`)
-  yield* Effect.annotateCurrentSpan({
-    'span.label': commandDebugStr,
-    cwd,
-    command,
-    args,
+  yield* OtelSpan.unsafeAnnotate({
+    attributes: CmdRunAttrs,
+    value: {
+      label: commandDebugStr,
+      cwd,
+      command,
+      args,
+      shell: useShell,
+    },
   })
 
   return yield* buildCommand({ input: normalizedInput, useShell }).pipe(
@@ -267,10 +306,15 @@ export const cmdText: (
   const subshellStr = options?.runInShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
-  yield* Effect.annotateCurrentSpan({
-    'span.label': commandDebugStr,
-    command,
-    cwd,
+  yield* OtelSpan.unsafeAnnotate({
+    attributes: CmdRunAttrs,
+    value: {
+      label: commandDebugStr,
+      command,
+      cwd,
+      args,
+      shell: options?.runInShell === true,
+    },
   })
 
   return yield* Command.make(command, ...args).pipe(
@@ -371,7 +415,19 @@ export const cmdCollect = <R = never>(opts: {
         ),
       ),
     )
-  }).pipe(Effect.withSpan('cmdCollect'))
+  }).pipe(
+    OtelSpan.unsafeWith({
+      span: CmdCollectSpan,
+      attributes: {
+        label:
+          Array.isArray(opts.commandInput) === true
+            ? opts.commandInput.filter(isNotUndefined).join(' ')
+            : opts.commandInput,
+        ...(opts.workingDirectory === undefined ? {} : { cwd: opts.workingDirectory }),
+        shell: opts.shell === true,
+      },
+    }),
+  )
 
 /** Internal error for process signal operations */
 class ProcessSignalError extends Schema.TaggedError<ProcessSignalError>()('ProcessSignalError', {
@@ -539,7 +595,17 @@ const runWithLogging = ({
 
       return exitCode
     }),
-  ).pipe(Effect.withSpan('cmd.runWithLogging'))
+  ).pipe(
+    OtelSpan.unsafeWith({
+      span: CmdLoggingSpan,
+      attributes: {
+        label: threadName,
+        cwd,
+        logPath,
+        shell: useShell,
+      },
+    }),
+  )
 
 /** Default grace period before escalating from SIGTERM to SIGKILL */
 const DEFAULT_KILL_TIMEOUT: Duration.DurationInput = '5 seconds'

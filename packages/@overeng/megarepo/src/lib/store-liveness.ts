@@ -22,6 +22,7 @@ import {
   readMegarepoConfig,
 } from './config.ts'
 import { LOCK_FILE_NAME, readLockFile } from './lock.ts'
+import * as Observability from './observability.ts'
 import type { MegarepoStore } from './store.ts'
 
 const REGISTRY_VERSION = 1
@@ -99,10 +100,10 @@ const collectWorkspaceSymlinkTargets = ({
     return targets
   }).pipe(
     Effect.withSpan('megarepo/store/liveness/scan-symlinks', {
-      attributes: {
-        'span.label': workspaceLabel(workspaceRoot),
+      attributes: Observability.workspaceAttrs.unsafeEncode({
+        label: workspaceLabel(workspaceRoot),
         workspaceRoot,
-      },
+      }),
     }),
   )
 
@@ -161,10 +162,10 @@ export const collectWorkspaceLivePaths = ({
     return paths
   }).pipe(
     Effect.withSpan('megarepo/store/liveness/collect-workspace', {
-      attributes: {
-        'span.label': workspaceLabel(workspaceRoot),
+      attributes: Observability.workspaceAttrs.unsafeEncode({
+        label: workspaceLabel(workspaceRoot),
         workspaceRoot,
-      },
+      }),
     }),
   )
 
@@ -199,10 +200,10 @@ export const refreshWorkspaceRegistry = ({
     return record
   }).pipe(
     Effect.withSpan('megarepo/store/liveness/refresh-workspace', {
-      attributes: {
-        'span.label': workspaceLabel(workspaceRoot),
+      attributes: Observability.workspaceAttrs.unsafeEncode({
+        label: workspaceLabel(workspaceRoot),
         workspaceRoot,
-      },
+      }),
     }),
   )
 
@@ -252,7 +253,7 @@ const readRegistryRecords = ({
     return records
   }).pipe(
     Effect.withSpan('megarepo/store/liveness/read-registry', {
-      attributes: { 'span.label': 'registry' },
+      attributes: Observability.label('registry'),
     }),
   )
 
@@ -301,12 +302,12 @@ export const collectStoreLiveSet = ({
     } satisfies StoreLiveSet
   }).pipe(
     Effect.withSpan('megarepo/store/liveness/collect-store', {
-      attributes: {
-        'span.label': 'store',
+      attributes: Observability.storeLiveSetAttrs.unsafeEncode({
+        label: 'store',
         hasCurrentWorkspace: currentWorkspaceRoot !== undefined,
         pruneStaleRegistry,
         refreshCurrentWorkspace,
-      },
+      }),
     }),
   )
 

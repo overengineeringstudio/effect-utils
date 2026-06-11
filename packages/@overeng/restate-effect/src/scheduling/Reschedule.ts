@@ -17,13 +17,21 @@
  * `self`). The send targets `Restate.key` — the current invocation's key — so the
  * re-arm stays on the SAME single-writer instance.
  */
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
+
+import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
 
 import { objectKey } from '../authoring/RestateContext.ts'
 import type { ObjectKey, RestateContext } from '../authoring/RestateContext.ts'
 import type { ObjectContract, ObjectInputOf, ObjectMethodsOf } from '../authoring/Service.ts'
 import { sendObject } from '../clients/Client.ts'
 import type { RestateError } from '../schema/RestateError.ts'
+
+const RescheduleAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+)
 
 /**
  * Re-arm the CURRENT Virtual Object by a delayed self-send of one of its own
@@ -62,4 +70,8 @@ export const reschedule = <
     yield* sendObject(opts.contract, key, opts.method, opts.input, {
       delayMillis: opts.delayMillis,
     })
-  }).pipe(Effect.withSpan('restate.reschedule'))
+  }).pipe(
+    Effect.withSpan('restate.reschedule', {
+      attributes: RescheduleAttrs.unsafeEncode({ label: String(opts.method) }),
+    }),
+  )

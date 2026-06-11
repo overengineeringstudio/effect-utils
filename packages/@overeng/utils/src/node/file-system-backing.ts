@@ -2,6 +2,8 @@ import { FileSystem, Path } from '@effect/platform'
 import { Cause, Data, Duration, Effect, Layer, Option, Schema, Stream } from 'effect'
 import { DistributedSemaphoreBacking, SemaphoreBackingError } from 'effect-distributed-lock'
 
+import { OtelAttr, OtelAttrs, OtelSpan } from './otel-attrs.ts'
+
 /** Information about a holder's lock state */
 export interface HolderInfo {
   readonly holderId: string
@@ -21,6 +23,21 @@ const HolderLockSchema = Schema.Struct({
 })
 
 type HolderLockContent = typeof HolderLockSchema.Type
+
+const SemaphoreKeyAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    key: Schema.String.pipe(OtelAttr.key({ key: 'semaphore.key' })),
+  }),
+)
+
+const SemaphoreForceRevokeAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    key: Schema.String.pipe(OtelAttr.key({ key: 'semaphore.key' })),
+    targetHolderId: Schema.String.pipe(OtelAttr.key({ key: 'semaphore.target_holder_id' })),
+  }),
+)
 
 /**
  * Options for the file-system based semaphore backing.
@@ -393,9 +410,13 @@ export const forceRevoke = Effect.fn('FileSystemBacking.forceRevoke')(function* 
   key: string
   targetHolderId: string
 }) {
-  yield* Effect.annotateCurrentSpan({
-    key: opts.key,
-    targetHolderId: opts.targetHolderId,
+  yield* OtelSpan.unsafeAnnotate({
+    attributes: SemaphoreForceRevokeAttrs,
+    value: {
+      label: opts.key,
+      key: opts.key,
+      targetHolderId: opts.targetHolderId,
+    },
   })
 
   const { options, key, targetHolderId } = opts
@@ -428,7 +449,10 @@ export const listHolders = Effect.fn('FileSystemBacking.listHolders')(function* 
   options: FileSystemBackingOptions
   key: string
 }) {
-  yield* Effect.annotateCurrentSpan({ key: opts.key })
+  yield* OtelSpan.unsafeAnnotate({
+    attributes: SemaphoreKeyAttrs,
+    value: { label: opts.key, key: opts.key },
+  })
 
   const { options, key } = opts
   const { lockDir } = options
@@ -490,7 +514,10 @@ export const forceRevokeAll = Effect.fn('FileSystemBacking.forceRevokeAll')(func
   options: FileSystemBackingOptions
   key: string
 }) {
-  yield* Effect.annotateCurrentSpan({ key: opts.key })
+  yield* OtelSpan.unsafeAnnotate({
+    attributes: SemaphoreKeyAttrs,
+    value: { label: opts.key, key: opts.key },
+  })
 
   const { options, key } = opts
   const holders = yield* listHolders({ options, key })

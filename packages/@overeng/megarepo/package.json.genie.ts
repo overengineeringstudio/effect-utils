@@ -7,6 +7,7 @@ import {
 import effectPathPkg from '../effect-path/package.json.genie.ts'
 import kdlEffectPkg from '../kdl-effect/package.json.genie.ts'
 import kdlPkg from '../kdl/package.json.genie.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -23,7 +24,7 @@ const peerDepNames = [
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/megarepo' }),
   dependencies: {
-    workspace: [effectPathPkg, kdlPkg, kdlEffectPkg, tuiReactPkg, utilsPkg],
+    workspace: [effectPathPkg, kdlPkg, kdlEffectPkg, otelContractPkg, tuiReactPkg, utilsPkg],
     external: catalog.pick('react'),
   },
   devDependencies: {

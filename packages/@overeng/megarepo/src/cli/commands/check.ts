@@ -7,6 +7,7 @@ import { readMegarepoConfig } from '../../lib/config.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { checkSourcePolicy, formatSourcePolicyViolation } from '../../lib/source-policy.ts'
 import { Cwd, findMegarepoRoot, jsonOption } from '../context.ts'
+import * as Observability from '../observability.ts'
 
 const allOption = Cli.Options.boolean('all').pipe(
   Cli.Options.withDescription('Check member source and lock files in repos/ as well as the root'),
@@ -73,5 +74,13 @@ export const checkCommand = Cli.Command.make(
           new Error(`Megarepo checks failed with ${result.violations.length} violation(s)`),
         )
       }
-    }),
+    }).pipe(
+      Observability.withCommandSpan({
+        name: 'megarepo/check',
+        command: 'check',
+        label: json === true ? 'check-json' : 'check',
+        output: json === true ? 'json' : 'text',
+        all,
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('Check that the megarepo is structurally valid'))
