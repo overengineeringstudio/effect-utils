@@ -192,6 +192,27 @@ describe('OtelAttrs', () => {
     })
   })
 
+  it('preserves typed contract errors in sync APIs', async () => {
+    expect(() =>
+      OtelAttrs.defineSync(
+        Schema.Struct({
+          nested: Schema.Struct({ id: Schema.String }).pipe(OtelAttr.key({ key: 'nested' })),
+        }),
+      ),
+    ).toThrow(OtelAttrPlanError)
+
+    const attrs = await Effect.runPromise(
+      OtelAttrs.define(
+        Schema.Struct({
+          count: Schema.Number.pipe(OtelAttr.key({ key: 'count' })),
+        }),
+      ),
+    )
+
+    expect(() => attrs.encodeSync({ count: Number.NaN })).toThrow(OtelAttrEncodeError)
+    expect(() => attrs.unsafeEncode({ count: Number.NaN })).toThrow(OtelAttrEncodeError)
+  })
+
   it('validates explicit policy inputs before encoding', async () => {
     const Attrs = Schema.Struct({
       asJson: Schema.Struct({ id: Schema.String }).pipe(

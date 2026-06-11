@@ -1,4 +1,15 @@
-import { DateTime, Duration, Effect, Either, Option, Redacted, Schema, Stream } from 'effect'
+import {
+  Cause,
+  DateTime,
+  Duration,
+  Effect,
+  Either,
+  Exit,
+  Option,
+  Redacted,
+  Schema,
+  Stream,
+} from 'effect'
 import * as AST from 'effect/SchemaAST'
 
 type OtelPrimitive = string | number | boolean
@@ -365,6 +376,16 @@ const primitiveFromUnknown = ({
 const effectFromEither = <A, E>(either: Either.Either<A, E>): Effect.Effect<A, E> =>
   Either.isRight(either) === true ? Effect.succeed(either.right) : Effect.fail(either.left)
 
+const runSyncOrThrow = <A, E>(effect: Effect.Effect<A, E>): A =>
+  Exit.match(Effect.runSyncExit(effect), {
+    onSuccess: (value) => value,
+    onFailure: (cause) => {
+      const failure = Option.getOrUndefined(Cause.failureOption(cause))
+      if (failure !== undefined) throw failure
+      throw Cause.squash(cause)
+    },
+  })
+
 const encodeUnknown = ({
   key,
   schema,
@@ -694,13 +715,13 @@ export const OtelAttrs = {
           (field) => field.attrKey === 'span.label' && field.role === 'span.label',
         ),
         encode,
-        encodeSync: (value) => Effect.runSync(encode(value).pipe(Effect.orDie)),
-        unsafeEncode: (value) => Effect.runSync(encode(value).pipe(Effect.orDie)),
+        encodeSync: (value) => runSyncOrThrow(encode(value)),
+        unsafeEncode: (value) => runSyncOrThrow(encode(value)),
       }
     })
   },
   defineSync<S extends Schema.Schema.AnyNoContext>(schema: S): OtelAttrs<S> {
-    return Effect.runSync(OtelAttrs.define(schema).pipe(Effect.orDie))
+    return runSyncOrThrow(OtelAttrs.define(schema))
   },
 }
 
@@ -1049,8 +1070,8 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
     ...(options.root === undefined ? {} : { root: options.root }),
     metadata,
     encode,
-    encodeSync: (value) => Effect.runSync(encode(value).pipe(Effect.orDie)),
-    unsafeEncode: (value) => Effect.runSync(encode(value).pipe(Effect.orDie)),
+    encodeSync: (value) => runSyncOrThrow(encode(value)),
+    unsafeEncode: (value) => runSyncOrThrow(encode(value)),
     with: withOperation as OtelOperationDefinition<S>['with'],
     withRoot: withRootOperation as OtelOperationDefinition<S>['withRoot'],
     withStream: withOperationStream as OtelOperationDefinition<S>['withStream'],
