@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted — capture-before-delete principle stands; the holding location moved
+from `$STORE/.state/trash/` to `<repo>/.archive/` (superseded on location by
+[0007](0007-archive-is-the-trash.md)).
 
 ## Context
 
