@@ -596,4 +596,11 @@ export const OtelSpan = {
   }): Effect.Effect<void> {
     return Effect.annotateCurrentSpan(options.attributes.unsafeEncode(options.value))
   },
+  unsafeAnnotateMap(attributes: OtelAttributeMap): Effect.Effect<void> {
+    return Effect.forEach(
+      Object.entries(attributes),
+      ([key, value]) => Effect.annotateCurrentSpan(key, value),
+      { discard: true },
+    )
+  },
 }

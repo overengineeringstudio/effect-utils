@@ -218,6 +218,15 @@ export const emitPollLoopCycle = (
 /** A span-attribute value (the shapes `Effect.annotateCurrentSpan` accepts). */
 type AttributeValue = string | number | boolean
 
+const annotateDynamicSpanMap = (
+  attributes: Readonly<Record<string, AttributeValue>>,
+): Effect.Effect<void> =>
+  Effect.forEach(
+    Object.entries(attributes),
+    ([key, value]) => Effect.annotateCurrentSpan(key, value),
+    { discard: true },
+  )
+
 /**
  * Stamp custom BUSINESS attributes on the CURRENT span — the user path for
  * slicing in Tempo/Grafana (R23, docs/vrs/08-observability/spec.md, decision 0014). A thin Effect combinator
@@ -246,14 +255,7 @@ type AttributeValue = string | number | boolean
  */
 export const annotateSpan = (
   attributes: Readonly<Record<string, AttributeValue>>,
-): Effect.Effect<void> =>
-  Effect.forEach(
-    Object.entries(attributes),
-    ([key, value]) => Effect.annotateCurrentSpan(key, value),
-    {
-      discard: true,
-    },
-  )
+): Effect.Effect<void> => annotateDynamicSpanMap(attributes)
 
 /**
  * Stamp span attributes PROJECTED from a decoded struct value — SAFE BY DEFAULT
@@ -295,5 +297,5 @@ export const annotateSpanFrom = <A, I>(
       safe.push([key, v])
     }
   }
-  return Effect.forEach(safe, ([key, v]) => Effect.annotateCurrentSpan(key, v), { discard: true })
+  return annotateDynamicSpanMap(Object.fromEntries(safe))
 }

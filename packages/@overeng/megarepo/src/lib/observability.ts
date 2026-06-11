@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
 
 const basename = (path: string): string =>
   path.split('/').findLast((part) => part.length > 0) ?? path
@@ -86,6 +86,58 @@ export const nixLockFileAttrs = OtelAttrs.defineSync(
   }),
 )
 
+export const syncMemberCloneAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    bareExists: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.sync.member.bare_exists' })),
+  }),
+)
+
+export const syncMemberRefAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    ref: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.member.ref' })),
+    refType: Schema.optional(
+      Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.member.ref_type' })),
+    ),
+  }),
+)
+
+export const syncMemberAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    name: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.member.name' })),
+    source: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.member.source' })),
+  }),
+)
+
+export const syncMemberActionAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    action: Schema.Literal(
+      'clone',
+      'already-cloned-by-sibling',
+      'skip-dry-run',
+      'fetch',
+      'fetch-missing-commit',
+      'noop',
+    ).pipe(OtelAttr.key({ key: 'megarepo.sync.member.action' })),
+  }),
+)
+
+type SyncMemberAction =
+  | 'clone'
+  | 'already-cloned-by-sibling'
+  | 'skip-dry-run'
+  | 'fetch'
+  | 'fetch-missing-commit'
+  | 'noop'
+
+export const syncMemberResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    status: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.member.result_status' })),
+  }),
+)
+
 export const label = (value: string) => labelAttrs.unsafeEncode({ label: value })
 
 export const repoPath = (path: string) =>
@@ -96,3 +148,63 @@ export const worktreePath = (path: string) =>
 
 export const workspaceRoot = (path: string) =>
   workspaceAttrs.unsafeEncode({ label: basename(path), workspaceRoot: path })
+
+export const withLabelSpan = (name: string, labelValue: string) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: labelAttrs },
+    attributes: { label: labelValue },
+  })
+
+export const withSyncMemberCloneSpan = ({
+  name,
+  bareExists,
+}: {
+  readonly name: string
+  readonly bareExists: boolean
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name: 'megarepo/sync/member/clone-or-fetch', attributes: syncMemberCloneAttrs },
+    attributes: { label: name, bareExists },
+  })
+
+export const withSyncMemberResolveRefSpan = (ref: string) =>
+  OtelSpan.unsafeWith({
+    span: { name: 'megarepo/sync/member/resolve-ref', attributes: syncMemberRefAttrs },
+    attributes: { label: ref, ref },
+  })
+
+export const withSyncMemberCreateWorktreeSpan = ({
+  ref,
+  refType,
+}: {
+  readonly ref: string
+  readonly refType: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name: 'megarepo/sync/member/create-worktree', attributes: syncMemberRefAttrs },
+    attributes: { label: ref, ref, refType },
+  })
+
+export const withSyncMemberSpan = ({
+  name,
+  source,
+}: {
+  readonly name: string
+  readonly source: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name: 'megarepo/sync/member', attributes: syncMemberAttrs },
+    attributes: { label: name, name, source },
+  })
+
+export const annotateSyncMemberAction = (action: SyncMemberAction) =>
+  OtelSpan.unsafeAnnotate({
+    attributes: syncMemberActionAttrs,
+    value: { action },
+  })
+
+export const annotateSyncMemberResult = (status: string) =>
+  OtelSpan.unsafeAnnotate({
+    attributes: syncMemberResultAttrs,
+    value: { status },
+  })
