@@ -516,12 +516,16 @@ const StoreGcView = ({
   maxInUseToShow?: number
 }) => {
   const removed = results.filter((r) => r.status === 'removed')
+  const archived = results.filter((r) => r.status === 'archived')
+  const reaped = results.filter((r) => r.status === 'reaped')
   const skippedDirty = results.filter((r) => r.status === 'skipped_dirty')
   const skippedInUse = results.filter((r) => r.status === 'skipped_in_use')
+  const kept = results.filter((r) => r.status === 'kept')
   const errors = results.filter((r) => r.status === 'error')
 
   // Determine which results to show
   const showInUse = skippedInUse.length <= maxInUseToShow
+  const showKept = kept.length <= maxInUseToShow
 
   return (
     <Box flexDirection="column">
@@ -567,6 +571,20 @@ const StoreGcView = ({
               dryRun={dryRun}
             />
           ))}
+          {archived.map((result) => (
+            <StoreGcResultRow
+              key={`${result.repo}-${result.ref}-archived`}
+              result={result}
+              dryRun={dryRun}
+            />
+          ))}
+          {reaped.map((result) => (
+            <StoreGcResultRow
+              key={`${result.repo}-${result.ref}-reaped`}
+              result={result}
+              dryRun={dryRun}
+            />
+          ))}
           {skippedDirty.map((result) => (
             <StoreGcResultRow
               key={`${result.repo}-${result.ref}-dirty`}
@@ -578,6 +596,14 @@ const StoreGcView = ({
             skippedInUse.map((result) => (
               <StoreGcResultRow
                 key={`${result.repo}-${result.ref}-in-use`}
+                result={result}
+                dryRun={dryRun}
+              />
+            ))}
+          {showKept &&
+            kept.map((result) => (
+              <StoreGcResultRow
+                key={`${result.repo}-${result.ref}-kept`}
                 result={result}
                 dryRun={dryRun}
               />
@@ -600,8 +626,11 @@ const StoreGcView = ({
       ) : done === false && results.length === 0 ? null : (
         <StoreGcSummary
           removed={removed.length}
+          archived={archived.length}
+          reaped={reaped.length}
           skippedDirty={skippedDirty.length}
           skippedInUse={skippedInUse.length}
+          kept={kept.length}
           errors={errors.length}
           dryRun={dryRun}
         />
@@ -656,12 +685,18 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
     switch (result.status) {
       case 'removed':
         return <Text color="green">{SYMBOLS.check}</Text>
+      case 'archived':
+        return <Text color="cyan">{SYMBOLS.check}</Text>
+      case 'reaped':
+        return <Text color="green">{SYMBOLS.check}</Text>
       case 'error':
         return <Text color="red">{SYMBOLS.cross}</Text>
       case 'skipped_dirty':
         return <Text color="yellow">{SYMBOLS.circle}</Text>
       case 'skipped_in_use':
         return <Text dim>{SYMBOLS.check}</Text>
+      case 'kept':
+        return <Text dim>{SYMBOLS.circle}</Text>
     }
   }
 
@@ -669,6 +704,17 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
     switch (result.status) {
       case 'removed':
         return <Text dim> ({dryRun === true ? 'would remove' : 'removed'})</Text>
+      case 'archived':
+        return (
+          <Text dim>
+            {' '}
+            ({dryRun === true ? 'would archive' : 'archived'}: {result.reason ?? 'stale'})
+          </Text>
+        )
+      case 'reaped':
+        return <Text dim> ({dryRun === true ? 'would reap' : 'reaped'} past retention)</Text>
+      case 'kept':
+        return <Text dim> (kept: {result.reason ?? result.message ?? 'cold'})</Text>
       case 'skipped_dirty':
         return <Text dim> ({result.message ?? 'dirty'})</Text>
       case 'skipped_in_use':
@@ -678,23 +724,28 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
     }
   }
 
-  const isDim = result.status === 'skipped_in_use'
+  const isDim = result.status === 'skipped_in_use' || result.status === 'kept'
 
   return (
-    <Box flexDirection="row">
-      {getSymbol()}
-      {isDim === true ? (
-        <Text dim>
-          {' '}
-          {result.repo}refs/{result.refType}/{result.ref}{' '}
-        </Text>
-      ) : (
-        <Text>
-          {' '}
-          {result.repo}refs/{result.refType}/{result.ref}{' '}
-        </Text>
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        {getSymbol()}
+        {isDim === true ? (
+          <Text dim>
+            {' '}
+            {result.repo}refs/{result.refType}/{result.ref}{' '}
+          </Text>
+        ) : (
+          <Text>
+            {' '}
+            {result.repo}refs/{result.refType}/{result.ref}{' '}
+          </Text>
+        )}
+        {getStatusText()}
+      </Box>
+      {result.status === 'archived' && result.recoverPath !== undefined && (
+        <Text dim> recover from: {result.recoverPath}</Text>
       )}
-      {getStatusText()}
     </Box>
   )
 }
@@ -702,14 +753,20 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
 /** GC Summary component */
 const StoreGcSummary = ({
   removed,
+  archived,
+  reaped,
   skippedDirty,
   skippedInUse,
+  kept,
   errors,
   dryRun,
 }: {
   removed: number
+  archived: number
+  reaped: number
   skippedDirty: number
   skippedInUse: number
+  kept: number
   errors: number
   dryRun: boolean
 }) => {
@@ -725,6 +782,26 @@ const StoreGcSummary = ({
       ),
     })
   }
+  if (archived > 0) {
+    parts.push({
+      key: 'archived',
+      element: (
+        <Text>
+          {archived} {dryRun === true ? 'would be archived' : 'archived'}
+        </Text>
+      ),
+    })
+  }
+  if (reaped > 0) {
+    parts.push({
+      key: 'reaped',
+      element: (
+        <Text>
+          {reaped} {dryRun === true ? 'would be reaped' : 'reaped'}
+        </Text>
+      ),
+    })
+  }
   if (skippedDirty > 0) {
     parts.push({
       key: 'dirty',
@@ -735,6 +812,12 @@ const StoreGcSummary = ({
     parts.push({
       key: 'in-use',
       element: <Text>{skippedInUse} in use</Text>,
+    })
+  }
+  if (kept > 0) {
+    parts.push({
+      key: 'kept',
+      element: <Text>{kept} kept</Text>,
     })
   }
   if (errors > 0) {

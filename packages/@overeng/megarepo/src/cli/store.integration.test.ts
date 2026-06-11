@@ -304,7 +304,11 @@ describe('mr store gc', () => {
           expect(gcA.exitCode).toBe(0)
           const json = decodeStoreGcJsonOutput(gcA.stdout)
           const repoBResult = json.results.find((r) => r.repo === 'github.com/test-owner/repo-b/')
-          expect(repoBResult?.status).toBe('skipped_in_use')
+          // Named branch worktrees registered by another workspace are now owned
+          // by the cold reclamation path (decisions 0001–0010): the worktree is
+          // still PROTECTED, surfaced as `kept` (the prior status was the
+          // commit-path `skipped_in_use`). The protection guarantee is unchanged.
+          expect(repoBResult?.status).toBe('kept')
           expect(yield* fs.exists(repoBPath)).toBe(true)
         },
         Effect.provide(NodeContext.layer),

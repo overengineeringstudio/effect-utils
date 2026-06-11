@@ -21,9 +21,31 @@ import {
 import * as Git from '../../../lib/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { classifyRef } from '../../../lib/ref.ts'
+import { archiveWorktree, reapArchive, scanArchives } from '../../../lib/store-archive.ts'
+import { loadStoreGcConfig, type StoreGcConfig } from '../../../lib/store-gc-config.ts'
+import {
+  coldSinceMs as coldSinceMsFor,
+  recordObservations,
+} from '../../../lib/store-gc-observations.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
-import { collectStoreLiveSet, type StoreLiveSet } from '../../../lib/store-liveness.ts'
+import {
+  collectStoreLiveSet,
+  isPathProtected,
+  type StoreLiveSet,
+} from '../../../lib/store-liveness.ts'
 import { StoreLock } from '../../../lib/store-lock.ts'
+import { assessLossless } from '../../../lib/store-lossless.ts'
+import {
+  makePrStateResolverLayer,
+  PrStateResolver,
+  type PrStateInfo,
+  type PrStateResolverService,
+} from '../../../lib/store-pr-state.ts'
+import {
+  classifyColdWorktree,
+  isNamedRefWorktree,
+  type ColdWorktreeDecision,
+} from '../../../lib/store-worktree-policy.ts'
 import { classifyStoreWorktreePolicy } from '../../../lib/store-worktree-policy.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
@@ -388,6 +410,335 @@ const classifyGcWorktree = ({
         'span.label': `${worktree.refType}/${worktree.ref}`,
         'store.ref.type': worktree.refType,
         'store.worktree.broken': worktree.broken,
+      },
+    }),
+  )
+
+const normalizeStorePath = (path: string): string => path.replace(/\/+$/, '')
+
+/** A named (`refs/heads/*`) worktree paired with the repo it belongs to. */
+interface NamedWorktreeTarget {
+  readonly repoRelativePath: string
+  readonly repoFullPath: AbsoluteDirPath
+  readonly bareRepoPath: AbsoluteDirPath
+  readonly worktree: CollectedWorktree
+}
+
+/**
+ * Build a `StoreGcResult` for a cold-path outcome.
+ *
+ * `reason` is the stable classification tag (live/not-stale/merged/...);
+ * `message` carries free-form detail; `recoverPath` is the `.archive/` location
+ * for an archived worktree.
+ */
+const coldResult = ({
+  target,
+  status,
+  reason,
+  message,
+  recoverPath,
+}: {
+  target: NamedWorktreeTarget
+  status: StoreGcResult['status']
+  reason?: string | undefined
+  message?: string | undefined
+  recoverPath?: string | undefined
+}): StoreGcResult => ({
+  repo: target.repoRelativePath,
+  ref: target.worktree.ref,
+  refType: target.worktree.refType,
+  path: target.worktree.path,
+  status,
+  ...(reason !== undefined ? { reason } : {}),
+  ...(message !== undefined ? { message } : {}),
+  ...(recoverPath !== undefined ? { recoverPath } : {}),
+})
+
+/**
+ * Re-derive a fresh live set under lock for the veto re-check (invariant 1).
+ *
+ * Reconciles every present workspace again so a worktree that became live
+ * between the initial collect and this destructive step is never archived/reaped.
+ * Read-only with respect to the on-disk records here? No — reconcile rewrites
+ * records, so it is serialized by the caller's `withWorktreeLock`.
+ */
+const reReconcileLiveSet = ({
+  store,
+  root,
+  now,
+}: {
+  store: Effect.Effect.Success<typeof Store>
+  root: Option.Option<AbsoluteDirPath>
+  now: number
+}) =>
+  collectStoreLiveSet({
+    store,
+    ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
+    refreshCurrentWorkspace: false,
+    pruneStaleRegistry: false,
+    reconcileAllWorkspaces: true,
+    now,
+  })
+
+/**
+ * Cold reclamation for ONE repo's named worktrees (decisions 0001–0010).
+ *
+ * Fetch the bare first (failure ⇒ keep ALL this repo's named worktrees — the
+ * reachability signal would be stale). Then per named worktree: enforce the
+ * actual-HEAD-branch gate (`ref_mismatch` ⇒ keep), resolve PR state adjacent to
+ * classification, assess the lossless floor, and classify. An `archive` decision
+ * runs under `withWorktreeLock` with a FRESH live-set veto re-check immediately
+ * before `archiveWorktree` (archive → verify → free-branch is the helper's job);
+ * any failure leaves the original intact and reports keep+error. Finally scan
+ * `.archive/` and reap entries past the retention TTL, each under lock + veto.
+ *
+ * `now` is the explicit epoch-ms decision clock; `coldSince` is read from the
+ * pre-recorded observation ledger so grace windows are consistent across repos.
+ */
+const coldReclaimRepo = ({
+  store,
+  storeLock,
+  prResolver,
+  root,
+  repoRelativePath,
+  repoFullPath,
+  bareRepoPath,
+  namedWorktrees,
+  liveSet,
+  ledger,
+  config,
+  now,
+  dryRun,
+}: {
+  store: Effect.Effect.Success<typeof Store>
+  storeLock: Effect.Effect.Success<typeof StoreLock>
+  prResolver: PrStateResolverService
+  root: Option.Option<AbsoluteDirPath>
+  repoRelativePath: string
+  repoFullPath: AbsoluteDirPath
+  bareRepoPath: AbsoluteDirPath
+  namedWorktrees: ReadonlyArray<NamedWorktreeTarget>
+  liveSet: StoreLiveSet
+  ledger: Record<string, number>
+  config: StoreGcConfig
+  now: number
+  dryRun: boolean
+}) =>
+  Effect.gen(function* () {
+    const results: StoreGcResult[] = []
+
+    // Fetch --prune so `refs/remotes/*` is fresh (the reachability + PR-prune
+    // signal). A repo whose fetch fails keeps ALL its named worktrees — the
+    // conservative direction (every commit would read as unpushed).
+    const fetchResult = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.either)
+    if (fetchResult._tag === 'Left') {
+      const message =
+        fetchResult.left instanceof Error === true
+          ? fetchResult.left.message
+          : String(fetchResult.left)
+      for (const target of namedWorktrees) {
+        results.push(coldResult({ target, status: 'kept', reason: 'fetch-failed', message }))
+      }
+      return results
+    }
+
+    for (const target of namedWorktrees) {
+      const { worktree } = target
+      // Only `refs/heads/*` carries a branch identity to reclaim; tags have no
+      // PR/branch to free, so they are always kept by the cold path.
+      if (worktree.refType !== 'heads') {
+        results.push(coldResult({ target, status: 'kept', reason: 'named-tag-ref' }))
+        continue
+      }
+
+      // ref_mismatch gate: the store path claims `<ref>` but the worktree HEAD is
+      // on a different branch. Archiving frees `refs/heads/<ref>`, which is NOT
+      // the branch actually checked out — keep and surface the divergence.
+      const headBranch = yield* Git.getCurrentBranch(worktree.path).pipe(
+        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+      )
+      if (Option.isSome(headBranch) === true && headBranch.value !== worktree.ref) {
+        results.push(
+          coldResult({
+            target,
+            status: 'kept',
+            reason: 'ref_mismatch',
+            message: `HEAD is '${headBranch.value}'`,
+          }),
+        )
+        continue
+      }
+
+      const prState: PrStateInfo = yield* prResolver.resolve({
+        relativePath: EffectPath.unsafe.relativeDir(target.repoRelativePath),
+        branch: worktree.ref,
+      })
+
+      const head = yield* Git.getCurrentCommit(worktree.path).pipe(
+        Effect.map(Option.some),
+        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+      )
+      if (Option.isNone(head) === true) {
+        results.push(coldResult({ target, status: 'kept', reason: 'unreadable-head' }))
+        continue
+      }
+      const worktreeHead = head.value
+
+      const lossless = yield* assessLossless({
+        bareRepoPath,
+        worktreePath: worktree.path,
+        worktreeHead,
+      }).pipe(
+        Effect.map(Option.some),
+        // A failed lossless probe (e.g. unresolvable head) degrades to keep.
+        Effect.catchAll(() => Effect.succeed(Option.none<never>())),
+      )
+      if (Option.isNone(lossless) === true) {
+        results.push(coldResult({ target, status: 'kept', reason: 'unrecoverable-local-work' }))
+        continue
+      }
+
+      const decision: ColdWorktreeDecision = classifyColdWorktree({
+        worktree: { refType: 'heads', path: worktree.path },
+        liveSet,
+        prState,
+        lossless: lossless.value,
+        coldSinceMs: coldSinceMsFor({ ledger, path: worktree.path }),
+        config,
+        now,
+      })
+
+      if (decision._tag === 'keep') {
+        results.push(coldResult({ target, status: 'kept', reason: decision.reason }))
+        continue
+      }
+
+      // Archive decision: serialize under the worktree lock and re-check the live
+      // veto against a FRESH reconcile immediately before moving (invariant 1).
+      if (dryRun === true) {
+        results.push(coldResult({ target, status: 'archived', reason: decision.reason }))
+        continue
+      }
+
+      const archiveOutcome = yield* storeLock
+        .withWorktreeLock(worktree.path)(
+          Effect.gen(function* () {
+            const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
+            if (isPathProtected({ liveSet: freshLiveSet, path: worktree.path }) === true) {
+              return { _tag: 'kept-live' as const }
+            }
+            const dest = yield* archiveWorktree({
+              repoRoot: repoFullPath,
+              bareRepoPath,
+              worktreePath: worktree.path,
+              branch: worktree.ref,
+              commit: worktreeHead,
+              reason: decision.reason,
+              now,
+            })
+            return { _tag: 'archived' as const, recoverPath: dest }
+          }),
+        )
+        .pipe(
+          Effect.catchAll((error) =>
+            Effect.succeed({
+              _tag: 'error' as const,
+              message: error instanceof Error === true ? error.message : String(error),
+            }),
+          ),
+        )
+
+      if (archiveOutcome._tag === 'kept-live') {
+        results.push(coldResult({ target, status: 'kept', reason: 'live' }))
+      } else if (archiveOutcome._tag === 'error') {
+        // Archive failed mid-flight: the original worktree is left intact.
+        results.push(
+          coldResult({
+            target,
+            status: 'error',
+            reason: decision.reason,
+            message: archiveOutcome.message,
+          }),
+        )
+      } else {
+        results.push(
+          coldResult({
+            target,
+            status: 'archived',
+            reason: decision.reason,
+            recoverPath: archiveOutcome.recoverPath,
+          }),
+        )
+      }
+    }
+
+    // Reap archives past the retention TTL, each under lock + a fresh veto.
+    const archives = yield* scanArchives({ repoRoot: repoFullPath, bareRepoPath }).pipe(
+      Effect.catchAll(() => Effect.succeed([] as never[])),
+    )
+    for (const entry of archives) {
+      if (now - entry.archivedAtMs < config.archiveRetentionMs) continue
+
+      const reapTarget: NamedWorktreeTarget = {
+        repoRelativePath,
+        repoFullPath,
+        bareRepoPath,
+        worktree: {
+          ref: entry.branch,
+          refType: 'heads',
+          path: entry.path,
+          broken: false,
+        },
+      }
+
+      if (dryRun === true) {
+        results.push(coldResult({ target: reapTarget, status: 'reaped', reason: 'retention' }))
+        continue
+      }
+
+      const reapOutcome = yield* storeLock
+        .withWorktreeLock(entry.path)(
+          Effect.gen(function* () {
+            const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
+            if (isPathProtected({ liveSet: freshLiveSet, path: entry.path }) === true) {
+              return { _tag: 'kept-live' as const }
+            }
+            yield* reapArchive({ bareRepoPath, path: entry.path })
+            return { _tag: 'reaped' as const }
+          }),
+        )
+        .pipe(
+          Effect.catchAll((error) =>
+            Effect.succeed({
+              _tag: 'error' as const,
+              message: error instanceof Error === true ? error.message : String(error),
+            }),
+          ),
+        )
+
+      if (reapOutcome._tag === 'kept-live') {
+        results.push(coldResult({ target: reapTarget, status: 'kept', reason: 'live' }))
+      } else if (reapOutcome._tag === 'error') {
+        results.push(
+          coldResult({
+            target: reapTarget,
+            status: 'error',
+            reason: 'retention',
+            message: reapOutcome.message,
+          }),
+        )
+      } else {
+        results.push(coldResult({ target: reapTarget, status: 'reaped', reason: 'retention' }))
+      }
+    }
+
+    return results
+  }).pipe(
+    Effect.withSpan('megarepo/store/gc/cold-reclaim-repo', {
+      attributes: {
+        'span.label': repoRelativePath,
+        'store.repo': repoRelativePath,
+        'store.bare_repo.path': bareRepoPath,
       },
     }),
   )
@@ -849,17 +1200,25 @@ const storeGcCommand = Cli.Command.make(
             )
           }
 
+          // Single decision clock for the whole run — every grace/retention/
+          // persistence path reads THIS value, never the ambient wall clock again.
+          const now = yield* Clock.currentTimeMillis
+
           statusMessage = 'collecting liveness registry'
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
           root = yield* findMegarepoRoot(cwd)
+          // Default cold path reconciles EVERY present workspace once (decision
+          // 0010) so a repin that ran no refreshing command is still caught; the
+          // result is threaded everywhere. `--all` keeps its lighter collect.
           const liveSet = yield* collectStoreLiveSet({
             store,
             ...(Option.isSome(root) === true ? { currentWorkspaceRoot: root.value } : {}),
             pruneStaleRegistry: dryRun === false,
             refreshCurrentWorkspace: dryRun === false,
-            now: yield* Clock.currentTimeMillis,
+            ...(all === false ? { reconcileAllWorkspaces: true } : {}),
+            now,
           })
           liveSetForMetrics = liveSet
 
@@ -881,20 +1240,144 @@ const storeGcCommand = Cli.Command.make(
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
 
-          yield* Stream.fromIterable(repos).pipe(
+          // Per-repo collected worktrees, computed once so the default cold path
+          // can record observations globally (ledger replaces, not merges) before
+          // any per-repo classification.
+          const repoWorktrees = yield* Effect.all(
+            repos.map((repo) =>
+              Effect.gen(function* () {
+                const bareRepoPath = EffectPath.ops.join(
+                  repo.fullPath,
+                  EffectPath.unsafe.relativeDir('.bare/'),
+                )
+                const worktrees = yield* collectRepoStoreWorktrees({
+                  fs,
+                  repoPath: repo.fullPath,
+                  bareRepoPath,
+                })
+                return { repo, bareRepoPath, worktrees }
+              }),
+            ),
+            { concurrency: GC_REPO_CONCURRENCY },
+          )
+
+          // Default cold reclamation path (decisions 0001–0010): additive third
+          // path. Named (`refs/heads/*`/`refs/tags/*`) worktrees are owned here;
+          // `--all` removes everything via the legacy stream and skips this.
+          if (all === false) {
+            const namedTargets: Array<NamedWorktreeTarget> = []
+            for (const { repo, bareRepoPath, worktrees } of repoWorktrees) {
+              for (const worktree of worktrees) {
+                if (worktree.broken === true) continue
+                if (isNamedRefWorktree(worktree) === false) continue
+                namedTargets.push({
+                  repoRelativePath: repo.relativePath,
+                  repoFullPath: repo.fullPath,
+                  bareRepoPath,
+                  worktree,
+                })
+              }
+            }
+
+            // Cold = a named worktree absent from the reconciled live set. Record
+            // the FULL cold set ONCE (the ledger is store-global; a per-repo write
+            // would launder other repos' grace). Unclean-reconcile paths re-arm.
+            const coldPaths = namedTargets
+              .filter(
+                (target) => isPathProtected({ liveSet, path: target.worktree.path }) === false,
+              )
+              .map((target) => normalizeStorePath(target.worktree.path))
+            // The ledger read-modify-write is store-global; serialize it under a
+            // stable store-keyed lock so concurrent gc runs don't clobber it.
+            const ledger = yield* storeLock.withWorktreeLock(
+              `${store.basePath}.state/gc-observations`,
+            )(
+              recordObservations({
+                storeBasePath: store.basePath,
+                coldPaths,
+                uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
+                now,
+              }),
+            )
+
+            const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
+
+            // Use an injected `PrStateResolver` when present (tests provide a stub
+            // layer); otherwise build the live `gh`-shelling resolver here so the
+            // default `mr store gc` path needs no extra wiring at the CLI edge.
+            const injectedResolver = yield* Effect.serviceOption(PrStateResolver)
+            const prResolver =
+              Option.isSome(injectedResolver) === true
+                ? injectedResolver.value
+                : yield* PrStateResolver.pipe(Effect.provide(makePrStateResolverLayer()))
+
+            statusMessage = 'reclaiming cold worktrees'
+            if (progressive === true) {
+              yield* dispatchGc({ done: false, forceDispatch: true })
+            }
+
+            // Group named targets by repo, then reclaim per repo (concurrency 1 so
+            // a global PR snapshot can never go stale — resolve adjacent instead).
+            yield* Stream.fromIterable(repoWorktrees).pipe(
+              Stream.mapEffect(
+                ({ repo, bareRepoPath }) =>
+                  Effect.gen(function* () {
+                    const repoNamed = namedTargets.filter(
+                      (target) => target.repoRelativePath === repo.relativePath,
+                    )
+                    if (repoNamed.length === 0) return
+                    discoveredWorktreeCount += repoNamed.length
+                    activeWorktreeCount += repoNamed.length
+                    if (progressive === true) {
+                      yield* dispatchGc({ done: false, forceDispatch: true })
+                    }
+                    const repoResults = yield* coldReclaimRepo({
+                      store,
+                      storeLock,
+                      prResolver,
+                      root,
+                      repoRelativePath: repo.relativePath,
+                      repoFullPath: repo.fullPath,
+                      bareRepoPath,
+                      namedWorktrees: repoNamed,
+                      liveSet,
+                      ledger,
+                      config,
+                      now,
+                      dryRun,
+                    }).pipe(
+                      Effect.ensuring(
+                        Effect.sync(() => {
+                          activeWorktreeCount -= repoNamed.length
+                        }),
+                      ),
+                    )
+                    for (const result of repoResults) results.push(result)
+                    if (progressive === true) {
+                      yield* dispatchGc({ done: false, forceDispatch: true })
+                    }
+                  }),
+                { concurrency: GC_REPO_CONCURRENCY, unordered: true },
+              ),
+              Stream.runDrain,
+            )
+          }
+
+          yield* Stream.fromIterable(repoWorktrees).pipe(
             Stream.mapEffect(
-              (repo) =>
+              ({ repo, bareRepoPath, worktrees: allWorktrees }) =>
                 Effect.gen(function* () {
                   let removedForRepo = 0
-                  const bareRepoPath = EffectPath.ops.join(
-                    repo.fullPath,
-                    EffectPath.unsafe.relativeDir('.bare/'),
-                  )
-                  const worktrees = yield* collectRepoStoreWorktrees({
-                    fs,
-                    repoPath: repo.fullPath,
-                    bareRepoPath,
-                  })
+                  // Default mode owns named worktrees in the cold path above; the
+                  // legacy stream only handles commit worktrees (and everything in
+                  // `--all` mode).
+                  const worktrees =
+                    all === false
+                      ? allWorktrees.filter(
+                          (worktree) =>
+                            worktree.broken === true || isNamedRefWorktree(worktree) === false,
+                        )
+                      : allWorktrees
 
                   yield* Stream.fromIterable(worktrees).pipe(
                     Stream.mapEffect(
