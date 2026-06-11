@@ -82,8 +82,17 @@ import {
   Stream,
 } from 'effect'
 
+import { OtelAttr, OtelSpan } from '@overeng/otel-contract'
+
 /** Channel name for broadcasting logs */
 export const BROADCAST_CHANNEL_NAME = 'effect-debug-logs'
+
+const BroadcastLoggerLogStreamSetupSpan = OtelSpan.defineSync({
+  name: 'BroadcastLogger.logStream.setup',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+})
 
 const sanitizeForBroadcast = (value: unknown): unknown => {
   if (value === null || value === undefined) return value
@@ -234,7 +243,12 @@ export const logStream: Stream.Stream<BroadcastLogEntry, never, Scope.Scope> =
           channel.close()
         }),
       )
-    }).pipe(Effect.withSpan('BroadcastLogger.logStream.setup')),
+    }).pipe(
+      OtelSpan.unsafeWith({
+        span: BroadcastLoggerLogStreamSetupSpan,
+        attributes: { label: 'setup' },
+      }),
+    ),
   )
 
 /** Options for creating a log bridge layer. */

@@ -9,6 +9,12 @@ import {
   OteliteSpawnError,
 } from './errors.ts'
 import {
+  withOteliteExecSpan,
+  withOteliteInspectSpan,
+  withOteliteInspectSummarySpan,
+  withOteliteLabelSpan,
+} from './otel.ts'
+import {
   EndpointsEvent,
   LogRow,
   LogSummary,
@@ -167,7 +173,7 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
         }),
       ).pipe(
         Effect.mapError((cause) => new OteliteSpawnError({ argv: [binary, ...args], cause })),
-        Effect.withSpan('otelite.exec', { attributes: { 'otelite.argv': args } }),
+        withOteliteExecSpan(args),
       )
 
     /**
@@ -227,7 +233,7 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
         }
 
         return summary
-      }).pipe(Effect.withSpan('otelite.run'))
+      }).pipe(withOteliteLabelSpan('otelite.run'))
 
     const runCli = <A>(
       args: ReadonlyArray<string>,
@@ -282,7 +288,7 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
           Schema.decodeUnknown(Schema.parseJson(schema))(stdout).pipe(
             Effect.mapError((cause) => new OteliteDecodeError({ kind, raw: stdout, cause })),
           ),
-        ).pipe(Effect.withSpan('otelite.inspect.summary', { attributes: { signal } }))
+        ).pipe(withOteliteInspectSummarySpan(signal))
       }
       const schema = rowSchema[signal]
       const kind = rowKind[signal]
@@ -295,7 +301,7 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
               Effect.mapError((cause) => new OteliteDecodeError({ kind, raw: line, cause })),
             ),
         ),
-      ).pipe(Effect.withSpan('otelite.inspect', { attributes: { signal } }))
+      ).pipe(withOteliteInspectSpan(signal))
     }
 
     /**
@@ -488,12 +494,12 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
           inspect: handleInspect,
           summary: Deferred.await(summaryDeferred),
         } satisfies CaptureHandle
-      }).pipe(Effect.withSpan('otelite.capture'))
+      }).pipe(withOteliteLabelSpan('otelite.capture'))
 
     /** otelite's own version string (`otelite --version`). */
     const version = Effect.suspend(() =>
       runCli(['--version'], (stdout) => Effect.succeed(stdout.trim())),
-    ).pipe(Effect.withSpan('otelite.version'))
+    ).pipe(withOteliteLabelSpan('otelite.version'))
 
     return { run, capture, inspect, version } as const
   }),

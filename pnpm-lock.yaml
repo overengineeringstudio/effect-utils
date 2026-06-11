@@ -939,6 +939,9 @@ importers:
       '@overeng/notion-effect-schema':
         specifier: workspace:^
         version: link:../notion-effect-schema
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       '@playwright/test':
         specifier: ^1.59.1
         version: 1.59.1

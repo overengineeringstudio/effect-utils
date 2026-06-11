@@ -4,7 +4,9 @@
  * Node.js processes stay alive while there are active handles (timers, sockets, etc.)
  * or pending requests. This module provides Effect-native APIs to inspect these.
  */
-import { type Duration, Effect, Runtime, Schedule, Stream } from 'effect'
+import { type Duration, Effect, Runtime, Schedule, Schema, Stream } from 'effect'
+
+import { OtelAttr, OtelSpan } from './otel-attrs.ts'
 
 /** Information about a single active handle */
 export interface HandleInfo {
@@ -19,6 +21,13 @@ export interface ActiveHandlesInfo {
   readonly totalHandles: number
   readonly totalRequests: number
 }
+
+const ActiveHandlesLogSpan = OtelSpan.defineSync({
+  name: 'ActiveHandlesDebugger.logActiveHandles',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+})
 
 /** Categorizes a handle by its constructor name and extracts useful details */
 const categorizeHandle = (handle: unknown): HandleInfo => {
@@ -103,7 +112,7 @@ export const logActiveHandles = Effect.gen(function* () {
     requests: info.requests,
   })
   return info
-}).pipe(Effect.withSpan('ActiveHandlesDebugger.logActiveHandles'))
+}).pipe(OtelSpan.unsafeWith({ span: ActiveHandlesLogSpan, attributes: { label: 'dump' } }))
 
 /**
  * Monitors active handles periodically and logs when the count changes.

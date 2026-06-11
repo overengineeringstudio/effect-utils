@@ -16,7 +16,8 @@
   "dependencies": {
     "@overeng/content-address": "workspace:^",
     "@overeng/notion-core": "workspace:^",
-    "@overeng/notion-effect-schema": "workspace:^"
+    "@overeng/notion-effect-schema": "workspace:^",
+    "@overeng/otel-contract": "workspace:^"
   },
   "devDependencies": {
     "@effect/platform": "0.96.1",
