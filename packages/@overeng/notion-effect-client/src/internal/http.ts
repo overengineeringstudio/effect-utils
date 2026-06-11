@@ -322,7 +322,7 @@ export const buildRequest = ({
 
     return baseRequest
   })
-/* No `Effect.withSpan` here: request construction is a trivial synchronous
+/* No operation span here: request construction is a trivial synchronous
      shape (header mapping + body encoding) and the generated span was noise
      — 85 zero-signal spans per `pixeltrail sync` run. Method/path are
      already carried on the surrounding `NotionHttp.<METHOD>` span. */

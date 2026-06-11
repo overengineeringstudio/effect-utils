@@ -31,7 +31,7 @@
  *
  *   yield* Effect.gen(function* () {
  *     yield* Effect.log('Syncing records')
- *   }).pipe(Effect.withSpan('sync-operation'))
+ *   })
  *
  *   yield* Effect.logError('Connection failed', { retries: 3 })
  * }).pipe(

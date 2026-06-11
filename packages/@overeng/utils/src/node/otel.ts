@@ -144,7 +144,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
 
     // Propagate parent trace context from TRACEPARENT without creating a bridge span.
     // Layer.parentSpan sets the external parent so child spans (e.g. command-level
-    // Effect.withSpan) appear under the dt task span in the trace.
+    // schema-first operation spans) appear under the dt task span in the trace.
     const parentLive = parentSpan !== undefined ? Layer.parentSpan(parentSpan) : Layer.empty
 
     const baseUrl = endpoint.endsWith('/') === true ? endpoint.slice(0, -1) : endpoint
