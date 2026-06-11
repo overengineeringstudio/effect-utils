@@ -86,6 +86,21 @@ export const nixLockFileAttrs = OtelAttrs.defineSync(
   }),
 )
 
+export const nixLockPathTypeAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    path: Schema.String.pipe(OtelAttr.key({ key: 'path' })),
+    type: Schema.String.pipe(OtelAttr.key({ key: 'type' })),
+  }),
+)
+
+export const nixLockPathAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    path: Schema.String.pipe(OtelAttr.key({ key: 'path' })),
+  }),
+)
+
 export const syncMemberCloneAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
@@ -153,6 +168,168 @@ export const withLabelSpan = (name: string, labelValue: string) =>
   OtelSpan.unsafeWith({
     span: { name, attributes: labelAttrs },
     attributes: { label: labelValue },
+  })
+
+export const withRepoPathSpan = (name: string, path: string) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: repoPathAttrs },
+    attributes: { label: basename(path), repoPath: path },
+  })
+
+export const withWorktreePathSpan = ({
+  name,
+  worktreePath,
+  label = basename(worktreePath),
+}: {
+  readonly name: string
+  readonly worktreePath: string
+  readonly label?: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: worktreePathAttrs },
+    attributes: { label, worktreePath },
+  })
+
+export const withGitUrlSpan = ({
+  name,
+  label,
+  url,
+  bare,
+}: {
+  readonly name: string
+  readonly label: string
+  readonly url: string
+  readonly bare?: boolean
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: gitUrlAttrs },
+    attributes: {
+      label,
+      url,
+      ...(bare === undefined ? {} : { bare }),
+    },
+  })
+
+export const withGitBranchSpan = ({
+  name,
+  branch,
+}: {
+  readonly name: string
+  readonly branch: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: gitBranchAttrs },
+    attributes: { label: branch, branch },
+  })
+
+export const withGitCommitSpan = ({
+  name,
+  label,
+  commit,
+}: {
+  readonly name: string
+  readonly label: string
+  readonly commit: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: gitCommitAttrs },
+    attributes: { label, commit },
+  })
+
+export const withWorkspaceSpan = ({
+  name,
+  workspaceRoot,
+  label = basename(workspaceRoot),
+}: {
+  readonly name: string
+  readonly workspaceRoot: string
+  readonly label?: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: workspaceAttrs },
+    attributes: { label, workspaceRoot },
+  })
+
+export const withStoreLiveSetSpan = ({
+  name,
+  hasCurrentWorkspace,
+  pruneStaleRegistry,
+  refreshCurrentWorkspace,
+}: {
+  readonly name: string
+  readonly hasCurrentWorkspace: boolean
+  readonly pruneStaleRegistry: boolean
+  readonly refreshCurrentWorkspace: boolean
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: storeLiveSetAttrs },
+    attributes: {
+      label: 'store',
+      hasCurrentWorkspace,
+      pruneStaleRegistry,
+      refreshCurrentWorkspace,
+    },
+  })
+
+export const withNixFlakeMetadataSpan = ({
+  owner,
+  repo,
+  rev,
+}: {
+  readonly owner: string
+  readonly repo: string
+  readonly rev: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name: 'fetchNixFlakeMetadata', attributes: nixFlakeMetadataAttrs },
+    attributes: {
+      label: `${owner}/${repo}@${rev.slice(0, 8)}`,
+      owner,
+      repo,
+      rev,
+    },
+  })
+
+export const withNixLockFileSpan = ({
+  lockPath,
+  lockType,
+}: {
+  readonly lockPath: string
+  readonly lockType: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name: 'megarepo/nix-lock/file', attributes: nixLockFileAttrs },
+    attributes: {
+      label: basename(lockPath),
+      path: lockPath,
+      type: lockType,
+    },
+  })
+
+export const withNixLockPathTypeSpan = ({
+  name,
+  path,
+  type,
+}: {
+  readonly name: string
+  readonly path: string
+  readonly type: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: nixLockPathTypeAttrs },
+    attributes: { label: path, path, type },
+  })
+
+export const withNixLockPathSpan = ({
+  name,
+  path,
+}: {
+  readonly name: string
+  readonly path: string
+}) =>
+  OtelSpan.unsafeWith({
+    span: { name, attributes: nixLockPathAttrs },
+    attributes: { label: path, path },
   })
 
 export const withSyncMemberCloneSpan = ({

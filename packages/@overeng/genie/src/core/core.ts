@@ -364,13 +364,11 @@ export const checkAll = ({
         12,
       ),
     )
-    yield* Effect.annotateCurrentSpan(
-      Observability.commandSpan.attributes.unsafeEncode({
-        label: 'check',
-        cwd,
-        concurrency: checkConcurrency,
-      }),
-    )
+    yield* Observability.annotateCommand({
+      label: 'check',
+      cwd,
+      concurrency: checkConcurrency,
+    })
 
     const genieFiles = yield* discoverAndValidate(cwd)
 
@@ -415,14 +413,12 @@ export const checkAll = ({
       path: string
       result: FileCheckResult
     }) {
-      yield* Effect.annotateCurrentSpan(
-        Observability.fileSpan.attributes.unsafeEncode({
-          label: Observability.relativePath({ cwd, filePath }),
-          cwd,
-          genieFilePath: filePath,
-          targetFilePath: filePath.replace('.genie.ts', ''),
-        }),
-      )
+      yield* Observability.annotateFile({
+        label: Observability.relativePath({ cwd, filePath }),
+        cwd,
+        genieFilePath: filePath,
+        targetFilePath: filePath.replace('.genie.ts', ''),
+      })
       yield* emit({
         _tag: 'FileCompleted',
         path: filePath,

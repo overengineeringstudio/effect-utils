@@ -72,14 +72,12 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
     only: Option.Option<string>
   }) =>
     Effect.gen(function* () {
-      yield* Effect.annotateCurrentSpan(
-        Observability.commandAttrs.unsafeEncode({
-          label: options.nestedName,
-          command: 'config push-refs nested',
-          member: options.nestedName,
-          dryRun: options.dryRun,
-        }),
-      )
+      yield* Observability.annotateCommand({
+        label: options.nestedName,
+        command: 'config push-refs nested',
+        member: options.nestedName,
+        dryRun: options.dryRun,
+      })
       const configPath = yield* findConfigPath(options.nestedRoot)
       if (configPath === undefined) return undefined
 

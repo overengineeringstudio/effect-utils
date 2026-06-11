@@ -252,9 +252,7 @@ const collectRepoStoreWorktrees = ({
     const gitWorktreesResult = yield* Git.listWorktrees(bareRepoPath).pipe(
       Effect.tapError((error) =>
         Effect.gen(function* () {
-          yield* Effect.annotateCurrentSpan(
-            Observability.storeGitWorktreeListFailureAttrs.unsafeEncode({ failed: true }),
-          )
+          yield* Observability.annotateStoreGitWorktreeListFailure(true)
           yield* Effect.logWarning('Falling back to store layout worktree discovery').pipe(
             Effect.annotateLogs({
               repoPath,
@@ -326,13 +324,12 @@ const collectRepoStoreWorktrees = ({
 
     return result
   }).pipe(
-    Effect.withSpan('megarepo/store/gc/collect-worktrees', {
-      attributes: Observability.storeWorktree({
-        repo: repoPath,
-        refType: 'repo',
-        ref: Observability.shortPath(repoPath),
-        bareRepoPath,
-      }),
+    Observability.withStoreWorktreeSpan({
+      name: 'megarepo/store/gc/collect-worktrees',
+      repo: repoPath,
+      refType: 'repo',
+      ref: Observability.shortPath(repoPath),
+      bareRepoPath,
     }),
   )
 
@@ -387,14 +384,13 @@ const classifyGcWorktree = ({
 
     return { worktree, action: 'check' as const, status: statusResult.status }
   }).pipe(
-    Effect.withSpan('megarepo/store/gc/classify-worktree', {
-      attributes: Observability.storeWorktree({
-        repo: 'worktree',
-        refType: worktree.refType,
-        ref: worktree.ref,
-        worktreePath: worktree.path,
-        broken: worktree.broken,
-      }),
+    Observability.withStoreWorktreeSpan({
+      name: 'megarepo/store/gc/classify-worktree',
+      repo: 'worktree',
+      refType: worktree.refType,
+      ref: worktree.ref,
+      worktreePath: worktree.path,
+      broken: worktree.broken,
     }),
   )
 
@@ -803,14 +799,13 @@ const storeGcCommand = Cli.Command.make(
             status: 'removed',
           } satisfies StoreGcResult
         }).pipe(
-          Effect.withSpan('megarepo/store/gc/process-worktree', {
-            attributes: Observability.storeWorktree({
-              repo: repoRelativePath,
-              refType: decision.worktree.refType,
-              ref: decision.worktree.ref,
-              worktreePath: decision.worktree.path,
-              bareRepoPath,
-            }),
+          Observability.withStoreWorktreeSpan({
+            name: 'megarepo/store/gc/process-worktree',
+            repo: repoRelativePath,
+            refType: decision.worktree.refType,
+            ref: decision.worktree.ref,
+            worktreePath: decision.worktree.path,
+            bareRepoPath,
           }),
         )
 
@@ -980,12 +975,11 @@ const storeGcCommand = Cli.Command.make(
                     yield* dispatchGc({ done: false, forceDispatch: true })
                   }
                 }).pipe(
-                  Effect.withSpan('megarepo/store/gc/repo', {
-                    attributes: Observability.storeWorktree({
-                      repo: repo.relativePath,
-                      refType: 'repo',
-                      ref: Observability.shortPath(repo.relativePath),
-                    }),
+                  Observability.withStoreWorktreeSpan({
+                    name: 'megarepo/store/gc/repo',
+                    repo: repo.relativePath,
+                    refType: 'repo',
+                    ref: Observability.shortPath(repo.relativePath),
                   }),
                 ),
               { concurrency: GC_REPO_CONCURRENCY, unordered: true },
@@ -1048,15 +1042,11 @@ const storeGcCommand = Cli.Command.make(
       })
     }).pipe(
       Effect.provide(StoreLayer),
-      Effect.withSpan('megarepo/store/gc', {
-        root: true,
-        attributes: Observability.storeGcAttrs.unsafeEncode({
-          label: 'gc',
-          policy: all === true ? 'all' : 'root-set',
-          dryRun,
-          force,
-          all,
-        }),
+      Observability.withStoreGcSpan({
+        policy: all === true ? 'all' : 'root-set',
+        dryRun,
+        force,
+        all,
       }),
     ),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
@@ -1216,8 +1206,9 @@ const storeAddCommand = Cli.Command.make(
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(
       Effect.provide(StoreLayer),
-      Effect.withSpan('megarepo/store/add', {
-        attributes: Observability.storeSource({ source: sourceString }),
+      Observability.withStoreSourceSpan({
+        name: 'megarepo/store/add',
+        source: sourceString,
       }),
     ),
 ).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))
@@ -1612,14 +1603,13 @@ const storeWorktreeNewCommand = Cli.Command.make(
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(
       Effect.provide(StoreLayer),
-      Effect.withSpan('megarepo/store/worktree/new', {
-        attributes: Observability.storeSource({
-          source: repoString,
-          ...(Option.isSome(refOpt) === true ? { ref: refOpt.value } : {}),
-          ...(Option.isSome(baseOpt) === true ? { base: baseOpt.value } : {}),
-          ...(Option.isSome(commitOpt) === true ? { commit: commitOpt.value } : {}),
-          porcelain,
-        }),
+      Observability.withStoreSourceSpan({
+        name: 'megarepo/store/worktree/new',
+        source: repoString,
+        ...(Option.isSome(refOpt) === true ? { ref: refOpt.value } : {}),
+        ...(Option.isSome(baseOpt) === true ? { base: baseOpt.value } : {}),
+        ...(Option.isSome(commitOpt) === true ? { commit: commitOpt.value } : {}),
+        porcelain,
       }),
     ),
 ).pipe(Cli.Command.withDescription('Create a new worktree in the store'))

@@ -530,14 +530,12 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   genieFilePath: string
   cwd: string
 }) {
-  yield* Effect.annotateCurrentSpan(
-    Observability.fileSpan.attributes.unsafeEncode({
-      label: Observability.relativePath({ cwd, filePath: genieFilePath }),
-      cwd,
-      genieFilePath,
-      targetFilePath: genieFilePath.replace('.genie.ts', ''),
-    }),
-  )
+  yield* Observability.annotateFile({
+    label: Observability.relativePath({ cwd, filePath: genieFilePath }),
+    cwd,
+    genieFilePath,
+    targetFilePath: genieFilePath.replace('.genie.ts', ''),
+  })
   yield* ensureImportMapResolver
 
   const importPathBase =
@@ -598,17 +596,15 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   oxfmtConfigPath: Option.Option<string>
   loadedGenieFile?: LoadedGenieFile
 }) {
-  yield* Effect.annotateCurrentSpan(
-    Observability.fileSpan.attributes.unsafeEncode({
-      label: Observability.relativePath({
-        cwd,
-        filePath: genieFilePath.replace('.genie.ts', ''),
-      }),
+  yield* Observability.annotateFile({
+    label: Observability.relativePath({
       cwd,
-      genieFilePath,
-      targetFilePath: genieFilePath.replace('.genie.ts', ''),
+      filePath: genieFilePath.replace('.genie.ts', ''),
     }),
-  )
+    cwd,
+    genieFilePath,
+    targetFilePath: genieFilePath.replace('.genie.ts', ''),
+  })
   const targetFilePath = genieFilePath.replace('.genie.ts', '')
   const sourceFile = path.basename(genieFilePath)
   const loaded =

@@ -88,7 +88,7 @@ export const ensureImportMapResolver = Effect.gen(function* () {
       })
     },
   })
-}).pipe(Effect.withSpan('genie.registerImportMapResolver'))
+}).pipe(Observability.withImportMapResolverSpan)
 
 /** Directories to skip when searching for .genie.ts files */
 const shouldSkipDirectory = (name: string): boolean => {

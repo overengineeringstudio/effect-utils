@@ -28,15 +28,12 @@ export const runGenieValidation = ({
   FileSystem.FileSystem | Path.Path
 > =>
   Effect.gen(function* () {
-    yield* Effect.annotateCurrentSpan(
-      Observability.validationSpan.attributes.unsafeEncode({
-        label: 'validate',
-        cwd,
-        requirePackageJsonValidate,
-        ...(genieFiles === undefined ? {} : { fileCount: genieFiles.length }),
-        ...(preloadedFiles === undefined ? {} : { preloadedFileCount: preloadedFiles.length }),
-      }),
-    )
+    yield* Observability.annotateValidation({
+      cwd,
+      requirePackageJsonValidate,
+      ...(genieFiles === undefined ? {} : { fileCount: genieFiles.length }),
+      ...(preloadedFiles === undefined ? {} : { preloadedFileCount: preloadedFiles.length }),
+    })
     const fs = yield* FileSystem.FileSystem
     const pathService = yield* Path.Path
     const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
@@ -118,13 +115,10 @@ export const runGenieValidation = ({
 
     return issues
   }).pipe(
-    Effect.withSpan(Observability.validationSpan.name, {
-      attributes: Observability.validationSpan.attributes.unsafeEncode({
-        label: 'validate',
-        cwd,
-        requirePackageJsonValidate,
-        ...(genieFiles === undefined ? {} : { fileCount: genieFiles.length }),
-        ...(preloadedFiles === undefined ? {} : { preloadedFileCount: preloadedFiles.length }),
-      }),
+    Observability.withValidationSpan({
+      cwd,
+      requirePackageJsonValidate,
+      ...(genieFiles === undefined ? {} : { fileCount: genieFiles.length }),
+      ...(preloadedFiles === undefined ? {} : { preloadedFileCount: preloadedFiles.length }),
     }),
   )

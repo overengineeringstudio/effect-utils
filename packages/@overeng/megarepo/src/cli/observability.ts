@@ -190,9 +190,127 @@ export const withSyncSpan = ({
     },
   })
 
+export const annotateCommand = ({
+  label,
+  command,
+  output,
+  all,
+  dryRun,
+  force,
+  member,
+  repo,
+}: {
+  label: string
+  command: string
+  output?: string
+  all?: boolean
+  dryRun?: boolean
+  force?: boolean
+  member?: string
+  repo?: string
+}) =>
+  OtelSpan.unsafeAnnotate({
+    attributes: commandAttrs,
+    value: {
+      label,
+      command,
+      ...(output === undefined ? {} : { output }),
+      ...(all === undefined ? {} : { all }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+      ...(force === undefined ? {} : { force }),
+      ...(member === undefined ? {} : { member }),
+      ...(repo === undefined ? {} : { repo }),
+    },
+  })
+
 export const annotateStoreGcResult = (
   value: Schema.Schema.Type<typeof storeGcResultAttrs.schema>,
 ) => OtelSpan.unsafeAnnotate({ attributes: storeGcResultAttrs, value })
+
+export const annotateStoreGitWorktreeListFailure = (failed: boolean) =>
+  OtelSpan.unsafeAnnotate({
+    attributes: storeGitWorktreeListFailureAttrs,
+    value: { failed },
+  })
+
+export const withStoreWorktreeSpan = ({
+  name,
+  repo,
+  refType,
+  ref,
+  worktreePath,
+  bareRepoPath,
+  broken,
+}: {
+  name: string
+  repo: string
+  refType: string
+  ref: string
+  worktreePath?: string
+  bareRepoPath?: string
+  broken?: boolean
+}) =>
+  applySpan({
+    span: { name, attributes: storeWorktreeAttrs },
+    attributes: {
+      label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
+      repo,
+      refType,
+      ref,
+      ...(worktreePath === undefined ? {} : { worktreePath }),
+      ...(bareRepoPath === undefined ? {} : { bareRepoPath }),
+      ...(broken === undefined ? {} : { broken }),
+    },
+  })
+
+export const withStoreGcSpan = ({
+  policy,
+  dryRun,
+  force,
+  all,
+}: {
+  policy: string
+  dryRun: boolean
+  force: boolean
+  all: boolean
+}) =>
+  applySpan({
+    span: { name: 'megarepo/store/gc', attributes: storeGcAttrs, root: true },
+    attributes: {
+      label: 'gc',
+      policy,
+      dryRun,
+      force,
+      all,
+    },
+  })
+
+export const withStoreSourceSpan = ({
+  name,
+  source,
+  ref,
+  base,
+  commit,
+  porcelain,
+}: {
+  name: string
+  source: string
+  ref?: string
+  base?: string
+  commit?: string
+  porcelain?: boolean
+}) =>
+  applySpan({
+    span: { name, attributes: storeSourceAttrs },
+    attributes: {
+      label: shortPath(source),
+      source,
+      ...(ref === undefined ? {} : { ref }),
+      ...(base === undefined ? {} : { base }),
+      ...(commit === undefined ? {} : { commit }),
+      ...(porcelain === undefined ? {} : { porcelain }),
+    },
+  })
 
 export const storeWorktree = ({
   repo,

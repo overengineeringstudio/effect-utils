@@ -93,6 +93,15 @@ export const atomicWriteSpan = {
   ),
 } as const
 
+export const importMapResolverSpan = {
+  name: 'genie.registerImportMapResolver',
+  attributes: OtelAttrs.defineSync(
+    Schema.Struct({
+      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    }),
+  ),
+} as const
+
 export const targetLockAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
@@ -165,6 +174,106 @@ export const withAtomicWriteSpan = ({
       label: basename(targetFilePath),
       targetFilePath,
       ...(mode === undefined ? {} : { mode }),
+    },
+  })
+
+export const withImportMapResolverSpan = applySpan({
+  span: importMapResolverSpan,
+  attributes: { label: 'import-map' },
+})
+
+export const withValidationSpan = ({
+  cwd,
+  requirePackageJsonValidate,
+  fileCount,
+  preloadedFileCount,
+}: {
+  cwd: string
+  requirePackageJsonValidate: boolean
+  fileCount?: number
+  preloadedFileCount?: number
+}) =>
+  applySpan({
+    span: validationSpan,
+    attributes: {
+      label: 'validate',
+      cwd,
+      requirePackageJsonValidate,
+      ...(fileCount === undefined ? {} : { fileCount }),
+      ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
+    },
+  })
+
+export const annotateCommand = ({
+  label,
+  cwd,
+  readOnly,
+  dryRun,
+  concurrency,
+}: {
+  label: string
+  cwd: string
+  readOnly?: boolean
+  dryRun?: boolean
+  concurrency?: number
+}) =>
+  OtelSpan.unsafeAnnotate({
+    attributes: commandSpan.attributes,
+    value: {
+      label,
+      cwd,
+      ...(readOnly === undefined ? {} : { readOnly }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+      ...(concurrency === undefined ? {} : { concurrency }),
+    },
+  })
+
+export const annotateFile = ({
+  label,
+  cwd,
+  genieFilePath,
+  targetFilePath,
+  readOnly,
+  dryRun,
+}: {
+  label?: string
+  cwd: string
+  genieFilePath: string
+  targetFilePath: string
+  readOnly?: boolean
+  dryRun?: boolean
+}) =>
+  OtelSpan.unsafeAnnotate({
+    attributes: fileSpan.attributes,
+    value: {
+      label: label ?? relativePath({ cwd, filePath: targetFilePath }),
+      cwd,
+      genieFilePath,
+      targetFilePath,
+      ...(readOnly === undefined ? {} : { readOnly }),
+      ...(dryRun === undefined ? {} : { dryRun }),
+    },
+  })
+
+export const annotateValidation = ({
+  cwd,
+  requirePackageJsonValidate,
+  fileCount,
+  preloadedFileCount,
+}: {
+  cwd: string
+  requirePackageJsonValidate: boolean
+  fileCount?: number
+  preloadedFileCount?: number
+}) =>
+  OtelSpan.unsafeAnnotate({
+    attributes: validationSpan.attributes,
+    value: {
+      label: 'validate',
+      cwd,
+      requirePackageJsonValidate,
+      ...(fileCount === undefined ? {} : { fileCount }),
+      ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
     },
   })
 

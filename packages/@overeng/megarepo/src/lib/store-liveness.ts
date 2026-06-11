@@ -99,11 +99,10 @@ const collectWorkspaceSymlinkTargets = ({
 
     return targets
   }).pipe(
-    Effect.withSpan('megarepo/store/liveness/scan-symlinks', {
-      attributes: Observability.workspaceAttrs.unsafeEncode({
-        label: workspaceLabel(workspaceRoot),
-        workspaceRoot,
-      }),
+    Observability.withWorkspaceSpan({
+      name: 'megarepo/store/liveness/scan-symlinks',
+      label: workspaceLabel(workspaceRoot),
+      workspaceRoot,
     }),
   )
 
@@ -161,11 +160,10 @@ export const collectWorkspaceLivePaths = ({
 
     return paths
   }).pipe(
-    Effect.withSpan('megarepo/store/liveness/collect-workspace', {
-      attributes: Observability.workspaceAttrs.unsafeEncode({
-        label: workspaceLabel(workspaceRoot),
-        workspaceRoot,
-      }),
+    Observability.withWorkspaceSpan({
+      name: 'megarepo/store/liveness/collect-workspace',
+      label: workspaceLabel(workspaceRoot),
+      workspaceRoot,
     }),
   )
 
@@ -199,11 +197,10 @@ export const refreshWorkspaceRegistry = ({
     yield* fs.writeFileString(workspaceRecordPath({ store, workspaceRoot }), content + '\n')
     return record
   }).pipe(
-    Effect.withSpan('megarepo/store/liveness/refresh-workspace', {
-      attributes: Observability.workspaceAttrs.unsafeEncode({
-        label: workspaceLabel(workspaceRoot),
-        workspaceRoot,
-      }),
+    Observability.withWorkspaceSpan({
+      name: 'megarepo/store/liveness/refresh-workspace',
+      label: workspaceLabel(workspaceRoot),
+      workspaceRoot,
     }),
   )
 
@@ -251,11 +248,7 @@ const readRegistryRecords = ({
     }
 
     return records
-  }).pipe(
-    Effect.withSpan('megarepo/store/liveness/read-registry', {
-      attributes: Observability.label('registry'),
-    }),
-  )
+  }).pipe(Observability.withLabelSpan('megarepo/store/liveness/read-registry', 'registry'))
 
 /** Collects the store-wide protected path set from the workspace registry. */
 export const collectStoreLiveSet = ({
@@ -301,13 +294,11 @@ export const collectStoreLiveSet = ({
       workspaceCount: records.length,
     } satisfies StoreLiveSet
   }).pipe(
-    Effect.withSpan('megarepo/store/liveness/collect-store', {
-      attributes: Observability.storeLiveSetAttrs.unsafeEncode({
-        label: 'store',
-        hasCurrentWorkspace: currentWorkspaceRoot !== undefined,
-        pruneStaleRegistry,
-        refreshCurrentWorkspace,
-      }),
+    Observability.withStoreLiveSetSpan({
+      name: 'megarepo/store/liveness/collect-store',
+      hasCurrentWorkspace: currentWorkspaceRoot !== undefined,
+      pruneStaleRegistry,
+      refreshCurrentWorkspace,
     }),
   )
 
