@@ -1,7 +1,7 @@
 import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 
 import { FileSystem } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import {
   NOTION_API_VERSION,
@@ -9,6 +9,7 @@ import {
   type NmdParentRef,
 } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
+import { OtelAttr, OtelSpan } from '@overeng/otel-contract'
 import { titleSlug } from '@overeng/utils'
 
 import { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
@@ -72,6 +73,15 @@ const NMD_EXT = '.nmd'
 
 /** Default root-file candidates in priority order, when not explicitly given. */
 const ROOT_FILE_CANDIDATES = ['index.nmd', 'README.nmd'] as const
+
+const SyncTreeSpan = OtelSpan.defineSync({
+  name: 'notion-md.sync-tree',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    plan: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.plan' })),
+    fromRemote: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.from_remote' })),
+  }),
+})
 
 /**
  * Sentinel "file path" inside the tree root used for all `.notion-md/` state
@@ -1340,11 +1350,12 @@ export const syncTree = (opts: {
     })
     return { _tag: 'tree', root, rootPageId, rootFile, direction: 'local', plan, ops } as const
   }).pipe(
-    Effect.withSpan('notion-md.sync-tree', {
+    OtelSpan.unsafeWith({
+      span: SyncTreeSpan,
       attributes: {
-        'span.label': basename(opts.root),
-        'notion_md.tree.plan': opts.plan === true,
-        'notion_md.tree.from_remote': opts.fromRemote === true,
+        label: basename(opts.root),
+        plan: opts.plan === true,
+        fromRemote: opts.fromRemote === true,
       },
     }),
   )

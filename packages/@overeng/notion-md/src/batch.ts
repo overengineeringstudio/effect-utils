@@ -1,7 +1,9 @@
 import { basename, dirname, resolve } from 'node:path'
 
 import { FileSystem, Path } from '@effect/platform'
-import { Duration, Effect, Queue, Stream } from 'effect'
+import { Duration, Effect, Queue, Schema, Stream } from 'effect'
+
+import { OtelAttr, OtelSpan } from '@overeng/otel-contract'
 
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
@@ -19,6 +21,33 @@ const DEFAULT_BATCH_CONCURRENCY = 4
 const WATCH_DEBOUNCE = Duration.millis(250)
 
 const SKIPPED_DIRECTORIES = new Set(['.git', '.notion-md', 'node_modules'])
+
+const BatchOperationSchema = Schema.Literal('status', 'sync')
+
+const BatchRunSpanAttrs = Schema.Struct({
+  label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  command: BatchOperationSchema.pipe(OtelAttr.key({ key: 'notion_md.command' })),
+  batch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.batch' })),
+  targetCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.batch.target_count' })),
+  recursive: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.batch.recursive' })),
+})
+
+const batchRunSpan = (operation: BatchOperation) =>
+  OtelSpan.defineSync({
+    name: `notion-md.${operation}-many`,
+    schema: BatchRunSpanAttrs,
+  })
+
+const BatchWatchSpan = OtelSpan.defineSync({
+  name: 'notion-md.batch-watch',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    command: Schema.Literal('sync').pipe(OtelAttr.key({ key: 'notion_md.command' })),
+    watch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.watch' })),
+    batch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.batch' })),
+    pathCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.batch.path_count' })),
+  }),
+})
 
 /** Batch-capable page operation names. */
 export type BatchOperation = 'status' | 'sync'
@@ -382,13 +411,14 @@ const runBatch = <A>(opts: {
       items: [...resolved.errors, ...preflight.errors, ...operationItems],
     })
   }).pipe(
-    Effect.withSpan(`notion-md.${opts.operation}-many`, {
+    OtelSpan.unsafeWith({
+      span: batchRunSpan(opts.operation),
       attributes: {
-        'span.label': `${opts.targets.length} target(s)`,
-        'notion_md.command': opts.operation,
-        'notion_md.batch': true,
-        'notion_md.batch.target_count': opts.targets.length,
-        'notion_md.batch.recursive': opts.recursive === true,
+        label: `${opts.targets.length} target(s)`,
+        command: opts.operation,
+        batch: true,
+        targetCount: opts.targets.length,
+        recursive: opts.recursive === true,
       },
     }),
   )
@@ -570,13 +600,14 @@ export const runBatchWatch = (
       )
     }),
   ).pipe(
-    Effect.withSpan('notion-md.batch-watch', {
+    OtelSpan.unsafeWith({
+      span: BatchWatchSpan,
       attributes: {
-        'span.label': `${opts.paths.length} file(s)`,
-        'notion_md.command': 'sync',
-        'notion_md.watch': true,
-        'notion_md.batch': true,
-        'notion_md.batch.path_count': opts.paths.length,
+        label: `${opts.paths.length} file(s)`,
+        command: 'sync',
+        watch: true,
+        batch: true,
+        pathCount: opts.paths.length,
       },
     }),
   )

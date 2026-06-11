@@ -6,6 +6,7 @@ import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream 
 
 import { NotionConfigLive, resolveNotionToken } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import {
@@ -30,6 +31,54 @@ const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
 const PositiveInteger = Schema.Number.pipe(Schema.int(), Schema.positive()).annotations({
   identifier: 'NotionMd.Cli.PositiveInteger',
 })
+
+const WatchReasonSchema = Schema.Literal('file', 'initial', 'poll')
+
+const WatchSyncResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    result: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.sync.result' })),
+    reason: WatchReasonSchema.pipe(OtelAttr.key({ key: 'notion_md.watch.reason' })),
+  }),
+)
+
+const WatchSyncErrorAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    error: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.sync.error' })),
+    errorTag: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.sync.error_tag' })),
+  }),
+)
+
+const WatchSyncPassSpan = OtelSpan.defineSync({
+  name: 'notion-md.watch.sync-pass',
+  root: true,
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    command: Schema.Literal('sync').pipe(OtelAttr.key({ key: 'notion_md.command' })),
+    watch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.watch' })),
+    reason: WatchReasonSchema.pipe(OtelAttr.key({ key: 'notion_md.watch.reason' })),
+    basename: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
+  }),
+})
+
+const WatchSpan = OtelSpan.defineSync({
+  name: 'notion-md.watch',
+  schema: Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    command: Schema.Literal('sync').pipe(OtelAttr.key({ key: 'notion_md.command' })),
+    watch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.watch' })),
+    basename: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
+  }),
+})
+
+const cliCommandSpan = (command: string) =>
+  OtelSpan.defineSync({
+    name: `notion-md.cli.${command}`,
+    root: true,
+    schema: Schema.Struct({
+      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+      command: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'notion_md.command' })),
+    }),
+  })
 
 const nmdTargetsArg = Args.text({ name: 'target' }).pipe(
   Args.withDescription('Local .nmd file path or directory with --recursive'),
@@ -227,31 +276,37 @@ export const runWatch = (opts: {
       const pass = (reason: WatchReason) =>
         syncPage(opts.syncOptions).pipe(
           Effect.tap((result) =>
-            Effect.annotateCurrentSpan({
-              'notion_md.sync.result': result._tag,
-              'notion_md.watch.reason': reason,
+            OtelSpan.unsafeAnnotate({
+              attributes: WatchSyncResultAttrs,
+              value: {
+                result: result._tag,
+                reason,
+              },
             }),
           ),
           Effect.tap((result) => emit({ event: 'sync', reason, result })),
           Effect.tapError((error: unknown) =>
-            Effect.annotateCurrentSpan({
-              'notion_md.sync.error': true,
-              'notion_md.sync.error_tag':
-                typeof error === 'object' && error !== null && '_tag' in error
-                  ? String((error as { readonly _tag?: unknown })._tag)
-                  : error instanceof Error
-                    ? error.name
-                    : 'unknown',
+            OtelSpan.unsafeAnnotate({
+              attributes: WatchSyncErrorAttrs,
+              value: {
+                error: true,
+                errorTag:
+                  typeof error === 'object' && error !== null && '_tag' in error
+                    ? String((error as { readonly _tag?: unknown })._tag)
+                    : error instanceof Error
+                      ? error.name
+                      : 'unknown',
+              },
             }),
           ),
-          Effect.withSpan('notion-md.watch.sync-pass', {
-            root: true,
+          OtelSpan.unsafeWith({
+            span: WatchSyncPassSpan,
             attributes: {
-              'span.label': `${watchedFile}:${reason}`,
-              'notion_md.command': 'sync',
-              'notion_md.watch': true,
-              'notion_md.watch.reason': reason,
-              'notion_md.path.basename': watchedFile,
+              label: `${watchedFile}:${reason}`,
+              command: 'sync',
+              watch: true,
+              reason,
+              basename: watchedFile,
             },
           }),
           Effect.catchAll((error: unknown) =>
@@ -294,12 +349,13 @@ export const runWatch = (opts: {
       )
     }),
   ).pipe(
-    Effect.withSpan('notion-md.watch', {
+    OtelSpan.unsafeWith({
+      span: WatchSpan,
       attributes: {
-        'span.label': basename(opts.syncOptions.path),
-        'notion_md.command': 'sync',
-        'notion_md.watch': true,
-        'notion_md.path.basename': basename(opts.syncOptions.path),
+        label: basename(opts.syncOptions.path),
+        command: 'sync',
+        watch: true,
+        basename: basename(opts.syncOptions.path),
       },
     }),
   )
@@ -310,11 +366,11 @@ const commandSpan = <A, E, R>(opts: {
   readonly effect: Effect.Effect<A, E, R>
 }): Effect.Effect<A, E, R> =>
   opts.effect.pipe(
-    Effect.withSpan(`notion-md.cli.${opts.command}`, {
-      root: true,
+    OtelSpan.unsafeWith({
+      span: cliCommandSpan(opts.command),
       attributes: {
-        'span.label': opts.label,
-        'notion_md.command': opts.command,
+        label: opts.label,
+        command: opts.command,
       },
     }),
   )
