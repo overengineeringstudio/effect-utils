@@ -642,25 +642,30 @@ it is **cold**, decided by layered gates in this order:
    `repos/` symlink alone gives no protection — only recorded `livePaths` count.
 2. **Lossless floor.** Every local commit reachable on a remote; any uncommitted
    state captured first (see step 5). No data may be lost by deletion.
-3. **Staleness.** The branch's GitHub PR is **merged** (primary signal; the
-   git-ancestor proxy is unusable because the repos squash-merge). No merged
-   evidence ⇒ keep.
-4. **Grace window.** Continuously absent from all live sets for the window — not
-   just absent in one snapshot.
-5. **Capture = archive.** A qualifying worktree is moved to `<repo>/.archive/`
-   (recoverable; reuses the existing worktree-archive convention), then **reaped**
-   (hard-deleted) once it ages past the retention TTL. gc also reaps pre-existing
-   `.archive/` worktrees, which it currently ignores entirely.
+3. **Staleness.** The branch's GitHub PR is **merged or closed** (primary signal;
+   the git-ancestor proxy is unusable because the repos squash-merge). An open PR
+   or no PR ⇒ keep. Closed-unmerged is safe under the same gates because the
+   lossless floor keeps any worktree whose commits aren't reachable on a remote.
+4. **Grace windows (three timers).** Continuously absent from all live sets for
+   the _absence grace_ (default 14d); for merged, also past the _post-merge grace_
+   (default 7d after `mergedAt`) — not just absent in one snapshot.
+5. **Capture = archive → reap.** A qualifying worktree is moved to
+   `<repo>/.archive/` (recoverable; reuses the existing worktree-archive
+   convention), then **reaped** (hard-deleted) once it ages past the _archive
+   retention TTL_ (default 30d). gc also reaps pre-existing `.archive/` worktrees,
+   which it currently ignores entirely.
+
+Before any deletion, gc **reconciles all registered workspaces** (re-derives each
+one's live paths fresh from disk), not just the current workspace, and more `mr`
+commands refresh the liveness record — closing a verified bug where a
+repinned-but-unre-registered workspace's _live_ worktree could be deleted.
 
 Provably-lossless and conservative: absence of evidence never licenses deletion;
 worst case is a re-`mr apply` (re-fetch), except the deleted-remote-branch edge.
 
-Open tuning questions (not yet decided): grace-window length; archive retention
-TTL; whether a small post-merge grace delays deleting a just-merged branch;
-closed-PR handling (a lower-confidence tier); and which additional `mr` commands
-must refresh the liveness record (today only `mr status`/`mr store status` do —
-a verified gap that lets a repinned-but-unre-registered workspace's live worktree
-be deleted).
+Remaining open: exact timer defaults are tunable per host; whether a post-close
+grace mirrors post-merge grace; metrics/output surface for the disk-hygiene
+consumer.
 
 #### `mr store ls`
 
