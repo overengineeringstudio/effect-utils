@@ -70,6 +70,9 @@ describe('OteliteTestHarness', () => {
       Effect.gen(function* () {
         const previousEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
         const previousService = process.env.OTEL_SERVICE_NAME
+        const previousCustomEndpoint = process.env.OTELITE_TEST_ENDPOINT
+        const previousCustomService = process.env.OTELITE_TEST_SERVICE
+        const previousExtra = process.env.OTELITE_TEST_EXTRA
         const harness = yield* OteliteTestHarness
         const otel = yield* harness.capture({
           serviceName: 'otelite-env-harness',
@@ -85,6 +88,23 @@ describe('OteliteTestHarness', () => {
 
         expect(process.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(previousEndpoint)
         expect(process.env.OTEL_SERVICE_NAME).toBe(previousService)
+
+        yield* otel.withEnv(
+          Effect.sync(() => {
+            expect(process.env.OTELITE_TEST_ENDPOINT).toBe(otel.capture.endpoints.http)
+            expect(process.env.OTELITE_TEST_SERVICE).toBe('otelite-env-harness')
+            expect(process.env.OTELITE_TEST_EXTRA).toBe('extra')
+          }),
+          {
+            endpointVar: 'OTELITE_TEST_ENDPOINT',
+            serviceNameVar: 'OTELITE_TEST_SERVICE',
+            extra: { OTELITE_TEST_EXTRA: 'extra' },
+          },
+        )
+
+        expect(process.env.OTELITE_TEST_ENDPOINT).toBe(previousCustomEndpoint)
+        expect(process.env.OTELITE_TEST_SERVICE).toBe(previousCustomService)
+        expect(process.env.OTELITE_TEST_EXTRA).toBe(previousExtra)
       }).pipe(Effect.provide(OteliteTestHarness.Default)),
     30_000,
   )
