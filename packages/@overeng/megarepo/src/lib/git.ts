@@ -562,6 +562,25 @@ export const createBranch = (args: { repoPath: string; branch: string; baseRef: 
   })
 
 /**
+ * Delete a local branch ref in a (bare) repo.
+ *
+ * Used by GC archival to FREE a `refs/heads/<branch>` after the worktree has
+ * been moved aside, so `mr apply` can re-materialize the branch. `force` maps to
+ * `git branch -D` (delete even if not merged); the commit stays reachable via
+ * the remote-tracking ref the lossless floor proved.
+ */
+export const deleteBranch = (args: { repoPath: string; branch: string; force?: boolean }) =>
+  runGitCommand({
+    args: ['branch', args.force === true ? '-D' : '-d', args.branch],
+    cwd: args.repoPath,
+  }).pipe(
+    Effect.asVoid,
+    Effect.withSpan('git/delete-branch', {
+      attributes: { 'span.label': args.branch, branch: args.branch },
+    }),
+  )
+
+/**
  * Push a branch to the remote.
  *
  * @param repoPath - Path to the bare repo
