@@ -177,6 +177,16 @@ describe('notion datasource sync observability', () => {
     expect(directStringSpans).toEqual([])
   })
 
+  it('routes raw Effect OTEL APIs through the package observability helpers', () => {
+    const rawOtelCalls = instrumentedSources.flatMap(([name, text]) =>
+      [...text.matchAll(/(?:Effect|Stream)\.(?:withSpan|annotateCurrentSpan)\(/g)].map(
+        (match) => `${name}:${match[0]}`,
+      ),
+    )
+
+    expect(rawOtelCalls).toEqual([])
+  })
+
   it('keeps CLI, one-shot, and daemon spans wired through the shared catalog', () => {
     expect(source('cli/main.ts')).toContain('Effect.fn(spanNames.cliCommand, {')
     expect(source('cli/main.ts')).toContain(

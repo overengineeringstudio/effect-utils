@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 
 import { OtelAttr, OtelAttrs, OtelSpan, type OtelAttributeValue } from '@overeng/otel-contract'
 
@@ -88,6 +88,12 @@ export type SpanAttributeKey = (typeof spanAttr)[keyof typeof spanAttr]
 
 /** Scalar types accepted as OTel span attribute values. */
 export type SpanAttributeValue = OtelAttributeValue
+
+type SpanAttributesInput = Partial<Record<SpanAttributeKey, SpanAttributeValue | undefined>>
+
+type SpanAttributesWithLabel = SpanAttributesInput & {
+  readonly [spanAttr.spanLabel]: string
+}
 
 /** Identifies the kind of process emitting a span, recorded on `spanAttr.processRole`. */
 export type ProcessRole = 'cli' | 'daemon' | 'fake-gateway' | 'library'
@@ -208,9 +214,45 @@ export const correlationSpanAttrs = OtelAttrs.defineSync(CorrelationSpanAttribut
 
 /** Filters out `undefined` values from an attribute map so it can be passed directly to OTel span APIs. */
 export const spanAttributes = (
-  attributes: Partial<Record<SpanAttributeKey, SpanAttributeValue | undefined>>,
+  attributes: SpanAttributesInput,
 ): Record<string, SpanAttributeValue> =>
   notionDatasourceSpanAttributes.unsafeEncode(attributes as typeof SpanAttributesSchema.Type)
+
+/** Attach one of this package's cataloged spans with schema-backed attributes. */
+export const withSpan =
+  ({
+    span,
+    attributes,
+  }: {
+    readonly span: keyof typeof spanContracts
+    readonly attributes: SpanAttributesWithLabel
+  }) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    effect.pipe(
+      Effect.withSpan(spanContracts[span].name, {
+        attributes: spanAttributes(attributes),
+      }),
+    )
+
+/** Attach one of this package's cataloged spans to a stream with schema-backed attributes. */
+export const withStreamSpan =
+  ({
+    span,
+    attributes,
+  }: {
+    readonly span: keyof typeof spanContracts
+    readonly attributes: SpanAttributesWithLabel
+  }) =>
+  <A, E, R>(stream: Stream.Stream<A, E, R>): Stream.Stream<A, E, R> =>
+    stream.pipe(
+      Stream.withSpan(spanContracts[span].name, {
+        attributes: spanAttributes(attributes),
+      }),
+    )
+
+/** Annotate the active span using this package's schema-backed attribute contract. */
+export const annotateSpan = (attributes: SpanAttributesInput): Effect.Effect<void> =>
+  Effect.annotateCurrentSpan(spanAttributes(attributes))
 
 /** Truncates a span / root ID to at most 12 characters for use in human-readable `span.label` values. */
 export const shortSpanId = (value: string): string =>

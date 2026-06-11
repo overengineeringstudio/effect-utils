@@ -16,12 +16,13 @@ import type { GuardName } from '../core/guards.ts'
 import { NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
 import { notionRequestId } from '../gateway/gateway.ts'
 import {
+  annotateSpan,
   commandKind as otelCommandKind,
   shortSpanId,
   spanAttr,
-  spanAttributes,
   spanLabel,
   spanNames,
+  withSpan,
 } from '../observability/observability.ts'
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import {
@@ -139,7 +140,7 @@ const commandDataSourceId = (command: RemoteWriteCommand): string | undefined =>
 const bodyPointerSpanAttributes = (pointer: BodyPointer | undefined) =>
   pointer === undefined
     ? {}
-    : spanAttributes({
+    : {
         [spanAttr.bodyIdentityKind]: pointer.identity._tag,
         [spanAttr.bodyIdentityDigest]: bodyPointerIdentityDigest(pointer),
         [spanAttr.bodyRenderedDigest]: renderedBodyDigest(pointer.identity),
@@ -151,28 +152,27 @@ const bodyPointerSpanAttributes = (pointer: BodyPointer | undefined) =>
           pointer.identity._tag === 'EvidenceBackedBodyIdentity'
             ? pointer.identity.completeness
             : undefined,
-      })
+      }
 
 const commandSpanAttributes = (input: {
   readonly operation: string
   readonly command: RemoteWriteCommand
-}) =>
-  spanAttributes({
-    [spanAttr.spanLabel]: spanLabel(
-      input.operation,
-      otelCommandKind(input.command._tag),
-      shortSpanId(input.command.commandId),
-    ),
-    [spanAttr.processRole]: 'library',
-    [spanAttr.operation]: input.operation,
-    [spanAttr.commandId]: input.command.commandId,
-    [spanAttr.commandKind]: otelCommandKind(input.command._tag),
-    [spanAttr.dataSourceId]: commandDataSourceId(input.command),
-    [spanAttr.pageId]: commandPageId(input.command),
-    ...bodyPointerSpanAttributes(
-      input.command._tag === 'BodyPushCommand' ? input.command.baseBodyPointer : undefined,
-    ),
-  })
+}) => ({
+  [spanAttr.spanLabel]: spanLabel(
+    input.operation,
+    otelCommandKind(input.command._tag),
+    shortSpanId(input.command.commandId),
+  ),
+  [spanAttr.processRole]: 'library',
+  [spanAttr.operation]: input.operation,
+  [spanAttr.commandId]: input.command.commandId,
+  [spanAttr.commandKind]: otelCommandKind(input.command._tag),
+  [spanAttr.dataSourceId]: commandDataSourceId(input.command),
+  [spanAttr.pageId]: commandPageId(input.command),
+  ...bodyPointerSpanAttributes(
+    input.command._tag === 'BodyPushCommand' ? input.command.baseBodyPointer : undefined,
+  ),
+})
 
 const commandBaseHash = (command: RemoteWriteCommand): Hash => {
   switch (command._tag) {
@@ -287,7 +287,8 @@ const observeCurrentSurface = (
       }
     }
   }).pipe(
-    Effect.withSpan(spanNames.outboxObserveSurface, {
+    withSpan({
+      span: 'outboxObserveSurface',
       attributes: commandSpanAttributes({
         operation: 'observeCurrentSurface',
         command,
@@ -350,7 +351,8 @@ const executeRemoteWrite = (
       }
     }
   }).pipe(
-    Effect.withSpan(spanNames.outboxWriteRemote, {
+    withSpan({
+      span: 'outboxWriteRemote',
       attributes: commandSpanAttributes({
         operation: 'executeRemoteWrite',
         command,
@@ -456,13 +458,11 @@ const settle = ({
   )
 
 const annotateOutboxResult = (result: OutboxExecutionResult) =>
-  Effect.annotateCurrentSpan(
-    spanAttributes({
-      [spanAttr.result]: result._tag,
-      [spanAttr.guard]: result._tag === 'failed' ? result.guard : undefined,
-      [spanAttr.settlementKind]: result._tag === 'settled' ? result.settlementKind : undefined,
-    }),
-  )
+  annotateSpan({
+    [spanAttr.result]: result._tag,
+    [spanAttr.guard]: result._tag === 'failed' ? result.guard : undefined,
+    [spanAttr.settlementKind]: result._tag === 'settled' ? result.settlementKind : undefined,
+  })
 
 /** Claim and attempt to execute one pending outbox command: observe the current surface, execute the write if safe, then verify the post-write state. Returns `idle` when the outbox is empty. */
 export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
@@ -474,15 +474,13 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
     NotionDataSourceGateway | PageBodySyncPort
   > =>
     Effect.gen(function* () {
-      yield* Effect.annotateCurrentSpan(
-        spanAttributes({
-          [spanAttr.spanLabel]: spanLabel('outbox', shortSpanId(options.rootId)),
-          [spanAttr.processRole]: 'library',
-          [spanAttr.operation]: 'executeOutboxOnce',
-          [spanAttr.rootId]: options.rootId,
-          [spanAttr.leaseDurationMs]: options.leaseDurationMs,
-        }),
-      )
+      yield* annotateSpan({
+        [spanAttr.spanLabel]: spanLabel('outbox', shortSpanId(options.rootId)),
+        [spanAttr.processRole]: 'library',
+        [spanAttr.operation]: 'executeOutboxOnce',
+        [spanAttr.rootId]: options.rootId,
+        [spanAttr.leaseDurationMs]: options.leaseDurationMs,
+      })
       const claimed = yield* storeEffect({
         operation: 'claim-next-outbox-command',
         f: () => options.store.claimNextOutboxCommand(options),
@@ -490,20 +488,18 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
 
       if (claimed === undefined) {
         const result = { _tag: 'idle' as const }
-        yield* Effect.annotateCurrentSpan({
+        yield* annotateSpan({
           [spanAttr.spanLabel]: spanLabel('outbox', 'idle'),
         })
         yield* annotateOutboxResult(result)
         return result
       }
 
-      yield* Effect.annotateCurrentSpan(
-        spanAttributes({
-          [spanAttr.spanLabel]: spanLabel('outbox', shortSpanId(claimed.commandId)),
-          [spanAttr.commandId]: claimed.commandId,
-          [spanAttr.attempt]: claimed.attempt,
-        }),
-      )
+      yield* annotateSpan({
+        [spanAttr.spanLabel]: spanLabel('outbox', shortSpanId(claimed.commandId)),
+        [spanAttr.commandId]: claimed.commandId,
+        [spanAttr.attempt]: claimed.attempt,
+      })
 
       if (claimed.command === undefined) {
         const result = yield* recordAttemptState({
@@ -517,17 +513,15 @@ export const executeOutboxOnce = Effect.fn(spanNames.outboxAttempt)(
       }
 
       const command = claimed.command
-      yield* Effect.annotateCurrentSpan(
-        spanAttributes({
-          [spanAttr.spanLabel]: spanLabel(
-            otelCommandKind(command._tag),
-            shortSpanId(command.commandId),
-          ),
-          [spanAttr.commandKind]: otelCommandKind(command._tag),
-          [spanAttr.dataSourceId]: commandDataSourceId(command),
-          [spanAttr.pageId]: commandPageId(command),
-        }),
-      )
+      yield* annotateSpan({
+        [spanAttr.spanLabel]: spanLabel(
+          otelCommandKind(command._tag),
+          shortSpanId(command.commandId),
+        ),
+        [spanAttr.commandKind]: otelCommandKind(command._tag),
+        [spanAttr.dataSourceId]: commandDataSourceId(command),
+        [spanAttr.pageId]: commandPageId(command),
+      })
       const before = yield* observeCurrentSurface(command).pipe(
         Effect.catchAll((error) =>
           recordAttemptState({
