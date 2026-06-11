@@ -15,7 +15,7 @@
 import * as restate from '@restatedev/restate-sdk'
 import { Chunk, Clock, Effect, Layer, Logger, LogLevel, Random, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
 
 import { RestateContext } from '../authoring/RestateContext.ts'
 
@@ -25,7 +25,11 @@ const RestateRuntimeSpanLabelAttrs = OtelAttrs.defineSync(
   }),
 )
 
-const runtimeSpanLabel = (label: string) => RestateRuntimeSpanLabelAttrs.unsafeEncode({ label })
+const withRestateRuntimeSpan = (name: string, label: string) =>
+  OtelSpan.unsafeWith({
+    span: OtelSpan.define({ name, attributes: RestateRuntimeSpanLabelAttrs }),
+    attributes: { label },
+  })
 
 /**
  * Build an Effect `Clock` backed by the invocation's journaled `ctx.date`.
@@ -228,9 +232,7 @@ export const withAttemptInterruption = <A, E, R>(
     return Effect.sync(() => signal.removeEventListener('abort', onAbort))
   })
   return Effect.raceFirst(effect, onAttemptComplete).pipe(
-    Effect.withSpan('restate.attemptInterruption', {
-      attributes: runtimeSpanLabel('attemptInterruption'),
-    }),
+    withRestateRuntimeSpan('restate.attemptInterruption', 'attemptInterruption'),
   )
 }
 
@@ -247,7 +249,7 @@ export const cancel = (invocationId: string): Effect.Effect<void, never, Restate
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     ctx.cancel(restate.InvocationIdParser.fromString(invocationId))
-  }).pipe(Effect.withSpan('restate.cancel', { attributes: runtimeSpanLabel(invocationId) }))
+  }).pipe(withRestateRuntimeSpan('restate.cancel', invocationId))
 
 /**
  * Observe the current invocation's cancellation as an Effect that SUCCEEDS when
@@ -264,4 +266,4 @@ export const onCancellation: Effect.Effect<void, never, RestateContext> = Effect
   const ctx = yield* RestateContext
   const ctxInternal = ctx as restate.internal.ContextInternal
   yield* Effect.promise(() => ctxInternal.cancellation())
-}).pipe(Effect.withSpan('restate.onCancellation', { attributes: runtimeSpanLabel('cancellation') }))
+}).pipe(withRestateRuntimeSpan('restate.onCancellation', 'cancellation'))

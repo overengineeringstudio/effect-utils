@@ -19,7 +19,7 @@
  */
 import { Effect, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
 
 import { objectKey } from '../authoring/RestateContext.ts'
 import type { ObjectKey, RestateContext } from '../authoring/RestateContext.ts'
@@ -32,6 +32,11 @@ const RescheduleAttrs = OtelAttrs.defineSync(
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
   }),
 )
+
+const RescheduleSpan = OtelSpan.define({
+  name: 'restate.reschedule',
+  attributes: RescheduleAttrs,
+})
 
 /**
  * Re-arm the CURRENT Virtual Object by a delayed self-send of one of its own
@@ -71,7 +76,8 @@ export const reschedule = <
       delayMillis: opts.delayMillis,
     })
   }).pipe(
-    Effect.withSpan('restate.reschedule', {
-      attributes: RescheduleAttrs.unsafeEncode({ label: String(opts.method) }),
+    OtelSpan.unsafeWith({
+      span: RescheduleSpan,
+      attributes: { label: String(opts.method) },
     }),
   )

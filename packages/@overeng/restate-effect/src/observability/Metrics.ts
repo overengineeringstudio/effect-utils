@@ -1,10 +1,10 @@
 /**
  * The replay-aware baseline metrics (R23, docs/vrs/08-observability/spec.md, decision 0014). These are
  * Effect `Metric`s — `effect` is a CORE dependency, so the definitions live here
- * with NO otel import; `./otel`'s `RestateOtel.layer` binds Effect's `Metric` to
- * an OTel `MeterProvider` (`@effect/opentelemetry`'s `Metrics.layer`) so the same
- * counters/histograms export over OTLP. Without that Layer the metrics are still
- * valid Effect metrics (in-memory), so the core stays dependency-light.
+ * with no heavy OTel SDK import; `./otel`'s `RestateOtel.layer` binds Effect's
+ * `Metric` to an OTel `MeterProvider` (`@effect/opentelemetry`'s `Metrics.layer`)
+ * so the same counters/histograms export over OTLP. Without that Layer the metrics
+ * are still valid Effect metrics (in-memory), so the core stays dependency-light.
  *
  * The SUBTLE part is exactly-once-on-replay (R24, R25): an invocation re-runs its
  * handler on every attempt and on replay, so a naive increment double-counts. The
@@ -17,6 +17,8 @@
 import type * as restate from '@restatedev/restate-sdk'
 import { Effect, Metric, MetricBoundaries, type Schema } from 'effect'
 import type { MetricKeyType, MetricState } from 'effect'
+
+import { OtelSpan } from '@overeng/otel-contract'
 
 import { findSensitiveFields } from '../schema/Redaction.ts'
 
@@ -215,24 +217,19 @@ export const emitPollLoopCycle = (
     ]),
   )
 
-/** A span-attribute value (the shapes `Effect.annotateCurrentSpan` accepts). */
+/** A dynamic span-attribute value accepted by the contract's map annotation helper. */
 type AttributeValue = string | number | boolean
 
 const annotateDynamicSpanMap = (
   attributes: Readonly<Record<string, AttributeValue>>,
-): Effect.Effect<void> =>
-  Effect.forEach(
-    Object.entries(attributes),
-    ([key, value]) => Effect.annotateCurrentSpan(key, value),
-    { discard: true },
-  )
+): Effect.Effect<void> => OtelSpan.unsafeAnnotateMap(attributes)
 
 /**
  * Stamp custom BUSINESS attributes on the CURRENT span — the user path for
- * slicing in Tempo/Grafana (R23, docs/vrs/08-observability/spec.md, decision 0014). A thin Effect combinator
- * over `Effect.annotateCurrentSpan`: in a handler the current span is the Effect
- * span reparented under the hook's `attempt <target>` span (the inbound bridge),
- * so the attributes ride the one coherent trace. Exported as `Restate.annotateSpan`.
+ * slicing in Tempo/Grafana (R23, docs/vrs/08-observability/spec.md, decision 0014). In a handler
+ * the current span is the Effect span reparented under the hook's `attempt <target>`
+ * span (the inbound bridge), so the attributes ride the one coherent trace. Exported
+ * as `Restate.annotateSpan`.
  *
  * Use the `span.label` Grafana convention where it fits (a single primary label),
  * and plain keys for slicing dimensions (e.g. `dataSourceId`):
