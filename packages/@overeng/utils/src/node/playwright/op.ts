@@ -6,7 +6,14 @@
 
 import { Effect, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  OtelSpan,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 /**
  * Canonical error type for Playwright promise bridging.
@@ -21,12 +28,15 @@ export class PwOpError extends Schema.TaggedError<PwOpError>()('PwOpError', {
   cause: Schema.Defect,
 }) {}
 
-const PwOpAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    op: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.op' })),
-  }),
-)
+const PwOpOperation = (op: string) =>
+  OtelOperation.define({
+    name: op,
+    schema: Schema.Struct({
+      label: OtelAttr.drop(Schema.NonEmptyString),
+      op: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.op' })),
+    }),
+    label: ({ label }) => label,
+  })
 
 const PwTryAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -40,11 +50,18 @@ const PwExpectAttrs = OtelAttrs.defineSync(
   }),
 )
 
-const PwOpSpan = (op: string) =>
-  OtelSpan.define({
-    name: op,
-    attributes: PwOpAttrs,
-  })
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
 /**
  * Internal helper to wrap Playwright promises into Effects.
@@ -64,7 +81,7 @@ export const tryPw = <TA>({
   Effect.tryPromise({
     try: effect,
     catch: (cause) => new PwOpError({ op, cause }),
-  }).pipe(OtelSpan.unsafeWith({ span: PwOpSpan(op), attributes: { label: op, op } }))
+  }).pipe(trustedWith(PwOpOperation(op), { label: op, op }))
 
 /**
  * Generic fallback for wrapping any Playwright promise into an Effect.
@@ -88,7 +105,9 @@ export const try_: <A>(opts: {
   effect: () => PromiseLike<A>
 }) => Effect.Effect<A, PwOpError> = ({ op, effect }) =>
   tryPw({ op: `pw.try.${op}`, effect }).pipe(
-    Effect.tap(() => OtelSpan.unsafeAnnotate({ attributes: PwTryAttrs, value: { op } })),
+    Effect.tap(() =>
+      OtelSpan.annotate({ attributes: PwTryAttrs, value: { op } }).pipe(Effect.orDie),
+    ),
   )
 
 /**
@@ -107,5 +126,7 @@ export const expect_: <A>(opts: {
   expectPromise: PromiseLike<A>
 }) => Effect.Effect<A, PwOpError> = ({ assertion, expectPromise }) =>
   tryPw({ op: `pw.expect.${assertion}`, effect: () => expectPromise }).pipe(
-    Effect.tap(() => OtelSpan.unsafeAnnotate({ attributes: PwExpectAttrs, value: { assertion } })),
+    Effect.tap(() =>
+      OtelSpan.annotate({ attributes: PwExpectAttrs, value: { assertion } }).pipe(Effect.orDie),
+    ),
   )

@@ -19,7 +19,7 @@
  */
 import { Effect, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import { OtelAttr, OtelOperation } from '@overeng/otel-contract'
 
 import { objectKey } from '../authoring/RestateContext.ts'
 import type { ObjectKey, RestateContext } from '../authoring/RestateContext.ts'
@@ -27,15 +27,12 @@ import type { ObjectContract, ObjectInputOf, ObjectMethodsOf } from '../authorin
 import { sendObject } from '../clients/Client.ts'
 import type { RestateError } from '../schema/RestateError.ts'
 
-const RescheduleAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-  }),
-)
-
-const RescheduleSpan = OtelSpan.define({
+const RescheduleSpan = OtelOperation.define({
   name: 'restate.reschedule',
-  attributes: RescheduleAttrs,
+  schema: Schema.Struct({
+    label: OtelAttr.drop(Schema.NonEmptyString),
+  }),
+  label: ({ label }) => label,
 })
 
 /**
@@ -76,8 +73,6 @@ export const reschedule = <
       delayMillis: opts.delayMillis,
     })
   }).pipe(
-    OtelSpan.unsafeWith({
-      span: RescheduleSpan,
-      attributes: { label: String(opts.method) },
-    }),
+    RescheduleSpan.with({ label: String(opts.method) }),
+    Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
   )

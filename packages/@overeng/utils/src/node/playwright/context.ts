@@ -7,7 +7,8 @@
 import type { Cookie } from '@playwright/test'
 import { Effect, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+
 import { type PwOpError, tryPw } from './op.ts'
 import { PwBrowserContext } from './tags.ts'
 
@@ -27,7 +28,7 @@ const annotateContext = (
     cookiesUrl: string
     storageStatePath: string
   }>,
-) => OtelSpan.unsafeAnnotate({ attributes: PwContextAttrs, value })
+) => OtelSpan.annotate({ attributes: PwContextAttrs, value }).pipe(Effect.orDie)
 
 /**
  * Reads cookies from the current browser context.

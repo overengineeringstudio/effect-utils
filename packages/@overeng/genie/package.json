@@ -34,6 +34,7 @@
     "@effect/workflow": "0.18.0",
     "@opentui/core": "0.1.88",
     "@opentui/react": "0.1.88",
+    "@overeng/otel-contract": "workspace:^",
     "@playwright/test": "1.59.1",
     "@storybook/react": "10.2.3",
     "@types/react": "19.2.7",

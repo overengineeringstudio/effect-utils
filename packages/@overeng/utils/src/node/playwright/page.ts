@@ -7,7 +7,15 @@
 import type { Page } from '@playwright/test'
 import { Effect, Fiber, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  OtelSpan,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
+
 import { type PwOpError, tryPw } from './op.ts'
 import { PwPage } from './tags.ts'
 
@@ -37,19 +45,34 @@ const PwPageAttrs = OtelAttrs.defineSync(
   }),
 )
 
-const PwPageUrlSpan = OtelSpan.defineSync({
+const PwPageUrlOperation = OtelOperation.define({
   name: 'pw.page.url',
   schema: Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    label: OtelAttr.drop(Schema.NonEmptyString),
   }),
+  label: ({ label }) => label,
 })
 
-const PwPageIsClosedSpan = OtelSpan.defineSync({
+const PwPageIsClosedOperation = OtelOperation.define({
   name: 'pw.page.isClosed',
   schema: Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    label: OtelAttr.drop(Schema.NonEmptyString),
   }),
+  label: ({ label }) => label,
 })
+
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
 const annotatePage = (
   value: Partial<{
@@ -65,7 +88,7 @@ const annotatePage = (
     screenshotPath: string
     screenshotFullPage: boolean
   }>,
-) => OtelSpan.unsafeAnnotate({ attributes: PwPageAttrs, value })
+) => OtelSpan.annotate({ attributes: PwPageAttrs, value }).pipe(Effect.orDie)
 
 const urlMatchLabel = (urlMatch: URLMatch) =>
   typeof urlMatch === 'string'
@@ -113,7 +136,7 @@ export const url: Effect.Effect<string, PwOpError, PwPage> = Effect.gen(function
     op: 'pw.page.url',
     effect: () => Promise.resolve(page.url()),
   })
-}).pipe(OtelSpan.unsafeWith({ span: PwPageUrlSpan, attributes: { label: 'url' } }))
+}).pipe(trustedWith(PwPageUrlOperation, { label: 'url' }))
 
 /** Waits for a specific load state. */
 export const waitForLoadState: (args: {
@@ -266,7 +289,7 @@ export const jitter: (args?: {
 export const isClosed: Effect.Effect<boolean, never, PwPage> = Effect.gen(function* () {
   const page = yield* PwPage
   return page.isClosed()
-}).pipe(OtelSpan.unsafeWith({ span: PwPageIsClosedSpan, attributes: { label: 'isClosed' } }))
+}).pipe(trustedWith(PwPageIsClosedOperation, { label: 'isClosed' }))
 
 /** Sets the page viewport size. */
 export const setViewportSize: (args: {

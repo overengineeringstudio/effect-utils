@@ -7,7 +7,8 @@
 import type { Locator, Page } from '@playwright/test'
 import { Effect, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+
 import { type PwOpError, tryPw } from './op.ts'
 import { PwPage } from './tags.ts'
 
@@ -45,7 +46,7 @@ const annotateLocator = (
     label: string
     placeholder: string
   }>,
-) => OtelSpan.unsafeAnnotate({ attributes: PwLocatorAttrs, value })
+) => OtelSpan.annotate({ attributes: PwLocatorAttrs, value }).pipe(Effect.orDie)
 
 const textLabel = (text: string | RegExp) => (typeof text === 'string' ? text : text.source)
 

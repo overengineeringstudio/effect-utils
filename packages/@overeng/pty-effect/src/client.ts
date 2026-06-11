@@ -43,7 +43,12 @@ import {
 } from 'effect'
 import type { Scope } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import {
+  OtelAttr,
+  OtelOperation,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 import { PtyError } from './PtyError.ts'
 import { decodePtyEvent, type PtyEvent } from './PtyEvent.ts'
@@ -54,52 +59,72 @@ import type { Screenshot } from './Screenshot.ts'
 
 const PtyTags = Schema.Record({ key: Schema.String, value: Schema.String })
 
-const PtyClientNameAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    name: Schema.String.pipe(OtelAttr.key({ key: 'pty.name' })),
-  }),
-)
-
-const PtyClientOperationAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-  }),
-)
-
-const PtyClientWaitAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    name: Schema.String.pipe(OtelAttr.key({ key: 'pty.name' })),
-    needle: Schema.String.pipe(OtelAttr.key({ key: 'pty.wait.needle' })),
-  }),
-)
-
-const withPtyNameSpan = (spanName: string, name: string) =>
-  OtelSpan.unsafeWith({
-    span: { name: spanName, attributes: PtyClientNameAttrs },
-    attributes: { label: name, name },
+const PtyClientNameOperation = (spanName: string) =>
+  OtelOperation.define({
+    name: spanName,
+    schema: Schema.Struct({
+      label: OtelAttr.drop(Schema.NonEmptyString),
+      name: Schema.String.pipe(OtelAttr.key({ key: 'pty.name' })),
+    }),
+    label: ({ label }) => label,
   })
 
-const withPtyOperationSpan = (spanName: string, label: string) =>
-  OtelSpan.unsafeWith({
-    span: { name: spanName, attributes: PtyClientOperationAttrs },
-    attributes: { label },
+const PtyClientOperation = (spanName: string) =>
+  OtelOperation.define({
+    name: spanName,
+    schema: Schema.Struct({
+      label: OtelAttr.drop(Schema.NonEmptyString),
+    }),
+    label: ({ label }) => label,
   })
+
+const PtyClientWaitOperation = (spanName: string) =>
+  OtelOperation.define({
+    name: spanName,
+    schema: Schema.Struct({
+      label: OtelAttr.drop(Schema.NonEmptyString),
+      name: Schema.String.pipe(OtelAttr.key({ key: 'pty.name' })),
+      needle: Schema.String.pipe(OtelAttr.key({ key: 'pty.wait.needle' })),
+    }),
+    label: ({ label }) => label,
+  })
+
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
+
+const withPtyNameSpan =
+  (spanName: string, name: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(trustedWith(PtyClientNameOperation(spanName), { label: name, name }))
+
+const withPtyOperationSpan =
+  (spanName: string, label: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(trustedWith(PtyClientOperation(spanName), { label }))
 
 const withPtyWaitSpan = (
   spanName: string,
   input: { readonly name: PtyName; readonly needle: string | RegExp },
 ) => {
   const needle = String(input.needle)
-  return OtelSpan.unsafeWith({
-    span: { name: spanName, attributes: PtyClientWaitAttrs },
-    attributes: {
-      label: `${input.name}: ${needle}`,
-      name: input.name,
-      needle,
-    },
-  })
+  return <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      trustedWith(PtyClientWaitOperation(spanName), {
+        label: `${input.name}: ${needle}`,
+        name: input.name,
+        needle,
+      }),
+    )
 }
 
 /**

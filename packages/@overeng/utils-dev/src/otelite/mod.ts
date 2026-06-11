@@ -61,3 +61,23 @@ export type {
   OtelSpanContract,
   SpanSelector,
 } from './trace-expect.ts'
+export {
+  expectLogs,
+  expectMetrics,
+  LogExpect,
+  metricValue,
+  MetricExpect,
+  telemetryAttr,
+  TelemetryExpectError,
+} from './signal-expect.ts'
+export type {
+  ContractMetricSelector,
+  LogSelector,
+  MetricSelector,
+  MetricValueMatcher,
+  OtelMetricLabelsContract,
+  TelemetryAttrExpectations,
+  TelemetryAttrMatcher,
+  TelemetryAttrPredicate,
+  TelemetryAttrPrimitive,
+} from './signal-expect.ts'

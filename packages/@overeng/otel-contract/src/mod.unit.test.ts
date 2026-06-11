@@ -1,9 +1,17 @@
-import { DateTime, Duration, Effect, Option, Redacted, Schema } from 'effect'
+import { DateTime, Duration, Effect, Option, Redacted, Schema, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { expectTrace } from '@overeng/utils-dev/otelite'
 
-import { OtelAttr, OtelAttrEncodeError, OtelAttrPlanError, OtelAttrs, OtelSpan } from './mod.ts'
+import {
+  OtelAttr,
+  OtelAttrEncodeError,
+  OtelAttrPlanError,
+  OtelAttrs,
+  OtelMetric,
+  OtelOperation,
+  OtelSpan,
+} from './mod.ts'
 
 describe('OtelAttrs', () => {
   it('derives primitive, literal, uuid, option, date, duration, and explicit array attributes', async () => {
@@ -291,6 +299,65 @@ describe('OtelAttrs', () => {
       }).span_id,
     ).toBe('span-1')
   })
+
+  it('exposes compiled metadata for docs, lint, and future metric contracts', async () => {
+    const attrs = await Effect.runPromise(
+      OtelAttrs.define(
+        Schema.Struct({
+          label: Schema.NonEmptyTrimmedString.pipe(OtelAttr.spanLabel()),
+          outcome: OtelAttr.literal('op.outcome', 'success', 'retryable', 'terminal'),
+          cacheHit: OtelAttr.boolean('op.cache_hit'),
+          requestId: OtelAttr.string('request.id', { cardinality: 'high' }),
+          payload: OtelAttr.json('op.payload', Schema.Struct({ id: Schema.String })),
+        }),
+      ),
+    )
+
+    expect(attrs.fields).toMatchInlineSnapshot(`
+      [
+        {
+          "astTag": "Refinement",
+          "attrKey": "span.label",
+          "encodePolicy": "auto",
+          "optional": false,
+          "role": "span.label",
+          "schemaIdentifier": "NonEmptyTrimmedString",
+          "sourceKey": "label",
+        },
+        {
+          "astTag": "Union",
+          "attrKey": "op.outcome",
+          "cardinality": "bounded",
+          "encodePolicy": "auto",
+          "optional": false,
+          "sourceKey": "outcome",
+        },
+        {
+          "astTag": "BooleanKeyword",
+          "attrKey": "op.cache_hit",
+          "cardinality": "low",
+          "encodePolicy": "auto",
+          "optional": false,
+          "sourceKey": "cacheHit",
+        },
+        {
+          "astTag": "StringKeyword",
+          "attrKey": "request.id",
+          "cardinality": "high",
+          "encodePolicy": "auto",
+          "optional": false,
+          "sourceKey": "requestId",
+        },
+        {
+          "astTag": "TypeLiteral",
+          "attrKey": "op.payload",
+          "encodePolicy": "json",
+          "optional": false,
+          "sourceKey": "payload",
+        },
+      ]
+    `)
+  })
 })
 
 describe('OtelSpan', () => {
@@ -367,5 +434,296 @@ describe('OtelSpan', () => {
       _tag: 'Left',
       left: expect.any(OtelAttrEncodeError),
     })
+  })
+
+  it('wraps streams with schema-backed attributes', async () => {
+    const span = OtelSpan.defineSync({
+      name: 'test.stream',
+      schema: Schema.Struct({
+        label: OtelAttr.string('span.label', { role: 'span.label' }),
+        count: OtelAttr.number('stream.count'),
+      }),
+    })
+
+    await expect(
+      Effect.runPromise(
+        Stream.fromIterable([1, 2]).pipe(
+          OtelSpan.withStream({ span, attributes: { label: 'items', count: 2 } }),
+          Stream.runCollect,
+        ),
+      ),
+    ).resolves.toBeDefined()
+  })
+})
+
+describe('OtelOperation', () => {
+  it('defines the normal user-facing operation API without a schema-level span label', async () => {
+    const PullPage = OtelOperation.define({
+      name: 'notion-md.pull-page',
+      schema: Schema.Struct({
+        pageId: OtelAttr.string('notion_md.page_id', { cardinality: 'high' }),
+        basename: OtelAttr.string('notion_md.path.basename'),
+        cacheHit: OtelAttr.boolean('notion_md.cache_hit'),
+        outcome: OtelAttr.literal('notion_md.outcome', 'created', 'updated', 'skipped'),
+      }),
+      label: ({ basename }) => basename,
+    })
+
+    await expect(
+      Effect.runPromise(
+        PullPage.encode({
+          pageId: 'page-1',
+          basename: 'README.md',
+          cacheHit: true,
+          outcome: 'updated',
+        }),
+      ),
+    ).resolves.toEqual({
+      'span.label': 'README.md',
+      'notion_md.page_id': 'page-1',
+      'notion_md.path.basename': 'README.md',
+      'notion_md.cache_hit': true,
+      'notion_md.outcome': 'updated',
+    })
+
+    await expect(
+      Effect.runPromise(
+        PullPage.with({
+          attributes: {
+            pageId: 'page-1',
+            basename: 'README.md',
+            cacheHit: true,
+            outcome: 'updated',
+          },
+          effect: Effect.succeed('ok'),
+        }),
+      ),
+    ).resolves.toBe('ok')
+
+    await expect(
+      Effect.runPromise(
+        Effect.succeed('ok').pipe(
+          PullPage.with({
+            pageId: 'page-1',
+            basename: 'README.md',
+            cacheHit: true,
+            outcome: 'updated',
+          }),
+        ),
+      ),
+    ).resolves.toBe('ok')
+
+    expect(PullPage.metadata).toMatchObject({
+      kind: 'operation',
+      name: 'notion-md.pull-page',
+      root: false,
+      derivesSpanLabel: true,
+      attributeKeys: [
+        'notion_md.page_id',
+        'notion_md.path.basename',
+        'notion_md.cache_hit',
+        'notion_md.outcome',
+        'span.label',
+      ],
+    })
+  })
+
+  it('rejects empty derived labels', async () => {
+    const Operation = OtelOperation.define({
+      name: 'test.empty-label',
+      schema: Schema.Struct({
+        value: OtelAttr.string('test.value'),
+      }),
+      label: () => '   ',
+    })
+
+    await expect(
+      Effect.runPromise(Effect.either(Operation.encode({ value: 'ok' }))),
+    ).resolves.toMatchObject({
+      _tag: 'Left',
+      left: expect.any(OtelAttrEncodeError),
+    })
+  })
+
+  it('wraps root spans and streams through the operation contract', async () => {
+    const Operation = OtelOperation.define({
+      name: 'test.operation.stream',
+      schema: Schema.Struct({
+        value: OtelAttr.string('test.value'),
+      }),
+      label: ({ value }) => value,
+    })
+
+    await expect(
+      Effect.runPromise(
+        Operation.withRoot({
+          attributes: { value: 'root' },
+          effect: Effect.succeed('ok'),
+        }),
+      ),
+    ).resolves.toBe('ok')
+
+    await expect(
+      Effect.runPromise(
+        Stream.fromIterable(['a', 'b']).pipe(
+          Operation.withStream({ value: 'stream' }),
+          Stream.runCollect,
+        ),
+      ),
+    ).resolves.toBeDefined()
+  })
+})
+
+describe('OtelMetric', () => {
+  it('defines runtime-light counter metadata with schema-backed labels', async () => {
+    const Invocations = OtelMetric.counter({
+      name: 'restate_invocations_total',
+      description: 'Restate invocations by service, handler, and outcome.',
+      unit: '1',
+      labels: Schema.Struct({
+        service: OtelAttr.string('restate.service', { cardinality: 'bounded' }),
+        handler: OtelAttr.string('restate.handler', { cardinality: 'bounded' }),
+        outcome: OtelAttr.literal(
+          'restate.outcome',
+          'success',
+          'terminal',
+          'retryable',
+          'cancelled',
+        ),
+        cacheHit: OtelAttr.boolean('restate.cache_hit'),
+      }),
+    })
+
+    await expect(
+      Effect.runPromise(
+        Invocations.encodeLabels({
+          service: 'notion-sync',
+          handler: 'pull',
+          outcome: 'success',
+          cacheHit: true,
+        }),
+      ),
+    ).resolves.toEqual({
+      'restate.service': 'notion-sync',
+      'restate.handler': 'pull',
+      'restate.outcome': 'success',
+      'restate.cache_hit': true,
+    })
+
+    expect(Invocations.metadata).toMatchInlineSnapshot(`
+      {
+        "description": "Restate invocations by service, handler, and outcome.",
+        "instrument": "counter",
+        "kind": "metric",
+        "labelKeys": [
+          "restate.service",
+          "restate.handler",
+          "restate.outcome",
+          "restate.cache_hit",
+        ],
+        "labels": [
+          {
+            "astTag": "StringKeyword",
+            "attrKey": "restate.service",
+            "cardinality": "bounded",
+            "encodePolicy": "auto",
+            "optional": false,
+            "sourceKey": "service",
+          },
+          {
+            "astTag": "StringKeyword",
+            "attrKey": "restate.handler",
+            "cardinality": "bounded",
+            "encodePolicy": "auto",
+            "optional": false,
+            "sourceKey": "handler",
+          },
+          {
+            "astTag": "Union",
+            "attrKey": "restate.outcome",
+            "cardinality": "bounded",
+            "encodePolicy": "auto",
+            "optional": false,
+            "sourceKey": "outcome",
+          },
+          {
+            "astTag": "BooleanKeyword",
+            "attrKey": "restate.cache_hit",
+            "cardinality": "low",
+            "encodePolicy": "auto",
+            "optional": false,
+            "sourceKey": "cacheHit",
+          },
+        ],
+        "name": "restate_invocations_total",
+        "unit": "1",
+      }
+    `)
+  })
+
+  it('defines histogram metadata without owning runtime emission', () => {
+    const labels = OtelMetric.labels(
+      Schema.Struct({
+        operation: OtelAttr.literal('operation', 'pull', 'push'),
+      }),
+    )
+    const DurationMs = OtelMetric.histogram({
+      name: 'operation_duration_ms',
+      description: 'Operation duration.',
+      unit: 'ms',
+      boundaries: [10, 50, 100, 500, 1000],
+      labels,
+    })
+
+    expect(DurationMs).not.toHaveProperty('increment')
+    expect(DurationMs).not.toHaveProperty('record')
+    expect(DurationMs.metadata).toMatchObject({
+      kind: 'metric',
+      instrument: 'histogram',
+      name: 'operation_duration_ms',
+      unit: 'ms',
+      labelKeys: ['operation'],
+      boundaries: [10, 50, 100, 500, 1000],
+    })
+  })
+
+  it('rejects high-cardinality and unspecified-cardinality metric labels', () => {
+    expect(() =>
+      OtelMetric.labels(
+        Schema.Struct({
+          workflowId: OtelAttr.string('restate.workflow.id', { cardinality: 'high' }),
+        }),
+      ),
+    ).toThrow(OtelAttrPlanError)
+
+    expect(() =>
+      OtelMetric.labels(
+        Schema.Struct({
+          service: OtelAttr.string('restate.service'),
+        }),
+      ),
+    ).toThrow(OtelAttrPlanError)
+  })
+
+  it('rejects invalid histogram boundaries', () => {
+    expect(() =>
+      OtelMetric.histogram({
+        name: 'bad_histogram',
+        boundaries: [10, 5],
+        labels: Schema.Struct({
+          status: OtelAttr.literal('status', 'ok', 'failed'),
+        }),
+      }),
+    ).toThrow(OtelAttrPlanError)
+
+    expect(() =>
+      OtelMetric.histogram({
+        name: 'nan_histogram',
+        boundaries: [Number.NaN],
+        labels: Schema.Struct({
+          status: OtelAttr.literal('status', 'ok', 'failed'),
+        }),
+      }),
+    ).toThrow(OtelAttrPlanError)
   })
 })

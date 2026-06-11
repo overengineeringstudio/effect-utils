@@ -169,6 +169,10 @@ importers:
         version: 3.2.4(@types/debug@4.1.13)(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/@overeng/effect-react:
+    dependencies:
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
     devDependencies:
       '@overeng/utils':
         specifier: workspace:^
@@ -424,6 +428,9 @@ importers:
       '@opentui/react':
         specifier: 0.1.88
         version: 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.2)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.20.0)
+      '@overeng/otel-contract':
+        specifier: workspace:^
+        version: link:../otel-contract
       '@playwright/test':
         specifier: 1.59.1
         version: 1.59.1

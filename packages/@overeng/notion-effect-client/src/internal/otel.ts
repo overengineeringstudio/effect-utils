@@ -1,7 +1,12 @@
-import type { Effect } from 'effect'
-import { Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  OtelSpan,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 import type { BuildRequestOptions, NotionHttpRouteInfo, RateLimitInfo } from './http.ts'
 
@@ -9,7 +14,7 @@ const Method = Schema.Literal('GET', 'POST', 'PATCH', 'DELETE')
 
 const HttpSpanAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    spanLabel: OtelAttr.drop(Schema.NonEmptyString),
     method: Method.pipe(OtelAttr.key({ key: 'notion.http.method' })),
     route: Schema.String.pipe(OtelAttr.key({ key: 'notion.http.route' })),
     operation: Schema.String.pipe(OtelAttr.key({ key: 'notion.http.operation' })),
@@ -41,33 +46,53 @@ const HttpRateLimitAttrs = OtelAttrs.defineSync(
 
 const DataSourceQueryAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     dataSourceId: Schema.String.pipe(OtelAttr.key({ key: 'notion.data_source_id' })),
   }),
 )
 
 const PageRetrieveAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion.page_id' })),
   }),
 )
 
 const NotionHttpSpan = (method: BuildRequestOptions['method']) =>
-  OtelSpan.define({
+  OtelOperation.define({
     name: `NotionHttp.${method}`,
     attributes: HttpSpanAttrs,
+    label: ({ spanLabel }) => spanLabel,
   })
 
-const NotionDatabasesQuerySpan = OtelSpan.define({
+const NotionDatabasesQuerySpan = OtelOperation.define({
   name: 'NotionDatabases.query',
   attributes: DataSourceQueryAttrs,
+  label: ({ dataSourceId }) => dataSourceId,
 })
 
-const NotionPagesRetrieveSpan = OtelSpan.define({
+const NotionPagesRetrieveSpan = OtelOperation.define({
   name: 'NotionPages.retrieve',
   attributes: PageRetrieveAttrs,
+  label: ({ pageId }) => pageId,
 })
+
+const withOperation =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    effect.pipe(
+      operation.with(attributes),
+      Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
+    )
+
+const annotateAttrs = <S extends Schema.Schema.AnyNoContext>(
+  attributes: OtelAttrs<S>,
+  value: Schema.Schema.Type<S>,
+): Effect.Effect<void> =>
+  OtelSpan.annotate({ attributes, value }).pipe(
+    Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
+  )
 
 export const withNotionHttpSpan =
   ({
@@ -79,14 +104,11 @@ export const withNotionHttpSpan =
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     effect.pipe(
-      OtelSpan.unsafeWith({
-        span: NotionHttpSpan(method),
-        attributes: {
-          label: route.spanLabel,
-          method,
-          route: route.route,
-          operation: route.operation,
-        },
+      withOperation(NotionHttpSpan(method), {
+        spanLabel: route.spanLabel,
+        method,
+        route: route.route,
+        operation: route.operation,
       }),
     )
 
@@ -101,33 +123,24 @@ export const annotateNotionHttpRateLimitSpan = (input: {
 }): Effect.Effect<void> => {
   const rateLimit = input.rateLimit
   const isSome = Option.isSome(rateLimit)
-  return OtelSpan.unsafeAnnotate({
-    attributes: HttpRateLimitAttrs,
-    value: {
-      label: input.route.spanLabel,
-      method: input.method,
-      route: input.route.route,
-      operation: input.route.operation,
-      status: input.status,
-      attempt: input.attempt,
-      attempts: input.attempts,
-      retryDelayMs: input.retryDelayMs,
-      quotaCost: input.attempts,
-      rateLimitPresent: isSome,
-      rateLimitRemaining: isSome ? rateLimit.value.remaining : undefined,
-      rateLimitResetAfterMs: isSome ? rateLimit.value.resetAfterSeconds * 1000 : undefined,
-    },
+  return annotateAttrs(HttpRateLimitAttrs, {
+    label: input.route.spanLabel,
+    method: input.method,
+    route: input.route.route,
+    operation: input.route.operation,
+    status: input.status,
+    attempt: input.attempt,
+    attempts: input.attempts,
+    retryDelayMs: input.retryDelayMs,
+    quotaCost: input.attempts,
+    rateLimitPresent: isSome,
+    rateLimitRemaining: isSome ? rateLimit.value.remaining : undefined,
+    rateLimitResetAfterMs: isSome ? rateLimit.value.resetAfterSeconds * 1000 : undefined,
   })
 }
 
 export const withNotionDatabasesQuerySpan = (dataSourceId: string) =>
-  OtelSpan.unsafeWith({
-    span: NotionDatabasesQuerySpan,
-    attributes: { label: dataSourceId, dataSourceId },
-  })
+  withOperation(NotionDatabasesQuerySpan, { dataSourceId })
 
 export const withNotionPagesRetrieveSpan = (pageId: string) =>
-  OtelSpan.unsafeWith({
-    span: NotionPagesRetrieveSpan,
-    attributes: { label: pageId, pageId },
-  })
+  withOperation(NotionPagesRetrieveSpan, { pageId })

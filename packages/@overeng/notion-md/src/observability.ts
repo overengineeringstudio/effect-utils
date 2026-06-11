@@ -1,47 +1,50 @@
 import { basename } from 'node:path'
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  OtelSpan,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 export const pageAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
   }),
 )
 
 export const parentPageAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     parentPageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.parent_page_id' })),
   }),
 )
 
 export const pathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
   }),
 )
 
 export const pathRecursiveAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
     recursive: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.path.recursive' })),
   }),
 )
 
 export const pathPlanAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
     fromRemote: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.from_remote' })),
   }),
 )
 
 export const pathSyncAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
     recursive: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.path.recursive' })),
     fromRemote: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.from_remote' })),
   }),
@@ -49,7 +52,6 @@ export const pathSyncAttrs = OtelAttrs.defineSync(
 
 export const pagePathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
   }),
@@ -80,7 +82,6 @@ export const statusAttrs = OtelAttrs.defineSync(
 
 export const pushSpanAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
     force: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.push.force' })),
     allowDeleteUnknownBlocks: Schema.Boolean.pipe(
@@ -105,7 +106,6 @@ export const syncResultAttrs = OtelAttrs.defineSync(
 
 export const stateFileAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.state.operation' })),
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
   }),
@@ -119,7 +119,6 @@ export const objectHashAttrs = OtelAttrs.defineSync(
 
 export const objectRoleAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     role: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.object.role' })),
     basename: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' }))),
     hashPrefix: Schema.optional(
@@ -130,7 +129,6 @@ export const objectRoleAttrs = OtelAttrs.defineSync(
 
 export const markdownUpdateAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
     type: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.markdown_update.type' })),
     allowDeletingContent: Schema.Boolean.pipe(
@@ -144,7 +142,6 @@ export const markdownUpdateAttrs = OtelAttrs.defineSync(
 
 export const metadataUpdateAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
     hasTitle: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.title' })),
     hasIcon: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.icon' })),
@@ -173,119 +170,155 @@ export const pushDecisionMarkdownCommandAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const StatusPathSpan = OtelSpan.define({
+export const withOperation =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    effect.pipe(
+      operation.with(attributes),
+      Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
+    )
+
+export const annotateAttrs = <S extends Schema.Schema.AnyNoContext>(
+  attributes: OtelAttrs<S>,
+  value: Schema.Schema.Type<S>,
+): Effect.Effect<void> =>
+  OtelSpan.annotate({ attributes, value }).pipe(
+    Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
+  )
+
+export const StatusPathSpan = OtelOperation.define({
   name: 'notion-md.status-path',
   attributes: pathRecursiveAttrs,
+  label: ({ basename }) => basename,
 })
 
-export const PlanPathSpan = OtelSpan.define({
+export const PlanPathSpan = OtelOperation.define({
   name: 'notion-md.plan-path',
   attributes: pathPlanAttrs,
+  label: ({ basename }) => basename,
 })
 
-export const SyncPathSpan = OtelSpan.define({
+export const SyncPathSpan = OtelOperation.define({
   name: 'notion-md.sync-path',
   attributes: pathSyncAttrs,
+  label: ({ basename }) => basename,
 })
 
 export const stateFileSpan = (operation: string) =>
-  OtelSpan.define({
+  OtelOperation.define({
     name: `notion-md.state.${operation}`,
     attributes: stateFileAttrs,
+    label: ({ basename }) => basename,
   })
 
-export const ReadNmdStateSpan = OtelSpan.define({
+export const ReadNmdStateSpan = OtelOperation.define({
   name: 'notion-md.state.read-nmd',
   attributes: stateFileAttrs,
+  label: ({ basename }) => basename,
 })
 
-export const WriteObjectStateSpan = OtelSpan.define({
+export const WriteObjectStateSpan = OtelOperation.define({
   name: 'notion-md.state.write-object',
   attributes: objectRoleAttrs,
+  label: ({ role }) => role,
 })
 
-export const ReadObjectStateSpan = OtelSpan.define({
+export const ReadObjectStateSpan = OtelOperation.define({
   name: 'notion-md.state.read-object',
   attributes: objectRoleAttrs,
+  label: ({ role }) => role,
 })
 
-export const PullPageSpan = OtelSpan.define({
+export const PullPageSpan = OtelOperation.define({
   name: 'notion-md.pull-page',
   attributes: pagePathAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const EstablishSidecarSpan = OtelSpan.define({
+export const EstablishSidecarSpan = OtelOperation.define({
   name: 'notion-md.establish-sidecar',
   attributes: pageAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const StatusPageSpan = OtelSpan.define({
+export const StatusPageSpan = OtelOperation.define({
   name: 'notion-md.status-page',
   attributes: pathAttrs,
+  label: ({ basename }) => basename,
 })
 
-export const PushPageSpan = OtelSpan.define({
+export const PushPageSpan = OtelOperation.define({
   name: 'notion-md.push-page',
   attributes: pushSpanAttrs,
+  label: ({ basename }) => basename,
 })
 
-export const SyncPageSpan = OtelSpan.define({
+export const SyncPageSpan = OtelOperation.define({
   name: 'notion-md.sync-page',
   attributes: pathAttrs,
+  label: ({ basename }) => basename,
 })
 
-export const GatewayPullPageSpan = OtelSpan.define({
+export const GatewayPullPageSpan = OtelOperation.define({
   name: 'notion-md.gateway.pull-page',
   attributes: pageAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const GatewayUpdateMarkdownSpan = OtelSpan.define({
+export const GatewayUpdateMarkdownSpan = OtelOperation.define({
   name: 'notion-md.gateway.update-markdown',
   attributes: markdownUpdateAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const GatewayUpdatePagePropertiesSpan = OtelSpan.define({
+export const GatewayUpdatePagePropertiesSpan = OtelOperation.define({
   name: 'notion-md.gateway.update-page-properties',
   attributes: pageAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const GatewayUpdatePageMetadataSpan = OtelSpan.define({
+export const GatewayUpdatePageMetadataSpan = OtelOperation.define({
   name: 'notion-md.gateway.update-page-metadata',
   attributes: metadataUpdateAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const GatewayListChildPagesSpan = OtelSpan.define({
+export const GatewayListChildPagesSpan = OtelOperation.define({
   name: 'notion-md.gateway.list-child-pages',
   attributes: pageAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const GatewayCreatePageSpan = OtelSpan.define({
+export const GatewayCreatePageSpan = OtelOperation.define({
   name: 'notion-md.gateway.create-page',
   attributes: parentPageAttrs,
+  label: ({ parentPageId }) => parentPageId.slice(0, 8),
 })
 
-export const GatewayMovePageSpan = OtelSpan.define({
+export const GatewayMovePageSpan = OtelOperation.define({
   name: 'notion-md.gateway.move-page',
   attributes: pageAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const GatewayArchivePageSpan = OtelSpan.define({
+export const GatewayArchivePageSpan = OtelOperation.define({
   name: 'notion-md.gateway.archive-page',
   attributes: pageAttrs,
+  label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const page = (pageId: string) =>
-  pageAttrs.unsafeEncode({ label: pageId.slice(0, 8), pageId })
+export const page = (pageId: string) => GatewayPullPageSpan.encodeSync({ pageId })
 
 export const parentPage = (parentPageId: string) =>
-  parentPageAttrs.unsafeEncode({ label: parentPageId.slice(0, 8), parentPageId })
+  GatewayCreatePageSpan.encodeSync({ parentPageId })
 
-export const path = (filePath: string) =>
-  pathAttrs.unsafeEncode({ label: basename(filePath), basename: basename(filePath) })
+export const path = (filePath: string) => SyncPageSpan.encodeSync({ basename: basename(filePath) })
 
 export const pagePath = (input: { readonly pageId: string; readonly path: string }) =>
-  pagePathAttrs.unsafeEncode({
-    label: input.pageId.slice(0, 8),
+  PullPageSpan.encodeSync({
     pageId: input.pageId,
     basename: basename(input.path),
   })

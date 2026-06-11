@@ -82,17 +82,36 @@ import {
   Stream,
 } from 'effect'
 
-import { OtelAttr, OtelSpan } from '@overeng/otel-contract'
+import {
+  OtelAttr,
+  OtelOperation,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 /** Channel name for broadcasting logs */
 export const BROADCAST_CHANNEL_NAME = 'effect-debug-logs'
 
-const BroadcastLoggerLogStreamSetupSpan = OtelSpan.defineSync({
+const BroadcastLoggerLogStreamSetupOperation = OtelOperation.define({
   name: 'BroadcastLogger.logStream.setup',
   schema: Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    label: OtelAttr.drop(Schema.NonEmptyString),
   }),
+  label: ({ label }) => label,
 })
+
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
 const sanitizeForBroadcast = (value: unknown): unknown => {
   if (value === null || value === undefined) return value
@@ -243,12 +262,7 @@ export const logStream: Stream.Stream<BroadcastLogEntry, never, Scope.Scope> =
           channel.close()
         }),
       )
-    }).pipe(
-      OtelSpan.unsafeWith({
-        span: BroadcastLoggerLogStreamSetupSpan,
-        attributes: { label: 'setup' },
-      }),
-    ),
+    }).pipe(trustedWith(BroadcastLoggerLogStreamSetupOperation, { label: 'setup' })),
   )
 
 /** Options for creating a log bridge layer. */

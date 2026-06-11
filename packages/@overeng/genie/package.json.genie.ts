@@ -4,6 +4,7 @@ import {
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -11,6 +12,9 @@ import utilsPkg from '../utils/package.json.genie.ts'
 
 const supportDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
+  dependencies: {
+    workspace: [otelContractPkg],
+  },
   devDependencies: {
     workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
     external: {

@@ -146,14 +146,14 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
   const opSpans = new Map<number, Span>()
 
   const cacheEventAttrs = (kind: 'hit' | 'miss' | 'drift' | 'page-id-drift'): Attributes =>
-    CacheEventAttrs.unsafeEncode({ serviceName, label: `cache:${kind}` })
+    CacheEventAttrs.encodeSync({ serviceName, label: `cache:${kind}` })
 
   return (event: SyncEvent): void => {
     switch (event._tag) {
       case 'SyncStart': {
         rootSpan = tracer.startSpan('notion-react.sync', {
           startTime: event.at,
-          attributes: SyncStartAttrs.unsafeEncode({
+          attributes: SyncStartAttrs.encodeSync({
             serviceName,
             label: shortId(event.pageId),
             pageId: event.pageId,
@@ -165,7 +165,7 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
       case 'SyncEnd': {
         if (rootSpan === undefined) break
         rootSpan.setAttributes(
-          SyncEndAttrs.unsafeEncode({
+          SyncEndAttrs.encodeSync({
             ok: event.ok,
             opCount: event.opCount,
             durationMs: event.durationMs,
@@ -192,7 +192,7 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
           `notion-react.op.${event.kind}`,
           {
             startTime: event.at,
-            attributes: OpStartAttrs.unsafeEncode({
+            attributes: OpStartAttrs.encodeSync({
               serviceName,
               label: event.kind,
               id: event.id,
@@ -208,7 +208,7 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
         const span = opSpans.get(event.id)
         if (span === undefined) break
         span.setAttributes(
-          OpSucceededAttrs.unsafeEncode({
+          OpSucceededAttrs.encodeSync({
             durationMs: event.durationMs,
             resultCount: event.resultCount,
             ...(event.note === undefined ? {} : { note: event.note }),
@@ -223,7 +223,7 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
         const span = opSpans.get(event.id)
         if (span === undefined) break
         span.setAttributes(
-          OpFailedAttrs.unsafeEncode({ durationMs: event.durationMs, error: event.error }),
+          OpFailedAttrs.encodeSync({ durationMs: event.durationMs, error: event.error }),
         )
         span.setStatus({ code: STATUS_ERROR, message: event.error })
         span.end(event.at)
@@ -239,7 +239,7 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
         if (rootSpan === undefined) break
         rootSpan.addEvent(
           'fallback',
-          FallbackEventAttrs.unsafeEncode({ serviceName, reason: event.reason }),
+          FallbackEventAttrs.encodeSync({ serviceName, reason: event.reason }),
           event.at,
         )
         break
@@ -248,7 +248,7 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
         if (rootSpan === undefined) break
         rootSpan.addEvent(
           'batch-flush',
-          BatchFlushEventAttrs.unsafeEncode({
+          BatchFlushEventAttrs.encodeSync({
             serviceName,
             issued: event.issued,
             batched: event.batched,
@@ -261,7 +261,7 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
         if (rootSpan === undefined) break
         rootSpan.addEvent(
           'update-noop',
-          UpdateNoopEventAttrs.unsafeEncode({
+          UpdateNoopEventAttrs.encodeSync({
             serviceName,
             blockId: event.blockId,
             reason: event.reason,
@@ -274,7 +274,7 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
         if (rootSpan === undefined) break
         rootSpan.addEvent(
           'checkpoint-written',
-          CheckpointWrittenEventAttrs.unsafeEncode({
+          CheckpointWrittenEventAttrs.encodeSync({
             serviceName,
             ...(event.bytes === undefined ? {} : { bytes: event.bytes }),
           }),

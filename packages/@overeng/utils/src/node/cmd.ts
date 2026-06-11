@@ -22,44 +22,70 @@ import {
   Stream,
 } from 'effect'
 
+import {
+  OtelAttr,
+  OtelOperation,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
+
 import { isNotUndefined } from '../isomorphic/mod.ts'
 import { applyLoggingToCommand } from './cmd-log.ts'
 import * as FileLogger from './FileLogger.ts'
-import { OtelAttr, OtelAttrs, OtelSpan } from './otel-attrs.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
 // Branded zero value so we can compare exit codes without touching internals.
 const SUCCESS_EXIT_CODE: CommandExecutor.ExitCode = 0 as CommandExecutor.ExitCode
 
-const CmdRunAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+const CmdRunOperation = OtelOperation.define({
+  name: 'cmd.run',
+  schema: Schema.Struct({
+    label: OtelAttr.drop(Schema.NonEmptyString),
     cwd: Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' })),
     command: Schema.String.pipe(OtelAttr.key({ key: 'cmd.command' })),
     args: Schema.Array(Schema.String).pipe(OtelAttr.key({ key: 'cmd.args', encode: 'json' })),
     logDir: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'cmd.log_dir' }))),
     shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
   }),
-)
+  label: ({ label }) => label,
+})
 
-const CmdCollectSpan = OtelSpan.defineSync({
+const CmdCollectOperation = OtelOperation.define({
   name: 'cmd.collect',
   schema: Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    label: OtelAttr.drop(Schema.NonEmptyString),
     cwd: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' }))),
     shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
   }),
+  label: ({ label }) => label,
 })
 
-const CmdLoggingSpan = OtelSpan.defineSync({
+const CmdLoggingOperation = OtelOperation.define({
   name: 'cmd.run-with-logging',
   schema: Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    label: OtelAttr.drop(Schema.NonEmptyString),
     cwd: Schema.String.pipe(OtelAttr.key({ key: 'cmd.cwd' })),
     logPath: Schema.String.pipe(OtelAttr.key({ key: 'cmd.log_path' })),
     shell: Schema.Boolean.pipe(OtelAttr.key({ key: 'cmd.shell' })),
   }),
+  label: ({ label }) => label,
 })
+
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
+
+const annotateCmdRun = (value: Parameters<typeof CmdRunOperation.annotate>[0]) =>
+  CmdRunOperation.annotate(value).pipe(Effect.orDie)
 
 /**
  * Run a command to completion and return its exit code.
@@ -142,16 +168,13 @@ export const cmd: (
   const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
-  yield* OtelSpan.unsafeAnnotate({
-    attributes: CmdRunAttrs,
-    value: {
-      label: commandDebugStr,
-      cwd,
-      command,
-      args,
-      ...(options?.logDir === undefined ? {} : { logDir: options.logDir }),
-      shell: useShell,
-    },
+  yield* annotateCmdRun({
+    label: commandDebugStr,
+    cwd,
+    command,
+    args,
+    ...(options?.logDir === undefined ? {} : { logDir: options.logDir }),
+    shell: useShell,
   })
 
   const baseArgs = {
@@ -246,15 +269,12 @@ export const cmdStart: (
   const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Starting '${commandDebugStr}' in '${cwd}'${subshellStr}`)
-  yield* OtelSpan.unsafeAnnotate({
-    attributes: CmdRunAttrs,
-    value: {
-      label: commandDebugStr,
-      cwd,
-      command,
-      args,
-      shell: useShell,
-    },
+  yield* annotateCmdRun({
+    label: commandDebugStr,
+    cwd,
+    command,
+    args,
+    shell: useShell,
   })
 
   return yield* buildCommand({ input: normalizedInput, useShell }).pipe(
@@ -306,15 +326,12 @@ export const cmdText: (
   const subshellStr = options?.runInShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
-  yield* OtelSpan.unsafeAnnotate({
-    attributes: CmdRunAttrs,
-    value: {
-      label: commandDebugStr,
-      command,
-      cwd,
-      args,
-      shell: options?.runInShell === true,
-    },
+  yield* annotateCmdRun({
+    label: commandDebugStr,
+    command,
+    cwd,
+    args,
+    shell: options?.runInShell === true,
   })
 
   return yield* Command.make(command, ...args).pipe(
@@ -416,16 +433,13 @@ export const cmdCollect = <R = never>(opts: {
       ),
     )
   }).pipe(
-    OtelSpan.unsafeWith({
-      span: CmdCollectSpan,
-      attributes: {
-        label:
-          Array.isArray(opts.commandInput) === true
-            ? opts.commandInput.filter(isNotUndefined).join(' ')
-            : opts.commandInput,
-        ...(opts.workingDirectory === undefined ? {} : { cwd: opts.workingDirectory }),
-        shell: opts.shell === true,
-      },
+    trustedWith(CmdCollectOperation, {
+      label:
+        Array.isArray(opts.commandInput) === true
+          ? opts.commandInput.filter(isNotUndefined).join(' ')
+          : opts.commandInput,
+      ...(opts.workingDirectory === undefined ? {} : { cwd: opts.workingDirectory }),
+      shell: opts.shell === true,
     }),
   )
 
@@ -596,14 +610,11 @@ const runWithLogging = ({
       return exitCode
     }),
   ).pipe(
-    OtelSpan.unsafeWith({
-      span: CmdLoggingSpan,
-      attributes: {
-        label: threadName,
-        cwd,
-        logPath,
-        shell: useShell,
-      },
+    trustedWith(CmdLoggingOperation, {
+      label: threadName,
+      cwd,
+      logPath,
+      shell: useShell,
     }),
   )
 

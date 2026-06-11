@@ -12,7 +12,6 @@ import {
   type NmdSyncStateV1,
   type NmdWritablePropertyValue,
 } from '@overeng/notion-effect-client'
-import { OtelSpan } from '@overeng/otel-contract'
 
 import { semanticEquivalent } from './canonical-markdown.ts'
 import {
@@ -654,13 +653,9 @@ export const pullPage = (
       baselineBody: pulled.markdown.markdown,
     })
   }).pipe(
-    OtelSpan.unsafeWith({
-      span: Observability.PullPageSpan,
-      attributes: {
-        label: opts.pageId.slice(0, 8),
-        pageId: opts.pageId,
-        basename: basename(opts.outPath),
-      },
+    Observability.withOperation(Observability.PullPageSpan, {
+      pageId: opts.pageId,
+      basename: basename(opts.outPath),
     }),
   )
 
@@ -700,15 +695,7 @@ const establishSidecarFromRemote = (opts: {
         baselineBody,
       }),
     })
-  }).pipe(
-    OtelSpan.unsafeWith({
-      span: Observability.EstablishSidecarSpan,
-      attributes: {
-        label: opts.pageId.slice(0, 8),
-        pageId: opts.pageId,
-      },
-    }),
-  )
+  }).pipe(Observability.withOperation(Observability.EstablishSidecarSpan, { pageId: opts.pageId }))
 
 const readNmd = (
   path: string,
@@ -901,27 +888,18 @@ export const statusPage = (
     return statusFromSnapshots({ path: opts.path, local, remote })
   }).pipe(
     Effect.tap((status) =>
-      OtelSpan.unsafeAnnotate({
-        attributes: Observability.statusAttrs,
-        value: {
-          pageId: status.pageId,
-          localChanged: status.localChanged,
-          localPageMetadataChanged: status.localPageMetadataChanged,
-          localPropertiesChanged: status.localPropertiesChanged,
-          remoteChanged: status.remoteChanged,
-          remoteBodyChanged: status.remoteBodyChanged,
-          remotePageMetadataChanged: status.remotePageMetadataChanged,
-          unknownBlockCount: status.unresolvedUnknownBlocks.length,
-        },
+      Observability.annotateAttrs(Observability.statusAttrs, {
+        pageId: status.pageId,
+        localChanged: status.localChanged,
+        localPageMetadataChanged: status.localPageMetadataChanged,
+        localPropertiesChanged: status.localPropertiesChanged,
+        remoteChanged: status.remoteChanged,
+        remoteBodyChanged: status.remoteBodyChanged,
+        remotePageMetadataChanged: status.remotePageMetadataChanged,
+        unknownBlockCount: status.unresolvedUnknownBlocks.length,
       }),
     ),
-    OtelSpan.unsafeWith({
-      span: Observability.StatusPageSpan,
-      attributes: {
-        label: basename(opts.path),
-        basename: basename(opts.path),
-      },
-    }),
+    Observability.withOperation(Observability.StatusPageSpan, { basename: basename(opts.path) }),
   )
 
 /**
@@ -1168,11 +1146,8 @@ export const pushGuarded = (opts: {
         status.localChanged === false &&
         (status.localPageMetadataChanged === true || status.localPropertiesChanged === true)
       ) {
-        yield* OtelSpan.unsafeAnnotate({
-          attributes: Observability.pushDecisionAttrs,
-          value: {
-            decision: 'metadata_only_remote_body_changed',
-          },
+        yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+          decision: 'metadata_only_remote_body_changed',
         })
         if (hasPageMetadataUpdate(metadataUpdate) === true) {
           yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
@@ -1200,9 +1175,8 @@ export const pushGuarded = (opts: {
       }
 
       if (mergedBody !== undefined) {
-        yield* OtelSpan.unsafeAnnotate({
-          attributes: Observability.pushDecisionAttrs,
-          value: { decision: 'auto_merge' },
+        yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+          decision: 'auto_merge',
         })
         const command =
           options.replaceContent === true
@@ -1212,9 +1186,8 @@ export const pushGuarded = (opts: {
                 remoteBody: remoteForStatus.markdown.markdown,
                 desiredBody: mergedBody,
               })
-        yield* OtelSpan.unsafeAnnotate({
-          attributes: Observability.pushMarkdownCommandAttrs,
-          value: { markdownCommand: command._tag },
+        yield* Observability.annotateAttrs(Observability.pushMarkdownCommandAttrs, {
+          markdownCommand: command._tag,
         })
         yield* gateway.updateMarkdown({
           pageId: status.pageId,
@@ -1245,9 +1218,8 @@ export const pushGuarded = (opts: {
         localBody: local.desiredBody,
         remoteBody: remoteForStatus.markdown.markdown,
       })
-      yield* OtelSpan.unsafeAnnotate({
-        attributes: Observability.pushDecisionAttrs,
-        value: { decision: 'body_conflict' },
+      yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+        decision: 'body_conflict',
       })
       return yield* new NmdConflictError({
         path,
@@ -1302,12 +1274,9 @@ export const pushGuarded = (opts: {
                 remoteBody: remote.markdown.markdown,
                 desiredBody: local.desiredBody,
               })
-        yield* OtelSpan.unsafeAnnotate({
-          attributes: Observability.pushDecisionMarkdownCommandAttrs,
-          value: {
-            decision: options.force === true ? 'force_replace' : 'guarded_update',
-            markdownCommand: command._tag,
-          },
+        yield* Observability.annotateAttrs(Observability.pushDecisionMarkdownCommandAttrs, {
+          decision: options.force === true ? 'force_replace' : 'guarded_update',
+          markdownCommand: command._tag,
         })
         yield* gateway.updateMarkdown({
           pageId: status.pageId,
@@ -1363,22 +1332,15 @@ export const pushPageWithPolicy = (
     })
   }).pipe(
     Effect.tap((result) =>
-      OtelSpan.unsafeAnnotate({
-        attributes: Observability.pushResultAttrs,
-        value: {
-          pageId: result.pageId,
-          pushed: result.pushed,
-        },
+      Observability.annotateAttrs(Observability.pushResultAttrs, {
+        pageId: result.pageId,
+        pushed: result.pushed,
       }),
     ),
-    OtelSpan.unsafeWith({
-      span: Observability.PushPageSpan,
-      attributes: {
-        label: basename(opts.path),
-        basename: basename(opts.path),
-        force: opts.force === true,
-        allowDeleteUnknownBlocks: opts.allowDeletingUnknownBlocks === true,
-      },
+    Observability.withOperation(Observability.PushPageSpan, {
+      basename: basename(opts.path),
+      force: opts.force === true,
+      allowDeleteUnknownBlocks: opts.allowDeletingUnknownBlocks === true,
     }),
   )
 
@@ -1429,19 +1391,10 @@ export const syncPage = (
     } as const
   }).pipe(
     Effect.tap((result) =>
-      OtelSpan.unsafeAnnotate({
-        attributes: Observability.syncResultAttrs,
-        value: {
-          pageId: result.pageId,
-          result: result._tag,
-        },
+      Observability.annotateAttrs(Observability.syncResultAttrs, {
+        pageId: result.pageId,
+        result: result._tag,
       }),
     ),
-    OtelSpan.unsafeWith({
-      span: Observability.SyncPageSpan,
-      attributes: {
-        label: basename(opts.path),
-        basename: basename(opts.path),
-      },
-    }),
+    Observability.withOperation(Observability.SyncPageSpan, { basename: basename(opts.path) }),
   )

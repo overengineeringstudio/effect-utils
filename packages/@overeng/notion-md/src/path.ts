@@ -4,8 +4,6 @@ import type { Path } from '@effect/platform'
 import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 
-import { OtelSpan } from '@overeng/otel-contract'
-
 import { statusMany, syncMany, type BatchResult } from './batch.ts'
 import { NmdCliError, type NmdError } from './errors.ts'
 import type { NotionMdGateway } from './model.ts'
@@ -84,12 +82,9 @@ export const statusPath = (
     }
     return yield* syncManyStatus(opts)
   }).pipe(
-    OtelSpan.unsafeWith({
-      span: Observability.StatusPathSpan,
-      attributes: {
-        label: basename(opts.path),
-        recursive: opts.recursive === true,
-      },
+    Observability.withOperation(Observability.StatusPathSpan, {
+      basename: basename(opts.path),
+      recursive: opts.recursive === true,
     }),
   )
 
@@ -126,12 +121,9 @@ export const planPath = (
       ...(opts.rootFile === undefined ? {} : { rootFile: opts.rootFile }),
     })
   }).pipe(
-    OtelSpan.unsafeWith({
-      span: Observability.PlanPathSpan,
-      attributes: {
-        label: basename(opts.path),
-        fromRemote: opts.fromRemote === true,
-      },
+    Observability.withOperation(Observability.PlanPathSpan, {
+      basename: basename(opts.path),
+      fromRemote: opts.fromRemote === true,
     }),
   )
 
@@ -187,13 +179,10 @@ export const syncPath = (
 
     return yield* syncPage({ path: opts.path, ...pushSafety(opts) })
   }).pipe(
-    OtelSpan.unsafeWith({
-      span: Observability.SyncPathSpan,
-      attributes: {
-        label: basename(opts.path),
-        recursive: opts.recursive === true,
-        fromRemote: opts.fromRemote === true,
-      },
+    Observability.withOperation(Observability.SyncPathSpan, {
+      basename: basename(opts.path),
+      recursive: opts.recursive === true,
+      fromRemote: opts.fromRemote === true,
     }),
   )
 

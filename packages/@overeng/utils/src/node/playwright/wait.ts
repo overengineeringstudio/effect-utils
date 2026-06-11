@@ -11,7 +11,14 @@
 
 import { type Duration, Effect, Schedule, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '../otel-attrs.ts'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  OtelSpan,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 /** Error thrown when a polling wait operation times out */
 export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()(
@@ -22,14 +29,15 @@ export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()
   },
 ) {}
 
-const PwWaitSpan = OtelSpan.defineSync({
+const PwWaitOperation = OtelOperation.define({
   name: 'pw.wait.until',
   schema: Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    label: OtelAttr.drop(Schema.NonEmptyString),
     waitLabel: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.label' })),
     pollInterval: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.pollInterval' })),
     timeout: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.timeout' })),
   }),
+  label: ({ label }) => label,
 })
 
 const PwWaitAttemptAttrs = OtelAttrs.defineSync(
@@ -38,8 +46,21 @@ const PwWaitAttemptAttrs = OtelAttrs.defineSync(
   }),
 )
 
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
+
 const annotateWaitAttempt = (attempt: number) =>
-  OtelSpan.unsafeAnnotate({ attributes: PwWaitAttemptAttrs, value: { attempt } })
+  OtelSpan.annotate({ attributes: PwWaitAttemptAttrs, value: { attempt } }).pipe(Effect.orDie)
 
 const hasTag = (error: unknown): error is { _tag: string } => {
   if (typeof error !== 'object' || error === null) return false
@@ -101,14 +122,11 @@ export const until = <TResult, TError, TContext>(args: {
       }),
     )
   }).pipe(
-    OtelSpan.unsafeWith({
-      span: PwWaitSpan,
-      attributes: {
-        label,
-        waitLabel: label,
-        pollInterval: String(pollInterval),
-        timeout: String(timeout),
-      },
+    trustedWith(PwWaitOperation, {
+      label,
+      waitLabel: label,
+      pollInterval: String(pollInterval),
+      timeout: String(timeout),
     }),
   )
 }

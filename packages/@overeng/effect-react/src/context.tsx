@@ -1,6 +1,18 @@
 /** @jsxImportSource react */
-import { Cause, Effect, Exit, Fiber, type Layer, ManagedRuntime, Runtime, type Scope } from 'effect'
+import {
+  Cause,
+  Effect,
+  Exit,
+  Fiber,
+  type Layer,
+  ManagedRuntime,
+  Runtime,
+  Schema,
+  type Scope,
+} from 'effect'
 import React from 'react'
+
+import { OtelOperation } from '@overeng/otel-contract'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -34,6 +46,13 @@ type EffectContextValue = {
 }
 
 const EffectContext = React.createContext<EffectContextValue | null>(null)
+
+const EffectRunnerOperation = OtelOperation.define({
+  name: 'ui.effect',
+  schema: Schema.Struct({}),
+  label: () => 'effect',
+  root: true,
+})
 
 // -----------------------------------------------------------------------------
 // Provider
@@ -165,7 +184,7 @@ export const useRuntime = <TEnv,>(): Runtime.Runtime<TEnv> => {
  *       Effect.gen(function* () {
  *         yield* Effect.log('Button clicked')
  *         yield* doSomething()
- *       }).pipe(Effect.withSpan('button.click'))
+ *       }).pipe(ButtonClickOperation.with({}))
  *     )
  *   }
  *
@@ -188,7 +207,7 @@ export const useEffectRunner = <TEnv,>(): (<TA, TE>(
     <TA, TE>(effect: ProviderEffect<TEnv, TA, TE>): CancelFn => {
       const fiber = effect.pipe(
         Effect.tapErrorCause((cause) => Effect.sync(() => onError(cause))),
-        Effect.withSpan('ui.effect', { root: true }),
+        EffectRunnerOperation.with({}),
         Effect.scoped,
         Runtime.runFork(typedRuntime),
       )

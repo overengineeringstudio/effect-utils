@@ -173,7 +173,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
   const opSpans = new Map<number, OpenSpan>()
 
   const cacheEventAttrs = (kind: typeof CacheKind.Type) =>
-    CacheEventAttrs.unsafeEncode({ serviceName, label: `cache:${kind}` })
+    CacheEventAttrs.encodeSync({ serviceName, label: `cache:${kind}` })
 
   return (event: SyncEvent): void => {
     switch (event._tag) {
@@ -187,7 +187,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
           'internal',
         )
         for (const [k, v] of Object.entries(
-          SyncStartAttrs.unsafeEncode({
+          SyncStartAttrs.encodeSync({
             serviceName,
             label: shortId(event.pageId),
             pageId: event.pageId,
@@ -201,7 +201,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
       case 'SyncEnd': {
         if (rootSpan === undefined) break
         for (const [k, v] of Object.entries(
-          SyncEndAttrs.unsafeEncode({
+          SyncEndAttrs.encodeSync({
             ok: event.ok,
             opCount: event.opCount,
             durationMs: event.durationMs,
@@ -231,7 +231,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
           'internal',
         )
         for (const [k, v] of Object.entries(
-          OpStartAttrs.unsafeEncode({
+          OpStartAttrs.encodeSync({
             serviceName,
             label: event.kind,
             id: event.id,
@@ -247,7 +247,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         const open = opSpans.get(event.id)
         if (open === undefined) break
         for (const [k, v] of Object.entries(
-          OpSucceededAttrs.unsafeEncode({
+          OpSucceededAttrs.encodeSync({
             durationMs: event.durationMs,
             resultCount: event.resultCount,
             ...(event.note === undefined ? {} : { note: event.note }),
@@ -263,7 +263,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         const open = opSpans.get(event.id)
         if (open === undefined) break
         for (const [k, v] of Object.entries(
-          OpFailedAttrs.unsafeEncode({ durationMs: event.durationMs, error: event.error }),
+          OpFailedAttrs.encodeSync({ durationMs: event.durationMs, error: event.error }),
         )) {
           open.span.attribute(k, v)
         }
@@ -281,7 +281,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         rootSpan.event(
           'fallback',
           msToNs(event.at),
-          FallbackEventAttrs.unsafeEncode({ serviceName, reason: event.reason }),
+          FallbackEventAttrs.encodeSync({ serviceName, reason: event.reason }),
         )
         break
       }
@@ -290,7 +290,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         rootSpan.event(
           'batch-flush',
           msToNs(event.at),
-          BatchFlushEventAttrs.unsafeEncode({
+          BatchFlushEventAttrs.encodeSync({
             serviceName,
             issued: event.issued,
             batched: event.batched,
@@ -303,7 +303,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         rootSpan.event(
           'update-noop',
           msToNs(event.at),
-          UpdateNoopEventAttrs.unsafeEncode({
+          UpdateNoopEventAttrs.encodeSync({
             serviceName,
             blockId: event.blockId,
             reason: event.reason,
@@ -316,7 +316,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         rootSpan.event(
           'checkpoint-written',
           msToNs(event.at),
-          CheckpointWrittenEventAttrs.unsafeEncode({
+          CheckpointWrittenEventAttrs.encodeSync({
             serviceName,
             ...(event.bytes === undefined ? {} : { bytes: event.bytes }),
           }),

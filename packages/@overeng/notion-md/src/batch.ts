@@ -3,11 +3,12 @@ import { basename, dirname, resolve } from 'node:path'
 import { FileSystem, Path } from '@effect/platform'
 import { Duration, Effect, Queue, Schema, Stream } from 'effect'
 
-import { OtelAttr, OtelSpan } from '@overeng/otel-contract'
+import { OtelAttr, OtelOperation } from '@overeng/otel-contract'
 
 import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
 import type { NotionMdGateway } from './model.ts'
+import { withOperation } from './observability.ts'
 import { NmdStateStore } from './state-store.ts'
 import {
   statusPage,
@@ -25,7 +26,6 @@ const SKIPPED_DIRECTORIES = new Set(['.git', '.notion-md', 'node_modules'])
 const BatchOperationSchema = Schema.Literal('status', 'sync')
 
 const BatchRunSpanAttrs = Schema.Struct({
-  label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
   command: BatchOperationSchema.pipe(OtelAttr.key({ key: 'notion_md.command' })),
   batch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.batch' })),
   targetCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.batch.target_count' })),
@@ -33,20 +33,21 @@ const BatchRunSpanAttrs = Schema.Struct({
 })
 
 const batchRunSpan = (operation: BatchOperation) =>
-  OtelSpan.defineSync({
+  OtelOperation.define({
     name: `notion-md.${operation}-many`,
     schema: BatchRunSpanAttrs,
+    label: ({ targetCount }) => `${targetCount} target(s)`,
   })
 
-const BatchWatchSpan = OtelSpan.defineSync({
+const BatchWatchSpan = OtelOperation.define({
   name: 'notion-md.batch-watch',
   schema: Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     command: Schema.Literal('sync').pipe(OtelAttr.key({ key: 'notion_md.command' })),
     watch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.watch' })),
     batch: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.batch' })),
     pathCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.batch.path_count' })),
   }),
+  label: ({ pathCount }) => `${pathCount} file(s)`,
 })
 
 /** Batch-capable page operation names. */
@@ -411,15 +412,11 @@ const runBatch = <A>(opts: {
       items: [...resolved.errors, ...preflight.errors, ...operationItems],
     })
   }).pipe(
-    OtelSpan.unsafeWith({
-      span: batchRunSpan(opts.operation),
-      attributes: {
-        label: `${opts.targets.length} target(s)`,
-        command: opts.operation,
-        batch: true,
-        targetCount: opts.targets.length,
-        recursive: opts.recursive === true,
-      },
+    withOperation(batchRunSpan(opts.operation), {
+      command: opts.operation,
+      batch: true,
+      targetCount: opts.targets.length,
+      recursive: opts.recursive === true,
     }),
   )
 
@@ -600,15 +597,11 @@ export const runBatchWatch = (
       )
     }),
   ).pipe(
-    OtelSpan.unsafeWith({
-      span: BatchWatchSpan,
-      attributes: {
-        label: `${opts.paths.length} file(s)`,
-        command: 'sync',
-        watch: true,
-        batch: true,
-        pathCount: opts.paths.length,
-      },
+    withOperation(BatchWatchSpan, {
+      command: 'sync',
+      watch: true,
+      batch: true,
+      pathCount: opts.paths.length,
     }),
   )
 

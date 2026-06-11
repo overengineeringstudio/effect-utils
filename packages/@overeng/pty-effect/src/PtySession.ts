@@ -2,7 +2,12 @@ import { Session as UpstreamSession } from '@myobie/pty/testing'
 import { Effect, Option, Predicate, Schedule, Schema, Stream, pipe } from 'effect'
 import type { Scope } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import {
+  OtelAttr,
+  OtelOperation,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 import { PtyError } from './PtyError.ts'
 import type { Key } from './PtyKey.ts'
@@ -63,12 +68,27 @@ export interface PtySession {
 /** Default polling schedule for `waitFor*` (50ms fixed). */
 export const defaultPollSchedule: Schedule.Schedule<unknown> = Schedule.spaced('50 millis')
 
-const PtySessionMakeAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+const PtySessionMakeOperation = OtelOperation.define({
+  name: 'pty-session.make',
+  schema: Schema.Struct({
+    label: OtelAttr.drop(Schema.NonEmptyString),
     mode: Schema.Literal('Spawn', 'Server').pipe(OtelAttr.key({ key: 'pty.session.mode' })),
   }),
-)
+  label: ({ label }) => label,
+})
+
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
 interface WrapSyncOpts<A> {
   readonly method: string
@@ -282,9 +302,4 @@ export const make = (spec: PtySpec): Effect.Effect<PtySession, PtyError, Scope.S
       waitForAbsent,
     }
     return session
-  }).pipe(
-    OtelSpan.unsafeWith({
-      span: { name: 'pty-session.make', attributes: PtySessionMakeAttrs },
-      attributes: { label: spec._tag, mode: spec._tag },
-    }),
-  )
+  }).pipe(trustedWith(PtySessionMakeOperation, { label: spec._tag, mode: spec._tag }))

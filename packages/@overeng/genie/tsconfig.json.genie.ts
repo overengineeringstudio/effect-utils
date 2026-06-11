@@ -19,6 +19,7 @@ export default tsconfigJson({
     '../../../types/css.d.ts',
   ],
   references: [
+    { path: '../otel-contract' },
     { path: '../tui-core' },
     { path: '../tui-react' },
     { path: '../utils' },

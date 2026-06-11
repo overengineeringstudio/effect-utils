@@ -3,7 +3,7 @@ import type { Brand, Exit } from 'effect'
 import { Context, Effect, Option, Runtime, Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import { OtelAttr, OtelOperation, type OtelAttrEncodeError } from '@overeng/otel-contract'
 
 import { contractSerdeFactory, invocationIdempotencyKey } from '../clients/InvocationPolicy.ts'
 import { emitAwakeableWait, emitDurableStep, monotonicMs } from '../observability/Metrics.ts'
@@ -11,17 +11,25 @@ import { type RedactionCipher, RestateRedaction } from '../schema/Redaction.ts'
 import { RestateError } from '../schema/RestateError.ts'
 import { internalSerde } from '../schema/Serde.ts'
 
-const RestateSpanLabelAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-  }),
-)
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
-const withRestateSpan = (name: string, label: string) =>
-  OtelSpan.unsafeWith({
-    span: OtelSpan.define({ name, attributes: RestateSpanLabelAttrs }),
-    attributes: { label },
-  })
+const withRestateSpan =
+  (name: string, label: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    trustOtelContract(
+      effect.pipe(
+        OtelOperation.define({
+          name,
+          schema: Schema.Struct({
+            label: OtelAttr.drop(Schema.NonEmptyString),
+          }),
+          label: ({ label }) => label,
+        }).with({ label }),
+      ),
+    )
 
 /**
  * The per-invocation Restate `Context`, provided as a `Context.Tag` service.

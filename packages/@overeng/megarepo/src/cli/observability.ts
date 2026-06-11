@@ -1,8 +1,15 @@
 import path from 'node:path'
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan, type OtelSpanDefinition } from '@overeng/otel-contract'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  OtelSpan,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 const basename = (value: string): string =>
   value.split('/').findLast((part) => part.length > 0) ?? value
@@ -12,13 +19,32 @@ export const shortRef = ({ refType, ref }: { refType: string; ref: string }): st
 
 export const shortPath = (value: string): string => basename(value.replace(/\/+$/, ''))
 
-const applySpan = <S extends Schema.Schema.AnyNoContext>({
-  span,
-  attributes,
-}: {
-  span: OtelSpanDefinition<S>
-  attributes: Schema.Schema.Type<S>
-}) => OtelSpan.unsafeWith({ span, attributes })
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(
+    Effect.catchAll((error) =>
+      typeof error === 'object' &&
+      error !== null &&
+      '_tag' in error &&
+      error._tag === 'OtelAttrEncodeError'
+        ? Effect.die(error)
+        : Effect.fail(error as E),
+    ),
+  ) as Effect.Effect<A, E, R>
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
+
+const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>(
+  operation: OtelOperationDefinition<S>,
+  attributes: Schema.Schema.Type<S>,
+): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
 
 export const commandAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -33,20 +59,37 @@ export const commandAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const syncSpan = {
+const commandOperation = ({ name, root }: { name: string; root: boolean }) =>
+  OtelOperation.define({
+    name,
+    attributes: commandAttrs,
+    label: ({ label }) => label,
+    ...(root === true ? { root: true } : {}),
+  })
+
+const commandAnnotationOperation = OtelOperation.define({
+  name: 'megarepo/cli/command',
+  attributes: commandAttrs,
+  label: ({ label }) => label,
+})
+
+const syncAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    root: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.root' })),
+    mode: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.mode' })),
+    depth: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.sync.depth' })),
+    dryRun: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.dry_run' })),
+    all: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.all' })),
+    force: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.force' })),
+  }),
+)
+
+export const syncSpan = OtelOperation.define({
   name: 'megarepo/sync',
-  attributes: OtelAttrs.defineSync(
-    Schema.Struct({
-      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-      root: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.root' })),
-      mode: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.mode' })),
-      depth: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.sync.depth' })),
-      dryRun: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.dry_run' })),
-      all: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.all' })),
-      force: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.force' })),
-    }),
-  ),
-} as const
+  attributes: syncAttrs,
+  label: ({ label }) => label,
+})
 
 export const storeWorktreeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -66,6 +109,13 @@ export const storeWorktreeAttrs = OtelAttrs.defineSync(
   }),
 )
 
+const storeWorktreeOperation = (name: string) =>
+  OtelOperation.define({
+    name,
+    attributes: storeWorktreeAttrs,
+    label: ({ label }) => label,
+  })
+
 export const storeGcAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
@@ -75,6 +125,13 @@ export const storeGcAttrs = OtelAttrs.defineSync(
     all: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.cli.all' })),
   }),
 )
+
+const storeGcOperation = OtelOperation.define({
+  name: 'megarepo/store/gc',
+  attributes: storeGcAttrs,
+  label: ({ label }) => label,
+  root: true,
+})
 
 export const storeGcResultAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -121,6 +178,13 @@ export const storeSourceAttrs = OtelAttrs.defineSync(
   }),
 )
 
+const storeSourceOperation = (name: string) =>
+  OtelOperation.define({
+    name,
+    attributes: storeSourceAttrs,
+    label: ({ label }) => label,
+  })
+
 export const withCommandSpan = ({
   name,
   command,
@@ -144,22 +208,15 @@ export const withCommandSpan = ({
   repo?: string
   root?: boolean
 }) =>
-  applySpan({
-    span: {
-      name,
-      attributes: commandAttrs,
-      ...(root === true ? { root: true } : {}),
-    },
-    attributes: {
-      label,
-      command,
-      ...(output === undefined ? {} : { output }),
-      ...(all === undefined ? {} : { all }),
-      ...(dryRun === undefined ? {} : { dryRun }),
-      ...(force === undefined ? {} : { force }),
-      ...(member === undefined ? {} : { member }),
-      ...(repo === undefined ? {} : { repo }),
-    },
+  trustedWith(commandOperation({ name, root }), {
+    label,
+    command,
+    ...(output === undefined ? {} : { output }),
+    ...(all === undefined ? {} : { all }),
+    ...(dryRun === undefined ? {} : { dryRun }),
+    ...(force === undefined ? {} : { force }),
+    ...(member === undefined ? {} : { member }),
+    ...(repo === undefined ? {} : { repo }),
   })
 
 export const withSyncSpan = ({
@@ -177,17 +234,14 @@ export const withSyncSpan = ({
   all: boolean
   force: boolean
 }) =>
-  applySpan({
-    span: syncSpan,
-    attributes: {
-      label: shortPath(megarepoRoot),
-      root: megarepoRoot,
-      mode,
-      depth,
-      dryRun,
-      all,
-      force,
-    },
+  trustedWith(syncSpan, {
+    label: shortPath(megarepoRoot),
+    root: megarepoRoot,
+    mode,
+    depth,
+    dryRun,
+    all,
+    force,
   })
 
 export const annotateCommand = ({
@@ -209,29 +263,31 @@ export const annotateCommand = ({
   member?: string
   repo?: string
 }) =>
-  OtelSpan.unsafeAnnotate({
-    attributes: commandAttrs,
-    value: {
-      label,
-      command,
-      ...(output === undefined ? {} : { output }),
-      ...(all === undefined ? {} : { all }),
-      ...(dryRun === undefined ? {} : { dryRun }),
-      ...(force === undefined ? {} : { force }),
-      ...(member === undefined ? {} : { member }),
-      ...(repo === undefined ? {} : { repo }),
-    },
+  trustedAnnotate(commandAnnotationOperation, {
+    label,
+    command,
+    ...(output === undefined ? {} : { output }),
+    ...(all === undefined ? {} : { all }),
+    ...(dryRun === undefined ? {} : { dryRun }),
+    ...(force === undefined ? {} : { force }),
+    ...(member === undefined ? {} : { member }),
+    ...(repo === undefined ? {} : { repo }),
   })
 
 export const annotateStoreGcResult = (
   value: Schema.Schema.Type<typeof storeGcResultAttrs.schema>,
-) => OtelSpan.unsafeAnnotate({ attributes: storeGcResultAttrs, value })
+) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({ attributes: storeGcResultAttrs, value }),
+  )
 
 export const annotateStoreGitWorktreeListFailure = (failed: boolean) =>
-  OtelSpan.unsafeAnnotate({
-    attributes: storeGitWorktreeListFailureAttrs,
-    value: { failed },
-  })
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({
+      attributes: storeGitWorktreeListFailureAttrs,
+      value: { failed },
+    }),
+  )
 
 export const withStoreWorktreeSpan = ({
   name,
@@ -250,17 +306,14 @@ export const withStoreWorktreeSpan = ({
   bareRepoPath?: string
   broken?: boolean
 }) =>
-  applySpan({
-    span: { name, attributes: storeWorktreeAttrs },
-    attributes: {
-      label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
-      repo,
-      refType,
-      ref,
-      ...(worktreePath === undefined ? {} : { worktreePath }),
-      ...(bareRepoPath === undefined ? {} : { bareRepoPath }),
-      ...(broken === undefined ? {} : { broken }),
-    },
+  trustedWith(storeWorktreeOperation(name), {
+    label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
+    repo,
+    refType,
+    ref,
+    ...(worktreePath === undefined ? {} : { worktreePath }),
+    ...(bareRepoPath === undefined ? {} : { bareRepoPath }),
+    ...(broken === undefined ? {} : { broken }),
   })
 
 export const withStoreGcSpan = ({
@@ -274,15 +327,12 @@ export const withStoreGcSpan = ({
   force: boolean
   all: boolean
 }) =>
-  applySpan({
-    span: { name: 'megarepo/store/gc', attributes: storeGcAttrs, root: true },
-    attributes: {
-      label: 'gc',
-      policy,
-      dryRun,
-      force,
-      all,
-    },
+  trustedWith(storeGcOperation, {
+    label: 'gc',
+    policy,
+    dryRun,
+    force,
+    all,
   })
 
 export const withStoreSourceSpan = ({
@@ -300,16 +350,13 @@ export const withStoreSourceSpan = ({
   commit?: string
   porcelain?: boolean
 }) =>
-  applySpan({
-    span: { name, attributes: storeSourceAttrs },
-    attributes: {
-      label: shortPath(source),
-      source,
-      ...(ref === undefined ? {} : { ref }),
-      ...(base === undefined ? {} : { base }),
-      ...(commit === undefined ? {} : { commit }),
-      ...(porcelain === undefined ? {} : { porcelain }),
-    },
+  trustedWith(storeSourceOperation(name), {
+    label: shortPath(source),
+    source,
+    ...(ref === undefined ? {} : { ref }),
+    ...(base === undefined ? {} : { base }),
+    ...(commit === undefined ? {} : { commit }),
+    ...(porcelain === undefined ? {} : { porcelain }),
   })
 
 export const storeWorktree = ({
@@ -327,7 +374,7 @@ export const storeWorktree = ({
   bareRepoPath?: string
   broken?: boolean
 }) =>
-  storeWorktreeAttrs.unsafeEncode({
+  storeWorktreeAttrs.encodeSync({
     label: `${shortPath(repo)} ${shortRef({ refType, ref })}`,
     repo,
     refType,
@@ -350,7 +397,7 @@ export const storeSource = ({
   commit?: string
   porcelain?: boolean
 }) =>
-  storeSourceAttrs.unsafeEncode({
+  storeSourceAttrs.encodeSync({
     label: shortPath(source),
     source,
     ...(ref === undefined ? {} : { ref }),

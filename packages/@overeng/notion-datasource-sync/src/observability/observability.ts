@@ -1,6 +1,12 @@
 import { Effect, Schema, Stream } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan, type OtelAttributeValue } from '@overeng/otel-contract'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  OtelSpan,
+  type OtelAttributeValue,
+} from '@overeng/otel-contract'
 
 import type { OneShotStatusState, OneShotSyncStatus } from '../core/status.ts'
 
@@ -158,24 +164,19 @@ const SpanAttributesSchema = Schema.Struct({
 /** Schema-backed contract for package-level span attributes keyed by their emitted OTel names. */
 export const notionDatasourceSpanAttributes = OtelAttrs.defineSync(SpanAttributesSchema)
 
-const RequiredSpanLabelAttributes = OtelAttrs.defineSync(
-  Schema.Struct({
-    [spanAttr.spanLabel]: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-  }),
-)
-
-/** Schema-backed span contracts for the existing span catalog; these do not create wrapper spans. */
+/** Schema-backed operation contracts for the existing span catalog. */
 export const spanContracts = Object.fromEntries(
   Object.entries(spanNames).map(([key, name]) => [
     key,
-    OtelSpan.define({
+    OtelOperation.define({
       name,
-      attributes: RequiredSpanLabelAttributes,
+      attributes: notionDatasourceSpanAttributes,
+      label: (attributes: typeof SpanAttributesSchema.Type) => attributes[spanAttr.spanLabel] ?? '',
     }),
   ]),
 ) as {
   readonly [K in keyof typeof spanNames]: ReturnType<
-    typeof OtelSpan.define<typeof RequiredSpanLabelAttributes.schema>
+    typeof OtelOperation.define<typeof SpanAttributesSchema>
   >
 }
 
@@ -216,7 +217,7 @@ export const correlationSpanAttrs = OtelAttrs.defineSync(CorrelationSpanAttribut
 export const spanAttributes = (
   attributes: SpanAttributesInput,
 ): Record<string, SpanAttributeValue> =>
-  notionDatasourceSpanAttributes.unsafeEncode(attributes as typeof SpanAttributesSchema.Type)
+  notionDatasourceSpanAttributes.encodeSync(attributes as typeof SpanAttributesSchema.Type)
 
 /** Attach one of this package's cataloged spans with schema-backed attributes. */
 export const withSpan =
@@ -228,11 +229,12 @@ export const withSpan =
     readonly attributes: SpanAttributesWithLabel
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-    effect.pipe(
-      Effect.withSpan(spanContracts[span].name, {
-        attributes: spanAttributes(attributes),
-      }),
-    )
+    spanContracts[span]
+      .with({
+        attributes: attributes as typeof SpanAttributesSchema.Type,
+        effect,
+      })
+      .pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 /** Attach one of this package's cataloged spans to a stream with schema-backed attributes. */
 export const withStreamSpan =
@@ -244,15 +246,28 @@ export const withStreamSpan =
     readonly attributes: SpanAttributesWithLabel
   }) =>
   <A, E, R>(stream: Stream.Stream<A, E, R>): Stream.Stream<A, E, R> =>
-    stream.pipe(
-      Stream.withSpan(spanContracts[span].name, {
-        attributes: spanAttributes(attributes),
-      }),
-    )
+    spanContracts[span]
+      .withStream({
+        attributes: attributes as typeof SpanAttributesSchema.Type,
+        stream,
+      })
+      .pipe(
+        Stream.catchAll((error) =>
+          typeof error === 'object' &&
+          error !== null &&
+          '_tag' in error &&
+          error._tag === 'OtelAttrEncodeError'
+            ? Stream.die(error)
+            : Stream.fail(error as E),
+        ),
+      )
 
 /** Annotate the active span using this package's schema-backed attribute contract. */
 export const annotateSpan = (attributes: SpanAttributesInput): Effect.Effect<void> =>
-  Effect.annotateCurrentSpan(spanAttributes(attributes))
+  OtelSpan.annotate({
+    attributes: notionDatasourceSpanAttributes,
+    value: attributes as typeof SpanAttributesSchema.Type,
+  }).pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 /** Truncates a span / root ID to at most 12 characters for use in human-readable `span.label` values. */
 export const shortSpanId = (value: string): string =>
@@ -298,7 +313,7 @@ export const otelServiceNameForCliArgv = (argv: ReadonlyArray<string>): string =
 export const statusSpanAttributes = (
   status: OneShotSyncStatus,
 ): Record<string, SpanAttributeValue> =>
-  statusSpanAttrs.unsafeEncode({
+  statusSpanAttrs.encodeSync({
     state: status.state satisfies OneShotStatusState,
     blockedCount: status.counts.blocked,
     conflictCount: status.counts.conflict,
@@ -333,7 +348,7 @@ export const otelCorrelationSpanAttributes = (input: {
   readonly agentRunId?: string | undefined
   readonly resourceAttributes?: string | undefined
 }): Record<string, SpanAttributeValue> =>
-  correlationSpanAttrs.unsafeEncode({
+  correlationSpanAttrs.encodeSync({
     agentIterationId:
       input.agentRunId ??
       resourceAttributeValue({ input: input.resourceAttributes, key: spanAttr.agentIterationId }),

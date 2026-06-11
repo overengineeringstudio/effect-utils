@@ -1,8 +1,14 @@
 import path from 'node:path'
 
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan, type OtelSpanDefinition } from '@overeng/utils/node'
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 const basename = (filePath: string): string =>
   filePath.split(/[\\/]/).findLast((part) => part.length > 0) ?? filePath
@@ -12,41 +18,66 @@ export const relativePath = ({ cwd, filePath }: { cwd: string; filePath: string 
   return relative.length > 0 ? relative : basename(filePath)
 }
 
-const applySpan = <S extends Schema.Schema.AnyNoContext>({
-  span,
-  attributes,
-}: {
-  span: OtelSpanDefinition<S>
-  attributes: Schema.Schema.Type<S>
-}) => OtelSpan.unsafeWith({ span, attributes })
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(
+    Effect.catchAll((error) =>
+      typeof error === 'object' &&
+      error !== null &&
+      '_tag' in error &&
+      error._tag === 'OtelAttrEncodeError'
+        ? Effect.die(error)
+        : Effect.fail(error as E),
+    ),
+  ) as Effect.Effect<A, E, R>
 
-export const commandSpan = {
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ): (<A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
+
+const trustedAnnotate = <S extends Schema.Schema.AnyNoContext>(
+  operation: OtelOperationDefinition<S>,
+  attributes: Schema.Schema.Type<S>,
+): Effect.Effect<void> => trustOtelContract<void, never, never>(operation.annotate(attributes))
+
+const commandAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
+    readOnly: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.read_only' }))),
+    dryRun: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.dry_run' }))),
+    concurrency: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'genie.concurrency' }))),
+  }),
+)
+
+export const commandSpan = OtelOperation.define({
   name: 'genie/command',
-  attributes: OtelAttrs.defineSync(
-    Schema.Struct({
-      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-      cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
-      readOnly: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.read_only' }))),
-      dryRun: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.dry_run' }))),
-      concurrency: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'genie.concurrency' }))),
-    }),
-  ),
+  attributes: commandAttrs,
+  label: ({ label }) => label,
   root: true,
-} as const
+})
 
-export const fileSpan = {
+const fileAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
+    genieFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.source_path' })),
+    targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
+    readOnly: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.read_only' }))),
+    dryRun: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.dry_run' }))),
+  }),
+)
+
+export const fileSpan = OtelOperation.define({
   name: 'genie/file',
-  attributes: OtelAttrs.defineSync(
-    Schema.Struct({
-      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-      cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
-      genieFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.source_path' })),
-      targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
-      readOnly: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.read_only' }))),
-      dryRun: Schema.optional(Schema.Boolean.pipe(OtelAttr.key({ key: 'genie.dry_run' }))),
-    }),
-  ),
-} as const
+  attributes: fileAttrs,
+  label: ({ label }) => label,
+})
 
 export const pathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -54,6 +85,12 @@ export const pathAttrs = OtelAttrs.defineSync(
     path: Schema.String.pipe(OtelAttr.key({ key: 'genie.path' })),
   }),
 )
+
+const pathOperation = OtelOperation.define({
+  name: 'genie/path',
+  attributes: pathAttrs,
+  label: ({ label }) => label,
+})
 
 export const oxfmtAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -63,44 +100,59 @@ export const oxfmtAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const validationSpan = {
+const oxfmtOperation = OtelOperation.define({
+  name: 'genie/oxfmt',
+  attributes: oxfmtAttrs,
+  label: ({ label }) => label,
+})
+
+const validationAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
+    requirePackageJsonValidate: Schema.Boolean.pipe(
+      OtelAttr.key({ key: 'genie.validation.require_package_json_validate' }),
+    ),
+    fileCount: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'genie.validation.file_count' })),
+    ),
+    preloadedFileCount: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'genie.validation.preloaded_file_count' })),
+    ),
+  }),
+)
+
+export const validationSpan = OtelOperation.define({
   name: 'genie/runValidation',
-  attributes: OtelAttrs.defineSync(
-    Schema.Struct({
-      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-      cwd: Schema.String.pipe(OtelAttr.key({ key: 'genie.cwd' })),
-      requirePackageJsonValidate: Schema.Boolean.pipe(
-        OtelAttr.key({ key: 'genie.validation.require_package_json_validate' }),
-      ),
-      fileCount: Schema.optional(
-        Schema.Number.pipe(OtelAttr.key({ key: 'genie.validation.file_count' })),
-      ),
-      preloadedFileCount: Schema.optional(
-        Schema.Number.pipe(OtelAttr.key({ key: 'genie.validation.preloaded_file_count' })),
-      ),
-    }),
-  ),
-} as const
+  attributes: validationAttrs,
+  label: ({ label }) => label,
+})
 
-export const atomicWriteSpan = {
+const atomicWriteAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
+    mode: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'genie.file.mode' }))),
+  }),
+)
+
+export const atomicWriteSpan = OtelOperation.define({
   name: 'atomicWriteFile',
-  attributes: OtelAttrs.defineSync(
-    Schema.Struct({
-      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-      targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
-      mode: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'genie.file.mode' }))),
-    }),
-  ),
-} as const
+  attributes: atomicWriteAttrs,
+  label: ({ label }) => label,
+})
 
-export const importMapResolverSpan = {
+const importMapResolverAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+)
+
+export const importMapResolverSpan = OtelOperation.define({
   name: 'genie.registerImportMapResolver',
-  attributes: OtelAttrs.defineSync(
-    Schema.Struct({
-      label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-    }),
-  ),
-} as const
+  attributes: importMapResolverAttrs,
+  label: ({ label }) => label,
+})
 
 export const targetLockAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -109,6 +161,29 @@ export const targetLockAttrs = OtelAttrs.defineSync(
     targetFilePath: Schema.String.pipe(OtelAttr.key({ key: 'genie.file.target_path' })),
   }),
 )
+
+const targetLockOperation = OtelOperation.define({
+  name: 'genie/target-lock',
+  attributes: targetLockAttrs,
+  label: ({ label }) => label,
+})
+
+const cliModeAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    cliMode: Schema.String.pipe(OtelAttr.key({ key: 'cli.mode' })),
+  }),
+)
+
+const cliModeOperation = (cliMode: string) =>
+  OtelOperation.define({
+    name: `genie/${cliMode}`,
+    attributes: cliModeAttrs,
+    label: ({ label }) => label,
+  })
+
+export const withCliModeSpan = (cliMode: string) =>
+  trustedWith(cliModeOperation(cliMode), { label: cliMode, cliMode })
 
 export const withCommandSpan = ({
   label,
@@ -123,15 +198,12 @@ export const withCommandSpan = ({
   dryRun?: boolean
   concurrency?: number
 }) =>
-  applySpan({
-    span: commandSpan,
-    attributes: {
-      label,
-      cwd,
-      ...(readOnly === undefined ? {} : { readOnly }),
-      ...(dryRun === undefined ? {} : { dryRun }),
-      ...(concurrency === undefined ? {} : { concurrency }),
-    },
+  trustedWith(commandSpan, {
+    label,
+    cwd,
+    ...(readOnly === undefined ? {} : { readOnly }),
+    ...(dryRun === undefined ? {} : { dryRun }),
+    ...(concurrency === undefined ? {} : { concurrency }),
   })
 
 export const withFileSpan = ({
@@ -149,16 +221,13 @@ export const withFileSpan = ({
   readOnly?: boolean
   dryRun?: boolean
 }) =>
-  applySpan({
-    span: fileSpan,
-    attributes: {
-      label: label ?? relativePath({ cwd, filePath: targetFilePath }),
-      cwd,
-      genieFilePath,
-      targetFilePath,
-      ...(readOnly === undefined ? {} : { readOnly }),
-      ...(dryRun === undefined ? {} : { dryRun }),
-    },
+  trustedWith(fileSpan, {
+    label: label ?? relativePath({ cwd, filePath: targetFilePath }),
+    cwd,
+    genieFilePath,
+    targetFilePath,
+    ...(readOnly === undefined ? {} : { readOnly }),
+    ...(dryRun === undefined ? {} : { dryRun }),
   })
 
 export const withAtomicWriteSpan = ({
@@ -168,19 +237,13 @@ export const withAtomicWriteSpan = ({
   targetFilePath: string
   mode?: number
 }) =>
-  applySpan({
-    span: atomicWriteSpan,
-    attributes: {
-      label: basename(targetFilePath),
-      targetFilePath,
-      ...(mode === undefined ? {} : { mode }),
-    },
+  trustedWith(atomicWriteSpan, {
+    label: basename(targetFilePath),
+    targetFilePath,
+    ...(mode === undefined ? {} : { mode }),
   })
 
-export const withImportMapResolverSpan = applySpan({
-  span: importMapResolverSpan,
-  attributes: { label: 'import-map' },
-})
+export const withImportMapResolverSpan = trustedWith(importMapResolverSpan, { label: 'import-map' })
 
 export const withValidationSpan = ({
   cwd,
@@ -193,15 +256,12 @@ export const withValidationSpan = ({
   fileCount?: number
   preloadedFileCount?: number
 }) =>
-  applySpan({
-    span: validationSpan,
-    attributes: {
-      label: 'validate',
-      cwd,
-      requirePackageJsonValidate,
-      ...(fileCount === undefined ? {} : { fileCount }),
-      ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
-    },
+  trustedWith(validationSpan, {
+    label: 'validate',
+    cwd,
+    requirePackageJsonValidate,
+    ...(fileCount === undefined ? {} : { fileCount }),
+    ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
   })
 
 export const annotateCommand = ({
@@ -217,15 +277,12 @@ export const annotateCommand = ({
   dryRun?: boolean
   concurrency?: number
 }) =>
-  OtelSpan.unsafeAnnotate({
-    attributes: commandSpan.attributes,
-    value: {
-      label,
-      cwd,
-      ...(readOnly === undefined ? {} : { readOnly }),
-      ...(dryRun === undefined ? {} : { dryRun }),
-      ...(concurrency === undefined ? {} : { concurrency }),
-    },
+  trustedAnnotate(commandSpan, {
+    label,
+    cwd,
+    ...(readOnly === undefined ? {} : { readOnly }),
+    ...(dryRun === undefined ? {} : { dryRun }),
+    ...(concurrency === undefined ? {} : { concurrency }),
   })
 
 export const annotateFile = ({
@@ -243,16 +300,13 @@ export const annotateFile = ({
   readOnly?: boolean
   dryRun?: boolean
 }) =>
-  OtelSpan.unsafeAnnotate({
-    attributes: fileSpan.attributes,
-    value: {
-      label: label ?? relativePath({ cwd, filePath: targetFilePath }),
-      cwd,
-      genieFilePath,
-      targetFilePath,
-      ...(readOnly === undefined ? {} : { readOnly }),
-      ...(dryRun === undefined ? {} : { dryRun }),
-    },
+  trustedAnnotate(fileSpan, {
+    label: label ?? relativePath({ cwd, filePath: targetFilePath }),
+    cwd,
+    genieFilePath,
+    targetFilePath,
+    ...(readOnly === undefined ? {} : { readOnly }),
+    ...(dryRun === undefined ? {} : { dryRun }),
   })
 
 export const annotateValidation = ({
@@ -266,22 +320,16 @@ export const annotateValidation = ({
   fileCount?: number
   preloadedFileCount?: number
 }) =>
-  OtelSpan.unsafeAnnotate({
-    attributes: validationSpan.attributes,
-    value: {
-      label: 'validate',
-      cwd,
-      requirePackageJsonValidate,
-      ...(fileCount === undefined ? {} : { fileCount }),
-      ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
-    },
+  trustedAnnotate(validationSpan, {
+    label: 'validate',
+    cwd,
+    requirePackageJsonValidate,
+    ...(fileCount === undefined ? {} : { fileCount }),
+    ...(preloadedFileCount === undefined ? {} : { preloadedFileCount }),
   })
 
 export const annotatePath = ({ label, path }: { label?: string; path: string }) =>
-  OtelSpan.unsafeAnnotate({
-    attributes: pathAttrs,
-    value: { label: label ?? basename(path), path },
-  })
+  trustedAnnotate(pathOperation, { label: label ?? basename(path), path })
 
 export const annotateTargetLock = ({
   cwd,
@@ -290,13 +338,10 @@ export const annotateTargetLock = ({
   cwd: string
   targetFilePath: string
 }) =>
-  OtelSpan.unsafeAnnotate({
-    attributes: targetLockAttrs,
-    value: {
-      label: relativePath({ cwd, filePath: targetFilePath }),
-      cwd,
-      targetFilePath,
-    },
+  trustedAnnotate(targetLockOperation, {
+    label: relativePath({ cwd, filePath: targetFilePath }),
+    cwd,
+    targetFilePath,
   })
 
 export const annotateOxfmt = ({
@@ -306,11 +351,8 @@ export const annotateOxfmt = ({
   targetFilePath: string
   hasConfig: boolean
 }) =>
-  OtelSpan.unsafeAnnotate({
-    attributes: oxfmtAttrs,
-    value: {
-      label: basename(targetFilePath),
-      targetFilePath,
-      hasConfig,
-    },
+  trustedAnnotate(oxfmtOperation, {
+    label: basename(targetFilePath),
+    targetFilePath,
+    hasConfig,
   })

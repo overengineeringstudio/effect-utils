@@ -15,21 +15,29 @@
 import * as restate from '@restatedev/restate-sdk'
 import { Chunk, Clock, Effect, Layer, Logger, LogLevel, Random, Schema } from 'effect'
 
-import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
+import { OtelAttr, OtelOperation, type OtelAttrEncodeError } from '@overeng/otel-contract'
 
 import { RestateContext } from '../authoring/RestateContext.ts'
 
-const RestateRuntimeSpanLabelAttrs = OtelAttrs.defineSync(
-  Schema.Struct({
-    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
-  }),
-)
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
-const withRestateRuntimeSpan = (name: string, label: string) =>
-  OtelSpan.unsafeWith({
-    span: OtelSpan.define({ name, attributes: RestateRuntimeSpanLabelAttrs }),
-    attributes: { label },
-  })
+const withRestateRuntimeSpan =
+  (name: string, label: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    trustOtelContract(
+      effect.pipe(
+        OtelOperation.define({
+          name,
+          schema: Schema.Struct({
+            label: OtelAttr.drop(Schema.NonEmptyString),
+          }),
+          label: ({ label }) => label,
+        }).with({ label }),
+      ),
+    )
 
 /**
  * Build an Effect `Clock` backed by the invocation's journaled `ctx.date`.

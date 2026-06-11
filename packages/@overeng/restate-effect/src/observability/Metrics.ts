@@ -222,7 +222,7 @@ type AttributeValue = string | number | boolean
 
 const annotateDynamicSpanMap = (
   attributes: Readonly<Record<string, AttributeValue>>,
-): Effect.Effect<void> => OtelSpan.unsafeAnnotateMap(attributes)
+): Effect.Effect<void> => OtelSpan.annotateMap(attributes)
 
 /**
  * Stamp custom BUSINESS attributes on the CURRENT span — the user path for

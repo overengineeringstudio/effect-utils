@@ -4,7 +4,7 @@ import { relative, resolve } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
-const repoRoot = resolve(import.meta.dirname, '../../..', '..', '..')
+const repoRoot = resolve(import.meta.dirname, '../../..', '..')
 const packagesRoot = resolve(repoRoot, 'packages/@overeng')
 
 const rawOtelCall = /\b(?:Effect|Stream)\.(?:withSpan|annotateCurrentSpan)\s*\(/g
@@ -12,6 +12,7 @@ const rawOtelCall = /\b(?:Effect|Stream)\.(?:withSpan|annotateCurrentSpan)\s*\(/
 const allowedRawOtelFiles = new Set([
   'packages/@overeng/otel-contract/src/mod.ts',
   'packages/@overeng/notion-datasource-sync/src/observability/observability.ts',
+  'packages/@overeng/oxc-config/src/no-raw-otel-primitives.ts',
   'packages/@overeng/utils-dev/src/otelite/otel.ts',
 ])
 
@@ -26,6 +27,7 @@ const isProductionSource = (path: string) =>
 
 const sourceFiles = (dir: string): ReadonlyArray<string> =>
   readdirSync(dir).flatMap((entry) => {
+    if (entry === 'node_modules' || entry === 'dist') return []
     const path = resolve(dir, entry)
     const stat = statSync(path)
     if (stat.isDirectory() === true) return sourceFiles(path)
