@@ -787,6 +787,25 @@ export const checkoutWorktree = (args: { worktreePath: string; ref: string }) =>
     cwd: args.worktreePath,
   }).pipe(Effect.asVoid)
 
+/**
+ * Detach a worktree's HEAD from its branch (`git checkout --detach`).
+ *
+ * Used by GC archival: a moved named-branch worktree still has its
+ * `refs/heads/<branch>` checked out, so `git branch -D <branch>` is refused
+ * (`cannot delete branch 'X' used by worktree at ...`). Detaching HEAD first
+ * frees the branch ref for deletion + later re-materialization (invariant 4).
+ */
+export const detachWorktreeHead = (args: { worktreePath: string }) =>
+  runGitCommand({
+    args: ['checkout', '--detach'],
+    cwd: args.worktreePath,
+  }).pipe(
+    Effect.asVoid,
+    Effect.withSpan('git/detach-worktree-head', {
+      attributes: { 'span.label': args.worktreePath, worktreePath: args.worktreePath },
+    }),
+  )
+
 // =============================================================================
 // Megarepo Name Derivation
 // =============================================================================

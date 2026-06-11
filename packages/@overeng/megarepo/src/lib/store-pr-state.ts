@@ -148,6 +148,8 @@ export const resolvePrStateForBranch = ({
   if (matches.some((pr) => pr.state === 'OPEN') === true) return { state: 'open' }
 
   // Only MERGED/CLOSED remain; pick the most recent by its own timestamp.
+  // `matches` is non-empty (the early return above guards `length === 0`) and
+  // `ranked` is a 1:1 map of it, so `ranked[0]` is always defined.
   const ranked = matches
     .map((pr) => {
       const ts = pr.state === 'MERGED' ? isoToMs(pr.mergedAt) : isoToMs(pr.closedAt)
@@ -155,8 +157,7 @@ export const resolvePrStateForBranch = ({
     })
     .toSorted((a, b) => (b.ts ?? -Infinity) - (a.ts ?? -Infinity))
 
-  const winner = ranked[0]
-  if (winner === undefined) return PR_STATE_NONE
+  const winner = ranked[0]!
 
   if (winner.pr.state === 'MERGED') {
     return { state: 'merged', mergedAt: winner.ts }

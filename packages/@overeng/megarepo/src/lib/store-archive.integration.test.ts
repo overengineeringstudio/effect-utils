@@ -26,6 +26,7 @@ import {
   createArchiveEntry,
   createStoreFixture,
   getWorktreeCommit,
+  materializeNonDetachedBranchWorktree,
 } from '../test-utils/store-setup.ts'
 import * as Git from './git.ts'
 import { archiveWorktree, parseArchiveDirName, reapArchive, scanArchives } from './store-archive.ts'
@@ -48,7 +49,7 @@ describe('store-archive: parseArchiveDirName', () => {
     const iso = '2026-06-11T10:20:30.000Z'
     const parsed = parseArchiveDirName(`schickling/2026-06-10--feature--x${`--${iso}`}`)
     expect(Option.isSome(parsed)).toBe(true)
-    if (Option.isSome(parsed)) {
+    if (Option.isSome(parsed) === true) {
       expect(parsed.value.branch).toBe('schickling/2026-06-10--feature--x')
       expect(parsed.value.archivedAtMs).toBe(Date.parse(iso))
     }
@@ -84,7 +85,7 @@ describe('store-archive: archiveWorktree', () => {
         expect(before).toBe(true)
 
         const now = Date.parse('2026-06-11T08:00:00.000Z')
-        const dest = yield* archiveWorktree({
+        const { destPath: dest, warnings } = yield* archiveWorktree({
           repoRoot,
           bareRepoPath,
           worktreePath,
@@ -93,6 +94,7 @@ describe('store-archive: archiveWorktree', () => {
           reason: 'merged',
           now,
         })
+        expect(warnings).toEqual([])
 
         // Original gone, archive present.
         expect(yield* fs.exists(worktreePath)).toBe(false)
@@ -125,6 +127,65 @@ describe('store-archive: archiveWorktree', () => {
   )
 
   it.effect(
+    'archives a NON-DETACHED refs/heads worktree (production shape): frees the branch so re-add succeeds',
+    Effect.fnUntraced(
+      function* () {
+        const fixture = yield* createStoreFixture([{ ...REPO, branches: ['feature/prod'] }])
+        const repoRoot = repoRootFor(fixture.storePath, REPO_KEY)
+        const bareRepoPath = fixture.bareRepoPaths[REPO_KEY]!
+        const worktreePath = fixture.worktreePaths[`${REPO_KEY}#feature/prod`]!
+        const commit = yield* getWorktreeCommit(worktreePath)
+        const fs = yield* FileSystem.FileSystem
+
+        // Re-materialize as the production shape: a NON-DETACHED worktree with
+        // the branch checked out (the default fixtures use `--detach`, which
+        // masks the `git branch -D` refusal this test guards against).
+        yield* materializeNonDetachedBranchWorktree({
+          bareRepoPath,
+          worktreePath,
+          branch: 'feature/prod',
+          commit,
+        })
+        expect(
+          yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/feature/prod' }),
+        ).toBe(true)
+
+        const { destPath: dest, warnings } = yield* archiveWorktree({
+          repoRoot,
+          bareRepoPath,
+          worktreePath,
+          branch: 'feature/prod',
+          commit,
+          reason: 'merged',
+          now: Date.parse('2026-06-11T08:00:00.000Z'),
+        })
+        // The branch is freed cleanly, so no best-effort warning is surfaced.
+        expect(warnings).toEqual([])
+
+        // Original gone, archive present.
+        expect(yield* fs.exists(worktreePath)).toBe(false)
+        expect(yield* fs.exists(dest)).toBe(true)
+
+        // Branch FREED despite having been checked out in the moved worktree.
+        expect(
+          yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/feature/prod' }),
+        ).toBe(false)
+
+        // mr-apply-equivalent re-add of the SAME branch succeeds.
+        const reAddPath = EffectPath.ops.join(
+          repoRoot,
+          EffectPath.unsafe.relativeDir('refs/heads/feature/prod/'),
+        )
+        yield* git(bareRepoPath, 'branch', 'feature/prod', commit)
+        yield* git(bareRepoPath, 'worktree', 'add', reAddPath, 'feature/prod')
+        expect(yield* fs.exists(reAddPath)).toBe(true)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'archive preserves uncommitted + untracked work intact with the dir move',
     Effect.fnUntraced(
       function* () {
@@ -143,7 +204,7 @@ describe('store-archive: archiveWorktree', () => {
           'precious\n',
         )
 
-        const dest = yield* archiveWorktree({
+        const { destPath: dest } = yield* archiveWorktree({
           repoRoot,
           bareRepoPath,
           worktreePath,

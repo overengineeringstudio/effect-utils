@@ -1,10 +1,18 @@
+import { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
+import { it as effectIt } from '@effect/vitest'
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
+
+import { EffectPath } from '@overeng/effect-path'
 
 import {
   DEFAULT_ABSENCE_GRACE_MS,
   DEFAULT_ARCHIVE_RETENTION_MS,
   DEFAULT_POST_MERGE_GRACE_MS,
   DEFAULT_STORE_GC_CONFIG,
+  GC_CONFIG_RELATIVE_PATH,
+  loadStoreGcConfig,
   mergeStoreGcConfig,
 } from './store-gc-config.ts'
 
@@ -40,5 +48,69 @@ describe('store-gc-config', () => {
     it('treats an explicit zero as a real override (not falsy fallback)', () => {
       expect(mergeStoreGcConfig({ postMergeGraceMs: 0 }).postMergeGraceMs).toBe(0)
     })
+  })
+
+  describe('loadStoreGcConfig', () => {
+    const writeConfig = (content: string) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const storeBasePath = EffectPath.unsafe.absoluteDir(
+          `${yield* fs.makeTempDirectoryScoped()}/`,
+        )
+        const configPath = EffectPath.ops.join(
+          storeBasePath,
+          EffectPath.unsafe.relativeFile(GC_CONFIG_RELATIVE_PATH),
+        )
+        const configDir = EffectPath.ops.parent(configPath)!
+        yield* fs.makeDirectory(configDir, { recursive: true })
+        yield* fs.writeFileString(configPath, content)
+        return storeBasePath
+      })
+
+    effectIt.effect(
+      'absent file ⇒ defaults',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const storeBasePath = EffectPath.unsafe.absoluteDir(
+            `${yield* fs.makeTempDirectoryScoped()}/`,
+          )
+          expect(yield* loadStoreGcConfig({ storeBasePath })).toEqual(DEFAULT_STORE_GC_CONFIG)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    effectIt.effect(
+      'valid override file ⇒ merged timers reflect it',
+      Effect.fnUntraced(
+        function* () {
+          const storeBasePath = yield* writeConfig(
+            JSON.stringify({ absenceGraceMs: 1234, archiveRetentionMs: 5678 }),
+          )
+          expect(yield* loadStoreGcConfig({ storeBasePath })).toEqual({
+            absenceGraceMs: 1234,
+            postMergeGraceMs: DEFAULT_POST_MERGE_GRACE_MS,
+            archiveRetentionMs: 5678,
+          })
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    effectIt.effect(
+      'corrupt file ⇒ DEFAULT_STORE_GC_CONFIG without error',
+      Effect.fnUntraced(
+        function* () {
+          const storeBasePath = yield* writeConfig('{ not valid json ::: }')
+          // Degrades to defaults rather than failing the gc path.
+          expect(yield* loadStoreGcConfig({ storeBasePath })).toEqual(DEFAULT_STORE_GC_CONFIG)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
   })
 })
