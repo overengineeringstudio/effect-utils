@@ -35,6 +35,31 @@ export interface SpanSelector {
   readonly requireLabel?: boolean
 }
 
+/** Structural view of a compiled schema-backed OTEL attribute contract. */
+export interface OtelAttrsContract<A> {
+  readonly unsafeEncode: (value: A) => Readonly<Record<string, string | number | boolean>>
+}
+
+/** Structural view of a named schema-backed OTEL span contract. */
+export interface OtelSpanContract<A> {
+  readonly name: string
+  readonly attributes: OtelAttrsContract<A>
+}
+
+/** Selector that derives otelite row matchers from a compiled attribute contract. */
+export interface ContractAttributesSelector<A> {
+  readonly attributes: OtelAttrsContract<A>
+  readonly match: A
+  readonly selector?: Omit<SpanSelector, 'attrs'>
+}
+
+/** Selector that derives name, label policy, and attributes from a compiled span contract. */
+export interface ContractSpanSelector<A> {
+  readonly span: OtelSpanContract<A>
+  readonly match: A
+  readonly selector?: Omit<SpanSelector, 'name' | 'attrs' | 'requireLabel'>
+}
+
 export class TraceExpectError extends Error {
   readonly _tag = 'TraceExpectError'
 }
@@ -150,6 +175,22 @@ export class TraceExpect {
     return matches
   }
 
+  expectAttributes<A>(selector: ContractAttributesSelector<A>): readonly SpanRow[] {
+    return this.expectSome({
+      ...selector.selector,
+      attrs: contractAttrs(selector.attributes, selector.match),
+    })
+  }
+
+  expectSpan<A>(selector: ContractSpanSelector<A>): SpanRow {
+    return this.expectOne({
+      ...selector.selector,
+      name: selector.span.name,
+      attrs: contractAttrs(selector.span.attributes, selector.match),
+      requireLabel: true,
+    })
+  }
+
   expectSameTrace(selectors: readonly SpanSelector[]): string {
     const spans = selectors.map((selector) => this.expectOne(selector))
     const traceIds = new Set(spans.map((span) => span.trace_id).filter((id) => id !== null))
@@ -197,6 +238,18 @@ const matchesAttr = (actual: string, matcher: AttrMatcher, span: SpanRow): boole
   }
   return actual === normalizeAttrPrimitive(matcher)
 }
+
+const contractAttrs = <A>(attributes: OtelAttrsContract<A>, match: A): AttrExpectations =>
+  Object.fromEntries(
+    Object.entries(attributes.unsafeEncode(match)).map(([key, value]) => {
+      if (Array.isArray(value) === true) {
+        throw new TraceExpectError(
+          `Cannot match array-valued OTEL attribute ${key} against otelite flat rows`,
+        )
+      }
+      return [key, value]
+    }),
+  )
 
 const isStructuredAttrMatcher = (matcher: AttrMatcher): matcher is StructuredAttrMatcher =>
   typeof matcher === 'object' &&

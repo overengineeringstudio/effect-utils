@@ -16,6 +16,8 @@ import * as Otlp from '@effect/opentelemetry/Otlp'
 import { FetchHttpClient } from '@effect/platform'
 import { Effect, Layer, Tracer } from 'effect'
 
+export * from './otel-attrs.ts'
+
 /**
  * Parses a W3C Trace Context TRACEPARENT header/env var.
  *

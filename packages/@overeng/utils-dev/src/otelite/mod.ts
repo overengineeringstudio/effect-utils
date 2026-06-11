@@ -55,5 +55,9 @@ export type {
   AttrMatcher,
   AttrPredicate,
   AttrPrimitive,
+  ContractAttributesSelector,
+  ContractSpanSelector,
+  OtelAttrsContract,
+  OtelSpanContract,
   SpanSelector,
 } from './trace-expect.ts'
