@@ -19,7 +19,7 @@ let
     # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-bKgwByppMOoDebwKY3E53k5wQUKqW26IushBXtaPyYg=";
+        hash = "sha256-glu/QpyeBXQIJUNomKICT7sB2/DnTXUQMdebw0E828U=";
       };
     };
     smokeTestArgs = [ "--help" ];
