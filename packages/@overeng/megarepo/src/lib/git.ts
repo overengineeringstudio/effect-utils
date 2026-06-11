@@ -498,6 +498,43 @@ export const refExists = (args: { repoPath: string; ref: string }) =>
     Effect.catchAll(() => Effect.succeed(false)),
   )
 
+/**
+ * List commits reachable from `ref` but not from ANY remote-tracking ref
+ * (`refs/remotes/*`), i.e. the commits that exist only locally.
+ *
+ * This is `git -C <repo> rev-list <ref> --not --remotes`. Unlike
+ * `branch -r --contains <ref>` (which asks "is this exact tip on a remote"),
+ * `rev-list --not --remotes` walks the history from `ref` and stops at the first
+ * remote-reachable ancestor, so it returns ONLY the genuinely-unpushed commits.
+ * A local commit stacked on top of a parent that lives on an unrelated remote
+ * ref therefore still shows up here (the parent is excluded, the new commit is
+ * not) — the distinction the lossless check relies on.
+ *
+ * The result is only as fresh as `refs/remotes/*`, so callers must
+ * {@link fetchBare} (fetch --prune) first; on a bare repo with no remote-tracking
+ * refs every commit is reported as unpushed.
+ */
+export const revListUnpushed = (args: { repoPath: string; ref: string }) =>
+  Effect.gen(function* () {
+    const output = yield* runGitCommand({
+      args: ['rev-list', args.ref, '--not', '--remotes'],
+      cwd: args.repoPath,
+    })
+    return output.split('\n').filter((line) => line.trim().length > 0)
+  })
+
+/**
+ * Whether the repo has a non-empty stash.
+ *
+ * Stashes live in a single repo-global `refs/stash` ref in the bare repo (they
+ * are NOT per-worktree and do NOT travel with a worktree directory move), so the
+ * presence of `refs/stash` is the authoritative "stashed work would be lost"
+ * signal. We test the ref directly rather than parsing `git stash list`, whose
+ * output is unreliable for detached worktrees.
+ */
+export const hasStashRef = (args: { repoPath: string }) =>
+  refExists({ repoPath: args.repoPath, ref: 'refs/stash' })
+
 // =============================================================================
 // Branch Operations
 // =============================================================================
