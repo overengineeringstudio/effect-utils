@@ -18,9 +18,10 @@ import type * as restate from '@restatedev/restate-sdk'
 import { Effect, Metric, MetricBoundaries, type Schema } from 'effect'
 import type { MetricKeyType, MetricState } from 'effect'
 
-import { OtelSpan } from '@overeng/otel-contract'
+import { OtelSpan, type OtelAttributeMap, type OtelAttrEncodeError } from '@overeng/otel-contract'
 
 import { findSensitiveFields } from '../schema/Redaction.ts'
+import { RestateMetrics } from './contract.ts'
 
 /** A histogram `Metric` over a `number` input (the shape `Metric.histogram` returns). */
 type HistogramMetric = Metric.Metric<
@@ -44,14 +45,14 @@ const durationBoundariesMs = MetricBoundaries.fromIterable([
  * that is the retry-pressure signal (retries derive as the `retryable` rate).
  */
 export const invocationsTotal = Metric.counter('restate_invocations_total', {
-  description: 'Restate invocations by service, handler, and terminal outcome.',
+  description: RestateMetrics.invocationsTotal.description,
 })
 
 /** Per-invocation DURATION histogram (`restate_invocation_duration_ms`), gated on non-replay. */
 export const invocationDurationMs = Metric.histogram(
   'restate_invocation_duration_ms',
   durationBoundariesMs,
-  'Wall-clock duration of a real invocation attempt (ms), by service/handler/outcome.',
+  RestateMetrics.invocationDurationMs.description,
 )
 
 /**
@@ -62,7 +63,7 @@ export const invocationDurationMs = Metric.histogram(
  * which re-runs the handler body without being a new attempt — is not counted.
  */
 export const attemptsTotal = Metric.counter('restate_attempts_total', {
-  description: 'Restate handler attempts by service and handler (drives the retry count).',
+  description: RestateMetrics.attemptsTotal.description,
 })
 
 /**
@@ -74,7 +75,7 @@ export const attemptsTotal = Metric.counter('restate_attempts_total', {
  * already carries those) to keep cardinality bounded.
  */
 export const durableStepsTotal = Metric.counter('restate_durable_steps_total', {
-  description: 'Durable `Restate.run` steps executed (exactly-once across replays), by step name.',
+  description: RestateMetrics.durableStepsTotal.description,
 })
 
 /**
@@ -86,7 +87,7 @@ export const durableStepsTotal = Metric.counter('restate_durable_steps_total', {
 export const awakeableWaitMs = Metric.histogram(
   'restate_awakeable_wait_ms',
   durationBoundariesMs,
-  'Wall-clock wait for an awakeable to be externally resolved (ms).',
+  RestateMetrics.awakeableWaitMs.description,
 )
 
 /**
@@ -96,7 +97,7 @@ export const awakeableWaitMs = Metric.histogram(
  * real cycle execution is counted exactly once.
  */
 export const pollLoopCyclesTotal = Metric.counter('restate_poll_loop_cycles_total', {
-  description: 'Scheduled `pollLoop` cycles executed, by loop name and cycle outcome.',
+  description: RestateMetrics.pollLoopCyclesTotal.description,
 })
 
 /**
@@ -152,6 +153,17 @@ const recordTagged = (
     value,
   )
 
+const trustedMetricTags = <A>(
+  encodeLabels: (value: A) => Effect.Effect<OtelAttributeMap, OtelAttrEncodeError>,
+  labels: A,
+): Effect.Effect<ReadonlyArray<readonly [string, string]>> =>
+  encodeLabels(labels).pipe(
+    Effect.map((encoded) =>
+      Object.entries(encoded).map(([key, value]) => [key, String(value)] as const),
+    ),
+    Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
+  )
+
 /**
  * Emit the per-invocation outcome counter + duration histogram + the per-attempt
  * counter for ONE real attempt, gated on non-replay. `outcome` is the boundary's
@@ -166,20 +178,22 @@ export const emitInvocationMetrics = (
     readonly durationMs: number
   },
 ): Effect.Effect<void> => {
-  const labels = [
-    ['service', args.service],
-    ['handler', args.handler],
-  ] as const
-  const outcomeLabels = [...labels, ['outcome', args.outcome]] as const
   return emitWhenProcessing(
     ctx,
-    Effect.all(
-      [
-        incrementTagged(invocationsTotal, outcomeLabels),
-        recordTagged(invocationDurationMs, outcomeLabels, args.durationMs),
-      ],
-      { discard: true },
-    ),
+    Effect.gen(function* () {
+      const labels = yield* trustedMetricTags(RestateMetrics.invocationsTotal.encodeLabels, {
+        service: args.service,
+        handler: args.handler,
+        outcome: args.outcome,
+      })
+      yield* Effect.all(
+        [
+          incrementTagged(invocationsTotal, labels),
+          recordTagged(invocationDurationMs, labels, args.durationMs),
+        ],
+        { discard: true },
+      )
+    }),
   )
 }
 
@@ -190,19 +204,36 @@ export const emitAttempt = (
 ): Effect.Effect<void> =>
   emitWhenProcessing(
     ctx,
-    incrementTagged(attemptsTotal, [
-      ['service', args.service],
-      ['handler', args.handler],
-    ]),
+    Effect.gen(function* () {
+      const labels = yield* trustedMetricTags(RestateMetrics.attemptsTotal.encodeLabels, {
+        service: args.service,
+        handler: args.handler,
+      })
+      yield* incrementTagged(attemptsTotal, labels)
+    }),
   )
 
 /** Emit the durable-step counter for ONE real `Restate.run`, gated on non-replay. */
 export const emitDurableStep = (ctx: restate.Context, step: string): Effect.Effect<void> =>
-  emitWhenProcessing(ctx, incrementTagged(durableStepsTotal, [['step', step]]))
+  emitWhenProcessing(
+    ctx,
+    Effect.gen(function* () {
+      const labels = yield* trustedMetricTags(RestateMetrics.durableStepsTotal.encodeLabels, {
+        step,
+      })
+      yield* incrementTagged(durableStepsTotal, labels)
+    }),
+  )
 
 /** Record an awakeable wait latency, gated on non-replay. */
 export const emitAwakeableWait = (ctx: restate.Context, waitMs: number): Effect.Effect<void> =>
-  emitWhenProcessing(ctx, recordTagged(awakeableWaitMs, [], waitMs))
+  emitWhenProcessing(
+    ctx,
+    Effect.gen(function* () {
+      const labels = yield* trustedMetricTags(RestateMetrics.awakeableWaitMs.encodeLabels, {})
+      yield* recordTagged(awakeableWaitMs, labels, waitMs)
+    }),
+  )
 
 /** Emit a `pollLoop` cycle outcome counter, gated on non-replay. */
 export const emitPollLoopCycle = (
@@ -211,10 +242,13 @@ export const emitPollLoopCycle = (
 ): Effect.Effect<void> =>
   emitWhenProcessing(
     ctx,
-    incrementTagged(pollLoopCyclesTotal, [
-      ['name', args.name],
-      ['outcome', args.outcome],
-    ]),
+    Effect.gen(function* () {
+      const labels = yield* trustedMetricTags(RestateMetrics.pollLoopCyclesTotal.encodeLabels, {
+        name: args.name,
+        outcome: args.outcome,
+      })
+      yield* incrementTagged(pollLoopCyclesTotal, labels)
+    }),
   )
 
 /** A dynamic span-attribute value accepted by the contract's map annotation helper. */

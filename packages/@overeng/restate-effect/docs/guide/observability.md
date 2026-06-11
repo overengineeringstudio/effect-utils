@@ -18,7 +18,7 @@ restate-server:  ingress_invoke ── invoke         (server spans)
 openTelemetryHook:  attempt <target> ── run (<name>)   (replay-aware)
         │ context.with(attemptContext)
         ▼  bridge: trace.getActiveSpan().spanContext() → Tracer.withSpanContext
-Effect spans (Effect.withSpan on boundary ops)
+Effect spans (schema-first Restate operation contracts)
 ```
 
 ## Wiring it up
@@ -102,8 +102,8 @@ on:
   `restate.error.class` (`terminal` | `retryable` | `cancelled`), read from the same
   `classifyOutcome` the SDK outcome is built on (so the span class matches exactly).
 
-For custom **business** attributes, use `Restate.annotateSpan` in a handler — a thin
-otel-free combinator over `Effect.annotateCurrentSpan` on the core namespace:
+For custom **business** attributes, use `Restate.annotateSpan` in a handler — the
+core, otel-free annotation API:
 
 ```ts
 import { Restate } from '@overeng/restate-effect'

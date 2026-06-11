@@ -34,6 +34,7 @@ import { Effect, Layer, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { Restate } from '../schema/Annotations.ts'
+import { BoundaryAttemptAttrs, BoundaryOutcomeAttrs, RestateMetrics } from './contract.ts'
 import { annotateSpanFrom, emitDurableStep, emitInvocationMetrics } from './Metrics.ts'
 import { RestateOtel } from './otel.ts'
 
@@ -59,6 +60,53 @@ const makeHookCtx = (target: string) => {
  * helpers read (the rest of the context is never touched on this path). */
 const fakeCtx = (isProcessing: boolean): RestateRawContext =>
   ({ isProcessing: () => isProcessing }) as unknown as RestateRawContext
+
+describe('schema-first observability contracts', () => {
+  it('encodes hook-owned attempt attrs and omits absent optional identity fields', () => {
+    expect(
+      BoundaryAttemptAttrs.encodeSync({
+        service: 'Counter',
+        handler: 'bump',
+        objectKey: 'user-42',
+      }),
+    ).toEqual({
+      'restate.service': 'Counter',
+      'restate.handler': 'bump',
+      'restate.object.key': 'user-42',
+    })
+  })
+
+  it('encodes boundary outcome attrs from the same terminal/retryable/cancelled domain', () => {
+    expect(
+      BoundaryOutcomeAttrs.encodeSync({
+        errorClass: 'retryable',
+        errorTag: 'RateLimited',
+      }),
+    ).toEqual({
+      'restate.error.class': 'retryable',
+      'restate.error.tag': 'RateLimited',
+    })
+  })
+
+  it('declares low-cardinality metric-label contracts for baseline metrics', () => {
+    expect(RestateMetrics.invocationsTotal.metadata.labelKeys).toEqual([
+      'service',
+      'handler',
+      'outcome',
+    ])
+    expect(
+      RestateMetrics.invocationsTotal.encodeLabelsSync({
+        service: 'Counter',
+        handler: 'bump',
+        outcome: 'success',
+      }),
+    ).toEqual({
+      service: 'Counter',
+      handler: 'bump',
+      outcome: 'success',
+    })
+  })
+})
 
 describe('span attributes (server-free)', () => {
   let provider: NodeTracerProvider

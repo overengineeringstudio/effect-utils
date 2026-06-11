@@ -13,31 +13,10 @@
  * boundary), docs/vrs/03-effect-runtime/spec.md §1 (determinism) + §2 (logging) and docs/vrs/04-error-boundary/spec.md §2 (cancellation↔interruption), and requirements R17 + R31.
  */
 import * as restate from '@restatedev/restate-sdk'
-import { Chunk, Clock, Effect, Layer, Logger, LogLevel, Random, Schema } from 'effect'
-
-import { OtelAttr, OtelOperation, type OtelAttrEncodeError } from '@overeng/otel-contract'
+import { Chunk, Clock, Effect, Layer, Logger, LogLevel, Random } from 'effect'
 
 import { RestateContext } from '../authoring/RestateContext.ts'
-
-const trustOtelContract = <A, E, R>(
-  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
-): Effect.Effect<A, E, R> =>
-  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
-
-const withRestateRuntimeSpan =
-  (name: string, label: string) =>
-  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-    trustOtelContract(
-      effect.pipe(
-        OtelOperation.define({
-          name,
-          schema: Schema.Struct({
-            label: OtelAttr.drop(Schema.NonEmptyString),
-          }),
-          label: ({ label }) => label,
-        }).with({ label }),
-      ),
-    )
+import { withRestateOperation } from '../observability/effect.ts'
 
 /**
  * Build an Effect `Clock` backed by the invocation's journaled `ctx.date`.
@@ -240,7 +219,7 @@ export const withAttemptInterruption = <A, E, R>(
     return Effect.sync(() => signal.removeEventListener('abort', onAbort))
   })
   return Effect.raceFirst(effect, onAttemptComplete).pipe(
-    withRestateRuntimeSpan('restate.attemptInterruption', 'attemptInterruption'),
+    withRestateOperation('restate.attemptInterruption', 'attemptInterruption'),
   )
 }
 
@@ -257,7 +236,7 @@ export const cancel = (invocationId: string): Effect.Effect<void, never, Restate
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     ctx.cancel(restate.InvocationIdParser.fromString(invocationId))
-  }).pipe(withRestateRuntimeSpan('restate.cancel', invocationId))
+  }).pipe(withRestateOperation('restate.cancel', invocationId))
 
 /**
  * Observe the current invocation's cancellation as an Effect that SUCCEEDS when
@@ -274,4 +253,4 @@ export const onCancellation: Effect.Effect<void, never, RestateContext> = Effect
   const ctx = yield* RestateContext
   const ctxInternal = ctx as restate.internal.ContextInternal
   yield* Effect.promise(() => ctxInternal.cancellation())
-}).pipe(withRestateRuntimeSpan('restate.onCancellation', 'cancellation'))
+}).pipe(withRestateOperation('restate.onCancellation', 'cancellation'))
