@@ -7,6 +7,7 @@ import { classifyStoreWorktreePolicy, isNamedRefWorktree } from './store-worktre
 const liveSet = (paths: ReadonlyArray<string>): StoreLiveSet => ({
   paths: new Set(paths),
   workspaceCount: 1,
+  uncleanReconcilePaths: new Set(),
 })
 
 describe('store-worktree-policy', () => {
