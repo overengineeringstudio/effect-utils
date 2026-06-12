@@ -21,6 +21,8 @@ const cosmeticPairs: ReadonlyArray<readonly [string, string, string]> = [
   ['trailing whitespace', 'line one   \nline two', 'line one\nline two'],
   ['blank-line runs', 'a\n\n\n\nb', 'a\n\nb'],
   ['CRLF vs LF', 'a\r\n\r\nb', 'a\n\nb'],
+  ['code-fence js alias', '```js\nconst x = 1\n```', '```javascript\nconst x = 1\n```'],
+  ['code-fence ts alias', '```ts\nconst x = 1\n```', '```typescript\nconst x = 1\n```'],
 ]
 
 /**
