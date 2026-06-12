@@ -10,13 +10,6 @@ import { parseNmdFile } from './frontmatter.ts'
 import type { NotionMdGateway } from './model.ts'
 import { withOperation } from './observability.ts'
 import { NmdStateStore } from './state-store.ts'
-import {
-  statusPage,
-  syncPage,
-  type StatusResult,
-  type SyncOptions,
-  type SyncResult,
-} from './sync.ts'
 
 const DEFAULT_BATCH_CONCURRENCY = 4
 const WATCH_DEBOUNCE = Duration.millis(250)
@@ -95,15 +88,20 @@ export interface ResolveTargetsResult {
   readonly errors: readonly BatchFailure[]
 }
 
-/** Inputs for checking multiple `.nmd` files. */
-export interface StatusManyOptions extends ResolveTargetsOptions {
+/** Inputs for syncing multiple `.nmd` files. */
+export interface BatchSyncOptions extends ResolveTargetsOptions {
   readonly concurrency?: number
+  readonly force?: boolean
+  readonly dryRun?: boolean
 }
 
-/** Inputs for syncing multiple `.nmd` files. */
-export interface SyncManyOptions extends ResolveTargetsOptions, Omit<SyncOptions, 'path'> {
-  readonly concurrency?: number
-}
+export type SyncManyRunner<A> = (
+  opts: BatchSyncOptions,
+) => Effect.Effect<
+  BatchResult<A>,
+  NmdCliError,
+  FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore
+>
 
 /** Trigger reason emitted by one-file and batch watch loops. */
 export type WatchReason = 'file' | 'initial' | 'poll'
@@ -114,10 +112,11 @@ interface WatchTrigger {
 }
 
 /** Inputs for continuous watch mode over a resolved set of `.nmd` files. */
-export interface BatchWatchOptions extends Omit<SyncManyOptions, 'targets' | 'recursive'> {
+export interface BatchWatchOptions<A> extends Omit<BatchSyncOptions, 'targets' | 'recursive'> {
   readonly paths: readonly string[]
   readonly pollIntervalMs: number
   readonly emit?: (value: unknown) => Effect.Effect<void>
+  readonly runSyncMany: SyncManyRunner<A>
 }
 
 const makeFsError = (opts: {
@@ -371,7 +370,14 @@ const preflightPageIds = (opts: {
     }
   })
 
-const runBatch = <A>(opts: {
+/**
+ * Tree/batch orchestration primitive: discover targets, run the duplicate
+ * `page_id` preflight (reject collisions before any mutation), then map `run`
+ * over each runnable file with bounded concurrency, aggregating per-file
+ * results. Direction-agnostic — the source-aware reconcile core decides
+ * direction per file (spec "Internal layering").
+ */
+export const runBatch = <A>(opts: {
   readonly operation: BatchOperation
   readonly targets: readonly string[]
   readonly recursive?: boolean | undefined
@@ -419,48 +425,6 @@ const runBatch = <A>(opts: {
       recursive: opts.recursive === true,
     }),
   )
-
-/** Compare multiple local `.nmd` files with their remote Notion pages. */
-export const statusMany = (
-  opts: StatusManyOptions,
-): Effect.Effect<
-  BatchResult<StatusResult>,
-  NmdCliError,
-  FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore
-> =>
-  runBatch({
-    operation: 'status',
-    targets: opts.targets,
-    ...(opts.recursive === undefined ? {} : { recursive: opts.recursive }),
-    ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
-    run: (path) => statusPage({ path }),
-  })
-
-/** Run one guarded reconciliation pass for multiple `.nmd` files. */
-export const syncMany = (
-  opts: SyncManyOptions,
-): Effect.Effect<
-  BatchResult<SyncResult>,
-  NmdCliError,
-  FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore
-> =>
-  runBatch({
-    operation: 'sync',
-    targets: opts.targets,
-    ...(opts.recursive === undefined ? {} : { recursive: opts.recursive }),
-    ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
-    run: (path) =>
-      syncPage({
-        path,
-        ...(opts.force === undefined ? {} : { force: opts.force }),
-        ...(opts.allowDeletingUnknownBlocks === undefined
-          ? {}
-          : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
-        ...(opts.allowReviewMarkup === undefined
-          ? {}
-          : { allowReviewMarkup: opts.allowReviewMarkup }),
-      }),
-  })
 
 const reasonRank = (reason: WatchReason): number => {
   switch (reason) {
@@ -513,8 +477,8 @@ const watchErrorJson = (error: unknown): Record<string, unknown> => {
 }
 
 /** Watch a resolved set of `.nmd` files and run coalesced batch sync passes. */
-export const runBatchWatch = (
-  opts: BatchWatchOptions,
+export const runBatchWatch = <A>(
+  opts: BatchWatchOptions<A>,
 ): Effect.Effect<
   never,
   never,
@@ -568,16 +532,11 @@ export const runBatchWatch = (
           yield* Effect.sleep(WATCH_DEBOUNCE)
           const rest = yield* Queue.takeAll(queue)
           const triggers = coalesceTriggers([first, ...rest])
-          const batch = yield* syncMany({
+          const batch = yield* opts.runSyncMany({
             targets: triggers.map((trigger) => trigger.path),
             ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
             ...(opts.force === undefined ? {} : { force: opts.force }),
-            ...(opts.allowDeletingUnknownBlocks === undefined
-              ? {}
-              : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
-            ...(opts.allowReviewMarkup === undefined
-              ? {}
-              : { allowReviewMarkup: opts.allowReviewMarkup }),
+            ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
           })
           yield* emit({
             event: 'sync',

@@ -51,7 +51,7 @@ two-phase plan/apply contract live in
 
 Observation uses the live retrieved data-source schema by default. Explicit
 schema-property JSON is an advanced fake/debug override; it is not required for
-`sync --from-notion`, watch observation, or normal established sync.
+`track`, watch observation, or normal established sync.
 
 `debug_*` views are derived from private `_nds_*` projections. They are
 rebuildable diagnostics, not writable surfaces. Notion UI views may appear in

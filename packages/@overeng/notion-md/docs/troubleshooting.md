@@ -35,7 +35,7 @@ Common causes:
 - a tagged value was rewritten without `_tag`.
 
 Fix the frontmatter from the schema, restore the file from version control, or
-run `sync <page-id-or-url> <path>` again into a fresh file and reapply body edits.
+run `track <page-id-or-url> <path>` into a fresh file and reapply body edits.
 
 ## Object Store Error
 
@@ -48,56 +48,54 @@ file. Do not patch object hashes by hand.
 
 ## Missing Sidecar Sync State
 
-Symptom:
+Symptom on `source: shared` pages:
 
 ```text
 NmdFrontmatterError: Missing sidecar sync state for page <id>.
-Run `notion-md sync <id> <path>` to rebuild it.
+Run `notion-md track <id> <path> --as shared` into a clean file to rebuild it.
 ```
 
 `.notion-md/sync/<page_id>.json` holds the derived bookkeeping (body hash, base
 ref, last-pulled timestamps, storage inventory). It is keyed by the immutable
-page id and is typically gitignored. A fresh clone of a repo that gitignores
-`.notion-md/` will not have it. Run the suggested sync to rebuild it; sync
-will then resume from the freshly captured remote baseline.
+page id and is typically gitignored. A fresh checkout of a repo that gitignores
+`.notion-md/` will not have it. Mirror-sync files do not rely on this sidecar;
+they use live local/remote comparison.
 
-## Body Conflict
+## Shared Body Conflict
 
-Symptom:
+Symptom on `source: shared` pages:
 
 ```text
 Remote page changed since the last clean pull
 ```
 
-The CLI writes a Roughdraft conflict artifact beside the `.nmd` file when it has
-base, local, and remote evidence. Inspect base/local/remote sections, edit the
-`.nmd` body to the intended final content, then rerun:
+The CLI writes a Roughdraft conflict artifact beside the `.nmd` file when the
+base, local, and remote bodies cannot be merged safely. Inspect base/local/remote
+sections, edit the `.nmd` body to the intended final content, then rerun:
 
 ```sh
 notion-md status notes.nmd
 notion-md sync notes.nmd
 ```
 
-Use `--force` only when overwriting the remote body is the intended outcome.
+Use `--force` only when overwriting the remote body is the intended shared-sync
+outcome. `source: local` and `source: remote` files do not use the sidecar-backed
+merge path; they reconcile in their declared direction.
 
 ## Unknown Blocks Block Sync
 
 Normal sync refuses to delete unsupported Notion blocks. Sync again if the remote
-page has changed, or explicitly allow deletion:
-
-```sh
-notion-md sync notes.nmd --allow-delete-unknown-blocks
-```
-
-Use the flag only when the unknown blocks are no longer needed.
+page has changed, model the unsupported surface, or remove the local body edit.
+The v-next CLI does not expose an unknown-block deletion override flag yet.
 
 ## Roughdraft Markup Blocks Sync
 
 Normal sync refuses unresolved Roughdraft review markup so review annotations do
 not accidentally become visible Notion content.
 
-Resolve or remove the markup before syncing. Use `--allow-review-markup` only
-when the literal markup should be written to Notion.
+Resolve or remove the markup before syncing. A future destructive
+review-markup mode should only be used when the literal markup should be written
+to Notion.
 
 ## Watch Emits Repeated Errors
 

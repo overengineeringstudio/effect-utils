@@ -611,6 +611,7 @@ const frontmatterForRemotePage = (page: RemotePageSnapshot): NmdFrontmatterV2 =>
     version: 2,
     api_version: NOTION_API_VERSION,
     object: 'page',
+    source: 'local',
     page_id: page.id,
     url: page.url,
     parent: toParentRef(page),
@@ -886,7 +887,7 @@ const syncTreeLocal = (opts: {
       const path = filePathFor({ root, relPath: page.relPath })
       const remoteForStatus = yield* gateway.pullPage({ pageId })
       /*
-       * Self-heal a missing baseline (fresh clone without `.notion-md/`, or a
+       * Self-heal a missing baseline (fresh checkout without `.notion-md/`, or a
        * root bound only in the file): establish it from the live remote body
        * so the guarded merge has a base. Keyed by page id at the tree root.
        */
