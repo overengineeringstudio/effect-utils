@@ -5,6 +5,19 @@
 # (e.g. multi-storybook previews); a single entry covers the common "deploy
 # one app's dist/" case.
 #
+# Two deploy shapes are supported:
+#   - Static (default): uploads `staticDir` with `netlify deploy --dir … --no-build`.
+#     Correct for fully prerendered sites (Astro static, Storybook, etc.).
+#   - SSR (`ssr = true`): `netlify deploy --no-build` (NO `--dir`) from the site
+#     directory, shipping the full `netlify build` output — the bundled serverless
+#     and edge functions alongside the static assets. A `--dir` deploy is
+#     publish-only and silently drops every function — that is exactly what left
+#     docs.livestore.dev serving a 502 on all on-demand routes and the 404
+#     fallback. The bundled output is produced by `netlify build`, which the
+#     consumer runs as the `afterTask` build step (just like a static consumer's
+#     `afterTask` produces `dist/`). SSR mode needs a `netlify.toml` with
+#     site-relative `publish`/`edge_functions` paths.
+#
 # Deploy context is passed via DEVENV_TASK_INPUT (devenv --input flag).
 #
 # Usage in devenv.nix:
@@ -41,6 +54,16 @@
 #   workspaceFilter  — optional bool (default `false`). When true, derives
 #                      `--filter=<workspace-name>` from `<staticDir>/../package.json`
 #                      for pnpm-workspace consumers. Most sites don't need this.
+#   ssr              — optional bool (default `false`). When true, deploy a
+#                      function-bearing build (see "SSR" above). `afterTask` must
+#                      run `netlify build` (which bundles the serverless + edge
+#                      functions) so the output is ready to ship. The site
+#                      directory is derived as `dirOf staticDir`.
+#   prodAlias        — optional bool (default `true`). When true, a `type=prod`
+#                      deploy creates a `prod`-named alias (multi-target preview
+#                      sites). When false, `type=prod` publishes to the production
+#                      domain via `netlify deploy --prod` (a single app that owns
+#                      its site, e.g. docs.livestore.dev).
 #
 # Deploy modes (via --input):
 #   dt netlify:deploy:<name>                          # draft (unique URL)
@@ -71,9 +94,19 @@ let
       staticDir = deployment.staticDir;
       afterTask = deployment.afterTask or null;
       workspaceFilter = deployment.workspaceFilter or false;
+      ssr = deployment.ssr or false;
+      # Whether a `type=prod` deploy creates a `prod`-named alias (true, default —
+      # for multi-target preview sites) or publishes to the production domain with
+      # `netlify deploy --prod` (false — for a single app that owns its site, e.g.
+      # docs.livestore.dev). Backward-compatible: existing consumers keep aliases.
+      prodAlias = deployment.prodAlias or true;
       # `staticDir` is typically `<pkg>/dist` or `<pkg>/storybook-static`; the
       # workspace's package.json sits one level up.
       packageJsonPath = "${builtins.dirOf staticDir}/package.json";
+      # Directory holding `netlify.toml` and the framework build output. SSR
+      # deploys run from here so Netlify resolves `base`/`publish`/`edge_functions`
+      # relative to the site, and so the bundled functions ride along.
+      siteDir = builtins.dirOf staticDir;
     in
     {
       "netlify:deploy:${name}" = {
@@ -129,6 +162,14 @@ let
           else
             alias_flag=""
           fi
+          ${lib.optionalString (!prodAlias) ''
+            # This deployment owns its site: a prod deploy publishes to the
+            # production domain instead of a `prod` alias.
+            if [ "$deploy_type" = "prod" ]; then
+              alias_flag="--prod"
+              alias_name=""
+            fi
+          ''}
 
           case "$deploy_type" in
             prod)   message="${name} (prod, $short_sha)" ;;
@@ -155,9 +196,24 @@ let
             filter_args+=("--filter=$workspace_filter")
           fi
 
+          # SSR ships the full `netlify build` output (static + bundled
+          # serverless + edge functions) by omitting `--dir` and running from the
+          # site directory so `netlify.toml` paths resolve relative to the site.
+          # A `--dir` deploy is publish-only and would drop every function. The
+          # static path keeps `--dir` (upload that directory, nothing else).
+          ${
+            if ssr then
+              ''
+                cd "${siteDir}"
+                dir_flag=""
+              ''
+            else
+              ''dir_flag="--dir=$deploy_dir"''
+          }
+
           # shellcheck disable=SC2086
           ${netlify} deploy \
-            --dir="$deploy_dir" \
+            $dir_flag \
             --auth="$NETLIFY_AUTH_TOKEN" \
             "''${filter_args[@]}" \
             --no-build \
