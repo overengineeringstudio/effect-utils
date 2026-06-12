@@ -11,11 +11,10 @@ import { fidelityCorpusData } from './corpus/fidelity-corpus.ts'
  * Notion round-trip are semantically equal — fidelity preserved, must reach
  * noop) or `distinct_from` (the shape must NOT be folded into a named sibling).
  *
- * `notion_round_trip` is, by intent, captured from REAL Notion — a hand-written
- * fake re-bakes the blind spots that let #756/#759/#763 through. The shipped
- * values are authored from the documented Notion normalizations until a
- * credentialed capture run refreshes them; the schema and the replay harness
- * are the durable part, so a refresh is a data update, not a code change.
+ * `notion_round_trip` is, by intent, captured from REAL Notion through the
+ * live corpus refresh path — a hand-written fake re-bakes the blind spots that
+ * let #756/#759/#763 through. The schema and replay harness are the durable
+ * part, so future refreshes are reviewed data updates, not code changes.
  */
 
 /** R33 relation an entry asserts against its own round-trip or a sibling. */

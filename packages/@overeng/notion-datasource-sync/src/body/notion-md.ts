@@ -1,6 +1,7 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
+import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer, Schema, Stream } from 'effect'
 
 import type { ContentDescriptor } from '@overeng/content-address'
@@ -189,7 +190,9 @@ const provideNotionMdStateStore =
 
 const provideNotionMdGatewayAndStateStore =
   (input: { readonly gateway: NotionMdGatewayShape; readonly stateStore: NmdStateStoreShape }) =>
-  <TValue, TError>(effect: Effect.Effect<TValue, TError, NotionMdGateway | NmdStateStore>) =>
+  <TValue, TError, TServices>(
+    effect: Effect.Effect<TValue, TError, TServices | NotionMdGateway | NmdStateStore>,
+  ) =>
     effect.pipe(
       Effect.provideService(NotionMdGateway, input.gateway),
       Effect.provideService(NmdStateStore, input.stateStore),
@@ -362,7 +365,10 @@ export const makeNotionMdPageBodySyncPort = ({
             pageId: command.pageId,
             path: absolutePath,
             expectedLocalBodyHash: command.nextBodyHash,
-          }).pipe(provideNotionMdGatewayAndStateStore({ gateway, stateStore }))
+          }).pipe(
+            provideNotionMdGatewayAndStateStore({ gateway, stateStore }),
+            Effect.provide(NodeContext.layer),
+          )
           yield* writeDatasourceSyncBodySidecar({
             root,
             pageId: command.pageId,
@@ -501,6 +507,7 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
           outPath: absolutePath,
         }).pipe(
           provideNotionMdGatewayAndStateStore({ gateway, stateStore }),
+          Effect.provide(NodeContext.layer),
           Effect.mapError(
             (cause) =>
               new LocalStoreError({

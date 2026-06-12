@@ -4,27 +4,28 @@ import type { Path } from '@effect/platform'
 import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 
-import { statusMany, syncMany, type BatchResult } from './batch.ts'
+import type { BatchResult } from './batch.ts'
 import { NmdCliError, type NmdError } from './errors.ts'
 import type { NotionMdGateway } from './model.ts'
 import * as Observability from './observability.ts'
-import type { NmdStateStore } from './state-store.ts'
 import {
-  statusPage,
-  syncPage,
-  type StatusResult,
-  type SyncOptions,
-  type SyncResult,
-} from './sync.ts'
+  reconcileFile,
+  reconcileTree,
+  statusFile,
+  statusTree,
+  type ReconcileResult,
+  type ReconcileStatus,
+} from './reconcile.ts'
+import type { NmdStateStore } from './state-store.ts'
 import { syncTree, type TreeSyncResult } from './tree.ts'
 
 /** Filesystem shape used to choose the appropriate notion-md reconcile engine. */
 export type PathTargetKind = 'file' | 'directory' | 'missing'
 
 /** Result of status over a single file, directory tree, or flat recursive batch. */
-export type StatusPathResult = StatusResult | TreeSyncResult | BatchResult<StatusResult>
+export type StatusPathResult = ReconcileStatus | TreeSyncResult | BatchResult<ReconcileStatus>
 /** Result of sync over a single file, directory tree, or flat recursive batch. */
-export type SyncPathResult = SyncResult | TreeSyncResult | BatchResult<SyncResult>
+export type SyncPathResult = ReconcileResult | TreeSyncResult | BatchResult<ReconcileResult>
 /** Result of a dry-run directory tree plan. */
 export type PlanPathResult = TreeSyncResult
 
@@ -43,14 +44,16 @@ export interface PlanPathOptions {
   readonly fromRemote?: boolean
 }
 
-/** Options for syncing the public file-or-directory path API. */
-export interface SyncPathOptions extends Omit<SyncOptions, 'path'> {
+/** Options for syncing a file-or-directory path. */
+export interface SyncPathOptions {
   readonly path: string
   readonly recursive?: boolean
   readonly concurrency?: number
   readonly rootPageId?: string
   readonly rootFile?: string
   readonly fromRemote?: boolean
+  readonly force?: boolean
+  readonly dryRun?: boolean
 }
 
 /** Classify a local target into file / directory / missing without throwing. */
@@ -78,22 +81,19 @@ export const statusPath = (
       return yield* syncTree({ root: opts.path, plan: true })
     }
     if (kind === 'file') {
-      return yield* statusPage({ path: opts.path })
+      return yield* statusFile({ path: opts.path })
     }
-    return yield* syncManyStatus(opts)
+    return yield* statusTree({
+      targets: [opts.path],
+      ...(opts.recursive === undefined ? {} : { recursive: opts.recursive }),
+      ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
+    })
   }).pipe(
     Observability.withOperation(Observability.StatusPathSpan, {
       basename: basename(opts.path),
       recursive: opts.recursive === true,
     }),
   )
-
-const syncManyStatus = (opts: StatusPathOptions) =>
-  statusMany({
-    targets: [opts.path],
-    ...(opts.recursive === undefined ? {} : { recursive: opts.recursive }),
-    ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
-  })
 
 /** Dry-run a directory tree reconcile pass through the same path-oriented routing. */
 export const planPath = (
@@ -161,11 +161,12 @@ export const syncPath = (
 
     if (kind === 'directory') {
       if (opts.recursive === true) {
-        return yield* syncMany({
+        return yield* reconcileTree({
           targets: [opts.path],
           recursive: true,
           ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
-          ...pushSafety(opts),
+          ...(opts.force === undefined ? {} : { force: opts.force }),
+          ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
         })
       }
       return yield* syncTree({
@@ -177,7 +178,11 @@ export const syncPath = (
       })
     }
 
-    return yield* syncPage({ path: opts.path, ...pushSafety(opts) })
+    return yield* reconcileFile({
+      path: opts.path,
+      ...(opts.force === undefined ? {} : { force: opts.force }),
+      ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+    })
   }).pipe(
     Observability.withOperation(Observability.SyncPathSpan, {
       basename: basename(opts.path),
@@ -186,10 +191,7 @@ export const syncPath = (
     }),
   )
 
-const pushSafety = (opts: Omit<SyncPathOptions, 'path'>): Omit<SyncOptions, 'path'> => ({
+const pushSafety = (opts: Omit<SyncPathOptions, 'path'>) => ({
   ...(opts.force === undefined ? {} : { force: opts.force }),
-  ...(opts.allowDeletingUnknownBlocks === undefined
-    ? {}
-    : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
-  ...(opts.allowReviewMarkup === undefined ? {} : { allowReviewMarkup: opts.allowReviewMarkup }),
+  ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
 })

@@ -5,38 +5,37 @@ surfaces and refusing ambiguous writes.
 
 ## Surfaces
 
-| Surface            | Local state               | Write behavior                       |
-| ------------------ | ------------------------- | ------------------------------------ |
-| Body               | `.nmd` body + base object | guarded Markdown update              |
-| Page metadata      | frontmatter page fields   | field-level patch for modeled values |
-| Properties         | frontmatter properties    | modeled writable values only         |
-| Unsupported blocks | frontmatter/object store  | preserve metadata or explicit delete |
-| Review markup      | Roughdraft body markup    | rejected unless explicitly allowed   |
-| Files              | storage units             | modeled, upload/download incomplete  |
-| Comments           | storage units             | modeled, bridge incomplete           |
+| Surface            | Local state                                        | Write behavior                       |
+| ------------------ | -------------------------------------------------- | ------------------------------------ |
+| Body               | `.nmd` body; base object only for `source: shared` | source-dispatched reconcile          |
+| Page metadata      | frontmatter page fields                            | field-level patch for modeled values |
+| Properties         | frontmatter properties                             | modeled writable values only         |
+| Unsupported blocks | frontmatter/object store                           | preserve metadata or explicit delete |
+| Review markup      | Roughdraft body markup                             | rejected unless explicitly allowed   |
+| Files              | storage units                                      | modeled, upload/download incomplete  |
+| Comments           | storage units                                      | modeled, bridge incomplete           |
 
-## Body Conflicts
+## Body Direction And Conflicts
 
-Every pull writes a base snapshot. Sync compares base, local, and remote bodies:
+Each `.nmd` file declares an explicit `source`:
 
-| Case                       | Result                  |
-| -------------------------- | ----------------------- |
-| local changed, remote same | write local body        |
-| local same, remote changed | pull remote body        |
-| both changed, no overlap   | auto-merge and write    |
-| both changed, overlap      | write conflict artifact |
-| remote changed + `--force` | overwrite remote body   |
+| Source   | State model           | Result when bodies differ                        |
+| -------- | --------------------- | ------------------------------------------------ |
+| `local`  | no base sidecar       | local body is mirrored to Notion                 |
+| `remote` | no base sidecar       | local body is overwritten from Notion            |
+| `shared` | base sidecar required | base, local, and remote are merged or conflicted |
 
-Conflict artifacts are written beside the `.nmd` file using Roughdraft markup.
-Resolve by editing the `.nmd` body to the intended final content, then rerun
-`status` or `sync`.
+Only `source: shared` uses base-backed three-way conflict handling. Conflict
+artifacts are written beside the `.nmd` file using Roughdraft markup. Resolve by
+editing the `.nmd` body to the intended final content, then rerun `status` or
+`sync`.
 
 ## Body Completeness
 
-`notion-md` only treats a remote body as a clean base when the body observation
-is complete. The completeness vocabulary lives in `@overeng/notion-core`; live
-Markdown plus block-tree observation lives in `@overeng/notion-effect-client`;
-`notion-md` owns the fail-closed policy.
+`notion-md` only treats a remote body as clean local state when the body
+observation is complete. The completeness vocabulary lives in
+`@overeng/notion-core`; live Markdown plus block-tree observation lives in
+`@overeng/notion-effect-client`; `notion-md` owns the fail-closed policy.
 
 Clean-base adoption is blocked when Notion reports truncation, reports endpoint
 unknown block IDs, the block inventory contains unsupported body content, or the
@@ -44,8 +43,8 @@ rendered block tree proves the Markdown endpoint omitted a suffix. This prevents
 single-page establishment from silently writing a partial `.nmd` body when the
 Markdown endpoint stops at a divider or another unsupported boundary.
 
-The same rule applies after verified writes. A remote write is not settled into
-the local base until the refreshed remote body observation is complete.
+The same rule applies after verified writes. Shared sync does not settle a fresh
+base until the refreshed remote body observation is complete.
 
 ## Roughdraft Review Markup
 
@@ -55,9 +54,9 @@ Unresolved Roughdraft markers are local review state:
 {==old text==}{>>review note<<}{id="r1"}
 ```
 
-Normal sync refuses to send these markers to Notion. Use
-`--allow-review-markup` only when you deliberately want the markers to become
-visible Notion content.
+Normal sync refuses to send these markers to Notion. Resolve or remove the
+markers before syncing. The v-next CLI does not expose a review-markup override
+flag until that destructive mode is implemented explicitly.
 
 ## Unknown Blocks
 
@@ -65,9 +64,10 @@ Some Notion blocks cannot be represented by the Markdown endpoint and appear as
 unknown placeholders. `notion-md` records their block IDs and compact snapshots in
 frontmatter or object storage.
 
-Normal sync refuses body updates that could delete unresolved unknown blocks. Use
-`--allow-delete-unknown-blocks` only after deciding that deleting those Notion
-blocks is acceptable.
+Normal sync refuses body updates that could delete unresolved unknown blocks.
+Model the unsupported surface or remove the local body edit before syncing. The
+v-next CLI does not expose an unknown-block deletion override flag until that
+destructive mode is implemented explicitly.
 
 Notion-reported endpoint unknown block IDs also make a remote body unsuitable
 as a clean base. This is separate from notion-md's self-contained storage path,
@@ -77,10 +77,9 @@ resolved or deletion is explicitly allowed.
 
 ## Property-Only Edits
 
-Property-only edits can be synced even when the remote body changed. The CLI
-patches the property surface, then refreshes the local body and base from the
-current remote body. This avoids turning independent property and body edits into
-a false conflict.
+Property-only edits can be synced independently from body edits once their
+surface is modeled as writable. They do not require treating every remote body
+change as a shared body conflict.
 
 ## Page Metadata Edits
 
