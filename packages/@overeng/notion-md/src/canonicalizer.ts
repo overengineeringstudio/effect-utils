@@ -30,6 +30,8 @@ import { sha256Digest } from './hash.ts'
  *   space (a soft join), since Notion does not round-trip them as breaks.
  * - blank-line-run collapse — remark emits exactly one blank line between
  *   blocks.
+ * - code-fence language aliases that Notion expands losslessly (`js`→
+ *   `javascript`, `ts`→`typescript`).
  *
  * NOT FOLDED (semantic — must stay distinct; these are the #756/#759/#763
  * shapes the fidelity corpus guards):
@@ -37,7 +39,7 @@ import { sha256Digest } from './hash.ts'
  * - heading level (`#` vs `##`) and heading-vs-paragraph type.
  * - paragraph-vs-heading ADJACENCY (a paragraph after a list vs an item).
  * - divider presence.
- * - code-fence language.
+ * - code-fence language after alias normalization.
  * - list ORDINAL ORDER (item sequence — only the start ordinal is folded).
  *
  * The relation is equality of the canonical normal form, hence reflexive,
@@ -97,6 +99,11 @@ const foldPresentationOnly: () => (tree: unknown) => void = () => (tree) => {
     if (node.value.includes('\n') === true) {
       node.value = node.value.replace(/[ \t]*\n[ \t]*/g, ' ')
     }
+  })
+
+  visit(tree as never, 'code', (node: { lang?: string | null }) => {
+    if (node.lang === 'js') node.lang = 'javascript'
+    if (node.lang === 'ts') node.lang = 'typescript'
   })
 }
 
