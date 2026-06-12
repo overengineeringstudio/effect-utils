@@ -25,8 +25,8 @@ downward by every subsystem.
 
 - **T01 Explicit local wrapper:** `.nmd` files may contain frontmatter that generic Markdown tools do not understand because sync safety requires local metadata.
 - **T02 Object-store portability cost:** Large or volatile state may live outside the `.nmd` file when keeping it inline would make the document noisy, unsafe, or hard to review.
-- **T03 Conservative push defaults:** The tool may block pushes that are probably safe if it cannot prove they preserve remote and out-of-band state.
-- **T04 Eventual watch refresh:** Watch mode may use polling or webhooks as triggers, but push correctness must still come from fresh pre-push reads.
+- **T03 Mechanism-specific safety:** Mirror Sync may overwrite the non-authoritative side without confirmation because the file declares authority up front; Shared Sync and destructive surface changes remain conservative and must refuse when they cannot prove preservation.
+- **T04 Eventual watch refresh:** Watch mode may use polling or webhooks as triggers, but apply correctness must still come from the same fresh reads and Mirror/Shared mechanism dispatch as one-shot `sync`.
 - **T05 Partial feature support:** Features without proven E2E fidelity may be preserved as unsupported blocks instead of being editable as first-class Markdown.
 - **T06 Refuse rather than reconcile lossy pages:** The tool refuses a page whose body contains a not-losslessly-representable block (`child_database`, `synced_block`, table of contents, child page, …) instead of editing it — uniformly across the editor verbs and the file-based `sync` (decision [0017](./.decisions/0017-edit-is-an-ephemeral-file-engine-session.md)) — because Notion's platform bars a sound edit of such blocks (no backlink endpoint, `child_database` uncreatable via the block API, non-injective Markdown endpoint). Losing the ability to edit those pages as Markdown is accepted in exchange for a small, correct, plugin-free design; such blocks are edited in the Notion UI. See decisions [0016](./.decisions/0016-refuse-lossy-pages.md), [0017](./.decisions/0017-edit-is-an-ephemeral-file-engine-session.md). (Owned by [04-fidelity](./04-fidelity/requirements.md).)
 - **T07 Editor session, not live sync:** `edit` is a discrete pull-edit-push session over an ephemeral `$TMPDIR` `.nmd` + `.notion-md/` tree (decision [0017](./.decisions/0017-edit-is-an-ephemeral-file-engine-session.md)), not character-level live sync and not a zero-file in-memory buffer. `edit` is therefore not strictly stateless (only `cat`/`put` are); statelessness is preserved where it is intrinsic — the pipes — and traded for engine reuse in `edit`. The simpler, plugin-free, one-engine model is accepted in exchange. (Owned by [01-editor](./01-editor/requirements.md).)
@@ -68,9 +68,10 @@ by every subsystem.
 ### Must Be Verifiable (cross-cutting)
 
 - **R25 Unit coverage:** Pure parsing, canonicalization, hashing, object-store validation, merge, and storage classification behavior must have deterministic unit tests.
-- **R26 Integration coverage:** Effect service boundaries must have integration tests with fake Notion and fake local state services.
-- **R27 Notion E2E coverage:** Supported Notion body features and destructive-guard behavior must be verified against real temporary Notion pages with cleanup verification.
+- **R26 Integration coverage:** Effect service boundaries must have integration tests with fake Notion and fake local state services. Fake gateways are sufficient for service-wiring and control-flow coverage but are insufficient for fidelity claims (R52): a hand-written fake re-bakes the same blind spots that let real round-trip bugs through, so fidelity must be proven against a corpus captured from real Notion (R27, R52).
+- **R27 Real-Notion fidelity and live coverage:** Round-trip fidelity must be verified against a golden corpus of real Notion page shapes (R52) — captured from live Notion, then replayed offline so it gates every change without requiring network access. A thinner required live-smoke tier must additionally exercise supported body features and destructive-guard behavior against real temporary Notion pages with cleanup verification, so live API drift surfaces deliberately.
 - **R29 Trace coverage:** E2E or integration tests must assert the presence of required spans and key non-secret attributes.
+- **R54 Adversarial footgun coverage:** The historically observed footgun classes must each have an adversarial test that attempts to trigger the footgun and asserts it is now structurally impossible: stale-stored-base poisoned-noop (R48/R49), cosmetic perpetual churn (R50), and the divider/paragraph/heading fidelity corruption classes (R52).
 
 (R28 Watch coverage → [02-file-sync](./02-file-sync/requirements.md).)
 
@@ -82,11 +83,13 @@ owning subsystem.
 | Subsystem                                          | Requirements                                |
 | -------------------------------------------------- | ------------------------------------------- |
 | [01-editor](./01-editor/requirements.md)           | R32, R33, R34, R35, R37, R39, R43, R44, R45 |
-| [02-file-sync](./02-file-sync/requirements.md)     | R20, R28                                    |
-| [03-sync-engine](./03-sync-engine/requirements.md) | R09, R11, R13, R15                          |
-| [04-fidelity](./04-fidelity/requirements.md)       | R12, R30, R31, R36, R38, R40, R41           |
-| [05-local-state](./05-local-state/requirements.md) | R06, R07, R08, R10                          |
+| [02-file-sync](./02-file-sync/requirements.md)     | R20, R28, R51, R53, R55                     |
+| [03-sync-engine](./03-sync-engine/requirements.md) | R09, R11, R13, R15, R49                     |
+| [04-fidelity](./04-fidelity/requirements.md)       | R12, R30, R31, R36, R38, R40, R41, R50, R52 |
+| [05-local-state](./05-local-state/requirements.md) | R06, R07, R08, R10, R48                     |
 | [06-data-source](./06-data-source/requirements.md) | R04, R14                                    |
+
+Root cross-cutting verification requirements: R25, R26, R27, R29, R54.
 
 R42 was removed (the stateless in-buffer schema fingerprint, decision 0017
 superseding 0013); it is not reintroduced.

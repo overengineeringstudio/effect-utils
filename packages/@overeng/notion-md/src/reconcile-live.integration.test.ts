@@ -13,7 +13,7 @@ import { NotionConfigLive, NotionPages, type NotionConfig } from '@overeng/notio
 import { canonicalize } from './canonicalizer.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
-import { clonePage, reconcileFile, statusFile } from './reconcile.ts'
+import { reconcileFile, statusFile, trackPage } from './reconcile.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 
 /*
@@ -73,7 +73,7 @@ afterAll(async () => {
 })
 
 describe.skipIf(skipLive)('notion-md v-next live smoke (R27)', () => {
-  it('clone(remote) → status in-sync → reconcile noop against a real page', async () => {
+  it('track(remote) → status in-sync → reconcile noop against a real page', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-md-vnext-live-'))
     try {
       // create a scratch page locally (source: local, unbound) then reconcile to create it
@@ -86,10 +86,10 @@ describe.skipIf(skipLive)('notion-md v-next live smoke (R27)', () => {
       createdPageIds.push(created.id)
 
       const path = join(dir, 'doc.nmd')
-      const clone = await runLive(
-        clonePage({ pageId: created.id, outPath: path, source: 'remote' }),
+      const tracked = await runLive(
+        trackPage({ pageId: created.id, outPath: path, source: 'remote' }),
       )
-      expect(clone.source).toBe('remote')
+      expect(tracked.source).toBe('remote')
 
       const status = await runLive(statusFile({ path }))
       expect(status.status).toBe('in-sync')

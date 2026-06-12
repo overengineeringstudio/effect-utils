@@ -27,6 +27,14 @@ row-membership or deletion authority; projected read-only as `debug_*`.
 
 ## Sync surfaces and identity
 
+**Authority model**:
+The cross-cutting rule for where each fact's authority lives. Datasource-sync
+authority is per surface and event based, not a file-level source mode. Notion is
+fresh observed remote state; the SQLite event log is durable local authority for
+accepted local facts; public replica tables are intent-entry/projection surfaces;
+materialization is guarded output.
+_Avoid_: importing NotionMD `source: local | remote | shared` semantics.
+
 **Surface**:
 The smallest independently-hashed unit a write targets — a single property value,
 a page body, or the schema. Conflicts and base hashes are per-surface.

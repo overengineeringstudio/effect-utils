@@ -79,20 +79,44 @@ export interface ReconcileStatus {
 
 /** Tagged result of one `reconcileFile` pass. */
 export type ReconcileResult =
-  | { readonly _tag: 'noop'; readonly path: string; readonly pageId: string }
+  | {
+      readonly _tag: 'noop'
+      readonly path: string
+      readonly pageId: string
+      readonly dryRun?: true
+    }
   | { readonly _tag: 'created'; readonly path: string; readonly pageId: string }
-  | { readonly _tag: 'pushed'; readonly path: string; readonly pageId: string }
-  | { readonly _tag: 'pulled'; readonly path: string; readonly pageId: string }
+  | {
+      readonly _tag: 'created'
+      readonly path: string
+      readonly pageId: undefined
+      readonly parentPageId: string
+      readonly dryRun: true
+    }
+  | {
+      readonly _tag: 'pushed'
+      readonly path: string
+      readonly pageId: string
+      readonly dryRun?: true
+    }
+  | {
+      readonly _tag: 'pulled'
+      readonly path: string
+      readonly pageId: string
+      readonly dryRun?: true
+    }
   | {
       readonly _tag: 'shared-merged'
       readonly path: string
       readonly pageId: string
+      readonly dryRun?: true
     }
   | {
       readonly _tag: 'shared-conflict'
       readonly path: string
       readonly pageId: string
       readonly conflictPath: string
+      readonly dryRun?: true
     }
 
 /** Construct a `ReconcileResult` with literal `_tag` discrimination preserved. */
@@ -295,6 +319,7 @@ ${fence}
 export const reconcileFile = (opts: {
   readonly path: string
   readonly force?: boolean
+  readonly dryRun?: boolean
 }): Effect.Effect<
   ReconcileResult,
   NmdError,
@@ -313,6 +338,15 @@ export const reconcileFile = (opts: {
           path: opts.path,
           message:
             'Unbound source: local file needs a page parent to create under (parent must be { _tag: "page", id }).',
+        })
+      }
+      if (opts.dryRun === true) {
+        return result({
+          _tag: 'created',
+          path: opts.path,
+          pageId: undefined,
+          parentPageId,
+          dryRun: true,
         })
       }
       const page = yield* gateway.createPage({
@@ -341,6 +375,7 @@ export const reconcileFile = (opts: {
         remote,
         page: pulled.page,
         force: opts.force === true,
+        dryRun: opts.dryRun === true,
       })
     }
 
@@ -351,8 +386,16 @@ export const reconcileFile = (opts: {
 
     switch (decision._tag) {
       case 'noop':
-        return result({ _tag: 'noop', path: opts.path, pageId })
+        return result({
+          _tag: 'noop',
+          path: opts.path,
+          pageId,
+          ...(opts.dryRun === true ? { dryRun: true } : {}),
+        })
       case 'push': {
+        if (opts.dryRun === true) {
+          return result({ _tag: 'pushed', path: opts.path, pageId, dryRun: true })
+        }
         yield* gateway.updateMarkdown({
           pageId,
           command: { _tag: 'replace_content', markdown: canonicalize(rendered) },
@@ -361,6 +404,9 @@ export const reconcileFile = (opts: {
         return result({ _tag: 'pushed', path: opts.path, pageId })
       }
       case 'pull': {
+        if (opts.dryRun === true) {
+          return result({ _tag: 'pulled', path: opts.path, pageId, dryRun: true })
+        }
         yield* writeFile({
           path: opts.path,
           frontmatter: remoteFrontmatter({
@@ -382,7 +428,12 @@ export const reconcileFile = (opts: {
       // `create`/`shared-defer` are handled above; unreachable here.
       case 'create':
       case 'shared-defer':
-        return result({ _tag: 'noop', path: opts.path, pageId })
+        return result({
+          _tag: 'noop',
+          path: opts.path,
+          pageId,
+          ...(opts.dryRun === true ? { dryRun: true } : {}),
+        })
     }
   }).pipe(
     Effect.withSpan('notion-md.reconcile-file', {
@@ -400,6 +451,7 @@ const reconcileSharedFile = (opts: {
   readonly remote: string
   readonly page: RemotePageSnapshot
   readonly force: boolean
+  readonly dryRun: boolean
 }): Effect.Effect<ReconcileResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
@@ -407,6 +459,14 @@ const reconcileSharedFile = (opts: {
 
     // --force overrides a shared divergence with a local-wins replace.
     if (opts.force === true) {
+      if (opts.dryRun === true) {
+        return result({
+          _tag: 'shared-merged',
+          path: opts.path,
+          pageId: opts.pageId,
+          dryRun: true,
+        })
+      }
       yield* gateway.updateMarkdown({
         pageId: opts.pageId,
         command: { _tag: 'replace_content', markdown: canonicalize(opts.rendered) },
@@ -429,8 +489,21 @@ const reconcileSharedFile = (opts: {
 
     switch (outcome._tag) {
       case 'noop':
-        return result({ _tag: 'noop', path: opts.path, pageId: opts.pageId })
+        return result({
+          _tag: 'noop',
+          path: opts.path,
+          pageId: opts.pageId,
+          ...(opts.dryRun === true ? { dryRun: true } : {}),
+        })
       case 'merge': {
+        if (opts.dryRun === true) {
+          return result({
+            _tag: 'shared-merged',
+            path: opts.path,
+            pageId: opts.pageId,
+            dryRun: true,
+          })
+        }
         yield* gateway.updateMarkdown({
           pageId: opts.pageId,
           command: { _tag: 'replace_content', markdown: canonicalize(outcome.merged) },
@@ -446,6 +519,15 @@ const reconcileSharedFile = (opts: {
         return result({ _tag: 'shared-merged', path: opts.path, pageId: opts.pageId })
       }
       case 'conflict': {
+        if (opts.dryRun === true) {
+          return result({
+            _tag: 'shared-conflict',
+            path: opts.path,
+            pageId: opts.pageId,
+            conflictPath: conflictPathFor(opts.path),
+            dryRun: true,
+          })
+        }
         const conflictPath = yield* writeSharedConflict({
           path: opts.path,
           pageId: opts.pageId,
@@ -490,26 +572,28 @@ const settleSharedBase = (opts: {
     })
   })
 
-/** Result of bootstrapping a local file from an existing Notion page. */
-export interface CloneResult {
+/** Result of tracking an existing Notion page as a local file. */
+export interface TrackResult {
   readonly path: string
   readonly pageId: string
   readonly source: NmdFrontmatterV2['notion_md']['source']
+  readonly dryRun?: true
 }
 
 /**
- * `clone <id|url> [path]` — bootstrap a local `.nmd` file from an existing
+ * `track <id|url> [path]` — bootstrap a local `.nmd` file from an existing
  * Notion page (spec). The ONLY operation that takes a page id. Writes
  * self-describing frontmatter with the chosen `source` (default `remote` — you
- * cloned FROM Notion). Fail-closed on a lossy/truncated remote observation: no
+ * tracked existing Notion state). Fail-closed on a lossy/truncated remote observation: no
  * clean base from a lossy body. For `--as shared` it also establishes the base
  * sidecar so the file is a valid `shared-bound` from the first sync.
  */
-export const clonePage = (opts: {
+export const trackPage = (opts: {
   readonly pageId: string
   readonly outPath: string
   readonly source: NmdFrontmatterV2['notion_md']['source']
-}): Effect.Effect<CloneResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
+  readonly dryRun?: boolean
+}): Effect.Effect<TrackResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
     const fs = yield* FileSystem.FileSystem
@@ -535,10 +619,13 @@ export const clonePage = (opts: {
     if (completeness !== undefined && completeness._tag !== 'complete') {
       return yield* new NmdFrontmatterError({
         path: opts.outPath,
-        message: `Refusing to clone a lossy remote body for ${opts.pageId} (${completeness.reasons.join(', ')}); no clean base from a truncated observation`,
+        message: `Refusing to track a lossy remote body for ${opts.pageId} (${completeness.reasons.join(', ')}); no clean base from a truncated observation`,
       })
     }
     const body = normalizeMarkdownLineEndings(pulled.markdown.markdown)
+    if (opts.dryRun === true) {
+      return { path: opts.outPath, pageId: opts.pageId, source: opts.source, dryRun: true as const }
+    }
     yield* writeFile({
       path: opts.outPath,
       frontmatter: remoteFrontmatter({ source: opts.source, page: pulled.page }),
@@ -575,8 +662,8 @@ export const clonePage = (opts: {
 
     return { path: opts.outPath, pageId: opts.pageId, source: opts.source }
   }).pipe(
-    Effect.withSpan('notion-md.clone-page', {
-      attributes: { 'span.label': opts.pageId.slice(0, 8), 'notion_md.clone.source': opts.source },
+    Effect.withSpan('notion-md.track-page', {
+      attributes: { 'span.label': opts.pageId.slice(0, 8), 'notion_md.track.source': opts.source },
     }),
   )
 
@@ -611,6 +698,7 @@ export const reconcileTree = (opts: {
   readonly recursive?: boolean
   readonly concurrency?: number
   readonly force?: boolean
+  readonly dryRun?: boolean
 }): Effect.Effect<
   BatchResult<ReconcileResult>,
   NmdCliError,
@@ -622,5 +710,9 @@ export const reconcileTree = (opts: {
     ...(opts.recursive === undefined ? {} : { recursive: opts.recursive }),
     ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
     run: (path) =>
-      reconcileFile({ path, ...(opts.force === undefined ? {} : { force: opts.force }) }),
+      reconcileFile({
+        path,
+        ...(opts.force === undefined ? {} : { force: opts.force }),
+        ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+      }),
   })

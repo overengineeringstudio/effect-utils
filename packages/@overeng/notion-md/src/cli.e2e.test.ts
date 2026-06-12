@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
 
 /*
- * CLI boundary tests for the decided v-next surface: three verbs `clone` /
+ * CLI boundary tests for the decided v-next surface: three verbs `track` /
  * `status` / `sync` over self-describing files. These were revised from the
  * pre-redesign surface (`plan`, `--from-remote`, `--root`, `--root-file`,
  * two-arg `sync`) which the v-next redesign explicitly DROPS — direction lives
@@ -47,7 +47,7 @@ describe('notion-md CLI boundary', () => {
     async () => {
       const { stdout } = await runCli(['--help'])
 
-      expect(stdout).toContain('clone')
+      expect(stdout).toContain('track')
       expect(stdout).toContain('status')
       expect(stdout).toContain('sync')
     },
@@ -62,6 +62,7 @@ describe('notion-md CLI boundary', () => {
       expect(stdout).not.toContain('--from-remote')
       expect(stdout).not.toContain('--root')
       expect(stdout).not.toContain('--root-file')
+      expect(stdout).not.toContain('clone')
       expect(stdout).not.toContain('plan')
     },
     cliTestTimeoutMs,
@@ -77,16 +78,18 @@ describe('notion-md CLI boundary', () => {
       expect(stdout).toContain('--recursive')
       expect(stdout).toContain('--concurrency')
       expect(stdout).toContain('--force')
+      expect(stdout).toContain('--dry-run')
     },
     cliTestTimeoutMs,
   )
 
   it(
-    'renders clone help with --as direction option',
+    'renders track help with --as direction option',
     async () => {
-      const { stdout } = await runCli(['clone', '--help'])
+      const { stdout } = await runCli(['track', '--help'])
 
       expect(stdout).toContain('--as')
+      expect(stdout).toContain('--dry-run')
       expect(stdout).toContain('page-id-or-url')
     },
     cliTestTimeoutMs,
@@ -111,13 +114,13 @@ describe('notion-md CLI boundary', () => {
   )
 
   it(
-    'rejects a non-page-id clone argument before resolving Notion credentials',
+    'rejects a non-page-id track argument before resolving Notion credentials',
     async () => {
       await withTempDir(async (dir) => {
         const filePath = join(dir, 'page.nmd')
         writeFileSync(filePath, '')
 
-        await expect(runCli(['clone', filePath])).rejects.toMatchObject({
+        await expect(runCli(['track', filePath])).rejects.toMatchObject({
           stdout: expect.stringContaining('Invalid Notion page id/url'),
         })
       })

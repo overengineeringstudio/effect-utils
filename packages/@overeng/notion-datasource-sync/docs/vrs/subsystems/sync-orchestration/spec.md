@@ -14,7 +14,7 @@ contract.
 
 ## Established Reconciliation
 
-Established commands (`sync`, `push`, and `sync --watch`) are local-capture-first
+Established commands (`sync` and `sync --watch`) are local-capture-first
 to satisfy XC-R04:
 
 ```text
@@ -51,9 +51,9 @@ lifecycle state, but it must not invent placeholder body hashes or mutate the
 existing body projection. A suppressed body lane preserves the last real body
 fact until a later body-observing sync replaces it.
 
-`sync --from-notion` is the initial adoption exception: it has no established
-local desired state for that workspace and remains remote-to-local only. Once a
-workspace is established, all sync modes use the local-capture-first invariant.
+`track` is the initial adoption exception: it has no established local desired
+state for that workspace and remains remote-to-local only. Once a workspace is
+established, all sync modes use the local-capture-first invariant.
 
 Guarded materialization may write a remote-observed artifact only when one of
 these proofs holds:

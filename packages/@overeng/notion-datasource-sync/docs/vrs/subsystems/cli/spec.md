@@ -4,38 +4,37 @@ Sub-system slice of [spec.md](../../spec.md). Serves [requirements](./requiremen
 
 Requirement trace: CLI-R01, CLI-R02, CLI-R03, CLI-R04, CLI-R05.
 
-This sub-system defines the `notion db` command surface, establishment flow,
+This sub-system defines the `notion db` command surface, adoption flow,
 dry-run rules, and structured output for datasource-sync workflows.
 
 ## Commands
 
-| Command                             | Primary flags                                                                                                       | Purpose                                                                                                             |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `notion db sync --from-notion`      | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies`           | Establish a local workspace from an existing Notion data source; remote-to-local only                               |
-| `notion db sync <workspace-root>`   | `--dry-run`                                                                                                         | Reconcile an established workspace through local-capture-first planning                                             |
-| `notion db status <workspace-root>` | common store/root/data-source/workspace options                                                                     | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
-| `init`                              | `--data-source-id`, `--workspace-root`, `--dry-run`, common store/root/data-source/workspace options                | Advanced: bind a local root to a Notion data source without observing it                                            |
-| `pull`                              | common store/root/data-source/workspace options                                                                     | Advanced: observe remote schema/rows/body pointers and materialize local projections                                |
-| `status`                            | common store/root/data-source/workspace options                                                                     | Show local edits, remote drift, conflicts, tombstones, outbox state                                                 |
-| `push`                              | `--dry-run`, common store/root/data-source/workspace options                                                        | Plan and apply local intents to Notion with guards                                                                  |
-| `sync`                              | `--dry-run`, `--watch`, `--state`, `--max-cycles`, `--mode`, `--webhook`, `--webhook-required`, `--non-interactive` | Pull, plan, push, settle, refresh, or run the local daemon for established replicas                                 |
-| `export`                            | `--from-notion`, `--format`, `--output`, `--require-clean`                                                          | Export from the established replica contract after optional pull/project-only refresh                               |
-| `conflicts list`                    | common store/root/data-source/workspace options                                                                     | List open conflicts                                                                                                 |
-| `conflicts resolve`                 | `--conflict-id`, `--strategy`, `--value-json`, `--dry-run`                                                          | Append conflict resolution events and follow-up commands                                                            |
-| `doctor`                            | common store/root/data-source/workspace options                                                                     | Verify store health, API contract, capabilities, query checkpoints, projections, path claims, leases, and artifacts |
-| `forget`                            | `--page-id`, `--dry-run`                                                                                            | Remove local tracking without remote mutation                                                                       |
-| `restore`                           | `--page-id`, `--dry-run`                                                                                            | Restore trashed/moved state when supported and verified                                                             |
+| Command                             | Primary flags                                                                                                        | Purpose                                                                                                             |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `notion db track`                   | `<data-source-id-or-database-url>`, `<workspace-root>`, `--dry-run`, `--limit`, `--no-materialize-bodies`            | Adopt an existing Notion data source into a local workspace; remote-to-local only                                   |
+| `notion db sync <workspace-root>`   | `--dry-run`, `--watch`, `--state`, `--max-cycles`, `--mode`, `--webhook`, `--webhook-required`, `--non-interactive`  | Reconcile an established workspace through local-capture-first planning or run the local daemon                     |
+| `notion db status <workspace-root>` | common store/root/data-source/workspace options                                                                      | Show local edits, remote drift, conflicts, tombstones, outbox state for an established workspace                    |
+| `notion db export`                  | `--format`, `--output`, `--require-clean`, `--refresh`, `--dry-run`, common store/root/data-source/workspace options | Export from the established replica contract after optional refresh                                                 |
+| `notion db conflicts list`          | common store/root/data-source/workspace options                                                                      | List open conflicts                                                                                                 |
+| `notion db conflicts resolve`       | `--conflict-id`, `--strategy`, `--value-json`, `--dry-run`                                                           | Append conflict resolution events and follow-up commands                                                            |
+| `notion db doctor`                  | common store/root/data-source/workspace options                                                                      | Verify store health, API contract, capabilities, query checkpoints, projections, path claims, leases, and artifacts |
+| `notion db forget`                  | `--page-id`, `--dry-run`                                                                                             | Remove local tracking without remote mutation                                                                       |
+| `notion db restore`                 | `--page-id`, `--dry-run`                                                                                             | Restore trashed/moved state when supported and verified                                                             |
 
-The public command set is rooted at `notion db` and spans sync,
-`sync --watch`, status, doctor, conflicts, forget, restore, and export. Advanced
-init, pull, and push workflows live under the same root (CLI-R01). There is no standalone user-facing `watch` command; the daemon is
+The public command set is rooted at `notion db` and spans track, sync,
+`sync --watch`, status, doctor, conflicts, forget, restore, and export (CLI-R01).
+`track` is the only public command that accepts a Notion data-source id or
+database URL for adoption; established `sync` accepts a local workspace root.
+Init, pull, and push are internal reconciliation phases, not public commands.
+There is no standalone user-facing `watch` command; the daemon is
 reached through `sync --watch` (see
 [../watch-daemon/spec.md](../watch-daemon/spec.md)). The retired
-`notion sqlite`, standalone `notion-datasource-sync`, `notion db replica`,
-`notion db dump`, public `migrate`/`repair`, and raw Notion dump surfaces stay
-absent from the public CLI.
+`sync --from-notion`, public `init`/`pull`/`push`, `notion sqlite`, standalone
+`notion-datasource-sync`, `notion db replica`, `notion db dump`, public
+`migrate`/`repair`, and raw Notion dump surfaces stay absent from the public
+CLI.
 
-Workspace establishment writes `<workspace>/<database-id>.sqlite` under the
+Workspace adoption writes `<workspace>/<database-id>.sqlite` under the
 workspace root. The database file is named with the Notion database ID, not the
 display name, and contains the public API plus private `_nds_*` event/outbox
 state. No `.notion-datasource-sync/store.sqlite` or config sidecar is required
@@ -49,9 +48,9 @@ the materialized `.nmd` files. Users do not need to write `_nds_*`, outbox,
 planner, or daemon state directly; `changes` is an advanced public intent ledger
 and observability surface for cases where direct `rows` editing is not enough.
 
-## Establishment Flow
+## Adoption Flow
 
-First establishment is a distinct mode:
+First adoption is a distinct command:
 
 1. parse and validate the Notion data-source id or database URL,
 2. discover existing `<database-id>.sqlite` files if present,
@@ -59,7 +58,7 @@ First establishment is a distinct mode:
 4. resolve database URLs to their single child data source, failing closed on zero or multiple child data sources,
 5. validate the remote data source through the gateway,
 6. record `SyncBindingRecorded` if not already present,
-7. pull remote schema, metadata, rows, page properties, and body pointers,
+7. observe remote schema, metadata, rows, page properties, and body pointers,
 8. project observations into `<database-id>.sqlite`,
 9. materialize bodies unless disabled,
 10. report status without scanning local write intents, planning pushes, enqueuing outbox commands, or mutating Notion.
@@ -72,9 +71,9 @@ filesystem workspace behavior for explicitly injected or non-NotionMD adapters.
 ## Dry-Run Rules
 
 Mutating commands support `--dry-run`, showing planned events, conflicts, outbox
-commands, and guard failures (CLI-R02). Establishment dry-run is true no-write:
+commands, and guard failures (CLI-R02). Adoption dry-run is true no-write:
 no replica file, private events, sidecars, body files, outbox commands, or
-Notion mutations. `sync --from-notion --dry-run --limit <rows>` is a bounded
+Notion mutations. `track --dry-run --limit <rows>` is a bounded
 preview for large databases: it caps remote rows observed, marks query
 completeness as capped, and cannot be applied as a partial adoption. Established
 sync dry-run suppresses replica mutation, intent settlement, private
@@ -89,15 +88,16 @@ from public SQLite and `.nmd` files, observe remote state, plan, execute, then
 guard materialization. It must not run remote body materialization before local
 `.nmd` observations have been captured and either planned or preserved.
 
-`push` is the local-only command mode over the same captured desired-state and
+The internal outbound phase is local-first over the captured desired-state and
 outbox executor semantics; it may scope remote reads to the surfaces needed for
 preflight, but it must not skip SQLite public CDC or `.nmd` body observations.
-`pull` may update local artifacts only through guarded materialization and must
-preserve pending local desired state.
+The internal remote-observation/materialization phase may update local artifacts
+only through guarded materialization and must preserve pending local desired
+state.
 
 ## Progress And Output
 
-Sync-family commands (`init`, `pull`, `push`, `sync`, and `sync --from-notion`)
+Sync-family commands (`track` and `sync`)
 render live human progress through the shared `@overeng/tui-react` terminal app
 (CLI-R05). The progress renderer is a side channel: the final command result
 remains structured JSON on stdout, while progress frames, phase names, row/page
@@ -163,10 +163,13 @@ separate write path.
 ## Export Contract
 
 `notion db export` exports from the established replica contract, not from a
-separate live Notion query path. When `--from-notion` is provided, export may
-establish or refresh the local replica through pull/project-only work: validate
-the binding, observe remote data, update replica projections, then export.
-Export must not execute outbox commands, run planner intents, or mutate Notion.
+separate live Notion query path. With `--refresh`, it may refresh an established
+local replica through remote-observation/project-only work: validate the
+binding, observe remote data, update replica projections, then export. When
+combined with `--refresh`, `--dry-run` reports the refresh/export plan without
+writing projections or export output. Export does not accept remote Notion ids or
+database URLs; use `track` first to adopt a remote source. Export must not
+execute outbox commands, run planner intents, or mutate Notion.
 
 ## Doctor Capabilities
 

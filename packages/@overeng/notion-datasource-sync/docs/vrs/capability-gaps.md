@@ -89,9 +89,9 @@ public `INSERT INTO changes` is not part of the current e2e acceptance surface.
 
 ### G. Multi-data-source databases
 
-| Operation                                                                | Support     | Guard if blocked             | Promotion criteria (if fail-closed)                                             |
-| ------------------------------------------------------------------------ | ----------- | ---------------------------- | ------------------------------------------------------------------------------- |
-| `sync --from-notion` against a database with multiple child data sources | FAIL-CLOSED | `MultiDataSourceUnsupported` | Per-data-source file naming scheme + cross-DS query/relation semantics modeled. |
+| Operation                                                   | Support     | Guard if blocked             | Promotion criteria (if fail-closed)                                             |
+| ----------------------------------------------------------- | ----------- | ---------------------------- | ------------------------------------------------------------------------------- |
+| `track` against a database with multiple child data sources | FAIL-CLOSED | `MultiDataSourceUnsupported` | Per-data-source file naming scheme + cross-DS query/relation semantics modeled. |
 
 ## Current Fail-Closed Boundaries
 
