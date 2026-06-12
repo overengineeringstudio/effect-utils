@@ -15,6 +15,7 @@ import { readMegarepoConfig } from '../../lib/config.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { buildDependencyGraph } from '../../lib/nix-lock/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
+import * as Observability from '../observability.ts'
 import { DepsApp, DepsView } from '../renderers/DepsOutput/mod.ts'
 import type { DepsMember } from '../renderers/DepsOutput/schema.ts'
 
@@ -100,5 +101,11 @@ export const depsCommand = Cli.Command.make(
           }),
         { view: React.createElement(DepsView, { stateAtom: DepsApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.withSpan('megarepo/deps')),
+    }).pipe(
+      Observability.withCommandSpan({
+        name: 'megarepo/deps',
+        command: 'deps',
+        output,
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('Show the Nix input dependency graph between megarepo members.'))

@@ -34,9 +34,9 @@ import {
   commandKind,
   shortSpanId,
   spanAttr,
-  spanAttributes,
   spanLabel,
-  spanNames,
+  withSpan,
+  withStreamSpan,
 } from '../observability/observability.ts'
 
 /** The Notion API version string that this gateway implementation targets. */
@@ -197,20 +197,18 @@ const gatewayRequestSpan = (input: {
   const entityId = input.pageId ?? input.dataSourceId ?? input.commandId
 
   return {
-    attributes: spanAttributes({
-      [spanAttr.spanLabel]: spanLabel(
-        input.operation,
-        entityId === undefined ? undefined : shortSpanId(entityId),
-      ),
-      [spanAttr.processRole]: 'library',
-      [spanAttr.operation]: input.operation,
-      [spanAttr.apiVersion]: input.configuredApiVersion,
-      [spanAttr.dataSourceId]: input.dataSourceId,
-      [spanAttr.pageId]: input.pageId,
-      [spanAttr.propertyId]: input.propertyId,
-      [spanAttr.commandId]: input.commandId,
-      [spanAttr.commandKind]: input.commandKind,
-    }),
+    [spanAttr.spanLabel]: spanLabel(
+      input.operation,
+      entityId === undefined ? undefined : shortSpanId(entityId),
+    ),
+    [spanAttr.processRole]: 'library',
+    [spanAttr.operation]: input.operation,
+    [spanAttr.apiVersion]: input.configuredApiVersion,
+    [spanAttr.dataSourceId]: input.dataSourceId,
+    [spanAttr.pageId]: input.pageId,
+    [spanAttr.propertyId]: input.propertyId,
+    [spanAttr.commandId]: input.commandId,
+    [spanAttr.commandKind]: input.commandKind,
   }
 }
 
@@ -240,14 +238,14 @@ export const makeNotionDataSourceGateway = (
               )
             : adapter.preflightCapabilities(input),
         ),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'preflightCapabilities',
             configuredApiVersion,
             dataSourceId: input.dataSourceId,
           }),
-        ),
+        }),
       ),
     retrieveDataSource: (id) =>
       ensureSupportedGatewayApiVersion({
@@ -256,14 +254,14 @@ export const makeNotionDataSourceGateway = (
         dataSourceId: id,
       }).pipe(
         Effect.flatMap(() => adapter.retrieveDataSource(id)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'retrieveDataSource',
             configuredApiVersion,
             dataSourceId: id,
           }),
-        ),
+        }),
       ),
     queryRows: (input: QueryRowsInput) =>
       Stream.fromEffect(
@@ -274,14 +272,14 @@ export const makeNotionDataSourceGateway = (
         }),
       ).pipe(
         Stream.flatMap(() => adapter.queryRows(input)),
-        Stream.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withStreamSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'queryRows',
             configuredApiVersion,
             dataSourceId: input.dataSourceId,
           }),
-        ),
+        }),
       ),
     retrievePage: (id) =>
       ensureSupportedGatewayApiVersion({
@@ -290,10 +288,14 @@ export const makeNotionDataSourceGateway = (
         pageId: id,
       }).pipe(
         Effect.flatMap(() => adapter.retrievePage(id)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({ operation: 'retrievePage', configuredApiVersion, pageId: id }),
-        ),
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
+            operation: 'retrievePage',
+            configuredApiVersion,
+            pageId: id,
+          }),
+        }),
       ),
     retrievePageProperty: (input: RetrievePagePropertyInput) =>
       Stream.fromEffect(
@@ -304,15 +306,15 @@ export const makeNotionDataSourceGateway = (
         }),
       ).pipe(
         Stream.flatMap(() => adapter.retrievePageProperty(input)),
-        Stream.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withStreamSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'retrievePageProperty',
             configuredApiVersion,
             pageId: input.pageId,
             propertyId: input.propertyId,
           }),
-        ),
+        }),
       ),
     ...(adapter.listDataSourceViews === undefined
       ? {}
@@ -326,14 +328,14 @@ export const makeNotionDataSourceGateway = (
               }),
             ).pipe(
               Stream.flatMap(() => adapter.listDataSourceViews!(input)),
-              Stream.withSpan(
-                spanNames.gatewayRequest,
-                gatewayRequestSpan({
+              withStreamSpan({
+                span: 'gatewayRequest',
+                attributes: gatewayRequestSpan({
                   operation: 'listDataSourceViews',
                   configuredApiVersion,
                   dataSourceId: input.dataSourceId,
                 }),
-              ),
+              }),
             ),
         }),
     patchPageProperties: (command: PatchPagePropertiesCommand) =>
@@ -343,16 +345,16 @@ export const makeNotionDataSourceGateway = (
         pageId: command.pageId,
       }).pipe(
         Effect.flatMap(() => adapter.patchPageProperties(command)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'patchPageProperties',
             configuredApiVersion,
             pageId: command.pageId,
             commandId: command.commandId,
             commandKind: commandKind(command._tag),
           }),
-        ),
+        }),
       ),
     createPage: (command: CreatePageCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -361,16 +363,16 @@ export const makeNotionDataSourceGateway = (
         dataSourceId: command.dataSourceId,
       }).pipe(
         Effect.flatMap(() => adapter.createPage(command)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'createPage',
             configuredApiVersion,
             dataSourceId: command.dataSourceId,
             commandId: command.commandId,
             commandKind: commandKind(command._tag),
           }),
-        ),
+        }),
       ),
     patchDataSourceSchema: (command: PatchDataSourceSchemaCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -379,16 +381,16 @@ export const makeNotionDataSourceGateway = (
         dataSourceId: command.dataSourceId,
       }).pipe(
         Effect.flatMap(() => adapter.patchDataSourceSchema(command)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'patchDataSourceSchema',
             configuredApiVersion,
             dataSourceId: command.dataSourceId,
             commandId: command.commandId,
             commandKind: commandKind(command._tag),
           }),
-        ),
+        }),
       ),
     patchDataSourceMetadata: (command: PatchDataSourceMetadataCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -397,16 +399,16 @@ export const makeNotionDataSourceGateway = (
         dataSourceId: command.dataSourceId,
       }).pipe(
         Effect.flatMap(() => adapter.patchDataSourceMetadata(command)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'patchDataSourceMetadata',
             configuredApiVersion,
             dataSourceId: command.dataSourceId,
             commandId: command.commandId,
             commandKind: commandKind(command._tag),
           }),
-        ),
+        }),
       ),
     patchDatabaseMetadata: (command: PatchDatabaseMetadataCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -415,16 +417,16 @@ export const makeNotionDataSourceGateway = (
         dataSourceId: command.dataSourceId,
       }).pipe(
         Effect.flatMap(() => adapter.patchDatabaseMetadata(command)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'patchDatabaseMetadata',
             configuredApiVersion,
             dataSourceId: command.dataSourceId,
             commandId: command.commandId,
             commandKind: commandKind(command._tag),
           }),
-        ),
+        }),
       ),
     trashPage: (command: TrashPageCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -433,16 +435,16 @@ export const makeNotionDataSourceGateway = (
         pageId: command.pageId,
       }).pipe(
         Effect.flatMap(() => adapter.trashPage(command)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'trashPage',
             configuredApiVersion,
             pageId: command.pageId,
             commandId: command.commandId,
             commandKind: commandKind(command._tag),
           }),
-        ),
+        }),
       ),
     restorePage: (command: RestorePageCommand) =>
       ensureSupportedGatewayApiVersion({
@@ -451,16 +453,16 @@ export const makeNotionDataSourceGateway = (
         pageId: command.pageId,
       }).pipe(
         Effect.flatMap(() => adapter.restorePage(command)),
-        Effect.withSpan(
-          spanNames.gatewayRequest,
-          gatewayRequestSpan({
+        withSpan({
+          span: 'gatewayRequest',
+          attributes: gatewayRequestSpan({
             operation: 'restorePage',
             configuredApiVersion,
             pageId: command.pageId,
             commandId: command.commandId,
             commandKind: commandKind(command._tag),
           }),
-        ),
+        }),
       ),
   }
 }

@@ -19,6 +19,7 @@ export default tsconfigJson({
     { path: '../effect-path' },
     { path: '../kdl' },
     { path: '../kdl-effect' },
+    { path: '../otel-contract' },
     { path: '../utils' },
   ],
 } satisfies TSConfigArgs)

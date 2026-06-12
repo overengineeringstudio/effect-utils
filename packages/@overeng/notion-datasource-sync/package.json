@@ -61,6 +61,7 @@
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
     "@overeng/notion-md": "workspace:^",
+    "@overeng/otel-contract": "workspace:^",
     "@overeng/tui-react": "workspace:^",
     "@overeng/utils": "workspace:^",
     "react": "19.2.3"
@@ -120,6 +121,7 @@
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",
       "packages/@overeng/notion-md",
+      "packages/@overeng/otel-contract",
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
       "packages/@overeng/utils",

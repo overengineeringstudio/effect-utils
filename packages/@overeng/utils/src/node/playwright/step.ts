@@ -5,7 +5,41 @@
  */
 
 import { test } from '@playwright/test'
-import { Effect, Exit, Function as F } from 'effect'
+import { Effect, Exit, Function as F, Schema } from 'effect'
+
+import {
+  OtelAttr,
+  OtelOperation,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
+
+const PwStepOperation = (name: string) =>
+  OtelOperation.define({
+    name,
+    schema: Schema.Struct({
+      label: OtelAttr.drop(Schema.NonEmptyString),
+      step: Schema.Boolean.pipe(OtelAttr.key({ key: 'pw.step' })),
+      stepName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'pw.step.name' })),
+      parentSpanTag: Schema.optional(
+        Schema.String.pipe(OtelAttr.key({ key: 'pw.step.parentSpan._tag' })),
+      ),
+    }),
+    label: ({ label }) => label,
+  })
+
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
 /**
  * Runs an Effect inside a Playwright `test.step(...)` boundary.
@@ -39,14 +73,11 @@ export const step: {
       const run =
         parentSpan._tag === 'Some' ? self.pipe(Effect.withParentSpan(parentSpan.value)) : self
       const traced = run.pipe(
-        Effect.withSpan(name, {
-          attributes: {
-            'pw.step': true,
-            'pw.step.name': name,
-            ...(parentSpan._tag === 'Some'
-              ? { 'pw.step.parentSpan._tag': parentSpan.value._tag }
-              : {}),
-          },
+        trustedWith(PwStepOperation(name), {
+          label: name,
+          step: true,
+          stepName: name,
+          ...(parentSpan._tag === 'Some' ? { parentSpanTag: parentSpan.value._tag } : {}),
         }),
       )
 

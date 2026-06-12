@@ -4,6 +4,7 @@ import { Context, Effect, Option, Runtime, Schema } from 'effect'
 import * as SchemaAST from 'effect/SchemaAST'
 
 import { contractSerdeFactory, invocationIdempotencyKey } from '../clients/InvocationPolicy.ts'
+import { withRestateOperation } from '../observability/effect.ts'
 import { emitAwakeableWait, emitDurableStep, monotonicMs } from '../observability/Metrics.ts'
 import { type RedactionCipher, RestateRedaction } from '../schema/Redaction.ts'
 import { RestateError } from '../schema/RestateError.ts'
@@ -353,7 +354,7 @@ export const run = <A, R>(
      * so gating the counter on non-replay makes it exactly-once across attempts. */
     yield* emitDurableStep(ctx, name)
     return result
-  }).pipe(Effect.withSpan('restate.run', { attributes: { 'span.label': name } }))
+  }).pipe(withRestateOperation('restate.run', name))
 
 /**
  * Observe a `Restate.run`'s OBSERVED outcome as an `Exit` VALUE instead of failing
@@ -393,7 +394,7 @@ export const sleep = (millis: number, name?: string): Effect.Effect<void, never,
       () => ctx.sleep(millis, name),
       (cause) => new RestateError({ reason: 'SleepFailed', method: `sleep(${millis})`, cause }),
     )
-  }).pipe(Effect.withSpan('restate.sleep', { attributes: { 'span.label': name ?? `${millis}ms` } }))
+  }).pipe(withRestateOperation('restate.sleep', name ?? `${millis}ms`))
 
 /** A `sleep` descriptor for use inside `Restate.all`/`race`/`any`. */
 export const sleepDescriptor = (millis: number, name?: string): Descriptor<void> =>
@@ -421,7 +422,7 @@ export const timeout = <A>(
           .map((value?: A) => value),
       (cause) => new RestateError({ reason: 'RunFailed', method: `timeout(${millis})`, cause }),
     )
-  }).pipe(Effect.withSpan('restate.timeout', { attributes: { 'span.label': `${millis}ms` } }))
+  }).pipe(withRestateOperation('restate.timeout', `${millis}ms`))
 
 /**
  * Combine durable-op descriptors deterministically. Issues every descriptor
@@ -449,7 +450,7 @@ const combineDescriptors =
         () => combine(descriptors.map((d) => d.issue(ctx, redaction))),
         (cause) => new RestateError({ reason: 'RunFailed', method: label, cause }),
       )
-    }).pipe(Effect.withSpan(`restate.${label}`))
+    }).pipe(withRestateOperation(`restate.${label}`, label))
 
 /** Await all durable descriptors → result TUPLE (issued in source order). */
 export const all = <const T extends readonly Descriptor<any>[]>(
@@ -515,7 +516,7 @@ const readState = <S extends StateSchemas, K extends keyof S & string>(
       ),
       Effect.orDie,
     )
-  }).pipe(Effect.withSpan('restate.state.get', { attributes: { 'span.label': key } }))
+  }).pipe(withRestateOperation('restate.state.get', key))
 
 const writeState = <S extends StateSchemas, K extends keyof S & string>(
   schemas: S,
@@ -542,7 +543,7 @@ const writeState = <S extends StateSchemas, K extends keyof S & string>(
       Effect.orDie,
     )
     objectCtx.set(key, encoded)
-  }).pipe(Effect.withSpan('restate.state.set', { attributes: { 'span.label': key } }))
+  }).pipe(withRestateOperation('restate.state.set', key))
 
 /**
  * Build the typed State combinator family bound to a contract's `state` block.
@@ -560,12 +561,12 @@ export const stateFor = <S extends StateSchemas>(schemas: S) =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
         ;(ctx as restate.ObjectContext).clear(key)
-      }).pipe(Effect.withSpan('restate.state.clear', { attributes: { 'span.label': key } })),
+      }).pipe(withRestateOperation('restate.state.clear', key)),
     clearAll: (): Effect.Effect<void, never, StateWrite | RestateContext> =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
         ;(ctx as restate.ObjectContext).clearAll()
-      }).pipe(Effect.withSpan('restate.state.clearAll')),
+      }).pipe(withRestateOperation('restate.state.clearAll', 'clearAll')),
     stateKeys: (): Effect.Effect<ReadonlyArray<string>, never, StateRead | RestateContext> =>
       Effect.gen(function* () {
         const ctx = yield* RestateContext
@@ -575,7 +576,7 @@ export const stateFor = <S extends StateSchemas>(schemas: S) =>
           catch: (cause) =>
             new RestateError({ reason: 'RunFailed', method: 'State.stateKeys', cause }),
         }).pipe(Effect.orDie)
-      }).pipe(Effect.withSpan('restate.state.stateKeys')),
+      }).pipe(withRestateOperation('restate.state.stateKeys', 'stateKeys')),
   }) as const
 
 /* ── ObjectKey accessor (capability-gated) ───────────────────────────────── */
@@ -589,7 +590,7 @@ export const objectKey: Effect.Effect<string, never, ObjectKey | RestateContext>
     const ctx = yield* RestateContext
     return (ctx as restate.ObjectContext).key
   },
-).pipe(Effect.withSpan('restate.objectKey'))
+).pipe(withRestateOperation('restate.objectKey', 'objectKey'))
 
 /* ── Durable promises (Workflow cross-handler signalling) ────────────────── */
 /*
@@ -624,7 +625,7 @@ const promiseGet = <T, I>(
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.get(${name})`, cause }),
       'terminal-reject',
     )
-  }).pipe(Effect.withSpan('restate.promise.get', { attributes: { 'span.label': name } }))
+  }).pipe(withRestateOperation('restate.promise.get', name))
 
 /* A non-blocking read (`undefined` if unresolved — never suspends), awaited through
  * {@link awaitDurable} so a `reject` classifies TERMINALLY like {@link promiseGet}
@@ -641,7 +642,7 @@ const promisePeek = <T, I>(
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.peek(${name})`, cause }),
       'terminal-reject',
     )
-  }).pipe(Effect.withSpan('restate.promise.peek', { attributes: { 'span.label': name } }))
+  }).pipe(withRestateOperation('restate.promise.peek', name))
 
 const promiseResolve = <T, I>(
   name: string,
@@ -658,7 +659,7 @@ const promiseResolve = <T, I>(
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.resolve(${name})`, cause }),
     }).pipe(Effect.orDie)
-  }).pipe(Effect.withSpan('restate.promise.resolve', { attributes: { 'span.label': name } }))
+  }).pipe(withRestateOperation('restate.promise.resolve', name))
 
 const promiseReject = <T, I>(
   name: string,
@@ -675,7 +676,7 @@ const promiseReject = <T, I>(
       catch: (cause) =>
         new RestateError({ reason: 'RunFailed', method: `DurablePromise.reject(${name})`, cause }),
     }).pipe(Effect.orDie)
-  }).pipe(Effect.withSpan('restate.promise.reject', { attributes: { 'span.label': name } }))
+  }).pipe(withRestateOperation('restate.promise.reject', name))
 
 /**
  * Build the typed durable-promise combinator family for one payload Schema. Each
@@ -753,14 +754,14 @@ export const makeAwakeable = <T, I>(
        * resolution, never on replay. */
       yield* emitAwakeableWait(ctx, monotonicMs() - startMs)
       return value
-    }).pipe(Effect.withSpan('restate.awakeable.await', { attributes: { 'span.label': aw.id } }))
+    }).pipe(withRestateOperation('restate.awakeable.await', aw.id))
     /* The awakeable's completion promise is itself a `RestatePromise`, so it joins
      * the deterministic combinators like any other descriptor — issued in source
      * order, awaited once (decision 0005, #2). It is created ONCE (at `make`), so
      * `issue` just hands the existing promise to the combinator. */
     const descriptor: Descriptor<T> = { _tag: 'awakeable', issue: () => aw.promise }
     return { id: aw.id as AwakeableId<T>, promise, descriptor }
-  }).pipe(Effect.withSpan('restate.awakeable.make'))
+  }).pipe(withRestateOperation('restate.awakeable.make', 'make'))
 
 /** Resolve an awakeable in-handler with a typed payload (encoded via `schema`). */
 export const resolveAwakeable = <T, I>(
@@ -771,7 +772,7 @@ export const resolveAwakeable = <T, I>(
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     ctx.resolveAwakeable<T>(id, payload, promiseSerde(schema))
-  }).pipe(Effect.withSpan('restate.awakeable.resolve', { attributes: { 'span.label': id } }))
+  }).pipe(withRestateOperation('restate.awakeable.resolve', id))
 
 /** Reject an awakeable in-handler with a reason (the awaiter fails terminally). */
 export const rejectAwakeable = <T>(
@@ -781,7 +782,7 @@ export const rejectAwakeable = <T>(
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     ctx.rejectAwakeable(id, reason)
-  }).pipe(Effect.withSpan('restate.awakeable.reject', { attributes: { 'span.label': id } }))
+  }).pipe(withRestateOperation('restate.awakeable.reject', id))
 
 /* ── In-handler service-to-service clients ───────────────────────────────── */
 /*
@@ -866,11 +867,7 @@ const callRpc = <In, InI, Out, OutI>(opts: {
         }),
       'terminal-reject',
     )
-  }).pipe(
-    Effect.withSpan('restate.client.call', {
-      attributes: { 'span.label': `${opts.service}.${opts.handler}` },
-    }),
-  )
+  }).pipe(withRestateOperation('restate.client.call', `${opts.service}.${opts.handler}`))
 
 const sendRpc = <In, InI>(opts: {
   readonly service: string
@@ -905,11 +902,7 @@ const sendRpc = <In, InI>(opts: {
           cause,
         }),
     })
-  }).pipe(
-    Effect.withSpan('restate.client.send', {
-      attributes: { 'span.label': `${opts.service}.${opts.handler}` },
-    }),
-  )
+  }).pipe(withRestateOperation('restate.client.send', `${opts.service}.${opts.handler}`))
 
 /**
  * A `call` descriptor: issue an in-handler service-to-service `genericCall` as a

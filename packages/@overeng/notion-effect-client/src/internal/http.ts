@@ -17,6 +17,7 @@ import {
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
+import { annotateNotionHttpRateLimitSpan, withNotionHttpSpan } from './otel.ts'
 import { NotionThrottle } from './throttle.ts'
 
 /** Rate limit info extracted from response headers */
@@ -268,27 +269,7 @@ const annotateRateLimitSpan = (input: {
   readonly attempts: number
   readonly retryDelayMs?: number
   readonly rateLimit: Option.Option<RateLimitInfo>
-}): Effect.Effect<void> =>
-  Effect.annotateCurrentSpan(
-    definedSpanAttributes({
-      'span.label': input.route.spanLabel,
-      'notion.http.method': input.method,
-      'notion.http.route': input.route.route,
-      'notion.http.operation': input.route.operation,
-      'notion.http.status_code': input.status,
-      'notion.http.retry.attempt': input.attempt,
-      'notion.http.retry.attempts': input.attempts,
-      'notion.http.retry.delay_ms': input.retryDelayMs,
-      'notion.quota.cost': input.attempts,
-      'notion.rate_limit.present': Option.isSome(input.rateLimit),
-      'notion.rate_limit.remaining': Option.getOrUndefined(
-        Option.map(input.rateLimit, (rateLimit) => rateLimit.remaining),
-      ),
-      'notion.rate_limit.reset_after_ms': Option.getOrUndefined(
-        Option.map(input.rateLimit, (rateLimit) => rateLimit.resetAfterSeconds * 1000),
-      ),
-    }),
-  )
+}): Effect.Effect<void> => annotateNotionHttpRateLimitSpan(input)
 
 const reportHttpTelemetry = (event: NotionHttpTelemetryEvent): Effect.Effect<void> =>
   Effect.serviceOption(NotionHttpTelemetry).pipe(
@@ -298,16 +279,6 @@ const reportHttpTelemetry = (event: NotionHttpTelemetryEvent): Effect.Effect<voi
         onSome: (telemetry) => telemetry.report(event),
       }),
     ),
-  )
-
-const definedSpanAttributes = (
-  attributes: Record<string, string | number | boolean | undefined>,
-): Record<string, string | number | boolean> =>
-  Object.fromEntries(
-    Object.entries(attributes).filter((entry): entry is [string, string | number | boolean] => {
-      const value = entry[1]
-      return value !== undefined
-    }),
   )
 
 /**
@@ -351,7 +322,7 @@ export const buildRequest = ({
 
     return baseRequest
   })
-/* No `Effect.withSpan` here: request construction is a trivial synchronous
+/* No operation span here: request construction is a trivial synchronous
      shape (header mapping + body encoding) and the generated span was noise
      — 85 zero-signal spans per `pixeltrail sync` run. Method/path are
      already carried on the surrounding `NotionHttp.<METHOD>` span. */
@@ -598,16 +569,7 @@ export const executeRequest = <A, I, R>({
       onNone: () => runOnce,
       onSome: (service) => service.apply(runOnce),
     })
-  }).pipe(
-    Effect.withSpan(`NotionHttp.${method}`, {
-      attributes: {
-        'span.label': notionHttpRouteInfo({ method, path }).spanLabel,
-        'notion.http.method': method,
-        'notion.http.route': notionHttpRouteInfo({ method, path }).route,
-        'notion.http.operation': notionHttpRouteInfo({ method, path }).operation,
-      },
-    }),
-  )
+  }).pipe(withNotionHttpSpan({ method, route: notionHttpRouteInfo({ method, path }) }))
 
 /** Options for GET request */
 export interface GetRequestOptions<A, I, R> {

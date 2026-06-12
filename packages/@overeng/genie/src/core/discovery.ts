@@ -5,6 +5,7 @@ import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
 import { Effect, Option } from 'effect'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
+import * as Observability from './observability.ts'
 import type { StatResult } from './types.ts'
 
 let importMapResolverRegistered = false
@@ -57,7 +58,8 @@ type BunPluginBuilder = {
  * with Bun internals (ResolveMessage instanceof checks fail). We skip plugin registration
  * entirely in compiled binaries - files using `#...` imports need to be run with `bun run`.
  */
-export const ensureImportMapResolver = Effect.sync(() => {
+export const ensureImportMapResolver = Effect.gen(function* () {
+  yield* Observability.annotatePath({ label: 'import-map', path: process.cwd() })
   if (importMapResolverRegistered === true) return
   importMapResolverRegistered = true
 
@@ -86,7 +88,7 @@ export const ensureImportMapResolver = Effect.sync(() => {
       })
     },
   })
-}).pipe(Effect.withSpan('genie.registerImportMapResolver'))
+}).pipe(Observability.withImportMapResolverSpan)
 
 /** Directories to skip when searching for .genie.ts files */
 const shouldSkipDirectory = (name: string): boolean => {
@@ -113,6 +115,7 @@ export const isGenieFile = (file: string): boolean => file.endsWith('.genie.ts')
  *   avoiding double generation and racey writes/chmod.
  */
 export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (dir: string) {
+  yield* Observability.annotatePath({ label: 'find-files', path: dir })
   const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
   const warnings: string[] = []

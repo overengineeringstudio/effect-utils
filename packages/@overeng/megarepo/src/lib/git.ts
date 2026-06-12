@@ -7,6 +7,8 @@
 import { Command } from '@effect/platform'
 import { Cause, Chunk, Duration, Effect, Option, Schedule, Stream } from 'effect'
 
+import * as Observability from './observability.ts'
+
 // =============================================================================
 // Git URL Parsing
 // =============================================================================
@@ -222,8 +224,11 @@ export const clone = (args: { url: string; targetPath: string; bare?: boolean })
     cmdArgs.push(args.url, args.targetPath)
     yield* runGitCommandWithRetry({ args: cmdArgs })
   }).pipe(
-    Effect.withSpan('git/clone', {
-      attributes: { 'span.label': args.url, url: args.url, bare: args.bare ?? false },
+    Observability.withGitUrlSpan({
+      name: 'git/clone',
+      label: args.url,
+      url: args.url,
+      bare: args.bare ?? false,
     }),
   )
 
@@ -238,11 +243,7 @@ export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean
     }
     cmdArgs.push(args.remote ?? 'origin')
     yield* runGitCommandWithRetry({ args: cmdArgs, cwd: args.repoPath })
-  }).pipe(
-    Effect.withSpan('git/fetch', {
-      attributes: { 'span.label': args.repoPath, repoPath: args.repoPath },
-    }),
-  )
+  }).pipe(Observability.withRepoPathSpan('git/fetch', args.repoPath))
 
 /**
  * Checkout a specific ref (branch, tag, or commit)
@@ -326,8 +327,9 @@ export const createWorktree = (args: {
     }
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
   }).pipe(
-    Effect.withSpan('git/create-worktree', {
-      attributes: { 'span.label': args.branch, branch: args.branch },
+    Observability.withGitBranchSpan({
+      name: 'git/create-worktree',
+      branch: args.branch,
     }),
   )
 
@@ -348,7 +350,7 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
 export const pruneWorktrees = (repoPath: string) =>
   runGitCommand({ args: ['worktree', 'prune'], cwd: repoPath }).pipe(
     Effect.asVoid,
-    Effect.withSpan('git/worktree-prune', { attributes: { 'span.label': repoPath, repoPath } }),
+    Observability.withRepoPathSpan('git/worktree-prune', repoPath),
   )
 
 /**
@@ -424,7 +426,11 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
       cwd: args.targetPath,
     })
   }).pipe(
-    Effect.withSpan('git/clone-bare', { attributes: { 'span.label': args.url, url: args.url } }),
+    Observability.withGitUrlSpan({
+      name: 'git/clone-bare',
+      label: args.url,
+      url: args.url,
+    }),
   )
 
 /**
@@ -438,11 +444,7 @@ export const fetchBare = (args: { repoPath: string; remote?: string }) =>
       args: ['fetch', '--tags', '--prune', remote],
       cwd: args.repoPath,
     })
-  }).pipe(
-    Effect.withSpan('git/fetch-bare', {
-      attributes: { 'span.label': args.repoPath, repoPath: args.repoPath },
-    }),
-  )
+  }).pipe(Observability.withRepoPathSpan('git/fetch-bare', args.repoPath))
 
 /**
  * Get the default branch name from a remote
@@ -596,8 +598,10 @@ export const createWorktreeDetached = (args: {
     cwd: args.repoPath,
   }).pipe(
     Effect.asVoid,
-    Effect.withSpan('git/create-worktree-detached', {
-      attributes: { 'span.label': args.commit.slice(0, 8), commit: args.commit },
+    Observability.withGitCommitSpan({
+      name: 'git/create-worktree-detached',
+      label: args.commit.slice(0, 8),
+      commit: args.commit,
     }),
   )
 
@@ -648,8 +652,10 @@ export const getWorktreeStatus = (worktreePath: string) =>
       changesCount: changes.length,
     } satisfies WorktreeStatus
   }).pipe(
-    Effect.withSpan('git/worktree-status', {
-      attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+    Observability.withWorktreePathSpan({
+      name: 'git/worktree-status',
+      label: worktreeSpanLabel(worktreePath),
+      worktreePath,
     }),
   )
 
@@ -667,8 +673,10 @@ export const getWorktreeRemovalStatus = (worktreePath: string) =>
       args: ['status', '--porcelain', '--untracked-files=normal'],
       cwd: worktreePath,
     }).pipe(
-      Effect.withSpan('git/worktree-removal-status/dirty', {
-        attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+      Observability.withWorktreePathSpan({
+        name: 'git/worktree-removal-status/dirty',
+        label: worktreeSpanLabel(worktreePath),
+        worktreePath,
       }),
     )
     const changes = statusOutput.split('\n').filter((line) => line.trim() !== '')
@@ -682,8 +690,10 @@ export const getWorktreeRemovalStatus = (worktreePath: string) =>
     }
 
     const hasUnpushed = yield* getUnpushedStatus(worktreePath).pipe(
-      Effect.withSpan('git/worktree-removal-status/unpushed', {
-        attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+      Observability.withWorktreePathSpan({
+        name: 'git/worktree-removal-status/unpushed',
+        label: worktreeSpanLabel(worktreePath),
+        worktreePath,
       }),
     )
 
@@ -693,8 +703,10 @@ export const getWorktreeRemovalStatus = (worktreePath: string) =>
       changesCount: 0,
     } satisfies WorktreeStatus
   }).pipe(
-    Effect.withSpan('git/worktree-removal-status', {
-      attributes: { 'span.label': worktreeSpanLabel(worktreePath), worktreePath },
+    Observability.withWorktreePathSpan({
+      name: 'git/worktree-removal-status',
+      label: worktreeSpanLabel(worktreePath),
+      worktreePath,
     }),
   )
 

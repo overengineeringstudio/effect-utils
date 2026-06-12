@@ -7,13 +7,14 @@ import {
 import contentAddressPkg from '../content-address/package.json.genie.ts'
 import notionCorePkg from '../notion-core/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-client' }),
   dependencies: {
-    workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg],
+    workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg, otelContractPkg],
   },
   devDependencies: {
     workspace: [utilsDevPkg, utilsPkg],

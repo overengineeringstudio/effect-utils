@@ -1,7 +1,15 @@
-import { Effect, Exit, type Runtime, type Scope, Stream } from 'effect'
+import { Effect, Exit, Schema, type Runtime, type Scope, Stream } from 'effect'
 import React from 'react'
 
+import { OtelOperation } from '@overeng/otel-contract'
+
 import { initialProgress, type Progress, ProgressReporter } from './progress-reporter.ts'
+
+const EffectButtonOperation = OtelOperation.define({
+  name: 'ui.effect-button',
+  schema: Schema.Struct({}),
+  label: () => 'effect-button',
+})
 
 /**
  * UI state for a running Effect button controller.
@@ -156,7 +164,7 @@ export const useEffectButton = <TEnv, TA, TE>({
 
         /** Re-raise so the effect runner can surface the error. */
         return yield* Effect.failCause(exit.cause)
-      }).pipe(Effect.withSpan('ui.effect-button')),
+      }).pipe(EffectButtonOperation.with({})),
     )
 
     setState({ _tag: 'running', startedAt, cancel, progress: initialProgress })

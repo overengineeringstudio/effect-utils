@@ -5,6 +5,7 @@ import { Effect, Layer, type Scope } from 'effect'
 
 import { otlpTracesUrl } from '../node-vitest/Vitest.ts'
 import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './errors.ts'
+import { withOteliteLabelSpan, withOteliteRootSpan } from './otel.ts'
 import { Otelite } from './Otelite.ts'
 import type { CaptureHandle, CaptureOptions } from './Otelite.ts'
 import type { SpanRow } from './schema.ts'
@@ -176,10 +177,7 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
 
           const runInProcess = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
             effect.pipe(
-              Effect.withSpan(rootSpanName, {
-                root: true,
-                attributes: { 'span.label': rootSpanLabel },
-              }),
+              withOteliteRootSpan({ name: rootSpanName, label: rootSpanLabel }),
               Effect.provide(inProcessLayer),
             )
 
@@ -224,7 +222,7 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             withEnv,
             withEnvTrace,
           } satisfies OteliteTestHandle
-        }).pipe(Effect.withSpan('otelite.test-harness.capture'))
+        }).pipe(withOteliteLabelSpan('otelite.test-harness.capture', 'test-harness.capture'))
 
       return { capture } as const
     }),

@@ -31,7 +31,7 @@
 #
 # Shell helpers:
 #   - otel-span: emit OTLP trace spans from shell scripts (see otel-span --help)
-#   - otel health: diagnose the OTEL stack health (see otel health --help)
+#   - otel-trace: print the current Grafana/Tempo trace link
 #
 {
   # Fixed base port (null = derive from $DEVENV_ROOT hash)
@@ -42,7 +42,8 @@
   # Mode: "auto" detects system stack, "local" always uses local, "system" always uses system
   mode ? "auto",
   # Pre-compiled project-specific dashboards to provision alongside built-in ones.
-  # Only used for local Grafana provisioning; OTEL_MODE=system requires explicit otel-cli sources.
+  # Only used for local Grafana provisioning. OTEL_MODE=system uses the shared
+  # stack and refreshes dashboards only when a compatible legacy otel CLI exists.
   # Each entry: { name = "my-project"; path = <nix-store-path-with-json-files>; }
   # Use lib.buildOtelDashboards to compile Jsonnet sources into the expected format.
   extraDashboards ? [ ],
@@ -382,16 +383,14 @@ let
           echo "[otel] ERROR: OTEL_MODE=system requires OTEL_GRAFANA_URL" >&2
           return 1
         fi
-        if ! command -v otel >/dev/null 2>&1; then
-          echo "[otel] ERROR: OTEL_MODE=system requires otel CLI for dashboard sync" >&2
-          return 1
-        fi
         if [ "${toString (builtins.length extraDashboards)}" -gt 0 ]; then
           echo "[otel] ERROR: extraDashboards is not supported in OTEL_MODE=system" >&2
           return 1
         fi
-        _otel_project_name="$(basename "''${DEVENV_ROOT:-devenv}")"
-        if otel dash sync --help >/dev/null 2>&1; then
+        _otel_project_name="$(${pkgs.coreutils}/bin/basename "''${DEVENV_ROOT:-devenv}")"
+        if ! command -v otel >/dev/null 2>&1; then
+          echo "[otel] WARN: legacy otel CLI unavailable; skipping system dashboard refresh" >&2
+        elif otel dash sync --help >/dev/null 2>&1; then
           if ! otel dash sync \
             --source "${allDashboards}" \
             --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
@@ -791,7 +790,24 @@ in
       }
       _check "Shell state resolution (system requires Grafana URL)" _test_shell_state_system_requires_grafana
 
-      # Test 5: shell:entry emission uses explicit shell IDs and ignores ambient parents
+      # Test 5: system shell state does not require the retired legacy otel CLI.
+      _test_shell_state_system_without_legacy_otel_cli() {
+        (
+          export OTEL_MODE="system"
+          export OTEL_STATE_DIR="$_tmp/system-state"
+          export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector.example:4318"
+          export OTEL_GRAFANA_URL="http://grafana.example"
+          unset OTEL_SPAN_SPOOL_DIR
+          export PATH="/nonexistent"
+          resolve_otel_shell_state
+          [ "$OTEL_MODE" = "system" ] || return 1
+          [ "$OTEL_GRAFANA_URL" = "http://grafana.example" ] || return 1
+          [ -z "''${OTEL_SPAN_SPOOL_DIR:-}" ] || return 1
+        )
+      }
+      _check "Shell state resolution (system without legacy otel CLI)" _test_shell_state_system_without_legacy_otel_cli
+
+      # Test 6: shell:entry emission uses explicit shell IDs and ignores ambient parents
       _test_shell_entry_root_span() {
         local spool="$_tmp/shell-entry-root"
         mkdir -p "$spool"
@@ -824,7 +840,7 @@ in
       }
       _check "shell:entry root span emission" _test_shell_entry_root_span
 
-      # Test 6: shell:entry emission must not depend on PATH already containing
+      # Test 7: shell:entry emission must not depend on PATH already containing
       # otel-span because enterShell can run before package PATH setup settles.
       _test_shell_entry_root_span_without_path() {
         local spool="$_tmp/shell-entry-no-path"
@@ -858,7 +874,7 @@ in
       }
       _check "shell:entry root span emission without PATH" _test_shell_entry_root_span_without_path
 
-      # Test 7: reload-trigger detection uses pinned binaries instead of
+      # Test 8: reload-trigger detection uses pinned binaries instead of
       # ambient PATH, so the shell-entry task works before GNU tools are added.
       _test_shell_entry_state_without_path() {
         local workdir="$_tmp/shell-entry-state-no-path"
@@ -877,7 +893,7 @@ in
       }
       _check "shell-entry state detection without PATH" _test_shell_entry_state_without_path
 
-      # Test 8: reload-trigger detection tolerates input paths that disappear
+      # Test 9: reload-trigger detection tolerates input paths that disappear
       # between eval and shell startup instead of failing the shell-entry task.
       _test_shell_entry_state_missing_paths() {
         local workdir="$_tmp/shell-entry-state-missing-paths"
@@ -896,7 +912,7 @@ in
       }
       _check "shell-entry state detection with missing paths" _test_shell_entry_state_missing_paths
 
-      # Test 9: TRACEPARENT propagation
+      # Test 10: TRACEPARENT propagation
       _test_traceparent() {
         local spool="$_tmp/tp-test"
         mkdir -p "$spool"

@@ -41,9 +41,9 @@ import { NotionDataSourceGateway, type NotionDataSourceGatewayShape } from '../c
 import {
   shortSpanId,
   spanAttr,
-  spanAttributes,
   spanLabel,
-  spanNames,
+  withSpan,
+  withStreamSpan,
 } from '../observability/observability.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 import {
@@ -132,17 +132,15 @@ const fakeGatewaySpan = (input: {
   const entityId = input.pageId ?? input.dataSourceId
 
   return {
-    attributes: spanAttributes({
-      [spanAttr.spanLabel]: spanLabel(
-        input.operation,
-        entityId === undefined ? undefined : shortSpanId(entityId),
-      ),
-      [spanAttr.processRole]: 'fake-gateway',
-      [spanAttr.operation]: input.operation,
-      [spanAttr.apiVersion]: input.apiVersion,
-      [spanAttr.dataSourceId]: input.dataSourceId,
-      [spanAttr.pageId]: input.pageId,
-    }),
+    [spanAttr.spanLabel]: spanLabel(
+      input.operation,
+      entityId === undefined ? undefined : shortSpanId(entityId),
+    ),
+    [spanAttr.processRole]: 'fake-gateway',
+    [spanAttr.operation]: input.operation,
+    [spanAttr.apiVersion]: input.apiVersion,
+    [spanAttr.dataSourceId]: input.dataSourceId,
+    [spanAttr.pageId]: input.pageId,
   }
 }
 
@@ -300,14 +298,14 @@ export const makeFakeNotionDataSourceGateway = (
     apiContract,
     preflightCapabilities: (input) =>
       Effect.succeed(makeCapabilityPreflightResult({ input, apiContract })).pipe(
-        Effect.withSpan(
-          spanNames.fakeGatewayRequest,
-          fakeGatewaySpan({
+        withSpan({
+          span: 'fakeGatewayRequest',
+          attributes: fakeGatewaySpan({
             operation: 'preflightCapabilities',
             apiVersion: apiContract.apiVersion,
             dataSourceId: input.dataSourceId,
           }),
-        ),
+        }),
       ),
     retrieveDataSource: (id) =>
       hasDataSourceId({ dataSourceIds: permissionAmbiguousDataSourceIds, dataSourceId: id }) ===
@@ -321,14 +319,14 @@ export const makeFakeNotionDataSourceGateway = (
             }),
           )
         : findDataSource({ dataSources, dataSourceId: id, operation: 'retrieveDataSource' }).pipe(
-            Effect.withSpan(
-              spanNames.fakeGatewayRequest,
-              fakeGatewaySpan({
+            withSpan({
+              span: 'fakeGatewayRequest',
+              attributes: fakeGatewaySpan({
                 operation: 'retrieveDataSource',
                 apiVersion: apiContract.apiVersion,
                 dataSourceId: id,
               }),
-            ),
+            }),
           ),
     queryRows: (input) =>
       Stream.fromEffect(
@@ -454,14 +452,14 @@ export const makeFakeNotionDataSourceGateway = (
           )
         : findPage({ pages, pageId: id, operation: 'retrievePage' }).pipe(
             Effect.map((page) => page.snapshot),
-            Effect.withSpan(
-              spanNames.fakeGatewayRequest,
-              fakeGatewaySpan({
+            withSpan({
+              span: 'fakeGatewayRequest',
+              attributes: fakeGatewaySpan({
                 operation: 'retrievePage',
                 apiVersion: apiContract.apiVersion,
                 pageId: id,
               }),
-            ),
+            }),
           ),
     retrievePageProperty: (input: RetrievePagePropertyInput) =>
       Stream.fromEffect(
@@ -547,14 +545,14 @@ export const makeFakeNotionDataSourceGateway = (
             view.databaseId === input.databaseId && view.dataSourceId === input.dataSourceId,
         ),
       ).pipe(
-        Stream.withSpan(
-          spanNames.fakeGatewayRequest,
-          fakeGatewaySpan({
+        withStreamSpan({
+          span: 'fakeGatewayRequest',
+          attributes: fakeGatewaySpan({
             operation: 'listDataSourceViews',
             apiVersion: apiContract.apiVersion,
             dataSourceId: input.dataSourceId,
           }),
-        ),
+        }),
       ),
     patchPageProperties: (command: PatchPagePropertiesCommand) =>
       findPage({ pages, pageId: command.pageId, operation: 'patchPageProperties' }).pipe(

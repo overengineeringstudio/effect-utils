@@ -70,6 +70,9 @@
       "path": "./packages/@overeng/notion-react"
     },
     {
+      "path": "./packages/@overeng/otel-contract"
+    },
+    {
       "path": "./packages/@overeng/oxc-config"
     },
     {

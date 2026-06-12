@@ -27,6 +27,7 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../lock.ts'
+import * as Observability from '../observability.ts'
 import {
   parseNixFlakeUrl,
   getRef,
@@ -230,8 +231,10 @@ export const fetchNixFlakeMetadata = ({
       lastModified: parsed.locked.lastModified,
     }
   }).pipe(
-    Effect.withSpan('fetchNixFlakeMetadata', {
-      attributes: { 'span.label': `${owner}/${repo}@${rev.slice(0, 8)}`, owner, repo, rev },
+    Observability.withNixFlakeMetadataSpan({
+      owner,
+      repo,
+      rev,
     }),
   )
 
@@ -494,8 +497,9 @@ const syncSingleLockFile = ({
       updatedInputs,
     }
   }).pipe(
-    Effect.withSpan('megarepo/nix-lock/file', {
-      attributes: { 'span.label': lockPath, path: lockPath, type: lockType },
+    Observability.withNixLockFileSpan({
+      lockPath,
+      lockType,
     }),
   )
 
@@ -584,8 +588,9 @@ const syncNestedMegarepoLockFile = ({
       updatedInputs,
     } satisfies NixLockSyncFileResult
   }).pipe(
-    Effect.withSpan('megarepo/nix-lock/nested', {
-      attributes: { 'span.label': lockPath, path: lockPath },
+    Observability.withNixLockPathSpan({
+      name: 'megarepo/nix-lock/nested',
+      path: lockPath,
     }),
   )
 
@@ -667,8 +672,10 @@ export const syncSourceFileRevs = ({
       updatedInputs,
     }
   }).pipe(
-    Effect.withSpan('megarepo/nix-lock/source-file', {
-      attributes: { 'span.label': filePath, path: filePath, type: fileType },
+    Observability.withNixLockPathTypeSpan({
+      name: 'megarepo/nix-lock/source-file',
+      path: filePath,
+      type: fileType,
     }),
   )
 
@@ -803,7 +810,7 @@ const validateSharedInputSource = ({
     }
 
     return { sourceMemberName, sourceMap }
-  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-input-source/validate'))
+  }).pipe(Observability.withLabelSpan('megarepo/nix-lock/shared-input-source/validate', 'validate'))
 
 /**
  * Apply phase: propagate validated source inputs to all matching members.
@@ -879,7 +886,7 @@ const applySharedInputSource = ({
       propagatableInputs: sourceMap.size,
       updatedMembers,
     }
-  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-input-source/apply'))
+  }).pipe(Observability.withLabelSpan('megarepo/nix-lock/shared-input-source/apply', 'apply'))
 
 // =============================================================================
 // Ref Sync
@@ -1110,11 +1117,7 @@ const syncMemberRefs = ({
     yield* syncLockRefs({ filename: DEVENV_LOCK, fileType: 'devenv.lock' })
 
     return results
-  }).pipe(
-    Effect.withSpan('megarepo/nix-lock/ref-sync', {
-      attributes: { 'span.label': memberPath },
-    }),
-  )
+  }).pipe(Observability.withLabelSpan('megarepo/nix-lock/ref-sync', memberPath))
 
 // =============================================================================
 // Main Sync Function

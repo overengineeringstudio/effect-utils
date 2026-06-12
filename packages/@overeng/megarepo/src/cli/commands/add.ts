@@ -16,6 +16,7 @@ import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import { AddCommandError } from '../errors.ts'
+import * as Observability from '../observability.ts'
 import { AddApp, AddView } from '../renderers/AddOutput/mod.ts'
 
 /**
@@ -171,5 +172,14 @@ export const addCommand = Cli.Command.make(
           }),
         { view: React.createElement(AddView, { stateAtom: AddApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/add')),
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Observability.withCommandSpan({
+        name: 'megarepo/add',
+        command: 'add',
+        label: Option.getOrElse(name, () => parseRepoRef(repo)?.suggestedName ?? 'add'),
+        output,
+        repo,
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('Add a new member repository'))

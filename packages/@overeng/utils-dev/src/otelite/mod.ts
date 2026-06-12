@@ -9,7 +9,7 @@
  *
  * Requires a `CommandExecutor` + `FileSystem` in context (e.g.
  * `NodeContext.layer` from `@effect/platform-node`) and the `otelite` binary on
- * `PATH`.
+ * `PATH`, or an absolute binary path in `OTELITE_BIN`.
  */
 export { Otelite } from './Otelite.ts'
 export type { CaptureHandle, CaptureOptions, RunOptions, Signal } from './Otelite.ts'
@@ -55,5 +55,29 @@ export type {
   AttrMatcher,
   AttrPredicate,
   AttrPrimitive,
+  ContractAttributesSelector,
+  ContractSpanSelector,
+  OtelAttrsContract,
+  OtelSpanContract,
   SpanSelector,
 } from './trace-expect.ts'
+export {
+  expectLogs,
+  expectMetrics,
+  LogExpect,
+  metricValue,
+  MetricExpect,
+  telemetryAttr,
+  TelemetryExpectError,
+} from './signal-expect.ts'
+export type {
+  ContractMetricSelector,
+  LogSelector,
+  MetricSelector,
+  MetricValueMatcher,
+  OtelMetricLabelsContract,
+  TelemetryAttrExpectations,
+  TelemetryAttrMatcher,
+  TelemetryAttrPredicate,
+  TelemetryAttrPrimitive,
+} from './signal-expect.ts'

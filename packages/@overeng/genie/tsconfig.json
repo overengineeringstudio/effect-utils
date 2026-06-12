@@ -53,6 +53,9 @@
   ],
   "references": [
     {
+      "path": "../otel-contract"
+    },
+    {
       "path": "../tui-core"
     },
     {

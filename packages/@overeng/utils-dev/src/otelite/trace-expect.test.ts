@@ -75,6 +75,33 @@ describe('trace-expect', () => {
     expect(traces.sameTrace({ service: 'op-proxy' })).toBe('trace-1')
   })
 
+  it('matches compiled OTEL attribute and span contracts structurally', () => {
+    const attributes = {
+      unsafeEncode: (value: { readonly label: string; readonly count: number }) => ({
+        'span.label': value.label,
+        'retry.count': value.count,
+      }),
+    }
+    const contract = {
+      name: 'rpc.op.submit',
+      attributes,
+    }
+    const traces = expectTrace([span({})])
+
+    expect(
+      traces.expectAttributes({
+        attributes,
+        match: { label: 'read', count: 2 },
+      }),
+    ).toHaveLength(1)
+    expect(
+      traces.expectSpan({
+        span: contract,
+        match: { label: 'read', count: 2 },
+      }).span_id,
+    ).toBe('span-1')
+  })
+
   it('throws a runner-agnostic error when expectations fail', () => {
     const traces = expectTrace([
       span({ span_id: 'span-1' }),

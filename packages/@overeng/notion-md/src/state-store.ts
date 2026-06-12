@@ -19,6 +19,7 @@ import {
 
 import { NmdFileSystemError, NmdObjectStoreError } from './errors.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
+import * as Observability from './observability.ts'
 
 const compareStrings = new Intl.Collator().compare
 
@@ -291,12 +292,9 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to write ${opts.label} ${opts.path}`,
           }),
         ),
-        Effect.withSpan(`notion-md.state.${opts.operation}`, {
-          attributes: {
-            'span.label': path.basename(opts.path),
-            'notion_md.state.operation': opts.operation,
-            'notion_md.path.basename': path.basename(opts.path),
-          },
+        Observability.withOperation(Observability.stateFileSpan(opts.operation), {
+          operation: opts.operation,
+          basename: path.basename(opts.path),
         }),
       )
 
@@ -310,12 +308,9 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to read .nmd file ${opts.path}`,
           }),
         ),
-        Effect.withSpan('notion-md.state.read-nmd', {
-          attributes: {
-            'span.label': path.basename(opts.path),
-            'notion_md.state.operation': 'read_nmd',
-            'notion_md.path.basename': path.basename(opts.path),
-          },
+        Observability.withOperation(Observability.ReadNmdStateSpan, {
+          operation: 'read_nmd',
+          basename: path.basename(opts.path),
         }),
       )
 
@@ -334,15 +329,14 @@ export const NmdStateStoreLive = Layer.effect(
           content,
           label: '.notion-md object',
         })
-        yield* Effect.annotateCurrentSpan('notion_md.object.hash_prefix', hash.slice(0, 18))
+        yield* Observability.annotateAttrs(Observability.objectHashAttrs, {
+          hashPrefix: hash.slice(0, 18),
+        })
         return makeNmdObjectRef({ role: opts.role, hash, content })
       }).pipe(
-        Effect.withSpan('notion-md.state.write-object', {
-          attributes: {
-            'span.label': opts.role,
-            'notion_md.object.role': opts.role,
-            'notion_md.path.basename': path.basename(opts.path),
-          },
+        Observability.withOperation(Observability.WriteObjectStateSpan, {
+          role: opts.role,
+          basename: path.basename(opts.path),
         }),
       )
 
@@ -373,12 +367,9 @@ export const NmdStateStoreLive = Layer.effect(
         }
         return content
       }).pipe(
-        Effect.withSpan('notion-md.state.read-object', {
-          attributes: {
-            'span.label': opts.object.role,
-            'notion_md.object.role': opts.object.role,
-            'notion_md.object.hash_prefix': opts.object.hash.slice(0, 18),
-          },
+        Observability.withOperation(Observability.ReadObjectStateSpan, {
+          role: opts.object.role,
+          hashPrefix: opts.object.hash.slice(0, 18),
         }),
       )
 

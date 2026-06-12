@@ -16,6 +16,7 @@ import { generateSchema } from '../../../lib/generators/schema.ts'
 import { generateVscode } from '../../../lib/generators/vscode.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { GenerateError } from '../../errors.ts'
+import * as Observability from '../../observability.ts'
 import { GenerateApp, GenerateView } from '../../renderers/GenerateOutput/mod.ts'
 
 /** Generate VSCode workspace file */
@@ -66,7 +67,14 @@ const generateVscodeCommand = Cli.Command.make(
           }),
         { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.withSpan('megarepo/generate/vscode')),
+    }).pipe(
+      Observability.withCommandSpan({
+        name: 'megarepo/generate/vscode',
+        command: 'generate vscode',
+        label: 'vscode',
+        output,
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('Generate VS Code workspace file'))
 
 /** Generate JSON Schema */
@@ -116,7 +124,14 @@ const generateSchemaCommand = Cli.Command.make(
           }),
         { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.withSpan('megarepo/generate/schema')),
+    }).pipe(
+      Observability.withCommandSpan({
+        name: 'megarepo/generate/schema',
+        command: 'generate schema',
+        label: 'schema',
+        output,
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('Generate JSON schema for megarepo.json'))
 
 /** Generate all configured outputs */
@@ -162,7 +177,14 @@ const generateAllCommand = Cli.Command.make('all', { output: outputOption }, ({ 
         }),
       { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.withSpan('megarepo/generate/all')),
+  }).pipe(
+    Observability.withCommandSpan({
+      name: 'megarepo/generate/all',
+      command: 'generate all',
+      label: 'all',
+      output,
+    }),
+  ),
 ).pipe(Cli.Command.withDescription('Generate all configured outputs'))
 
 /** Generate subcommand group */

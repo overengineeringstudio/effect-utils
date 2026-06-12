@@ -35,6 +35,7 @@ import {
   outputModeLayer,
 } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
+import * as Observability from '../observability.ts'
 import { StatusApp, StatusView } from '../renderers/StatusOutput/mod.ts'
 import type {
   CommitDrift,
@@ -519,5 +520,13 @@ export const statusCommand = Cli.Command.make(
           }),
         { view: React.createElement(StatusView, { stateAtom: StatusApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/status')),
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Observability.withCommandSpan({
+        name: 'megarepo/status',
+        command: 'status',
+        output,
+        all,
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))

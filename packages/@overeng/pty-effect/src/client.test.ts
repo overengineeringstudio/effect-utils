@@ -62,6 +62,19 @@ const stdinEchoScript = [
   '})',
 ].join('\n')
 
+const waitForPeekText = (
+  client: typeof PtyClient.Service,
+  input: { readonly name: PtyName; readonly needle: string },
+) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const screen = yield* client.peek({ name: input.name, plain: true })
+      if (screen.includes(input.needle) === true) return screen
+      yield* Effect.sleep('50 millis')
+    }
+    return yield* client.peek({ name: input.name, plain: true })
+  })
+
 describe('PtyClient', () => {
   it('keeps @overeng/pty-effect/client compile-safe for Bun-built CLIs', () => {
     withTempDir('pty-effect-bun-compile-', (dir) => {
@@ -155,9 +168,7 @@ describe('PtyClient', () => {
           args: ['-c', 'echo PEEK_TARGET && sleep 0.5'],
         })
 
-        yield* Effect.sleep('100 millis')
-
-        const screen = yield* client.peek({ name, plain: true })
+        const screen = yield* waitForPeekText(client, { name, needle: 'PEEK_TARGET' })
         expect(screen).toContain('PEEK_TARGET')
       }).pipe(Effect.provide(ptyClientLayer)),
     ),

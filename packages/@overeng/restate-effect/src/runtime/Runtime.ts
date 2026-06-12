@@ -16,6 +16,7 @@ import * as restate from '@restatedev/restate-sdk'
 import { Chunk, Clock, Effect, Layer, Logger, LogLevel, Random } from 'effect'
 
 import { RestateContext } from '../authoring/RestateContext.ts'
+import { withRestateOperation } from '../observability/effect.ts'
 
 /**
  * Build an Effect `Clock` backed by the invocation's journaled `ctx.date`.
@@ -218,7 +219,7 @@ export const withAttemptInterruption = <A, E, R>(
     return Effect.sync(() => signal.removeEventListener('abort', onAbort))
   })
   return Effect.raceFirst(effect, onAttemptComplete).pipe(
-    Effect.withSpan('restate.attemptInterruption'),
+    withRestateOperation('restate.attemptInterruption', 'attemptInterruption'),
   )
 }
 
@@ -235,7 +236,7 @@ export const cancel = (invocationId: string): Effect.Effect<void, never, Restate
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     ctx.cancel(restate.InvocationIdParser.fromString(invocationId))
-  }).pipe(Effect.withSpan('restate.cancel', { attributes: { 'span.label': invocationId } }))
+  }).pipe(withRestateOperation('restate.cancel', invocationId))
 
 /**
  * Observe the current invocation's cancellation as an Effect that SUCCEEDS when
@@ -252,4 +253,4 @@ export const onCancellation: Effect.Effect<void, never, RestateContext> = Effect
   const ctx = yield* RestateContext
   const ctxInternal = ctx as restate.internal.ContextInternal
   yield* Effect.promise(() => ctxInternal.cancellation())
-}).pipe(Effect.withSpan('restate.onCancellation'))
+}).pipe(withRestateOperation('restate.onCancellation', 'cancellation'))

@@ -14,6 +14,7 @@ import { run } from '@overeng/tui-react'
 import { CONFIG_FILE_NAME_KDL, findConfigPath, writeMegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { Cwd, outputOption, outputModeLayer } from '../context.ts'
+import * as Observability from '../observability.ts'
 import { InitApp, InitView } from '../renderers/InitOutput/mod.ts'
 
 /** Initialize a new megarepo in current directory */
@@ -61,5 +62,11 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
         }),
       { view: React.createElement(InitView, { stateAtom: InitApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.withSpan('megarepo/init')),
+  }).pipe(
+    Observability.withCommandSpan({
+      name: 'megarepo/init',
+      command: 'init',
+      output,
+    }),
+  ),
 ).pipe(Cli.Command.withDescription('Initialize a new megarepo in the current directory'))

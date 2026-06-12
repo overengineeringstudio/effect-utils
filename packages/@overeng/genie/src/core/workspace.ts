@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 
 import { matchesAnyPattern } from '../runtime/package-json/validation.ts'
 import { GenieNotImplementedError } from './errors.ts'
+import * as Observability from './observability.ts'
 import type { WorkspaceProvider, WorkspaceProviderName } from './package-json-context.ts'
 
 const DEFAULT_SKIP_DIRS = new Set([
@@ -26,6 +27,7 @@ const findWorkspaceRoot = Effect.fn('workspace/findWorkspaceRoot')(function* ({
 }: {
   cwd: string
 }) {
+  yield* Observability.annotatePath({ label: 'workspace-root', path: cwd })
   const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
 
@@ -51,6 +53,7 @@ const findPackageJsonDirs = Effect.fn('workspace/findPackageJsonDirs')(function*
 }: {
   root: string
 }) {
+  yield* Observability.annotatePath({ label: 'packages', path: root })
   const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
   const results: string[] = []
@@ -112,6 +115,7 @@ const parsePnpmWorkspacePackages = (content: string): string[] => {
 
 const discoverPnpmPackageJsonPaths = Effect.fn('workspace/discoverPnpmPackageJsonPaths')(
   function* ({ cwd }: { cwd: string }) {
+    yield* Observability.annotatePath({ label: 'pnpm', path: cwd })
     const fs = yield* FileSystem.FileSystem
     const pathService = yield* Path.Path
 
@@ -141,6 +145,7 @@ const discoverPnpmPackageJsonPaths = Effect.fn('workspace/discoverPnpmPackageJso
 
 const discoverManualPackageJsonPaths = Effect.fn('workspace/discoverManualPackageJsonPaths')(
   function* ({ cwd }: { cwd: string }) {
+    yield* Observability.annotatePath({ label: 'manual', path: cwd })
     const pathService = yield* Path.Path
     const packageDirs = yield* findPackageJsonDirs({ root: cwd })
     return packageDirs.map((dir) => pathService.join(dir, 'package.json'))
@@ -164,6 +169,7 @@ export const resolveWorkspaceProvider = Effect.fn('workspace/resolveWorkspacePro
 }: {
   cwd: string
 }) {
+  yield* Observability.annotatePath({ label: 'provider', path: cwd })
   const providerName = (process.env.GENIE_WORKSPACE_PROVIDER ?? '').toLowerCase()
 
   if (providerName === 'bun') {

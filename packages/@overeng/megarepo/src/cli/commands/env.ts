@@ -12,6 +12,7 @@ import { run } from '@overeng/tui-react'
 
 import { DEFAULT_STORE_PATH } from '../../lib/config.ts'
 import { outputOption, outputModeLayer } from '../context.ts'
+import * as Observability from '../observability.ts'
 import { EnvApp, EnvView } from '../renderers/EnvOutput/mod.ts'
 
 /** Print environment variables for shell integration */
@@ -39,5 +40,13 @@ export const envCommand = Cli.Command.make(
           })
         }),
       { view: React.createElement(EnvView, { stateAtom: EnvApp.stateAtom }) },
-    ).pipe(Effect.provide(outputModeLayer(output)), Effect.withSpan('megarepo/env')),
+    ).pipe(
+      Effect.provide(outputModeLayer(output)),
+      Observability.withCommandSpan({
+        name: 'megarepo/env',
+        command: 'env',
+        label: shell,
+        output,
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('Output environment variables for shell integration'))

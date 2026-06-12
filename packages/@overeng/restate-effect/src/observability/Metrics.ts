@@ -1,10 +1,10 @@
 /**
  * The replay-aware baseline metrics (R23, docs/vrs/08-observability/spec.md, decision 0014). These are
  * Effect `Metric`s — `effect` is a CORE dependency, so the definitions live here
- * with NO otel import; `./otel`'s `RestateOtel.layer` binds Effect's `Metric` to
- * an OTel `MeterProvider` (`@effect/opentelemetry`'s `Metrics.layer`) so the same
- * counters/histograms export over OTLP. Without that Layer the metrics are still
- * valid Effect metrics (in-memory), so the core stays dependency-light.
+ * with no heavy OTel SDK import; `./otel`'s `RestateOtel.layer` binds Effect's
+ * `Metric` to an OTel `MeterProvider` (`@effect/opentelemetry`'s `Metrics.layer`)
+ * so the same counters/histograms export over OTLP. Without that Layer the metrics
+ * are still valid Effect metrics (in-memory), so the core stays dependency-light.
  *
  * The SUBTLE part is exactly-once-on-replay (R24, R25): an invocation re-runs its
  * handler on every attempt and on replay, so a naive increment double-counts. The
@@ -15,23 +15,12 @@
  * seam is exactly-once.
  */
 import type * as restate from '@restatedev/restate-sdk'
-import { Effect, Metric, MetricBoundaries, type Schema } from 'effect'
-import type { MetricKeyType, MetricState } from 'effect'
+import { Effect, type Schema } from 'effect'
+
+import { OtelMetric, OtelSpan } from '@overeng/otel-contract'
 
 import { findSensitiveFields } from '../schema/Redaction.ts'
-
-/** A histogram `Metric` over a `number` input (the shape `Metric.histogram` returns). */
-type HistogramMetric = Metric.Metric<
-  MetricKeyType.MetricKeyType.Histogram,
-  number,
-  MetricState.MetricState.Histogram
->
-
-/* Duration histogram bucket boundaries (milliseconds) — a log-ish spread from
- * sub-ms to ~5 min, covering fast handlers and long durable waits. */
-const durationBoundariesMs = MetricBoundaries.fromIterable([
-  1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000, 60_000, 300_000,
-])
+import { RestateMetrics } from './contract.ts'
 
 /**
  * Per-invocation OUTCOME counter (`restate_invocations_total`), labelled
@@ -41,16 +30,12 @@ const durationBoundariesMs = MetricBoundaries.fromIterable([
  * NOT re-increment. A `retryable` attempt counts on every real failed attempt —
  * that is the retry-pressure signal (retries derive as the `retryable` rate).
  */
-export const invocationsTotal = Metric.counter('restate_invocations_total', {
-  description: 'Restate invocations by service, handler, and terminal outcome.',
-})
+const invocationsTotalBridge = OtelMetric.effect.counter(RestateMetrics.invocationsTotal)
+export const invocationsTotal = invocationsTotalBridge.metric
 
 /** Per-invocation DURATION histogram (`restate_invocation_duration_ms`), gated on non-replay. */
-export const invocationDurationMs = Metric.histogram(
-  'restate_invocation_duration_ms',
-  durationBoundariesMs,
-  'Wall-clock duration of a real invocation attempt (ms), by service/handler/outcome.',
-)
+const invocationDurationMsBridge = OtelMetric.effect.histogram(RestateMetrics.invocationDurationMs)
+export const invocationDurationMs = invocationDurationMsBridge.metric
 
 /**
  * Per-ATTEMPT counter (`restate_attempts_total`), labelled `service` / `handler`.
@@ -59,9 +44,8 @@ export const invocationDurationMs = Metric.histogram(
  * (the extra attempts are the retries). Gated on non-replay so a journal replay —
  * which re-runs the handler body without being a new attempt — is not counted.
  */
-export const attemptsTotal = Metric.counter('restate_attempts_total', {
-  description: 'Restate handler attempts by service and handler (drives the retry count).',
-})
+const attemptsTotalBridge = OtelMetric.effect.counter(RestateMetrics.attemptsTotal)
+export const attemptsTotal = attemptsTotalBridge.metric
 
 /**
  * Durable-step counter (`restate_durable_steps_total`), labelled `step` (the
@@ -71,9 +55,8 @@ export const attemptsTotal = Metric.counter('restate_attempts_total', {
  * across all attempts. Not labelled by service/handler (the invocation span
  * already carries those) to keep cardinality bounded.
  */
-export const durableStepsTotal = Metric.counter('restate_durable_steps_total', {
-  description: 'Durable `Restate.run` steps executed (exactly-once across replays), by step name.',
-})
+const durableStepsTotalBridge = OtelMetric.effect.counter(RestateMetrics.durableStepsTotal)
+export const durableStepsTotal = durableStepsTotalBridge.metric
 
 /**
  * Awakeable wait-latency histogram (`restate_awakeable_wait_ms`). Emitted when an
@@ -81,11 +64,8 @@ export const durableStepsTotal = Metric.counter('restate_durable_steps_total', {
  * non-replay (a replay reproduces the journaled completion instantly — not a real
  * wait). Captures external-completion latency (e.g. a webhook callback round-trip).
  */
-export const awakeableWaitMs = Metric.histogram(
-  'restate_awakeable_wait_ms',
-  durationBoundariesMs,
-  'Wall-clock wait for an awakeable to be externally resolved (ms).',
-)
+const awakeableWaitMsBridge = OtelMetric.effect.histogram(RestateMetrics.awakeableWaitMs)
+export const awakeableWaitMs = awakeableWaitMsBridge.metric
 
 /**
  * `pollLoop` cycle counter (`restate_poll_loop_cycles_total`), labelled `name`
@@ -93,9 +73,8 @@ export const awakeableWaitMs = Metric.histogram(
  * Emitted inside the loop's exclusive `cycle` handler gated on non-replay, so each
  * real cycle execution is counted exactly once.
  */
-export const pollLoopCyclesTotal = Metric.counter('restate_poll_loop_cycles_total', {
-  description: 'Scheduled `pollLoop` cycles executed, by loop name and cycle outcome.',
-})
+const pollLoopCyclesTotalBridge = OtelMetric.effect.counter(RestateMetrics.pollLoopCyclesTotal)
+export const pollLoopCyclesTotal = pollLoopCyclesTotalBridge.metric
 
 /**
  * A MONOTONIC wall-clock reading (milliseconds) for duration measurement. Uses
@@ -130,26 +109,6 @@ export const emitWhenProcessing = (
   emit: Effect.Effect<void>,
 ): Effect.Effect<void> => (isProcessing(ctx) === true ? emit : Effect.void)
 
-/** Label a counter increment with the given tag pairs and emit it once. */
-const incrementTagged = (
-  metric: Metric.Metric.Counter<number>,
-  tags: ReadonlyArray<readonly [string, string]>,
-): Effect.Effect<void> =>
-  Metric.increment(
-    tags.reduce<Metric.Metric.Counter<number>>((m, [k, v]) => Metric.tagged(m, k, v), metric),
-  )
-
-/** Record a value into a histogram labelled with the given tag pairs. */
-const recordTagged = (
-  metric: HistogramMetric,
-  tags: ReadonlyArray<readonly [string, string]>,
-  value: number,
-): Effect.Effect<void> =>
-  Metric.update(
-    tags.reduce<HistogramMetric>((m, [k, v]) => Metric.tagged(m, k, v), metric),
-    value,
-  )
-
 /**
  * Emit the per-invocation outcome counter + duration histogram + the per-attempt
  * counter for ONE real attempt, gated on non-replay. `outcome` is the boundary's
@@ -164,17 +123,23 @@ export const emitInvocationMetrics = (
     readonly durationMs: number
   },
 ): Effect.Effect<void> => {
-  const labels = [
-    ['service', args.service],
-    ['handler', args.handler],
-  ] as const
-  const outcomeLabels = [...labels, ['outcome', args.outcome]] as const
   return emitWhenProcessing(
     ctx,
     Effect.all(
       [
-        incrementTagged(invocationsTotal, outcomeLabels),
-        recordTagged(invocationDurationMs, outcomeLabels, args.durationMs),
+        invocationsTotalBridge.trustedIncrement({
+          service: args.service,
+          handler: args.handler,
+          outcome: args.outcome,
+        }),
+        invocationDurationMsBridge.trustedRecord(
+          {
+            service: args.service,
+            handler: args.handler,
+            outcome: args.outcome,
+          },
+          args.durationMs,
+        ),
       ],
       { discard: true },
     ),
@@ -188,19 +153,24 @@ export const emitAttempt = (
 ): Effect.Effect<void> =>
   emitWhenProcessing(
     ctx,
-    incrementTagged(attemptsTotal, [
-      ['service', args.service],
-      ['handler', args.handler],
-    ]),
+    attemptsTotalBridge.trustedIncrement({
+      service: args.service,
+      handler: args.handler,
+    }),
   )
 
 /** Emit the durable-step counter for ONE real `Restate.run`, gated on non-replay. */
 export const emitDurableStep = (ctx: restate.Context, step: string): Effect.Effect<void> =>
-  emitWhenProcessing(ctx, incrementTagged(durableStepsTotal, [['step', step]]))
+  emitWhenProcessing(
+    ctx,
+    durableStepsTotalBridge.trustedIncrement({
+      step,
+    }),
+  )
 
 /** Record an awakeable wait latency, gated on non-replay. */
 export const emitAwakeableWait = (ctx: restate.Context, waitMs: number): Effect.Effect<void> =>
-  emitWhenProcessing(ctx, recordTagged(awakeableWaitMs, [], waitMs))
+  emitWhenProcessing(ctx, awakeableWaitMsBridge.trustedRecord({}, waitMs))
 
 /** Emit a `pollLoop` cycle outcome counter, gated on non-replay. */
 export const emitPollLoopCycle = (
@@ -209,21 +179,25 @@ export const emitPollLoopCycle = (
 ): Effect.Effect<void> =>
   emitWhenProcessing(
     ctx,
-    incrementTagged(pollLoopCyclesTotal, [
-      ['name', args.name],
-      ['outcome', args.outcome],
-    ]),
+    pollLoopCyclesTotalBridge.trustedIncrement({
+      name: args.name,
+      outcome: args.outcome,
+    }),
   )
 
-/** A span-attribute value (the shapes `Effect.annotateCurrentSpan` accepts). */
+/** A dynamic span-attribute value accepted by the contract's map annotation helper. */
 type AttributeValue = string | number | boolean
+
+const annotateDynamicSpanMap = (
+  attributes: Readonly<Record<string, AttributeValue>>,
+): Effect.Effect<void> => OtelSpan.annotateMap(attributes)
 
 /**
  * Stamp custom BUSINESS attributes on the CURRENT span — the user path for
- * slicing in Tempo/Grafana (R23, docs/vrs/08-observability/spec.md, decision 0014). A thin Effect combinator
- * over `Effect.annotateCurrentSpan`: in a handler the current span is the Effect
- * span reparented under the hook's `attempt <target>` span (the inbound bridge),
- * so the attributes ride the one coherent trace. Exported as `Restate.annotateSpan`.
+ * slicing in Tempo/Grafana (R23, docs/vrs/08-observability/spec.md, decision 0014). In a handler
+ * the current span is the Effect span reparented under the hook's `attempt <target>`
+ * span (the inbound bridge), so the attributes ride the one coherent trace. Exported
+ * as `Restate.annotateSpan`.
  *
  * Use the `span.label` Grafana convention where it fits (a single primary label),
  * and plain keys for slicing dimensions (e.g. `dataSourceId`):
@@ -246,14 +220,7 @@ type AttributeValue = string | number | boolean
  */
 export const annotateSpan = (
   attributes: Readonly<Record<string, AttributeValue>>,
-): Effect.Effect<void> =>
-  Effect.forEach(
-    Object.entries(attributes),
-    ([key, value]) => Effect.annotateCurrentSpan(key, value),
-    {
-      discard: true,
-    },
-  )
+): Effect.Effect<void> => annotateDynamicSpanMap(attributes)
 
 /**
  * Stamp span attributes PROJECTED from a decoded struct value — SAFE BY DEFAULT
@@ -295,5 +262,5 @@ export const annotateSpanFrom = <A, I>(
       safe.push([key, v])
     }
   }
-  return Effect.forEach(safe, ([key, v]) => Effect.annotateCurrentSpan(key, v), { discard: true })
+  return annotateDynamicSpanMap(Object.fromEntries(safe))
 }

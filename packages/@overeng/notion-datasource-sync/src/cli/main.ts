@@ -88,6 +88,7 @@ import {
 } from '../gateway/notion.ts'
 import { filesystemLocalWorkspacePortLayer } from '../local/workspace.ts'
 import {
+  annotateSpan,
   otelServiceNameForCliArgv,
   otelCorrelationSpanAttributes,
   otelServiceNames,
@@ -98,6 +99,7 @@ import {
   spanLabel,
   spanNames,
   statusSpanAttributes,
+  withSpan,
 } from '../observability/observability.ts'
 import {
   forgetPageCommand,
@@ -810,15 +812,16 @@ const runCliCommandEffect = ({
           }),
         }),
       ).pipe(
-        Effect.withSpan(spanNames.syncInit, {
-          attributes: spanAttributes({
+        withSpan({
+          span: 'syncInit',
+          attributes: {
             [spanAttr.spanLabel]: spanLabel('init', shortSpanId(context.rootId)),
             [spanAttr.processRole]: processRoleForCliCommand(command._tag),
             [spanAttr.operation]: 'init',
             [spanAttr.rootId]: context.rootId,
             [spanAttr.dataSourceId]: command.dataSourceId,
             [spanAttr.dryRun]: command.dryRun === true,
-          }),
+          },
         }),
       )
     case 'pull':
@@ -1192,26 +1195,24 @@ export const runCliCommand = Effect.fn(spanNames.cliCommand, {
     NotionDataSourceGateway | PageBodySyncPort | LocalWorkspacePort
   > =>
     Effect.gen(function* () {
-      yield* Effect.annotateCurrentSpan(
-        spanAttributes({
-          ...otelCorrelationSpanAttributes({
-            agentRunId: process.env.OTEL_AGENT_RUN_ID,
-            resourceAttributes: process.env.OTEL_RESOURCE_ATTRIBUTES,
-          }),
-          [spanAttr.spanLabel]: spanLabel(command._tag),
-          [spanAttr.command]: command._tag,
-          [spanAttr.processRole]: processRoleForCliCommand(command._tag, {
-            watch: isWatchCommand(command),
-          }),
-          [spanAttr.rootId]: context.rootId,
-          [spanAttr.dataSourceId]: context.dataSourceId,
-          [spanAttr.dryRun]: 'dryRun' in command ? command.dryRun === true : undefined,
-          [spanAttr.maxCycles]:
-            command._tag === 'sync' && command.watch === true ? command.maxCycles : undefined,
+      yield* annotateSpan({
+        ...otelCorrelationSpanAttributes({
+          agentRunId: process.env.OTEL_AGENT_RUN_ID,
+          resourceAttributes: process.env.OTEL_RESOURCE_ATTRIBUTES,
         }),
-      )
+        [spanAttr.spanLabel]: spanLabel(command._tag),
+        [spanAttr.command]: command._tag,
+        [spanAttr.processRole]: processRoleForCliCommand(command._tag, {
+          watch: isWatchCommand(command),
+        }),
+        [spanAttr.rootId]: context.rootId,
+        [spanAttr.dataSourceId]: context.dataSourceId,
+        [spanAttr.dryRun]: 'dryRun' in command ? command.dryRun === true : undefined,
+        [spanAttr.maxCycles]:
+          command._tag === 'sync' && command.watch === true ? command.maxCycles : undefined,
+      })
       const result = yield* runCliCommandEffect({ command, context })
-      yield* Effect.annotateCurrentSpan({
+      yield* annotateSpan({
         ...statusSpanAttributes(result.status),
         [spanAttr.result]: result.ok === true ? 'ok' : result.status.state,
       })

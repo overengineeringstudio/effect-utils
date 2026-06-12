@@ -18,6 +18,7 @@ export default tsconfigJson({
     { path: '../notion-core' },
     { path: '../notion-effect-client' },
     { path: '../notion-effect-schema' },
+    { path: '../otel-contract' },
     { path: '../tui-react' },
     { path: '../utils' },
     { path: '../utils-dev' },

@@ -9,6 +9,7 @@ import contentAddressPkg from '../content-address/package.json.genie.ts'
 import notionCorePkg from '../notion-core/package.json.genie.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -34,6 +35,7 @@ const workspaceDeps = catalog.compose({
       notionCorePkg,
       notionEffectClientPkg,
       notionEffectSchemaPkg,
+      otelContractPkg,
       utilsPkg,
     ],
     external: catalog.pick(

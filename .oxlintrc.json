@@ -61,6 +61,7 @@
     "overeng/exports-first": "warn",
     "overeng/jsdoc-require-exports": "warn",
     "typescript/consistent-type-imports": "warn",
+    "overeng/no-raw-otel-primitives": "off",
     "typescript/consistent-type-definitions": "off",
     "typescript/no-deprecated": "error",
     "typescript/no-unsafe-type-assertion": "off",
@@ -127,6 +128,7 @@
       "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "**/test/**"],
       "rules": {
         "overeng/named-args": "off",
+        "overeng/no-raw-otel-primitives": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
         "require-yield": "off"
@@ -150,6 +152,7 @@
         "overeng/exports-first": "off",
         "overeng/jsdoc-require-exports": "off",
         "overeng/named-args": "off",
+        "overeng/no-raw-otel-primitives": "off",
         "unicorn/consistent-function-scoping": "off"
       }
     },
@@ -163,6 +166,33 @@
       "files": ["**/genie/src/runtime/**/*.test.ts"],
       "rules": {
         "overeng/no-external-imports": "off"
+      }
+    },
+    {
+      "files": ["packages/@overeng/*/src/**/*.ts", "packages/@overeng/*/src/**/*.tsx"],
+      "rules": {
+        "overeng/no-raw-otel-primitives": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/@overeng/otel-contract/src/**",
+        "packages/@overeng/utils-dev/src/otelite/**",
+        "packages/@overeng/*/src/**/*.test.ts",
+        "packages/@overeng/*/src/**/*.test.tsx",
+        "packages/@overeng/*/src/**/*.spec.ts",
+        "packages/@overeng/*/src/**/*.spec.tsx",
+        "packages/@overeng/*/src/**/*.unit.test.ts",
+        "packages/@overeng/*/src/**/*.unit.test.tsx",
+        "packages/@overeng/*/src/**/*.integration.test.ts",
+        "packages/@overeng/*/src/**/*.integration.test.tsx",
+        "packages/@overeng/*/src/**/*.e2e.test.ts",
+        "packages/@overeng/*/src/**/*.e2e.test.tsx",
+        "packages/@overeng/*/src/**/*.gen.ts",
+        "packages/@overeng/*/src/**/*.gen.tsx"
+      ],
+      "rules": {
+        "overeng/no-raw-otel-primitives": "off"
       }
     },
     {

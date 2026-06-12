@@ -7,6 +7,7 @@ import { findGenieFiles } from './discovery.ts'
 import { GenieValidationError } from './errors.ts'
 import type { GenieImportError } from './errors.ts'
 import { loadGenieFile, type LoadedGenieFile } from './generation.ts'
+import * as Observability from './observability.ts'
 import { buildPackageJsonValidationContext } from './package-json-context.ts'
 import { resolveWorkspaceProvider } from './workspace.ts'
 
@@ -27,6 +28,12 @@ export const runGenieValidation = ({
   FileSystem.FileSystem | Path.Path
 > =>
   Effect.gen(function* () {
+    yield* Observability.annotateValidation({
+      cwd,
+      requirePackageJsonValidate,
+      ...(genieFiles === undefined ? {} : { fileCount: genieFiles.length }),
+      ...(preloadedFiles === undefined ? {} : { preloadedFileCount: preloadedFiles.length }),
+    })
     const fs = yield* FileSystem.FileSystem
     const pathService = yield* Path.Path
     const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
@@ -107,4 +114,11 @@ export const runGenieValidation = ({
     }
 
     return issues
-  }).pipe(Effect.withSpan('genie/runValidation'))
+  }).pipe(
+    Observability.withValidationSpan({
+      cwd,
+      requirePackageJsonValidate,
+      ...(genieFiles === undefined ? {} : { fileCount: genieFiles.length }),
+      ...(preloadedFiles === undefined ? {} : { preloadedFileCount: preloadedFiles.length }),
+    }),
+  )

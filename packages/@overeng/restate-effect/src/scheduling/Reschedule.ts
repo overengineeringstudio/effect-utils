@@ -23,6 +23,7 @@ import { objectKey } from '../authoring/RestateContext.ts'
 import type { ObjectKey, RestateContext } from '../authoring/RestateContext.ts'
 import type { ObjectContract, ObjectInputOf, ObjectMethodsOf } from '../authoring/Service.ts'
 import { sendObject } from '../clients/Client.ts'
+import { withRestateOperation } from '../observability/effect.ts'
 import type { RestateError } from '../schema/RestateError.ts'
 
 /**
@@ -62,4 +63,4 @@ export const reschedule = <
     yield* sendObject(opts.contract, key, opts.method, opts.input, {
       delayMillis: opts.delayMillis,
     })
-  }).pipe(Effect.withSpan('restate.reschedule'))
+  }).pipe(withRestateOperation('restate.reschedule', String(opts.method)))

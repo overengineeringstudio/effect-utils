@@ -61,6 +61,9 @@
       "path": "../notion-md"
     },
     {
+      "path": "../otel-contract"
+    },
+    {
       "path": "../tui-react"
     },
     {

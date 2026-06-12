@@ -29,9 +29,9 @@ import {
 import { reportSyncProgress } from '../core/progress.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from '../core/status.ts'
 import {
+  annotateSpan,
   shortSpanId,
   spanAttr,
-  spanAttributes,
   spanLabel,
   spanNames,
   statusSpanAttributes,
@@ -377,18 +377,16 @@ const annotateOneShotStart = (input: {
   readonly maxExecutorSteps?: number
   readonly leaseDurationMs?: number
 }) =>
-  Effect.annotateCurrentSpan(
-    spanAttributes({
-      [spanAttr.spanLabel]: spanLabel(input.operation, shortSpanId(input.rootId)),
-      [spanAttr.processRole]: 'library',
-      [spanAttr.operation]: input.operation,
-      [spanAttr.rootId]: input.rootId,
-      [spanAttr.dataSourceId]: input.dataSourceId,
-      [spanAttr.dryRun]: input.dryRun === true,
-      [spanAttr.maxExecutorSteps]: input.maxExecutorSteps,
-      [spanAttr.leaseDurationMs]: input.leaseDurationMs,
-    }),
-  )
+  annotateSpan({
+    [spanAttr.spanLabel]: spanLabel(input.operation, shortSpanId(input.rootId)),
+    [spanAttr.processRole]: 'library',
+    [spanAttr.operation]: input.operation,
+    [spanAttr.rootId]: input.rootId,
+    [spanAttr.dataSourceId]: input.dataSourceId,
+    [spanAttr.dryRun]: input.dryRun === true,
+    [spanAttr.maxExecutorSteps]: input.maxExecutorSteps,
+    [spanAttr.leaseDurationMs]: input.leaseDurationMs,
+  })
 
 const resumeCursorForPull = (options: OneShotPullOptions) => {
   const expectedQueryContractHash = computeQueryContractHash({
@@ -418,13 +416,11 @@ const disappearanceCandidateEvents = Effect.fn(spanNames.syncQueryAbsence)(
     readonly observation: RemoteObservationResult
   }) =>
     Effect.gen(function* () {
-      yield* Effect.annotateCurrentSpan(
-        spanAttributes({
-          [spanAttr.spanLabel]: spanLabel('query-absence', shortSpanId(options.rootId)),
-          [spanAttr.rootId]: options.rootId,
-          [spanAttr.dataSourceId]: options.dataSourceId,
-        }),
-      )
+      yield* annotateSpan({
+        [spanAttr.spanLabel]: spanLabel('query-absence', shortSpanId(options.rootId)),
+        [spanAttr.rootId]: options.rootId,
+        [spanAttr.dataSourceId]: options.dataSourceId,
+      })
       if (
         observation.query.startCursor !== null ||
         observation.query.complete === false ||
@@ -565,7 +561,7 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
         appendedEvents,
         status: readOneShotSyncStatus({ store: options.store, rootId: options.rootId }),
       }
-      yield* Effect.annotateCurrentSpan({
+      yield* annotateSpan({
         ...statusSpanAttributes(result.status),
         [spanAttr.appendedEvents]: appendedEvents,
         [spanAttr.cappedAtLimit]: observation.query.cappedAtLimit,
@@ -605,7 +601,7 @@ export const establishFromNotion = Effect.fn(spanNames.syncEstablishFromNotion)(
       const binding = initOneShotSync(options)
       const pull = yield* pullOneShotSync(options)
       const status = readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
-      yield* Effect.annotateCurrentSpan({
+      yield* annotateSpan({
         ...statusSpanAttributes(status),
         [spanAttr.appendedEvents]: pull.appendedEvents,
         [spanAttr.queryComplete]: pull.observation.query.complete,
@@ -808,7 +804,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
         },
         status: readOneShotSyncStatus({ store: options.store, rootId: options.rootId }),
       }
-      yield* Effect.annotateCurrentSpan({
+      yield* annotateSpan({
         ...statusSpanAttributes(result.status),
         [spanAttr.appendedEvents]: result.plan.appendedEvents,
         [spanAttr.blockedCount]: result.plan.blocked,
@@ -882,7 +878,7 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
       const status = readOneShotSyncStatus({ store: options.store, rootId: options.rootId })
       yield* reportSyncProgress({ _tag: 'phase', phase: 'complete' })
 
-      yield* Effect.annotateCurrentSpan({
+      yield* annotateSpan({
         ...statusSpanAttributes(status),
         [spanAttr.appendedEvents]: pull.appendedEvents + push.plan.appendedEvents,
         [spanAttr.blockedCount]: push.plan.blocked,
