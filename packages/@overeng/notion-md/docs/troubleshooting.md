@@ -35,7 +35,7 @@ Common causes:
 - a tagged value was rewritten without `_tag`.
 
 Fix the frontmatter from the schema, restore the file from version control, or
-run `sync <page-id-or-url> <path>` again into a fresh file and reapply body edits.
+run `track <page-id-or-url> <path>` into a fresh file and reapply body edits.
 
 ## Object Store Error
 
@@ -48,18 +48,18 @@ file. Do not patch object hashes by hand.
 
 ## Missing Sidecar Sync State
 
-Symptom:
+Symptom on `source: shared` pages:
 
 ```text
 NmdFrontmatterError: Missing sidecar sync state for page <id>.
-Run `notion-md sync <id> <path>` to rebuild it.
+Run `notion-md track <id> <path> --as shared` into a clean file to rebuild it.
 ```
 
 `.notion-md/sync/<page_id>.json` holds the derived bookkeeping (body hash, base
 ref, last-pulled timestamps, storage inventory). It is keyed by the immutable
-page id and is typically gitignored. A fresh clone of a repo that gitignores
-`.notion-md/` will not have it. Run the suggested sync to rebuild it; sync
-will then resume from the freshly captured remote baseline.
+page id and is typically gitignored. A fresh checkout of a repo that gitignores
+`.notion-md/` will not have it. Mirror-sync files do not rely on this sidecar;
+they use live local/remote comparison.
 
 ## Body Conflict
 

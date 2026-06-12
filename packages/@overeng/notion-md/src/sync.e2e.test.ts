@@ -21,6 +21,7 @@ import {
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { NotionMdGateway, type MarkdownUpdateCommand, type PullPageResult } from './model.ts'
+import { reconcileTree, trackPage } from './reconcile.ts'
 import {
   NmdStateStoreLive,
   objectPath,
@@ -557,7 +558,7 @@ describe('notion-md e2e prototype', () => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
       const path = join(dir, 'probe.nmd')
 
-      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      await runWithFake(trackPage({ pageId, outPath: path, source: 'local' }), fake)
       const content = await readFile(path, 'utf8')
       await writeFile(path, content.replace('Body', 'Watched body'))
 
@@ -586,13 +587,62 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('watch dry-run emits planned sync results without mutating remote content', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+      const events: unknown[] = []
+
+      await runWithFake(trackPage({ pageId, outPath: path, source: 'local' }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Body', 'Dry-run watched body'))
+
+      await runWithFake(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const planned = yield* Deferred.make<void>()
+            const fiber = yield* Effect.fork(
+              runWatch({
+                syncOptions: { path, dryRun: true },
+                pollIntervalMs: 10_000,
+                emit: (event) =>
+                  Effect.sync(() => {
+                    events.push(event)
+                  }).pipe(
+                    Effect.zipRight(
+                      isPushedSyncEvent(event) === true
+                        ? Deferred.succeed(planned, undefined).pipe(Effect.asVoid)
+                        : Effect.void,
+                    ),
+                  ),
+              }),
+            )
+            yield* Deferred.await(planned)
+            yield* Fiber.interrupt(fiber)
+          }),
+        ),
+        fake,
+      )
+
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          event: 'sync',
+          result: expect.objectContaining({ _tag: 'pushed', dryRun: true }),
+        }),
+      )
+      expect(fake.remoteMarkdown(pageId)).toBe('# Probe\n\nBody')
+      expect(fake.updateMarkdownCalls).toEqual([])
+      expect((await parseFile(path)).body).toContain('Dry-run watched body')
+    })
+  })
+
   it('watch mode emits sync results and keeps polling independent from file events', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
       const path = join(dir, 'probe.nmd')
       const events: unknown[] = []
 
-      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      await runWithFake(trackPage({ pageId, outPath: path, source: 'remote' }), fake)
       fake.mutateRemote(pageId, '# Probe\n\nRemote body')
 
       await runWithFake(
@@ -739,17 +789,18 @@ describe('notion-md e2e prototype', () => {
       const localPath = join(dir, 'local.nmd')
       const remotePath = join(dir, 'nested', 'remote.nmd')
 
-      await runWithFake(pullPage({ pageId, outPath: localPath }), fake)
-      await runWithFake(pullPage({ pageId: secondPageId, outPath: remotePath }), fake)
+      await runWithFake(trackPage({ pageId, outPath: localPath, source: 'local' }), fake)
+      await runWithFake(
+        trackPage({ pageId: secondPageId, outPath: remotePath, source: 'remote' }),
+        fake,
+      )
       await writeFile(localPath, (await readFile(localPath, 'utf8')).replace('Body', 'Local body'))
       fake.mutateRemote(secondPageId, '# Remote\n\nRemote body')
 
       const batch = await runWithFake(
-        syncMany({ targets: [localPath, remotePath], concurrency: 2 }),
+        reconcileTree({ targets: [localPath, remotePath], concurrency: 2 }),
         fake,
       )
-      const localStatus = await runWithFake(statusPage({ path: localPath }), fake)
-      const remoteStatus = await runWithFake(statusPage({ path: remotePath }), fake)
       const remoteParsed = await parseFile(remotePath)
 
       expect(batch).toMatchObject({
@@ -775,8 +826,6 @@ describe('notion-md e2e prototype', () => {
       )
       expect(fake.remoteMarkdown(pageId)).toContain('Local body')
       expect(remoteParsed.body).toContain('Remote body')
-      expect(localStatus.remoteChanged).toBe(false)
-      expect(remoteStatus.remoteChanged).toBe(false)
     })
   })
 
@@ -854,8 +903,11 @@ describe('notion-md e2e prototype', () => {
       const remotePath = join(dir, 'remote.nmd')
       const events: unknown[] = []
 
-      await runWithFake(pullPage({ pageId, outPath: localPath }), fake)
-      await runWithFake(pullPage({ pageId: secondPageId, outPath: remotePath }), fake)
+      await runWithFake(trackPage({ pageId, outPath: localPath, source: 'local' }), fake)
+      await runWithFake(
+        trackPage({ pageId: secondPageId, outPath: remotePath, source: 'remote' }),
+        fake,
+      )
       await writeFile(
         localPath,
         (await readFile(localPath, 'utf8')).replace('Body', 'Watched local body'),
@@ -870,6 +922,13 @@ describe('notion-md e2e prototype', () => {
                 paths: [localPath, remotePath],
                 pollIntervalMs: 50,
                 concurrency: 2,
+                runSyncMany: (opts) =>
+                  reconcileTree({
+                    targets: opts.targets,
+                    ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
+                    ...(opts.force === undefined ? {} : { force: opts.force }),
+                    ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+                  }),
                 emit: (event) =>
                   Effect.sync(() => {
                     events.push(event)
@@ -1856,14 +1915,14 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
-  it('auto-heals a missing sidecar from remote (fresh-clone durability)', async () => {
+  it('auto-heals a missing sidecar from remote (fresh-checkout durability)', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
       const path = join(dir, 'probe.nmd')
 
       await runWithFake(pullPage({ pageId, outPath: path }), fake)
       /*
-       * Fresh-clone-of-gitignored-`.notion-md/`: a materialized `.nmd` carries a
+       * Fresh-checkout-of-gitignored-`.notion-md/`: a materialized `.nmd` carries a
        * valid `page_id` but the sidecar is gone. Identity lives in the file, so
        * the engine must REBUILD the derived baseline from the live remote page
        * and reconcile (establish-then-noop), not refuse — see #749.

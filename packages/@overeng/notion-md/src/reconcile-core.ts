@@ -36,7 +36,7 @@ export type ReconcileDecision =
   | { readonly _tag: 'pull' }
   /**
    * Wrong-direction reconcile refused (never clobbers). `reason` explains and,
-   * where applicable, points at `clone --as shared`.
+   * where applicable, points at `track --as shared`.
    */
   | { readonly _tag: 'refuse'; readonly reason: string }
   /** `source: shared` — hand off to the base+merge leaf. */

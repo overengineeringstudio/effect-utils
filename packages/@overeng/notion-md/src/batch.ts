@@ -105,6 +105,14 @@ export interface SyncManyOptions extends ResolveTargetsOptions, Omit<SyncOptions
   readonly concurrency?: number
 }
 
+export type SyncManyRunner<A> = (
+  opts: SyncManyOptions,
+) => Effect.Effect<
+  BatchResult<A>,
+  NmdCliError,
+  FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore
+>
+
 /** Trigger reason emitted by one-file and batch watch loops. */
 export type WatchReason = 'file' | 'initial' | 'poll'
 
@@ -114,10 +122,14 @@ interface WatchTrigger {
 }
 
 /** Inputs for continuous watch mode over a resolved set of `.nmd` files. */
-export interface BatchWatchOptions extends Omit<SyncManyOptions, 'targets' | 'recursive'> {
+export interface BatchWatchOptions<A = SyncResult> extends Omit<
+  SyncManyOptions,
+  'targets' | 'recursive'
+> {
   readonly paths: readonly string[]
   readonly pollIntervalMs: number
   readonly emit?: (value: unknown) => Effect.Effect<void>
+  readonly runSyncMany?: SyncManyRunner<A>
 }
 
 const makeFsError = (opts: {
@@ -460,6 +472,7 @@ export const syncMany = (
       syncPage({
         path,
         ...(opts.force === undefined ? {} : { force: opts.force }),
+        ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
         ...(opts.allowDeletingUnknownBlocks === undefined
           ? {}
           : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
@@ -520,8 +533,8 @@ const watchErrorJson = (error: unknown): Record<string, unknown> => {
 }
 
 /** Watch a resolved set of `.nmd` files and run coalesced batch sync passes. */
-export const runBatchWatch = (
-  opts: BatchWatchOptions,
+export const runBatchWatch = <A = SyncResult>(
+  opts: BatchWatchOptions<A>,
 ): Effect.Effect<
   never,
   never,
@@ -532,6 +545,7 @@ export const runBatchWatch = (
       const fs = yield* FileSystem.FileSystem
       const queue = yield* Queue.sliding<WatchTrigger>(4096)
       const emit = opts.emit ?? writeJsonLine
+      const runSyncMany = opts.runSyncMany ?? syncMany
       const paths = uniqueSorted(opts.paths.map((path) => resolve(path)))
       const watchedPaths = new Set(paths)
       const watchedDirs = uniqueSorted(paths.map((path) => dirname(path)))
@@ -575,10 +589,11 @@ export const runBatchWatch = (
           yield* Effect.sleep(WATCH_DEBOUNCE)
           const rest = yield* Queue.takeAll(queue)
           const triggers = coalesceTriggers([first, ...rest])
-          const batch = yield* syncMany({
+          const batch = yield* runSyncMany({
             targets: triggers.map((trigger) => trigger.path),
             ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
             ...(opts.force === undefined ? {} : { force: opts.force }),
+            ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
             ...(opts.allowDeletingUnknownBlocks === undefined
               ? {}
               : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),

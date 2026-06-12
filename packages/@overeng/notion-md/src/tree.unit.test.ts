@@ -438,7 +438,7 @@ describe('notion-md tree reconcile lifecycle', () => {
       const alphaFile = await readFile(join(dir, 'alpha.nmd'), 'utf8')
       expect(alphaFile).toContain('"page_id": "00000000-0000-4000-8000-')
       // the root id supplied via --root is also bound back into index.nmd
-      // (identity lives in the file for fresh-clone durability)
+      // (identity lives in the file for fresh-checkout durability)
       const indexFile = await readFile(join(dir, 'index.nmd'), 'utf8')
       expect(indexFile).toContain(`"page_id": "${rootPageId}"`)
 

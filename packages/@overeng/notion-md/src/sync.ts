@@ -124,6 +124,7 @@ export interface StatusResult {
 /** User-facing safety options for local `.nmd` pushes. */
 export interface PushSafetyOptions {
   readonly force?: boolean
+  readonly dryRun?: boolean
   readonly allowDeletingUnknownBlocks?: boolean
   readonly allowReviewMarkup?: boolean
 }
@@ -663,7 +664,7 @@ export const pullPage = (
 /**
  * Establish the sidecar base snapshot for a bound page from its live remote
  * body, without clobbering the file's own frontmatter/body. Used to auto-heal a
- * missing sidecar (fresh clone where the gitignored `.notion-md/` is absent, or
+ * missing sidecar (fresh checkout where the gitignored `.notion-md/` is absent, or
  * a page bound outside notion-md) — identity lives in the file, derived state is
  * rebuilt from remote. Idempotent: re-pulls and rewrites the baseline.
  */
@@ -720,7 +721,7 @@ const readNmd = (
     let loaded = yield* store.readSyncStateOptional({ path, pageId })
     if (loaded === undefined) {
       /*
-       * Fresh-clone / externally-bound case: the `.nmd` carries a valid
+       * Fresh-checkout / externally-bound case: the `.nmd` carries a valid
        * `page_id` but the gitignored sidecar is absent. Identity lives in the
        * file; auto-heal by rebuilding the derived baseline from the live remote
        * page, then reconcile normally (idempotent establish-then-reconcile).

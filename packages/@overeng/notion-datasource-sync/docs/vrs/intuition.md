@@ -24,7 +24,7 @@ decision.
 Notion database
   shared human workspace
         |
-        | notion db sync --from-notion
+        | notion db track
         v
 <database-id>.sqlite
   local working copy
@@ -147,7 +147,7 @@ unit of local state for one Notion database.
 Start by establishing the local replica:
 
 ```sh
-notion db sync --from-notion <database-url-or-data-source-id> ./notion-workspace
+notion db track <database-url-or-data-source-id> ./notion-workspace
 ```
 
 Inspect the data:
