@@ -466,17 +466,16 @@ export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
  * A bound (`page_id !== null`) file participates in guarded two-way sync.
  */
 /**
- * The `notion_md` envelope body. `source` defaults to `local` so legacy files
- * written before the v-next field still decode, and a struct-level filter
- * enforces the self-describing invariant (R34): a `remote`/`shared` file MUST
- * carry a `page_id` (a null/absent page id is the create-on-push case, legal
- * only for `source: local`).
+ * The `notion_md` envelope body. `source` is required so every v-next file is
+ * self-describing (R34). A `remote`/`shared` file MUST carry a `page_id` (a
+ * null/absent page id is the create-on-push case, legal only for
+ * `source: local`).
  */
 const NmdFrontmatterBody = Schema.Struct({
   version: Schema.Literal(2),
   api_version: Schema.Literal(NOTION_API_VERSION),
   object: Schema.Literal('page'),
-  source: Schema.optionalWith(NmdSource, { default: () => 'local', nullable: true }),
+  source: NmdSource,
   page_id: Schema.NullOr(NotionUUID),
   url: Schema.optional(Schema.NullOr(Schema.String)),
   parent: NmdParentRef,

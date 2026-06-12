@@ -208,6 +208,7 @@ const NMD_HEADER = (title: string) =>
           version: 2,
           api_version: NOTION_API_VERSION,
           object: 'page',
+          source: 'local',
           page_id: null,
           url: null,
           parent: { _tag: 'page', id: rootPageId },

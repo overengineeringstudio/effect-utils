@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/notion-md**: Move the v-next public CLI to `track` / `status` / `sync`: `track` is now the only page-id bootstrap command, `sync`/`status` operate on local self-describing files, write-capable paths support `--dry-run`, and `sync --watch` routes through the same source-aware reconcile engine as one-shot sync.
 
+- **@overeng/notion-md**: Complete the v-next source-dispatched sync contract by requiring explicit `.nmd` `source`, removing legacy sync helpers from the public package surface, preserving watch as a first-class reconcile path, adding live watch and OTEL span verification, and aligning VRS/user docs with the stateless Mirror Sync vs base-backed Shared Sync split.
+
 - **@overeng/notion-md**: Refresh the fidelity corpus from live Notion through repeatable capture tooling, add live corpus verification, and fold Notion's lossless code-fence language alias expansion (`js`/`ts` → `javascript`/`typescript`) into the semantic-equivalence oracle while keeping JavaScript and TypeScript fences distinct.
 
 - **CI / Nix packages**: Refresh the stale `workflow-report` pnpm fixed-output hash so the Storybook preview reporting step can build `#workflow-report` again after the branch rebase updated the workspace dependency closure.

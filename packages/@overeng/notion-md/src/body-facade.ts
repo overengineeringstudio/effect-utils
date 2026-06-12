@@ -1,3 +1,4 @@
+import type { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
 import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-address'
@@ -13,8 +14,8 @@ import { parseNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { NotionMdGateway } from './model.ts'
 import type { PullPageResult } from './model.ts'
+import { trackPage, type TrackResult } from './reconcile.ts'
 import { NmdStateStore } from './state-store.ts'
-import { pullPage, type PullResult } from './sync.ts'
 
 /** Raised when the body-only facade refuses a stale verified operation. */
 export class NotionMdBodyConflictError extends Schema.TaggedError<NotionMdBodyConflictError>()(
@@ -45,7 +46,7 @@ export interface NotionMdLocalBodySnapshot extends NotionMdBodySnapshot {
 }
 
 export interface NotionMdMaterializedBody extends NotionMdLocalBodySnapshot {
-  readonly pull: PullResult
+  readonly track: TrackResult
 }
 
 export interface NotionMdVerifiedRemoteReplaceResult {
@@ -149,15 +150,19 @@ export const readLocalBody = (opts: {
     }
   })
 
-/** Pull a remote page through the existing materialization path and return body hashes. */
+/** Track a remote page as shared local state and return body hashes. */
 export const materializeBody = (opts: {
   readonly pageId: string
   readonly outPath: string
-}): Effect.Effect<NotionMdMaterializedBody, NmdError, NotionMdGateway | NmdStateStore> =>
+}): Effect.Effect<
+  NotionMdMaterializedBody,
+  NmdError,
+  FileSystem.FileSystem | NotionMdGateway | NmdStateStore
+> =>
   Effect.gen(function* () {
-    const pull = yield* pullPage(opts)
+    const track = yield* trackPage({ pageId: opts.pageId, outPath: opts.outPath, source: 'shared' })
     const local = yield* readLocalBody({ path: opts.outPath })
-    return { ...local, pull }
+    return { ...local, track }
   })
 
 /** Replace remote Markdown body only after proving the caller's remote base is current. */
@@ -219,7 +224,7 @@ export const settleVerifiedBodyPush = (opts: {
 }): Effect.Effect<
   NotionMdSettledBodyPush,
   NmdError | NotionMdBodyConflictError,
-  NotionMdGateway | NmdStateStore
+  FileSystem.FileSystem | NotionMdGateway | NmdStateStore
 > =>
   Effect.gen(function* () {
     const local = yield* readLocalBody({ path: opts.path })

@@ -27,6 +27,7 @@ import {
 } from './reconcile-core.ts'
 import { decideShared, sharedPorcelain, type SharedOutcome } from './reconcile-shared.ts'
 import { NmdStateStore, readBaseSnapshot, readSyncStateOptional } from './state-store.ts'
+import { findTreeMembership } from './tree-index.ts'
 
 /*
  * Source-aware reconcile engine (spec "Internal layering").
@@ -132,6 +133,18 @@ const remoteBodyFor = (pageId: string) =>
     return { pulled, body: normalizeMarkdownLineEndings(pulled.markdown.markdown) }
   })
 
+const rejectTreeManagedMember = (
+  path: string,
+): Effect.Effect<void, NmdError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const membership = yield* findTreeMembership(path)
+    if (membership !== undefined && membership.isRoot === false) {
+      return yield* new NmdCliError({
+        message: `${path} is a member of the notion-md tree at ${membership.root}; run \`notion-md sync ${membership.root}\` (the tree composes child anchors — a single-file operation would use the wrong state root).`,
+      })
+    }
+  })
+
 /**
  * Read-only status (R30/R36 safe-by-construction): there is no write path in
  * this call graph. Reports the live in-sync decision per file in git-porcelain
@@ -145,6 +158,7 @@ export const statusFile = (opts: {
   FileSystem.FileSystem | NotionMdGateway | NmdStateStore
 > =>
   Effect.gen(function* () {
+    yield* rejectTreeManagedMember(opts.path)
     const local = yield* readGatedLocalState(opts.path)
 
     if (local._tag === 'local-unbound') {
@@ -326,6 +340,7 @@ export const reconcileFile = (opts: {
   FileSystem.FileSystem | NotionMdGateway | NmdStateStore
 > =>
   Effect.gen(function* () {
+    yield* rejectTreeManagedMember(opts.path)
     const gateway = yield* NotionMdGateway
     const local = yield* readGatedLocalState(opts.path)
     const rendered = yield* localBody(opts.path)

@@ -15,7 +15,7 @@ import {
   NotionMdGateway,
   NmdStateStore,
   NmdStateStoreLive,
-  statusPage,
+  statusFile,
   type NotionMdGatewayShape,
   type PullPageResult,
 } from '@overeng/notion-md'
@@ -797,14 +797,13 @@ describe('body adapter E2E boundary', () => {
         },
       })
       const nmdStatus = await Effect.runPromise(
-        statusPage({ path: absoluteBodyPath }).pipe(
+        statusFile({ path: absoluteBodyPath }).pipe(
           Effect.provideService(NotionMdGateway, notionMdGateway),
           Effect.provideService(NmdStateStore, stateStore),
           Effect.provide(NodeContext.layer),
         ),
       )
-      expect(nmdStatus.localChanged).toBe(false)
-      expect(nmdStatus.remoteChanged).toBe(false)
+      expect(nmdStatus.status).toBe('in-sync')
 
       const second = await runWithPorts(
         syncOneShot({

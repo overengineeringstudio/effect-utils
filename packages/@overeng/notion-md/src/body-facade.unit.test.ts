@@ -1,3 +1,5 @@
+import type { FileSystem } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -198,10 +200,16 @@ const runWithGateway = <A, E>(effect: Effect.Effect<A, E, NotionMdGateway>, gate
   Effect.runPromise(effect.pipe(Effect.provide(gateway.layer)))
 
 const runWithGatewayAndStore = <A, E>(
-  effect: Effect.Effect<A, E, NotionMdGateway | NmdStateStore>,
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | NotionMdGateway | NmdStateStore>,
   gateway: FakeGateway,
   store: FakeStore,
-) => Effect.runPromise(effect.pipe(Effect.provide(Layer.merge(gateway.layer, store.layer))))
+) =>
+  Effect.runPromise(
+    effect.pipe(
+      Effect.provide(Layer.merge(gateway.layer, store.layer)),
+      Effect.provide(NodeContext.layer),
+    ),
+  )
 
 describe('notion-md body facade', () => {
   it('hashes the parsed body, not frontmatter', async () => {
@@ -216,7 +224,7 @@ describe('notion-md body facade', () => {
     expect(local.bodyHash).not.toBe(sha256Digest(content))
   })
 
-  it('materializes through the existing pullPage write path', async () => {
+  it('materializes through the shared track write path', async () => {
     const gateway = new FakeGateway('Remote body\n')
     const store = new FakeStore()
 
@@ -227,11 +235,12 @@ describe('notion-md body facade', () => {
     )
 
     expect(materialized.bodyHash).toBe(sha256Digest(normalizeMarkdownLineEndings('Remote body\n')))
-    expect(materialized.pull).toMatchObject({ path, pageId, storage: 'self_contained' })
+    expect(materialized.track).toMatchObject({ path, pageId, source: 'shared' })
     expect(store.writeBaseSnapshotCalls).toHaveLength(1)
     expect(store.writeSyncStateCalls).toHaveLength(1)
     expect(store.writeNmdFileCalls).toHaveLength(1)
     expect(store.writeNmdFileCalls[0]?.content).toContain('Remote body')
+    expect(store.writeNmdFileCalls[0]?.content).toContain('"source": "shared"')
   })
 
   it('uses replace_content with allowDeletingContent false for verified remote replacement', async () => {
@@ -273,7 +282,7 @@ describe('notion-md body facade', () => {
     expect(gateway.updateMarkdownCalls).toEqual([])
   })
 
-  it('settles verified push through the existing pullPage materialization path', async () => {
+  it('settles verified push through the shared track materialization path', async () => {
     const body = normalizeMarkdownLineEndings('Pushed body\n')
     const content = renderNmdFile({
       frontmatter: frontmatter('Local title'),

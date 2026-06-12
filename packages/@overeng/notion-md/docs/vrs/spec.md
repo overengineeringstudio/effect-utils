@@ -4,17 +4,22 @@ This document specifies the Notion Markdown sync system. It builds on [requireme
 
 ## Status
 
-Draft -- the implemented `@overeng/notion-md` package covers the core body/property sync path, strict `.nmd` frontmatter, content-addressed local state, guarded push/sync/watch behavior, batch multi-file and recursive folder orchestration, Effect Platform file watching, and live Notion E2E coverage. File bytes, comment projection, and webhook delivery are designed surfaces that remain outside the implemented core. Full data-source sync is owned by the standalone [Notion datasource sync spec](../../../notion-datasource-sync/docs/vrs/spec.md).
+Active for the implemented v-next sync core. `@overeng/notion-md` covers the
+`track` / `status` / `sync` CLI, strict `.nmd` frontmatter, source-dispatched
+Mirror Sync and Shared Sync, content-addressed local state, guarded
+sync/watch behavior, batch multi-file and recursive folder orchestration,
+Effect Platform file watching, dry-run planning for write commands, and live
+Notion E2E coverage. File bytes, comment projection, webhook delivery, and full
+data-source sync remain designed surfaces outside the implemented core. Full
+data-source sync is owned by the standalone [Notion datasource sync
+spec](../../../notion-datasource-sync/docs/vrs/spec.md).
 
-## Target redesign (v-next): frictionless, progressively-disclosed sync
+## V-next sync model: frictionless, progressively-disclosed sync
 
-> This section is the forward-looking redesign target. It is the entry point for
-> the next iteration and supersedes parts of the current-model spec below (see
-> the supersession table). The sections after it document the **currently
-> implemented** model and remain accurate for what ships today; do not read them
-> as the target. The decided v-next surface below is the output of the
-> competing-designs bake-off; its record is preserved as the auditable evidence
-> trail for the decision.
+This section is the normative implemented sync model. The bake-off record below
+is preserved as the auditable evidence trail for the decision, while later
+sections describe the supporting local format, service boundaries, watch
+orchestration, and remaining designed surfaces.
 
 Traces requirements [R09](./requirements.md), [R11](./requirements.md), and
 [R30–R36](./requirements.md).
@@ -80,18 +85,22 @@ Local-first creation is part of `sync`: an unbound `source: local` file creates
 a new remote page and records the returned `page_id`. Existing remote pages are
 adopted with `track`, not with `sync`.
 
-| Flag                            | Effect                                                                                                                                                                             |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--watch`                       | Continuous reconcile loop.                                                                                                                                                         |
-| `--poll-interval-ms`            | Remote poll cadence under `--watch`.                                                                                                                                               |
-| `--concurrency`                 | Bounded per-file parallelism for trees.                                                                                                                                            |
-| `--dry-run`                     | Plan and validate the selected write operation without mutating Notion, local files, or local sync state.                                                                          |
-| `--force`                       | ONLY overrides a `shared` 3-way-merge divergence. Hard error / inert on single-source — single-source push already refuses on remote drift, so there is no single-source override. |
-| `--allow-delete-unknown-blocks` | R12 destructive-intent gate.                                                                                                                                                       |
-| `--allow-review-markup`         | R13 destructive-intent gate.                                                                                                                                                       |
-| `--output human\|json\|ndjson`  | Output contract.                                                                                                                                                                   |
+| Flag                 | Effect                                                                                                                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--watch`            | Continuous reconcile loop.                                                                                                                                                         |
+| `--poll-interval-ms` | Remote poll cadence under `--watch`.                                                                                                                                               |
+| `--recursive`        | Discover existing `.nmd` files under directory targets.                                                                                                                            |
+| `--concurrency`      | Bounded per-file parallelism for trees.                                                                                                                                            |
+| `--dry-run`          | Plan and validate the selected write operation without mutating Notion, local files, or local sync state.                                                                          |
+| `--force`            | ONLY overrides a `shared` 3-way-merge divergence. Hard error / inert on single-source — single-source push already refuses on remote drift, so there is no single-source override. |
+| `--json`             | Machine-readable one-shot output where supported.                                                                                                                                  |
 
-Dropped versus today, all subsumed by frontmatter dispatch: `clone`,
+R12/R13 destructive modes are not exposed as v-next CLI flags until the
+destructive surface-specific semantics are implemented. The implemented core
+fails closed on unsupported destructive body writes and unresolved review
+markup.
+
+Dropped from the pre-v-next surface, all subsumed by frontmatter dispatch: `clone`,
 `--from-remote`, `--root`, `--root-file`, the two-arg `sync`, the separate
 `plan` verb (folded into `status`), and file-vs-tree flag branching.
 
@@ -215,8 +224,10 @@ Three layers; merge/base code is a compile-time-isolated leaf:
   3-way merge + `conflict.roughdraft`; re-settles a fresh base after every clean
   apply. Reached only via `source: shared` (R32).
 
-`--dry-run`-equivalent safety is achieved at the `status` verb — a read-only
-entry that never reaches the apply tail — not at a flag.
+`status` is the safe overview verb and never reaches the apply tail. Write
+commands additionally expose `--dry-run`, which runs the same planning and
+validation as `sync` or `track` but commits no mutation and records no durable
+preview state.
 
 ### Bake-off record
 
@@ -237,31 +248,30 @@ Consolidated scorecard (lower is simpler except where noted; ✗ fails the gate)
 | -------------------------- | --- | --- | --- | --- | --- |
 | Verbs                      | ≤ 3 | 3   | 2   | 3   | 2   |
 | Common-path flags          | 0   | 0   | 0   | 0   | 0   |
-| Total flags                | ≤ 8 | ≤ 8 | ≤ 8 | ≤ 8 | ≤ 8 |
+| Total flags                | ≤ 8 | ≤ 7 | ≤ 7 | ≤ 7 | ≤ 7 |
 | Common-path concepts       | ≤ 4 | 3   | 3   | 3   | 3   |
 | Steps-to-first-success     | ≤ 2 | 2   | 2   | 2   | 2   |
 | Adversarial footguns (R30) | 0   | 0   | ✗ 1 | 0   | ✗ 1 |
 
 **Decision.** The 3-verb surface wins. The 2-verb designs (B, D) save exactly
-one verb by folding the safe preview into a `--dry-run` / `-n` flag — which puts
-the safe-preview on a _mutating_ verb. That flag is forgettable, making it a
-newcomer footgun, and fails R30's zero-footgun gate; B itself recommended
-stopping at the 3-verb surface. The winner synthesizes A's structural rigor
-(schema-gated single-source statelessness), C's git-native framing (no
-push/pull; direction as per-file `source`; porcelain `status`), and D's
-inference discipline (dispatch on frontmatter, never flags). Safe preview lives
-on `status`, a verb with no write path in its call graph, so it cannot be
-forgotten into a mutation.
+one verb by making `sync --dry-run` carry the whole overview/preview role. That
+removes the always-safe status surface and makes the first inspection command a
+variant of the mutating verb, which is a newcomer footgun. The winner
+synthesizes A's structural rigor (schema-gated single-source statelessness),
+C's git-native framing (no push/pull; direction as per-file `source`; porcelain
+`status`), and D's inference discipline (dispatch on frontmatter, never flags).
+Safe overview lives on `status`, while write commands still expose `--dry-run`
+for execution-local planning without mutation.
 
 ### Supersession map
 
-The decided v-next surface supersedes these current sections. They stay
-authoritative until the v-next implementation lands.
+The v-next surface supersedes these older model shapes. The map is retained to
+show which invariants replace the previous design assumptions.
 
-| Current section                                                                                                 | Superseded by                                                                                         |
+| Older model shape                                                                                               | Superseded by                                                                                         |
 | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | [CLI](#cli) (`--from-remote`, `--root`, `--root-file`, two-arg `sync`, separate `plan`, file-vs-tree branching) | `track` / `status` / `sync` on self-describing files; `plan` folded into `status` (R34)               |
-| [Push Flow](#push-flow) + [Status Flow](#status-flow) (always-on base re-read + merge)                          | stateless live-reconcile for single-source; base+merge only for `source: shared` (R09, R11, R31, R32) |
+| Old push/pull coordinator with always-on base re-read + merge                                                   | stateless live-reconcile for single-source; base+merge only for `source: shared` (R09, R11, R31, R32) |
 | [Merge And Conflict Policy](#merge-and-conflict-policy) (base/3-way as default)                                 | merge apparatus relocated to the `shared` strategy leaf (R32)                                         |
 | [Local Format](#local-format) base-snapshot-per-pull / sidecar-always                                           | sidecar/base only for `source: shared`; single-source carries none (R31)                              |
 | in-sync as body-hash equality                                                                                   | in-sync as semantic equivalence under a specified canonical relation (R33)                            |
@@ -296,10 +306,6 @@ authoritative until the v-next implementation lands.
 
 ## Scope
 
-> The sections from here down describe the **current engine** as implemented,
-> pending the v-next implementation. The decided v-next surface above supersedes
-> the parts listed in the supersession map.
-
 This spec defines:
 
 - the `.nmd` local file contract,
@@ -322,13 +328,13 @@ This spec does not define:
 ```
 notion-md CLI
   |
-  |  pull/status/push/sync/watch/batch
+  |  track/status/sync/watch
   v
-Batch/tree orchestrator
+Path, batch, and tree orchestrators
   |
-  |-- target discovery, duplicate page-id preflight, bounded concurrency
+  |-- target discovery, tree membership preflight, duplicate page-id preflight, bounded concurrency
   v
-Sync coordinator
+Source-dispatched reconcile engine
   |
   |-- Local .nmd file
   |-- .notion-md/objects/sha256/<hash>.json
@@ -534,61 +540,70 @@ The implementation currently supports self-contained storage and content-address
 
 Requirement trace: R01-R05, R11-R15.
 
-| Surface            | Local state                    | Pull API                              | Push API                    | Conflict unit      | Current status              |
-| ------------------ | ------------------------------ | ------------------------------------- | --------------------------- | ------------------ | --------------------------- |
-| Body               | `.nmd` body + `base_snapshot`  | block-tree render + endpoint evidence | Markdown update endpoint    | canonical Markdown | implemented                 |
-| Page metadata      | frontmatter page fields        | `GET /pages/{id}`                     | `PATCH /pages/{id}`         | field              | title/lock/trash/icon/cover |
-| Properties         | frontmatter property map       | `GET /pages/{id}`                     | `PATCH /pages/{id}`         | property           | modeled writable forms      |
-| Unsupported blocks | frontmatter/object storage     | Markdown + block API                  | preserve or explicit delete | block id           | guard + preserve metadata   |
-| Data-source schema | external datasource-sync state | datasource-sync package               | datasource-sync package     | schema hash        | owned by datasource sync    |
-| Comments           | future comment payload         | comments API                          | comments API                | discussion/comment | designed, not implemented   |
-| Files              | future file payload            | block/file APIs                       | file upload APIs            | content hash       | modeled, not implemented    |
-| Review             | Roughdraft local markup        | local only or comments API            | explicit bridge only        | review id          | guard implemented           |
+| Surface            | Local state                                        | Remote observation                    | Write API                            | Conflict unit      | Current status              |
+| ------------------ | -------------------------------------------------- | ------------------------------------- | ------------------------------------ | ------------------ | --------------------------- |
+| Body               | `.nmd` body; base object only for `source: shared` | block-tree render + endpoint evidence | create page, replace/update Markdown | canonical Markdown | implemented                 |
+| Page metadata      | frontmatter page fields                            | `GET /pages/{id}`                     | `PATCH /pages/{id}`                  | field              | title/lock/trash/icon/cover |
+| Properties         | frontmatter property map                           | `GET /pages/{id}`                     | `PATCH /pages/{id}`                  | property           | modeled writable forms      |
+| Unsupported blocks | frontmatter/object storage                         | Markdown + block API                  | preserve or explicit delete          | block id           | guard + preserve metadata   |
+| Data-source schema | external datasource-sync state                     | datasource-sync package               | datasource-sync package              | schema hash        | owned by datasource sync    |
+| Comments           | future comment payload                             | comments API                          | comments API                         | discussion/comment | designed, not implemented   |
+| Files              | future file payload                                | block/file APIs                       | file upload APIs                     | content hash       | modeled, not implemented    |
+| Review             | Roughdraft local markup                            | local only or comments API            | explicit bridge only                 | review id          | guard implemented           |
 
-Body conflicts do not block property-only pushes. Property-only pushes across a concurrent remote body edit patch properties, then refresh the local `.nmd` body and base from the current remote state.
+Body conflicts are possible only for `source: shared`, where a base object
+exists. `source: local` and `source: remote` are single-source mirrors: they
+compare rendered local body with the current remote body and move in the
+declared direction without a merge base.
 
-## Pull Flow
+## Track Flow
 
-1. Decode CLI options.
-2. Retrieve Notion page metadata.
-3. Observe the remote body through the Notion body observation service.
-4. Reject clean-base adoption if the observation is lossy.
-5. Adopt the block-tree-rendered Markdown as the local body and base snapshot;
-   keep endpoint Markdown only as diagnostic evidence.
-6. Retrieve unknown block payloads through the block API when Markdown reports unknown/truncated blocks.
-7. Compute the body hash over the adopted rendered body.
-8. Build a strict frontmatter envelope.
-9. Write base snapshot and storage objects.
-10. Write the `.nmd` file.
-11. Emit a pull result with storage mode and object refs.
+1. Decode the page id or URL and target path.
+2. Retrieve Notion page metadata and observe the remote body through the body
+   observation service.
+3. Reject file establishment if the observation is lossy.
+4. Adopt the block-tree-rendered Markdown as the local body; keep endpoint
+   Markdown only as diagnostic evidence.
+5. Build a strict frontmatter envelope with explicit `source`.
+6. For `source: shared`, also write the base object and sidecar sync state.
+   `source: local` and `source: remote` remain stateless.
+7. Write the `.nmd` file, or return the planned result for `--dry-run`.
 
-Future selected surfaces add data-source schema, comments, and files before the write commit.
+Future selected surfaces add data-source schema, comments, and files before the
+write commit.
 
 ## Status Flow
 
-1. Read and decode `.nmd` once.
-2. Validate all referenced objects.
-3. Retrieve the current remote page and Markdown.
-4. Compute local body hash, remote body hash, property edit state, metadata drift, and unresolved unknown block IDs.
-5. Return a typed status result.
+1. Reject single-file status for files that are members of a managed directory
+   tree; the tree root owns composed child anchors and state.
+2. Read and strictly decode `.nmd` frontmatter.
+3. Validate local state according to `source`: no sidecar for `local`/`remote`,
+   required sidecar for `shared`.
+4. Retrieve the current remote page and Markdown for bound files.
+5. Return source-specific porcelain status: `unbound`, `in-sync`,
+   `local-ahead`, `remote-ahead`, or `diverged`.
 
-Status distinguishes `remoteBodyChanged` from `remotePageMetadataChanged`. The current implementation still exposes a combined `remoteChanged` convenience field.
+## Reconcile Flow
 
-## Push Flow
+1. Reject single-file sync for files that are members of a managed directory
+   tree.
+2. Read and strictly decode `.nmd` once.
+3. Validate local state according to `source`.
+4. Dispatch by `source`, not by CLI flags:
+   - `source: local`, unbound: create the remote page under the frontmatter
+     parent and bind the returned `page_id`.
+   - `source: local`, bound: mirror the local body to Notion when it differs.
+   - `source: remote`: pull the current remote body when it differs.
+   - `source: shared`: compare base, local, and remote bodies and apply the
+     shared merge policy.
+5. For `--dry-run`, return the planned result without writing the local file,
+   sidecar, object store, or Notion.
+6. After writes that establish or refresh a clean base, re-observe the remote
+   body and require complete body evidence before settling shared state.
 
-1. Read and decode `.nmd` once.
-2. Pull remote state once for status.
-3. Reject clean-base use of any lossy remote body observation.
-4. Reject unresolved Roughdraft review markup unless explicitly allowed.
-5. Reject body pushes that could delete unknown blocks unless destructive intent is explicit.
-6. If only page metadata or properties changed and the remote body changed, patch those surfaces and refresh local body from remote only when the refreshed body is complete.
-7. If the remote body changed and local body changed, attempt a conservative three-way merge.
-8. If merge succeeds, update Markdown and then properties.
-9. If merge fails, write a Roughdraft conflict artifact and leave remote unchanged.
-10. If remote body is still at base, use a targeted Markdown update when safe or guarded replace when necessary.
-11. Re-observe the remote body after writes and rewrite `.nmd` with fresh body, base, page metadata, storage, and completeness evidence.
-
-The local file is read once for a push decision to avoid local snapshot drift. Remote body is re-read immediately before guarded Markdown updates to catch races between status and write.
+The local file is read once for a reconcile decision to avoid local snapshot
+drift. Remote body is re-read immediately before guarded Markdown updates where
+the selected write path requires race detection.
 
 Clean-base writes are allowed only from complete body observations with
 block-tree-rendered Markdown available. Endpoint truncation, unknown block IDs,
@@ -609,7 +624,7 @@ client block-tree renderer output as the clean body.
 
 Requirement trace: R11-R15.
 
-Body merge operates on canonical Markdown:
+`source: shared` body merge operates on canonical Markdown:
 
 | Case                          | Result                                    |
 | ----------------------------- | ----------------------------------------- |
@@ -621,9 +636,13 @@ Body merge operates on canonical Markdown:
 | overlapping different edit    | conflict                                  |
 | protected placeholder removal | conflict unless explicit destructive mode |
 
-`update_content` is an optimization. It may be used only when the base hunk is unique in the current remote body and the returned Markdown equals the expected body. Ambiguous or deletion-heavy edits fall back to guarded `replace_content`.
+`update_content` is an optimization for guarded shared writes. It may be used
+only when the base hunk is unique in the current remote body and the returned
+Markdown equals the expected body. Ambiguous or deletion-heavy edits fall back
+to guarded `replace_content`.
 
-Unresolved conflicts are written beside the `.nmd` file as Roughdraft Markdown:
+Unresolved shared conflicts are written beside the `.nmd` file as Roughdraft
+Markdown:
 
 ```markdown
 # notion-md body conflict
@@ -692,9 +711,9 @@ Requirement trace: R16-R20.
 CLI program
   provides command tree, option schemas, output renderers
 
-Sync coordinator
+Source-dispatched reconcile engine
   depends on NotionGateway and NmdStateStore
-  owns pull/status/push/sync decisions
+  owns track/status/reconcile decisions
 
 NotionGateway
   depends on NotionConfig and HttpClient
@@ -725,12 +744,10 @@ Implementation rules:
 Current commands:
 
 ```bash
-notion-md sync <page-id-or-url> page.nmd
-notion-md sync docs --from-remote --root <page-id-or-url>
-notion-md plan docs
-notion-md status page.nmd
+notion-md track <page-id-or-url> [file-or-dir] [--as local|remote|shared] [--dry-run]
+notion-md status <path...> [--recursive] [--concurrency 4] [--json]
 notion-md sync page.nmd [--watch] [--poll-interval-ms 30000]
-notion-md sync docs
+notion-md sync docs --recursive [--concurrency 4] [--dry-run] [--force] [--json]
 ```
 
 Environment:
@@ -741,10 +758,12 @@ Environment:
 
 Output:
 
-- One-shot commands emit pretty JSON results by default.
+- One-shot commands emit compact human output by default and JSON where
+  `--json` is supported.
 - Watch emits compact NDJSON event lines by default.
 - Watch `sync_error` events include structured typed error fields.
-- The long-term stable contract is explicit `--output human|json|ndjson`, with `auto` allowed only as a convenience alias after envelope schemas are versioned.
+- A future stable output contract may graduate to explicit
+  `--output human|json|ndjson` once envelope schemas are versioned.
 
 Future CLI contract:
 
@@ -766,9 +785,9 @@ Rules:
 
 - A single file target emits a single-page JSON result.
 - Multiple status targets or flat recursive directory targets emit a batch envelope.
-- Directory tree targets read `.notion-md/workspace.json` as an internal tree
-  index when present. `plan` reports tree operations without writing files, and
-  `sync` applies the local tree unless `--from-remote` is explicit.
+- Directory targets discover existing `.nmd` files. `status` previews those
+  files without mutation, and `sync` reconciles each file according to its own
+  `source`.
 - Recursive discovery includes existing `*.nmd` files and skips `.notion-md`,
   `.git`, and `node_modules`.
 - Duplicate `page_id` values in the same batch are rejected before any Notion
@@ -857,9 +876,9 @@ Attributes must not include tokens, full Markdown bodies, file bytes, or signed 
 | Layer           | Required coverage                                                                 |
 | --------------- | --------------------------------------------------------------------------------- |
 | Unit            | schemas, canonicalization, merge planner, hash stability, object refs             |
-| Fake E2E        | pull/status/push/sync/watch, property/body concurrency, unknown-block guards      |
+| Fake E2E        | track/status/sync/watch, source dispatch, tree guards, unknown-block guards       |
 | State integrity | corrupt hashes, stale objects, path traversal, inventory mismatch, legacy rejects |
-| Live Notion E2E | pull/status/push, stale overwrite rejection, unknown blocks, merge, property edit |
+| Live Notion E2E | track/status/sync, watch polling, unknown blocks, merge, property edit            |
 | CLI             | command parsing, invalid options, missing token, output contracts                 |
 | OTEL            | expected spans and safe attributes                                                |
 

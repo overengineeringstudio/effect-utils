@@ -232,9 +232,8 @@ const syncState: NmdSyncStateV1 = {
 }
 
 describe('NmdFrontmatterV2 source field (R34)', () => {
-  it('defaults source to local when absent (legacy files)', () => {
-    const decoded = decodeNmdFrontmatterV2Sync(frontmatterV2({}))
-    expect(decoded.notion_md.source).toBe('local')
+  it('rejects missing source instead of defaulting to local', () => {
+    expect(() => decodeNmdFrontmatterV2Sync(frontmatterV2({}))).toThrow()
   })
 
   it('decodes an explicit source: remote', () => {

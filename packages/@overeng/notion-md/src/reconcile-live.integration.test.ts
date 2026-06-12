@@ -5,12 +5,13 @@ import { join } from 'node:path'
 import type { FileSystem, HttpClient } from '@effect/platform'
 import { FetchHttpClient } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer, Redacted } from 'effect'
+import { Deferred, Effect, Fiber, Layer, Redacted } from 'effect'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { NotionConfigLive, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 
 import { canonicalize } from './canonicalizer.ts'
+import { runWatch } from './cli-program.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { reconcileFile, statusFile, trackPage } from './reconcile.ts'
@@ -105,4 +106,75 @@ describe.skipIf(skipLive)('notion-md v-next live smoke (R27)', () => {
       await rm(dir, { recursive: true, force: true })
     }
   }, 60_000)
+
+  it('sync --watch polls real Notion changes through the v-next reconcile path', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-md-vnext-live-watch-'))
+    try {
+      const created = await runLive(
+        NotionPages.create({
+          parent: { type: 'page_id', page_id: testParentPageId ?? '' },
+          properties: {
+            title: { title: [{ type: 'text', text: { content: `${scratchTitle} watch` } }] },
+          },
+        }),
+      )
+      createdPageIds.push(created.id)
+
+      const path = join(dir, 'watched.nmd')
+      await runLive(trackPage({ pageId: created.id, outPath: path, source: 'remote' }))
+
+      await runLive(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const initialNoop = yield* Deferred.make<void>()
+            const pulled = yield* Deferred.make<void>()
+            const fiber = yield* Effect.fork(
+              runWatch({
+                syncOptions: { path },
+                pollIntervalMs: 250,
+                emit: (event) =>
+                  Effect.sync(() => event).pipe(
+                    Effect.flatMap((value) => {
+                      if (
+                        typeof value === 'object' &&
+                        value !== null &&
+                        'event' in value &&
+                        value.event === 'sync' &&
+                        'result' in value &&
+                        typeof value.result === 'object' &&
+                        value.result !== null &&
+                        '_tag' in value.result
+                      ) {
+                        if (value.result._tag === 'noop') {
+                          return Deferred.succeed(initialNoop, undefined).pipe(Effect.asVoid)
+                        }
+                        if (value.result._tag === 'pulled') {
+                          return Deferred.succeed(pulled, undefined).pipe(Effect.asVoid)
+                        }
+                      }
+                      return Effect.void
+                    }),
+                  ),
+              }),
+            )
+
+            yield* Deferred.await(initialNoop)
+            yield* NotionPages.updateMarkdown({
+              pageId: created.id,
+              type: 'replace_content',
+              new_str: 'Remote watched body',
+              allow_deleting_content: true,
+            })
+            yield* Deferred.await(pulled)
+            yield* Fiber.interrupt(fiber)
+          }),
+        ),
+      )
+
+      const file = await readFile(path, 'utf8')
+      expect(file).toContain('Remote watched body')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 90_000)
 })

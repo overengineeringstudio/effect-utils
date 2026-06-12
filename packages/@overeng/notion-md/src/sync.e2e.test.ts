@@ -9,8 +9,9 @@ import { describe, expect, it } from 'vitest'
 
 import type { BodyCompleteness } from '@overeng/notion-core'
 import type { NmdPageState, NmdStorage, NmdSyncStateV1 } from '@overeng/notion-effect-client'
+import { captureInProcessTrace } from '@overeng/utils-dev/otelite'
 
-import { resolveNmdTargets, runBatchWatch, syncMany } from './batch.ts'
+import { resolveNmdTargets, runBatchWatch } from './batch.ts'
 import { runWatch } from './cli-program.ts'
 import {
   NmdConflictError,
@@ -682,6 +683,72 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('watch mode emits required OTEL spans with non-secret sync attributes', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(trackPage({ pageId, outPath: path, source: 'local' }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Body', 'OTEL watched body'))
+
+      const trace = await Effect.runPromise(
+        captureInProcessTrace(
+          {
+            serviceName: 'notion-md-test',
+            rootSpanName: 'notion-md.test.watch',
+            rootSpanLabel: 'watch-otel',
+          },
+          Effect.scoped(
+            Effect.gen(function* () {
+              const pushed = yield* Deferred.make<void>()
+              const fiber = yield* Effect.fork(
+                runWatch({
+                  syncOptions: { path },
+                  pollIntervalMs: 10_000,
+                  emit: (event) =>
+                    isPushedSyncEvent(event) === true
+                      ? Deferred.succeed(pushed, undefined).pipe(Effect.asVoid)
+                      : Effect.void,
+                }),
+              )
+              yield* Deferred.await(pushed)
+              yield* Fiber.interrupt(fiber)
+            }),
+          ).pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+          { inspect: { service: 'notion-md-test' } },
+        ),
+      )
+
+      trace.expectSome({
+        name: 'notion-md.watch',
+        attrs: {
+          'span.label': 'probe.nmd',
+          'notion_md.command': 'sync',
+          'notion_md.watch': 'true',
+          'notion_md.path.basename': 'probe.nmd',
+        },
+      })
+      trace.expectSome({
+        name: 'notion-md.watch.sync-pass',
+        attrs: {
+          'span.label': 'probe.nmd:initial',
+          'notion_md.command': 'sync',
+          'notion_md.watch': 'true',
+          'notion_md.watch.reason': 'initial',
+          'notion_md.path.basename': 'probe.nmd',
+          'notion_md.sync.result': 'pushed',
+        },
+      })
+      trace.expectSome({
+        name: 'notion-md.reconcile-file',
+        attrs: {
+          'span.label': 'probe.nmd',
+        },
+      })
+    })
+  })
+
   it('watch mode emits structured sync errors and continues running', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
@@ -847,7 +914,7 @@ describe('notion-md e2e prototype', () => {
       )
 
       const batch = await runWithFake(
-        syncMany({ targets: [firstPath, secondPath], concurrency: 2 }),
+        reconcileTree({ targets: [firstPath, secondPath], concurrency: 2 }),
         fake,
       )
 
