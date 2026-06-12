@@ -40,8 +40,8 @@ and identity live in each file's frontmatter, not in flags (R34).
 | Verb                     | Argument             | Behavior                                                                                                                                                                               |
 | ------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `track <id\|url> [path]` | a Notion page id/url | The ONLY command taking a page id. Establishes a local tracked file/subtree for an existing Notion page. Writes self-describing frontmatter (`page_id`, `parent`, `source`).           |
-| `status [path...]`       | local paths          | Read-only, **safe by construction** (no write path in its call graph). Reports the live in-sync decision per file in git-porcelain vocabulary; never mutates.                          |
-| `sync [path...]`         | local paths          | Reconciles self-describing files; dispatches per file on frontmatter `source`, never on flags/arity. Creates remote pages for unbound local files. Always moves a file toward in-sync. |
+| `status <path...>`       | local paths          | Read-only, **safe by construction** (no write path in its call graph). Reports the live in-sync decision per file in git-porcelain vocabulary; never mutates.                          |
+| `sync <path...>`         | local paths          | Reconciles self-describing files; dispatches per file on frontmatter `source`, never on flags/arity. Creates remote pages for unbound local files. Always moves a file toward in-sync. |
 
 #### `track <id|url> [path]`
 
@@ -50,33 +50,32 @@ file/subtree and writing self-describing frontmatter (`page_id`, `parent`,
 `source`).
 
 - `--as local|remote|shared` — default `remote` (you tracked existing Notion state).
-- `--recursive` — track a page plus its child subpages into a directory.
 - `--dry-run` — read and validate the remote page, report the intended output,
   and write nothing.
 - Fail-closed on lossy remote observation: no clean base from a truncated or
   lossy body.
 - Refuses to overwrite an existing file bound to a different page.
 
-#### `status [path...]`
+#### `status <path...>`
 
 Read-only and safe by construction — the apply tail is unreachable from
 `status` (no write path in its call graph). `status` is the overview preview for
-one or more files.
+one or more local file or directory targets.
 
 `status` is optional preview, not a prerequisite for `sync`. Write commands also
 support `--dry-run` for execution-local planning without mutation. Mirror Sync
 does not record a "last previewed" marker, and watch mode cannot depend on
 manual preview.
 
-- Default target is cwd; a directory means "everything under it" (no
-  `--recursive` needed for the steady state). `--recursive` / `--concurrency`
-  remain available for trees, matching the existing batch ergonomics.
+- Targets are explicit local paths. A directory target without `--recursive`
+  uses the directory-tree status path; `--recursive` / `--concurrency` select
+  flat batch discovery of existing `.nmd` files.
 - Per file reports the live in-sync decision in git-porcelain vocabulary:
   `in-sync` / `local-ahead` (would push) / `remote-ahead` (would pull) /
   `diverged` (shared only) / `unbound` (would create).
 - `--json` for machine output.
 
-#### `sync [path...]`
+#### `sync <path...>`
 
 Reconciles self-describing files. Dispatch is per file on frontmatter `source`,
 never on flags or argument arity. Common-path flags: zero.
@@ -183,7 +182,7 @@ structural/type property, not convention. `source: remote|shared` with no
 ### Internal layering
 
 ```
-sync [path...]  /  status [path...]
+sync <path...>  /  status <path...>
       |
       v
 Tree orchestration                  maps the per-page core over each file
