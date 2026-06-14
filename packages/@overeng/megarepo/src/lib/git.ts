@@ -477,6 +477,22 @@ export const getDefaultBranch = (args: { url: string } | { repoPath: string; rem
   })
 
 /**
+ * The store bare repo's default branch, read LOCALLY from its `HEAD` symbolic ref
+ * (set at clone time to the remote's default). Offline — no network, unlike
+ * {@link getDefaultBranch} which `ls-remote`s. Returns `none` when HEAD is
+ * detached or unreadable. Used by cold GC to never reclaim a repo's default
+ * branch regardless of PR state or liveness.
+ */
+export const getStoreDefaultBranch = (args: { bareRepoPath: string }) =>
+  runGitCommand({
+    args: ['symbolic-ref', '--short', 'HEAD'],
+    cwd: args.bareRepoPath,
+  }).pipe(
+    Effect.map((out) => (out === '' ? Option.none<string>() : Option.some(out))),
+    Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+  )
+
+/**
  * Resolve a ref to its commit SHA
  * Works with branches, tags, and commits
  */
