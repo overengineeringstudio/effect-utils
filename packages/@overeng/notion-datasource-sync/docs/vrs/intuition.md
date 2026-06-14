@@ -10,9 +10,10 @@ document; the authoritative product constraints live in [vision.md](./vision.md)
 Treat a Notion database like a Git working copy, but for structured data.
 
 Notion remains the shared place where people collaborate. Your local machine gets
-one SQLite file for that database, named `<database-id>.sqlite`. You can inspect
-it with ordinary SQL, change supported row values locally, and ask `notion db
-sync` to reconcile those changes with Notion.
+a versioned workspace with a public SQLite data file and `.nmd` page files. You
+can inspect it with ordinary SQL, change supported page/property values locally,
+edit page bodies as Markdown, and ask `notion db sync` to reconcile those
+changes with Notion.
 
 The important promise is not "everything syncs automatically." The promise is:
 when sync cannot prove an edit is safe, it stops and tells you what needs a human
@@ -26,10 +27,10 @@ Notion database
         |
         | notion db track
         v
-<database-id>.sqlite
+data/v1/tasks.sqlite
   local working copy
         |
-        | SQL edits to rows
+        | SQL edits to pages
         v
 pending changes
   explicit local intent
@@ -42,21 +43,22 @@ guarded Notion writes
 
 The SQLite file is not an export. It is the local API for one Notion database.
 It contains the current row projection, the observed schema, pending local
-changes, conflicts, sync status, and private sync-control state.
+changes, conflicts, and sync status. Private sync-control state lives under the
+hidden `.notion/v1` namespace.
 
 For a human, the main surfaces are:
 
 | Surface             | How to think about it                                       |
 | ------------------- | ----------------------------------------------------------- |
-| `rows`              | The spreadsheet-like table you read and edit                |
+| `pages`             | The spreadsheet-like table you read and edit                |
 | `schema`            | Which Notion database/data source this file represents      |
 | `schema_properties` | How Notion properties map to SQL columns                    |
 | `changes`           | Local edits that have not fully settled yet                 |
 | `conflicts`         | Places where sync needs an explicit choice                  |
 | `sync_status`       | Whether the replica is clean, pending, blocked, or degraded |
 
-Private `_nds_*` tables are the machinery that makes the file trustworthy. They
-are not extension points.
+Hidden `.notion/v1` state is the machinery that makes the workspace
+trustworthy. It is not an extension point.
 
 ## Why SQLite
 
@@ -64,11 +66,11 @@ SQLite gives humans and tools a stable local object to work with:
 
 - it is easy to inspect with `sqlite3`, DB Browser, Datasette, scripts, or
   coding agents,
-- it is durable and copyable as a single file,
+- it is durable and copyable as a user data file,
 - it supports ordinary SQL for filtering, joining, auditing, and bulk local
   edits,
-- it can store both the public row surface and the private sync ledger needed to
-  make reconciliation safe.
+- it composes with hidden sync state needed to make reconciliation safe without
+  exposing that state as user API.
 
 This matters because a live Notion API call is a momentary observation. A local
 SQLite replica is something you can diff, query, back up, and reason about.
@@ -78,7 +80,7 @@ SQLite replica is something you can diff, query, back up, and reason about.
 When you run:
 
 ```sql
-update rows
+update pages
 set "Status" = 'Done'
 where _page_id = '11111111-1111-4111-8111-111111111111';
 ```
@@ -102,7 +104,7 @@ records a conflict instead of guessing.
 The system is deliberately conservative. It should block rather than silently
 invent meaning for risky cases, including:
 
-- deleting a row with `DELETE FROM rows`,
+- deleting a page with `DELETE FROM pages`,
 - changing computed or system properties,
 - writing unsupported rich Notion surfaces,
 - applying a local edit over stale remote state,
@@ -113,15 +115,15 @@ invent meaning for risky cases, including:
 The refusal is part of the product, not a missing convenience. A blocked edit is
 recoverable; a silent wrong write is not.
 
-## Bodies And Rows Are Adjacent
+## Bodies And Pages Are Adjacent
 
-Notion rows have page bodies. Datasource sync treats row properties and page
+Notion data-source pages have page bodies. Datasource sync treats page properties and page
 bodies as related but separate surfaces.
 
-The SQLite file owns structured row data. `@overeng/notion-md` owns page-body
+The SQLite file owns structured page/property data. `@overeng/notion-md` owns page-body
 materialization and guarded body pushes. A normal sync experience can include
 both, but their conflicts stay separate: a title/status edit should not
-accidentally overwrite body text, and a body edit should not blur into row
+accidentally overwrite body text, and a body edit should not blur into page
 property state.
 
 ## What "Trusted Local Replica" Means
@@ -133,14 +135,14 @@ and to avoid unsafe reconciliation.
 A trusted replica has these properties:
 
 - it knows which Notion database it represents,
-- it records the schema and row state it observed,
+- it records the schema and page state it observed,
 - it records local edits before remote effects,
 - it remembers pending work, conflicts, and verification evidence,
-- it can rebuild public views from private sync events,
-- it fails closed when private state is corrupt or tampered with.
+- it can rebuild public views from hidden sync events,
+- it fails closed when hidden state is corrupt, unknown, or tampered with.
 
-That is why `<database-id>.sqlite` is more than a table dump. It is the portable
-unit of local state for one Notion database.
+That is why `data/v1/<source>.sqlite` is more than a table dump. It is the
+portable tabular user surface for one Notion data source.
 
 ## The Human Workflow
 
@@ -153,15 +155,15 @@ notion db track <database-url-or-data-source-id> ./notion-workspace
 Inspect the data:
 
 ```sh
-sqlite3 ./notion-workspace/<database-id>.sqlite \
-  'select _page_id, "Name", "Status" from rows limit 10;'
+sqlite3 ./notion-workspace/data/v1/tasks.sqlite \
+  'select _page_id, "Name", "Status" from pages limit 10;'
 ```
 
 Make a supported local edit:
 
 ```sh
-sqlite3 ./notion-workspace/<database-id>.sqlite \
-  "update rows set \"Status\" = 'Done' where _page_id = '...';"
+sqlite3 ./notion-workspace/data/v1/tasks.sqlite \
+  "update pages set \"Status\" = 'Done' where _page_id = '...';"
 ```
 
 Preview or apply reconciliation:
@@ -175,7 +177,7 @@ Check whether anything still needs attention:
 
 ```sh
 notion db status ./notion-workspace
-notion db conflicts list --sqlite ./notion-workspace/<database-id>.sqlite
+notion db conflicts list ./notion-workspace
 ```
 
 ## Design North Star

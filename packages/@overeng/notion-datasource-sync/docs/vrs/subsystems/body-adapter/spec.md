@@ -70,9 +70,8 @@ pre-write read because Notion does not expose server-side conditional body
 writes.
 
 `@overeng/notion-react` is intentionally not in this path: it is an owned-region
-writer and may later reuse core classifiers or fingerprints for preflight/drift
-reporting, but datasource-sync must not route guarded Markdown adoption through
-the React reconciler.
+writer with a separate contract. Datasource-sync must not route guarded Markdown
+adoption through the React reconciler.
 
 After a verified body push, the NotionMD-backed adapter refreshes the local
 `.nmd` clean base and datasource-sync sidecar only if the file still represents
@@ -83,7 +82,7 @@ body mutation, and it may settle only from a complete NotionMD body observation.
 Settlement records preserve the verified `BodyPointer` inside
 `BodyProjectionPayload`, including typed identity, safety, and materialization
 state. Replay rebuilds the same body pointer from events/projections; it does not
-reconstruct body identity from split hash columns or legacy safety JSON.
+reconstruct body identity from any other hash/safety JSON shape.
 
 Body materialization is subordinate to the established sync no-unwanted-data-loss
 invariant. The body adapter may provide materialization mechanics, but

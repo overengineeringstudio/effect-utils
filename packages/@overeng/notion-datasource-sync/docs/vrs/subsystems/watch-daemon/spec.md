@@ -52,7 +52,7 @@ flowchart TD
 | outbox retries      | honor Notion retry-after before retry due time                                                      |
 | repair work         | low priority; never blocks settlement of already accepted intents unless store integrity is suspect |
 
-The daemon must process local SQLite CDC from public `rows` on
+The daemon must process local SQLite CDC from public `pages` on
 every cycle before or alongside remote polling. If public SQLite CDC or runnable
 outbox work exists, the daemon performs a local-first guarded push pass before
 the remote pull so outbound latency is not gated by a full table scan
@@ -60,7 +60,7 @@ the remote pull so outbound latency is not gated by a full table scan
 settlement as normal sync (see [../sync-orchestration/spec.md](../sync-orchestration/spec.md)).
 A daemon that only observes Notion remote drift is incomplete: pending local row
 edits, row creates, and lifecycle changes must flow
-through the shared planner, private `_nds_*` outbox, verification, and public
+through the shared planner, hidden outbox, verification, and public
 observability surfaces. Queues are bounded; the daemon honors Notion rate limits
 and surfaces stuck commands (DAEMON-R04).
 
