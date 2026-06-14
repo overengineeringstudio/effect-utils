@@ -37,6 +37,9 @@ export type ConfigHash = typeof ConfigHash.Type
  * Identity of a data source's overall *schema* (its full set of properties).
  * Branded distinctly from {@link ConfigHash} so a per-property config identity
  * can never be passed where a whole-schema identity is required, and vice versa.
+ *
+ * Shared foundation with no Phase 1 consumer: the Phase 3 PropertyWriteCore /
+ * proof providers compare it for schema staleness.
  */
 export const SchemaHash = Sha256Hash.pipe(
   Schema.brand('Notion.SchemaHash'),
@@ -52,6 +55,9 @@ export type SchemaHash = typeof SchemaHash.Type
  * workspace state, or fresh live schema), mirroring the three sources the spec
  * binds datasource-scoped writes to. Carrying the actual evidence would cross
  * into proof acquisition, which belongs to higher packages (R10).
+ *
+ * Shared foundation with no Phase 1 consumer: the Phase 3 PropertyWriteCore /
+ * proof providers tag stable-identity evidence with this source.
  */
 export const PropertyIdentityEvidenceSource = Schema.Union(
   Schema.TaggedStruct('descriptor', {}),
@@ -61,9 +67,13 @@ export const PropertyIdentityEvidenceSource = Schema.Union(
 export type PropertyIdentityEvidenceSource = typeof PropertyIdentityEvidenceSource.Type
 
 /**
- * A single `.nmd` property descriptor. Decoded strictly — unknown fields are
- * rejected so a descriptor with extra (potentially proof-shaped) keys fails
- * closed rather than being silently accepted.
+ * A single `.nmd` property descriptor.
+ *
+ * This bare struct is NOT strict on its own — `Schema.Struct` drops excess
+ * properties. {@link decodePropertyDescriptor} (with `onExcessProperty: 'error'`)
+ * is the sanctioned fail-closed entry point, rejecting a descriptor with extra
+ * (potentially proof-shaped) keys. Any schema composing this one must likewise
+ * decode with `onExcessProperty: 'error'`.
  */
 export const PropertyDescriptor = Schema.Struct({
   property_id: PropertyId,
@@ -78,6 +88,11 @@ export type PropertyDescriptor = typeof PropertyDescriptor.Type
  * The `.nmd` `property_descriptors` map, keyed by the user-facing property name.
  * The key is the visible field name; the descriptor inside carries the stable
  * `property_id` the field claims to edit.
+ *
+ * The schema deliberately does NOT enforce that the map key equals the inner
+ * `property_name`: display-name vs property-id disambiguation is resolved by the
+ * Phase 3 proof provider against fresh remote schema (spec.md ~207), not at this
+ * schema layer. Decode via {@link decodePropertyDescriptors} to stay fail-closed.
  */
 export const PropertyDescriptors = Schema.Record({
   key: PropertyName,
@@ -99,32 +114,18 @@ export const decodePropertyDescriptors = Schema.decodeUnknown(PropertyDescriptor
   onExcessProperty: 'error',
 })
 
-/**
- * Deterministic JSON encoding with recursively sorted object keys.
- *
- * Descriptor hashes (`config_hash`, `schema_hash`) are reproducible only if the
- * bytes hashed are independent of key insertion order, so this is the canonical
- * serialization for any descriptor or hash input. `undefined` object fields are
- * omitted, matching `JSON.stringify`. The hash itself is computed by higher
- * layers — this package only fixes the byte layout they hash.
- */
-export const canonicalDescriptorJson = (value: unknown): string => {
-  if (value === null) return 'null'
-  if (Array.isArray(value) === true) {
-    return `[${value.map((item) => canonicalDescriptorJson(item)).join(',')}]`
-  }
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, item]) => item !== undefined)
-      .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalDescriptorJson(item)}`)
-    return `{${entries.join(',')}}`
-  }
-  return JSON.stringify(value)
-}
-
 const encodePropertyDescriptor = Schema.encodeSync(PropertyDescriptor)
 
-/** Canonical JSON bytes for a decoded {@link PropertyDescriptor} (brands erase; keys sorted). */
+/**
+ * Canonical JSON bytes for a decoded {@link PropertyDescriptor}, suitable as a
+ * reproducible hash input for higher layers.
+ *
+ * Follows this package's hashing contract (see `canonical.ts` and
+ * `canonical-codec.ts`): schema-encode to fix struct field order, then plain
+ * `JSON.stringify` — no recursive key sort. The descriptor's deterministic field
+ * order comes from the schema, so the bytes are stable regardless of input key
+ * insertion order. The hash itself is computed by higher layers; this package
+ * only fixes the byte layout they hash.
+ */
 export const canonicalPropertyDescriptorJson = (descriptor: PropertyDescriptor): string =>
-  canonicalDescriptorJson(encodePropertyDescriptor(descriptor))
+  JSON.stringify(encodePropertyDescriptor(descriptor))

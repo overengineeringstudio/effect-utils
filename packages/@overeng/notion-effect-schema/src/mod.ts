@@ -281,7 +281,6 @@ export {
 // Canonical property-value shape, write-class taxonomy, descriptors, and codec
 export {
   CanonicalDecodeError,
-  canonicalDescriptorJson,
   CanonicalEncodeError,
   CanonicalFileValue,
   type CanonicalFileValueType,

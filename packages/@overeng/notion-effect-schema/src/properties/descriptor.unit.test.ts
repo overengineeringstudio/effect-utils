@@ -5,7 +5,6 @@ import { NOTION_PROPERTY_TYPES } from '@overeng/notion-core'
 
 import { DataSourceId, propertyWriteClassFromType } from './canonical.ts'
 import {
-  canonicalDescriptorJson,
   canonicalPropertyDescriptorJson,
   ConfigHash,
   decodePropertyDescriptor,
@@ -69,20 +68,7 @@ describe('PropertyDescriptor decoding', () => {
 })
 
 describe('canonical descriptor JSON', () => {
-  it('is independent of key insertion order', () => {
-    const a = { b: 1, a: { d: 2, c: 3 }, list: [{ z: 1, y: 2 }] }
-    const b = { list: [{ y: 2, z: 1 }], a: { c: 3, d: 2 }, b: 1 }
-    expect(canonicalDescriptorJson(a)).toBe(canonicalDescriptorJson(b))
-    expect(canonicalDescriptorJson(a)).toMatchInlineSnapshot(
-      `"{"a":{"c":3,"d":2},"b":1,"list":[{"y":2,"z":1}]}"`,
-    )
-  })
-
-  it('omits undefined fields like JSON.stringify', () => {
-    expect(canonicalDescriptorJson({ a: 1, b: undefined })).toBe('{"a":1}')
-  })
-
-  it('produces stable bytes for a descriptor regardless of field order', () => {
+  it('produces stable schema-encoded bytes regardless of input key insertion order', () => {
     const reordered = {
       config_hash: validDescriptor.config_hash,
       property_type: validDescriptor.property_type,
@@ -94,7 +80,7 @@ describe('canonical descriptor JSON', () => {
     const right = Effect.runSync(decodePropertyDescriptor(reordered))
     expect(canonicalPropertyDescriptorJson(left)).toBe(canonicalPropertyDescriptorJson(right))
     expect(canonicalPropertyDescriptorJson(left)).toMatchInlineSnapshot(
-      `"{"config_hash":"sha256:0000000000000000000000000000000000000000000000000000000000000001","data_source_id":"00000000-0000-4000-8000-000000000002","property_id":"prop_abc","property_name":"Status","property_type":"select"}"`,
+      `"{"property_id":"prop_abc","property_name":"Status","property_type":"select","data_source_id":"00000000-0000-4000-8000-000000000002","config_hash":"sha256:0000000000000000000000000000000000000000000000000000000000000001"}"`,
     )
   })
 })
