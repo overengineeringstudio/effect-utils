@@ -64,6 +64,8 @@ export {
   type CanonicalOptionValue as CanonicalOptionValueType,
   CanonicalPropertyValue,
   type CanonicalPropertyValue as CanonicalPropertyValueType,
+  DataSourceId,
+  type DataSourceId as DataSourceIdType,
   NotionPropertyType,
   type NotionPropertyType as NotionPropertyTypeType,
   PageId,
@@ -85,6 +87,23 @@ export {
   encodeCanonicalPropertyValue,
   makeCanonicalCodec,
 } from './canonical-codec.ts'
+// Property descriptors, identity-hash brands, evidence sources, and canonical JSON
+export {
+  canonicalDescriptorJson,
+  canonicalPropertyDescriptorJson,
+  ConfigHash,
+  type ConfigHash as ConfigHashType,
+  decodePropertyDescriptor,
+  decodePropertyDescriptors,
+  PropertyDescriptor,
+  type PropertyDescriptor as PropertyDescriptorType,
+  PropertyDescriptors,
+  type PropertyDescriptors as PropertyDescriptorsType,
+  PropertyIdentityEvidenceSource,
+  type PropertyIdentityEvidenceSource as PropertyIdentityEvidenceSourceType,
+  SchemaHash,
+  type SchemaHash as SchemaHashType,
+} from './descriptor.ts'
 // Common types shared across property modules
 export {
   SelectOption,

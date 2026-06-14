@@ -49,6 +49,19 @@ export const PageId = Schema.NonEmptyTrimmedString.pipe(
 )
 export type PageId = typeof PageId.Type
 
+/**
+ * Branded Notion data source ID (the v2 schema-bearing container behind a database).
+ *
+ * Stays a `NonEmptyTrimmedString` rather than a UUID filter: consumers build it
+ * from Notion database/data-source IDs whose surface form is not contractually
+ * UUID here, and the brand already carries the meaning.
+ */
+export const DataSourceId = Schema.NonEmptyTrimmedString.pipe(
+  Schema.brand('Notion.DataSourceId'),
+  Schema.annotations({ identifier: 'Notion.DataSourceId' }),
+)
+export type DataSourceId = typeof DataSourceId.Type
+
 /** Opaque content-hash string (e.g. `sha256:…`). Computed by the caller, not here. */
 export const CanonicalHash = Schema.String.annotations({ identifier: 'Notion.Canonical.Hash' })
 export type CanonicalHash = typeof CanonicalHash.Type

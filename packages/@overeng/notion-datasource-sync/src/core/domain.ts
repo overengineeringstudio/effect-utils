@@ -8,6 +8,7 @@ import {
 } from '@overeng/content-address'
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import {
+  DataSourceId as SchemaDataSourceId,
   PageId as SchemaPageId,
   PropertyId as SchemaPropertyId,
   PropertyName as SchemaPropertyName,
@@ -26,11 +27,11 @@ export const ClientVersion = Schema.NonEmptyTrimmedString.pipe(
 )
 export type ClientVersion = typeof ClientVersion.Type
 
-/** Branded Notion database ID used as the primary key for a synced data source. */
-export const DataSourceId = Schema.NonEmptyTrimmedString.pipe(
-  Schema.brand('NotionDatasourceSync.DataSourceId'),
-  Schema.annotations({ identifier: 'NotionDatasourceSync.DataSourceId' }),
-)
+/**
+ * Branded Notion data source ID used as the primary key for a synced data source.
+ * Owned by `@overeng/notion-effect-schema`; aliased here (see {@link PageId}).
+ */
+export const DataSourceId = SchemaDataSourceId
 export type DataSourceId = typeof DataSourceId.Type
 
 /** Branded Notion database/container ID; distinct from a v2 data-source ID. */
