@@ -5,11 +5,11 @@ This document is the top-level index for the Notion datasource sync system speci
 ## Status
 
 Draft -- the sync-control layer, live Notion gateway, NotionMD body boundary,
-remote adoption flow, guarded write model, and self-contained
-`<database-id>.sqlite` replica contract exist. The canonical writable public
-surface is `rows`; `changes`, `conflicts`, and `sync_status` expose user-action
-state; `debug_*` views expose read-only diagnostics; `_nds_*` tables are private
-sync-control state.
+remote adoption flow, guarded write model, and versioned data-file contract
+exist. The canonical writable public surface is `pages`; `changes`,
+`conflicts`, and `sync_status` expose user-action state; `debug_*` views expose
+read-only diagnostics; hidden sync-control state lives under `.notion/v1`
+rather than in the public data file.
 
 This spec is decomposed into per-subsystem slices under [`subsystems/`](./subsystems/). Each slice owns its own requirements, spec, and capability-gap content. This document keeps only the cross-cutting material that does not belong to any single sub-system.
 
@@ -42,7 +42,7 @@ This top-level spec defines:
 It does not define:
 
 - SQLite store details, event families, projections, or outbox lifecycle -- see `subsystems/sync-store`,
-- the public `<database-id>.sqlite` replica or write intent contract -- see `subsystems/replica-api`,
+- the public versioned data-file replica or write intent contract -- see `subsystems/replica-api`,
 - the canonical domain model, hashers, and path semantics -- see `subsystems/domain-model` and `subsystems/local-workspace`,
 - planner flow, guard matrix, delete/move/restore semantics -- see `subsystems/planner-guards`,
 - schema-migration semantics -- see `subsystems/schema-migration`,
@@ -130,21 +130,21 @@ must choose explicit retention policy. Hash-only evidence may be retained when a
 workflow only needs identity/integrity, but lossy or incomplete evidence cannot
 establish or refresh a clean body base.
 
-`@overeng/notion-react` is deliberately deferred for this path. It may reuse
-core body-fidelity types later for preflight or drift reporting, but the
-datasource-sync planner must not route guarded Markdown adoption or settlement
-through the React reconciler.
+`@overeng/notion-react` is not part of this path. It may reuse core body-fidelity
+types only through a separate contract, and the datasource-sync planner must not
+route guarded Markdown adoption or settlement through the React reconciler.
 
 ## Authority Model
 
 The authority model is cross-cutting: it pins down which surface owns truth for
 which fact, so sub-systems can be designed independently without inventing
-competing sources of truth. Unlike NotionMD, datasource-sync does not have
-`source: local | remote | shared` modes. Authority is per surface and event
-based: Notion provides fresh observed remote state, the SQLite event log is
-durable local authority for accepted local facts, public replica tables are
-intent-entry/projection surfaces, and materialization is guarded output. The
-per-sub-system specs deepen each row below.
+competing sources of truth. The integrated workspace has one user-facing
+authority mode, `local`, `remote`, or `shared`, inherited by the public data
+file and `.nmd` files. Within that mode, each surface still has a precise
+mechanical authority: Notion provides fresh observed remote state, the SQLite
+event log is durable local authority for accepted local facts, public replica
+tables are intent-entry/projection surfaces, and materialization is guarded
+output. The per-sub-system specs deepen each row below.
 
 | Surface                       | Authority                                                      | Local representation                               | Write rule                                    |
 | ----------------------------- | -------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------- |
@@ -152,7 +152,7 @@ per-sub-system specs deepen each row below.
 | Current remote row properties | Fresh Notion observation                                       | `row_projection`, `property_shadow`                | Re-read relevant row/properties before writes |
 | Current remote page body      | NotionMD remote observation with evidence-backed body identity | `body_pointer` carrying `BodyProjectionPayload`    | Re-read and compare typed body identity       |
 | Local page-body desired state | NotionMD `.nmd` capture before materialize                     | body local-observation / body intent / conflict    | Preserve before overwrite; plan via body port |
-| Public local replica          | Projection from sync-control events                            | `<database-id>.sqlite` public surfaces             | User reads current state and writes intents   |
+| Public local replica          | Projection from sync-control events                            | `data/v1/<source>.sqlite` public surfaces          | User reads current state and writes intents   |
 | Local sync intent             | SQLite event log after validated public entry                  | `changes`, `sync_event`, `outbox`                  | Commit intent before command execution        |
 | Conflicts                     | SQLite event log/projection                                    | `conflict_projection`                              | Resolve by appending events                   |
 | Tombstones                    | SQLite event log/projection                                    | `tombstone_projection`                             | Create only after direct classification       |
@@ -167,7 +167,7 @@ Local authority has three invariants that apply across every sub-system:
 | ---------------------- | -------------------------------------------------------------------------------- |
 | Intent-before-effect   | A local edit becomes accepted only when its `LocalIntentAccepted` event commits. |
 | Effect-after-outbox    | Network writes execute only from committed outbox commands.                      |
-| Projection-from-events | Public rows/debug views are derived from private events and can be rebuilt.      |
+| Projection-from-events | Public pages/debug views are derived from hidden events and can be rebuilt.      |
 
 ## Telemetry
 
@@ -215,7 +215,7 @@ The authoritative verification contract is:
 - pure unit tests for canonicalization, planners, guards, and conflict classifiers,
 - Effect integration tests against fake Notion, fake body adapter, and fake filesystem services,
 - SQLite integration tests for replay, crash recovery, migrations, outbox, and leases,
-- replica integration tests for `<database-id>.sqlite` `rows`/`schema`/`schema_properties`/`changes`/`conflicts`/`sync_status`, read-only `debug_*` views, write intents, rebuild, and public/private boundary enforcement,
+- replica integration tests for `data/v1/<source>.sqlite` `pages`/`schema`/`schema_properties`/`changes`/`conflicts`/`sync_status`, read-only `debug_*` views, write intents, rebuild, and public/private boundary enforcement,
 - filesystem tests for local paths, sidecars, object storage, and deletion semantics,
 - daemon tests for local and remote event coalescing,
 - live Notion tests for API semantics, capability preflight, current API-version behavior, and completeness boundaries that cannot be proven locally.
@@ -258,15 +258,15 @@ private workspace names.
 
 Replica E2E must prove:
 
-- adoption without schema JSON creates `<workspace>/<database-id>.sqlite` and projects observed rows/schema/metadata,
-- `rows`, `schema_properties`, `changes`, `conflicts`, `sync_status`, and `debug_*` views agree for sampled rows,
-- `rows` property columns are generated from live schema before `_` columns and never include `schema_json`,
-- local SQL insert/update/archive/restore through `rows` produces planner commands in dry-run without settling the public change,
-- `DELETE FROM rows` is rejected and never becomes Archive, Forget, or permanent deletion,
+- adoption without schema JSON creates `data/v1/<source>.sqlite` and projects observed pages/schema/metadata,
+- `pages`, `schema_properties`, `changes`, `conflicts`, `sync_status`, and `debug_*` views agree for sampled pages,
+- `pages` property columns are generated from live schema before `_` columns and never include `schema_json`,
+- local SQL insert/update/archive/restore through `pages` produces planner commands in dry-run without settling the public change,
+- `DELETE FROM pages` is rejected and never becomes Archive, Forget, or permanent deletion,
 - normal sync applies supported intents to disposable fake/live remotes and settles after read-after-write,
 - stale base hashes become conflicts rather than overwrites,
 - schema drift affecting a pending intent is guarded before apply,
-- public table/view rebuild from private `_nds_*` state is deterministic,
+- public table/view rebuild from hidden sync-control state is deterministic,
 - real user database tests remain read-only/downsync and prove representative Notion rows are unchanged.
 
 Bidirectional safety scenarios are typed in `src/testing/bidi-safety.ts`. This
@@ -308,7 +308,7 @@ run marker in the scratch nursery; the harness records its `page_id`, scopes
 every SQL write with `WHERE _page_id = <scratchPageId>`, allowlists only that
 `page_id` for Notion writes, snapshots non-scratch rows before/after, and fails
 if any non-scratch sampled row changes. This is the #717 live bidi/body
-settlement lane. Live workspace tests must never run broad `UPDATE rows`, broad
+settlement lane. Live workspace tests must never run broad `UPDATE pages`, broad
 `DELETE`, archive, restore, body materialization, or cleanup against existing
 non-scratch rows.
 
@@ -321,9 +321,9 @@ injected cleanup callbacks; live Notion tests are reserved for API semantics and
 real fixture archive/restore behavior.
 
 No-data-loss acceptance requires established `sync` and `sync --watch`
-to capture SQLite `rows`/`changes` and `.nmd` bodies before local
+to capture SQLite `pages`/`changes` and `.nmd` bodies before local
 materialization that could overwrite them; accepted local intent must be visible
-in `changes` and backed by private `_nds_*` events; malformed or unsupported
+in `changes` and backed by hidden sync-control events; malformed or unsupported
 writes must fail atomically; remote writes must execute only from committed
 outbox commands after fresh preflight reads and settle only after
 read-after-write verification; `.nmd` materialization may write only when the
@@ -333,10 +333,10 @@ be preserved as conflict/repair material; and rebuild/replay must preserve
 pending intents, conflicts, tombstones, settlements, hashes, public visibility,
 and recoverable conflict material.
 
-## Design Questions
+## Resolved Scope Boundaries
 
-- **DQ1 Connection webhooks:** Hosted Notion connection webhooks may feed dirty entity hints into daemon intake. Because delivery is at-most-once, aggregated, unordered, and possibly stale, every hint must be followed by fresh API reads before planning.
-- **DQ2 Workers:** Notion Workers syncs are optional Notion-hosted external-source projections. Current Worker syncs create and manage Worker-owned databases and do not replace arbitrary existing datasource sync, local filesystem reconciliation, SQLite authority, or outbox settlement.
-- **DQ3 Package split staging:** The sync-core store/planner/replica layers currently live inside `@overeng/notion-datasource-sync`. They may remain there if APIs stay separated and extractable. Open design work remains for whether additional shared Notion identity, property capability, block support, and transport contracts should move upstream into `@overeng/notion-effect-schema` and `@overeng/notion-effect-client`.
-- **DQ4 File upload support:** Observed Notion file URLs are temporary references. Editable file-byte sync may use durable File Upload API IDs only after additional live E2E proof for upload, expiry, and replacement behavior.
-- **DQ5 Writable debug views:** Direct SQL `UPDATE`/`INSERT`/`DELETE` against `debug_*` views may later be implemented with triggers that insert the same typed intent rows that feed `changes`. The current public API supports guarded writes through canonical `rows`; `changes` remains a read-only ledger so write semantics stay visible and testable.
+- **Connection webhooks:** Hosted Notion connection webhooks are dirty entity hints for daemon intake. Delivery is at-most-once, aggregated, unordered, and possibly stale, so every hint is followed by fresh API reads before planning. Subscription provisioning and hosted receiver lifecycle are outside the package-local sync contract.
+- **Workers:** Notion Workers syncs are optional Notion-hosted external-source projections. Worker-managed databases do not replace arbitrary existing datasource sync, local filesystem reconciliation, SQLite authority, or outbox settlement.
+- **Package split:** Shared property identity, descriptors, canonical values, codecs, and write-class facts belong in `@overeng/notion-effect-schema`; HTTP transport and live API operations belong in `@overeng/notion-effect-client`; sync-core store/planner/replica layers remain in `@overeng/notion-datasource-sync` while their APIs stay separated and extractable.
+- **File upload support:** Existing Notion file URLs are temporary references. The v1 write surface supports explicit external URL attachment where proven; durable local byte uploads, replacement, deletion, and signed URL identity remain fail-closed until File Upload identity, expiry, and replacement behavior have live E2E proof.
+- **Writable debug views:** `debug_*` views are read-only diagnostics. The current public write API is guarded mutation through canonical `pages`; `changes` remains a read-only ledger so write semantics stay visible and testable.

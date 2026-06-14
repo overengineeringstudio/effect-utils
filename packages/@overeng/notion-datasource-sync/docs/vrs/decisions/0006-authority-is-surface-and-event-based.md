@@ -1,26 +1,27 @@
-# Authority is surface and event based
+# Authority is workspace-scoped and surface-executed
 
-Datasource sync does not use NotionMD's `source: local | remote | shared`
-frontmatter model. Its authority model is per surface and event based: Notion is
-fresh observed remote state, the SQLite event log is durable local authority for
-accepted intents/outbox/conflicts/tombstones, and public replica tables are
-intent-entry and projection surfaces.
+Datasource sync originally avoided NotionMD's `source: local | remote | shared`
+model and described authority only through surfaces and events. The integrated
+workspace replaces that exposed vocabulary: a workspace has one user-facing
+authority mode (`local`, `remote`, or `shared`), while implementation authority
+remains surface- and event-based inside that mode.
 
 ## Status
 
-accepted
+replaced by ../../../../../../context/notion-db-markdown-sync/decisions/0010-workspace-wide-authority-mode.md
 
 ## Considered Options
 
-- Import NotionMD Mirror/Shared terminology: consistent naming across packages,
-  but incorrectly suggests single-source overwrite modes for a bidirectional
-  SQLite control plane.
-- Keep datasource-specific authority vocabulary: matches the event log, outbox,
-  guarded materialization, and no-silent-LWW requirements.
+- Keep only datasource-specific authority vocabulary: matches the event log,
+  outbox, guarded materialization, and no-silent-LWW requirements, but creates a
+  second product model beside NotionMD.
+- Expose one workspace authority mode and keep per-surface authority internal:
+  consistent for users, while preserving the event-log/outbox mechanics needed
+  for safe implementation.
 
 ## Consequences
 
-The CLI can share verbs such as `track`, `status`, `sync`, and `sync --watch`
-with NotionMD, but datasource-sync keeps its own authority vocabulary. Public
-docs must explain authority through surfaces, observations, intents, events,
-outbox commands, and guarded materialization rather than source modes.
+The CLI and public docs use the integrated workspace authority mode. Internal
+docs and code may still explain how individual surfaces are observed, captured,
+planned, enqueued, and materialized, but those mechanics do not create extra
+user-facing modes.

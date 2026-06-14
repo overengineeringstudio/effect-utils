@@ -1,8 +1,8 @@
 # Source is explicit in v-next frontmatter
 
 v-next `.nmd` frontmatter requires an explicit `source` value. Missing `source`
-is not defaulted to `local`, because a legacy bound file must not silently become
-local-authoritative and overwrite Notion.
+is not defaulted to `local`, because a file without explicit authority must not
+silently become local-authoritative and overwrite Notion.
 
 ## Status
 

@@ -26,7 +26,7 @@ capture local desired state
 -> refresh status
 ```
 
-Local desired state includes public SQLite `rows`/`changes` intents and
+Local desired state includes public SQLite `pages`/`changes` intents and
 NotionMD `.nmd` body observations, including path, page identity, captured local
 content or recoverable content reference, and typed body identity for the known
 base/local state.

@@ -1,9 +1,8 @@
 # Watch is first-class v-next behavior
 
-Watch mode is part of the v-next sync contract, not a legacy compatibility path.
-The next iteration does not preserve the old two-way watch engine for backwards
-compatibility; it ports watch onto the same Mirror Sync and Shared Sync dispatch
-used by one-shot `status` and `sync`.
+Watch mode is part of the v-next sync contract. The next iteration runs watch
+through the same Mirror Sync and Shared Sync dispatch used by one-shot `status`
+and `sync`.
 
 ## Status
 

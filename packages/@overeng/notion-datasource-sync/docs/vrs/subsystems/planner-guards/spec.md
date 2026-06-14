@@ -68,10 +68,10 @@ top-level verification contract with at least one verification level.
 
 | Guard                                | Scenario                                                                       | Behavior                                                                                             | State written                                  |
 | ------------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `ApiVersionUnsupported`              | Gateway is configured below `2026-03-11`                                       | Stop requests except compatibility diagnostics                                                       | `CompatibilityChecked` failed                  |
-| `ApiVersionCompatibilityMissing`     | Gateway/API version changed without fake and live smoke proof                  | Block mutating commands                                                                              | `CompatibilityChecked` blocked                 |
+| `ApiVersionUnsupported`              | Gateway is configured below `2026-03-11`                                       | Stop requests except version diagnostics                                                             | `ApiContractChecked` failed                    |
+| `ApiVersionProofMissing`             | Gateway/API version changed without fake and live smoke proof                  | Block mutating commands                                                                              | `ApiContractChecked` blocked                   |
 | `DecodeDriftUnsupported`             | Supported surface contains changed/unknown payload shape                       | Block affected surface only                                                                          | `ConflictDetected` or blocked observation      |
-| `CapabilityPreflightFailed`          | Integration lacks read/query/update/schema/trash/restore/parent access         | Treat failures as capability issues, not data facts                                                  | `CompatibilityChecked` failed                  |
+| `CapabilityPreflightFailed`          | Integration lacks read/query/update/schema/trash/restore/parent access         | Treat failures as capability issues, not data facts                                                  | `ApiContractChecked` failed                    |
 | `UnsupportedRemoteShape`             | Exact schema decode fails                                                      | Stop affected sync surface; retain raw-safe diagnostic                                               | `ConflictDetected` or blocked observation      |
 | `ComputedPropertyWrite`              | Local intent targets formula/rollup/system property                            | Reject before outbox                                                                                 | `ConflictDetected` when user action is needed  |
 | `PropertyValueIncomplete`            | Page retrieve contains truncated/paginated property value                      | Fetch property item pages; block clean hash until complete                                           | blocked observation                            |
@@ -90,14 +90,14 @@ top-level verification contract with at least one verification level.
 | `PathClaimCollision`                 | Two pages map to same local path                                               | Conflict; no overwrite                                                                               | `ConflictDetected`                             |
 | `QueryAbsenceUnclassified`           | Row missing from datasource query                                              | Direct page retrieve before tombstone                                                                | `RemoteObserved` missing candidate             |
 | `PaginationIncomplete`               | Query or page-property pagination stops before terminal page                   | Do not checkpoint completeness or hash clean value                                                   | `QueryScanRecorded` incomplete                 |
-| `QueryContractChanged`               | Filter/sort/page size/membership contract changes                              | Start new checkpoint; old absence evidence is invalid                                                | `CompatibilityChecked` or `QueryScanRecorded`  |
+| `QueryContractChanged`               | Filter/sort/page size/membership contract changes                              | Start new checkpoint; prior absence evidence is invalid                                              | `ApiContractChecked` or `QueryScanRecorded`    |
 | `IncrementalAbsenceNotProof`         | Known row omitted by a high-watermark poll                                     | Keep row projection active; wait for full scan/direct classifier evidence                            | no tombstone event                             |
 | `QueryResultCapExceeded`             | Data-source query reaches the 10,000-result cap                                | Fail closed unless a complete partitioned query contract exists                                      | `QueryScanRecorded` capped                     |
 | `FilteredAbsenceNotProof`            | Row absent from filtered query/view                                            | Do not classify delete/move unless scoped binding and direct retrieve agree                          | blocked tombstone candidate                    |
-| `LinkedDataSourceUnsupported`        | Binding points at public-API-unsupported linked data source                    | Block init/pull with diagnostic                                                                      | `CompatibilityChecked` failed                  |
+| `LinkedDataSourceUnsupported`        | Binding points at public-API-unsupported linked data source                    | Block init/pull with diagnostic                                                                      | `ApiContractChecked` failed                    |
 | `PermissionAmbiguous`                | Known page retrieve returns restricted/ambiguous 403/404                       | Fail closed; no delete/forget                                                                        | `TombstoneClassified` inaccessible/unknown     |
 | `DeleteVsEdit`                       | One side edits while the other deletes/trashes                                 | Conflict                                                                                             | `ConflictDetected`                             |
-| `RowsDeleteUnsupported`              | `DELETE FROM rows WHERE ...` is attempted                                      | Reject the statement; archive/restore must be explicit `_in_trash` edits and forget remains CLI-only | SQLite statement abort                         |
+| `PagesDeleteUnsupported`             | `DELETE FROM pages WHERE ...` is attempted                                     | Reject the statement; archive/restore must be explicit `_in_trash` edits and forget remains CLI-only | SQLite statement abort                         |
 | `MoveOutNotDelete`                   | Page parent leaves tracked datasource                                          | Mark moved-out; do not trash                                                                         | `TombstoneClassified` moved-out                |
 | `UnavailableRelationTarget`          | Relation target inaccessible or missing                                        | Conflict/block relation write                                                                        | `ConflictDetected`                             |
 | `ExpiringFileUrl`                    | File value contains signed URL                                                 | Do not store as durable identity                                                                     | sanitized `RemoteObserved`                     |
@@ -117,7 +117,7 @@ top-level verification contract with at least one verification level.
 | `QueueBackpressureExceeded`          | Daemon queues exceed configured bound                                          | Pause intake and surface stuck work                                                                  | `RepairObserved` or daemon diagnostic          |
 | `RawPayloadRetentionUnsafe`          | Raw payload would persist private body/signed URL                              | Redact or reject retention                                                                           | sanitized retention row or blocked raw capture |
 
-SQL row deletion is rejected by `RowsDeleteUnsupported`. Archive/restore use
+SQL page deletion is rejected by `PagesDeleteUnsupported`. Archive/restore use
 explicit `_in_trash` edits. `forget` (drop local tracking, no remote effect)
 stays a CLI-only operation and is not reachable through SQL. There is no API
 path to permanent deletion.
@@ -150,7 +150,7 @@ command approval. Watch mode never auto-applies remote trash from a bare
 filesystem delete under the default `candidateOnly` policy. Deleting sidecar
 state is repairable projection damage, not remote delete intent.
 
-An explicit `DELETE FROM rows WHERE ...` against the public replica is distinct
+An explicit `DELETE FROM pages WHERE ...` against the public replica is distinct
 from a bare filesystem delete: it is rejected immediately, so SQL delete cannot
 mean archive, forget, or permanent removal.
 

@@ -17,7 +17,7 @@ This document preserves non-normative evidence for [spec.md](./spec.md). It reco
 - Markdown page-reference syntax failed on write in the tested fixture.
 - A structured `link_to_page` block appended through the block API pulled as `<unknown ... alt="alias"/>`, while the raw block API preserved the typed reference.
 
-**Conclusion:** The body surface can be built on enhanced Markdown, but support levels must be feature-gated by E2E evidence. Page/database references and unsupported blocks require block API fallback and local preservation.
+**Conclusion:** The body surface can be built on enhanced Markdown, but support levels must be feature-gated by E2E evidence. Page/database references and unsupported blocks require block API preservation paths.
 
 Artifacts: `tmp/notion-md-feature-matrix/`.
 

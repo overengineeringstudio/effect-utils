@@ -31,12 +31,19 @@ build on shared primitives from
   schemas used for medium-independent sync projections.
 - **R05 Canonical codecs:** Canonical property codecs must preserve byte-stable
   JSON layout for hashing and conflict detection.
+- **R06 Property descriptors:** The package must own shared identity schemas
+  needed by property descriptors, including data-source identity when required,
+  plus the schema-level property descriptors and write-class taxonomy shared by
+  NotionMD and datasource sync.
 
 ### Must Keep Boundaries Clear
 
-- **R06 Core reuse:** Shared pure literals and helpers must come from
+- **R07 Core reuse:** Shared pure literals and helpers must come from
   `@overeng/notion-core` when they do not require Effect Schema.
-- **R07 No transport ownership:** The package must not own HTTP request
+- **R08 No transport ownership:** The package must not own HTTP request
   execution, retries, rate limits, or token resolution.
-- **R08 No local file-format ownership:** The package must not own `.nmd` file
+- **R09 No local file-format ownership:** The package must not own `.nmd` file
   or sidecar contracts.
+- **R10 No sync-policy ownership:** The package must not own authority modes,
+  workspace convergence, outbox, conflicts, settlement, or live proof
+  acquisition.
