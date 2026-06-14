@@ -224,6 +224,34 @@ dry-run-covered. **Confidence: high** (explicit in epic Decisions/Phase 6).
 
 ---
 
+## D10 — Phase 3 shared guard vocabulary (adopt-by-composition) + two naming flags
+
+**Context.** The shared `PropertyWriteCore` (new `@overeng/notion-property-write`,
+per [D3]) emits named guard decisions. datasource-sync already owns a 46-member
+`GuardName` literal used by 108 call sites.
+
+**Decision (structure).** **Adopt-by-composition**: the new package exports the
+~11 shared property-write guard names; datasource-sync defines
+`GuardName = Schema.Literal(...propertyWriteGuardNames, ...syncOnlyGuardNames)`
+(a superset), keeping all 108 existing usages valid and giving the shared names a
+single source of truth. The core is a pure synchronous evaluator
+(`evaluatePropertyWrite(proof, write)`); evidence acquisition lives in two
+Effect-based providers (standalone-live in notion-md, workspace in
+datasource-sync). Safety is determined by the proof, never the entrypoint (R12).
+
+**Two naming flags for ratification (durable guard vocabulary):**
+
+- **Relation guard name:** spec prose says `RelationTargetsUnavailable`
+  (spec.md:219) but the existing guard is `UnavailableRelationTarget`
+  (guards.ts:49). **Chosen:** keep `UnavailableRelationTarget` (R09 — avoid a
+  second name for one invariant); treat the spec prose as a human-facing alias.
+- **Settlement guard name:** the spec names no settlement guard. **Chosen:**
+  reuse `ReadAfterWriteMismatch` for shared-mode missing settlement context
+  (alternative: mint `SettlementContextMissing`).
+
+**Confidence: medium.** Both are reversible literal-rename decisions; flagged so
+the durable guard vocabulary is human-ratified before it ossifies.
+
 ## Open items explicitly deferred to ratification
 
 - D3 package-vs-client collapse (see revisit trigger).
