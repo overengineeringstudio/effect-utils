@@ -8,18 +8,23 @@
  * the new content, never a truncated mix.
  */
 
-import { createHash } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Effect } from 'effect'
 
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
-/** Derives a per-target temp path so concurrent writers to distinct targets don't collide. */
-const tempPathFor = (path: AbsoluteFilePath): AbsoluteFilePath => {
-  const digest = createHash('sha256').update(path).digest('hex').slice(0, 16)
-  return EffectPath.unsafe.absoluteFile(`${path}.tmp-${digest}`)
-}
+/**
+ * Derives a sibling temp path that is UNIQUE per write — the per-target name
+ * alone would be shared by two concurrent writers of the same target (e.g. two
+ * `mr` processes refreshing the same workspace registry record), letting one
+ * clobber or rename the other's temp before its own `rename`. A pid + random
+ * suffix makes each in-flight temp distinct; the trailing `.tmp-` marks it for
+ * cleanup. Called once per write inside the Effect, so the randomness is fresh.
+ */
+const tempPathFor = (path: AbsoluteFilePath): AbsoluteFilePath =>
+  EffectPath.unsafe.absoluteFile(`${path}.tmp-${process.pid}-${randomBytes(8).toString('hex')}`)
 
 /**
  * Atomically write `content` to `path` via write-temp-then-rename.

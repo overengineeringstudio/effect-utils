@@ -61,7 +61,37 @@ describe('store-fs-atomic: writeFileAtomic', () => {
         const result = yield* writeFileAtomic({ path: target, content: 'x' }).pipe(Effect.either)
         expect(result._tag).toBe('Left')
 
-        // The `.tmp-<digest>` sibling must not survive the failed write.
+        // The `.tmp-*` sibling must not survive the failed write.
+        const remaining = yield* fs.readDirectory(dir)
+        expect(remaining.filter((name) => name.includes('.tmp-'))).toEqual([])
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'concurrent writes to the SAME target each land complete content with no temp left behind',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const dir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const target = EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile('record.json'))
+
+        // A per-target temp name would be SHARED here, letting one writer clobber
+        // the other's temp before its rename. With a unique temp per write both
+        // succeed and the target ends as exactly ONE writer's complete content.
+        const a = `${'A'.repeat(2048)}\n`
+        const b = `${'B'.repeat(2048)}\n`
+        yield* Effect.all(
+          [
+            writeFileAtomic({ path: target, content: a }),
+            writeFileAtomic({ path: target, content: b }),
+          ],
+          { concurrency: 'unbounded' },
+        )
+
+        expect([a, b]).toContain(yield* fs.readFileString(target))
         const remaining = yield* fs.readDirectory(dir)
         expect(remaining.filter((name) => name.includes('.tmp-'))).toEqual([])
       },
