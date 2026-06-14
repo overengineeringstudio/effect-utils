@@ -4,6 +4,7 @@ import {
   baseOxlintOverrides,
   baseOxlintPlugins,
   baseOxlintRules,
+  otelOxlintRules,
 } from './genie/oxlint-base.ts'
 import { oxlintConfig, type OxlintConfigArgs } from './packages/@overeng/genie/src/runtime/mod.ts'
 
@@ -26,6 +27,32 @@ export default oxlintConfig({
     {
       files: ['**/genie/src/runtime/**/*.test.ts'],
       rules: { 'overeng/no-external-imports': 'off' },
+    },
+    // effect-utils: production code must use schema-backed OTEL contracts instead
+    // of raw Effect/Stream span primitives. Keep boundary/runtime/test exceptions
+    // narrow and explicit so repo-wide adoption remains mechanically checkable.
+    {
+      files: ['packages/@overeng/*/src/**/*.ts', 'packages/@overeng/*/src/**/*.tsx'],
+      rules: otelOxlintRules({ rawOtel: 'error' }),
+    },
+    {
+      files: [
+        'packages/@overeng/otel-contract/src/**',
+        'packages/@overeng/utils-dev/src/otelite/**',
+        'packages/@overeng/*/src/**/*.test.ts',
+        'packages/@overeng/*/src/**/*.test.tsx',
+        'packages/@overeng/*/src/**/*.spec.ts',
+        'packages/@overeng/*/src/**/*.spec.tsx',
+        'packages/@overeng/*/src/**/*.unit.test.ts',
+        'packages/@overeng/*/src/**/*.unit.test.tsx',
+        'packages/@overeng/*/src/**/*.integration.test.ts',
+        'packages/@overeng/*/src/**/*.integration.test.tsx',
+        'packages/@overeng/*/src/**/*.e2e.test.ts',
+        'packages/@overeng/*/src/**/*.e2e.test.tsx',
+        'packages/@overeng/*/src/**/*.gen.ts',
+        'packages/@overeng/*/src/**/*.gen.tsx',
+      ],
+      rules: otelOxlintRules({ rawOtel: 'off' }),
     },
     // restate-effect: ban raw nondeterminism in SOURCE handler code (R20, decision
     // 0004). The journaled Clock/Random + explicit durable combinators are the

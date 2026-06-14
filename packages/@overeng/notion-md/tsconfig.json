@@ -58,6 +58,9 @@
       "path": "../notion-effect-schema"
     },
     {
+      "path": "../otel-contract"
+    },
+    {
       "path": "../tui-react"
     },
     {

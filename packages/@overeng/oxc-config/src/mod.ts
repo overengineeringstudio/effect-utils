@@ -9,6 +9,7 @@
  * - no-external-imports: Disallow value imports from npm packages (for dependency-free modules)
  * - no-raw-nondeterminism: Ban raw nondeterminism outside a journaled Restate.run closure
  * - no-non-durable-wait: Ban non-durable Effect.sleep/Effect.timeout outside a journaled Restate.run closure
+ * - no-raw-otel-primitives: Ban raw Effect/Stream OTEL span primitives outside contract boundaries
  *
  * It also re-exports selected rules from eslint-plugin-storybook under the
  * `overeng/storybook/*` namespace for enforcing Storybook best practices.
@@ -29,6 +30,7 @@ import { namedArgsRule } from './named-args.ts'
 import { noExternalImportsRule } from './no-external-imports.ts'
 import { noNonDurableWaitRule } from './no-non-durable-wait.ts'
 import { noRawNondeterminismRule } from './no-raw-nondeterminism.ts'
+import { noRawOtelPrimitivesRule } from './no-raw-otel-primitives.ts'
 
 type Rules = {
   'explicit-boolean-compare': typeof explicitBooleanCompareRule
@@ -38,6 +40,7 @@ type Rules = {
   'no-external-imports': typeof noExternalImportsRule
   'no-non-durable-wait': typeof noNonDurableWaitRule
   'no-raw-nondeterminism': typeof noRawNondeterminismRule
+  'no-raw-otel-primitives': typeof noRawOtelPrimitivesRule
   'storybook/meta-satisfies-type': (typeof storybookRules)['meta-satisfies-type']
   'storybook/default-exports': (typeof storybookRules)['default-exports']
   'storybook/story-exports': (typeof storybookRules)['story-exports']
@@ -56,6 +59,7 @@ const rules: Rules = {
   'no-external-imports': noExternalImportsRule,
   'no-non-durable-wait': noNonDurableWaitRule,
   'no-raw-nondeterminism': noRawNondeterminismRule,
+  'no-raw-otel-primitives': noRawOtelPrimitivesRule,
 
   // Re-exported storybook rules (use as overeng/storybook/*)
   'storybook/meta-satisfies-type': storybookRules['meta-satisfies-type'],

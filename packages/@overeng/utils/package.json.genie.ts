@@ -7,6 +7,7 @@ import {
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
@@ -25,6 +26,7 @@ const peerDepNames = [
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/utils' }),
   dependencies: {
+    workspace: [otelContractPkg],
     external: catalog.pick(
       '@noble/hashes',
       '@opentelemetry/api',
@@ -64,6 +66,7 @@ export default packageJson(
       './node/cli-help-rewrite': './src/node/cli-help-rewrite.ts',
       './node/cli-version': './src/node/cli-version.ts',
       './node/otel': './src/node/otel.ts',
+      './node/otel-attrs': './src/node/otel-attrs.ts',
       './node/playwright': './src/node/playwright/mod.ts',
       './node/playwright/config': './src/node/playwright/config/mod.ts',
       './node/storybook': './src/node/storybook/mod.ts',
@@ -86,6 +89,7 @@ export default packageJson(
         './node/cli-help-rewrite': './dist/node/cli-help-rewrite.js',
         './node/cli-version': './dist/node/cli-version.js',
         './node/otel': './dist/node/otel.js',
+        './node/otel-attrs': './dist/node/otel-attrs.js',
         './node/playwright': './dist/node/playwright/mod.js',
         './node/playwright/config': './dist/node/playwright/config/mod.js',
         './node/storybook': './dist/node/storybook/mod.js',

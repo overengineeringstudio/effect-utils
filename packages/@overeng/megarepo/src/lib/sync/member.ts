@@ -21,6 +21,7 @@ import {
 import * as Git from '../git.ts'
 import { detectRefMismatch, formatRefMismatchMessage } from '../issues.ts'
 import type { LockFile } from '../lock.ts'
+import * as Observability from '../observability.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../ref.ts'
 import { StoreLock } from '../store-lock.ts'
 import { Store } from '../store.ts'
@@ -453,35 +454,31 @@ export const syncMember = <R = never>({
                 const repoBasePath = store.getRepoBasePath(source)
                 yield* fs.makeDirectory(repoBasePath, { recursive: true })
                 yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
-                yield* Effect.annotateCurrentSpan('action', 'clone')
+                yield* Observability.annotateSyncMemberAction('clone')
                 return true
               }
-              yield* Effect.annotateCurrentSpan('action', 'already-cloned-by-sibling')
+              yield* Observability.annotateSyncMemberAction('already-cloned-by-sibling')
               return false
             }),
           )
         }
-        yield* Effect.annotateCurrentSpan('action', 'skip-dry-run')
+        yield* Observability.annotateSyncMemberAction('skip-dry-run')
       } else if (isFetchMode === true && dryRun === false) {
         yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
-        yield* Effect.annotateCurrentSpan('action', 'fetch')
+        yield* Observability.annotateSyncMemberAction('fetch')
       } else if (isApplyMode === true && targetCommit !== undefined && dryRun === false) {
         const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
         if (commitExists === false) {
           yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
-          yield* Effect.annotateCurrentSpan('action', 'fetch-missing-commit')
+          yield* Observability.annotateSyncMemberAction('fetch-missing-commit')
         } else {
-          yield* Effect.annotateCurrentSpan('action', 'noop')
+          yield* Observability.annotateSyncMemberAction('noop')
         }
       } else {
-        yield* Effect.annotateCurrentSpan('action', 'noop')
+        yield* Observability.annotateSyncMemberAction('noop')
       }
       return false
-    }).pipe(
-      Effect.withSpan('megarepo/sync/member/clone-or-fetch', {
-        attributes: { 'span.label': name, bareExists },
-      }),
-    )
+    }).pipe(Observability.withSyncMemberCloneSpan({ name, bareExists }))
 
     /**
      * A lock entry can point at an object that disappeared after a force-push.
@@ -661,11 +658,7 @@ export const syncMember = <R = never>({
         needsCreateBranch,
         defaultBranchForCreate,
       }
-    }).pipe(
-      Effect.withSpan('megarepo/sync/member/resolve-ref', {
-        attributes: { 'span.label': targetRef, ref: targetRef },
-      }),
-    )
+    }).pipe(Observability.withSyncMemberResolveRefSpan(targetRef))
 
     if (refResult._tag === 'early-return') return refResult.result
     // In apply mode, use the locked commit — not the bare repo's current branch tip.
@@ -790,8 +783,9 @@ export const syncMember = <R = never>({
           }),
         )
         .pipe(
-          Effect.withSpan('megarepo/sync/member/create-worktree', {
-            attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
+          Observability.withSyncMemberCreateWorktreeSpan({
+            ref: worktreeRef,
+            refType: worktreeRefType,
           }),
         )
     }
@@ -952,7 +946,7 @@ export const syncMember = <R = never>({
       message: branchCreatedMessage,
     } satisfies MemberSyncResult
   }).pipe(
-    Effect.tap((result) => Effect.annotateCurrentSpan('result.status', result.status)),
+    Effect.tap((result) => Observability.annotateSyncMemberResult(result.status)),
     Effect.catchAll((error) => {
       // Interpret git errors to provide user-friendly messages
       if (error instanceof Git.GitCommandError) {
@@ -962,7 +956,7 @@ export const syncMember = <R = never>({
             ? `${interpreted.message}\n  hint: ${interpreted.hint}`
             : interpreted.message
         return Effect.gen(function* () {
-          yield* Effect.annotateCurrentSpan('result.status', 'error')
+          yield* Observability.annotateSyncMemberResult('error')
           return {
             name,
             status: 'error',
@@ -971,7 +965,7 @@ export const syncMember = <R = never>({
         })
       }
       return Effect.gen(function* () {
-        yield* Effect.annotateCurrentSpan('result.status', 'error')
+        yield* Observability.annotateSyncMemberResult('error')
         return {
           name,
           status: 'error',
@@ -979,7 +973,5 @@ export const syncMember = <R = never>({
         } satisfies MemberSyncResult
       })
     }),
-    Effect.withSpan('megarepo/sync/member', {
-      attributes: { 'span.label': name, name, source: sourceString },
-    }),
+    Observability.withSyncMemberSpan({ name, source: sourceString }),
   )

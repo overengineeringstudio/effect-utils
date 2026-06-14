@@ -22,6 +22,7 @@ import {
   readMegarepoConfig,
 } from './config.ts'
 import { LOCK_FILE_NAME, readLockFile } from './lock.ts'
+import * as Observability from './observability.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 import type { MegarepoStore } from './store.ts'
 
@@ -120,12 +121,10 @@ const collectWorkspaceSymlinkTargets = ({
 
     return targets
   }).pipe(
-    Effect.withSpan('megarepo/store/liveness/scan-symlinks', {
-      attributes: {
-        'span.label': workspaceLabel(workspaceRoot),
-        workspaceRoot,
-        strict,
-      },
+    Observability.withWorkspaceSpan({
+      name: 'megarepo/store/liveness/scan-symlinks',
+      label: workspaceLabel(workspaceRoot),
+      workspaceRoot,
     }),
   )
 
@@ -186,11 +185,10 @@ export const collectWorkspaceLivePaths = ({
 
     return paths
   }).pipe(
-    Effect.withSpan('megarepo/store/liveness/collect-workspace', {
-      attributes: {
-        'span.label': workspaceLabel(workspaceRoot),
-        workspaceRoot,
-      },
+    Observability.withWorkspaceSpan({
+      name: 'megarepo/store/liveness/collect-workspace',
+      label: workspaceLabel(workspaceRoot),
+      workspaceRoot,
     }),
   )
 
@@ -255,11 +253,10 @@ export const refreshWorkspaceRegistry = ({
     })
     return record
   }).pipe(
-    Effect.withSpan('megarepo/store/liveness/refresh-workspace', {
-      attributes: {
-        'span.label': workspaceLabel(workspaceRoot),
-        workspaceRoot,
-      },
+    Observability.withWorkspaceSpan({
+      name: 'megarepo/store/liveness/refresh-workspace',
+      label: workspaceLabel(workspaceRoot),
+      workspaceRoot,
     }),
   )
 
@@ -367,11 +364,7 @@ const readRegistryRecords = ({
     }
 
     return { records, uncleanReconcilePaths }
-  }).pipe(
-    Effect.withSpan('megarepo/store/liveness/read-registry', {
-      attributes: { 'span.label': 'registry', reconcileAll: reconcile !== undefined },
-    }),
-  )
+  }).pipe(Observability.withLabelSpan('megarepo/store/liveness/read-registry', 'registry'))
 
 /**
  * Collects the store-wide protected path set from the workspace registry.
@@ -446,14 +439,11 @@ export const collectStoreLiveSet = ({
       uncleanReconcilePaths,
     } satisfies StoreLiveSet
   }).pipe(
-    Effect.withSpan('megarepo/store/liveness/collect-store', {
-      attributes: {
-        'span.label': 'store',
-        hasCurrentWorkspace: currentWorkspaceRoot !== undefined,
-        pruneStaleRegistry,
-        refreshCurrentWorkspace,
-        reconcileAllWorkspaces,
-      },
+    Observability.withStoreLiveSetSpan({
+      name: 'megarepo/store/liveness/collect-store',
+      hasCurrentWorkspace: currentWorkspaceRoot !== undefined,
+      pruneStaleRegistry,
+      refreshCurrentWorkspace,
     }),
   )
 

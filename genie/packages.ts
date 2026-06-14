@@ -9,8 +9,12 @@
  * All internal @overeng/* package short names.
  */
 export const internalPackages = [
+  'agent-session-ingest',
   'content-address',
+  'effect-ai-claude-cli',
   'effect-path',
+  'effect-react',
+  'effect-rpc-tanstack',
   'effect-schema-form',
   'effect-schema-form-aria',
   'genie',
@@ -22,14 +26,19 @@ export const internalPackages = [
   'notion-datasource-sync',
   'notion-effect-client',
   'notion-effect-schema',
+  'notion-md',
   'notion-react',
+  'otel-contract',
+  'oxc-config',
   'pty-effect',
+  'react-inspector',
   'restate-effect',
   'tui-core',
   'tui-react',
   'tui-stories',
   'utils',
   'utils-dev',
+  'workflow-report',
 ] as const
 
 /** Short name of an internal @overeng/* package. */

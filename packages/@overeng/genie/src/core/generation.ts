@@ -26,6 +26,7 @@ import {
   InvalidOxfmtConfigError,
 } from './errors.ts'
 import { resolveImportMapsInSource } from './import-map/mod.ts'
+import * as Observability from './observability.ts'
 import type { GenerateSuccess, GenieContext } from './types.ts'
 
 /** Loaded genie module plus base context reused across check and validation phases. */
@@ -327,6 +328,10 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
 }: {
   configPath: Option.Option<string>
 }) {
+  yield* Observability.annotatePath({
+    label: Option.isSome(configPath) === true ? 'oxfmt-config' : 'oxfmt-default',
+    path: Option.isSome(configPath) === true ? configPath.value : process.cwd(),
+  })
   if (Option.isNone(configPath) === true) {
     return Option.none()
   }
@@ -398,6 +403,10 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   content: string
   configPath: Option.Option<string>
 }) {
+  yield* Observability.annotateOxfmt({
+    targetFilePath,
+    hasConfig: Option.isSome(configPath),
+  })
   const ext = path.extname(targetFilePath)
 
   if (oxfmtSupportedExtensions.has(ext) === false) {
@@ -456,6 +465,7 @@ const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
   startDir: string
   cwd: string
 }) {
+  yield* Observability.annotatePath({ label: 'repo-root', path: startDir })
   const cacheKey = `${cwd}::${startDir}`
   const cached = repoRootCache.get(cacheKey)
   if (cached !== undefined) {
@@ -520,6 +530,12 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   genieFilePath: string
   cwd: string
 }) {
+  yield* Observability.annotateFile({
+    label: Observability.relativePath({ cwd, filePath: genieFilePath }),
+    cwd,
+    genieFilePath,
+    targetFilePath: genieFilePath.replace('.genie.ts', ''),
+  })
   yield* ensureImportMapResolver
 
   const importPathBase =
@@ -580,6 +596,15 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   oxfmtConfigPath: Option.Option<string>
   loadedGenieFile?: LoadedGenieFile
 }) {
+  yield* Observability.annotateFile({
+    label: Observability.relativePath({
+      cwd,
+      filePath: genieFilePath.replace('.genie.ts', ''),
+    }),
+    cwd,
+    genieFilePath,
+    targetFilePath: genieFilePath.replace('.genie.ts', ''),
+  })
   const targetFilePath = genieFilePath.replace('.genie.ts', '')
   const sourceFile = path.basename(genieFilePath)
   const loaded =
@@ -661,7 +686,10 @@ const atomicWriteFile = ({
         return yield* error
       }),
     ),
-    Effect.withSpan('atomicWriteFile'),
+    Observability.withAtomicWriteSpan({
+      targetFilePath,
+      ...(mode === undefined ? {} : { mode }),
+    }),
   )
 
 const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
@@ -673,6 +701,7 @@ const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
   targetFilePath: string
   effect: Effect.Effect<void, E, FileSystem.FileSystem>
 }) {
+  yield* Observability.annotateTargetLock({ cwd, targetFilePath })
   /** Use cwd-relative dir instead of shared /tmp to avoid EACCES when multiple CI jobs with different UIDs share the same tmpdir */
   const lockDir = path.join(cwd, 'tmp', 'genie-locks')
   const lockLayer = FileSystemBacking.layer({ lockDir })
@@ -794,7 +823,13 @@ export const generateFile = ({
         }),
       )
     }),
-    Effect.withSpan('generateFile'),
+    Observability.withFileSpan({
+      cwd,
+      genieFilePath,
+      targetFilePath: genieFilePath.replace('.genie.ts', ''),
+      readOnly,
+      dryRun,
+    }),
   )
 
 /** Check if a generated file matches its expected content */
@@ -854,4 +889,11 @@ export const checkFileDetailed = ({
     }
 
     return { targetFilePath, loadedGenieFile }
-  }).pipe(Effect.withSpan('checkFile'))
+  }).pipe(
+    Observability.withFileSpan({
+      label: Observability.relativePath({ cwd, filePath: genieFilePath.replace('.genie.ts', '') }),
+      cwd,
+      genieFilePath,
+      targetFilePath: genieFilePath.replace('.genie.ts', ''),
+    }),
+  )

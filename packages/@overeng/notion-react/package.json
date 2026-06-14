@@ -44,6 +44,7 @@
     "@effect/workflow": "0.18.0",
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
+    "@overeng/otel-contract": "workspace:^",
     "@playwright/test": "1.59.1",
     "effect": "3.21.2",
     "vitest": "3.2.4"
@@ -99,6 +100,7 @@
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",
       "packages/@overeng/notion-react",
+      "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

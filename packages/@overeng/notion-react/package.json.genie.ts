@@ -7,6 +7,7 @@ import {
 } from '../../../genie/internal.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
@@ -16,7 +17,7 @@ const optionalPeerDepNames = ['@opentelemetry/api', 'katex', 'shiki'] as const
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-react' }),
   dependencies: {
-    workspace: [notionEffectClientPkg, notionEffectSchemaPkg],
+    workspace: [notionEffectClientPkg, notionEffectSchemaPkg, otelContractPkg],
     external: catalog.pick('@effect/platform'),
   },
   devDependencies: {

@@ -5,11 +5,15 @@ import {
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-react' }),
+  dependencies: {
+    workspace: [otelContractPkg],
+  },
   devDependencies: {
     workspace: [utilsPkg],
     external: {

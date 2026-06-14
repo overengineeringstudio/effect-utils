@@ -11,6 +11,7 @@ import {
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { get, patch, post } from './internal/http.ts'
+import { withNotionDatabasesQuerySpan } from './internal/otel.ts'
 import {
   paginate,
   PaginatedResponse,
@@ -307,11 +308,7 @@ const queryRaw = (
       responseSchema: QueryDatabaseResponseSchema,
     })
     return toPaginatedResult(response)
-  }).pipe(
-    Effect.withSpan('NotionDatabases.query', {
-      attributes: { 'notion.data_source_id': opts.dataSourceId },
-    }),
-  )
+  }).pipe(withNotionDatabasesQuerySpan(opts.dataSourceId))
 
 /**
  * Query a database with filters and pagination.

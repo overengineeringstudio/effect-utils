@@ -51,6 +51,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/effect-rpc-tanstack",
       "packages/@overeng/effect-rpc-tanstack/examples/basic",
+      "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

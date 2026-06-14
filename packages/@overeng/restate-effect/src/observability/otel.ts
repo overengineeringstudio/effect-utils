@@ -58,6 +58,7 @@ import type {
   EndpointHooks,
   HandlerWrap,
 } from '../error/Boundary.ts'
+import { BoundaryAttemptAttrs, BoundaryOutcomeAttrs } from './contract.ts'
 
 /** The OTel resource identity shared by the provider and the Effect tracer. */
 export interface OtelResourceConfig {
@@ -151,7 +152,8 @@ const acquireProvider = (
 /**
  * The shared-provider scoped `Layer`. Builds + globally registers ONE
  * `TracerProvider` (+ global context manager) and binds Effect's tracer to that
- * SAME provider, so `Effect.withSpan` and the Restate hook emit into one trace.
+ * SAME provider, so schema-first Restate operation spans and the Restate hook
+ * emit into one trace.
  * When a metric reader is configured it ALSO binds Effect's `Metric` to an OTel
  * `MeterProvider` SHARING the SAME `Resource` (decision 0014) — so the auto
  * baseline + user metrics export with the same `service.name`/identity as the
@@ -267,9 +269,10 @@ const hook = (options?: Partial<OpenTelemetryHookOptions>): EndpointHooks =>
  * The inbound bridge (R23, docs/vrs/08-observability/spec.md) as a core {@link HandlerWrap}. Run INSIDE the
  * handler (the hook has set the attempt span active via `context.with`), it
  * reads `trace.getActiveSpan()?.spanContext()` and reparents the Effect program
- * under it via `Tracer.withSpanContext` — so every in-handler `Effect.withSpan`
- * becomes a child of the `attempt <target>` span. A no-op (program returned
- * verbatim) when no span is active (e.g. the hook is not installed).
+ * under it via `Tracer.withSpanContext` — so every in-handler schema-first
+ * operation span becomes a child of the `attempt <target>` span. A no-op
+ * (program returned verbatim) when no span is active (e.g. the hook is not
+ * installed).
  */
 const inboundBridge: HandlerWrap = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
   const spanContext = trace.getActiveSpan()?.spanContext()
@@ -323,22 +326,26 @@ const boundaryObserver: BoundaryObserver = (info) => {
    * stamps the SAME span at exit. */
   const span: Span | undefined = trace.getActiveSpan()
   if (span === undefined) return () => {}
-  span.setAttribute('restate.service', info.service)
-  span.setAttribute('restate.handler', info.handler)
-  if (info.key !== undefined) span.setAttribute('restate.object.key', info.key)
-  if (info.workflowId !== undefined) span.setAttribute('restate.workflow.id', info.workflowId)
-  if (info.idempotencyKey !== undefined) {
-    span.setAttribute('restate.idempotency.key', info.idempotencyKey)
-  }
+  span.setAttributes(
+    BoundaryAttemptAttrs.encodeSync({
+      service: info.service,
+      handler: info.handler,
+      ...(info.key === undefined ? {} : { objectKey: info.key }),
+      ...(info.workflowId === undefined ? {} : { workflowId: info.workflowId }),
+      ...(info.idempotencyKey === undefined ? {} : { idempotencyKey: info.idempotencyKey }),
+    }),
+  )
   return (outcome) => {
     const errorClass = errorClassOf(outcome)
-    if (errorClass !== undefined) span.setAttribute('restate.error.class', errorClass)
-    if (
-      (outcome._tag === 'terminal' || outcome._tag === 'retryable') &&
-      outcome.errorTag !== undefined
-    ) {
-      span.setAttribute('restate.error.tag', outcome.errorTag)
-    }
+    span.setAttributes(
+      BoundaryOutcomeAttrs.encodeSync({
+        ...(errorClass === undefined ? {} : { errorClass }),
+        ...((outcome._tag === 'terminal' || outcome._tag === 'retryable') &&
+        outcome.errorTag !== undefined
+          ? { errorTag: outcome.errorTag }
+          : {}),
+      }),
+    )
   }
 }
 

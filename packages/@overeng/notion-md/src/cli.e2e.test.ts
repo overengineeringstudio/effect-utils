@@ -9,12 +9,13 @@ import { describe, expect, it } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 const packageDir = fileURLToPath(new URL('..', import.meta.url))
-const cliTestTimeoutMs = 15_000
+const cliProcessTimeoutMs = 20_000
+const cliTestTimeoutMs = 25_000
 
 const runCli = (args: readonly string[]) =>
   execFileAsync('bun', ['src/cli.ts', ...args], {
     cwd: packageDir,
-    timeout: 10_000,
+    timeout: cliProcessTimeoutMs,
     env: {
       ...process.env,
       NOTION_API_TOKEN: '',

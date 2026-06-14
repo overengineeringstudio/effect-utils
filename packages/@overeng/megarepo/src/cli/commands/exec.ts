@@ -13,6 +13,7 @@ import { run } from '@overeng/tui-react'
 
 import { getMemberPath, readMegarepoConfig } from '../../lib/config.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer, verboseOption } from '../context.ts'
+import * as Observability from '../observability.ts'
 import { ExecApp, ExecView } from '../renderers/ExecOutput/mod.ts'
 
 /** Execution mode for running commands across members */
@@ -152,5 +153,13 @@ export const execCommand = Cli.Command.make(
           }),
         { view: React.createElement(ExecView, { stateAtom: ExecApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.withSpan('megarepo/exec')),
+    }).pipe(
+      Observability.withCommandSpan({
+        name: 'megarepo/exec',
+        command: 'exec',
+        label: Option.getOrElse(member, () => 'exec'),
+        output,
+        ...(Option.isSome(member) === true ? { member: member.value } : {}),
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('Execute a command in member directories'))

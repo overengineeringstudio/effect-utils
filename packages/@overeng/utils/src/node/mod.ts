@@ -22,3 +22,6 @@ export * from './cli-version.ts'
 
 /** Rewrite `help <subcmd>` → `<subcmd> --help` for @effect/cli compatibility */
 export * from './cli-help-rewrite.ts'
+
+/** Schema-first OTEL attribute and span contracts */
+export * from './otel-attrs.ts'

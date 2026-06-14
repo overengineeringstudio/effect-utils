@@ -13,6 +13,7 @@ import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { NotionApiError as NotionApiErrorClass } from './error.ts'
 import { get, patch, post } from './internal/http.ts'
+import { withNotionPagesRetrieveSpan } from './internal/otel.ts'
 import { type PaginatedResult, toPaginatedResult } from './internal/pagination.ts'
 import { decodePage, type PageDecodeError, type TypedPage } from './typed-page.ts'
 
@@ -229,11 +230,7 @@ export function retrieve<TProperties, I, R>(
     }
 
     return page
-  }).pipe(
-    Effect.withSpan('NotionPages.retrieve', {
-      attributes: { 'notion.page_id': opts.pageId },
-    }),
-  )
+  }).pipe(withNotionPagesRetrieveSpan(opts.pageId))
 }
 
 /** Retrieve a single page property by id — handles both single-value and paginated list-shaped property responses (`GET /v1/pages/{page_id}/properties/{property_id}`). */

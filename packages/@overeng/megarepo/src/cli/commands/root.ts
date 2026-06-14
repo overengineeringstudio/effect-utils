@@ -12,6 +12,7 @@ import { run } from '@overeng/tui-react'
 
 import * as Git from '../../lib/git.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
+import * as Observability from '../observability.ts'
 import { RootApp, RootView } from '../renderers/RootOutput/mod.ts'
 
 /** Find and print the megarepo root directory */
@@ -48,5 +49,11 @@ export const rootCommand = Cli.Command.make('root', { output: outputOption }, ({
         }),
       { view: React.createElement(RootView, { stateAtom: RootApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.withSpan('megarepo/root')),
+  }).pipe(
+    Observability.withCommandSpan({
+      name: 'megarepo/root',
+      command: 'root',
+      output,
+    }),
+  ),
 ).pipe(Cli.Command.withDescription('Print the megarepo root directory'))

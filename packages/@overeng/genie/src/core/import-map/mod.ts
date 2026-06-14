@@ -18,6 +18,8 @@ import { pathToFileURL } from 'node:url'
 import { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
 
+import * as Observability from '../observability.ts'
+
 /** Parsed import map from package.json#imports */
 export type ImportMap = Record<string, string>
 
@@ -59,6 +61,7 @@ const parseImportMapFromGenieSource = (sourceContent: string): ImportMap => {
 export const findNearestPackageJson = Effect.fn('findNearestPackageJson')(function* (
   fromPath: string,
 ) {
+  yield* Observability.annotatePath({ label: 'package.json', path: fromPath })
   const effectFs = yield* FileSystem.FileSystem
   let dir = path.dirname(fromPath)
   const root = path.parse(dir).root
@@ -85,6 +88,7 @@ export const findNearestPackageJson = Effect.fn('findNearestPackageJson')(functi
 export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports')(function* (
   fromPath: string,
 ) {
+  yield* Observability.annotatePath({ label: 'imports', path: fromPath })
   const effectFs = yield* FileSystem.FileSystem
   let dir = path.dirname(fromPath)
   const root = path.parse(dir).root
@@ -183,6 +187,7 @@ export const findPackageJsonWithImportsSync = (fromPath: string): string | undef
  * genie source has imports but the generated file hasn't been updated yet.
  */
 export const extractImportMap = Effect.fn('extractImportMap')(function* (packageJsonPath: string) {
+  yield* Observability.annotatePath({ label: 'import-map', path: packageJsonPath })
   const effectFs = yield* FileSystem.FileSystem
 
   // First try the generated package.json
@@ -556,6 +561,7 @@ export const resolveImportMapSpecifier = ({
 export const resolveImportMapSpecifierForImporter = Effect.fn(
   'genie.resolveImportMapSpecifierForImporter',
 )(function* ({ specifier, importerPath }: { specifier: string; importerPath: string }) {
+  yield* Observability.annotatePath({ label: specifier, path: importerPath })
   if (isImportMapSpecifier(specifier) === false) {
     return Option.none()
   }
@@ -656,6 +662,7 @@ export const resolveImportMapsInSource = Effect.fn('resolveImportMapsInSource')(
   sourcePath: string
   resolveRelativeImports?: boolean
 }) {
+  yield* Observability.annotatePath({ label: 'resolve-imports', path: sourcePath })
   const packageJsonPathOption = yield* findPackageJsonWithImports(sourcePath)
   const packageJsonPath = Option.getOrUndefined(packageJsonPathOption)
   const importMap = packageJsonPath === undefined ? {} : yield* extractImportMap(packageJsonPath)

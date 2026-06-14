@@ -62,6 +62,9 @@
       "path": "../kdl-effect"
     },
     {
+      "path": "../otel-contract"
+    },
+    {
       "path": "../utils"
     }
   ]

@@ -9,6 +9,18 @@ import type {
   OxlintOverride,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
+type OxlintRuleSeverity = 'off' | 'warn' | 'error'
+
+type OtelOxlintRulesArgs = {
+  /** Severity for raw Effect/Stream OTEL span primitives. */
+  readonly rawOtel: OxlintRuleSeverity
+  /**
+   * Reserved for the second enforcement tier, after `OtelOperation` fully
+   * replaces product-code `OtelSpan.unsafe*` usage.
+   */
+  readonly unsafeContract?: OxlintRuleSeverity
+}
+
 /** Standard ignore patterns for oxlint across all repos */
 export const baseOxlintIgnorePatterns = [
   '**/node_modules/**',
@@ -48,6 +60,17 @@ export const baseOxlintCategories = {
   restriction: 'off',
 } as const satisfies OxlintConfigArgs['categories']
 
+/**
+ * Shared OTEL lint policy helper.
+ *
+ * Repos should use this instead of spelling raw rule names inline so the
+ * cross-megarepo rollout can move from warn to error without policy drift.
+ */
+export const otelOxlintRules = ({ rawOtel }: OtelOxlintRulesArgs): OxlintOverride['rules'] =>
+  ({
+    'overeng/no-raw-otel-primitives': rawOtel,
+  }) satisfies OxlintOverride['rules']
+
 /** Standard rules shared across all repos */
 export const baseOxlintRules = {
   // Disallow dynamic import() and require() - helps with static analysis and bundling
@@ -79,6 +102,9 @@ export const baseOxlintRules = {
 
   // Enforce proper type imports
   'typescript/consistent-type-imports': 'warn',
+
+  // OTEL raw primitive enforcement is enabled through generated repo overrides.
+  'overeng/no-raw-otel-primitives': 'off',
 
   // Don't enforce type vs interface
   'typescript/consistent-type-definitions': 'off',
@@ -158,6 +184,7 @@ export const generatedFilesRules = {
   'overeng/exports-first': 'off',
   'overeng/jsdoc-require-exports': 'off',
   'overeng/named-args': 'off',
+  'overeng/no-raw-otel-primitives': 'off',
   'unicorn/consistent-function-scoping': 'off',
 } as const satisfies OxlintOverride['rules']
 
@@ -212,6 +239,7 @@ export const baseOxlintOverrides = [
     files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/test/**'],
     rules: {
       'overeng/named-args': 'off',
+      'overeng/no-raw-otel-primitives': 'off',
       'unicorn/no-array-sort': 'off',
       'unicorn/consistent-function-scoping': 'off',
       'require-yield': 'off',

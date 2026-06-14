@@ -4,7 +4,14 @@
  * Node.js processes stay alive while there are active handles (timers, sockets, etc.)
  * or pending requests. This module provides Effect-native APIs to inspect these.
  */
-import { type Duration, Effect, Runtime, Schedule, Stream } from 'effect'
+import { type Duration, Effect, Runtime, Schedule, Schema, Stream } from 'effect'
+
+import {
+  OtelAttr,
+  OtelOperation,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
 
 /** Information about a single active handle */
 export interface HandleInfo {
@@ -19,6 +26,27 @@ export interface ActiveHandlesInfo {
   readonly totalHandles: number
   readonly totalRequests: number
 }
+
+const ActiveHandlesLogOperation = OtelOperation.define({
+  name: 'ActiveHandlesDebugger.logActiveHandles',
+  schema: Schema.Struct({
+    label: OtelAttr.drop(Schema.NonEmptyString),
+  }),
+  label: ({ label }) => label,
+})
+
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
 /** Categorizes a handle by its constructor name and extracts useful details */
 const categorizeHandle = (handle: unknown): HandleInfo => {
@@ -103,7 +131,7 @@ export const logActiveHandles = Effect.gen(function* () {
     requests: info.requests,
   })
   return info
-}).pipe(Effect.withSpan('ActiveHandlesDebugger.logActiveHandles'))
+}).pipe(trustedWith(ActiveHandlesLogOperation, { label: 'dump' }))
 
 /**
  * Monitors active handles periodically and logs when the count changes.

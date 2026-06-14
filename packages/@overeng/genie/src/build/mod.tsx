@@ -20,6 +20,7 @@ import { findGenieFiles } from '../core/discovery.ts'
 import { GenieGenerationFailedError } from '../core/errors.ts'
 import { type GenieEvent, GenieEventBus } from '../core/events.ts'
 import { generateFile } from '../core/generation.ts'
+import { withCliModeSpan } from '../core/observability.ts'
 import { createInitialGenieState, type GenieSummary, type GenieMode } from '../core/schema.ts'
 import { GenieApp } from './app.ts'
 import { GenieView } from './view.tsx'
@@ -286,10 +287,7 @@ export const genieCommand = Cli.Command.make(
           ),
         { view: <GenieView stateAtom={GenieApp.stateAtom} /> },
       )
-    }).pipe(
-      Effect.provide(outputModeLayer(output)),
-      Effect.withSpan(`genie/${cliMode}`, { attributes: { 'cli.mode': cliMode } }),
-    )
+    }).pipe(Effect.provide(outputModeLayer(output)), withCliModeSpan(cliMode))
 
     return handler
   },

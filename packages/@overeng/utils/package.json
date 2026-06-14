@@ -15,6 +15,7 @@
     "./node/cli-help-rewrite": "./src/node/cli-help-rewrite.ts",
     "./node/cli-version": "./src/node/cli-version.ts",
     "./node/otel": "./src/node/otel.ts",
+    "./node/otel-attrs": "./src/node/otel-attrs.ts",
     "./node/playwright": "./src/node/playwright/mod.ts",
     "./node/playwright/config": "./src/node/playwright/config/mod.ts",
     "./node/storybook": "./src/node/storybook/mod.ts",
@@ -28,6 +29,7 @@
       "./node/cli-help-rewrite": "./dist/node/cli-help-rewrite.js",
       "./node/cli-version": "./dist/node/cli-version.js",
       "./node/otel": "./dist/node/otel.js",
+      "./node/otel-attrs": "./dist/node/otel-attrs.js",
       "./node/playwright": "./dist/node/playwright/mod.js",
       "./node/playwright/config": "./dist/node/playwright/config/mod.js",
       "./node/storybook": "./dist/node/storybook/mod.js",
@@ -47,6 +49,7 @@
     "@effect/vitest": "0.29.0",
     "@noble/hashes": "1.7.1",
     "@opentelemetry/api": "1.9.0",
+    "@overeng/otel-contract": "workspace:^",
     "effect": "3.21.2",
     "effect-distributed-lock": "0.0.11",
     "ioredis": "5.6.1",
@@ -99,6 +102,7 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
+      "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

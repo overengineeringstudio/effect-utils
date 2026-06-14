@@ -26,6 +26,7 @@ import { Context, Effect, Layer, Option } from 'effect'
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
+import * as Observability from './observability.ts'
 import { classifyRef, refTypeToPathSegment, type RefType } from './ref.ts'
 import { makeStoreLockLayer, StoreLock } from './store-lock.ts'
 
@@ -304,11 +305,7 @@ const make = ({
             }),
           ),
           { concurrency: 32 },
-        ).pipe(
-          Effect.withSpan('megarepo/store/list-repos', {
-            attributes: { 'span.label': 'repos' },
-          }),
-        )
+        ).pipe(Observability.withLabelSpan('megarepo/store/list-repos', 'repos'))
 
         return result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
       }),

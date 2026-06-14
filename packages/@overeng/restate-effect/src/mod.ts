@@ -131,10 +131,11 @@ export const Restate = {
   /**
    * Stamp custom BUSINESS span attributes on the current span (R23, docs/vrs/08-observability/spec.md, decision
    * 0014) — the USER observability path for slicing in Tempo/Grafana (e.g.
-   * `dataSourceId`). A thin combinator over `Effect.annotateCurrentSpan`; otel-free
-   * (no `./otel` import). Use the `span.label` convention for a single primary
-   * label. Attributes are NOT replay-suppressed — for side-effecting telemetry use
-   * a metric / span event gated through `Restate.run`.
+   * `dataSourceId`). A dependency-light combinator over the package's schema-first
+   * OTEL contract helpers; no `./otel` import required. Use the `span.label`
+   * convention for a single primary label. Attributes are NOT replay-suppressed —
+   * for side-effecting telemetry use a metric / span event gated through
+   * `Restate.run`.
    */
   annotateSpan,
   /**

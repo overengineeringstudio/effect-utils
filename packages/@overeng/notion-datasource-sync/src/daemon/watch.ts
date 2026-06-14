@@ -23,6 +23,7 @@ import { reportSyncProgress } from '../core/progress.ts'
 import type { SignalInboxRecord } from '../core/signals.ts'
 import type { OneShotSyncStatus } from '../core/status.ts'
 import {
+  annotateSpan,
   shortSpanId,
   spanAttr,
   spanAttributes,
@@ -545,17 +546,15 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
       })
       const cycle = previous.cycle + 1
       const startedAt = now().toISOString()
-      yield* Effect.annotateCurrentSpan(
-        spanAttributes({
-          [spanAttr.spanLabel]: spanLabel('cycle', cycle),
-          [spanAttr.cycle]: cycle,
-          [spanAttr.mode]: mode,
-          [spanAttr.rootId]: options.rootId,
-          [spanAttr.dataSourceId]: options.dataSourceId,
-          [spanAttr.maxExecutorSteps]: options.maxExecutorSteps ?? 8,
-          [spanAttr.leaseDurationMs]: options.leaseDurationMs ?? 60_000,
-        }),
-      )
+      yield* annotateSpan({
+        [spanAttr.spanLabel]: spanLabel('cycle', cycle),
+        [spanAttr.cycle]: cycle,
+        [spanAttr.mode]: mode,
+        [spanAttr.rootId]: options.rootId,
+        [spanAttr.dataSourceId]: options.dataSourceId,
+        [spanAttr.maxExecutorSteps]: options.maxExecutorSteps ?? 8,
+        [spanAttr.leaseDurationMs]: options.leaseDurationMs ?? 60_000,
+      })
       yield* ensureNotCancelled({ signal: options.signal, rootId: options.rootId, cycle })
       yield* reportSyncProgress({
         _tag: 'phase',
@@ -729,7 +728,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         message: `Completed watch cycle ${cycle.toString()}`,
       })
 
-      yield* Effect.annotateCurrentSpan({
+      yield* annotateSpan({
         ...statusSpanAttributes(sync.status),
         [spanAttr.result]: sync.status.state,
       })
@@ -782,15 +781,13 @@ export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
         rootId: options.rootId,
         statePath: options.statePath,
       })
-      yield* Effect.annotateCurrentSpan(
-        spanAttributes({
-          [spanAttr.spanLabel]: spanLabel('watch', shortSpanId(options.rootId)),
-          [spanAttr.mode]: mode,
-          [spanAttr.rootId]: options.rootId,
-          [spanAttr.dataSourceId]: options.dataSourceId,
-          [spanAttr.maxCycles]: maxCycles,
-        }),
-      )
+      yield* annotateSpan({
+        [spanAttr.spanLabel]: spanLabel('watch', shortSpanId(options.rootId)),
+        [spanAttr.mode]: mode,
+        [spanAttr.rootId]: options.rootId,
+        [spanAttr.dataSourceId]: options.dataSourceId,
+        [spanAttr.maxCycles]: maxCycles,
+      })
 
       for (;;) {
         if (maxCycles !== undefined && attempted >= maxCycles) break
@@ -814,15 +811,13 @@ export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
             lastStatus: state.lastStatus,
             state,
           }
-          yield* Effect.annotateCurrentSpan(
-            spanAttributes({
-              [spanAttr.result]: 'cancelled',
-              [spanAttr.cancelled]: true,
-              [spanAttr.cycles]: result.cycles,
-              [spanAttr.completedCycles]: result.completed,
-              ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
-            }),
-          )
+          yield* annotateSpan({
+            [spanAttr.result]: 'cancelled',
+            [spanAttr.cancelled]: true,
+            [spanAttr.cycles]: result.cycles,
+            [spanAttr.completedCycles]: result.completed,
+            ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
+          })
           return result
         }
 
@@ -854,15 +849,13 @@ export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
               lastStatus: state.lastStatus,
               state,
             }
-            yield* Effect.annotateCurrentSpan(
-              spanAttributes({
-                [spanAttr.result]: 'cancelled',
-                [spanAttr.cancelled]: true,
-                [spanAttr.cycles]: result.cycles,
-                [spanAttr.completedCycles]: result.completed,
-                ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
-              }),
-            )
+            yield* annotateSpan({
+              [spanAttr.result]: 'cancelled',
+              [spanAttr.cancelled]: true,
+              [spanAttr.cycles]: result.cycles,
+              [spanAttr.completedCycles]: result.completed,
+              ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
+            })
             return result
           }
           yield* awaitWake(delay)
@@ -878,15 +871,13 @@ export const runWatchDaemon = Effect.fn(spanNames.daemonRun, {
         lastStatus: state.lastStatus,
         state,
       }
-      yield* Effect.annotateCurrentSpan(
-        spanAttributes({
-          [spanAttr.result]: 'completed',
-          [spanAttr.cancelled]: false,
-          [spanAttr.cycles]: result.cycles,
-          [spanAttr.completedCycles]: result.completed,
-          ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
-        }),
-      )
+      yield* annotateSpan({
+        [spanAttr.result]: 'completed',
+        [spanAttr.cancelled]: false,
+        [spanAttr.cycles]: result.cycles,
+        [spanAttr.completedCycles]: result.completed,
+        ...(result.lastStatus === undefined ? {} : statusSpanAttributes(result.lastStatus)),
+      })
       return result
     }),
 )

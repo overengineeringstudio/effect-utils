@@ -125,6 +125,7 @@ let
     "packages/@overeng/notion-effect-schema"
     "packages/@overeng/notion-md"
     "packages/@overeng/notion-react"
+    "packages/@overeng/otel-contract"
     "packages/@overeng/oxc-config"
     "packages/@overeng/pty-effect"
     "packages/@overeng/react-inspector"

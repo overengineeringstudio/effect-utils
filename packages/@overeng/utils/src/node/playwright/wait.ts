@@ -11,6 +11,15 @@
 
 import { type Duration, Effect, Schedule, Schema } from 'effect'
 
+import {
+  OtelAttr,
+  OtelAttrs,
+  OtelOperation,
+  OtelSpan,
+  type OtelAttrEncodeError,
+  type OtelOperationDefinition,
+} from '@overeng/otel-contract'
+
 /** Error thrown when a polling wait operation times out */
 export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()(
   'PwWaitTimeoutError',
@@ -19,6 +28,39 @@ export class PwWaitTimeoutError extends Schema.TaggedError<PwWaitTimeoutError>()
     timeout: Schema.String,
   },
 ) {}
+
+const PwWaitOperation = OtelOperation.define({
+  name: 'pw.wait.until',
+  schema: Schema.Struct({
+    label: OtelAttr.drop(Schema.NonEmptyString),
+    waitLabel: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.label' })),
+    pollInterval: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.pollInterval' })),
+    timeout: Schema.String.pipe(OtelAttr.key({ key: 'pw.wait.timeout' })),
+  }),
+  label: ({ label }) => label,
+})
+
+const PwWaitAttemptAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    attempt: Schema.Number.pipe(OtelAttr.key({ key: 'pw.wait.attempt' })),
+  }),
+)
+
+const trustOtelContract = <A, E, R>(
+  effect: Effect.Effect<A, E | OtelAttrEncodeError, R>,
+): Effect.Effect<A, E, R> =>
+  effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
+
+const trustedWith =
+  <S extends Schema.Schema.AnyNoContext>(
+    operation: OtelOperationDefinition<S>,
+    attributes: Schema.Schema.Type<S>,
+  ) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
+
+const annotateWaitAttempt = (attempt: number) =>
+  OtelSpan.annotate({ attributes: PwWaitAttemptAttrs, value: { attempt } }).pipe(Effect.orDie)
 
 const hasTag = (error: unknown): error is { _tag: string } => {
   if (typeof error !== 'object' || error === null) return false
@@ -55,17 +97,11 @@ export const until = <TResult, TError, TContext>(args: {
   const { label, check, pollInterval, timeout, while: while_ } = args
 
   return Effect.gen(function* () {
-    yield* Effect.annotateCurrentSpan({
-      'pw.wait.label': label,
-      'pw.wait.pollInterval': String(pollInterval),
-      'pw.wait.timeout': String(timeout),
-    })
-
     let attempt = 0
 
     const checkWithTelemetry = Effect.gen(function* () {
       attempt += 1
-      yield* Effect.annotateCurrentSpan({ 'pw.wait.attempt': attempt })
+      yield* annotateWaitAttempt(attempt)
       return yield* check
     }).pipe(
       Effect.tapError((error) =>
@@ -85,5 +121,12 @@ export const until = <TResult, TError, TContext>(args: {
         onTimeout: () => new PwWaitTimeoutError({ label, timeout: String(timeout) }),
       }),
     )
-  }).pipe(Effect.withSpan('pw.wait.until'))
+  }).pipe(
+    trustedWith(PwWaitOperation, {
+      label,
+      waitLabel: label,
+      pollInterval: String(pollInterval),
+      timeout: String(timeout),
+    }),
+  )
 }

@@ -26,6 +26,7 @@ import {
   outputOption,
   outputModeLayer,
 } from '../context.ts'
+import * as Observability from '../observability.ts'
 import { LsApp, LsView } from '../renderers/LsOutput/mod.ts'
 import type { MemberInfo } from '../renderers/LsOutput/schema.ts'
 
@@ -168,5 +169,12 @@ export const lsCommand = Cli.Command.make(
           }),
         { view: React.createElement(LsView, { stateAtom: LsApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.withSpan('megarepo/ls')),
+    }).pipe(
+      Observability.withCommandSpan({
+        name: 'megarepo/ls',
+        command: 'ls',
+        output,
+        all,
+      }),
+    ),
 ).pipe(Cli.Command.withDescription('List all members in the megarepo'))

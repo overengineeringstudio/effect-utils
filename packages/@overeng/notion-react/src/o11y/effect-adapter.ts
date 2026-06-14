@@ -18,11 +18,12 @@ import type { HttpClient } from '@effect/platform'
  *   - Span correlation uses `OpIssued.id` as a Map key so out-of-order
  *     terminal events still resolve correctly.
  */
-import { Cause, Context, Effect, Exit, Option } from 'effect'
+import { Cause, Context, Effect, Exit, Option, Schema } from 'effect'
 import type { Tracer } from 'effect'
 import type { ReactNode } from 'react'
 
 import type { NotionConfig } from '@overeng/notion-effect-client'
+import { OtelAttr, OtelAttrs } from '@overeng/otel-contract'
 
 import type { NotionCache } from '../cache/types.ts'
 import type { NotionSyncError } from '../renderer/errors.ts'
@@ -39,6 +40,99 @@ const shortId = (id: string): string => id.replaceAll('-', '').slice(0, 8)
 
 /** Milliseconds → nanoseconds (bigint) for Tracer.Span APIs. */
 const msToNs = (ms: number): bigint => BigInt(Math.trunc(ms * 1_000_000))
+
+const OpKind = Schema.Literal('append', 'update', 'delete', 'retrieve')
+const CacheKind = Schema.Literal('hit', 'miss', 'drift', 'page-id-drift')
+const SyncFallbackReasonSchema = Schema.String
+
+const SyncStartAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion-react.page_id' })),
+    rootBlockCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion-react.root_block_count' }),
+    ),
+  }),
+)
+
+const SyncEndAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    ok: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion-react.ok' })),
+    opCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.op_count' })),
+    durationMs: Schema.Number.pipe(OtelAttr.key({ key: 'notion-react.duration_ms' })),
+    fallbackReason: Schema.optional(
+      SyncFallbackReasonSchema.pipe(OtelAttr.key({ key: 'notion-react.fallback_reason' })),
+    ),
+  }),
+)
+
+const OpStartAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    label: OpKind.pipe(OtelAttr.spanLabel()),
+    id: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.op.id' })),
+    kind: OpKind.pipe(OtelAttr.key({ key: 'notion-react.op.kind' })),
+  }),
+)
+
+const OpSucceededAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    durationMs: Schema.Number.pipe(OtelAttr.key({ key: 'notion-react.op.duration_ms' })),
+    resultCount: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.op.result_count' })),
+    note: Schema.optional(
+      Schema.Literal('already-archived').pipe(OtelAttr.key({ key: 'notion-react.op.note' })),
+    ),
+  }),
+)
+
+const OpFailedAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    durationMs: Schema.Number.pipe(OtelAttr.key({ key: 'notion-react.op.duration_ms' })),
+    error: Schema.String.pipe(OtelAttr.key({ key: 'notion-react.op.error' })),
+  }),
+)
+
+const CacheEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+  }),
+)
+
+const FallbackEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    reason: SyncFallbackReasonSchema.pipe(OtelAttr.key({ key: 'notion-react.fallback_reason' })),
+  }),
+)
+
+const BatchFlushEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    issued: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.batch.issued' })),
+    batched: Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.batch.batched' })),
+  }),
+)
+
+const UpdateNoopEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    blockId: Schema.String.pipe(OtelAttr.key({ key: 'notion-react.block_id' })),
+    reason: Schema.Literal('hash-equal', 'other').pipe(
+      OtelAttr.key({ key: 'notion-react.noop_reason' }),
+    ),
+  }),
+)
+
+const CheckpointWrittenEventAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    serviceName: Schema.NonEmptyString.pipe(OtelAttr.key({ key: 'service.name' })),
+    bytes: Schema.optional(
+      Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion-react.checkpoint.bytes' })),
+    ),
+  }),
+)
 
 /** Build a successful / failed Exit for Span.end. */
 const successExit: Exit.Exit<void, never> = Exit.void
@@ -78,10 +172,8 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
   let rootSpan: Tracer.Span | undefined
   const opSpans = new Map<number, OpenSpan>()
 
-  const attrs = (extra: Record<string, unknown>): Record<string, unknown> => ({
-    'service.name': serviceName,
-    ...extra,
-  })
+  const cacheEventAttrs = (kind: typeof CacheKind.Type) =>
+    CacheEventAttrs.encodeSync({ serviceName, label: `cache:${kind}` })
 
   return (event: SyncEvent): void => {
     switch (event._tag) {
@@ -95,10 +187,11 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
           'internal',
         )
         for (const [k, v] of Object.entries(
-          attrs({
-            'span.label': shortId(event.pageId),
-            'notion-react.page_id': event.pageId,
-            'notion-react.root_block_count': event.rootBlockCount,
+          SyncStartAttrs.encodeSync({
+            serviceName,
+            label: shortId(event.pageId),
+            pageId: event.pageId,
+            rootBlockCount: event.rootBlockCount,
           }),
         )) {
           rootSpan.attribute(k, v)
@@ -107,11 +200,15 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
       }
       case 'SyncEnd': {
         if (rootSpan === undefined) break
-        rootSpan.attribute('notion-react.ok', event.ok)
-        rootSpan.attribute('notion-react.op_count', event.opCount)
-        rootSpan.attribute('notion-react.duration_ms', event.durationMs)
-        if (event.fallbackReason !== undefined) {
-          rootSpan.attribute('notion-react.fallback_reason', event.fallbackReason)
+        for (const [k, v] of Object.entries(
+          SyncEndAttrs.encodeSync({
+            ok: event.ok,
+            opCount: event.opCount,
+            durationMs: event.durationMs,
+            ...(event.fallbackReason === undefined ? {} : { fallbackReason: event.fallbackReason }),
+          }),
+        )) {
+          rootSpan.attribute(k, v)
         }
         rootSpan.end(msToNs(event.at), event.ok ? successExit : failureExit)
         rootSpan = undefined
@@ -134,10 +231,11 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
           'internal',
         )
         for (const [k, v] of Object.entries(
-          attrs({
-            'span.label': event.kind,
-            'notion-react.op.id': event.id,
-            'notion-react.op.kind': event.kind,
+          OpStartAttrs.encodeSync({
+            serviceName,
+            label: event.kind,
+            id: event.id,
+            kind: event.kind,
           }),
         )) {
           span.attribute(k, v)
@@ -148,10 +246,14 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
       case 'OpSucceeded': {
         const open = opSpans.get(event.id)
         if (open === undefined) break
-        open.span.attribute('notion-react.op.duration_ms', event.durationMs)
-        open.span.attribute('notion-react.op.result_count', event.resultCount)
-        if (event.note !== undefined) {
-          open.span.attribute('notion-react.op.note', event.note)
+        for (const [k, v] of Object.entries(
+          OpSucceededAttrs.encodeSync({
+            durationMs: event.durationMs,
+            resultCount: event.resultCount,
+            ...(event.note === undefined ? {} : { note: event.note }),
+          }),
+        )) {
+          open.span.attribute(k, v)
         }
         open.span.end(msToNs(event.at), successExit)
         opSpans.delete(event.id)
@@ -160,19 +262,18 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
       case 'OpFailed': {
         const open = opSpans.get(event.id)
         if (open === undefined) break
-        open.span.attribute('notion-react.op.duration_ms', event.durationMs)
-        open.span.attribute('notion-react.op.error', event.error)
+        for (const [k, v] of Object.entries(
+          OpFailedAttrs.encodeSync({ durationMs: event.durationMs, error: event.error }),
+        )) {
+          open.span.attribute(k, v)
+        }
         open.span.end(msToNs(event.at), Exit.fail(event.error))
         opSpans.delete(event.id)
         break
       }
       case 'CacheOutcome': {
         if (rootSpan === undefined) break
-        rootSpan.event(
-          `cache:${event.kind}`,
-          msToNs(event.at),
-          attrs({ 'span.label': `cache:${event.kind}` }),
-        )
+        rootSpan.event(`cache:${event.kind}`, msToNs(event.at), cacheEventAttrs(event.kind))
         break
       }
       case 'FallbackTriggered': {
@@ -180,7 +281,7 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         rootSpan.event(
           'fallback',
           msToNs(event.at),
-          attrs({ 'notion-react.fallback_reason': event.reason }),
+          FallbackEventAttrs.encodeSync({ serviceName, reason: event.reason }),
         )
         break
       }
@@ -189,9 +290,10 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         rootSpan.event(
           'batch-flush',
           msToNs(event.at),
-          attrs({
-            'notion-react.batch.issued': event.issued,
-            'notion-react.batch.batched': event.batched,
+          BatchFlushEventAttrs.encodeSync({
+            serviceName,
+            issued: event.issued,
+            batched: event.batched,
           }),
         )
         break
@@ -201,9 +303,10 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         rootSpan.event(
           'update-noop',
           msToNs(event.at),
-          attrs({
-            'notion-react.block_id': event.blockId,
-            'notion-react.noop_reason': event.reason,
+          UpdateNoopEventAttrs.encodeSync({
+            serviceName,
+            blockId: event.blockId,
+            reason: event.reason,
           }),
         )
         break
@@ -213,7 +316,10 @@ export const makeEffectSpanHandler = (config: EffectSpanHandlerConfig): SyncEven
         rootSpan.event(
           'checkpoint-written',
           msToNs(event.at),
-          attrs(event.bytes !== undefined ? { 'notion-react.checkpoint.bytes': event.bytes } : {}),
+          CheckpointWrittenEventAttrs.encodeSync({
+            serviceName,
+            ...(event.bytes === undefined ? {} : { bytes: event.bytes }),
+          }),
         )
         break
       }

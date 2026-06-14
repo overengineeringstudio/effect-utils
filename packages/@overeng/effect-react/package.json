@@ -18,6 +18,9 @@
     "storybook": "storybook dev -p 6009",
     "storybook:build": "storybook build"
   },
+  "dependencies": {
+    "@overeng/otel-contract": "workspace:^"
+  },
   "devDependencies": {
     "@overeng/utils": "workspace:^",
     "@storybook/react": "10.2.3",
@@ -45,6 +48,7 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/effect-react",
+      "packages/@overeng/otel-contract",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

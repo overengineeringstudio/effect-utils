@@ -2,6 +2,7 @@ import { FileSystem, Path } from '@effect/platform'
 import { Effect } from 'effect'
 
 import type { PackageInfo } from '../common/types.ts'
+import * as Observability from './observability.ts'
 
 /** Workspace provider that discovers package.json paths in a monorepo */
 export type WorkspaceProviderName = 'pnpm' | 'bun' | 'manual'
@@ -20,6 +21,7 @@ const normalizePath = (input: string): string => input.replace(/\\/g, '/')
 export const buildPackageJsonValidationContext = Effect.fn(
   'genie/buildPackageJsonValidationContext',
 )(function* ({ cwd, workspaceProvider }: { cwd: string; workspaceProvider: WorkspaceProvider }) {
+  yield* Observability.annotatePath({ label: workspaceProvider.name, path: cwd })
   const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
   const packageJsonPaths = yield* workspaceProvider.discoverPackageJsonPaths({ cwd })

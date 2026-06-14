@@ -5,10 +5,50 @@
  */
 
 import type { Locator, Page } from '@playwright/test'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
+
+import { OtelAttr, OtelAttrs, OtelSpan } from '@overeng/otel-contract'
 
 import { type PwOpError, tryPw } from './op.ts'
 import { PwPage } from './tags.ts'
+
+const PwLocatorAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    timeoutMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.timeout.ms' }))),
+    valueLen: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.value.len' }))),
+    textLen: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.text.len' }))),
+    delayMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.delay.ms' }))),
+    jitterMs: Schema.optional(Schema.Number.pipe(OtelAttr.key({ key: 'pw.jitter.ms' }))),
+    key: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.key' }))),
+    selector: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.selector' }))),
+    role: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.role' }))),
+    name: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.name' }))),
+    testId: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.testId' }))),
+    text: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.text' }))),
+    label: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.label' }))),
+    placeholder: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'pw.placeholder' }))),
+  }),
+)
+
+const annotateLocator = (
+  value: Partial<{
+    timeoutMs: number
+    valueLen: number
+    textLen: number
+    delayMs: number
+    jitterMs: number
+    key: string
+    selector: string
+    role: string
+    name: string
+    testId: string
+    text: string
+    label: string
+    placeholder: string
+  }>,
+) => OtelSpan.annotate({ attributes: PwLocatorAttrs, value }).pipe(Effect.orDie)
+
+const textLabel = (text: string | RegExp) => (typeof text === 'string' ? text : text.source)
 
 /** Waits for the locator to become visible. */
 export const waitForVisible: (args: {
@@ -25,7 +65,7 @@ export const waitForVisible: (args: {
           state: 'visible',
           ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {}),
         }),
-    }).pipe(Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.timeout.ms': timeoutMs ?? 0 }))),
+    }).pipe(Effect.tap(() => annotateLocator({ timeoutMs: timeoutMs ?? 0 }))),
 )
 
 /** Clicks the locator. Prefer a11y-first interactions when available. */
@@ -44,7 +84,7 @@ export const fill: (args: {
   value: string
 }) => Effect.Effect<void, PwOpError> = Effect.fn('pw.locator.fill')(({ locator, value }) =>
   tryPw({ op: 'pw.locator.fill', effect: () => locator.fill(value) }).pipe(
-    Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.value.len': value.length })),
+    Effect.tap(() => annotateLocator({ valueLen: value.length })),
     Effect.asVoid,
   ),
 )
@@ -63,12 +103,7 @@ export const type: (args: {
     effect: () =>
       locator.pressSequentially(text, delayMs !== undefined ? { delay: delayMs } : undefined),
   }).pipe(
-    Effect.tap(() =>
-      Effect.annotateCurrentSpan({
-        'pw.text.len': text.length,
-        'pw.delay.ms': delayMs ?? 0,
-      }),
-    ),
+    Effect.tap(() => annotateLocator({ textLen: text.length, delayMs: delayMs ?? 0 })),
     Effect.asVoid,
   ),
 )
@@ -89,7 +124,7 @@ export const press: (args: {
   key: string
 }) => Effect.Effect<void, PwOpError> = Effect.fn('pw.locator.press')(({ locator, key }) =>
   tryPw({ op: 'pw.locator.press', effect: () => locator.press(key) }).pipe(
-    Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.key': key })),
+    Effect.tap(() => annotateLocator({ key })),
     Effect.asVoid,
   ),
 )
@@ -138,17 +173,13 @@ export const typeHuman: (args: {
       const delay = Math.floor(Math.random() * (delayMsMax - delayMsMin + 1)) + delayMsMin
       const jitter = Math.floor(Math.random() * (jitterMsMax - jitterMsMin + 1)) + jitterMsMin
 
-      yield* Effect.annotateCurrentSpan({
-        'pw.text.len': text.length,
-        'pw.delay.ms': delay,
-        'pw.jitter.ms': jitter,
-      })
+      yield* annotateLocator({ textLen: text.length, delayMs: delay, jitterMs: jitter })
 
       yield* click({ locator })
       yield* tryPw({
         op: 'pw.page.waitForTimeout',
         effect: () => locator.page().waitForTimeout(jitter),
-      }).pipe(Effect.tap(() => Effect.annotateCurrentSpan({ 'pw.jitter.ms': jitter })))
+      }).pipe(Effect.tap(() => annotateLocator({ jitterMs: jitter })))
       yield* fill({ locator, value: '' })
       yield* type({ locator, text, delayMs: delay })
     }),
@@ -193,7 +224,7 @@ export const locator: (
 ) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.locator')((selector) =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    yield* Effect.annotateCurrentSpan({ 'pw.selector': selector })
+    yield* annotateLocator({ selector })
     return page.locator(selector)
   }),
 )
@@ -207,10 +238,7 @@ export const getByRole: (opts: {
 }) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByRole')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    yield* Effect.annotateCurrentSpan({
-      'pw.role': String(opts.role),
-      'pw.name': opts.options?.name ?? '',
-    })
+    yield* annotateLocator({ role: String(opts.role), name: textLabel(opts.options?.name ?? '') })
     return page.getByRole(opts.role, opts.options)
   }),
 )
@@ -222,7 +250,7 @@ export const getByTestId: (
 ) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByTestId')((testId) =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    yield* Effect.annotateCurrentSpan({ 'pw.testId': testId })
+    yield* annotateLocator({ testId })
     return page.getByTestId(testId)
   }),
 )
@@ -236,9 +264,7 @@ export const getByText: (opts: {
 }) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByText')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    yield* Effect.annotateCurrentSpan({
-      'pw.text': typeof opts.text === 'string' ? opts.text : opts.text.source,
-    })
+    yield* annotateLocator({ text: textLabel(opts.text) })
     return page.getByText(opts.text, opts.options)
   }),
 )
@@ -252,9 +278,7 @@ export const getByLabel: (opts: {
 }) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByLabel')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    yield* Effect.annotateCurrentSpan({
-      'pw.label': typeof opts.text === 'string' ? opts.text : opts.text.source,
-    })
+    yield* annotateLocator({ label: textLabel(opts.text) })
     return page.getByLabel(opts.text, opts.options)
   }),
 )
@@ -268,9 +292,7 @@ export const getByPlaceholder: (opts: {
 }) => Effect.Effect<Locator, never, PwPage> = Effect.fn('pw.getByPlaceholder')((opts) =>
   Effect.gen(function* () {
     const page = yield* PwPage
-    yield* Effect.annotateCurrentSpan({
-      'pw.placeholder': typeof opts.text === 'string' ? opts.text : opts.text.source,
-    })
+    yield* annotateLocator({ placeholder: textLabel(opts.text) })
     return page.getByPlaceholder(opts.text, opts.options)
   }),
 )
