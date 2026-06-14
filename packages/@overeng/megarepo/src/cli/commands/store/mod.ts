@@ -544,12 +544,24 @@ const coldReclaimRepo = ({
       return results
     }
 
+    // The repo's default branch (e.g. `main`) is NEVER reclaimed, regardless of
+    // PR state or liveness — archiving a dependency's default branch is never
+    // wanted, and common names (`main`/`master`) are prone to PR-join false
+    // positives. Read locally from the bare's HEAD (offline).
+    const defaultBranch = Option.getOrUndefined(yield* Git.getStoreDefaultBranch({ bareRepoPath }))
+
     for (const target of namedWorktrees) {
       const { worktree } = target
       // Only `refs/heads/*` carries a branch identity to reclaim; tags have no
       // PR/branch to free, so they are always kept by the cold path.
       if (worktree.refType !== 'heads') {
         results.push(coldResult({ target, status: 'kept', reason: 'named-tag-ref' }))
+        continue
+      }
+
+      // Default-branch guard (hard keep, before any staleness/liveness logic).
+      if (defaultBranch !== undefined && worktree.ref === defaultBranch) {
+        results.push(coldResult({ target, status: 'kept', reason: 'default-branch' }))
         continue
       }
 

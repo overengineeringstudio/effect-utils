@@ -246,6 +246,43 @@ describe('mr store gc — cold named-branch reclamation', () => {
   )
 
   it.effect(
+    'default branch ⇒ kept (never archived) even when merged + clean + grace-met',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          { ...REPO, branches: ['trunk'], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const worktreePath = worktreePaths[`${REPO_KEY}#trunk`]!
+        const commit = yield* getWorktreeCommit(worktreePath)
+        yield* materializeBranchRef({ bareRepoPath, branch: 'trunk', commit })
+        // Make `trunk` the repo's default branch (the bare's HEAD).
+        yield* git(bareRepoPath, 'symbolic-ref', 'HEAD', 'refs/heads/trunk')
+
+        const cwd = yield* outsideCwd()
+        // Seed cold so absence grace is satisfied — proving the keep reason is the
+        // default-branch guard, not `absence-grace`. A merged PR would otherwise archive.
+        yield* seedColdObservation({ cwd, storePath })
+        const { results } = yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [mergedPr('trunk', NOW - 30 * DAY_MS)] }],
+        })
+
+        const result = findByRef(results, 'trunk')
+        expect(result?.status).toBe('kept')
+        expect(result?.reason).toBe('default-branch')
+        // Untouched on disk; branch ref intact.
+        expect(yield* fs.exists(worktreePath)).toBe(true)
+        expect(yield* Git.refExists({ repoPath: bareRepoPath, ref: 'refs/heads/trunk' })).toBe(true)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'merged + dirty ⇒ archived with dirt intact',
     Effect.fnUntraced(
       function* () {
