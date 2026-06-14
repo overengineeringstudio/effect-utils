@@ -129,6 +129,42 @@ Modeled writable page properties can be edited in frontmatter:
 Generated Notion properties remain visible as `read_only` values and are not
 pushed.
 
+## Property Descriptors
+
+Datasource page files may carry an optional `property_descriptors` map inside
+`notion_md`. Each entry is keyed by the visible property name and carries
+compact, non-authoritative identity hints:
+
+```json
+{
+  "notion_md": {
+    "property_descriptors": {
+      "Status": {
+        "property_id": "prop_status_abc",
+        "property_name": "Status",
+        "property_type": "select",
+        "data_source_id": "00000000-0000-4000-8000-000000000010",
+        "config_hash": "sha256:<hex64>"
+      }
+    }
+  }
+}
+```
+
+Descriptors prove only which Notion property a field claims to edit. They do not
+prove that the write is safe, that the schema is current, or that property-level
+convergence holds. Current schema freshness, outbox state, and settlement
+evidence remain live or hidden workspace proof (R10).
+
+Descriptors are decoded strictly: unknown fields inside a descriptor are rejected
+so a descriptor with extra proof-shaped keys fails closed (R13). A file without
+`property_descriptors` decodes identically — the field is always optional.
+
+`notion-md` CLI operations do not require descriptors and do not emit them for
+standalone non-datasource pages. Datasource-sync layers emit descriptors from
+live schema evidence; the CLI treats them as read-only identity hints when
+present.
+
 ## Object Store
 
 `.notion-md/objects/sha256/...` stores immutable JSON payloads referenced from

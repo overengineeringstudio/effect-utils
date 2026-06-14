@@ -4,6 +4,7 @@ import {
   IconSchema as NotionIcon,
   ISO8601DateTimeSchema as ISO8601DateTime,
   NotionUUIDSchema as NotionUUID,
+  PropertyDescriptors,
 } from '@overeng/notion-effect-schema'
 
 import { NOTION_API_VERSION } from './config.ts'
@@ -481,6 +482,17 @@ const NmdFrontmatterBody = Schema.Struct({
   parent: NmdParentRef,
   page: NmdPageState,
   properties: Schema.Record({ key: Schema.String, value: NmdWritablePropertyValue }),
+  /**
+   * Optional compact, non-authoritative property identity hints (R09–R14).
+   * Keyed by visible property name; each descriptor carries the stable
+   * `property_id`, `property_type`, `data_source_id`, and `config_hash` so
+   * higher-layer consumers can identify which Notion property a field claims
+   * to edit without re-fetching the live schema. Absent when unknown or when
+   * the page is not a datasource member. Decoded strictly — unknown fields
+   * are rejected so a descriptor with extra proof-shaped keys fails closed
+   * (R13). Never contains freshness, base, outbox, or settlement state (R10).
+   */
+  property_descriptors: Schema.optional(PropertyDescriptors),
 }).pipe(
   Schema.filter((body) =>
     body.source !== 'local' && body.page_id === null
