@@ -14,6 +14,7 @@ import {
   type NmdSyncStateV1,
   type NmdWritablePropertyValue,
 } from '@overeng/notion-effect-client'
+import type { PropertyDescriptors } from '@overeng/notion-effect-schema'
 
 import { semanticEquivalent } from './canonical-markdown.ts'
 import {
@@ -536,11 +537,6 @@ ${fence}
 }
 
 /**
- * Build the strict V2 `.nmd` frontmatter envelope for a remote page. Exported
- * for the stateless `cat --frontmatter` envelope dump, which renders the full
- * envelope without writing a `.notion-md/` store (decision 0017).
- */
-/**
  * Capture a `schema_snapshot` of the parent data source for a
  * data-source-backed page (decision 0017, R14). Retrieves the live property
  * schema and projects it to the sidecar `data_source` binding — the base the
@@ -599,33 +595,56 @@ const assertSchemaUnchanged = (opts: {
     })
   })
 
+/**
+ * Build the strict V2 `.nmd` frontmatter envelope for a remote page. Exported
+ * for the stateless `cat --frontmatter` envelope dump, which renders the full
+ * envelope without writing a `.notion-md/` store (decision 0017).
+ */
 export const buildFrontmatterV2 = (opts: {
   readonly page: RemotePageSnapshot
-}): NmdFrontmatterV2 => ({
-  notion_md: {
-    version: 2,
-    api_version: NOTION_API_VERSION,
-    object: 'page',
-    source: 'local',
-    page_id: opts.page.id,
-    url: opts.page.url,
-    parent: toParentRef(opts.page),
-    page: {
-      title: opts.page.title,
-      icon: opts.page.icon,
-      cover: opts.page.cover,
-      in_trash: opts.page.in_trash,
-      is_locked: opts.page.is_locked,
+  /**
+   * Compact non-authoritative property identity hints to embed when the page
+   * belongs to a datasource and schema evidence is available. Omitted for
+   * standalone pages or when the caller has no schema evidence (R10).
+   */
+  readonly descriptors?: PropertyDescriptors
+}): NmdFrontmatterV2 => {
+  const parent = toParentRef(opts.page)
+  /*
+   * Emit descriptors only when the parent is a datasource AND the caller
+   * supplied schema evidence. For standalone/non-datasource pages the field
+   * is omitted entirely so the frontmatter stays clean and round-trip stable.
+   */
+  const property_descriptors =
+    parent._tag === 'data_source' && opts.descriptors !== undefined ? opts.descriptors : undefined
+
+  return {
+    notion_md: {
+      version: 2,
+      api_version: NOTION_API_VERSION,
+      object: 'page',
+      source: 'local',
+      page_id: opts.page.id,
+      url: opts.page.url,
+      parent,
+      page: {
+        title: opts.page.title,
+        icon: opts.page.icon,
+        cover: opts.page.cover,
+        in_trash: opts.page.in_trash,
+        is_locked: opts.page.is_locked,
+      },
+      /*
+       * V2 frontmatter only carries the user-editable writable properties.
+       * Notion echoes back every page property on retrieve, but most are
+       * derived from the data-source schema and the user can't edit them
+       * locally — those land in the sidecar `read_only_properties` instead.
+       */
+      properties: {},
+      ...(property_descriptors !== undefined ? { property_descriptors } : {}),
     },
-    /*
-     * V2 frontmatter only carries the user-editable writable properties.
-     * Notion echoes back every page property on retrieve, but most are
-     * derived from the data-source schema and the user can't edit them
-     * locally — those land in the sidecar `read_only_properties` instead.
-     */
-    properties: {},
-  },
-})
+  }
+}
 
 const buildSyncState = (opts: {
   readonly page: RemotePageSnapshot

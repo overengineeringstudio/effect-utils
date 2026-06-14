@@ -7,6 +7,7 @@ import {
   decodeNmdFrontmatterV2Sync,
   gateNmdLocalState,
   makeNmdObjectRef,
+  NmdFrontmatterV2,
   NmdParentRef,
   NmdStatelessnessError,
   nmdObjectRelativePath,
@@ -308,5 +309,115 @@ describe('gateNmdLocalState — statelessness gate (R31/R32)', () => {
     const fm = decodeNmdFrontmatterV2Sync(frontmatterV2({ source: 'shared' }))
     const gated = gateNmdLocalState({ frontmatter: fm, syncState: undefined })
     expect(gated).toBeInstanceOf(NmdStatelessnessError)
+  })
+})
+
+const configHash = `sha256:${'b'.repeat(64)}`
+const dataSourceId = '00000000-0000-4000-8000-000000000010'
+
+const descriptorPayload = {
+  Status: {
+    property_id: 'prop_status_abc',
+    property_name: 'Status',
+    property_type: 'select',
+    data_source_id: dataSourceId,
+    config_hash: configHash,
+  },
+}
+
+const frontmatterV2WithDescriptors = (descriptors: unknown): unknown => ({
+  notion_md: {
+    version: 2,
+    api_version: '2026-03-11',
+    object: 'page',
+    source: 'shared',
+    page_id: pageId,
+    parent: { _tag: 'data_source', id: dataSourceId },
+    page: { title: 'DS page', icon: null, cover: null, in_trash: false, is_locked: false },
+    properties: {},
+    property_descriptors: descriptors,
+  },
+})
+
+const encodeNmdFrontmatterV2Sync = Schema.encodeSync(NmdFrontmatterV2)
+
+describe('NmdFrontmatterV2 property_descriptors (R09–R14)', () => {
+  it('decodes without property_descriptors (standalone pages)', () => {
+    const fm = decodeNmdFrontmatterV2Sync(frontmatterV2({ source: 'local' }))
+    expect(fm.notion_md.property_descriptors).toBeUndefined()
+  })
+
+  it('decodes with valid property_descriptors', () => {
+    const fm = decodeNmdFrontmatterV2Sync(frontmatterV2WithDescriptors(descriptorPayload))
+    const statusDescriptor = Object.values(fm.notion_md.property_descriptors ?? {})[0]
+    expect(statusDescriptor?.property_id).toBe('prop_status_abc')
+    expect(statusDescriptor?.property_type).toBe('select')
+    expect(statusDescriptor?.data_source_id).toBe(dataSourceId)
+    expect(statusDescriptor?.config_hash).toBe(configHash)
+  })
+
+  it('rejects an unknown field inside a descriptor (fail-closed, R13)', () => {
+    expect(() =>
+      decodeNmdFrontmatterV2Sync(
+        frontmatterV2WithDescriptors({
+          Status: {
+            ...descriptorPayload.Status,
+            settlement_proof: 'should-not-exist',
+          },
+        }),
+      ),
+    ).toThrow()
+  })
+
+  it('rejects a descriptor missing a required field', () => {
+    const { config_hash: _dropped, ...missingHash } = descriptorPayload.Status
+    expect(() =>
+      decodeNmdFrontmatterV2Sync(frontmatterV2WithDescriptors({ Status: missingHash })),
+    ).toThrow()
+  })
+
+  it('rejects a malformed config_hash (must match sha256:<hex64>)', () => {
+    expect(() =>
+      decodeNmdFrontmatterV2Sync(
+        frontmatterV2WithDescriptors({
+          Status: {
+            ...descriptorPayload.Status,
+            config_hash: 'not-a-sha256',
+          },
+        }),
+      ),
+    ).toThrow()
+  })
+
+  it('round-trips: descriptors present → encoded output includes property_descriptors key', () => {
+    const fm = decodeNmdFrontmatterV2Sync(frontmatterV2WithDescriptors(descriptorPayload))
+    const encoded = encodeNmdFrontmatterV2Sync(fm)
+    expect(encoded.notion_md).toHaveProperty('property_descriptors')
+  })
+
+  it('round-trips: descriptors absent → encoded output omits property_descriptors key', () => {
+    const fm = decodeNmdFrontmatterV2Sync(frontmatterV2({ source: 'local' }))
+    const encoded = encodeNmdFrontmatterV2Sync(fm)
+    expect(Object.keys(encoded.notion_md)).not.toContain('property_descriptors')
+  })
+
+  it('descriptors never include freshness/base/outbox/settlement keys (R10)', () => {
+    const fm = decodeNmdFrontmatterV2Sync(frontmatterV2WithDescriptors(descriptorPayload))
+    const descriptor = Object.values(fm.notion_md.property_descriptors ?? {})[0]
+    expect(descriptor).toBeDefined()
+    if (descriptor !== undefined) {
+      const keys = Object.keys(descriptor)
+      for (const forbidden of [
+        'last_pulled_at',
+        'base',
+        'outbox',
+        'settlement',
+        'convergence',
+        'hash',
+        'schema_hash',
+      ]) {
+        expect(keys).not.toContain(forbidden)
+      }
+    }
   })
 })
