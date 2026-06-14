@@ -43,6 +43,13 @@ export const NmdBaseSnapshotV2 = Schema.Struct({
 
 export type NmdBaseSnapshotV2 = typeof NmdBaseSnapshotV2.Type
 
+export interface NmdObjectGcResult {
+  readonly root: string
+  readonly reachable: readonly string[]
+  readonly removed: readonly string[]
+  readonly dryRun?: true
+}
+
 const strictOptions = {
   errors: 'all',
   onExcessProperty: 'error',
@@ -198,6 +205,11 @@ export interface NmdStateStoreShape {
     readonly path: string
     readonly syncState: NmdSyncStateV1
   }) => Effect.Effect<NmdStorageObjectV2 | undefined, NmdObjectStoreError>
+  readonly garbageCollectObjects: (opts: {
+    readonly path: string
+    readonly syncStates: readonly NmdSyncStateV1[]
+    readonly dryRun?: boolean
+  }) => Effect.Effect<NmdObjectGcResult, NmdFileSystemError | NmdObjectStoreError>
   /*
    * Sidecar sync state at `.notion-md/sync/{page_id}.json`. Holds the
    * derived bookkeeping (body hash, base ref, last-pulled timestamps,
@@ -373,6 +385,77 @@ export const NmdStateStoreLive = Layer.effect(
         }),
       )
 
+    const objectRefs = (syncState: NmdSyncStateV1): readonly NmdObjectRef[] => [
+      syncState.body.base,
+      ...(syncState.storage._tag === 'object_store' ? [syncState.storage.object] : []),
+    ]
+
+    const reachableObjectPaths = (opts: {
+      readonly path: string
+      readonly syncStates: readonly NmdSyncStateV1[]
+    }): Effect.Effect<readonly string[], NmdObjectStoreError> =>
+      Effect.gen(function* () {
+        const paths: string[] = []
+        for (const syncState of opts.syncStates) {
+          for (const ref of objectRefs(syncState)) {
+            const objectFullPath = yield* fullObjectPath({ nmdPath: opts.path, object: ref })
+            paths.push(path.normalize(objectFullPath))
+          }
+        }
+        return [...new Set(paths)].toSorted(compareStrings)
+      })
+
+    const listObjectFiles = (root: string): Effect.Effect<readonly string[], NmdFileSystemError> =>
+      Effect.gen(function* () {
+        const exists = yield* fs.exists(root).pipe(
+          Effect.mapError((cause) =>
+            makeFileSystemError({
+              operation: 'gc_probe_objects',
+              path: root,
+              cause,
+              message: `Failed to probe .nmd object root ${root}`,
+            }),
+          ),
+        )
+        if (exists === false) return []
+
+        const walk = (current: string): Effect.Effect<readonly string[], NmdFileSystemError> =>
+          Effect.gen(function* () {
+            const entries = yield* fs.readDirectory(current).pipe(
+              Effect.mapError((cause) =>
+                makeFileSystemError({
+                  operation: 'gc_list_objects',
+                  path: current,
+                  cause,
+                  message: `Failed to list .nmd object directory ${current}`,
+                }),
+              ),
+            )
+            const files: string[] = []
+            for (const entry of entries) {
+              const full = path.join(current, entry)
+              const stat = yield* fs.stat(full).pipe(
+                Effect.mapError((cause) =>
+                  makeFileSystemError({
+                    operation: 'gc_stat_object',
+                    path: full,
+                    cause,
+                    message: `Failed to inspect .nmd object path ${full}`,
+                  }),
+                ),
+              )
+              if (stat.type === 'Directory') {
+                files.push(...(yield* walk(full)))
+              } else if (stat.type === 'File') {
+                files.push(path.normalize(full))
+              }
+            }
+            return files
+          })
+
+        return (yield* walk(root)).toSorted(compareStrings)
+      })
+
     const writeBaseSnapshot: NmdStateStoreShape['writeBaseSnapshot'] = (opts) => {
       const body = normalizeMarkdownLineEndings(opts.body)
       return writeObjectContent({
@@ -477,6 +560,38 @@ export const NmdStateStoreLive = Layer.effect(
         return storageObject
       })
 
+    const garbageCollectObjects: NmdStateStoreShape['garbageCollectObjects'] = (opts) =>
+      Effect.gen(function* () {
+        const root = path.join(stateRootPath(opts.path), 'objects')
+        const reachable = yield* reachableObjectPaths({
+          path: opts.path,
+          syncStates: opts.syncStates,
+        })
+        const reachableSet = new Set(reachable)
+        const objectFiles = yield* listObjectFiles(root)
+        const removed = objectFiles.filter((file) => reachableSet.has(file) === false)
+        if (opts.dryRun !== true) {
+          for (const file of removed) {
+            yield* fs.remove(file).pipe(
+              Effect.mapError((cause) =>
+                makeFileSystemError({
+                  operation: 'gc_remove_object',
+                  path: file,
+                  cause,
+                  message: `Failed to remove unreachable .nmd object ${file}`,
+                }),
+              ),
+            )
+          }
+        }
+        return {
+          root,
+          reachable,
+          removed,
+          ...(opts.dryRun === true ? { dryRun: true as const } : {}),
+        }
+      })
+
     const writeSyncState: NmdStateStoreShape['writeSyncState'] = (opts) =>
       writeTextFile({
         operation: 'write_sync_state',
@@ -554,6 +669,7 @@ export const NmdStateStoreLive = Layer.effect(
       readBaseSnapshot,
       writeStorageObject,
       validateReferencedObjects,
+      garbageCollectObjects,
       writeSyncState,
       readSyncState,
       readSyncStateOptional,
@@ -591,6 +707,14 @@ export const validateReferencedObjects = (opts: {
   readonly syncState: NmdSyncStateV1
 }): Effect.Effect<NmdStorageObjectV2 | undefined, NmdObjectStoreError, NmdStateStore> =>
   NmdStateStore.pipe(Effect.flatMap((store) => store.validateReferencedObjects(opts)))
+
+/** Remove unreachable content-addressed objects for an explicit local state root. */
+export const garbageCollectObjects = (opts: {
+  readonly path: string
+  readonly syncStates: readonly NmdSyncStateV1[]
+  readonly dryRun?: boolean
+}): Effect.Effect<NmdObjectGcResult, NmdFileSystemError | NmdObjectStoreError, NmdStateStore> =>
+  NmdStateStore.pipe(Effect.flatMap((store) => store.garbageCollectObjects(opts)))
 
 /** Write the sidecar sync state at `.notion-md/sync/{page_id}.json`. */
 export const writeSyncState = (opts: {

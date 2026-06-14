@@ -129,6 +129,7 @@ class FakeStore {
     readBaseSnapshot: () => Effect.dieMessage('unexpected readBaseSnapshot call'),
     writeStorageObject: () => Effect.dieMessage('unexpected writeStorageObject call'),
     validateReferencedObjects: () => Effect.dieMessage('unexpected validateReferencedObjects call'),
+    garbageCollectObjects: () => Effect.dieMessage('unexpected garbageCollectObjects call'),
     writeSyncState: (opts) =>
       Effect.sync(() => {
         this.writeSyncStateCalls.push(opts)

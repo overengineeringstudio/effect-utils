@@ -126,6 +126,27 @@ const forceOption = Options.boolean('force').pipe(
   Options.withDefault(false),
 )
 
+const allowDeleteUnknownBlocksOption = Options.boolean('allow-delete-unknown-blocks').pipe(
+  Options.withDescription(
+    'Explicit destructive mode: allow a body write that may delete unresolved unsupported Notion blocks',
+  ),
+  Options.withDefault(false),
+)
+
+const allowReviewMarkupOption = Options.boolean('allow-review-markup').pipe(
+  Options.withDescription(
+    'Explicit destructive mode: allow unresolved Roughdraft review markup to be written as literal Notion body content',
+  ),
+  Options.withDefault(false),
+)
+
+const gcObjectsOption = Options.boolean('gc-objects').pipe(
+  Options.withDescription(
+    'After validation, remove unreachable .notion-md/objects files; with --dry-run, report the GC plan only',
+  ),
+  Options.withDefault(false),
+)
+
 const watchOption = Options.boolean('watch').pipe(
   Options.withDescription('Continuously sync after local file changes and remote polling'),
   Options.withDefault(false),
@@ -465,14 +486,40 @@ const syncCommand = Command.make(
     recursive: recursiveOption,
     concurrency: concurrencyOption,
     force: forceOption,
+    allowDeleteUnknownBlocks: allowDeleteUnknownBlocksOption,
+    allowReviewMarkup: allowReviewMarkupOption,
+    gcObjects: gcObjectsOption,
     dryRun: dryRunOption,
     json: jsonOption,
   },
-  ({ paths, watch, pollIntervalMs, recursive, concurrency, force, dryRun, json }) => {
+  ({
+    paths,
+    watch,
+    pollIntervalMs,
+    recursive,
+    concurrency,
+    force,
+    allowDeleteUnknownBlocks,
+    allowReviewMarkup,
+    gcObjects,
+    dryRun,
+    json,
+  }) => {
     if (watch === true) {
-      const syncOptions: SyncOptions = { path: paths[0] ?? '', force, dryRun }
+      const syncOptions: SyncOptions = {
+        path: paths[0] ?? '',
+        force,
+        dryRun,
+        allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
+        allowReviewMarkup,
+      }
       return paths.length === 1
-        ? withNotion(runWatch({ syncOptions, pollIntervalMs }))
+        ? withNotion(
+            runWatch({
+              syncOptions: { ...syncOptions, gcObjects } as SyncOptions,
+              pollIntervalMs,
+            }),
+          )
         : withNotion(
             targetsFor({ paths, recursive }).pipe(
               Effect.flatMap((resolved) =>
@@ -496,6 +543,9 @@ const syncCommand = Command.make(
                             : { concurrency: batchOpts.concurrency }),
                           ...(batchOpts.force === undefined ? {} : { force: batchOpts.force }),
                           ...(batchOpts.dryRun === undefined ? {} : { dryRun: batchOpts.dryRun }),
+                          allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
+                          allowReviewMarkup,
+                          gcObjects,
                         }),
                     }),
               ),
@@ -507,7 +557,16 @@ const syncCommand = Command.make(
       command: 'sync',
       label: paths.length === 1 ? basename(paths[0] ?? 'target') : `${paths.length} targets`,
       effect: withNotion(
-        reconcileTree({ targets: paths, recursive, concurrency, force, dryRun }).pipe(
+        reconcileTree({
+          targets: paths,
+          recursive,
+          concurrency,
+          force,
+          allowDeletingUnknownBlocks: allowDeleteUnknownBlocks,
+          allowReviewMarkup,
+          gcObjects,
+          dryRun,
+        }).pipe(
           Effect.flatMap((batch) =>
             json === true
               ? logJson(batch)

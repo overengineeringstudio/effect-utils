@@ -28,27 +28,12 @@ Conceptual shape:
 ```json
 {
   "notion_md": {
-    "version": 1,
+    "version": 2,
     "api_version": "2026-03-11",
     "object": "page",
+    "source": "remote",
     "page_id": "00000000-0000-4000-8000-000000000001",
     "parent": { "_tag": "page", "id": "00000000-0000-4000-8000-000000000000" },
-    "body": {
-      "format": "notion-enhanced-markdown",
-      "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "base": {
-        "_tag": "object_ref",
-        "role": "base_snapshot",
-        "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "path": ".notion-md/objects/sha256/bb/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json",
-        "media_type": "application/json",
-        "byte_length": 512
-      },
-      "last_pulled_at": "2026-05-22T14:50:00.000Z",
-      "remote_last_edited_time": "2026-05-22T14:49:59.000Z",
-      "truncated": false,
-      "unknown_block_ids": []
-    },
     "page": {
       "title": "Page title",
       "icon": null,
@@ -56,20 +41,40 @@ Conceptual shape:
       "in_trash": false,
       "is_locked": false
     },
-    "data_source": null,
-    "properties": {},
-    "storage": {
-      "_tag": "self_contained",
-      "unsupported_blocks": [],
-      "files": [],
-      "comments": []
-    }
+    "properties": {}
   }
 }
 ```
 
+Machine-managed sync state lives outside the Markdown file at
+`.notion-md/sync/<page_id>.json` for pages that need it:
+
+```json
+{
+  "version": 1,
+  "page_id": "00000000-0000-4000-8000-000000000001",
+  "body": {
+    "format": "notion-enhanced-markdown",
+    "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "base": null,
+    "last_pulled_at": "2026-05-22T14:50:00.000Z",
+    "remote_last_edited_time": "2026-05-22T14:49:59.000Z",
+    "truncated": false,
+    "unknown_block_ids": []
+  },
+  "storage": {
+    "_tag": "self_contained",
+    "unsupported_blocks": [],
+    "files": [],
+    "comments": []
+  },
+  "read_only_properties": {},
+  "data_source": null
+}
+```
+
 The Effect Schema in `@overeng/notion-effect-client/src/nmd.ts` is the source of
-truth for this shape.
+truth for both shapes.
 
 ## Body
 
@@ -127,12 +132,12 @@ pushed.
 ## Object Store
 
 `.notion-md/objects/sha256/...` stores immutable JSON payloads referenced from
-frontmatter:
+frontmatter or sync state:
 
 - `base_snapshot`: last clean body used for merge and conflict evidence.
 - `storage_payload`: overflow unsupported-block, file, or comment metadata.
-- `file_payload`: future file byte or upload metadata.
-- `comment_payload`: future comment bridge metadata.
+- `file_payload`: file byte or upload metadata.
+- `comment_payload`: comment bridge metadata.
 
 Object refs include role, hash, logical path, media type, and byte length. Reads
 verify exact bytes and reject path traversal, stale hashes, role mismatches, and

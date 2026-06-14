@@ -51,6 +51,7 @@ The CLI reads `NOTION_API_TOKEN`.
 - Shared sync writes a Roughdraft conflict artifact next to the `.nmd` file when local and remote body edits diverge.
 - Sync refuses unresolved Roughdraft review markup unless `--allow-review-markup` is explicit.
 - Missing or malformed object-store references fail `status` and `sync`.
+- `sync --gc-objects` removes unreachable content-addressed objects after validation; combine with `--dry-run` to preview.
 - Unknown Notion blocks are fetched through the block API and stored as compact unsupported-block units.
 
 ## Object Store Policy
