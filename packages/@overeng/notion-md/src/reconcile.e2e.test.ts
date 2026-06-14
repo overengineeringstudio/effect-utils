@@ -6,7 +6,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { NmdFrontmatterV2 } from '@overeng/notion-effect-client'
+import type { NmdFrontmatterV2, NmdStorage } from '@overeng/notion-effect-client'
 
 import { canonicalize } from './canonicalizer.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
@@ -24,10 +24,59 @@ import { NmdStateStoreLive, syncStatePath, type NmdStateStore } from './state-st
 
 const parentId = '00000000-0000-4000-8000-000000000000'
 const pageId = '00000000-0000-4000-8000-000000000001'
+const blockId = '00000000-0000-4000-8000-000000000002'
+const fileBlockId = '00000000-0000-4000-8000-000000000003'
+const hash = `sha256:${'a'.repeat(64)}` as const
+
+const mediaStorage = (): NmdStorage => ({
+  _tag: 'self_contained',
+  unsupported_blocks: [],
+  files: [
+    {
+      _tag: 'file_unit',
+      id: 'hero-image',
+      role: 'block_image',
+      filename: 'hero.png',
+      content_type: 'image/png',
+      content_length: 70,
+      local_path: 'attachments/hero.png',
+      content_hash: hash,
+      block_id: fileBlockId,
+    },
+  ],
+  comments: [],
+})
+
+const unsupportedStorage = (): NmdStorage => ({
+  _tag: 'self_contained',
+  unsupported_blocks: [
+    {
+      _tag: 'unsupported_block',
+      block_id: blockId,
+      block_type: 'bookmark',
+      placeholder: '<unknown url="https://www.notion.com/" alt="bookmark"/>',
+      snapshot: {
+        object: 'block',
+        id: blockId,
+        type: 'bookmark',
+        has_children: false,
+        in_trash: false,
+        parent: { type: 'page_id', page_id: pageId },
+        created_time: '2026-05-22T12:00:00.000Z',
+        last_edited_time: '2026-05-22T12:00:00.000Z',
+        payload: { url: 'https://www.notion.com/' },
+      },
+    },
+  ],
+  files: [],
+  comments: [],
+})
 
 interface FakePage {
   markdown: string
   title: string
+  storage?: NmdStorage
+  unknownBlockIds?: readonly string[]
 }
 
 class FakeGateway {
@@ -67,10 +116,11 @@ class FakeGateway {
       },
       markdown: {
         markdown: page.markdown,
-        truncated: false,
-        unknown_block_ids: [],
+        truncated: (page.unknownBlockIds ?? []).length > 0,
+        unknown_block_ids: page.unknownBlockIds ?? [],
         completeness: { _tag: 'complete' },
       },
+      ...(page.storage === undefined ? {} : { storage: page.storage }),
     }
   }
 
@@ -84,10 +134,27 @@ class FakeGateway {
 
   readonly shape: NotionMdGatewayShape = {
     pullPage: ({ pageId: id }) => Effect.sync(() => this.toPull(id)),
-    updateMarkdown: ({ pageId: id, command }) =>
+    updateMarkdown: ({ pageId: id, command, allowDeletingContent }) =>
       Effect.sync(() => {
         this.updateCount += 1
-        if (command._tag === 'replace_content') this.mutateRemote(id, command.markdown)
+        if (command._tag === 'replace_content') {
+          const page = this.require(id)
+          this.pages.set(id, {
+            ...page,
+            markdown: normalizeMarkdownLineEndings(command.markdown),
+            ...(allowDeletingContent === true && command.markdown.includes('<unknown') === false
+              ? {
+                  storage: {
+                    _tag: 'self_contained',
+                    unsupported_blocks: [],
+                    files: [],
+                    comments: [],
+                  } satisfies NmdStorage,
+                  unknownBlockIds: [],
+                }
+              : {}),
+          })
+        }
         return { markdown: this.toPull(id).markdown }
       }),
     updatePageProperties: ({ pageId: id }) => Effect.sync(() => this.toPull(id).page),
@@ -201,6 +268,53 @@ describe('reconcileFile — source-aware dispatch (R34)', () => {
       expect(fake.remoteMarkdown(pageId)).toContain('Local edit')
     }))
 
+  it('source: local refuses unresolved Roughdraft review markup unless explicitly allowed', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({
+        path,
+        source: 'local',
+        pageId,
+        body: '# Local\n\n{==Body==}{>>Needs review.<<}{id="r1"}',
+      })
+      const fake = new FakeGateway([[pageId, { title: 'Doc', markdown: '# Old\n\nBody' }]])
+
+      await expect(run(reconcileFile({ path }), fake)).rejects.toThrow(
+        'Local body contains unresolved Roughdraft review markup',
+      )
+      expect(fake.updateCount).toBe(0)
+
+      const result = await run(reconcileFile({ path, allowReviewMarkup: true }), fake)
+      expect(result._tag).toBe('pushed')
+      expect(fake.remoteMarkdown(pageId)).toContain('{==Body==}')
+    }))
+
+  it('source: local refuses unknown-block deletion unless explicitly allowed', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local replacement' })
+      const fake = new FakeGateway([
+        [
+          pageId,
+          {
+            title: 'Doc',
+            markdown: '# Remote\n\n<unknown url="https://www.notion.com/" alt="bookmark"/>',
+            storage: unsupportedStorage(),
+            unknownBlockIds: [blockId],
+          },
+        ],
+      ])
+
+      await expect(run(reconcileFile({ path }), fake)).rejects.toThrow(
+        'Page contains unresolved unknown Notion blocks',
+      )
+      expect(fake.updateCount).toBe(0)
+
+      const result = await run(reconcileFile({ path, allowDeletingUnknownBlocks: true }), fake)
+      expect(result._tag).toBe('pushed')
+      expect(fake.remoteMarkdown(pageId)).toBe('# Local replacement\n')
+    }))
+
   it('source: local, bound, cosmetic-only diff ⇒ noop (#756 churn folded, R33)', () =>
     withTempDir(async (dir) => {
       const path = join(dir, 'doc.nmd')
@@ -251,6 +365,32 @@ describe('reconcileFile — dry-run planning', () => {
       expect(await exists(syncStatePath({ path, pageId }))).toBe(false)
     }))
 
+  it('preserves pulled file/media storage when tracking as shared', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'tracked.nmd')
+      const fake = new FakeGateway([
+        [
+          pageId,
+          {
+            title: 'Doc',
+            markdown: '# Remote\n\n![Hero](attachments/hero.png)',
+            storage: mediaStorage(),
+          },
+        ],
+      ])
+
+      const result = await run(trackPage({ pageId, outPath: path, source: 'shared' }), fake)
+      const sidecar = JSON.parse(await readFile(syncStatePath({ path, pageId }), 'utf8')) as {
+        readonly storage: NmdStorage
+      }
+
+      expect(result).toEqual({ path, pageId, source: 'shared' })
+      expect(sidecar.storage).toMatchObject({
+        _tag: 'self_contained',
+        files: [expect.objectContaining({ id: 'hero-image', role: 'block_image' })],
+      })
+    }))
+
   it('plans source: local unbound create without creating a remote page or binding the file', () =>
     withTempDir(async (dir) => {
       const path = join(dir, 'doc.nmd')
@@ -282,6 +422,32 @@ describe('reconcileFile — dry-run planning', () => {
       expect(result).toEqual({ _tag: 'pushed', path, pageId, dryRun: true })
       expect(fake.updateCount).toBe(0)
       expect(fake.remoteMarkdown(pageId)).toBe('# Old\n\nold text\n')
+    }))
+
+  it('plans explicit unknown-block deletion without mutating the remote page under dry-run', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local replacement' })
+      const fake = new FakeGateway([
+        [
+          pageId,
+          {
+            title: 'Doc',
+            markdown: '# Remote\n\n<unknown url="https://www.notion.com/" alt="bookmark"/>',
+            storage: unsupportedStorage(),
+            unknownBlockIds: [blockId],
+          },
+        ],
+      ])
+
+      const result = await run(
+        reconcileFile({ path, allowDeletingUnknownBlocks: true, dryRun: true }),
+        fake,
+      )
+
+      expect(result).toEqual({ _tag: 'pushed', path, pageId, dryRun: true })
+      expect(fake.updateCount).toBe(0)
+      expect(fake.remoteMarkdown(pageId)).toContain('<unknown')
     }))
 
   it('plans source: remote pull without mutating the local .nmd file', () =>

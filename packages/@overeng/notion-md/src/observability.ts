@@ -176,6 +176,17 @@ export const pushDecisionMarkdownCommandAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Span attributes for schema-decoded webhook trigger classification. */
+export const webhookTriggerAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    eventType: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.webhook.event_type' })),
+    surface: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.webhook.surface' })),
+    triggerCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.webhook.trigger_count' }),
+    ),
+  }),
+)
+
 export const withOperation =
   <S extends Schema.Schema.AnyNoContext>(
     operation: OtelOperationDefinition<S>,
@@ -373,6 +384,13 @@ export const editResultAttrs = OtelAttrs.defineSync(
     ),
   }),
 )
+
+/** Operation span emitted when a webhook signal is mapped to watch triggers. */
+export const WebhookTriggerSpan = OtelOperation.define({
+  name: 'notion-md.webhook.trigger',
+  attributes: webhookTriggerAttrs,
+  label: ({ surface, eventType }) => `${surface}:${eventType}`,
+})
 
 export const page = (pageId: string) => GatewayPullPageSpan.encodeSync({ pageId })
 

@@ -95,28 +95,31 @@ export interface BatchSyncOptions extends ResolveTargetsOptions {
   readonly dryRun?: boolean
 }
 
-export type SyncManyRunner<A> = (
-  opts: BatchSyncOptions,
-) => Effect.Effect<
-  BatchResult<A>,
-  NmdCliError,
-  FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore
->
+/** Runs one coalesced watch pass over the triggered targets. */
+export type SyncManyRunner<
+  A,
+  R = FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore,
+> = (opts: BatchSyncOptions) => Effect.Effect<BatchResult<A>, NmdCliError, R>
 
 /** Trigger reason emitted by one-file and batch watch loops. */
-export type WatchReason = 'file' | 'initial' | 'poll'
+export type WatchReason = 'file' | 'initial' | 'poll' | 'webhook'
 
-interface WatchTrigger {
+/** Resolved watch trigger after a source-specific cue has been mapped to a local `.nmd` path. */
+export interface WatchTrigger {
   readonly path: string
   readonly reason: WatchReason
 }
 
 /** Inputs for continuous watch mode over a resolved set of `.nmd` files. */
-export interface BatchWatchOptions<A> extends Omit<BatchSyncOptions, 'targets' | 'recursive'> {
+export interface BatchWatchOptions<
+  A,
+  R = FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore,
+> extends Omit<BatchSyncOptions, 'targets' | 'recursive'> {
   readonly paths: readonly string[]
   readonly pollIntervalMs: number
   readonly emit?: (value: unknown) => Effect.Effect<void>
-  readonly runSyncMany: SyncManyRunner<A>
+  readonly runSyncMany: SyncManyRunner<A, R>
+  readonly triggerSource?: Stream.Stream<WatchTrigger, never>
 }
 
 const makeFsError = (opts: {
@@ -434,6 +437,8 @@ const reasonRank = (reason: WatchReason): number => {
       return 1
     case 'file':
       return 2
+    case 'webhook':
+      return 3
   }
 }
 
@@ -477,13 +482,9 @@ const watchErrorJson = (error: unknown): Record<string, unknown> => {
 }
 
 /** Watch a resolved set of `.nmd` files and run coalesced batch sync passes. */
-export const runBatchWatch = <A>(
-  opts: BatchWatchOptions<A>,
-): Effect.Effect<
-  never,
-  never,
-  FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore
-> =>
+export const runBatchWatch = <A, R>(
+  opts: BatchWatchOptions<A, R>,
+): Effect.Effect<never, never, FileSystem.FileSystem | Path.Path | R> =>
   Effect.scoped(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
@@ -525,6 +526,16 @@ export const runBatchWatch = <A>(
           ),
         ),
       )
+      if (opts.triggerSource !== undefined) {
+        yield* Effect.forkScoped(
+          opts.triggerSource.pipe(
+            Stream.filter((trigger) => watchedPaths.has(resolve(trigger.path))),
+            Stream.runForEach((trigger) =>
+              Queue.offer(queue, { path: resolve(trigger.path), reason: trigger.reason }),
+            ),
+          ),
+        )
+      }
 
       return yield* Effect.forever(
         Effect.gen(function* () {

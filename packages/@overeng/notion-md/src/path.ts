@@ -54,6 +54,9 @@ export interface SyncPathOptions {
   readonly fromRemote?: boolean
   readonly force?: boolean
   readonly dryRun?: boolean
+  readonly allowDeletingUnknownBlocks?: boolean
+  readonly allowReviewMarkup?: boolean
+  readonly gcObjects?: boolean
 }
 
 /** Classify a local target into file / directory / missing without throwing. */
@@ -167,6 +170,13 @@ export const syncPath = (
           ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
           ...(opts.force === undefined ? {} : { force: opts.force }),
           ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+          ...(opts.allowDeletingUnknownBlocks === undefined
+            ? {}
+            : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
+          ...(opts.allowReviewMarkup === undefined
+            ? {}
+            : { allowReviewMarkup: opts.allowReviewMarkup }),
+          ...(opts.gcObjects === undefined ? {} : { gcObjects: opts.gcObjects }),
         })
       }
       return yield* syncTree({
@@ -182,6 +192,13 @@ export const syncPath = (
       path: opts.path,
       ...(opts.force === undefined ? {} : { force: opts.force }),
       ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+      ...(opts.allowDeletingUnknownBlocks === undefined
+        ? {}
+        : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
+      ...(opts.allowReviewMarkup === undefined
+        ? {}
+        : { allowReviewMarkup: opts.allowReviewMarkup }),
+      ...(opts.gcObjects === undefined ? {} : { gcObjects: opts.gcObjects }),
     })
   }).pipe(
     Observability.withOperation(Observability.SyncPathSpan, {
@@ -194,4 +211,8 @@ export const syncPath = (
 const pushSafety = (opts: Omit<SyncPathOptions, 'path'>) => ({
   ...(opts.force === undefined ? {} : { force: opts.force }),
   ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+  ...(opts.allowDeletingUnknownBlocks === undefined
+    ? {}
+    : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
+  ...(opts.allowReviewMarkup === undefined ? {} : { allowReviewMarkup: opts.allowReviewMarkup }),
 })

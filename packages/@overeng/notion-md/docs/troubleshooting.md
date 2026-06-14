@@ -86,16 +86,18 @@ merge path; they reconcile in their declared direction.
 
 Normal sync refuses to delete unsupported Notion blocks. Sync again if the remote
 page has changed, model the unsupported surface, or remove the local body edit.
-The v-next CLI does not expose an unknown-block deletion override flag yet.
+Use `notion-md sync <path> --allow-delete-unknown-blocks` only when deleting the
+unsupported remote blocks is intentional. Add `--dry-run` first to confirm the
+planned write.
 
 ## Roughdraft Markup Blocks Sync
 
 Normal sync refuses unresolved Roughdraft review markup so review annotations do
 not accidentally become visible Notion content.
 
-Resolve or remove the markup before syncing. A future destructive
-review-markup mode should only be used when the literal markup should be written
-to Notion.
+Resolve or remove the markup before syncing. Use
+`notion-md sync <path> --allow-review-markup` only when the literal markup
+should be written to Notion; it is not a comment bridge.
 
 ## Watch Emits Repeated Errors
 

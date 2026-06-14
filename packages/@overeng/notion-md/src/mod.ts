@@ -52,6 +52,7 @@ export {
   NmdStateStore,
   NmdStateStoreLive,
   NmdStorageObjectV2,
+  garbageCollectObjects,
   objectPath,
   objectRelativePath,
   readBaseSnapshot,
@@ -62,6 +63,7 @@ export {
 } from './state-store.ts'
 export type {
   NmdBaseSnapshotV2 as NmdBaseSnapshotV2Type,
+  NmdObjectGcResult,
   NmdStateStoreShape,
 } from './state-store.ts'
 export { decideStorage } from './storage-policy.ts'
@@ -74,7 +76,12 @@ export type { PorcelainStatus, ReconcileCompare, ReconcileDecision } from './rec
 export { decideShared, reconcileShared, sharedPorcelain } from './reconcile-shared.ts'
 export type { SharedOutcome } from './reconcile-shared.ts'
 export { reconcileFile, reconcileTree, statusFile, statusTree, trackPage } from './reconcile.ts'
-export type { ReconcileResult, ReconcileStatus, TrackResult } from './reconcile.ts'
+export type {
+  ReconcileOptions,
+  ReconcileResult,
+  ReconcileStatus,
+  TrackResult,
+} from './reconcile.ts'
 export { NOTION_MD_VERSION } from './version.ts'
 export { pageUrl, resolveCrossRefs, validateCrossRefTargets } from './cross-refs.ts'
 export type { TreeOp, TreeSyncResult } from './tree.ts'
@@ -108,3 +115,18 @@ export type {
   NotionMdSettledBodyPush,
   NotionMdVerifiedRemoteReplaceResult,
 } from './body-facade.ts'
+export {
+  commentWebhookBoundary,
+  decodeNotionWebhookSignal,
+  NmdWebhookPayloadError,
+  normalizeNotionWebhookPayload,
+  notionWebhookTriggerSource,
+  NotionWebhookPayload,
+  webhookSignalToWatchTriggers,
+} from './webhook.ts'
+export type {
+  CommentWebhookBoundary,
+  NotionWebhookSignal,
+  NotionWebhookSurface,
+  PagePathIndex,
+} from './webhook.ts'

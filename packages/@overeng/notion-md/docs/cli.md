@@ -5,7 +5,7 @@ The binary is `notion-md`.
 ```sh
 notion-md track <page-id-or-url> [file-or-dir]
 notion-md status <path...> [--recursive] [--concurrency <n>]
-notion-md sync <path...> [--recursive] [--concurrency <n>]
+notion-md sync <path...> [--recursive] [--concurrency <n>] [--dry-run]
 notion-md sync <path...> --watch [--poll-interval-ms <ms>]
 ```
 
@@ -93,17 +93,22 @@ Notion page ids. Each file's frontmatter decides the mechanism:
 
 Options:
 
-| Option          | Meaning                                                        |
-| --------------- | -------------------------------------------------------------- |
-| `--dry-run`     | Plan and validate without mutating Notion or local sync state  |
-| `--force`       | Shared-sync local-wins override for unresolved body divergence |
-| `--recursive`   | Discover existing `.nmd` files under directory targets         |
-| `--concurrency` | Maximum number of files reconciled at the same time            |
+| Option                          | Meaning                                                                                                   |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `--dry-run`                     | Plan and validate without mutating Notion or local sync state                                             |
+| `--force`                       | Shared-sync local-wins override for unresolved body divergence                                            |
+| `--allow-delete-unknown-blocks` | Explicit destructive mode for body writes that may delete unresolved unsupported Notion blocks            |
+| `--allow-review-markup`         | Explicit mode for writing unresolved Roughdraft review markup as literal Notion body content              |
+| `--gc-objects`                  | Remove unreachable `.notion-md/objects` files after validation; with `--dry-run`, report the GC plan only |
+| `--recursive`                   | Discover existing `.nmd` files under directory targets                                                    |
+| `--concurrency`                 | Maximum number of files reconciled at the same time                                                       |
 
 Destructive body writes that would drop unsupported Notion blocks, and writes
-that would send unresolved Roughdraft review markup to Notion, fail closed in
-the v-next CLI. There is no override flag until the destructive mode for that
-surface is implemented explicitly.
+that would send unresolved Roughdraft review markup to Notion, fail closed
+unless the matching explicit mode is present. `--allow-delete-unknown-blocks`
+sets Notion's destructive body-write permission only for that sync pass.
+`--allow-review-markup` sends the markup literally; it does not bridge review
+state to Notion comments.
 
 `--recursive` is flat batch discovery. It does not imply hierarchy,
 materialize child pages, move files, or trash pages missing locally.

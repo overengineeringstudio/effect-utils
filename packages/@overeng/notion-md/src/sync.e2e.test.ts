@@ -126,6 +126,25 @@ const unsupportedStorage = (payload: unknown = { url: 'https://www.notion.com/' 
   ],
 })
 
+const mediaStorage = (): NmdStorage => ({
+  _tag: 'self_contained',
+  unsupported_blocks: [],
+  files: [
+    {
+      _tag: 'file_unit',
+      id: 'hero-image',
+      role: 'block_image',
+      filename: 'hero.png',
+      content_type: 'image/png',
+      content_length: 70,
+      local_path: 'attachments/hero.png',
+      content_hash: hash,
+      block_id: fileBlockId,
+    },
+  ],
+  comments: [],
+})
+
 class FakeNotion {
   private readonly pages = new Map<string, Required<FakePage>>()
   /** Live property schema per data_source_id, recomputed against on retrieve. */
@@ -1518,6 +1537,58 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('pushes supported files property refs without uploading local bytes', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                Attachment: {
+                  _tag: 'files',
+                  value: [
+                    { _tag: 'external_url', url: 'https://example.com/guide.pdf' },
+                    {
+                      _tag: 'notion_file',
+                      filename: 'uploaded.pdf',
+                      file_upload_id: secondPageId,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteProperties(pageId).Attachment).toEqual({
+        files: [
+          {
+            type: 'external',
+            name: 'https://example.com/guide.pdf',
+            external: { url: 'https://example.com/guide.pdf' },
+          },
+          {
+            type: 'file_upload',
+            name: 'uploaded.pdf',
+            file_upload: { id: secondPageId },
+          },
+        ],
+      })
+    })
+  })
+
   it('pushes explicit frontmatter page metadata edits through the page metadata API', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([
@@ -1889,6 +1960,94 @@ describe('notion-md e2e prototype', () => {
       expect(status.unresolvedUnknownBlocks).toEqual([])
       expect(status.localChanged).toBe(false)
       expect(status.remoteChanged).toBe(false)
+    })
+  })
+
+  it('refuses to push local edits when unresolved file/media payloads could be orphaned', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Media',
+          markdown: '# Media\n\n![Hero](attachments/hero.png)',
+          storage: mediaStorage(),
+        },
+      ])
+      const path = join(dir, 'media.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('![Hero](attachments/hero.png)', 'Replacement body'))
+
+      const status = await runWithFake(statusPage({ path }), fake)
+      expect(status.unresolvedFileIds).toEqual(['hero-image'])
+
+      await expect(runWithFake(pushPage({ path }), fake)).rejects.toThrow(
+        'unresolved file/media payloads',
+      )
+      expect(fake.updateMarkdownCalls).toEqual([])
+      expect(fake.remoteMarkdown(pageId)).toContain('attachments/hero.png')
+    })
+  })
+
+  it('clears stale file/media storage after an explicit destructive body replacement', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Media',
+          markdown: '# Media\n\n![Hero](attachments/hero.png)',
+          storage: mediaStorage(),
+        },
+      ])
+      const path = join(dir, 'media.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('![Hero](attachments/hero.png)', 'Replacement body'))
+
+      const pushed = await runWithFake(pushPage({ path, allowDeletingUnknownBlocks: true }), fake)
+      const syncState = await readSyncStateFile(path)
+
+      expect(pushed.pushed).toBe(true)
+      expect(syncState.storage).toMatchObject({
+        _tag: 'self_contained',
+        unsupported_blocks: [],
+        files: [],
+        comments: [],
+      })
+      expect(fake.remoteMarkdown(pageId)).toContain('Replacement body')
+    })
+  })
+
+  it('dry-runs explicit destructive file/media replacement without mutating Notion or local state', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Media',
+          markdown: '# Media\n\n![Hero](attachments/hero.png)',
+          storage: mediaStorage(),
+        },
+      ])
+      const path = join(dir, 'media.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('![Hero](attachments/hero.png)', 'Replacement body'))
+      const beforeSidecar = await readFile(syncStatePath({ path, pageId }), 'utf8')
+
+      const pushed = await runWithFake(
+        pushPage({ path, allowDeletingUnknownBlocks: true, dryRun: true }),
+        fake,
+      )
+
+      expect(pushed.pushed).toBe(true)
+      expect(pushed.status.unresolvedFileIds).toEqual(['hero-image'])
+      expect(fake.updateMarkdownCalls).toEqual([])
+      expect(fake.remoteMarkdown(pageId)).toContain('attachments/hero.png')
+      expect(await readFile(syncStatePath({ path, pageId }), 'utf8')).toBe(beforeSidecar)
+      expect((await parseFile(path)).body).toContain('Replacement body')
     })
   })
 

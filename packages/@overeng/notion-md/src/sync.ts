@@ -129,6 +129,7 @@ export interface StatusResult {
   readonly localBodyHash: string
   readonly remoteBodyHash: string
   readonly unresolvedUnknownBlocks: readonly string[]
+  readonly unresolvedFileIds: readonly string[]
 }
 
 /** User-facing safety options for local `.nmd` pushes. */
@@ -391,6 +392,15 @@ const storageUnknownBlockIds = (storage: NmdStorage): readonly string[] => {
   }
 }
 
+const storageFileIds = (storage: NmdStorage): readonly string[] => {
+  switch (storage._tag) {
+    case 'self_contained':
+      return storage.files.map((file) => file.id)
+    case 'object_store':
+      return storage.file_ids
+  }
+}
+
 const emptyStorage = (): NmdStorage => ({
   _tag: 'self_contained',
   unsupported_blocks: [],
@@ -441,6 +451,15 @@ const unresolvedUnknownBlockIds = (opts: {
     ...(opts.syncState?.body.unknown_block_ids ?? []),
     ...(opts.syncState === undefined ? [] : storageUnknownBlockIds(opts.syncState.storage)),
     ...(opts.remoteMarkdown?.unknown_block_ids ?? []),
+  ])
+
+const unresolvedFileIds = (opts: {
+  readonly syncState: NmdSyncStateV1 | undefined
+  readonly remoteStorage?: NmdStorage | undefined
+}): readonly string[] =>
+  unique([
+    ...(opts.syncState === undefined ? [] : storageFileIds(opts.syncState.storage)),
+    ...(opts.remoteStorage === undefined ? [] : storageFileIds(opts.remoteStorage)),
   ])
 
 const containsRoughdraftReviewMarkup = (body: string): boolean =>
@@ -946,6 +965,10 @@ const statusFromSnapshots = (opts: {
     syncState: opts.local.syncState,
     remoteMarkdown: opts.remote.markdown,
   })
+  const fileIds = unresolvedFileIds({
+    syncState: opts.local.syncState,
+    remoteStorage: opts.remote.storage,
+  })
 
   return {
     path: opts.path,
@@ -960,6 +983,7 @@ const statusFromSnapshots = (opts: {
     localBodyHash,
     remoteBodyHash,
     unresolvedUnknownBlocks: unknownBlockIds,
+    unresolvedFileIds: fileIds,
   }
 }
 
@@ -1222,6 +1246,21 @@ export const pushGuarded = (opts: {
       })
     }
 
+    if (
+      status.localChanged === true &&
+      status.unresolvedFileIds.length > 0 &&
+      options.allowDeletingUnknownBlocks !== true
+    ) {
+      return yield* new NmdConflictError({
+        path,
+        page_id: status.pageId,
+        local_changed: status.localChanged,
+        remote_changed: status.remoteChanged,
+        message:
+          'Page contains unresolved file/media payloads; refusing push because replace_content can delete or orphan them. Pass allowDeletingUnknownBlocks only for explicit destructive intent.',
+      })
+    }
+
     if (status.remoteBodyChanged === true && options.force !== true) {
       const baseSnapshot = yield* readBaseSnapshot({ path: statePath, syncState: local.syncState })
       const mergedBody =
@@ -1232,6 +1271,26 @@ export const pushGuarded = (opts: {
               remoteBody: remoteForStatus.markdown.markdown,
             })
           : undefined
+
+      if (options.dryRun === true) {
+        if (
+          status.localChanged === false &&
+          (status.localPageMetadataChanged === true || status.localPropertiesChanged === true)
+        ) {
+          return { path, pageId: status.pageId, pushed: true, status }
+        }
+        if (mergedBody !== undefined) {
+          return { path, pageId: status.pageId, pushed: true, status }
+        }
+        return yield* new NmdConflictError({
+          path,
+          page_id: status.pageId,
+          local_changed: status.localChanged,
+          remote_changed: status.remoteChanged,
+          conflict_path: roughdraftConflictPath(path),
+          message: 'Remote page changed since the last clean pull; refusing guarded push',
+        })
+      }
 
       if (
         status.localChanged === false &&
@@ -1347,6 +1406,10 @@ export const pushGuarded = (opts: {
         conflict_path: conflictPath,
         message: 'Remote page changed since the last clean pull; refusing guarded push',
       })
+    }
+
+    if (options.dryRun === true) {
+      return { path, pageId: status.pageId, pushed: true, status }
     }
 
     if (status.localChanged === true) {

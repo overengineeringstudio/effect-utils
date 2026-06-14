@@ -10,6 +10,7 @@ import {
   type NmdFrontmatterV2,
   type NmdLocalState,
   type NmdParentRef,
+  type NmdStorage,
   type NmdSyncStateV1,
 } from '@overeng/notion-effect-client'
 
@@ -26,7 +27,14 @@ import {
   type ReconcileDecision,
 } from './reconcile-core.ts'
 import { decideShared, sharedPorcelain, type SharedOutcome } from './reconcile-shared.ts'
-import { NmdStateStore, readBaseSnapshot, readSyncStateOptional } from './state-store.ts'
+import {
+  garbageCollectObjects,
+  NmdStateStore,
+  readBaseSnapshot,
+  readSyncStateOptional,
+  validateReferencedObjects,
+  type NmdObjectGcResult,
+} from './state-store.ts'
 import { findTreeMembership } from './tree-index.ts'
 
 /*
@@ -57,6 +65,9 @@ const readGatedLocalState = (path: string): Effect.Effect<NmdLocalState, NmdErro
         message: gated.message,
       })
     }
+    if (gated._tag === 'shared-bound') {
+      yield* validateReferencedObjects({ path, syncState: gated.syncState })
+    }
     return gated
   })
 
@@ -78,53 +89,147 @@ export interface ReconcileStatus {
   readonly status: PorcelainStatus
 }
 
+export interface ReconcileOptions {
+  readonly path: string
+  readonly force?: boolean
+  readonly dryRun?: boolean
+  readonly allowDeletingUnknownBlocks?: boolean
+  readonly allowReviewMarkup?: boolean
+  readonly gcObjects?: boolean
+}
+
+type WithObjectGc = {
+  readonly objectGc?: NmdObjectGcResult
+}
+
 /** Tagged result of one `reconcileFile` pass. */
 export type ReconcileResult =
-  | {
+  | ({
       readonly _tag: 'noop'
       readonly path: string
       readonly pageId: string
       readonly dryRun?: true
-    }
-  | { readonly _tag: 'created'; readonly path: string; readonly pageId: string }
-  | {
+    } & WithObjectGc)
+  | ({ readonly _tag: 'created'; readonly path: string; readonly pageId: string } & WithObjectGc)
+  | ({
       readonly _tag: 'created'
       readonly path: string
       readonly pageId: undefined
       readonly parentPageId: string
       readonly dryRun: true
-    }
-  | {
+    } & WithObjectGc)
+  | ({
       readonly _tag: 'pushed'
       readonly path: string
       readonly pageId: string
       readonly dryRun?: true
-    }
-  | {
+    } & WithObjectGc)
+  | ({
       readonly _tag: 'pulled'
       readonly path: string
       readonly pageId: string
       readonly dryRun?: true
-    }
-  | {
+    } & WithObjectGc)
+  | ({
       readonly _tag: 'shared-merged'
       readonly path: string
       readonly pageId: string
       readonly dryRun?: true
-    }
-  | {
+    } & WithObjectGc)
+  | ({
       readonly _tag: 'shared-conflict'
       readonly path: string
       readonly pageId: string
       readonly conflictPath: string
       readonly dryRun?: true
-    }
+    } & WithObjectGc)
 
 /** Construct a `ReconcileResult` with literal `_tag` discrimination preserved. */
 const result = (r: ReconcileResult): ReconcileResult => r
 
 /** Construct a `ReconcileStatus` with literal discrimination preserved. */
 const statusResult = (s: ReconcileStatus): ReconcileStatus => s
+
+const containsRoughdraftReviewMarkup = (body: string): boolean =>
+  /\{(?:==|\+\+|--|~~|>>)/u.test(body)
+
+const storageUnknownBlockIds = (storage: NmdStorage): readonly string[] => {
+  switch (storage._tag) {
+    case 'self_contained':
+      return storage.unsupported_blocks.map((block) => block.block_id)
+    case 'object_store':
+      return storage.unsupported_block_ids
+  }
+}
+
+const unique = (values: readonly string[]): readonly string[] => [...new Set(values)]
+
+const unresolvedUnknownBlockIds = (opts: {
+  readonly syncState?: NmdSyncStateV1
+  readonly remoteUnknownBlockIds?: readonly string[]
+}): readonly string[] =>
+  unique([
+    ...(opts.syncState?.body.unknown_block_ids ?? []),
+    ...(opts.syncState === undefined ? [] : storageUnknownBlockIds(opts.syncState.storage)),
+    ...(opts.remoteUnknownBlockIds ?? []),
+  ])
+
+const assertReviewMarkupAllowed = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly body: string
+  readonly allowReviewMarkup?: boolean | undefined
+}): Effect.Effect<void, NmdConflictError> =>
+  containsRoughdraftReviewMarkup(opts.body) === true && opts.allowReviewMarkup !== true
+    ? Effect.fail(
+        new NmdConflictError({
+          path: opts.path,
+          page_id: opts.pageId,
+          local_changed: true,
+          remote_changed: false,
+          message:
+            'Local body contains unresolved Roughdraft review markup; refusing sync so review state is not sent as Notion content. Pass --allow-review-markup only when writing the literal markup is intended.',
+        }),
+      )
+    : Effect.void
+
+const assertUnknownDeletionAllowed = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly unknownBlockIds: readonly string[]
+  readonly allowDeletingUnknownBlocks?: boolean | undefined
+}): Effect.Effect<void, NmdConflictError> =>
+  opts.unknownBlockIds.length > 0 && opts.allowDeletingUnknownBlocks !== true
+    ? Effect.fail(
+        new NmdConflictError({
+          path: opts.path,
+          page_id: opts.pageId,
+          local_changed: true,
+          remote_changed: false,
+          message:
+            'Page contains unresolved unknown Notion blocks; refusing sync because the body write can delete them. Pass --allow-delete-unknown-blocks only for explicit destructive intent.',
+        }),
+      )
+    : Effect.void
+
+const maybeGcObjects = (opts: {
+  readonly path: string
+  readonly syncStates: readonly NmdSyncStateV1[]
+  readonly enabled?: boolean | undefined
+  readonly dryRun?: boolean
+}): Effect.Effect<NmdObjectGcResult | undefined, NmdError, NmdStateStore> =>
+  opts.enabled === true
+    ? garbageCollectObjects({
+        path: opts.path,
+        syncStates: opts.syncStates,
+        ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+      })
+    : Effect.succeed(undefined)
+
+const withObjectGc = <R extends ReconcileResult>(
+  r: R,
+  objectGc: NmdObjectGcResult | undefined,
+): R => (objectGc === undefined ? r : ({ ...r, objectGc } as R))
 
 const remoteBodyFor = (pageId: string) =>
   Effect.gen(function* () {
@@ -257,6 +362,39 @@ const remoteFrontmatter = (opts: {
 const parentPageIdOf = (parent: NmdParentRef): string | undefined =>
   parent._tag === 'page' ? parent.id : undefined
 
+const emptyStorage = (): NmdStorage => ({
+  _tag: 'self_contained',
+  unsupported_blocks: [],
+  files: [],
+  comments: [],
+})
+
+const storageFileIds = (storage: NmdStorage | undefined): readonly string[] => {
+  if (storage === undefined) return []
+  switch (storage._tag) {
+    case 'self_contained':
+      return storage.files.map((file) => file.id)
+    case 'object_store':
+      return storage.file_ids
+  }
+}
+
+const rejectModeledMediaPayloadWrite = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly storage: NmdStorage | undefined
+  readonly operation: string
+}): Effect.Effect<void, NmdFrontmatterError> => {
+  const fileIds = storageFileIds(opts.storage)
+  if (fileIds.length === 0) return Effect.void
+  return Effect.fail(
+    new NmdFrontmatterError({
+      path: opts.path,
+      message: `Page ${opts.pageId} contains modeled file/media payloads (${fileIds.join(', ')}); ${opts.operation} is not implemented because notion-md has no v-next file upload/preservation gateway yet.`,
+    }),
+  )
+}
+
 const writeFile = (opts: {
   readonly path: string
   readonly frontmatter: NmdFrontmatterV2
@@ -330,11 +468,9 @@ ${fence}
  * `source`; always moves toward in-sync. `--force` (single-source: inert;
  * shared: local-wins override) is threaded via `force`.
  */
-export const reconcileFile = (opts: {
-  readonly path: string
-  readonly force?: boolean
-  readonly dryRun?: boolean
-}): Effect.Effect<
+export const reconcileFile = (
+  opts: ReconcileOptions,
+): Effect.Effect<
   ReconcileResult,
   NmdError,
   FileSystem.FileSystem | NotionMdGateway | NmdStateStore
@@ -355,14 +491,31 @@ export const reconcileFile = (opts: {
             'Unbound source: local file needs a page parent to create under (parent must be { _tag: "page", id }).',
         })
       }
+      yield* assertReviewMarkupAllowed({
+        path: opts.path,
+        pageId: 'unbound',
+        body: rendered,
+        allowReviewMarkup: opts.allowReviewMarkup,
+      })
       if (opts.dryRun === true) {
-        return result({
-          _tag: 'created',
+        const objectGc = yield* maybeGcObjects({
           path: opts.path,
-          pageId: undefined,
-          parentPageId,
+          syncStates: [],
+          enabled: opts.gcObjects,
           dryRun: true,
         })
+        return result(
+          withObjectGc(
+            {
+              _tag: 'created',
+              path: opts.path,
+              pageId: undefined,
+              parentPageId,
+              dryRun: true,
+            },
+            objectGc,
+          ),
+        )
       }
       const page = yield* gateway.createPage({
         parentPageId,
@@ -374,7 +527,13 @@ export const reconcileFile = (opts: {
         frontmatter: boundFrontmatter({ frontmatter: local.frontmatter, page }),
         body: rendered,
       })
-      return result({ _tag: 'created', path: opts.path, pageId: page.id })
+      const objectGc = yield* maybeGcObjects({
+        path: opts.path,
+        syncStates: [],
+        enabled: opts.gcObjects,
+        dryRun: false,
+      })
+      return result(withObjectGc({ _tag: 'created', path: opts.path, pageId: page.id }, objectGc))
     }
 
     const pageId = local.pageId
@@ -388,9 +547,13 @@ export const reconcileFile = (opts: {
         frontmatter: local.frontmatter,
         rendered,
         remote,
+        remoteUnknownBlockIds: pulled.markdown.unknown_block_ids,
         page: pulled.page,
         force: opts.force === true,
         dryRun: opts.dryRun === true,
+        allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks === true,
+        allowReviewMarkup: opts.allowReviewMarkup === true,
+        gcObjects: opts.gcObjects === true,
       })
     }
 
@@ -401,26 +564,92 @@ export const reconcileFile = (opts: {
 
     switch (decision._tag) {
       case 'noop':
-        return result({
-          _tag: 'noop',
+        return result(
+          withObjectGc(
+            {
+              _tag: 'noop',
+              path: opts.path,
+              pageId,
+              ...(opts.dryRun === true ? { dryRun: true as const } : {}),
+            },
+            yield* maybeGcObjects({
+              path: opts.path,
+              syncStates: [],
+              enabled: opts.gcObjects,
+              dryRun: opts.dryRun === true,
+            }),
+          ),
+        )
+      case 'push': {
+        yield* rejectModeledMediaPayloadWrite({
           path: opts.path,
           pageId,
-          ...(opts.dryRun === true ? { dryRun: true } : {}),
+          storage: pulled.storage,
+          operation: 'source: local Markdown push',
         })
-      case 'push': {
+        yield* assertReviewMarkupAllowed({
+          path: opts.path,
+          pageId,
+          body: rendered,
+          allowReviewMarkup: opts.allowReviewMarkup,
+        })
+        yield* assertUnknownDeletionAllowed({
+          path: opts.path,
+          pageId,
+          unknownBlockIds: unresolvedUnknownBlockIds({
+            remoteUnknownBlockIds: pulled.markdown.unknown_block_ids,
+          }),
+          allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks,
+        })
         if (opts.dryRun === true) {
-          return result({ _tag: 'pushed', path: opts.path, pageId, dryRun: true })
+          return result(
+            withObjectGc(
+              { _tag: 'pushed', path: opts.path, pageId, dryRun: true },
+              yield* maybeGcObjects({
+                path: opts.path,
+                syncStates: [],
+                enabled: opts.gcObjects,
+                dryRun: true,
+              }),
+            ),
+          )
         }
         yield* gateway.updateMarkdown({
           pageId,
           command: { _tag: 'replace_content', markdown: canonicalize(rendered) },
-          allowDeletingContent: false,
+          allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
         })
-        return result({ _tag: 'pushed', path: opts.path, pageId })
+        return result(
+          withObjectGc(
+            { _tag: 'pushed', path: opts.path, pageId },
+            yield* maybeGcObjects({
+              path: opts.path,
+              syncStates: [],
+              enabled: opts.gcObjects,
+              dryRun: false,
+            }),
+          ),
+        )
       }
       case 'pull': {
+        yield* rejectModeledMediaPayloadWrite({
+          path: opts.path,
+          pageId,
+          storage: pulled.storage,
+          operation: 'source: remote Markdown pull',
+        })
         if (opts.dryRun === true) {
-          return result({ _tag: 'pulled', path: opts.path, pageId, dryRun: true })
+          return result(
+            withObjectGc(
+              { _tag: 'pulled', path: opts.path, pageId, dryRun: true },
+              yield* maybeGcObjects({
+                path: opts.path,
+                syncStates: [],
+                enabled: opts.gcObjects,
+                dryRun: true,
+              }),
+            ),
+          )
         }
         yield* writeFile({
           path: opts.path,
@@ -430,7 +659,17 @@ export const reconcileFile = (opts: {
           }),
           body: remote,
         })
-        return result({ _tag: 'pulled', path: opts.path, pageId })
+        return result(
+          withObjectGc(
+            { _tag: 'pulled', path: opts.path, pageId },
+            yield* maybeGcObjects({
+              path: opts.path,
+              syncStates: [],
+              enabled: opts.gcObjects,
+              dryRun: false,
+            }),
+          ),
+        )
       }
       case 'refuse':
         return yield* new NmdConflictError({
@@ -464,36 +703,82 @@ const reconcileSharedFile = (opts: {
   readonly frontmatter: NmdFrontmatterV2
   readonly rendered: string
   readonly remote: string
+  readonly remoteUnknownBlockIds: readonly string[]
   readonly page: RemotePageSnapshot
   readonly force: boolean
   readonly dryRun: boolean
+  readonly allowDeletingUnknownBlocks: boolean
+  readonly allowReviewMarkup: boolean
+  readonly gcObjects: boolean
 }): Effect.Effect<ReconcileResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
     const base = yield* readBaseSnapshot({ path: opts.path, syncState: opts.syncState })
+    yield* rejectModeledMediaPayloadWrite({
+      path: opts.path,
+      pageId: opts.pageId,
+      storage: opts.syncState.storage,
+      operation: 'source: shared Markdown reconcile',
+    })
+    const unknownBlockIds = unresolvedUnknownBlockIds({
+      syncState: opts.syncState,
+      remoteUnknownBlockIds: opts.remoteUnknownBlockIds,
+    })
 
     // --force overrides a shared divergence with a local-wins replace.
     if (opts.force === true) {
+      yield* assertReviewMarkupAllowed({
+        path: opts.path,
+        pageId: opts.pageId,
+        body: opts.rendered,
+        allowReviewMarkup: opts.allowReviewMarkup,
+      })
+      yield* assertUnknownDeletionAllowed({
+        path: opts.path,
+        pageId: opts.pageId,
+        unknownBlockIds,
+        allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks,
+      })
       if (opts.dryRun === true) {
-        return result({
-          _tag: 'shared-merged',
-          path: opts.path,
-          pageId: opts.pageId,
-          dryRun: true,
-        })
+        return result(
+          withObjectGc(
+            {
+              _tag: 'shared-merged',
+              path: opts.path,
+              pageId: opts.pageId,
+              dryRun: true,
+            },
+            yield* maybeGcObjects({
+              path: opts.path,
+              syncStates: [opts.syncState],
+              enabled: opts.gcObjects,
+              dryRun: true,
+            }),
+          ),
+        )
       }
       yield* gateway.updateMarkdown({
         pageId: opts.pageId,
         command: { _tag: 'replace_content', markdown: canonicalize(opts.rendered) },
-        allowDeletingContent: false,
+        allowDeletingContent: opts.allowDeletingUnknownBlocks,
       })
-      yield* settleSharedBase({
+      const syncState = yield* settleSharedBase({
         path: opts.path,
         pageId: opts.pageId,
         syncState: opts.syncState,
         body: opts.rendered,
       })
-      return result({ _tag: 'shared-merged', path: opts.path, pageId: opts.pageId })
+      return result(
+        withObjectGc(
+          { _tag: 'shared-merged', path: opts.path, pageId: opts.pageId },
+          yield* maybeGcObjects({
+            path: opts.path,
+            syncStates: [syncState],
+            enabled: opts.gcObjects,
+            dryRun: false,
+          }),
+        ),
+      )
     }
 
     const outcome = decideShared({
@@ -504,56 +789,118 @@ const reconcileSharedFile = (opts: {
 
     switch (outcome._tag) {
       case 'noop':
-        return result({
-          _tag: 'noop',
+        return result(
+          withObjectGc(
+            {
+              _tag: 'noop',
+              path: opts.path,
+              pageId: opts.pageId,
+              ...(opts.dryRun === true ? { dryRun: true as const } : {}),
+            },
+            yield* maybeGcObjects({
+              path: opts.path,
+              syncStates: [opts.syncState],
+              enabled: opts.gcObjects,
+              dryRun: opts.dryRun,
+            }),
+          ),
+        )
+      case 'merge': {
+        yield* assertReviewMarkupAllowed({
           path: opts.path,
           pageId: opts.pageId,
-          ...(opts.dryRun === true ? { dryRun: true } : {}),
+          body: outcome.merged,
+          allowReviewMarkup: opts.allowReviewMarkup,
         })
-      case 'merge': {
+        yield* assertUnknownDeletionAllowed({
+          path: opts.path,
+          pageId: opts.pageId,
+          unknownBlockIds,
+          allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks,
+        })
         if (opts.dryRun === true) {
-          return result({
-            _tag: 'shared-merged',
-            path: opts.path,
-            pageId: opts.pageId,
-            dryRun: true,
-          })
+          return result(
+            withObjectGc(
+              {
+                _tag: 'shared-merged',
+                path: opts.path,
+                pageId: opts.pageId,
+                dryRun: true,
+              },
+              yield* maybeGcObjects({
+                path: opts.path,
+                syncStates: [opts.syncState],
+                enabled: opts.gcObjects,
+                dryRun: true,
+              }),
+            ),
+          )
         }
         yield* gateway.updateMarkdown({
           pageId: opts.pageId,
           command: { _tag: 'replace_content', markdown: canonicalize(outcome.merged) },
-          allowDeletingContent: false,
+          allowDeletingContent: opts.allowDeletingUnknownBlocks,
         })
         yield* writeFile({ path: opts.path, frontmatter: opts.frontmatter, body: outcome.merged })
-        yield* settleSharedBase({
+        const syncState = yield* settleSharedBase({
           path: opts.path,
           pageId: opts.pageId,
           syncState: opts.syncState,
           body: outcome.merged,
         })
-        return result({ _tag: 'shared-merged', path: opts.path, pageId: opts.pageId })
+        return result(
+          withObjectGc(
+            { _tag: 'shared-merged', path: opts.path, pageId: opts.pageId },
+            yield* maybeGcObjects({
+              path: opts.path,
+              syncStates: [syncState],
+              enabled: opts.gcObjects,
+              dryRun: false,
+            }),
+          ),
+        )
       }
       case 'conflict': {
         if (opts.dryRun === true) {
-          return result({
-            _tag: 'shared-conflict',
-            path: opts.path,
-            pageId: opts.pageId,
-            conflictPath: conflictPathFor(opts.path),
-            dryRun: true,
-          })
+          return result(
+            withObjectGc(
+              {
+                _tag: 'shared-conflict',
+                path: opts.path,
+                pageId: opts.pageId,
+                conflictPath: conflictPathFor(opts.path),
+                dryRun: true,
+              },
+              yield* maybeGcObjects({
+                path: opts.path,
+                syncStates: [opts.syncState],
+                enabled: opts.gcObjects,
+                dryRun: true,
+              }),
+            ),
+          )
         }
         const conflictPath = yield* writeSharedConflict({
           path: opts.path,
           pageId: opts.pageId,
           outcome,
         })
-        return result({
-          _tag: 'shared-conflict',
-          path: opts.path,
-          pageId: opts.pageId,
-          conflictPath,
-        })
+        return result(
+          withObjectGc(
+            {
+              _tag: 'shared-conflict',
+              path: opts.path,
+              pageId: opts.pageId,
+              conflictPath,
+            },
+            yield* maybeGcObjects({
+              path: opts.path,
+              syncStates: [opts.syncState],
+              enabled: opts.gcObjects,
+              dryRun: false,
+            }),
+          ),
+        )
       }
     }
   })
@@ -573,18 +920,20 @@ const settleSharedBase = (opts: {
     const store = yield* NmdStateStore
     const body = normalizeMarkdownLineEndings(opts.body)
     const base = yield* store.writeBaseSnapshot({ path: opts.path, pageId: opts.pageId, body })
+    const syncState: NmdSyncStateV1 = {
+      ...opts.syncState,
+      body: {
+        ...opts.syncState.body,
+        hash: sha256Digest(body),
+        base,
+        last_pulled_at: new Date().toISOString(),
+      },
+    }
     yield* store.writeSyncState({
       path: opts.path,
-      syncState: {
-        ...opts.syncState,
-        body: {
-          ...opts.syncState.body,
-          hash: sha256Digest(body),
-          base,
-          last_pulled_at: new Date().toISOString(),
-        },
-      },
+      syncState,
     })
+    return syncState
   })
 
 /** Result of tracking an existing Notion page as a local file. */
@@ -668,7 +1017,7 @@ export const trackPage = (opts: {
             truncated: pulled.markdown.truncated,
             unknown_block_ids: [...pulled.markdown.unknown_block_ids],
           },
-          storage: { _tag: 'self_contained', unsupported_blocks: [], files: [], comments: [] },
+          storage: pulled.storage ?? emptyStorage(),
           read_only_properties: {},
           data_source: null,
         },
@@ -714,6 +1063,9 @@ export const reconcileTree = (opts: {
   readonly concurrency?: number
   readonly force?: boolean
   readonly dryRun?: boolean
+  readonly allowDeletingUnknownBlocks?: boolean
+  readonly allowReviewMarkup?: boolean
+  readonly gcObjects?: boolean
 }): Effect.Effect<
   BatchResult<ReconcileResult>,
   NmdCliError,
@@ -729,5 +1081,12 @@ export const reconcileTree = (opts: {
         path,
         ...(opts.force === undefined ? {} : { force: opts.force }),
         ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
+        ...(opts.allowDeletingUnknownBlocks === undefined
+          ? {}
+          : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
+        ...(opts.allowReviewMarkup === undefined
+          ? {}
+          : { allowReviewMarkup: opts.allowReviewMarkup }),
+        ...(opts.gcObjects === undefined ? {} : { gcObjects: opts.gcObjects }),
       }),
   })

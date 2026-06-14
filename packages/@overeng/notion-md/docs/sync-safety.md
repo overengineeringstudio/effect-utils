@@ -12,8 +12,8 @@ surfaces and refusing ambiguous writes.
 | Properties         | frontmatter properties                             | modeled writable values only         |
 | Unsupported blocks | frontmatter/object store                           | preserve metadata or explicit delete |
 | Review markup      | Roughdraft body markup                             | rejected unless explicitly allowed   |
-| Files              | storage units                                      | modeled, upload/download incomplete  |
-| Comments           | storage units                                      | modeled, bridge incomplete           |
+| Files              | storage units                                      | modeled storage; API transfer absent |
+| Comments           | storage units                                      | modeled storage; API bridge absent   |
 
 ## Body Direction And Conflicts
 
@@ -55,8 +55,8 @@ Unresolved Roughdraft markers are local review state:
 ```
 
 Normal sync refuses to send these markers to Notion. Resolve or remove the
-markers before syncing. The v-next CLI does not expose a review-markup override
-flag until that destructive mode is implemented explicitly.
+markers before syncing. Use `sync --allow-review-markup` only when the literal
+markup should be written to the Notion body; it is not a comment/review bridge.
 
 ## Unknown Blocks
 
@@ -66,8 +66,8 @@ frontmatter or object storage.
 
 Normal sync refuses body updates that could delete unresolved unknown blocks.
 Model the unsupported surface or remove the local body edit before syncing. The
-v-next CLI does not expose an unknown-block deletion override flag until that
-destructive mode is implemented explicitly.
+`sync --allow-delete-unknown-blocks` flag is the explicit destructive mode for
+deleting those unsupported remote blocks.
 
 Notion-reported endpoint unknown block IDs also make a remote body unsuitable
 as a clean base. This is separate from notion-md's self-contained storage path,
@@ -94,7 +94,9 @@ or custom emojis are preserved until their write behavior is proven.
 
 `status` and `sync` validate referenced objects before trusting local
 state. Tampered object bytes, missing objects, stale inventory, and invalid
-logical paths fail early.
+logical paths fail early. `sync --gc-objects` removes unreachable
+content-addressed objects after validation; combine it with `--dry-run` to
+preview the removal list without deleting files.
 
 Do not edit `.notion-md/objects` by hand. If an object-store error appears, sync
 again from the remote page id or restore the referenced object from version control.
