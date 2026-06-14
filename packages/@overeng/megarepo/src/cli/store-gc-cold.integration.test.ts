@@ -1175,4 +1175,81 @@ describe('mr store gc — cold named-branch reclamation', () => {
       Effect.scoped,
     ),
   )
+
+  it.effect(
+    'dry-run does NOT persist the observation ledger (no absence-grace advance)',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          { ...REPO, branches: ['feature/cold'], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const commit = yield* getWorktreeCommit(worktreePaths[`${REPO_KEY}#feature/cold`]!)
+        yield* materializeBranchRef({ bareRepoPath, branch: 'feature/cold', commit })
+
+        const ledgerPath = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeFile('.state/gc-observations.json'),
+        )
+        const cwd = yield* outsideCwd()
+        yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [
+            { relativePath: REPO_RELATIVE, prs: [mergedPr('feature/cold', NOW - 30 * DAY_MS)] },
+          ],
+          args: ['--dry-run'],
+        })
+
+        // A planning run must not write the ledger, or a later real run could
+        // archive based on a clock the dry-run started.
+        expect(yield* fs.exists(ledgerPath)).toBe(false)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'repo with NO current named refs still reaps a past-retention archive',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths } = yield* createStoreFixture([
+          { ...REPO, branches: [], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const repoRoot = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir(`${REPO_KEY}/`),
+        )
+        // No local refs/heads with `branches: []`; the remote-tracking ref exists.
+        const commit = yield* git(bareRepoPath, 'rev-parse', 'origin/main')
+
+        // All branches already archived (no live refs/heads worktrees), one
+        // archive past the 30d retention.
+        const { archivePath } = yield* createArchiveEntry({
+          bareRepoPath,
+          repoRoot,
+          branch: 'feature/all-archived',
+          commit,
+          archivedAt: new Date(NOW - 40 * DAY_MS),
+        })
+
+        const cwd = yield* outsideCwd()
+        const { results } = yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
+        })
+
+        const reaped = results.find((r) => r.ref === 'feature/all-archived')
+        expect(reaped?.status).toBe('reaped')
+        expect(yield* fs.exists(archivePath)).toBe(false)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })

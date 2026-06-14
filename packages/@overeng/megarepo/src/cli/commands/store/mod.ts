@@ -25,6 +25,8 @@ import { archiveWorktree, reapArchive, scanArchives } from '../../../lib/store-a
 import { loadStoreGcConfig, type StoreGcConfig } from '../../../lib/store-gc-config.ts'
 import {
   coldSinceMs as coldSinceMsFor,
+  nextObservationLedger,
+  readObservationLedger,
   recordObservations,
 } from '../../../lib/store-gc-observations.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
@@ -533,7 +535,10 @@ const coldReclaimRepo = ({
     // signal). A repo whose fetch fails keeps ALL its named worktrees — the
     // conservative direction (every commit would read as unpushed).
     const fetchResult = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.either)
+    const fetchOk = fetchResult._tag === 'Right'
     if (fetchResult._tag === 'Left') {
+      // Classification needs fresh `refs/remotes/*`, so keep all named worktrees;
+      // do NOT return — archive reaping below is time/veto-based and needs no fetch.
       const message =
         fetchResult.left instanceof Error === true
           ? fetchResult.left.message
@@ -541,16 +546,19 @@ const coldReclaimRepo = ({
       for (const target of namedWorktrees) {
         results.push(coldResult({ target, status: 'kept', reason: 'fetch-failed', message }))
       }
-      return results
     }
 
     // The repo's default branch (e.g. `main`) is NEVER reclaimed, regardless of
     // PR state or liveness — archiving a dependency's default branch is never
     // wanted, and common names (`main`/`master`) are prone to PR-join false
-    // positives. Read locally from the bare's HEAD (offline).
-    const defaultBranch = Option.getOrUndefined(yield* Git.getStoreDefaultBranch({ bareRepoPath }))
+    // positives. Read locally from the bare's HEAD (offline). Only needed when
+    // classifying, i.e. the fetch succeeded.
+    const defaultBranch = fetchOk
+      ? Option.getOrUndefined(yield* Git.getStoreDefaultBranch({ bareRepoPath }))
+      : undefined
 
     for (const target of namedWorktrees) {
+      if (fetchOk === false) break
       const { worktree } = target
       // Only `refs/heads/*` carries a branch identity to reclaim; tags have no
       // PR/branch to free, so they are always kept by the cold path.
@@ -1327,17 +1335,25 @@ const storeGcCommand = Cli.Command.make(
               )
               .map((target) => normalizeStorePath(target.worktree.path))
             // The ledger read-modify-write is store-global; serialize it under a
-            // stable store-keyed lock so concurrent gc runs don't clobber it.
-            const ledger = yield* storeLock.withWorktreeLock(
-              `${store.basePath}.state/gc-observations`,
-            )(
-              recordObservations({
-                storeBasePath: store.basePath,
-                coldPaths,
-                uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
-                now,
-              }),
-            )
+            // stable store-keyed lock so concurrent gc runs don't clobber it. In
+            // `--dry-run` we compute the would-be ledger WITHOUT persisting (and
+            // without the lock) — a planning run must not advance the absence-grace
+            // clock and so cause a later real run to archive.
+            const ledger = dryRun
+              ? nextObservationLedger({
+                  current: yield* readObservationLedger({ storeBasePath: store.basePath }),
+                  coldPaths,
+                  uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
+                  now,
+                })
+              : yield* storeLock.withWorktreeLock(`${store.basePath}.state/gc-observations`)(
+                  recordObservations({
+                    storeBasePath: store.basePath,
+                    coldPaths,
+                    uncleanReconcilePaths: [...liveSet.uncleanReconcilePaths],
+                    now,
+                  }),
+                )
 
             const config = yield* loadStoreGcConfig({ storeBasePath: store.basePath })
 
@@ -1364,7 +1380,9 @@ const storeGcCommand = Cli.Command.make(
                     const repoNamed = namedTargets.filter(
                       (target) => target.repoRelativePath === repo.relativePath,
                     )
-                    if (repoNamed.length === 0) return
+                    // Run for EVERY repo even with no current named refs: a repo
+                    // whose branches were all archived still owns past-retention
+                    // archives that `coldReclaimRepo` must scan + reap.
                     discoveredWorktreeCount += repoNamed.length
                     activeWorktreeCount += repoNamed.length
                     if (progressive === true) {
