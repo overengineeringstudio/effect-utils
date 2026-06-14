@@ -54,6 +54,8 @@ It does not define:
 
 ## Package Shape
 
+Requirement trace: XC-R01, XC-R02.
+
 ```
 @overeng/content-address
   reusable content identity primitives, canonical JSON bytes,
@@ -136,6 +138,8 @@ route guarded Markdown adoption or settlement through the React reconciler.
 
 ## Authority Model
 
+Requirement trace: XC-R02, XC-R04, REPLICA-R01, REPLICA-R10, REPLICA-R11.
+
 The authority model is cross-cutting: it pins down which surface owns truth for
 which fact, so sub-systems can be designed independently without inventing
 competing sources of truth. The integrated workspace has one user-facing
@@ -171,7 +175,7 @@ Local authority has three invariants that apply across every sub-system:
 
 ## Telemetry
 
-Requirement trace: R52, R57-R59, R67-R73.
+Requirement trace: OBS-R01, OBS-R02, OBS-R03, XC-R03.
 
 All spans use safe, low-cardinality names, concise `span.label` values, and an allowlist of attributes. The CLI process uses `service.name=notion-datasource-sync-cli`; `sync --watch` mode uses `service.name=notion-datasource-sync-daemon`.
 
@@ -334,6 +338,8 @@ pending intents, conflicts, tombstones, settlements, hashes, public visibility,
 and recoverable conflict material.
 
 ## Resolved Scope Boundaries
+
+Requirement trace: XC-R01, XC-R02, REPLICA-R10, REPLICA-R11.
 
 - **Connection webhooks:** Hosted Notion connection webhooks are dirty entity hints for daemon intake. Delivery is at-most-once, aggregated, unordered, and possibly stale, so every hint is followed by fresh API reads before planning. Subscription provisioning and hosted receiver lifecycle are outside the package-local sync contract.
 - **Workers:** Notion Workers syncs are optional Notion-hosted external-source projections. Worker-managed databases do not replace arbitrary existing datasource sync, local filesystem reconciliation, SQLite authority, or outbox settlement.
