@@ -89,7 +89,6 @@ export {
 } from './canonical-codec.ts'
 // Property descriptors, identity-hash brands, evidence sources, and canonical JSON
 export {
-  canonicalDescriptorJson,
   canonicalPropertyDescriptorJson,
   ConfigHash,
   type ConfigHash as ConfigHashType,
