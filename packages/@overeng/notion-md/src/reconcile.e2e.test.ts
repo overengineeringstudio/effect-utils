@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { NodeContext } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import { Cause, Effect, Exit, Layer, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type { NmdFrontmatterV2, NmdStorage } from '@overeng/notion-effect-client'
@@ -189,6 +189,20 @@ const run = <A, E>(
     effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
   )
 
+/** Runs an effect expected to fail and returns its typed expected error. */
+const runFailure = async <A, E>(
+  effect: Effect.Effect<A, E, NodeContext.NodeContext | NotionMdGateway | NmdStateStore>,
+  fake: FakeGateway,
+): Promise<E> => {
+  const exit = await Effect.runPromiseExit(
+    effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
+  )
+  if (Exit.isSuccess(exit)) throw new Error('expected the effect to fail')
+  const failure = Cause.failureOption(exit.cause)
+  if (Option.isNone(failure)) throw new Error('expected an expected failure, got a defect')
+  return failure.value
+}
+
 const withTempDir = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), 'notion-md-reconcile-'))
   try {
@@ -347,6 +361,80 @@ describe('reconcileFile — source-aware dispatch (R34)', () => {
 
       const result = await run(reconcileFile({ path }), fake)
       expect(result._tag).toBe('noop')
+    }))
+})
+
+describe('reconcileFile — files/media write boundary (SM6.1)', () => {
+  const emptyFilesStorage = (): NmdStorage => ({
+    _tag: 'self_contained',
+    unsupported_blocks: [],
+    files: [],
+    comments: [],
+  })
+
+  it('blocks a source: local push over byte-backed media with DurableFileUploadUnsupported', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: mediaStorage() }],
+      ])
+
+      const error = await runFailure(reconcileFile({ path }), fake)
+      expect(error).toMatchObject({
+        _tag: 'NmdNonBodyWriteBlockedError',
+        page_id: pageId,
+        guard: 'DurableFileUploadUnsupported',
+        fileIds: ['hero-image'],
+      })
+      expect(fake.updateCount).toBe(0)
+    }))
+
+  it('surfaces the named guard on the dry-run plan (dry-run-visible, R15)', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: mediaStorage() }],
+      ])
+
+      const error = await runFailure(reconcileFile({ path, dryRun: true }), fake)
+      expect(error).toMatchObject({
+        _tag: 'NmdNonBodyWriteBlockedError',
+        guard: 'DurableFileUploadUnsupported',
+      })
+      // dry-run must not have mutated the remote even while raising the guard.
+      expect(fake.updateCount).toBe(0)
+    }))
+
+  it('blocks a source: remote pull over byte-backed media with DurableFileWriteUnsupported', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'remote', pageId, body: 'stale local' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Fresh remote', storage: mediaStorage() }],
+      ])
+
+      const error = await runFailure(reconcileFile({ path }), fake)
+      expect(error).toMatchObject({
+        _tag: 'NmdNonBodyWriteBlockedError',
+        guard: 'DurableFileWriteUnsupported',
+        fileIds: ['hero-image'],
+      })
+    }))
+
+  it('proceeds over a page whose storage carries no byte-backed file units (external-URL-only)', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: emptyFilesStorage() }],
+      ])
+
+      const result = await run(reconcileFile({ path }), fake)
+      expect(result._tag).toBe('pushed')
+      expect(fake.updateCount).toBe(1)
+      expect(fake.remoteMarkdown(pageId)).toContain('Local edit')
     }))
 })
 
