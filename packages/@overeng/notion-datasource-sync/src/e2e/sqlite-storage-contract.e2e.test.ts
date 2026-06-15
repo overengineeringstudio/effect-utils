@@ -195,7 +195,9 @@ const publicSafeNames = new Set([
 // public data file post control-plane split (DD-A, ADR 0011). The public data
 // file is created only by `createReplicaSchema`, so the invariant is: every
 // `_nds_*` object is `_nds_replica_*` and none of these control-plane tables
-// leak in.
+// leak in. The authoritative guard is the structural `ndsLeaks` check below
+// (it catches EVERY control-plane table, including ones added later); this
+// named set is a redundant, human-readable spot-check and is not exhaustive.
 const forbiddenControlPlaneTables = new Set([
   '_nds_sync_root',
   '_nds_sync_event',
