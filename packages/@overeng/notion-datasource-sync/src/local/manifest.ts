@@ -245,6 +245,30 @@ export type LoadWorkspaceManifestResult =
       readonly _tag: 'mixed-namespace'
       readonly offendingPaths: ReadonlyArray<string>
     }
+  | {
+      readonly _tag: 'invalid-linked-view'
+      readonly manifestPath: string
+      readonly reason: string
+      /** Linked-view names whose `data_source_id` references an untracked source. */
+      readonly offendingViews: ReadonlyArray<string>
+    }
+
+/**
+ * Validates the R08 linked-view projection contract: every
+ * `linked_views[*].data_source_id` MUST reference a tracked
+ * `data_sources[*].data_source_id`. Linked views are read-only projections over a
+ * tracked source — they own no data file, page dir, schema, or remote-write
+ * authority — so a view pointing at an unknown source is a fail-closed error, not
+ * a silently-ignored entry. Returns the offending view names (sorted), empty when
+ * the manifest is valid.
+ */
+export const offendingLinkedViews = (manifest: WorkspaceManifestV1): ReadonlyArray<string> => {
+  const trackedSourceIds = new Set(manifest.data_sources.map((source) => source.data_source_id))
+  return (manifest.linked_views ?? [])
+    .filter((view) => trackedSourceIds.has(view.data_source_id) === false)
+    .map((view) => view.name)
+    .toSorted()
+}
 
 /**
  * Loads and validates the workspace manifest, failing closed on anything other
@@ -280,6 +304,18 @@ export const loadWorkspaceManifest = (
       JSON.parse(readFileSync(path, 'utf8')),
       { onExcessProperty: 'error' },
     )
+    // R08: a linked view is a read-only projection over a TRACKED source. A view
+    // referencing an unknown `data_source_id` is fail-closed, not ignored — it
+    // owns no writable surface, so there is no source for it to project.
+    const offendingViews = offendingLinkedViews(manifest)
+    if (offendingViews.length > 0) {
+      return {
+        _tag: 'invalid-linked-view',
+        manifestPath: path,
+        reason: `Linked view(s) ${offendingViews.join(', ')} reference a data_source_id not tracked in data_sources`,
+        offendingViews,
+      }
+    }
     return { _tag: 'tracked', manifest }
   } catch (cause) {
     return {

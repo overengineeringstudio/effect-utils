@@ -2059,6 +2059,12 @@ const requireCompatibleWorkspaceNamespace = (workspaceRoot: typeof AbsolutePath.
       message: `Workspace manifest ${result.manifestPath} is not a supported v1 namespace; refusing to open. ${result.reason}`,
     })
   }
+  if (result._tag === 'invalid-linked-view') {
+    throw new WorkspaceNamespaceError({
+      guard: 'InvalidLinkedView',
+      message: `Workspace manifest ${result.manifestPath} is inconsistent; refusing to open. ${result.reason}`,
+    })
+  }
   return result
 }
 

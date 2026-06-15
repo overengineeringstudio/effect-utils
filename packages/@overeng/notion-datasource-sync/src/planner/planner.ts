@@ -102,13 +102,22 @@ export type PropertySurfaceSnapshot = {
       }
     | undefined
   /*
-   * WIRED-BUT-DORMANT: the three fields below are threaded into the shared
-   * property-write proof (see `makeWorkspaceProof`), but `sync/observation.ts`
-   * does NOT yet populate them, so they fall back to non-blocking defaults and
-   * the `RemoteAuthoritativeDrift` / `LocalSurfaceDisagreement` /
-   * `ReadAfterWriteMismatch` guards only fire from tests today. Production
-   * population lands with page-authority observation, Phase 4 local convergence,
-   * and outbox settlement wiring respectively (see the markers below).
+   * The three fields below are threaded into the shared property-write proof
+   * (see `makeWorkspaceProof`). `writeMode` is populated in production from the
+   * manifest authority mode (`withAuthorityMode`, which has live call sites in
+   * `pushOneShotSync`, conflicts-resolve, and the CDC path).
+   *
+   * `localConvergence` and `settlement` are WIRED-BUT-DORMANT in production. The
+   * pure Phase 4 local-convergence engine (`convergeLocalSurfaces` +
+   * `applyConvergenceVerdicts`) and its proof routing exist and are unit-proven,
+   * but no production push path calls them yet — `sync/observation.ts` does not
+   * build the `DataFileLocalEdit`/`NmdDesiredFact` inputs (and the `.nmd`
+   * materialization feeder under `pages/v1/<source>` is itself unwired), so
+   * `localConvergence` still falls back to `not-applicable` and
+   * `LocalSurfaceDisagreement` fires only from tests
+   * (TODO(phase-4-local-convergence): wire the engine into the shared-mode push
+   * path). `settlement` likewise falls back to its non-blocking default
+   * (TODO(settlement-wiring)).
    */
   /**
    * Workspace entrypoint / page-authority signal threaded into the shared
@@ -119,9 +128,17 @@ export type PropertySurfaceSnapshot = {
   readonly writeMode?: 'local' | 'shared' | 'remote'
   /**
    * Whether the local SQLite `pages` projection agrees with the materialized
-   * `.nmd` artifact for this page. `disagrees` surfaces as
+   * `.nmd` artifact for this page property. `disagrees` surfaces as
    * `LocalSurfaceDisagreement`. Defaults to `not-applicable`.
-   * TODO(phase-4-local-convergence): populate from the real SQLite-vs-`.nmd` check.
+   *
+   * In `shared` mode the Phase 4 local-convergence engine
+   * (`convergeLocalSurfaces` + `applyConvergenceVerdicts`) computes this verdict
+   * by comparing the drained SQLite data-file edits against the decoded `.nmd`
+   * desired facts per `(pageId, propertyId)`. The engine is unit-proven but NOT
+   * yet called from a production push path
+   * (TODO(phase-4-local-convergence)), so production snapshots leave this at
+   * `not-applicable`. `local`/`remote` mode is always `not-applicable` (single
+   * source mirrors the other).
    */
   readonly localConvergence?: 'not-applicable' | 'converged' | 'disagrees'
   /**

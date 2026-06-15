@@ -661,6 +661,26 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L2',
     file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
   }),
+  scenario({
+    scenarioId: 'NDS-L3-local-surface-convergence',
+    title:
+      'shared-mode local convergence reconciles the SQLite `pages` and `.nmd` surfaces per stable identity: agreeing surfaces coalesce to one intent, a single surface passes through, and a divergence raises a local conflict (in the read-only `conflicts` surface, not a page-adjacent file) and — for a property — drives `LocalSurfaceDisagreement` through the shared proof core. NOTE: the engine is unit-proven; production push-path wiring is still pending (TODO(phase-4-local-convergence)), so coverage is L1 today.',
+    requirementIds: ['R06', 'R08'],
+    guards: ['LocalSurfaceDisagreement'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/planner/local-convergence.unit.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L1-linked-view-read-only',
+    title:
+      'a linked view is a read-only projection over a tracked data source: it owns no data file, page dir, schema, or remote-write authority, and a view referencing an untracked `data_source_id` fails closed (R08)',
+    requirementIds: ['R08'],
+    guards: [],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/local/manifest.unit.test.ts',
+  }),
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {
