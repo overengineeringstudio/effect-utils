@@ -330,7 +330,13 @@ const appendDecision = ({
   }
 }
 
-/** Empty push result for a mirror (`remote`-authority) cycle that ran no push pass; carries the current status so the daemon plan frame stays well-formed. */
+/**
+ * Empty push result for a mirror (`remote`-authority) reconcile that ran no push
+ * pass; carries the current status so the `OneShotSyncResult` plan frame stays
+ * well-formed. Call it AFTER the pull pass so `status` reflects the appended
+ * pull events (the top-level `syncOneShot` `status` is the authoritative result
+ * field; this `push.status` is a convenience mirror of the same post-pull read).
+ */
 const emptyPushResult = ({
   store,
   rootId,
@@ -917,8 +923,19 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
           ? {}
           : { leaseDurationMs: options.leaseDurationMs }),
       })
+      // Mirror (`remote`-authority) reconcile: run pull-only, skipping BOTH push
+      // passes so no local intent — property, lifecycle (archive/restore), OR row
+      // create — is ever planned, enqueued, or executed against the gateway. The
+      // pull pass alone converges remote→local (SM5.4). This is the SINGLE
+      // chokepoint that makes the mirror guarantee uniform across one-shot `sync`
+      // AND the watch daemon: `authorityMode === 'remote'` gates here regardless of
+      // caller, so a remote-mode workspace never pushes even though the planner's
+      // per-property `RemoteAuthoritativeDrift` block never covered the
+      // lifecycle/create paths. The explicit `pullOnly` flag remains for the daemon
+      // (defense-in-depth) and standalone callers without an authority mode.
+      const mirrorPullOnly = options.pullOnly === true || options.authorityMode === 'remote'
       const local =
-        options.materializeBodies === false || options.pullOnly === true
+        options.materializeBodies === false || mirrorPullOnly === true
           ? { observations: [] }
           : yield* observeLocalWorkspace(options.workspaceRoot)
       const localWorkspaceChanged = hasLocalWorkspaceChange({
@@ -926,12 +943,8 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
         store: options.store,
         rootId: options.rootId,
       })
-      // Mirror (`remote`-authority) reconcile: skip BOTH push passes so no local
-      // intent is ever planned, enqueued, or executed against the gateway — the
-      // pull pass alone converges remote→local (SM5.4). The empty push result keeps
-      // the `OneShotSyncResult` shape stable for the daemon's plan frame and status.
       const prePullPush =
-        options.pullOnly === true ||
+        mirrorPullOnly === true ||
         localWorkspaceChanged === false ||
         options.deferLocalPlanningUntilAfterPull === true
           ? undefined
@@ -945,7 +958,7 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
         ...(localWorkspaceChanged === true ? { materializeBodyArtifacts: false } : {}),
       })
       const pushAfterPull =
-        options.pullOnly === true
+        mirrorPullOnly === true
           ? emptyPushResult({ store: options.store, rootId: options.rootId })
           : yield* pushOneShotSync({
               ...options,

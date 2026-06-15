@@ -748,7 +748,10 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
         // Mirror mode runs the reconcile pull-only: no push pass, so the captured
         // local intents are deliberately not handed to the planner — they survive as
-        // pending CDC/status and never become outbound work.
+        // pending CDC/status and never become outbound work. `syncOneShot` already
+        // gates pull-only on `authorityMode === 'remote'`, so the explicit
+        // `pullOnly: true` and the empty `localIntents` are defense-in-depth that
+        // also keep the daemon's intent explicit at the call site.
         ...(isMirrorMode === true ? { pullOnly: true } : {}),
         localIntents: isMirrorMode === true || fastPush !== undefined ? [] : replicaInputs.intents,
         deferLocalPlanningUntilAfterPull: fastPush !== undefined,
