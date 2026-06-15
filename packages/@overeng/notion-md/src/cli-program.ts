@@ -15,7 +15,7 @@ import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { OtelAttr, OtelAttrs, OtelOperation } from '@overeng/otel-contract'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
-import { resolveNmdTargets, runBatchWatch } from './batch.ts'
+import { resolveNmdTargets, runBatchWatch, type BatchFailure } from './batch.ts'
 import {
   catEditorPage,
   editEditorPage,
@@ -745,6 +745,13 @@ export const readAllSyncStates = (
     return syncStates
   })
 
+/** Render a target-resolution failure as a single readable line for gc output. */
+const formatTargetFailure = (failure: BatchFailure): string => {
+  const detail = safeJsonError(failure.error)
+  const message = typeof detail.message === 'string' ? detail.message : String(failure.error)
+  return `gc: skipped ${failure.path}: ${message}`
+}
+
 /**
  * GC result for one state root: the root path, reachable/removed counts, and
  * the removed file list.
@@ -777,11 +784,31 @@ const gcNmdTargets = (opts: {
       targets: opts.paths,
       recursive: opts.recursive,
       operation: 'sync',
-    }).pipe(Effect.map((r) => r.paths))
+    })
+
+    // Surface target-resolution failures rather than silently dropping them —
+    // gc is deletion-adjacent, so a mistyped/nonexistent path, a non-`.nmd`
+    // file, or an un-`--recursive` directory must never resolve to a quiet
+    // no-op. We log every error and fail-fast when nothing valid remains.
+    for (const failure of resolved.errors) {
+      yield* Console.error(formatTargetFailure(failure))
+    }
+    if (resolved.paths.length === 0) {
+      yield* Effect.fail(
+        new NmdCliError({
+          message:
+            resolved.errors.length > 0
+              ? `gc: no valid .nmd targets — all ${resolved.errors.length} target(s) failed to resolve:\n${resolved.errors
+                  .map((failure) => `  ${formatTargetFailure(failure)}`)
+                  .join('\n')}`
+              : 'gc: no .nmd targets matched the requested paths',
+        }),
+      )
+    }
 
     // Group resolved .nmd paths by their unique state root (parent dir).
     const rootToNmdPaths = new Map<string, string[]>()
-    for (const nmdPath of resolved) {
+    for (const nmdPath of resolved.paths) {
       const stateRoot = stateRootPath(nmdPath)
       const existing = rootToNmdPaths.get(stateRoot) ?? []
       existing.push(nmdPath)
