@@ -152,6 +152,8 @@ class FakeNotion {
   private tick = 0
   private afterPagePropertiesUpdate: (() => void) | undefined
   private afterNextPullPage: (() => void) | undefined
+  /* Live data-source property schema served to the property-write proof provider. */
+  dataSourceProperties: Record<string, unknown> = {}
   readonly updateMarkdownCalls: Array<{
     readonly pageId: string
     readonly allowDeletingContent: boolean
@@ -315,6 +317,8 @@ class FakeNotion {
         this.pages.set(id, next)
         return this.toPullResult(next).page
       }),
+    retrieveDataSource: ({ dataSourceId }) =>
+      Effect.succeed({ id: dataSourceId, properties: this.dataSourceProperties }),
     listChildPages: ({ pageId: id }) =>
       Effect.sync(() => {
         const page = this.requirePage(id)

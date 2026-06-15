@@ -1,5 +1,7 @@
 import { Schema } from 'effect'
 
+import { PropertyWriteGuardName } from '@overeng/notion-property-write'
+
 /** Raised when a local `.nmd` file is missing or has malformed frontmatter. */
 export class NmdFrontmatterError extends Schema.TaggedError<NmdFrontmatterError>()(
   'NmdFrontmatterError',
@@ -78,6 +80,30 @@ export class NmdSchemaDriftError extends Schema.TaggedError<NmdSchemaDriftError>
     page_id: Schema.String,
     data_source_id: Schema.String,
     path: Schema.optional(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when the shared property-write core refuses a datasource-scoped
+ * property write. Carries the violated guard name and the page/property it
+ * blocked so the refusal is observable rather than a silent drop.
+ *
+ * Also raised when a `source: 'remote'` page (Notion authoritative) attempts a
+ * local property mutation: the standalone proof provider refuses to mint a
+ * proof, since a local write against a Notion-authoritative page is drift.
+ */
+export class NmdPropertyWriteBlockedError extends Schema.TaggedError<NmdPropertyWriteBlockedError>()(
+  'NmdPropertyWriteBlockedError',
+  {
+    page_id: Schema.String,
+    property_name: Schema.String,
+    /**
+     * The violated property-write guard name. Drawn from the shared
+     * {@link PropertyWriteGuardName} vocabulary, including the provider-emitted
+     * `RemoteAuthoritativeDrift` used for the `source: 'remote'` refusal.
+     */
+    guard: PropertyWriteGuardName,
     message: Schema.String,
   },
 ) {}
@@ -167,4 +193,5 @@ export type NmdError =
   | NmdGatewayError
   | NmdRemoteBodyLossyError
   | NmdSchemaDriftError
+  | NmdPropertyWriteBlockedError
   | NmdCliError

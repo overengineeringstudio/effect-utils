@@ -29,6 +29,7 @@
     "@overeng/notion-core": "workspace:^",
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
+    "@overeng/notion-property-write": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "@overeng/utils": "workspace:^"
   },
@@ -82,6 +83,7 @@
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",
       "packages/@overeng/notion-md",
+      "packages/@overeng/notion-property-write",
       "packages/@overeng/otel-contract",
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",

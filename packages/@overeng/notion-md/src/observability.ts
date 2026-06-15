@@ -309,6 +309,12 @@ export const GatewayUpdatePageMetadataSpan = OtelOperation.define({
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+export const GatewayRetrieveDataSourceSpan = OtelOperation.define({
+  name: 'notion-md.gateway.retrieve-data-source',
+  attributes: dataSourceAttrs,
+  label: ({ dataSourceId }) => dataSourceId.slice(0, 8),
+})
+
 export const GatewayListChildPagesSpan = OtelOperation.define({
   name: 'notion-md.gateway.list-child-pages',
   attributes: pageAttrs,

@@ -685,6 +685,7 @@ describe('body adapter E2E boundary', () => {
         Effect.die('updatePageProperties should not be called by this test'),
       retrieveDataSource: () => Effect.die('retrieveDataSource should not be called by this test'),
       updatePageMetadata: () => Effect.die('updatePageMetadata should not be called by this test'),
+      retrieveDataSource: () => Effect.die('retrieveDataSource should not be called by this test'),
       listChildPages: () => Effect.succeed([]),
       createPage: () => Effect.die('createPage should not be called by this test'),
       movePage: () => Effect.die('movePage should not be called by this test'),

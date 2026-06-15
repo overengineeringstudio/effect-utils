@@ -67,9 +67,14 @@ export interface RemoteMarkdownSnapshot {
  * Live property schema of a Notion data source, retrieved for schema-drift
  * detection on data-source-backed pages (decision 0017, R14). In API
  * 2026-03-11 the property schema lives on the data source, not the database.
+ *
+ * The same snapshot is also the evidence source for the standalone
+ * property-write proof provider: the property schema map is keyed by display
+ * name and each entry is the raw Notion property-schema object carrying at
+ * least `id`, `name`, and `type`.
  */
 export interface RemoteDataSourceSchema {
-  readonly dataSourceId: string
+  readonly id: string
   readonly databaseId: string | undefined
   /** Raw property definitions keyed by display name (`{ id, name, type, … }`). */
   readonly properties: Record<string, unknown>
@@ -148,10 +153,9 @@ export interface NotionMdGatewayShape {
     readonly properties: Record<string, unknown>
   }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
   /**
-   * Retrieve a data source's live property schema for schema-drift detection
-   * (`GET /v1/data_sources/{id}`; decision 0017, R14). Used only for
-   * data-source-backed pages at pull (to capture the `schema_snapshot`) and at
-   * push (to recompute it before a property write).
+   * Retrieve a data source's live property schema (`GET /v1/data_sources/{id}`).
+   * Used for both data-source drift detection and per-property write proof
+   * evidence.
    */
   readonly retrieveDataSource: (opts: {
     readonly dataSourceId: string

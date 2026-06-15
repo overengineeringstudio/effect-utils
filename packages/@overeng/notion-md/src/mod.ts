@@ -11,6 +11,7 @@ export {
   NmdPostPushGateError,
   NmdRemoteBodyLossyError,
   NmdSchemaDriftError,
+  NmdPropertyWriteBlockedError,
   NmdTokenMissingError,
   NmdUnresolvablePageError,
 } from './errors.ts'
@@ -39,6 +40,7 @@ export type {
   NotionMdGatewayShape,
   PageMetadataUpdate,
   PullPageResult,
+  RemoteDataSourceSchema,
   RemoteMarkdownSnapshot,
   RemotePageSnapshot,
   RemoteParent,
@@ -46,6 +48,8 @@ export type {
   WritablePageCover,
   WritablePageIcon,
 } from './model.ts'
+export { buildStandaloneLiveProof, makeStandaloneLiveProof } from './property-proof.ts'
+export type { StandaloneProofInputs } from './property-proof.ts'
 export {
   isSafeRelativePath,
   NmdBaseSnapshotV2,
