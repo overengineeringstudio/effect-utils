@@ -116,7 +116,12 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
     const fs = yield* FileSystem.FileSystem
 
     // Create temp directory for store
-    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    // `realPath` to canonicalize: on macOS the temp dir is under a symlinked
+    // `/var` → `/private/var`, and `git worktree list` reports the realpath, so a
+    // non-canonical store path makes `scanArchives`' prefix match miss every entry.
+    const tmpDir = EffectPath.unsafe.absoluteDir(
+      `${yield* fs.realPath(yield* fs.makeTempDirectoryScoped())}/`,
+    )
     const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
     yield* fs.makeDirectory(storePath, { recursive: true })
 
@@ -309,7 +314,12 @@ export const createWorkspaceWithLock = (args: {
     const fs = yield* FileSystem.FileSystem
 
     // Create workspace directory
-    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    // `realPath` to canonicalize: on macOS the temp dir is under a symlinked
+    // `/var` → `/private/var`, and `git worktree list` reports the realpath, so a
+    // non-canonical store path makes `scanArchives`' prefix match miss every entry.
+    const tmpDir = EffectPath.unsafe.absoluteDir(
+      `${yield* fs.realPath(yield* fs.makeTempDirectoryScoped())}/`,
+    )
     const workspacePath = EffectPath.ops.join(
       tmpDir,
       EffectPath.unsafe.relativeDir('test-workspace/'),
