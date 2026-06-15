@@ -2,7 +2,7 @@
 
 ## Status
 
-proposed (operating point to be fixed experimentally)
+accepted (operating point fixed by the OTEL sweep: `MEGAREPO_GC_REPO_CONCURRENCY` default **4**)
 
 ## Context
 
@@ -38,8 +38,8 @@ not an accident:
 3. **Proven by OTEL, not asserted.** The chosen operating point is justified by
    data: an RSS gauge (`megarepo_store_gc_rss_bytes`, ephemeral-gauge) stays flat
    across a parameter sweep, and per-phase span durations show the throughput gain.
-   Verified end-to-end via gcx/Tempo (traces) + gcx/Prometheus (RSS), on isolated
-   stores scaled to mirror the real fleet.
+   Verified end-to-end via OTEL queries (Tempo traces + Prometheus-compatible
+   metrics), on isolated stores scaled to mirror real-world layouts.
 
 ## Consequences
 
@@ -49,4 +49,33 @@ not an accident:
   `git worktree move`, so only a bounded `isDirty`+count is needed, never the list.
 - A regression test asserts the memory bound (a worktree with a large untracked
   tree must not raise peak RSS beyond a small constant).
-- The concrete concurrency/batch numbers land here once the OTEL sweep fixes them.
+- **Operating point (from the OTEL sweep, `tmp/gc-oom/sweep-findings.md`):**
+  `MEGAREPO_GC_REPO_CONCURRENCY` default **4**. On a 1200-worktree isolated store
+  (4 with ~30k-file untracked trees) with a 300 ms/call `gh` latency shim, wall
+  time was 25.2 s → 11.4 s (2.2×) from concurrency 1 → 4; 4 → 8 added only ~7% and
+  8 → 32 sat at the run-to-run noise floor. Peak process-tree RSS stayed ~537 →
+  633 MB (≈18% over a 32× concurrency increase, all sub-GB) — memory does not bind,
+  it only confirms raising concurrency is safe. Throughput is the binding
+  constraint, and its knee is 4.
+- Proven via OTEL: the six `megarepo/store/gc/*` phase spans + `git/cmd` land in
+  Tempo (`service.name=megarepo`) and the `megarepo_store_gc_rss_bytes` gauge in a
+  Prometheus-compatible store. The exporter's `metricsExportInterval` must be small enough that the gauge
+  flushes within a short run (the default 10 s undersamples ~10 s runs — the
+  trustworthy memory curve came from a 100 ms external process-tree sampler).
+- Instrumentation must be testable, not disabled: a dedicated otelite-capture test
+  (`src/cli/store-gc-otel.integration.test.ts`) stands up an ephemeral OTLP
+  receiver, runs the gc in-process through the real exporter, and asserts the six
+  phase spans, a `git/cmd` span carrying `git.output.bytes`, and the
+  `megarepo_store_gc_rss_bytes` gauge (value > 0, `repo_concurrency` label) all
+  land.
+- **Instrumentation samples on real wall-time, decoupled from the gc's decision
+  clock.** The RSS-sampler fiber refreshes the gauge at periodic intervals; coupling
+  its cadence to the decision clock was the latent defect (a zero-sleep clock turns
+  `Schedule.spaced` into a hot loop). The sampler is wrapped in
+  `Effect.withClock(Clock.make())` so it ticks on wall time regardless of the
+  ambient clock. The bulk verdict tests stay hermetic w.r.t. OTLP (the setupFile
+  unsets `OTEL_EXPORTER_OTLP_ENDPOINT` so they never POST to a dev collector);
+  telemetry-asserting tests opt back in with their own ephemeral receiver and a
+  fixed DECISION clock whose `sleep` delegates to a live clock (so the exporter's
+  reader fibers tick on wall time too). The sampler is gated on the endpoint being
+  set, so it is zero-overhead when OTLP is off.
