@@ -47,24 +47,72 @@ import { hashStoreBytes } from '../store/projections.ts'
 const codec = makeCanonicalCodec({ hash: (value) => canonicalHash(value) })
 
 /**
- * Hash a canonical-property `value_json` string for CONVERGENCE comparison only
- * (never for the remote-write `desiredHash`). It re-parses then re-stringifies the
- * JSON so two surfaces that mean the same value but encode it slightly
- * differently still hash equal:
+ * Normalize a canonical-property `value_json` into the single CONVERGENCE space
+ * that the `.nmd` surface can also reach, then hash it.
  *
- * - SQLite stores numbers through a `REAL` column, so a user edit serializes
- *   `42` as `42.0`; JS has no int/float distinction, so `JSON.parse('42.0')` is
- *   `42` and re-stringifies to `42` — matching the `.nmd`/pull form.
- * - It also normalizes JSON string escaping across the SQL `json_object(...)`
- *   oracle and the TS `JSON.stringify` oracle.
+ * The three surfaces encode the SAME user value differently, and convergence
+ * must compare like with like:
  *
- * Key ORDER is preserved (parse keeps insertion order, stringify preserves it),
- * so the canonical key-order discipline is untouched. All three convergence
- * inputs — the `.nmd` fact, the SQLite edit, and the observed base — MUST route
- * through this function so they compare in one consistent space.
+ * - SELECT/STATUS option: the pull path keeps the full remote option
+ *   (`{id, name, color}` via `canonicalOptionFromRemote`), but the `.nmd`
+ *   frontmatter is name-only (`{_tag:'select', value:'Done'}`) and can NEVER
+ *   reconstruct the id/color. So the comparison space is name-only: strip
+ *   `option.id`/`option.color`. (The SQLite `pages` trigger already emits
+ *   name-only, so it is unchanged by this.)
+ * - Cleared NUMBER/DATE: the codec maps a null number/date to `{_tag:'empty'}`,
+ *   but the SQLite `pages` trigger emits `{_tag:'number','value':null}` /
+ *   `{_tag:'date','start':null,...}`. Fold both cleared shapes to `{_tag:'empty'}`
+ *   so a cleared scalar converges across surfaces.
+ *
+ * Direction is forced: bring the richer remote/SQLite base DOWN to the name-only
+ * `.nmd` space, never the other way (the `.nmd` side structurally lacks the
+ * dropped fields). Pure JSON→JSON; key order otherwise preserved.
  */
-export const convergenceHash = (canonicalValueJson: string): Hash =>
-  hashStoreBytes(JSON.stringify(JSON.parse(canonicalValueJson) as unknown))
+const toConvergenceForm = (value: unknown): unknown => {
+  if (value === null || typeof value !== 'object') return value
+  const record = value as Record<string, unknown>
+  switch (record._tag) {
+    case 'select':
+    case 'status': {
+      const option = record.option
+      if (option === null || typeof option !== 'object') return record
+      const opt = option as Record<string, unknown>
+      // Name-only option: drop id/color, which the `.nmd` surface cannot carry.
+      return { _tag: record._tag, option: { _tag: opt._tag, name: opt.name } }
+    }
+    case 'number':
+      // Cleared number: SQLite emits `value:null`; the codec emits `empty`.
+      return record.value === null ? { _tag: 'empty' } : record
+    case 'date':
+      // Cleared date: SQLite emits `start:null`; the codec emits `empty`.
+      return record.start === null || record.start === undefined ? { _tag: 'empty' } : record
+    default:
+      return record
+  }
+}
+
+/**
+ * The CONVERGENCE hash of a canonical `value_json` — the SINGLE hasher every
+ * convergence comparison routes through (the `.nmd` desired fact, the SQLite
+ * edit, and the observed base), so they compare in one consistent space. It is
+ * the hash stored at pull time as `_nds_replica_cells.convergence_hash`.
+ *
+ * It parses, folds via {@link toConvergenceForm} (name-only options, cleared
+ * scalars → `empty`), then re-stringifies. The parse→stringify round-trip ALSO
+ * normalizes two encoding-only differences for free:
+ *
+ * - SQLite stores numbers through a `REAL` column, so a user edit serializes `42`
+ *   as `42.0`; `JSON.parse('42.0')` is `42` and re-stringifies to `42`, matching
+ *   the `.nmd`/pull form.
+ * - JSON string-escaping across the SQL `json_object(...)` oracle and TS
+ *   `JSON.stringify`.
+ *
+ * Key order is otherwise preserved (parse keeps insertion order), so the canonical
+ * key-order discipline is untouched. This is the comparison hash, NEVER the
+ * remote-write `desiredHash` (which keeps the full canonical, id+color included).
+ */
+export const convergenceFormHash = (canonicalValueJson: string): Hash =>
+  hashStoreBytes(JSON.stringify(toConvergenceForm(JSON.parse(canonicalValueJson) as unknown)))
 
 /**
  * Project a `.nmd` frontmatter writable property value into the RAW Notion API
@@ -156,5 +204,5 @@ export const nmdPropertyCanonicalValue = (
 export const nmdPropertyDesiredHash = (value: NmdWritablePropertyValue): Hash | undefined => {
   const canonical = nmdPropertyCanonicalValue(value)
   if (canonical === undefined) return undefined
-  return convergenceHash(JSON.stringify(canonical))
+  return convergenceFormHash(JSON.stringify(canonical))
 }

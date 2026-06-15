@@ -664,7 +664,7 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L3-local-surface-convergence',
     title:
-      'shared-mode local convergence (R06) reconciles the SQLite `pages` and `.nmd` frontmatter surfaces per stable `(page_id, property_id)`: agreeing values coalesce to one intent, an untouched `.nmd` leaves a SQLite-only edit single-surface, and a divergent scalar property raises a local conflict (in the read-only `conflicts` surface, not a page-adjacent file) and blocks the remote write as `LocalSurfaceDisagreement`. Wired into the real CLI `push` path on a tracked workspace.',
+      'shared-mode local convergence (R06) reconciles the SQLite `pages` and `.nmd` frontmatter surfaces per stable `(page_id, property_id)`: agreeing values coalesce to one intent, an untouched `.nmd` leaves a SQLite-only edit single-surface, and a divergent scalar property raises a local conflict (in the read-only `conflicts` surface, not a page-adjacent file) and blocks the remote write as `LocalSurfaceDisagreement`, comparing both surfaces through one name-only `convergence_hash` space. Wired into the real CLI `push` path on a tracked workspace. NOTE: the engine is wired and correct but INERT on production data — pulled `.nmd` files carry no writable frontmatter properties yet, so this fires only for hand-authored `.nmd`. R06 property convergence is not closed end-to-end until frontmatter-property materialization lands (TODO(phase-4-property-materialization)).',
     requirementIds: ['R06', 'R08'],
     guards: ['LocalSurfaceDisagreement'],
     lowestPlannerLevel: 'L1',

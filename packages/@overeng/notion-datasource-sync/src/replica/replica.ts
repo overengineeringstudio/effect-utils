@@ -35,6 +35,7 @@ import {
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
 import type { AuthorityMode } from '../local/manifest.ts'
+import { convergenceFormHash } from '../planner/nmd-property-facts.ts'
 import type { PlanDecision, PlannerIntent } from '../planner/planner.ts'
 import { resolveConflictCommand } from '../planner/user-commands.ts'
 import { BodyProjectionPayload, hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
@@ -372,6 +373,19 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     db.exec(`ALTER TABLE _nds_replica_local_changes RENAME TO _nds_replica_local_changes_legacy;`)
   }
 
+  // SM5c: add the name-only `convergence_hash` column to a pre-existing replica
+  // (the table is fully DELETE+re-INSERTed on every projection, so a nullable
+  // add backfills on the next projection — no data migration needed).
+  const cellsSchema = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '_nds_replica_cells'`)
+    .get() as SqlRow | undefined
+  if (
+    typeof cellsSchema?.sql === 'string' &&
+    cellsSchema.sql.includes('convergence_hash') === false
+  ) {
+    db.exec(`ALTER TABLE _nds_replica_cells ADD COLUMN convergence_hash TEXT;`)
+  }
+
   db.exec(`
     DROP TRIGGER IF EXISTS _nds_replica_cells_direct_value_update_intent;
     DROP TRIGGER IF EXISTS _nds_replica_cells_guard_direct_value_update;
@@ -520,6 +534,12 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       value_boolean INTEGER CHECK (value_boolean IN (0, 1) OR value_boolean IS NULL),
       base_hash TEXT NOT NULL,
       remote_hash TEXT NOT NULL,
+      -- Name-only convergence hash of the observed value (id/color stripped from
+      -- select/status options, cleared number/date folded to empty), so the
+      -- pristine base compares in the SAME space the .nmd frontmatter surface can
+      -- reach. Distinct from remote_hash (the full-canonical remote-write base).
+      -- SM5c local convergence; see convergenceFormHash.
+      convergence_hash TEXT,
       availability TEXT NOT NULL,
       write_class TEXT NOT NULL,
       observed_event_id TEXT NOT NULL,
@@ -3168,13 +3188,17 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
           .get(dataSourceId, propertyId) as SqlRow | undefined
         const valueJson = valueJsonByCell.get(`${pageId}\0${propertyId}`)
         const scalar = scalarColumns(valueJson)
+        // Name-only convergence base (SM5c): the cross-surface comparison space the
+        // `.nmd` frontmatter can also reach (id/color stripped, cleared scalars
+        // folded). Distinct from `remote_hash` (full-canonical remote-write base).
+        const convergenceHashValue = valueJson === undefined ? null : convergenceFormHash(valueJson)
         replicaDb
           .prepare(
             `INSERT INTO _nds_replica_cells (
                data_source_id, page_id, property_id, property_name, property_type, value_json,
-               value_text, value_number, value_boolean, base_hash, remote_hash, availability,
-               write_class, observed_event_id, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               value_text, value_number, value_boolean, base_hash, remote_hash, convergence_hash,
+               availability, write_class, observed_event_id, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             dataSourceId,
@@ -3192,6 +3216,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             scalar.boolean ?? null,
             readString({ row, key: 'base_hash' }),
             readString({ row, key: 'remote_hash' }),
+            convergenceHashValue,
             readString({ row, key: 'availability' }),
             property === undefined
               ? 'unsupported'
@@ -3736,13 +3761,22 @@ export type ReplicaCellBase = {
    */
   readonly valueJson: string | undefined
   /**
-   * Hash of the last REMOTE-observed canonical value, in the same space as
-   * `convergenceHash` of the pulled `value_json` (both ultimately
-   * `hashStoreBytes(inlineValueJson)` over clean codec output). A local `pages`
-   * edit does NOT touch this, so it is the pristine convergence base the `.nmd`
-   * surface is diffed against.
+   * Hash of the last REMOTE-observed canonical value (full canonical — keeps
+   * select/status option id+color). This is the remote-WRITE base, NOT the
+   * convergence base: it lives in a different space than the name-only `.nmd`
+   * surface. Do not diff the `.nmd` value against this — use {@link convergenceHash}.
    */
   readonly remoteHash: string
+  /**
+   * Hash of the last remote-observed value folded into the NAME-ONLY convergence
+   * space (`convergenceFormHash`: option id/color stripped, cleared scalars folded
+   * to `empty`), so it compares like-with-like against a `.nmd` frontmatter value
+   * (which structurally cannot carry id/color). A local `pages` edit does NOT
+   * touch this, so it is the pristine convergence base the `.nmd` surface is
+   * diffed against. `undefined` only for a non-scalar cell with no `value_json`,
+   * which is never convergence-comparable.
+   */
+  readonly convergenceHash: string | undefined
 }
 
 /**
@@ -3764,6 +3798,7 @@ export const readReplicaCellBases = (replicaPath: string): readonly ReplicaCellB
              c.property_id,
              c.value_json,
              c.remote_hash,
+             c.convergence_hash,
              p.property_name,
              p.property_type
            FROM _nds_replica_cells c
@@ -3780,6 +3815,7 @@ export const readReplicaCellBases = (replicaPath: string): readonly ReplicaCellB
       propertyType: readString({ row, key: 'property_type' }),
       valueJson: readOptionalString({ row, key: 'value_json' }),
       remoteHash: readString({ row, key: 'remote_hash' }),
+      convergenceHash: readOptionalString({ row, key: 'convergence_hash' }),
     }))
   } finally {
     db.close()

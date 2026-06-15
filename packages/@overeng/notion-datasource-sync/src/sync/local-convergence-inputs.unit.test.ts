@@ -1,8 +1,11 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { makeCanonicalCodec } from '@overeng/notion-effect-schema'
+
+import { canonicalHash } from '../core/canonical.ts'
 import { Hash, PageId, PropertyId } from '../core/domain.ts'
-import { convergenceHash, nmdPropertyCanonicalValue } from '../planner/nmd-property-facts.ts'
+import { convergenceFormHash, nmdPropertyCanonicalValue } from '../planner/nmd-property-facts.ts'
 import type { ReplicaCellBase } from '../replica/replica.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 import { dataFilePropertyEdits, nmdPropertyFacts } from './local-convergence-inputs.ts'
@@ -14,29 +17,55 @@ const pageId = decode(PageId, 'page-1')
 const propertyId = decode(PropertyId, 'p-priority')
 const dataSourceId = 'data-source-1'
 
-/** The pristine remote base hash for a select value, as `remote_hash` would carry it. */
-const selectRemoteHash = (name: string): string =>
-  convergenceHash(JSON.stringify(nmdPropertyCanonicalValue({ _tag: 'select', value: name })!))
+const codec = makeCanonicalCodec({ hash: (value) => canonicalHash(value) })
 
-const cellBase = (remoteName: string): ReplicaCellBase => ({
-  pageId,
-  dataSourceId,
-  propertyId,
-  propertyName: 'Priority',
-  propertyType: 'select',
-  // The cell value_json is the EDIT-overwritten value; convergence must NOT use it.
-  valueJson: JSON.stringify({
-    _tag: 'select',
-    option: { _tag: 'CanonicalOptionValue', name: 'EDITED' },
-  }),
-  remoteHash: selectRemoteHash(remoteName),
-})
+/**
+ * The FULL canonical `value_json` a real remote select observation produces: the
+ * codec keeps the option `id` + `color` (`canonicalOptionFromRemote`). This is the
+ * shape `remote_hash` and `value_json` carry in production — deliberately NOT the
+ * name-only `.nmd` shape, so the base and the `.nmd` side live in different spaces
+ * and the test can catch a cross-space comparability bug.
+ */
+const remoteSelectValueJson = (name: string): string => {
+  const canonical = Option.getOrThrow(
+    codec.decodeSync({
+      type: 'select',
+      select: { id: `opt-${name}`, name, color: 'blue' },
+    }),
+  )
+  return JSON.stringify(canonical)
+}
+
+/**
+ * A cell base exactly as `readReplicaCellBases` returns it from a real pull:
+ * `remoteHash` is the FULL canonical hash (id+color), `convergenceHash` is the
+ * name-only fold (`convergenceFormHash`), and `valueJson` is the EDIT-overwritten
+ * value (convergence must use neither `remoteHash` nor `valueJson` as the base).
+ */
+const cellBase = (remoteName: string): ReplicaCellBase => {
+  const fullJson = remoteSelectValueJson(remoteName)
+  return {
+    pageId,
+    dataSourceId,
+    propertyId,
+    propertyName: 'Priority',
+    propertyType: 'select',
+    valueJson: JSON.stringify({
+      _tag: 'select',
+      option: { _tag: 'CanonicalOptionValue', name: 'EDITED' },
+    }),
+    remoteHash: hashStoreBytes(fullJson),
+    convergenceHash: convergenceFormHash(fullJson),
+  }
+}
 
 describe('local-convergence inputs (baseline diff)', () => {
-  it('emits NO .nmd fact when the .nmd value matches the pristine remote base (untouched .nmd)', () => {
-    // Base remote = 'Low'; .nmd still holds 'Low' (untouched), even though the
-    // cell value_json was overwritten by a SQLite edit to 'EDITED'. Diffing
-    // against remote_hash (not value_json) is what prevents the false conflict.
+  it('CROSS-SPACE: an UNTOUCHED .nmd select (name-only) produces ZERO facts against a real id+color remote base', () => {
+    // The realistic regression: the remote base keeps option id+color, the `.nmd`
+    // value is name-only. Before the `convergence_hash` fix, the `.nmd` side was
+    // diffed against `remote_hash` (full canonical), so an UNTOUCHED select hashed
+    // unequal → a spurious fact that would block a legitimate SQLite edit. With the
+    // name-only `convergence_hash` base, an untouched value yields no fact.
     const facts = nmdPropertyFacts({
       surfaces: [{ pageId, properties: { Priority: { _tag: 'select', value: 'Low' } } }],
       bases: [cellBase('Low')],
@@ -44,15 +73,41 @@ describe('local-convergence inputs (baseline diff)', () => {
     expect(facts).toHaveLength(0)
   })
 
-  it('emits a .nmd fact when the .nmd value differs from the pristine remote base (real .nmd edit)', () => {
+  it('emits a .nmd fact when the .nmd value differs from the pristine convergence base (real .nmd edit)', () => {
     const facts = nmdPropertyFacts({
       surfaces: [{ pageId, properties: { Priority: { _tag: 'select', value: 'High' } } }],
       bases: [cellBase('Low')],
     })
     expect(facts).toHaveLength(1)
     expect(facts[0]?.identity).toEqual({ kind: 'property', pageId, propertyId })
-    expect(facts[0]?.desiredHash).toBe(selectRemoteHash('High'))
-    expect(facts[0]?.baseHash).toBe(selectRemoteHash('Low'))
+    expect(facts[0]?.desiredHash).toBe(
+      convergenceFormHash(
+        JSON.stringify(nmdPropertyCanonicalValue({ _tag: 'select', value: 'High' })!),
+      ),
+    )
+    expect(facts[0]?.baseHash).toBe(cellBase('Low').convergenceHash)
+  })
+
+  it('CROSS-SPACE (null number): an UNTOUCHED cleared .nmd number produces ZERO facts vs a SQLite-shape base', () => {
+    // SQLite emits `{_tag:'number','value':null}` for a cleared number; the codec
+    // emits `{_tag:'empty'}`. `convergenceFormHash` folds both to `empty`, so a
+    // cleared number is convergent. (Build the base directly in the SQLite shape.)
+    const sqliteNullNumberJson = JSON.stringify({ _tag: 'number', value: null })
+    const base: ReplicaCellBase = {
+      pageId,
+      dataSourceId,
+      propertyId,
+      propertyName: 'Estimate',
+      propertyType: 'number',
+      valueJson: JSON.stringify({ _tag: 'number', value: 99 }),
+      remoteHash: hashStoreBytes(sqliteNullNumberJson),
+      convergenceHash: convergenceFormHash(sqliteNullNumberJson),
+    }
+    const facts = nmdPropertyFacts({
+      surfaces: [{ pageId, properties: { Estimate: { _tag: 'number', value: null } } }],
+      bases: [base],
+    })
+    expect(facts).toHaveLength(0)
   })
 
   it('fails closed when a .nmd property name resolves to no tracked property (no fact)', () => {
@@ -71,7 +126,7 @@ describe('local-convergence inputs (baseline diff)', () => {
     expect(facts).toHaveLength(0)
   })
 
-  it('projects a cell_patch into a property DataFileLocalEdit using the convergence hash', () => {
+  it('projects a cell_patch into a property DataFileLocalEdit using the convergence-form hash', () => {
     const valueJson = JSON.stringify({
       _tag: 'select',
       option: { _tag: 'CanonicalOptionValue', name: 'High' },
@@ -113,31 +168,15 @@ describe('local-convergence inputs (baseline diff)', () => {
     })
     expect(edits).toHaveLength(1)
     expect(edits[0]?.identity).toEqual({ kind: 'property', pageId, propertyId })
-    // The engine-facing comparison hash is the CONVERGENCE hash of the edited
-    // value_json (not the raw remote-write desiredHash).
-    expect(edits[0]?.desiredHash).toBe(convergenceHash(valueJson))
+    // The engine-facing comparison hash is the CONVERGENCE-FORM hash of the edited
+    // value_json (not the raw remote-write desiredHash); the base is the cell's
+    // pristine `convergence_hash`, never re-derived from the edit-overwritten value.
+    expect(edits[0]?.desiredHash).toBe(convergenceFormHash(valueJson))
+    expect(edits[0]?.baseHash).toBe(cellBase('Low').convergenceHash)
   })
 
-  it('hash sanity: convergence hash equals a known Hash brand format', () => {
-    expect(selectRemoteHash('X')).toMatch(/^sha256:[0-9a-f]{64}$/)
+  it('hash sanity: convergence-form hash equals a known Hash brand format', () => {
+    expect(convergenceFormHash(remoteSelectValueJson('X'))).toMatch(/^sha256:[0-9a-f]{64}$/)
     void Hash
-  })
-
-  it('INVARIANT: convergenceHash is identity-on-bytes for clean codec JSON (the remote_hash space)', () => {
-    // Production `remote_hash` = hashStoreBytes(inlineValueJson) over clean codec
-    // output (observation.ts). The baseline diff compares an `.nmd` convergence
-    // hash against that `remote_hash`, so `convergenceHash` MUST equal
-    // `hashStoreBytes` on clean codec JSON (parse→stringify is identity there; the
-    // REAL number coercion only happens on the SQLite *edit* path). Pin it so the
-    // cross-space assumption cannot silently drift.
-    for (const value of [
-      { _tag: 'select' as const, value: 'High' },
-      { _tag: 'title' as const, value: 'Hello' },
-      { _tag: 'number' as const, value: 7 },
-      { _tag: 'checkbox' as const, value: true },
-    ]) {
-      const cleanJson = JSON.stringify(nmdPropertyCanonicalValue(value)!)
-      expect(convergenceHash(cleanJson)).toBe(hashStoreBytes(cleanJson))
-    }
   })
 })
