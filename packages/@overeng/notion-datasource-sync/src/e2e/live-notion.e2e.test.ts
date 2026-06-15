@@ -2462,9 +2462,9 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 is_rows_write_supported: 0,
               })
               expect(
-                db.prepare(`SELECT rows, pending_local_changes FROM sync_status`).get(),
+                db.prepare(`SELECT pages, pending_local_changes FROM sync_status`).get(),
               ).toMatchObject({
-                rows: 2,
+                pages: 2,
                 pending_local_changes: 0,
               })
             } finally {

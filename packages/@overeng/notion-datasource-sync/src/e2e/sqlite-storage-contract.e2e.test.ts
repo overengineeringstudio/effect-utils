@@ -15,6 +15,7 @@ import {
 import { PagePropertyItemPage } from '../core/commands.ts'
 import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
 import { WorkspaceNamespaceError } from '../core/errors.ts'
+import { SyncRootId } from '../core/events.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
 import {
   dataFileRelativePath,
@@ -22,7 +23,11 @@ import {
   manifestPath,
   pagesDirRelativePath,
 } from '../local/manifest.ts'
-import { markReplicaChangeStatus, readPendingReplicaChanges } from '../replica/replica.ts'
+import {
+  markReplicaChangeStatus,
+  projectReplicaFromSyncStore,
+  readPendingReplicaChanges,
+} from '../replica/replica.ts'
 import {
   decode,
   fixedObservedAt,
@@ -126,6 +131,11 @@ const makeDatabaseResolverClient = (calls: { retrieveDatabase: number }): Notion
 const sqlitePathForWorkspace = (workspace: string): string =>
   join(workspace, 'data', 'v1', `${testIds.databaseId}.sqlite`)
 
+// Control-plane store (ADR 0011): the binding, event log, and all `_nds_*`
+// control-plane tables live here, split out of the public data file.
+const statePathForWorkspace = (workspace: string): string =>
+  join(workspace, '.notion', 'v1', 'state.sqlite')
+
 const sidecarStorePath = (workspace: string): string =>
   join(workspace, '.notion-datasource-sync', 'store.sqlite')
 
@@ -181,12 +191,40 @@ const publicSafeNames = new Set([
   'sync_status',
 ])
 
+// Control-plane tables (defined in store/schema.ts) that MUST NOT appear in the
+// public data file post control-plane split (DD-A, ADR 0011). The public data
+// file is created only by `createReplicaSchema`, so the invariant is: every
+// `_nds_*` object is `_nds_replica_*` and none of these control-plane tables
+// leak in.
+const forbiddenControlPlaneTables = new Set([
+  '_nds_sync_root',
+  '_nds_sync_event',
+  '_nds_workspace_binding',
+  '_nds_outbox',
+  '_nds_guard_block',
+  '_nds_tombstone',
+  '_nds_capability',
+  '_nds_conflict',
+  '_nds_data_source',
+  '_nds_schema_property',
+  '_nds_row',
+  '_nds_body_pointer',
+  '_nds_property_shadow',
+  '_nds_query_absence',
+  '_nds_query_scan_checkpoint',
+  '_nds_page_property_checkpoint',
+  '_nds_api_contract',
+  '_nds_projection_metadata',
+])
+
 const assertStorageTaxonomy = (db: DatabaseSync): void => {
   const objects = sqliteMasterObjects(db)
   const names = objects.map((object) => String(object.name))
 
   expect(names).toEqual(expect.arrayContaining([...publicSafeNames]))
-  expect(names).toContain('_nds_workspace_binding')
+  // DD-A (ADR 0011): the control-plane binding moved to state.sqlite; it must
+  // not appear in the public data file.
+  expect(names).not.toContain('_nds_workspace_binding')
   expect(names.some((name) => name.startsWith('debug_'))).toBe(true)
 
   const unsafePublic = names.filter((name) => {
@@ -197,10 +235,45 @@ const assertStorageTaxonomy = (db: DatabaseSync): void => {
   })
   expect(unsafePublic).toEqual([])
 
+  // Every `_nds_*` object in the data file is either a `_nds_replica_*`
+  // projection table/trigger or a public `_nds_pages_*` CDC trigger; no
+  // control-plane table leaks across the file boundary.
+  const ndsLeaks = names.filter(
+    (name) =>
+      name.startsWith('_nds_') === true &&
+      name.startsWith('_nds_replica_') === false &&
+      name.startsWith('_nds_pages_') === false,
+  )
+  expect(ndsLeaks).toEqual([])
+  const controlPlaneLeaks = names.filter((name) => forbiddenControlPlaneTables.has(name) === true)
+  expect(controlPlaneLeaks).toEqual([])
+
   const legacyNames = names.filter(
     (name) => name.startsWith('notion_') || name.endsWith('_projection') || name === 'sync_event',
   )
   expect(legacyNames).toEqual([])
+}
+
+// Asserts the control-plane store holds the control-plane tables and exposes no
+// public views; standalone-queryable with no ATTACH (DD-A, ADR 0011).
+const assertControlPlaneTaxonomy = (db: DatabaseSync): void => {
+  const names = sqliteMasterObjects(db).map((object) => String(object.name))
+  for (const table of [
+    '_nds_sync_root',
+    '_nds_sync_event',
+    '_nds_workspace_binding',
+    '_nds_outbox',
+    '_nds_guard_block',
+    '_nds_tombstone',
+    '_nds_capability',
+    '_nds_query_scan_checkpoint',
+    '_nds_page_property_checkpoint',
+  ]) {
+    expect(names).toContain(table)
+  }
+  for (const publicView of publicSafeNames) {
+    expect(names).not.toContain(publicView)
+  }
 }
 
 const openReadOnly = <TValue>(path: string, f: (db: DatabaseSync) => TValue): TValue => {
@@ -338,7 +411,13 @@ const establishWorkspace = async (
         },
       }),
     )
-    return { gateway, result, calls, sqlitePath: sqlitePathForWorkspace(workspace) }
+    return {
+      gateway,
+      result,
+      calls,
+      sqlitePath: sqlitePathForWorkspace(workspace),
+      statePath: statePathForWorkspace(workspace),
+    }
   } finally {
     context.store.close()
   }
@@ -431,8 +510,11 @@ describe('clean-break self-contained SQLite storage contract', () => {
         })
       }
 
-      openReadOnly(sqlitePath, (db) => {
-        assertStorageTaxonomy(db)
+      // The control-plane store splits out of the data file (ADR 0011): the
+      // binding lives in state.sqlite, the public projection in the data file.
+      expect(await exists(statePathForWorkspace(workspace))).toBe(true)
+      openReadOnly(statePathForWorkspace(workspace), (db) => {
+        assertControlPlaneTaxonomy(db)
         expect(
           row(db, `SELECT database_id, data_source_id, workspace_root FROM _nds_workspace_binding`),
         ).toMatchObject({
@@ -440,6 +522,9 @@ describe('clean-break self-contained SQLite storage contract', () => {
           data_source_id: testIds.dataSourceId,
           workspace_root: workspace,
         })
+      })
+      openReadOnly(sqlitePath, (db) => {
+        assertStorageTaxonomy(db)
         expect(row(db, `SELECT property_name, property_type FROM schema_properties`)).toEqual({
           property_name: 'Task name',
           property_type: 'title',
@@ -641,12 +726,21 @@ describe('clean-break self-contained SQLite storage contract', () => {
         expect(() => db.prepare(`UPDATE schema SET name = 'Unsafe'`).run()).toThrow(
           /read-only|schema/i,
         )
+        // DD-A (ADR 0011): the control-plane binding is not in the data file at
+        // all, so a direct write fails because the table is absent here.
         expect(() => db.prepare(`INSERT INTO _nds_workspace_binding DEFAULT VALUES`).run()).toThrow(
-          /read-only|internal|private|unsafe/i,
+          /no such table/i,
         )
       } finally {
         db.close()
       }
+      // The binding lives in the control-plane store, where its insert guard
+      // still fails closed against direct tampering.
+      openReadOnly(statePathForWorkspace(workspace), (stateDb) => {
+        expect(() =>
+          stateDb.prepare(`INSERT INTO _nds_workspace_binding DEFAULT VALUES`).run(),
+        ).toThrow(/read-only|internal|private|unsafe|attempt to write/i)
+      })
 
       const beforePending = openReadOnly(sqlitePath, (readDb) =>
         row(readDb, `SELECT count(*) AS count FROM changes WHERE status = 'pending'`),
@@ -875,121 +969,147 @@ describe('clean-break self-contained SQLite storage contract', () => {
         })
       })
 
-      const db = new DatabaseSync(sqlitePath)
+      // Mark the unsupported change applied so it stops counting as unsupported
+      // (these CDC tables are the data file's projection inbox).
+      const dataDb = new DatabaseSync(sqlitePath)
       try {
-        const identity = row(db, `SELECT root_id, data_source_id FROM _nds_data_source LIMIT 1`)
-        expect(identity).toMatchObject({
-          root_id: expect.any(String),
-          data_source_id: expect.any(String),
-        })
-        const rootId = String(identity?.root_id)
-        const dataSourceId = String(identity?.data_source_id)
-        db.prepare(
-          `UPDATE _nds_replica_local_changes
-           SET status = 'applied', unsupported_reason = NULL
-           WHERE change_id = ?`,
-        ).run(pendingChangeId)
-        db.prepare(
-          `UPDATE _nds_replica_cell_changes
-           SET status = 'applied', unsupported_reason = NULL
-           WHERE change_id = ?`,
-        ).run(pendingChangeId)
-        db.prepare(
-          `INSERT INTO _nds_query_scan_checkpoint (
-             root_id,
-             data_source_id,
-             query_contract_hash,
-             next_cursor,
-             complete,
-             capped_at_limit,
-             contract_changed,
-             high_watermark,
-             event_id,
-             updated_at
-           ) VALUES (?, ?, ?, NULL, 0, 0, 0, NULL, ?, ?)`,
-        ).run(
-          rootId,
-          dataSourceId,
-          hash('contract-incomplete-status'),
-          'event-incomplete-status',
-          fixedObservedAt,
-        )
+        dataDb
+          .prepare(
+            `UPDATE _nds_replica_local_changes
+             SET status = 'applied', unsupported_reason = NULL
+             WHERE change_id = ?`,
+          )
+          .run(pendingChangeId)
+        dataDb
+          .prepare(
+            `UPDATE _nds_replica_cell_changes
+             SET status = 'applied', unsupported_reason = NULL
+             WHERE change_id = ?`,
+          )
+          .run(pendingChangeId)
+      } finally {
+        dataDb.close()
+      }
+
+      // DD-B (ADR 0011): the control-plane tables that feed sync_status moved to
+      // state.sqlite, and the view reads only the materialized projection table.
+      // So these buckets must be exercised by mutating the control plane and
+      // re-projecting, not by writing the data file and reading it live.
+      const statePath = statePathForWorkspace(workspace)
+      const identity = openReadOnly(statePath, (stateDb) =>
+        row(stateDb, `SELECT root_id, data_source_id FROM _nds_data_source LIMIT 1`),
+      )
+      expect(identity).toMatchObject({
+        root_id: expect.any(String),
+        data_source_id: expect.any(String),
+      })
+      const rootId = decode({ schema: SyncRootId, value: String(identity?.root_id) })
+      const dataSourceId = String(identity?.data_source_id)
+
+      const reproject = (): void =>
+        projectReplicaFromSyncStore({ syncStorePath: statePath, replicaPath: sqlitePath, rootId })
+
+      const mutateState = (f: (db: DatabaseSync) => void): void => {
+        const stateDb = new DatabaseSync(statePath)
+        try {
+          f(stateDb)
+        } finally {
+          stateDb.close()
+        }
+        reproject()
+      }
+
+      mutateState((stateDb) =>
+        stateDb
+          .prepare(
+            `INSERT INTO _nds_query_scan_checkpoint (
+               root_id, data_source_id, query_contract_hash, next_cursor, complete,
+               capped_at_limit, contract_changed, high_watermark, event_id, updated_at
+             ) VALUES (?, ?, ?, NULL, 0, 0, 0, NULL, ?, ?)`,
+          )
+          .run(
+            rootId,
+            dataSourceId,
+            hash('contract-incomplete-status'),
+            'event-incomplete-status',
+            fixedObservedAt,
+          ),
+      )
+      openReadOnly(sqlitePath, (db) =>
         expect(syncStatus(db)).toMatchObject({
           state: 'incomplete',
           pending_local_changes: 0,
           incomplete_hydration: 1,
-        })
-        db.prepare(
-          `DELETE FROM _nds_query_scan_checkpoint
-           WHERE root_id = ? AND query_contract_hash = ?`,
-        ).run(rootId, hash('contract-incomplete-status'))
-        db.prepare(
-          `INSERT INTO _nds_outbox (
-             root_id,
-             command_id,
-             command_key,
-             intent_event_id,
-             surface,
-             command_tag,
-             state,
-             base_hash,
-             desired_hash,
-             preflight_json,
-             attempt_count,
-             lease_token,
-             settlement_event_id,
-             retry_after_millis,
-             retry_after_at,
-             last_event_id,
-             updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, 'blocked', NULL, ?, '{}', 0, NULL, NULL, NULL, NULL, ?, ?)`,
-        ).run(
-          rootId,
-          'cmd-degraded-status',
-          'cmd-key-degraded-status',
-          'intent-degraded-status',
-          `property:${testIds.pageId}:${testIds.propertyA}`,
-          'PatchPageProperties',
-          hash('desired-degraded-status'),
-          'event-degraded-status',
-          fixedObservedAt,
-        )
+        }),
+      )
+
+      mutateState((stateDb) => {
+        stateDb
+          .prepare(
+            `DELETE FROM _nds_query_scan_checkpoint
+             WHERE root_id = ? AND query_contract_hash = ?`,
+          )
+          .run(rootId, hash('contract-incomplete-status'))
+        stateDb
+          .prepare(
+            `INSERT INTO _nds_outbox (
+               root_id, command_id, command_key, intent_event_id, surface, command_tag, state,
+               base_hash, desired_hash, preflight_json, attempt_count, lease_token,
+               settlement_event_id, retry_after_millis, retry_after_at, last_event_id, updated_at
+             ) VALUES (?, ?, ?, ?, ?, ?, 'blocked', NULL, ?, '{}', 0, NULL, NULL, NULL, NULL, ?, ?)`,
+          )
+          .run(
+            rootId,
+            'cmd-degraded-status',
+            'cmd-key-degraded-status',
+            'intent-degraded-status',
+            `property:${testIds.pageId}:${testIds.propertyA}`,
+            'PatchPageProperties',
+            hash('desired-degraded-status'),
+            'event-degraded-status',
+            fixedObservedAt,
+          )
+      })
+      openReadOnly(sqlitePath, (db) =>
         expect(syncStatus(db)).toMatchObject({
           state: 'degraded',
           blocked_outbox: 1,
-        })
-        db.prepare(`UPDATE _nds_outbox SET state = 'settled' WHERE command_id = ?`).run(
-          'cmd-degraded-status',
-        )
-        db.prepare(
-          `INSERT INTO _nds_replica_conflicts (
-             conflict_id,
-             page_id,
-             property_id,
-             state,
-             base_hash,
-             local_hash,
-             remote_hash,
-             opened_event_id,
-             resolution_event_id,
-             updated_at
-           ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, NULL, ?)`,
-        ).run(
-          'conflict-status',
-          testIds.pageId,
-          testIds.propertyA,
-          hash('base-conflict-status'),
-          hash('local-conflict-status'),
-          hash('remote-conflict-status'),
-          'event-conflict-status',
-          fixedObservedAt,
-        )
-        expect(syncStatus(db)).toMatchObject({
+        }),
+      )
+
+      mutateState((stateDb) =>
+        stateDb
+          .prepare(`UPDATE _nds_outbox SET state = 'settled' WHERE command_id = ?`)
+          .run('cmd-degraded-status'),
+      )
+
+      // Conflicts are a data-file projection table read live by the view, so the
+      // bucket is exercised directly on the data file.
+      const conflictDb = new DatabaseSync(sqlitePath)
+      try {
+        conflictDb
+          .prepare(
+            `INSERT INTO _nds_replica_conflicts (
+               conflict_id, page_id, property_id, state, base_hash, local_hash, remote_hash,
+               opened_event_id, resolution_event_id, updated_at
+             ) VALUES (?, ?, ?, 'open', ?, ?, ?, ?, NULL, ?)`,
+          )
+          .run(
+            'conflict-status',
+            testIds.pageId,
+            testIds.propertyA,
+            hash('base-conflict-status'),
+            hash('local-conflict-status'),
+            hash('remote-conflict-status'),
+            'event-conflict-status',
+            fixedObservedAt,
+          )
+        expect(syncStatus(conflictDb)).toMatchObject({
           state: 'conflicted',
           conflicts_open: 1,
         })
       } finally {
-        db.close()
+        conflictDb.close()
       }
     },
     sqliteContractTimeoutMs,
@@ -1246,14 +1366,13 @@ describe('clean-break self-contained SQLite storage contract', () => {
   it(
     'doctor and sync fail closed on binding, internal-state, trigger, and view tampering before remote writes',
     async () => {
-      const workspace = await tempWorkspace()
-      const { sqlitePath } = await establishWorkspace(workspace)
-
-      // Workspace-rooted tamper cases resolve their data file through the v1
-      // manifest, so each tampers the manifest-resolved file in its own fresh
-      // workspace (an in-place tamper, not a root copy) and runs against that
-      // workspace. This exercises the real integrity path: a corrupt/missing
-      // binding makes discovery refuse before any remote write.
+      // Workspace-rooted tamper cases resolve their store through the v1
+      // manifest, so each tampers the manifest-resolved control-plane store in
+      // its own fresh workspace (an in-place tamper) and runs against that
+      // workspace. The binding lives in the control-plane store post-split (ADR
+      // 0011), so these tamper the state file. This exercises the real integrity
+      // path: a corrupt/missing binding makes discovery refuse before any
+      // remote write.
       const workspaceRootedTamperCases: ReadonlyArray<{
         readonly name: string
         readonly sql: (db: DatabaseSync) => void
@@ -1277,8 +1396,8 @@ describe('clean-break self-contained SQLite storage contract', () => {
       await Promise.all(
         workspaceRootedTamperCases.map(async (tamperCase) => {
           const caseWorkspace = await tempWorkspace()
-          const { sqlitePath: caseSqlitePath } = await establishWorkspace(caseWorkspace)
-          const db = new DatabaseSync(caseSqlitePath)
+          await establishWorkspace(caseWorkspace)
+          const db = new DatabaseSync(statePathForWorkspace(caseWorkspace))
           try {
             tamperCase.sql(db)
           } finally {
@@ -1289,13 +1408,21 @@ describe('clean-break self-contained SQLite storage contract', () => {
         }),
       )
 
+      // Tamper cases corrupt objects that now live in one of the two split
+      // files (ADR 0011): control-plane tables in the state store, public views
+      // and CDC triggers in the data file. Each runs in its own fresh workspace
+      // and tampers the manifest-resolved file in place; `--sqlite <data file>`
+      // resolves the sibling control-plane store, so each tampering trips the
+      // fail-closed validation before any remote write.
       const tamperCases: ReadonlyArray<{
         readonly name: string
+        readonly tamperPath: (paths: { sqlitePath: string; statePath: string }) => string
         readonly sql: (db: DatabaseSync) => void
         readonly argv: (path: string) => ReadonlyArray<string>
       }> = [
         {
-          name: 'dropped private state',
+          name: 'dropped control-plane state',
+          tamperPath: ({ statePath }) => statePath,
           sql: (db) => {
             const privateTable = row(
               db,
@@ -1310,6 +1437,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
         },
         {
           name: 'dropped pages trigger',
+          tamperPath: ({ sqlitePath: dataPath }) => dataPath,
           sql: (db) => {
             const trigger = row(
               db,
@@ -1324,6 +1452,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
         },
         {
           name: 'dropped public pages view',
+          tamperPath: ({ sqlitePath: dataPath }) => dataPath,
           sql: (db) => db.prepare(`DROP VIEW pages`).run(),
           argv: (path) => ['doctor', '--sqlite', path],
         },
@@ -1331,9 +1460,14 @@ describe('clean-break self-contained SQLite storage contract', () => {
 
       await Promise.all(
         tamperCases.map(async (tamperCase) => {
-          const copyPath = join(workspace, `${tamperCase.name.replaceAll(' ', '-')}.sqlite`)
-          await copyFile(sqlitePath, copyPath)
-          const db = new DatabaseSync(copyPath)
+          const caseWorkspace = await tempWorkspace()
+          const { sqlitePath: caseSqlitePath } = await establishWorkspace(caseWorkspace)
+          const db = new DatabaseSync(
+            tamperCase.tamperPath({
+              sqlitePath: caseSqlitePath,
+              statePath: statePathForWorkspace(caseWorkspace),
+            }),
+          )
           try {
             tamperCase.sql(db)
           } finally {
@@ -1341,7 +1475,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
           }
 
           const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
-          await expectCommandFailsClosed({ argv: tamperCase.argv(copyPath), gateway })
+          await expectCommandFailsClosed({ argv: tamperCase.argv(caseSqlitePath), gateway })
         }),
       )
     },
@@ -1349,32 +1483,34 @@ describe('clean-break self-contained SQLite storage contract', () => {
   )
 
   it(
-    'SQLite backup copies open without sidecars and report binding plus moved-workspace status',
+    'a data-file copy stays standalone-queryable and reports moved-workspace status, but is not operable without the control plane',
     async () => {
       const workspace = await tempWorkspace()
       const movedWorkspace = await tempWorkspace()
       const { sqlitePath } = await establishWorkspace(workspace)
+      // A backup of just the public data file: the control plane (ADR 0011)
+      // lives in `.notion/v1/state.sqlite` and is NOT copied along.
       const copyPath = join(movedWorkspace, `${testIds.databaseId}.sqlite`)
       await copyFile(sqlitePath, copyPath)
 
       openReadOnly(copyPath, (db) => {
+        // The data file is standalone-queryable with no ATTACH: its public views
+        // (including move-detection via the materialized workspace_root + the
+        // pragma_database_list self-join) work without the control plane.
         assertStorageTaxonomy(db)
-        expect(
-          row(db, `SELECT database_id, data_source_id FROM _nds_workspace_binding`),
-        ).toMatchObject({
-          database_id: testIds.databaseId,
-          data_source_id: testIds.dataSourceId,
-        })
         expect(row(db, `SELECT workspace_status FROM sync_status`)).toMatchObject({
           workspace_status: 'moved',
         })
+        // The control-plane binding is not in the data file (DD-A).
+        expect(() => row(db, `SELECT database_id FROM _nds_workspace_binding`)).toThrow(
+          /no such table/i,
+        )
       })
 
-      await expect(
-        runWorkspaceCommand({ argv: ['status', '--sqlite', copyPath] }),
-      ).resolves.toMatchObject({
-        result: { command: 'status', result: { binding: expect.any(Object) } },
-      })
+      // The data file alone is not operable: a workspace command cannot resolve
+      // the control plane from the moved location and fails closed.
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      await expectCommandFailsClosed({ argv: ['status', '--sqlite', copyPath], gateway })
       expect(await exists(sidecarStorePath(movedWorkspace))).toBe(false)
       expect(await exists(sidecarConfigPath(movedWorkspace))).toBe(false)
     },
@@ -1430,6 +1566,243 @@ describe('clean-break self-contained SQLite storage contract', () => {
         sqlitePath: unknownSqlitePath,
         expectedGuard: 'UnknownWorkspaceNamespace',
       })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'isolates the hidden control plane: the public data file exposes only the product surface + projection cache, the control plane lives in state.sqlite, and both are standalone-queryable [NDS-L2-hidden-control-plane-isolation]',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath, statePath } = await establishWorkspace(workspace)
+
+      // The public data file: product views + `_nds_replica_*` cache, and NO
+      // control-plane tables (DD-A, ADR 0011). Standalone-queryable (no ATTACH).
+      openReadOnly(sqlitePath, (db) => {
+        const names = sqliteMasterObjects(db).map((object) => String(object.name))
+        for (const view of [
+          'pages',
+          'changes',
+          'conflicts',
+          'sync_status',
+          'schema',
+          'schema_properties',
+        ]) {
+          expect(names).toContain(view)
+        }
+        expect(names.some((name) => name.startsWith('debug_'))).toBe(true)
+        expect(names.some((name) => name.startsWith('_nds_replica_'))).toBe(true)
+        for (const forbidden of [
+          '_nds_outbox',
+          '_nds_guard_block',
+          '_nds_sync_event',
+          '_nds_sync_root',
+          '_nds_capability',
+          '_nds_tombstone',
+          '_nds_query_scan_checkpoint',
+          '_nds_page_property_checkpoint',
+          '_nds_workspace_binding',
+        ]) {
+          expect(names).not.toContain(forbidden)
+        }
+        // Reading the public surface needs no control-plane attach.
+        expect(row(db, `SELECT count(*) AS count FROM pages`)).toMatchObject({
+          count: expect.any(Number),
+        })
+        expect(row(db, `SELECT workspace_status FROM sync_status`)).toMatchObject({
+          workspace_status: 'bound',
+        })
+      })
+
+      // The control-plane store: control-plane tables present, NO public views.
+      // Standalone-queryable (no ATTACH).
+      openReadOnly(statePath, (db) => {
+        const names = sqliteMasterObjects(db).map((object) => String(object.name))
+        for (const table of [
+          '_nds_sync_root',
+          '_nds_sync_event',
+          '_nds_workspace_binding',
+          '_nds_outbox',
+          '_nds_guard_block',
+          '_nds_tombstone',
+          '_nds_capability',
+        ]) {
+          expect(names).toContain(table)
+        }
+        for (const publicView of ['pages', 'changes', 'conflicts', 'sync_status']) {
+          expect(names).not.toContain(publicView)
+        }
+        expect(row(db, `SELECT count(*) AS count FROM _nds_sync_event`)).toMatchObject({
+          count: expect.any(Number),
+        })
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'crosses the file boundary: a CDC edit in the data file drains into the state event log, settles, and survives deleting + re-projecting the data file [NDS-L2-hidden-control-plane-isolation]',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath, statePath } = await establishWorkspace(workspace)
+
+      // A user edit lands in the data file's transient CDC inbox.
+      updatePublicRowsTitle({ sqlitePath, title: 'Edited across the boundary' })
+      expect(readPendingReplicaChanges(sqlitePath)).toHaveLength(1)
+
+      const eventsBefore = openReadOnly(statePath, (db) =>
+        Number(row(db, `SELECT count(*) AS count FROM _nds_sync_event`)?.count),
+      )
+
+      // sync drains the data-file CDC, appends the intent to the state event log,
+      // executes it against fake Notion, settles, and re-projects.
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      await runWorkspaceCommand({
+        argv: [
+          'sync',
+          '--watch',
+          '--sqlite',
+          sqlitePath,
+          '--state',
+          join(workspace, 'watch.json'),
+          '--max-cycles',
+          '1',
+          '--no-materialize-bodies',
+        ],
+        gateway,
+      })
+
+      // The drain crossed the boundary: a remote write happened, the state event
+      // log grew, and the data-file CDC inbox is cleared (no pending rows).
+      expect(gateway.ledger.successfulPatchPageProperties).toHaveLength(1)
+      const eventsAfter = openReadOnly(statePath, (db) =>
+        Number(row(db, `SELECT count(*) AS count FROM _nds_sync_event`)?.count),
+      )
+      expect(eventsAfter).toBeGreaterThan(eventsBefore)
+      expect(
+        readPendingReplicaChanges(sqlitePath).filter((change) => change.status === 'pending'),
+      ).toHaveLength(0)
+
+      // The data file is a rebuildable cache: deleting it and re-projecting from
+      // the control plane restores the public surface (correctness lives in the
+      // event log, not the data file). ADR 0011.
+      const projectedPagesBefore = openReadOnly(sqlitePath, (db) =>
+        Number(row(db, `SELECT count(*) AS count FROM pages`)?.count),
+      )
+      const rootId = openReadOnly(statePath, (db) =>
+        decode({
+          schema: SyncRootId,
+          value: String(row(db, `SELECT root_id FROM _nds_data_source LIMIT 1`)?.root_id),
+        }),
+      )
+      await rm(sqlitePath, { force: true })
+      expect(await exists(sqlitePath)).toBe(false)
+      projectReplicaFromSyncStore({ syncStorePath: statePath, replicaPath: sqlitePath, rootId })
+
+      openReadOnly(sqlitePath, (db) => {
+        // Correctness lived in the event log, not the deleted data file: the
+        // rebuilt projection has the full public surface and the same pages.
+        assertStorageTaxonomy(db)
+        expect(Number(row(db, `SELECT count(*) AS count FROM pages`)?.count)).toBe(
+          projectedPagesBefore,
+        )
+        // The settled edit is no longer pending after the rebuild (its intent was
+        // appended to the event log and executed before the data file was deleted).
+        expect(
+          readPendingReplicaChanges(sqlitePath).filter((change) => change.status === 'pending'),
+        ).toHaveLength(0)
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'projection is pure: re-projecting the data file before settling neither consumes nor duplicates the un-settled CDC inbox [NDS-L2-hidden-control-plane-isolation]',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath, statePath } = await establishWorkspace(workspace)
+
+      updatePublicRowsTitle({ sqlitePath, title: 'Idempotent drain' })
+      const pending = readPendingReplicaChanges(sqlitePath)
+      expect(pending).toHaveLength(1)
+
+      const rootId = openReadOnly(statePath, (db) =>
+        decode({
+          schema: SyncRootId,
+          value: String(row(db, `SELECT root_id FROM _nds_data_source LIMIT 1`)?.root_id),
+        }),
+      )
+
+      // Re-projecting the data file (a pure read-model rebuild — the projector
+      // opens the control-plane store read-only) must NOT consume or duplicate
+      // the un-settled CDC inbox: the same edit stays pending, and re-reading it
+      // yields the same single change id (no duplication). ADR 0011.
+      projectReplicaFromSyncStore({ syncStorePath: statePath, replicaPath: sqlitePath, rootId })
+      projectReplicaFromSyncStore({ syncStorePath: statePath, replicaPath: sqlitePath, rootId })
+
+      const pendingAgain = readPendingReplicaChanges(sqlitePath)
+      expect(pendingAgain).toHaveLength(1)
+      expect(pendingAgain[0]?.changeId).toBe(pending[0]?.changeId)
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'does not double-apply across the boundary: a second sync after the CDC edit settled produces no further remote write [NDS-L2-hidden-control-plane-isolation]',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+
+      updatePublicRowsTitle({ sqlitePath, title: 'Applied once across the boundary' })
+      expect(readPendingReplicaChanges(sqlitePath)).toHaveLength(1)
+
+      // First sync: drains the data-file CDC, appends the intent to the state
+      // event log (idempotency-keyed by `replica:<change_id>`), executes it, and
+      // settles — exactly one remote write, CDC inbox cleared.
+      const firstGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      await runWorkspaceCommand({
+        argv: [
+          'sync',
+          '--watch',
+          '--sqlite',
+          sqlitePath,
+          '--state',
+          join(workspace, 'watch.json'),
+          '--max-cycles',
+          '1',
+          '--no-materialize-bodies',
+        ],
+        gateway: firstGateway,
+      })
+      expect(firstGateway.ledger.successfulPatchPageProperties).toHaveLength(1)
+      expect(
+        readPendingReplicaChanges(sqlitePath).filter((change) => change.status === 'pending'),
+      ).toHaveLength(0)
+
+      // Second sync against a FRESH gateway: the settled CDC must not re-drain.
+      // Zero remote writes is the direct proof that crossing the file boundary
+      // does not double-apply the user's edit. ADR 0011.
+      const secondGateway = makeFakeGatewayHarness({
+        propertyPages: [propertyPage('Initial task')],
+      })
+      await runWorkspaceCommand({
+        argv: [
+          'sync',
+          '--watch',
+          '--sqlite',
+          sqlitePath,
+          '--state',
+          join(workspace, 'watch.json'),
+          '--max-cycles',
+          '1',
+          '--no-materialize-bodies',
+        ],
+        gateway: secondGateway,
+      })
+      expect(secondGateway.ledger.successfulPatchPageProperties).toHaveLength(0)
+      expect(
+        readPendingReplicaChanges(sqlitePath).filter((change) => change.status === 'pending'),
+      ).toHaveLength(0)
     },
     sqliteContractTimeoutMs,
   )

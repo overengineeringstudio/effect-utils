@@ -88,11 +88,13 @@ import {
   type NotionGatewayClient,
 } from '../gateway/notion.ts'
 import {
+  dataDirectoryName,
   dataFilePath,
   dataFileRelativePath,
   hiddenStateDirectoryName,
   loadWorkspaceManifest,
   pagesDirRelativePath,
+  stateSqlitePath,
   writeWorkspaceManifestSync,
   type WorkspaceManifestDataSourceV1,
   type WorkspaceManifestV1,
@@ -247,7 +249,18 @@ export type CliCommand =
  */
 export type CliContext = {
   readonly store: NotionSyncStore
+  /**
+   * Path to the control-plane sync store. For a tracked workspace this is the
+   * hidden `.notion/v1/state.sqlite`; for a standalone `--sqlite <file>` it is
+   * that single file (which then also holds the public projection — unified).
+   */
   readonly storePath?: string
+  /**
+   * Path to the public projection / CDC data file (`data/v1/<source>.sqlite`).
+   * Equal to `storePath` in the standalone `--sqlite` case (unified projection),
+   * distinct from it for a tracked workspace (control-plane file split, ADR 0011).
+   */
+  readonly replicaPath?: string
   readonly rootId: SyncRootIdType
   readonly dataSourceId: typeof DataSourceId.Type
   readonly workspaceRoot: typeof AbsolutePath.Type
@@ -302,6 +315,14 @@ const defaultSqlitePath = ({
     value: dataFilePath({ workspaceRoot, name: databaseId }),
   })
 
+/**
+ * Resolves the public projection / CDC data file. For a tracked workspace this
+ * is the data file (distinct from the control-plane store); for a standalone
+ * `--sqlite` file it falls back to the store path (unified). ADR 0011.
+ */
+const replicaPathForContext = (context: CliContext): string | undefined =>
+  context.replicaPath ?? context.storePath
+
 const projectReplicaIfWritable = ({
   context,
   dryRun,
@@ -310,9 +331,11 @@ const projectReplicaIfWritable = ({
   readonly dryRun?: boolean
 }): void => {
   if (dryRun === true || context.storePath === undefined || context.storePath === ':memory:') return
+  const replicaPath = replicaPathForContext(context)
+  if (replicaPath === undefined || replicaPath === ':memory:') return
   projectReplicaFromSyncStore({
     syncStorePath: context.storePath,
-    replicaPath: context.storePath,
+    replicaPath,
     rootId: context.rootId,
   })
 }
@@ -324,15 +347,16 @@ const statusWithReplicaPending = ({
   readonly context: CliContext
   readonly status: OneShotSyncStatus
 }): OneShotSyncStatus => {
+  const replicaPath = replicaPathForContext(context)
   if (
-    context.storePath === undefined ||
-    context.storePath === ':memory:' ||
-    existsSync(context.storePath) === false
+    replicaPath === undefined ||
+    replicaPath === ':memory:' ||
+    existsSync(replicaPath) === false
   ) {
     return status
   }
 
-  const db = new DatabaseSync(context.storePath, { readOnly: true })
+  const db = new DatabaseSync(replicaPath, { readOnly: true })
   try {
     const row = db
       .prepare(
@@ -867,7 +891,9 @@ const runCliCommandEffect = ({
       )
     case 'push':
       return Effect.sync(() => {
-        const replicaPath = context.storePath
+        // CDC + planning intents target the public data file; the event log is
+        // appended through `context.store` (control-plane state.sqlite). ADR 0011.
+        const replicaPath = replicaPathForContext(context)
         if (replicaPath === undefined)
           return { changes: [] as const, intents: [] as const, replicaPath: ':memory:' }
         if (existsSync(replicaPath) === false)
@@ -991,7 +1017,9 @@ const runCliCommandEffect = ({
         }
       }
       return Effect.sync(() => {
-        const replicaPath = context.storePath
+        // CDC + planning intents target the public data file; the event log is
+        // appended through `context.store` (control-plane state.sqlite). ADR 0011.
+        const replicaPath = replicaPathForContext(context)
         if (replicaPath === undefined)
           return { changes: [] as const, intents: [] as const, replicaPath: ':memory:' }
         if (existsSync(replicaPath) === false)
@@ -1067,11 +1095,13 @@ const runCliCommandEffect = ({
         Effect.flatMap(() =>
           Effect.try({
             try: () => {
-              if (context.storePath === undefined || context.storePath === ':memory:') {
+              // Export reads the public projection surface from the data file.
+              const replicaPath = replicaPathForContext(context)
+              if (replicaPath === undefined || replicaPath === ':memory:') {
                 throw new ReplicaExportError('export requires a file-backed SQLite replica')
               }
               return exportReplica({
-                replicaPath: context.storePath,
+                replicaPath,
                 outputPath: command.outputPath,
                 format: command.format,
                 ...(command.requireClean === undefined
@@ -1732,7 +1762,14 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
 }
 
 type DiscoveredSelfContainedStore = {
+  /** Control-plane store file (`.notion/v1/state.sqlite` for a tracked workspace). */
   readonly storePath: typeof AbsolutePath.Type
+  /**
+   * Public projection / CDC data file (`data/v1/<source>.sqlite`). Distinct from
+   * `storePath` for a tracked workspace; equal to it for a standalone `--sqlite`
+   * file (unified projection). ADR 0011.
+   */
+  readonly dataFilePath: typeof AbsolutePath.Type
   readonly rootId: SyncRootIdType
   readonly dataSourceId: typeof DataSourceId.Type
   readonly workspaceRoot: typeof AbsolutePath.Type
@@ -1792,53 +1829,89 @@ const readSelfContainedBinding = (storePath: string): WorkspaceBindingRow | unde
   }
 }
 
-const validateSelfContainedSqlite = (storePath: string): void => {
-  const db = new DatabaseSync(storePath, { readOnly: true })
-  try {
-    const requiredObjects = [
-      ['table', '_nds_sync_root'],
-      ['table', '_nds_sync_event'],
-      ['table', '_nds_workspace_binding'],
-      ['table', '_nds_projection_metadata'],
-      ['table', '_nds_api_contract'],
-      ['table', '_nds_body_pointer'],
-      ['table', '_nds_capability'],
-      ['table', '_nds_conflict'],
-      ['table', '_nds_data_source'],
-      ['table', '_nds_guard_block'],
-      ['table', '_nds_outbox'],
-      ['table', '_nds_property_shadow'],
-      ['table', '_nds_query_absence'],
-      ['table', '_nds_query_scan_checkpoint'],
-      ['table', '_nds_row'],
-      ['table', '_nds_schema_property'],
-      ['table', '_nds_tombstone'],
-      ['view', 'pages'],
-      ['view', 'schema'],
-      ['view', 'schema_properties'],
-      ['view', 'changes'],
-      ['view', 'conflicts'],
-      ['view', 'sync_status'],
-      ['trigger', '_nds_pages_update'],
-      ['trigger', '_nds_pages_insert'],
-      ['trigger', '_nds_pages_delete'],
-    ] as const
-    for (const [type, name] of requiredObjects) {
-      const found = db
-        .prepare(`SELECT name FROM sqlite_master WHERE type = ? AND name = ?`)
-        .get(type, name)
-      if (found === undefined) {
-        throw new CliArgumentError({
-          message: `SQLite file ${storePath} is missing required ${type} ${name}; refusing to open`,
-        })
+/**
+ * Fail closed on an established but corrupt store. The control plane lives in
+ * `storePath` (`.notion/v1/state.sqlite` for a tracked workspace) and the public
+ * projection in `dataFilePath` (`data/v1/<source>.sqlite`). For a standalone
+ * `--sqlite` file the two paths coincide and a single file is checked, exactly
+ * as before the control-plane split. ADR 0011.
+ */
+const validateSelfContainedSqlite = ({
+  storePath,
+  dataFilePath,
+}: {
+  readonly storePath: string
+  readonly dataFilePath: string
+}): void => {
+  // Control-plane tables (and the CDC triggers) live in the store file.
+  const controlPlaneObjects = [
+    ['table', '_nds_sync_root'],
+    ['table', '_nds_sync_event'],
+    ['table', '_nds_workspace_binding'],
+    ['table', '_nds_projection_metadata'],
+    ['table', '_nds_api_contract'],
+    ['table', '_nds_body_pointer'],
+    ['table', '_nds_capability'],
+    ['table', '_nds_conflict'],
+    ['table', '_nds_data_source'],
+    ['table', '_nds_guard_block'],
+    ['table', '_nds_outbox'],
+    ['table', '_nds_property_shadow'],
+    ['table', '_nds_query_absence'],
+    ['table', '_nds_query_scan_checkpoint'],
+    ['table', '_nds_row'],
+    ['table', '_nds_schema_property'],
+    ['table', '_nds_tombstone'],
+  ] as const
+  // Public views and the CDC write-intent triggers live in the data file.
+  const dataFileObjects = [
+    ['view', 'pages'],
+    ['view', 'schema'],
+    ['view', 'schema_properties'],
+    ['view', 'changes'],
+    ['view', 'conflicts'],
+    ['view', 'sync_status'],
+    ['trigger', '_nds_pages_update'],
+    ['trigger', '_nds_pages_insert'],
+    ['trigger', '_nds_pages_delete'],
+  ] as const
+  const assertObjects = ({
+    path,
+    objects,
+  }: {
+    readonly path: string
+    readonly objects: ReadonlyArray<readonly [string, string]>
+  }): void => {
+    const db = new DatabaseSync(path, { readOnly: true })
+    try {
+      for (const [type, name] of objects) {
+        const found = db
+          .prepare(`SELECT name FROM sqlite_master WHERE type = ? AND name = ?`)
+          .get(type, name)
+        if (found === undefined) {
+          throw new CliArgumentError({
+            message: `SQLite file ${path} is missing required ${type} ${name}; refusing to open`,
+          })
+        }
       }
+    } finally {
+      db.close()
     }
+  }
+  assertObjects({ path: storePath, objects: controlPlaneObjects })
+  assertObjects({ path: dataFilePath, objects: dataFileObjects })
+  // The CDC trigger floor is on the data file (where write-intent triggers live).
+  const db = new DatabaseSync(dataFilePath, { readOnly: true })
+  try {
     const triggerCount = db
       .prepare(`SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger'`)
       .get() as { readonly count?: unknown } | undefined
-    if (typeof triggerCount?.count !== 'number' || triggerCount.count < 35) {
+    // Floor calibrated to the data file's freshly-projected CDC/write-intent
+    // trigger count (34 post control-plane split, ADR 0011): dropping any one
+    // trips this fail-closed guard.
+    if (typeof triggerCount?.count !== 'number' || triggerCount.count < 34) {
       throw new CliArgumentError({
-        message: `SQLite file ${storePath} is missing required datasource-sync triggers; refusing to open`,
+        message: `SQLite file ${dataFilePath} is missing required datasource-sync triggers; refusing to open`,
       })
     }
   } finally {
@@ -1933,11 +2006,15 @@ const discoverSelfContainedStore = (
   }
 
   const source = sources[0]!
-  const storePath = join(workspaceRoot, source.data_file)
+  const dataFilePath = join(workspaceRoot, source.data_file)
+  // The control plane lives in the hidden `.notion/v1/state.sqlite`; the public
+  // data file holds only the projection. The binding moved with the control
+  // plane, so integrity is verified against the state store. ADR 0011.
+  const storePath = stateSqlitePath(workspaceRoot)
   const binding = readSelfContainedBinding(storePath)
   if (binding === undefined) {
     throw new CliArgumentError({
-      message: `Workspace data file ${storePath} is missing or has corrupt datasource-sync internals; pass --sqlite <path> after repair`,
+      message: `Workspace control-plane store ${storePath} is missing or has corrupt datasource-sync internals; pass --sqlite <path> after repair`,
     })
   }
   if (binding.workspaceRoot !== workspaceRoot) {
@@ -1947,15 +2024,65 @@ const discoverSelfContainedStore = (
   }
   if (binding.dataSourceId !== source.data_source_id) {
     throw new CliArgumentError({
-      message: `Workspace data file ${storePath} is bound to ${binding.dataSourceId} but the manifest declares ${source.data_source_id}; refusing to open`,
+      message: `Workspace control-plane store ${storePath} is bound to ${binding.dataSourceId} but the manifest declares ${source.data_source_id}; refusing to open`,
     })
   }
   return {
     storePath: decode({ schema: AbsolutePath, value: storePath }),
+    dataFilePath: decode({ schema: AbsolutePath, value: dataFilePath }),
     rootId: binding.rootId,
     dataSourceId: binding.dataSourceId,
     workspaceRoot,
   }
+}
+
+/**
+ * Resolves an explicit `--sqlite <path>` to a control-plane store and a public
+ * data file (ADR 0011). Two cases:
+ *
+ * - The file is genuinely self-contained (carries its own control plane and
+ *   binding): unified — both paths are the file, exactly as before the split.
+ * - The file is a tracked workspace's data file (no embedded control plane):
+ *   the control plane lives in the sibling `.notion/v1/state.sqlite`. The
+ *   workspace root is derived from the fixed `<root>/data/v1/<name>.sqlite`
+ *   layout and confirmed against the manifest's `data_file` before routing
+ *   through `discoverSelfContainedStore`, which restores the namespace
+ *   fail-closed path.
+ */
+const resolveExplicitSqliteStore = ({
+  explicitSqlitePath,
+  fallbackWorkspaceRoot,
+}: {
+  readonly explicitSqlitePath: string
+  readonly fallbackWorkspaceRoot?: typeof AbsolutePath.Type
+}): DiscoveredSelfContainedStore => {
+  const binding = readSelfContainedBinding(explicitSqlitePath)
+  if (binding !== undefined) {
+    // Self-contained file: control plane + projection live together (unified).
+    const path = decode({ schema: AbsolutePath, value: explicitSqlitePath })
+    return {
+      storePath: path,
+      dataFilePath: path,
+      rootId: binding.rootId,
+      dataSourceId: binding.dataSourceId,
+      workspaceRoot:
+        fallbackWorkspaceRoot ?? decode({ schema: AbsolutePath, value: binding.workspaceRoot }),
+    }
+  }
+  // No embedded control plane: the file may be a split workspace's data file at
+  // `<root>/data/v1/<name>.sqlite`. Derive the workspace root by stripping that
+  // fixed suffix. When the file sits in the versioned data directory, route
+  // through `discoverSelfContainedStore`, which fails closed on a mixed/unknown
+  // namespace (WorkspaceNamespaceError) and confirms the manifest tracks exactly
+  // this data file before resolving the sibling control-plane store.
+  const candidateRoot = dirname(dirname(dirname(explicitSqlitePath)))
+  const inVersionedDataDir = join(candidateRoot, dataDirectoryName) === dirname(explicitSqlitePath)
+  if (inVersionedDataDir === true) {
+    return discoverSelfContainedStore(decode({ schema: AbsolutePath, value: candidateRoot }))
+  }
+  throw new CliArgumentError({
+    message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
+  })
 }
 
 const sqlitePathFromFlags = (flags: Map<string, string | true>): string | undefined => {
@@ -2026,9 +2153,14 @@ export const parseCliContext = ({
           if (commandDryRun !== true) {
             requireCompatibleWorkspaceNamespace(command.workspaceRoot)
           }
-          const storePath =
-            explicitSqlitePath ??
-            defaultSqlitePath({ workspaceRoot: command.workspaceRoot, databaseId })
+          // `sync --from-notion` always establishes inside a workspace (--sqlite
+          // is rejected above), so the control plane lives in the hidden
+          // state.sqlite and the public projection in the data file. ADR 0011.
+          const dataFile = defaultSqlitePath({ workspaceRoot: command.workspaceRoot, databaseId })
+          const storePath = decode({
+            schema: AbsolutePath,
+            value: stateSqlitePath(command.workspaceRoot),
+          })
           const existingBinding =
             commandDryRun === true || existsSync(storePath) === false
               ? undefined
@@ -2038,7 +2170,7 @@ export const parseCliContext = ({
             existingBinding.dataSourceId !== command.dataSourceId
           )
             throw new CliArgumentError({
-              message: `SQLite file is already bound to data source ${existingBinding.dataSourceId}; refusing to establish ${command.dataSourceId}`,
+              message: `Control-plane store is already bound to data source ${existingBinding.dataSourceId}; refusing to establish ${command.dataSourceId}`,
             })
           if (commandDryRun !== true) {
             establishManifestSource = {
@@ -2050,6 +2182,7 @@ export const parseCliContext = ({
           }
           return {
             storePath: commandDryRun === true ? ':memory:' : storePath,
+            dataFilePath: commandDryRun === true ? ':memory:' : dataFile,
             rootId: rootIdForDataSource(command.dataSourceId),
             dataSourceId: command.dataSourceId,
             workspaceRoot: command.workspaceRoot,
@@ -2088,11 +2221,17 @@ export const parseCliContext = ({
               command.fromNotion.remoteRef._tag === 'database'
                 ? command.fromNotion.remoteRef.databaseId
                 : (command.fromNotion.remoteRef.sourceDatabaseId ?? command.fromNotion.dataSourceId)
+            // A standalone `--sqlite` file holds both control plane and projection
+            // (unified). A workspace-rooted export splits them. ADR 0011.
             const storePath =
+              explicitSqlitePath ??
+              decode({ schema: AbsolutePath, value: stateSqlitePath(resolvedWorkspaceRoot) })
+            const dataFile =
               explicitSqlitePath ??
               defaultSqlitePath({ workspaceRoot: resolvedWorkspaceRoot, databaseId })
             return {
               storePath,
+              dataFilePath: dataFile,
               rootId: rootIdForDataSource(command.fromNotion.dataSourceId),
               dataSourceId: command.fromNotion.dataSourceId,
               workspaceRoot: resolvedWorkspaceRoot,
@@ -2100,62 +2239,26 @@ export const parseCliContext = ({
           })()
         : (command._tag === 'sync' || command._tag === 'status') &&
             command.workspaceRoot !== undefined
-          ? (() => {
-              return explicitSqlitePath === undefined
-                ? discoverSelfContainedStore(command.workspaceRoot)
-                : (() => {
-                    const binding = readSelfContainedBinding(explicitSqlitePath)
-                    if (binding === undefined) {
-                      throw new CliArgumentError({
-                        message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
-                      })
-                    }
-                    return {
-                      storePath: decode({ schema: AbsolutePath, value: explicitSqlitePath }),
-                      rootId: binding.rootId,
-                      dataSourceId: binding.dataSourceId,
-                      workspaceRoot: command.workspaceRoot,
-                    }
-                  })()
-            })()
+          ? explicitSqlitePath === undefined
+            ? discoverSelfContainedStore(command.workspaceRoot)
+            : resolveExplicitSqliteStore({
+                explicitSqlitePath,
+                fallbackWorkspaceRoot: command.workspaceRoot,
+              })
           : command._tag === 'export' && command.workspaceRoot !== undefined
-            ? (() => {
-                return explicitSqlitePath === undefined
-                  ? discoverSelfContainedStore(command.workspaceRoot)
-                  : (() => {
-                      const binding = readSelfContainedBinding(explicitSqlitePath)
-                      if (binding === undefined) {
-                        throw new CliArgumentError({
-                          message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
-                        })
-                      }
-                      return {
-                        storePath: decode({ schema: AbsolutePath, value: explicitSqlitePath }),
-                        rootId: binding.rootId,
-                        dataSourceId: binding.dataSourceId,
-                        workspaceRoot: command.workspaceRoot,
-                      }
-                    })()
-              })()
+            ? explicitSqlitePath === undefined
+              ? discoverSelfContainedStore(command.workspaceRoot)
+              : resolveExplicitSqliteStore({
+                  explicitSqlitePath,
+                  fallbackWorkspaceRoot: command.workspaceRoot,
+                })
             : explicitSqlitePath !== undefined && flags.has('root-id') === false
-              ? (() => {
-                  const binding = readSelfContainedBinding(explicitSqlitePath)
-                  if (binding === undefined) {
-                    throw new CliArgumentError({
-                      message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
-                    })
-                  }
-                  return {
-                    storePath: explicitSqlitePath,
-                    rootId: binding.rootId,
-                    dataSourceId: binding.dataSourceId,
-                    workspaceRoot: decode({ schema: AbsolutePath, value: binding.workspaceRoot }),
-                  }
-                })()
+              ? resolveExplicitSqliteStore({ explicitSqlitePath })
               : (() => {
                   const storePath = explicitSqlitePath ?? requiredFlag({ flags, name: 'sqlite' })
                   return {
                     storePath,
+                    dataFilePath: storePath,
                     rootId: decode({
                       schema: SyncRootId,
                       value: requiredFlag({ flags, name: 'root-id' }),
@@ -2202,8 +2305,12 @@ export const parseCliContext = ({
   }
   if (discovered.storePath !== ':memory:') {
     mkdirSync(dirname(discovered.storePath), { recursive: true })
+    mkdirSync(dirname(discovered.dataFilePath), { recursive: true })
     if (command._tag !== 'sync-from-notion' && existsSync(discovered.storePath) === true) {
-      validateSelfContainedSqlite(discovered.storePath)
+      validateSelfContainedSqlite({
+        storePath: discovered.storePath,
+        dataFilePath: discovered.dataFilePath,
+      })
     }
   }
   const store = openNotionSyncStore({ path: discovered.storePath })
@@ -2237,6 +2344,7 @@ export const parseCliContext = ({
   return {
     store,
     storePath: discovered.storePath,
+    replicaPath: discovered.dataFilePath,
     rootId: discovered.rootId,
     dataSourceId: discovered.dataSourceId,
     workspaceRoot: discovered.workspaceRoot,
