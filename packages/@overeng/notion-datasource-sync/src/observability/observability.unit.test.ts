@@ -61,6 +61,7 @@ describe('notion datasource sync observability', () => {
         "syncPull": "notion.datasource.sync.pull",
         "syncPush": "notion.datasource.sync.push",
         "syncQueryAbsence": "notion.datasource.sync.query-absence",
+        "webhookIntake": "notion.datasource.webhook.intake",
       }
     `)
   })

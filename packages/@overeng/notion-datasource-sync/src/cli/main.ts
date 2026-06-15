@@ -908,19 +908,21 @@ const setupWatchWebhook = ({
     })
   }
 
-  return Effect.tryPromise({
-    try: async () => {
-      const wakeNotifier = makeWatchDaemonWakeNotifier()
-      const receiver = await startNotionWebhookReceiver({
-        rootId: context.rootId,
-        store: context.store,
-        ...(context.webhookReceiverHostname === undefined
-          ? {}
-          : { hostname: context.webhookReceiverHostname }),
-        port: context.webhookReceiverPort ?? defaultWebhookReceiverPort,
-        path: context.webhookReceiverPath ?? makeDefaultWebhookReceiverPath(),
-        onSignalEnqueued: () => wakeNotifier.wake(),
-      })
+  return Effect.flatMap(Effect.runtime<never>(), (effectRuntime) =>
+    Effect.tryPromise({
+      try: async () => {
+        const wakeNotifier = makeWatchDaemonWakeNotifier()
+        const receiver = await startNotionWebhookReceiver({
+          rootId: context.rootId,
+          store: context.store,
+          ...(context.webhookReceiverHostname === undefined
+            ? {}
+            : { hostname: context.webhookReceiverHostname }),
+          port: context.webhookReceiverPort ?? defaultWebhookReceiverPort,
+          path: context.webhookReceiverPath ?? makeDefaultWebhookReceiverPath(),
+          onSignalEnqueued: () => wakeNotifier.wake(),
+          effectRuntime,
+        })
       context.webhookReceiverStarted?.(receiver)
 
       if (provider === 'manual') {
@@ -1002,7 +1004,8 @@ const setupWatchWebhook = ({
         : new CliArgumentError({
             message: 'Unable to initialize sync --watch webhook status',
           }),
-  })
+  }),
+  )
 }
 
 const envelope = <TResult>({

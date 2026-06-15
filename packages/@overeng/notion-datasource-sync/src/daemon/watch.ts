@@ -669,6 +669,16 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
               .toSorted((left, right) => left.signalId.localeCompare(right.signalId))
               .at(0)
           : claimedSignal
+      // Annotation-only: records how the cycle was triggered for observability.
+      // Never gates which pages get read — fresh reads always run unconditionally.
+      yield* annotateSpan({
+        [spanAttr.wakeSource]:
+          observedSignal === undefined
+            ? 'poll'
+            : observedSignal.provider === 'notion-webhook'
+              ? 'webhook'
+              : 'signal',
+      })
       const replicaInputs = yield* Effect.sync(() => readPendingReplicaPlannerInputs({ options }))
       const effectiveQueryContract = incrementalQueryContractForWatch({ options })
       // SM5.4 / CLI-R07: the established workspace authority mode decides WHAT the
