@@ -69,6 +69,24 @@ export const gitUrlAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Per-subprocess `git-cmd` span. `output.bytes`/`output.lines` are annotated
+ *  AFTER the command completes — for the streaming path they come from scalar
+ *  running counters (never a buffer), so the bounded-memory invariant holds. */
+export const gitCmdAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    subcommand: Schema.String.pipe(OtelAttr.key({ key: 'git.subcommand' })),
+    streamed: Schema.Boolean.pipe(OtelAttr.key({ key: 'git.streamed' })),
+  }),
+)
+
+export const gitCmdOutputAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    outputBytes: Schema.Number.pipe(OtelAttr.key({ key: 'git.output.bytes' })),
+    outputLines: Schema.Number.pipe(OtelAttr.key({ key: 'git.output.lines' })),
+  }),
+)
+
 export const gitBranchAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
@@ -229,6 +247,37 @@ export const withWorktreePathSpan = ({
   readonly worktreePath: string
   readonly label?: string
 }) => trustedWith(worktreePathOperation(name), { label, worktreePath })
+
+const gitCmdOperation = OtelOperation.define({
+  name: 'git/cmd',
+  attributes: gitCmdAttrs,
+  label: ({ label }) => label,
+})
+
+/** Wrap a git subprocess effect in a `git/cmd` span. `args` is the raw arg list;
+ *  the span label + `git.subcommand` are the first arg (e.g. `status`). */
+export const withGitCmdSpan = ({
+  args,
+  streamed,
+}: {
+  readonly args: ReadonlyArray<string>
+  readonly streamed: boolean
+}) => {
+  const subcommand = args[0] ?? 'git'
+  return trustedWith(gitCmdOperation, { label: subcommand, subcommand, streamed })
+}
+
+/** Annotate the enclosing `git/cmd` span with the (scalar) output size. */
+export const annotateGitCmdOutput = ({
+  outputBytes,
+  outputLines,
+}: {
+  readonly outputBytes: number
+  readonly outputLines: number
+}) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({ attributes: gitCmdOutputAttrs, value: { outputBytes, outputLines } }),
+  )
 
 const gitUrlOperation = (name: string) =>
   OtelOperation.define({
