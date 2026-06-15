@@ -934,6 +934,7 @@ const runCliCommandEffect = ({
           replicaPath,
           store: context.store,
           rootId: context.rootId,
+          ...(context.authorityMode === undefined ? {} : { authorityMode: context.authorityMode }),
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
         const intents = replicaChangesToPlannerIntents({
@@ -1060,6 +1061,7 @@ const runCliCommandEffect = ({
           replicaPath,
           store: context.store,
           rootId: context.rootId,
+          ...(context.authorityMode === undefined ? {} : { authorityMode: context.authorityMode }),
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
         const intents = replicaChangesToPlannerIntents({
@@ -1192,6 +1194,12 @@ const runCliCommandEffect = ({
             rootId: context.rootId,
             conflictId: command.conflictId,
             choice: command.choice,
+            // Authority mode must reach the conflict-resolution planner: a
+            // `keep-local`/`manual` resolution in a `remote`-mode workspace is
+            // refused as `RemoteAuthoritativeDrift` (decisions 0003, 0010).
+            ...(context.authorityMode === undefined
+              ? {}
+              : { authorityMode: context.authorityMode }),
             ...withOptionalCommandOptions({ command, context }),
           }),
         }),
@@ -1502,13 +1510,18 @@ const watchPriorityFlag = (flags: Map<string, string | true>): WatchDaemonMode |
 
 /**
  * Parses the authority `--mode` flag accepted ONLY by `track`. The chosen mode
- * (`local`, `remote`, or `shared`) is persisted workspace-wide in the manifest;
- * `shared` is the default when the flag is omitted. Established commands reject
- * `--mode` entirely (see `rejectPerRunAuthorityMode`).
+ * (`local`, `remote`, or `shared`) is persisted workspace-wide in the manifest.
+ *
+ * The default is `remote` (the VRS mirror-adoption default, cli/spec.md): it is
+ * safe-by-default because a Notion-authoritative workspace blocks local property
+ * writes as drift, so an omitted `--mode` cannot accidentally mutate Notion.
+ * `shared` is deliberately NOT the default: its convergence/settlement guards
+ * stay dormant until SM5, so defaulting to it would run with those checks off.
+ * Established commands reject `--mode` entirely (see `rejectPerRunAuthorityMode`).
  */
 const authorityModeFlag = (flags: Map<string, string | true>): AuthorityMode => {
   const mode = optionalFlag({ flags, name: 'mode' })
-  if (mode === undefined) return 'shared'
+  if (mode === undefined) return 'remote'
   switch (mode) {
     case 'local':
     case 'remote':
@@ -2061,7 +2074,11 @@ const requireCompatibleWorkspaceNamespace = (workspaceRoot: typeof AbsolutePath.
  * it explicitly (closing the SM2 M3 gap where adoption could not record a
  * complete manifest with an authority mode); the legacy `sync --from-notion`
  * path omits it and preserves any existing manifest mode, defaulting to
- * `shared` for a fresh workspace.
+ * `remote` for a fresh workspace.
+ *
+ * Re-tracking is intentional reconfiguration: a second `track --mode <m>` on an
+ * already-tracked workspace OVERWRITES the persisted `authority_mode` with `<m>`
+ * (the legacy establish path, with `authorityMode` omitted, preserves it).
  */
 const writeEstablishedWorkspaceManifest = (source: {
   readonly workspaceRoot: typeof AbsolutePath.Type
@@ -2086,9 +2103,12 @@ const writeEstablishedWorkspaceManifest = (source: {
       : []
   const manifest: WorkspaceManifestV1 = {
     namespace_version: 'v1',
+    // Fresh-workspace default is `remote` (safe-by-default: blocks local writes
+    // as drift); an explicit `track --mode` overrides, and an existing manifest's
+    // mode is preserved when the legacy establish path omits `authorityMode`.
     authority_mode:
       source.authorityMode ??
-      (existing._tag === 'tracked' ? existing.manifest.authority_mode : 'shared'),
+      (existing._tag === 'tracked' ? existing.manifest.authority_mode : 'remote'),
     data_sources: [...priorSources, entry],
     ...(existing._tag === 'tracked' && existing.manifest.linked_views !== undefined
       ? { linked_views: existing.manifest.linked_views }
@@ -2108,7 +2128,7 @@ const discoverSelfContainedStore = (
   const result = requireCompatibleWorkspaceNamespace(workspaceRoot)
   if (result._tag === 'untracked') {
     throw new WorkspaceNotTracked({
-      message: `No workspace manifest at ${result.manifestPath}; this directory is not a tracked datasource workspace. Run sync --from-notion <database-url> ${workspaceRoot} to establish it.`,
+      message: `No workspace manifest at ${result.manifestPath}; this directory is not a tracked datasource workspace. Run track <database-url> ${workspaceRoot} to establish it.`,
     })
   }
 
@@ -2117,7 +2137,7 @@ const discoverSelfContainedStore = (
     throw new CliArgumentError({
       message:
         sources.length === 0
-          ? `Workspace manifest in ${workspaceRoot} tracks no data sources; run sync --from-notion <database-url> ${workspaceRoot}`
+          ? `Workspace manifest in ${workspaceRoot} tracks no data sources; run track <database-url> ${workspaceRoot}`
           : `Workspace manifest in ${workspaceRoot} tracks multiple data sources; pass --sqlite <path>`,
     })
   }

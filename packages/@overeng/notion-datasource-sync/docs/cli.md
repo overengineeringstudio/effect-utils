@@ -5,9 +5,9 @@ The datasource-sync package remains a library/package boundary; it does not
 publish a standalone user-facing binary.
 
 ```sh
-notion db sync --from-notion <data-source-id-or-database-url> <workspace-root> [--dry-run] [--limit <rows>] [--no-materialize-bodies]
+notion db track <data-source-id-or-database-url> <workspace-root> [--mode <local|remote|shared>] [--dry-run] [--limit <rows>] [--no-materialize-bodies]
 notion db sync <workspace-root> [--dry-run]
-notion db sync --watch <workspace-root> [--state <path>] [--max-cycles <n>] [--mode <development|normal|low-priority>] [--webhook <none|tailscale|manual>] [--webhook-required]
+notion db sync --watch <workspace-root> [--state <path>] [--max-cycles <n>] [--watch-priority <development|normal|low-priority>] [--webhook <none|tailscale|manual>] [--webhook-required]
 notion db status <workspace-root>
 notion db doctor --sqlite <workspace-root>/<database-id>.sqlite
 sqlite3 <workspace-root>/<database-id>.sqlite
@@ -39,35 +39,37 @@ request count, remaining quota when present, reset timing, and retry delay.
 
 ## Shared Flags
 
-| Flag                       | Meaning                                                                                            |
-| -------------------------- | -------------------------------------------------------------------------------------------------- |
-| `--from-notion`            | Existing Notion data-source ID, or a database URL that resolves to one child data source           |
-| `--limit`, `--max-rows`    | Dry-run-only establishment preview row cap; writes nothing and reports capped query state          |
-| `--schema-properties-json` | Advanced/debug override for schema-property observations; normal sync discovers schema from Notion |
-| `--required-capabilities`  | Comma-separated capability preflight list                                                          |
-| `--max-executor-steps`     | Bound outbox execution in `sync` and `sync --watch`                                                |
-| `--no-materialize-bodies`  | Observe properties/schema without local body materialization                                       |
-| `--watch`                  | Run `sync` as a long-lived daemon loop                                                             |
-| `--state`                  | Override the `sync --watch` daemon state JSON path                                                 |
-| `--max-cycles`             | Bound `sync --watch` cycles for tests, demos, and supervised runs                                  |
-| `--mode`                   | Select `sync --watch` daemon backoff: `development`, `normal`, or `low-priority`                   |
-| `--webhook`                | Optional `sync --watch` wakeup status mode: `none`, `tailscale`, or `manual`                       |
-| `--webhook-required`       | Require the selected webhook provider to report usable status before the daemon starts             |
-| `--non-interactive`        | Reserve provider setup for non-interactive runs; current webhook status checks never prompt        |
+| Flag                       | Meaning                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `--mode`                   | `track`-only: workspace authority mode `local`, `remote`, or `shared`; persisted once. Default `remote` |
+| `--from-notion`            | Legacy adoption alias on `sync` (`track` is the canonical adoption verb); resolves a data source/URL    |
+| `--limit`, `--max-rows`    | Dry-run-only `track` preview row cap; writes nothing and reports capped query state                     |
+| `--schema-properties-json` | Advanced/debug override for schema-property observations; normal sync discovers schema from Notion      |
+| `--required-capabilities`  | Comma-separated capability preflight list                                                               |
+| `--max-executor-steps`     | Bound outbox execution in `sync` and `sync --watch`                                                     |
+| `--no-materialize-bodies`  | Observe properties/schema without local body materialization                                            |
+| `--watch`                  | Run `sync` as a long-lived daemon loop                                                                  |
+| `--state`                  | Override the `sync --watch` daemon state JSON path                                                      |
+| `--max-cycles`             | Bound `sync --watch` cycles for tests, demos, and supervised runs                                       |
+| `--watch-priority`         | Select `sync --watch` daemon backoff: `development`, `normal`, or `low-priority`                        |
+| `--webhook`                | Optional `sync --watch` wakeup status mode: `none`, `tailscale`, or `manual`                            |
+| `--webhook-required`       | Require the selected webhook provider to report usable status before the daemon starts                  |
+| `--non-interactive`        | Reserve provider setup for non-interactive runs; current webhook status checks never prompt             |
 
 ## Commands
 
-| Command              | Effect                                                               |
-| -------------------- | -------------------------------------------------------------------- |
-| `sync --from-notion` | Establishes a workspace from an existing Notion database/data source |
-| `sync <workspace>`   | Reconciles all established database files in a workspace             |
-| `sync --watch`       | Repeats sync cycles and processes local SQLite CDC with daemon state |
-| `status <workspace>` | Reads public status and pending work for established database files  |
-| `doctor <sqlite>`    | Verifies one database file, including private `_nds_*` integrity     |
-| `conflicts list`     | Prints conflicts, guards, tombstones, and pending outbox actions     |
-| `conflicts resolve`  | Resolves a conflict by explicit user action                          |
-| `forget`             | Removes local tracking for a page after explicit user intent         |
-| `restore`            | Plans restore of a tracked trashed page                              |
+| Command              | Effect                                                                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `track`              | Canonical adoption verb: adopts a Notion database/data source into a workspace and records the workspace authority mode (`--mode`) |
+| `sync --from-notion` | Legacy adoption alias for `track`; establishes a workspace from an existing Notion database/data source                            |
+| `sync <workspace>`   | Reconciles all established database files in a workspace                                                                           |
+| `sync --watch`       | Repeats sync cycles and processes local SQLite CDC with daemon state                                                               |
+| `status <workspace>` | Reads public status and pending work for established database files                                                                |
+| `doctor <sqlite>`    | Verifies one database file, including private `_nds_*` integrity                                                                   |
+| `conflicts list`     | Prints conflicts, guards, tombstones, and pending outbox actions                                                                   |
+| `conflicts resolve`  | Resolves a conflict by explicit user action                                                                                        |
+| `forget`             | Removes local tracking for a page after explicit user intent                                                                       |
+| `restore`            | Plans restore of a tracked trashed page                                                                                            |
 
 ## Output
 
@@ -144,7 +146,7 @@ multiple child data sources fail closed; pass the exact data-source ID instead.
 Use a bounded no-write preview before adopting large existing databases:
 
 ```sh
-notion db sync --from-notion <database-url> <workspace-root> --dry-run --limit 25
+notion db track <database-url> <workspace-root> --dry-run --limit 25
 ```
 
 `--limit` and `--max-rows` are aliases and are intentionally dry-run-only. They

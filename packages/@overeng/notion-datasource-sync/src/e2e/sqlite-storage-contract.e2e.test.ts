@@ -376,8 +376,16 @@ const establishWorkspace = async (
   workspace: AbsolutePathType,
   {
     schemaProperties = [rowsTitleSchemaProperty],
+    authorityMode,
   }: {
     readonly schemaProperties?: readonly (typeof rowsTitleSchemaProperty)[]
+    /**
+     * When set, adopt via `track --mode <authorityMode>` so the workspace permits
+     * the asserted authority contract (e.g. `shared`/`local` for local-write +
+     * settle flows). When omitted, keep the legacy `sync --from-notion` adoption,
+     * which defaults to the safe-by-default `remote` mode.
+     */
+    readonly authorityMode?: 'local' | 'remote' | 'shared'
   } = {},
 ) => {
   const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
@@ -386,15 +394,15 @@ const establishWorkspace = async (
   }
   const gatewayClient = makeDatabaseResolverClient(calls)
   const schemaPropertiesJson = JSON.stringify(schemaProperties)
-  const argv = [
-    'sync',
-    '--from-notion',
-    databaseUrl,
-    workspace,
+  const argv = (
+    authorityMode === undefined
+      ? ['sync', '--from-notion', databaseUrl, workspace]
+      : ['track', databaseUrl, workspace, '--mode', authorityMode]
+  ).concat([
     '--schema-properties-json',
     schemaPropertiesJson,
     '--no-materialize-bodies',
-  ] as const
+  ]) as readonly string[]
   const command = await Effect.runPromise(
     resolveCliCommandNotionRefs({
       command: parseCliCommand(argv),
@@ -494,13 +502,15 @@ describe('clean-break self-contained SQLite storage contract', () => {
       expect(await exists(sidecarConfigPath(workspace))).toBe(false)
       expectNoRemoteWrites(gateway)
 
-      // sync --from-notion writes the v1 manifest tracking the established source.
+      // sync --from-notion writes the v1 manifest tracking the established
+      // source; a fresh adoption with no explicit mode defaults to the
+      // safe-by-default `remote` authority mode (VRS cli/spec.md).
       const manifestResult = loadWorkspaceManifest(workspace)
       expect(manifestResult._tag).toBe('tracked')
       if (manifestResult._tag === 'tracked') {
         expect(manifestResult.manifest).toMatchObject({
           namespace_version: 'v1',
-          authority_mode: 'shared',
+          authority_mode: 'remote',
           data_sources: [
             {
               data_source_id: testIds.dataSourceId,
@@ -1121,7 +1131,9 @@ describe('clean-break self-contained SQLite storage contract', () => {
     'sync --watch drains a direct public rows UPDATE through fake Notion and settles it',
     async () => {
       const workspace = await tempWorkspace()
-      const { sqlitePath } = await establishWorkspace(workspace)
+      // Local-write -> remote-settle requires a mode that permits local writes;
+      // adopt as `shared` (a `remote` mirror would block the edit as drift).
+      const { sqlitePath } = await establishWorkspace(workspace, { authorityMode: 'shared' })
       updatePublicRowsTitle({ sqlitePath, title: 'Updated by watch' })
 
       const baseGateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
@@ -1191,7 +1203,8 @@ describe('clean-break self-contained SQLite storage contract', () => {
     'sync --watch uses the latest clean remote observation as the base for public rows UPDATE',
     async () => {
       const workspace = await tempWorkspace()
-      const { sqlitePath } = await establishWorkspace(workspace)
+      // Local-write flow: adopt as `shared` so the edit is not blocked as drift.
+      const { sqlitePath } = await establishWorkspace(workspace, { authorityMode: 'shared' })
       await runWorkspaceCommand({
         argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
         gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage('Remote drift')] }),
@@ -1646,7 +1659,10 @@ describe('clean-break self-contained SQLite storage contract', () => {
     'crosses the file boundary: a CDC edit in the data file drains into the state event log, settles, and survives deleting + re-projecting the data file [NDS-L2-hidden-control-plane-isolation]',
     async () => {
       const workspace = await tempWorkspace()
-      const { sqlitePath, statePath } = await establishWorkspace(workspace)
+      // CDC edit -> remote settle: adopt as `shared` (a `remote` mirror blocks it).
+      const { sqlitePath, statePath } = await establishWorkspace(workspace, {
+        authorityMode: 'shared',
+      })
 
       // A user edit lands in the data file's transient CDC inbox.
       updatePublicRowsTitle({ sqlitePath, title: 'Edited across the boundary' })
@@ -1753,7 +1769,8 @@ describe('clean-break self-contained SQLite storage contract', () => {
     'does not double-apply across the boundary: a second sync after the CDC edit settled produces no further remote write [NDS-L2-hidden-control-plane-isolation]',
     async () => {
       const workspace = await tempWorkspace()
-      const { sqlitePath } = await establishWorkspace(workspace)
+      // CDC edit -> remote settle: adopt as `shared` (a `remote` mirror blocks it).
+      const { sqlitePath } = await establishWorkspace(workspace, { authorityMode: 'shared' })
 
       updatePublicRowsTitle({ sqlitePath, title: 'Applied once across the boundary' })
       expect(readPendingReplicaChanges(sqlitePath)).toHaveLength(1)

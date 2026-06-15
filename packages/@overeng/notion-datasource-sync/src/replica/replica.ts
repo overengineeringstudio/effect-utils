@@ -34,6 +34,7 @@ import {
   WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
+import type { AuthorityMode } from '../local/manifest.ts'
 import type { PlanDecision, PlannerIntent } from '../planner/planner.ts'
 import { resolveConflictCommand } from '../planner/user-commands.ts'
 import { BodyProjectionPayload, hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
@@ -110,6 +111,16 @@ export type ApplyReplicaConflictResolutionsOptions = {
   readonly store: NotionSyncStore
   readonly rootId: SyncRootId
   readonly dryRun?: boolean
+  /**
+   * Workspace-wide authority mode (decisions 0003, 0010), forwarded to
+   * `resolveConflictCommand`. Today CDC `conflict_resolution` rows only ever
+   * resolve `keep-remote` (local/manual actions short-circuit as `unsupported`
+   * before planning), and `keep-remote` enqueues no remote write — so no drift
+   * can occur yet. Threading the mode here keeps the CDC path consistent with the
+   * `conflicts resolve` command and fails closed (`RemoteAuthoritativeDrift`) the
+   * moment local/manual CDC resolution becomes executable.
+   */
+  readonly authorityMode?: AuthorityMode
 }
 
 /** Inputs for reconciling planner decisions back into local replica change rows. */
@@ -3821,6 +3832,7 @@ export const applyReplicaConflictResolutions = ({
   store,
   rootId,
   dryRun,
+  authorityMode,
 }: ApplyReplicaConflictResolutionsOptions): void => {
   for (const change of changes) {
     if (change.kind !== 'conflict_resolution') continue
@@ -3871,6 +3883,7 @@ export const applyReplicaConflictResolutions = ({
       rootId,
       conflictId,
       choice,
+      ...(authorityMode === undefined ? {} : { authorityMode }),
       ...(dryRun === undefined ? {} : { dryRun }),
     })
     const guard = result.planned.guards[0]
