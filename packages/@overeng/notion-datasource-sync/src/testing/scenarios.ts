@@ -83,6 +83,23 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L4',
     file: 'src/e2e/dry-run-suppression.e2e.test.ts',
   }),
+  // SM5.3 (CLI-R02 watch dimension / R49 + R64): `sync --watch --dry-run` runs as
+  // an observe/plan/report loop. Each bounded cycle reports a plan frame while
+  // every loop-level durable effect is suppressed — and, critically, a REAL
+  // concurrent daemon's leased signal is left UNTOUCHED (observer
+  // non-interference). Reuses the SM5.2 `captureWorkspaceSurfaces` harness +
+  // write-call counter; non-vacuity is proven by a non-dry watch cycle moving
+  // the same surfaces.
+  scenario({
+    scenarioId: 'NDS-L5-watch-dry-run-loop',
+    title:
+      'sync --watch --dry-run reports a per-cycle plan frame while writing nothing durable and never fencing a real daemon signal',
+    requirementIds: ['R49', 'R64'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/watch-dry-run.e2e.test.ts',
+  }),
   scenario({
     scenarioId: 'NDS-L5-watch-daemon-local-cycle',
     title: 'local watch daemon preserves pending work across restart and cancellation',

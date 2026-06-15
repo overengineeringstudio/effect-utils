@@ -41,7 +41,12 @@ import {
 } from '../replica/replica.ts'
 import type { NotionSyncStore } from '../store/store.ts'
 import type { SchemaPropertyObservation } from '../sync/observation.ts'
-import { pushOneShotSync, syncOneShot, type OneShotSyncResult } from '../sync/sync.ts'
+import {
+  pushOneShotSync,
+  syncOneShot,
+  type OneShotPushResult,
+  type OneShotSyncResult,
+} from '../sync/sync.ts'
 
 /** Backoff tier for the watch daemon loop — controls the inter-cycle sleep duration (1 s / 5 s / 15 s). */
 export type WatchDaemonMode = 'development' | 'normal' | 'low-priority'
@@ -77,6 +82,15 @@ export type WatchDaemonCycleResult = {
   readonly cycle: number
   readonly status: OneShotSyncStatus
   readonly sync: OneShotSyncResult
+  /**
+   * Local-first fast-push pass (DAEMON-R07), present only when CDC/outbox work
+   * triggered it. The fast-push CONSUMES the local intents, so `sync.push.plan`
+   * is empty when this ran — the cycle's planned local outbound work lives HERE.
+   * Surfacing it is essential for the `--dry-run` observe/plan/report frame: under
+   * dry-run nothing is executed, so this plan is the only record of what WOULD be
+   * done. (`runWatchDaemonCycle` always computed it; it was previously discarded.)
+   */
+  readonly fastPush: OneShotPushResult | undefined
   readonly state: WatchDaemonState
   readonly signal: SignalInboxRecord | undefined
 }
@@ -123,6 +137,19 @@ export type WatchDaemonOptions = {
   readonly materializeBodies?: boolean
   /** Workspace-wide authority mode threaded into the planner's `writeMode` (decisions 0003, 0010). */
   readonly authorityMode?: AuthorityMode
+  /**
+   * When `true`, run the cycle as an observe/plan/report loop with ZERO durable
+   * effects (SM5.3 / CLI-R02 watch dry-run). Every loop-level write boundary is
+   * suppressed: signal claim/settle/release (so a real running daemon's leased
+   * signals are never fenced — observer non-interference), the daemon state file
+   * (`statePath`), the replica settle/project write-back, the CDC `markChange` +
+   * `ConflictRaised` writes in `readPendingReplicaPlannerInputs`, and the inner
+   * pass writes (via `dryRun` threaded into `syncOneShot`/`pushOneShotSync`,
+   * which carries the proven SM5.2 one-shot suppression — executor gate,
+   * `materializeBodies:false`, append/replica guards). Real reads (Notion poll,
+   * `.nmd`/SQLite scan, planning) still run so each cycle reports a plan frame.
+   */
+  readonly dryRun?: boolean
   readonly statePath: string
   readonly mode?: WatchDaemonMode
   readonly maxCycles?: number
@@ -445,16 +472,25 @@ const readPendingReplicaPlannerInputs = ({ options }: { readonly options: WatchD
     return { changes: [] as const, intents: [] as const, replicaPath }
   }
   const changes = readPendingReplicaChanges(replicaPath)
+  // Under dry-run both helpers still READ and still RETURN intents (so the plan
+  // frame is unaffected), but `dryRun` suppresses their durable writes:
+  // `applyReplicaConflictResolutions` would append `ConflictRaised` events to the
+  // event log, and `replicaChangesToPlannerIntents` would `markChange` the CDC
+  // status in the data file on its reject/conflict-resolution paths. This mirrors
+  // the one-shot `sync` path (main.ts), keeping the watch loop consistent with
+  // the proven SM5.2 suppression guarantee.
   applyReplicaConflictResolutions({
     changes,
     replicaPath,
     store: options.store,
     rootId: options.rootId,
     ...(options.authorityMode === undefined ? {} : { authorityMode: options.authorityMode }),
+    ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
   })
   const intents = replicaChangesToPlannerIntents({
     changes: changes.filter((change) => change.kind !== 'conflict_resolution'),
     replicaPath,
+    ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
   })
   return { changes, intents, replicaPath }
 }
@@ -577,34 +613,62 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         message: `Starting watch cycle ${cycle.toString()}`,
       })
 
-      yield* writeWatchDaemonState({
-        statePath: options.statePath,
-        state: {
-          ...previous,
-          cycle,
-          lastStartedAt: startedAt,
-          repair:
-            previous.lastCompleteCycle < previous.cycle
-              ? {
-                  _tag: 'retry',
-                  reason: 'previous-cycle-did-not-complete',
-                  retryAfterMillis: 0,
-                  failedCycle: previous.cycle,
-                }
-              : previous.repair,
-        },
-      })
+      // Daemon state file: suppressed under dry-run (in-memory cycle accounting
+      // only). The loop tracks attempted/completed cycles itself, so no on-disk
+      // `statePath` write is needed to drive the observe/plan/report loop.
+      if (options.dryRun !== true) {
+        yield* writeWatchDaemonState({
+          statePath: options.statePath,
+          state: {
+            ...previous,
+            cycle,
+            lastStartedAt: startedAt,
+            repair:
+              previous.lastCompleteCycle < previous.cycle
+                ? {
+                    _tag: 'retry',
+                    reason: 'previous-cycle-did-not-complete',
+                    retryAfterMillis: 0,
+                    failedCycle: previous.cycle,
+                  }
+                : previous.repair,
+          },
+        })
+      }
 
       const leaseToken =
         options.leaseToken ?? defaultWatchDaemonLeaseToken({ rootId: options.rootId, instanceId })
       const leaseDurationMs = options.leaseDurationMs ?? 60_000
-      const claimedSignal = yield* Effect.sync(() =>
-        options.store.claimNextSignal({
-          rootId: options.rootId,
-          leaseToken,
-          leaseDurationMs,
-        }),
-      )
+      // Signal claim: under dry-run we must NOT claim/lease — claiming mutates the
+      // signal row (state -> claimed, attempt_count += 1, lease_token) and would
+      // fence a REAL running daemon's signals (observer non-interference). Keep
+      // `claimedSignal` UNDEFINED so the downstream settle/release no-op
+      // structurally, and read the next pending signal read-only purely to
+      // populate the plan frame's `signal` field.
+      const claimedSignal =
+        options.dryRun === true
+          ? undefined
+          : yield* Effect.sync(() =>
+              options.store.claimNextSignal({
+                rootId: options.rootId,
+                leaseToken,
+                leaseDurationMs,
+              }),
+            )
+      // Read-only view of the next pending signal the cycle would process,
+      // reported in the plan frame's `signal` field. This APPROXIMATES the
+      // next-claimable signal (sorted by `signalId`); exact parity with
+      // `claimNextSignal`'s `ORDER BY updated_at, signal_id` is unnecessary
+      // because a dry-run takes no signal action — the frame reports planned
+      // work, not a committed claim order, and no signal row is mutated.
+      const observedSignal =
+        options.dryRun === true
+          ? options.store
+              .readSignals(options.rootId)
+              .filter((signal) => signal.state === 'pending')
+              .toSorted((left, right) => left.signalId.localeCompare(right.signalId))
+              .at(0)
+          : claimedSignal
       const replicaInputs = yield* Effect.sync(() => readPendingReplicaPlannerInputs({ options }))
       const effectiveQueryContract = incrementalQueryContractForWatch({ options })
       const shouldRunFastPush =
@@ -621,6 +685,10 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
               ...(options.authorityMode === undefined
                 ? {}
                 : { authorityMode: options.authorityMode }),
+              // Inner pass suppression (SM5.2): the executor gate, append guards,
+              // and `materializeBodies:false` block all Notion/outbox/settlement/
+              // event-log/body writes while still producing the plan.
+              ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
               leaseToken,
               leaseDurationMs,
               now,
@@ -628,7 +696,11 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           : undefined
       if (fastPush !== undefined) {
         yield* Effect.sync(() => {
-          if (replicaInputs.replicaPath === undefined || replicaInputs.replicaPath === ':memory:')
+          if (
+            options.dryRun === true ||
+            replicaInputs.replicaPath === undefined ||
+            replicaInputs.replicaPath === ':memory:'
+          )
             return
           settleReplicaChangesAfterSync({
             changes: replicaInputs.changes,
@@ -656,6 +728,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           ? {}
           : { materializeBodies: options.materializeBodies }),
         ...(options.authorityMode === undefined ? {} : { authorityMode: options.authorityMode }),
+        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
         localIntents: fastPush === undefined ? replicaInputs.intents : [],
         deferLocalPlanningUntilAfterPull: fastPush !== undefined,
         maxExecutorSteps: options.maxExecutorSteps ?? 8,
@@ -665,7 +738,11 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
       }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            if (replicaInputs.replicaPath === undefined || replicaInputs.replicaPath === ':memory:')
+            if (
+              options.dryRun === true ||
+              replicaInputs.replicaPath === undefined ||
+              replicaInputs.replicaPath === ':memory:'
+            )
               return
             settleReplicaChangesAfterSync({
               changes: replicaInputs.changes,
@@ -709,21 +786,26 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
               error: daemonCycleErrorReason(cause),
             })
           }).pipe(
+            // Failure-path state write is suppressed under dry-run too — a dry
+            // run never persists `retry`/backoff bookkeeping.
             Effect.zipRight(
-              writeWatchDaemonState({
-                statePath: options.statePath,
-                state: {
-                  ...previous,
-                  cycle,
-                  lastStartedAt: startedAt,
-                  repair: {
-                    _tag: 'retry',
-                    reason: daemonCycleErrorReason(cause),
-                    retryAfterMillis: daemonCycleRetryAfterMillis(cause) ?? modeBackoffMillis(mode),
-                    failedCycle: cycle,
-                  },
-                },
-              }),
+              options.dryRun === true
+                ? Effect.void
+                : writeWatchDaemonState({
+                    statePath: options.statePath,
+                    state: {
+                      ...previous,
+                      cycle,
+                      lastStartedAt: startedAt,
+                      repair: {
+                        _tag: 'retry',
+                        reason: daemonCycleErrorReason(cause),
+                        retryAfterMillis:
+                          daemonCycleRetryAfterMillis(cause) ?? modeBackoffMillis(mode),
+                        failedCycle: cycle,
+                      },
+                    },
+                  }),
             ),
           ),
         ),
@@ -740,7 +822,12 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         repair: { _tag: 'none' },
         lastStatus: sync.status,
       }
-      yield* writeWatchDaemonState({ statePath: options.statePath, state })
+      // Completion-path state write: suppressed under dry-run. The returned
+      // `state` value is still computed in-memory so the plan frame carries the
+      // cycle's status, but it is never written to `statePath`.
+      if (options.dryRun !== true) {
+        yield* writeWatchDaemonState({ statePath: options.statePath, state })
+      }
       yield* reportSyncProgress({
         _tag: 'phase',
         phase: 'watching',
@@ -758,8 +845,11 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         cycle,
         status: sync.status,
         sync,
+        fastPush,
         state,
-        signal: claimedSignal,
+        // Under dry-run `claimedSignal` is undefined (no claim); report the
+        // read-only `observedSignal` the cycle would have processed instead.
+        signal: observedSignal,
       }
     }),
 )

@@ -94,7 +94,10 @@ event/outbox/remote writes, and body materialization while using the existing
 data file for read-only local capture and planning. `sync --watch --dry-run`
 runs the same observe/plan loop repeatedly and reports each plan, but suppresses
 durable local writes, hidden-state writes, outbox enqueue, settlement, body
-materialization, export output, and Notion mutation.
+materialization, export output, the daemon state file, and Notion mutation. It
+is also a non-interfering observer: it must not claim, settle, or release signal
+inbox leases, so a real daemon running concurrently on the same workspace keeps
+its in-flight leased signals untouched.
 
 ## Established Sync Ordering
 

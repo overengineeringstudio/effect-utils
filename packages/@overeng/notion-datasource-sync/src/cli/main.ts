@@ -1200,14 +1200,13 @@ const runCliCommandEffect = ({
       )
     case 'sync':
       if (command.watch === true) {
-        if (command.dryRun === true) {
-          return Effect.fail(
-            new CliArgumentError({
-              message:
-                'sync --watch does not support --dry-run; run sync --dry-run for a one-shot dry run',
-            }),
-          )
-        }
+        // SM5.3 (CLI-R02): `sync --watch --dry-run` runs the daemon as an
+        // observe/plan/report loop. The `dryRun` flag is threaded into
+        // `runWatchDaemon`, which gates every loop-level durable effect (signal
+        // claim/settle/release, daemon state file, replica settle/project, CDC
+        // writes) and the inner pass (executor gate + materializeBodies:false),
+        // so a dry-run observer never fences a real running daemon's signals or
+        // mutates any surface.
         return setupWatchWebhook({ command, context }).pipe(
           Effect.flatMap((webhook) =>
             runWatchDaemon({
@@ -1218,6 +1217,7 @@ const runCliCommandEffect = ({
               ...(command.maxCycles === undefined ? {} : { maxCycles: command.maxCycles }),
               ...(command.watchPriority === undefined ? {} : { mode: command.watchPriority }),
               ...(webhook.wakeNotifier === undefined ? {} : { wakeNotifier: webhook.wakeNotifier }),
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
               ...withOptionalRuntimeOptions(context),
             }).pipe(
               Effect.map((daemon) =>
