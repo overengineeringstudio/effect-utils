@@ -566,21 +566,25 @@ Current implementation uses `notion-md-cli` for both modes and distinguishes wat
 
 Span conventions:
 
-| Span                                | Required attributes                                                                                                                                                                  |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `notion-md.cli.<command>`           | `span.label`, `notion_md.command`                                                                                                                                                    |
-| `notion-md.cat`                     | `span.label`, `notion_md.page_id`, `nmd.mode`, `nmd.result`                                                                                                                          |
-| `notion-md.put`                     | `span.label`, `notion_md.page_id`, `nmd.mode`, `nmd.result`, `nmd.body_written`, `nmd.title_written`, `nmd.force`, `nmd.partial_write`                                               |
-| `notion-md.edit`                    | `span.label`, `notion_md.page_id`, `nmd.mode`, `nmd.changed`, `nmd.result`; wraps the engine's `notion-md.sync-page` / `push-page` / `status-page` spans as children (decision 0017) |
-| `notion-md.sync-page`               | `span.label`, `notion_md.sync.result`, `notion_md.page_id`                                                                                                                           |
-| `notion-md.status-page`             | local/remote changed booleans, unknown-block count                                                                                                                                   |
-| `notion-md.push-page`               | force flag, destructive flag, push decision, markdown command                                                                                                                        |
-| `notion-md.watch.sync-pass`         | watch reason, command, path basename, error tag when failed                                                                                                                          |
-| `notion-md.gateway.update-markdown` | page id, update type, content-update count, destructive flag                                                                                                                         |
-| `notion-md.state.read-object`       | object role, hash prefix                                                                                                                                                             |
-| `notion-md.state.write-object`      | object role, hash prefix                                                                                                                                                             |
+| Span                                | Required attributes                                                                                                                                                                            |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `notion-md.cli.<command>`           | `span.label`, `notion_md.command`                                                                                                                                                              |
+| `notion-md.cat`                     | `span.label`, `notion_md.page_id`, `notion_md.editor.mode`                                                                                                                                     |
+| `notion-md.put`                     | `span.label`, `notion_md.page_id`, `notion_md.editor.mode`, `notion_md.put.force`, `notion_md.put.body_written`, `notion_md.put.title_written`                                                 |
+| `notion-md.edit`                    | `span.label`, `notion_md.page_id`, `notion_md.editor.mode`, `notion_md.edit.outcome`; wraps the engine's `notion-md.sync-page` / `push-page` / `status-page` spans as children (decision 0017) |
+| `notion-md.sync-page`               | `span.label`, `notion_md.sync.result`, `notion_md.page_id`                                                                                                                                     |
+| `notion-md.status-page`             | local/remote changed booleans, unknown-block count                                                                                                                                             |
+| `notion-md.push-page`               | force flag, destructive flag, push decision, markdown command                                                                                                                                  |
+| `notion-md.watch.sync-pass`         | watch reason, command, path basename, error tag when failed                                                                                                                                    |
+| `notion-md.gateway.update-markdown` | page id, update type, content-update count, destructive flag                                                                                                                                   |
+| `notion-md.state.read-object`       | object role, hash prefix                                                                                                                                                                       |
+| `notion-md.state.write-object`      | object role, hash prefix                                                                                                                                                                       |
 
-Attributes must not include tokens, full Markdown bodies, file bytes, or signed URLs.
+Attributes must not include tokens, full Markdown bodies, file bytes, or signed
+URLs — asserted by a span leak-guard test (R24, Group G). All attribute keys use
+the `notion_md.*` namespace (not a `nmd.*` shorthand). A `result`/`changed`/
+`partial_write` attribute per command is desirable hardening not yet emitted
+(impl-delta Group G follow-up).
 
 ## Verification
 
