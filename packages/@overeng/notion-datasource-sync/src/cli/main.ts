@@ -404,12 +404,11 @@ const intentIdentityKey = (intent: PlannerIntent): string | undefined => {
  * body/lifecycle convergence is engine-ready but NOT production-observed — a
  * follow-up (body materialization is entangled with sidecar identity).
  *
- * INERT on production data — TODO(phase-4-property-materialization). Pulled `.nmd`
- * files carry no writable frontmatter properties (materialization writes
- * `properties: {}`), so on real data `nmdPropertyFacts` finds nothing and this
- * path is a no-op. It fires only for hand-authored `.nmd`. R06 property
- * convergence is wired and correct but NOT active end-to-end until frontmatter-
- * property materialization lands (see `local-convergence-inputs.ts`).
+ * ACTIVE on production data (SM5d): a datasource pull materializes the writable
+ * frontmatter properties into the pulled `.nmd` (see `observation.ts`
+ * `writableFrontmatterProperties` + `materializeBody`), so `nmdPropertyFacts` reads
+ * a real property surface and this path converges actual pulled pages, not just
+ * hand-authored `.nmd`.
  *
  * Runs in `shared` mode ONLY; `local`/`remote` return the intents unchanged with
  * no verdicts (single-source mirror, `not-applicable`).

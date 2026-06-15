@@ -1,5 +1,7 @@
 import { Chunk, Effect, Schema, Stream } from 'effect'
 
+import type { NmdWritablePropertyValue } from '@overeng/notion-effect-client'
+
 import {
   dataSourceMetadataSurfaceKey,
   pageSurfaceKey,
@@ -48,6 +50,7 @@ import { reportSyncProgress } from '../core/progress.ts'
 import { readOnlyGatewayCapabilities } from '../gateway/gateway.ts'
 import { bodyPathForRow } from '../local/workspace.ts'
 import { spanAttr, spanAttributes, spanNames } from '../observability/observability.ts'
+import { canonicalValueToNmdWritable } from '../planner/nmd-property-facts.ts'
 import type { OutboxCommandEnvelope, PlannerEvent } from '../planner/planner.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 
@@ -60,6 +63,39 @@ export type SchemaPropertyObservation = {
   readonly writeClass: PropertyWriteClass
   readonly ordinal?: number
   readonly configJson?: string | undefined
+}
+
+/**
+ * Project the page's observed cell values into the WRITABLE `.nmd` frontmatter
+ * properties (visible-name → value), filtered to `write_class === 'writable'`
+ * (SM5d). Read-only properties are deliberately excluded — they belong in the
+ * sidecar, not the user-editable frontmatter (preserving the standalone contract).
+ * Returns `undefined` when no writable property has an observed value, so the
+ * materializer keeps the empty-`properties` behavior.
+ */
+const writableFrontmatterProperties = ({
+  schemaProperties,
+  propertyValuesJson,
+}: {
+  readonly schemaProperties: ReadonlyArray<{
+    readonly propertyId: PropertyIdType
+    readonly name: string
+    readonly type: string
+    readonly writeClass: PropertyWriteClass
+  }>
+  readonly propertyValuesJson: Readonly<Record<string, string>> | undefined
+}): Record<string, NmdWritablePropertyValue> | undefined => {
+  if (propertyValuesJson === undefined) return undefined
+  const properties: Record<string, NmdWritablePropertyValue> = {}
+  for (const property of schemaProperties) {
+    if (property.writeClass !== 'writable') continue
+    const valueJson = propertyValuesJson[property.propertyId]
+    if (valueJson === undefined) continue
+    const writable = canonicalValueToNmdWritable({ valueJson, propertyType: property.type })
+    if (writable === undefined) continue // non-scalar / non-materializable
+    properties[property.name] = writable
+  }
+  return Object.keys(properties).length === 0 ? undefined : properties
 }
 
 /** Configuration for `observeRemoteDataSource`: identifies the data source, the query contract, schema properties to fetch per row, and optional body observation/materialization settings. */
@@ -955,6 +991,12 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
             bodyPointer === undefined
               ? undefined
               : (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId)
+          // SM5d: embed the observed WRITABLE frontmatter properties so the pulled
+          // `.nmd` carries the property surface local-surface convergence reads.
+          const writableProperties = writableFrontmatterProperties({
+            schemaProperties: normalizedSchemaProperties,
+            propertyValuesJson: page.propertyValuesJson,
+          })
           const materializeResult =
             bodyPointer === undefined || options.materializeBodyArtifacts === false
               ? undefined
@@ -963,6 +1005,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
                   pageId: row.pageId,
                   path: (options.bodyPathForPage ?? defaultBodyPathForPage)(row.pageId),
                   bodyPointer,
+                  ...(writableProperties === undefined ? {} : { writableProperties }),
                 })
 
           if (materializeResult !== undefined) {
