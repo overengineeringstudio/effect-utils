@@ -104,19 +104,13 @@ export type PropertySurfaceSnapshot = {
   /*
    * The three fields below are threaded into the shared property-write proof
    * (see `makeWorkspaceProof`). `writeMode` is populated in production from the
-   * manifest authority mode (`withAuthorityMode`, which has live call sites in
-   * `pushOneShotSync`, conflicts-resolve, and the CDC path).
-   *
-   * `localConvergence` and `settlement` are WIRED-BUT-DORMANT in production. The
-   * pure Phase 4 local-convergence engine (`convergeLocalSurfaces` +
-   * `applyConvergenceVerdicts`) and its proof routing exist and are unit-proven,
-   * but no production push path calls them yet — `sync/observation.ts` does not
-   * build the `DataFileLocalEdit`/`NmdDesiredFact` inputs (and the `.nmd`
-   * materialization feeder under `pages/v1/<source>` is itself unwired), so
-   * `localConvergence` still falls back to `not-applicable` and
-   * `LocalSurfaceDisagreement` fires only from tests
-   * (TODO(phase-4-local-convergence): wire the engine into the shared-mode push
-   * path). `settlement` likewise falls back to its non-blocking default
+   * manifest authority mode (`withAuthorityMode`); `localConvergence` from the
+   * Phase 4 shared-mode local convergence (`buildPropertyConvergenceInputs` +
+   * `convergeLocalSurfaces` + `applyConvergenceVerdicts` in the CLI push path), so
+   * `RemoteAuthoritativeDrift` and `LocalSurfaceDisagreement` fire from real
+   * production state. `settlement` remains WIRED-BUT-DORMANT — no production path
+   * supplies a real outbox read-after-write verdict, so it falls back to its
+   * non-blocking default and `ReadAfterWriteMismatch` fires only from tests
    * (TODO(settlement-wiring)).
    */
   /**
@@ -134,11 +128,9 @@ export type PropertySurfaceSnapshot = {
    * In `shared` mode the Phase 4 local-convergence engine
    * (`convergeLocalSurfaces` + `applyConvergenceVerdicts`) computes this verdict
    * by comparing the drained SQLite data-file edits against the decoded `.nmd`
-   * desired facts per `(pageId, propertyId)`. The engine is unit-proven but NOT
-   * yet called from a production push path
-   * (TODO(phase-4-local-convergence)), so production snapshots leave this at
-   * `not-applicable`. `local`/`remote` mode is always `not-applicable` (single
-   * source mirrors the other).
+   * frontmatter desired facts per `(pageId, propertyId)`, wired into the CLI push
+   * path. `local`/`remote` mode is always `not-applicable` (single source mirrors
+   * the other).
    */
   readonly localConvergence?: 'not-applicable' | 'converged' | 'disagrees'
   /**

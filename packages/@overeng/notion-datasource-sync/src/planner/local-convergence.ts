@@ -151,9 +151,10 @@ export type LocalConvergenceResult = {
   readonly conflicts: ReadonlyArray<ConflictPayload>
   /**
    * Property verdicts to overlay onto the planner's `PropertySurfaceSnapshot`s
-   * (see `applyConvergenceVerdicts`). The production push path does not yet build
-   * this engine's inputs — `TODO(phase-4-local-convergence)` stays open until it
-   * does.
+   * (see `applyConvergenceVerdicts`). In `shared` mode the CLI push path builds
+   * this engine's inputs (`buildPropertyConvergenceInputs`) and overlays these
+   * verdicts before planning, so a `disagrees` blocks the write as
+   * `LocalSurfaceDisagreement`.
    */
   readonly propertyVerdicts: ReadonlyArray<PropertyConvergenceVerdict>
   /**
@@ -407,12 +408,11 @@ export const convergeLocalSurfaces = ({
  * Overlay convergence property verdicts onto a planner property-surface list,
  * setting `localConvergence` for each `(pageId, propertyId)` the engine evaluated.
  * Surfaces the engine did not evaluate are left untouched (default
- * `not-applicable`). This is the chokepoint that will close
- * `TODO(phase-4-local-convergence)` once a production push path builds the
- * engine's inputs and overlays its verdicts onto the planner snapshot before
- * `planIntent`: the planner's `PropertySurfaceSnapshot.localConvergence` would
- * then come from the real SQLite-vs-`.nmd` comparison rather than a test-injected
- * literal. Today it is exercised only from tests.
+ * `not-applicable`). This is the chokepoint the shared-mode CLI push path uses
+ * (after `convergeLocalSurfaces` over `buildPropertyConvergenceInputs`) so the
+ * planner's `PropertySurfaceSnapshot.localConvergence` comes from the real
+ * SQLite-vs-`.nmd` comparison and a `disagrees` blocks the write as
+ * `LocalSurfaceDisagreement`.
  */
 export const applyConvergenceVerdicts = <
   TSurface extends {

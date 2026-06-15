@@ -112,17 +112,14 @@ const availabilityProjection = (
  * non-blocking verdicts so an ordinary shared-mode write with a settled outbox
  * and a converged local surface produces no new block.
  *
- * WIRED-BUT-DORMANT (production): the planner reads these from
- * `PropertySurfaceSnapshot.{writeMode,localConvergence,settlement}`, but the
- * production observation layer (`sync/observation.ts`) does NOT yet populate
- * those fields, so they fall back to the non-blocking defaults. As a result the
- * `RemoteAuthoritativeDrift`, `LocalSurfaceDisagreement`, and
- * `ReadAfterWriteMismatch` guards are PLUMBED but only fire from tests today — not
- * from real production state. Real `localConvergence` comes from the Phase 4 local
- * SQLite `pages`-vs-`.nmd` comparison (`TODO(phase-4-local-convergence)`), real
- * `settlement` from outbox read-after-write wiring (`TODO(settlement-wiring)`), and
- * real `writeMode` from page-authority observation. The defaults are deliberately
- * behavior-preserving until then.
+ * Production wiring: `writeMode` is populated from the manifest authority mode
+ * (`withAuthorityMode`) and `localConvergence` from the Phase 4 shared-mode local
+ * convergence (`buildPropertyConvergenceInputs` + `convergeLocalSurfaces` +
+ * `applyConvergenceVerdicts` in the CLI push path), so `RemoteAuthoritativeDrift`
+ * and `LocalSurfaceDisagreement` fire from real production state. `settlement`
+ * remains WIRED-BUT-DORMANT — the outbox does not yet supply a real
+ * read-after-write verdict, so it falls back to its non-blocking default and
+ * `ReadAfterWriteMismatch` fires only from tests (`TODO(settlement-wiring)`).
  */
 export interface WorkspaceProofInputs {
   readonly dataSourceId: DataSourceId
@@ -230,14 +227,13 @@ export const makeWorkspaceProof = (
     baseCompleteness: { surfaceComplete: availability.surfaceComplete },
     relationAvailability: { status: availability.relationStatus },
     /*
-     * TODO(phase-4-local-convergence): the Phase 4 local-convergence engine
+     * In `shared` mode the Phase 4 local-convergence engine
      * (`planner/local-convergence.ts`) compares the local SQLite `pages` surface
-     * against the `.nmd` artifact per `(page_id, property_id)` and produces a
+     * against the `.nmd` frontmatter per `(page_id, property_id)` and produces a
      * `converged`/`disagrees` verdict that `applyConvergenceVerdicts` overlays onto
      * `PropertySurfaceSnapshot.localConvergence`; a `disagrees` is surfaced here as
-     * `LocalSurfaceDisagreement`. The engine is unit-proven but NOT yet wired into
-     * a production push path (the `.nmd` feeder under `pages/v1/<source>` is also
-     * unwired), so production proofs default to `not-applicable`.
+     * `LocalSurfaceDisagreement`. `local`/`remote` mode (and untracked stores) keep
+     * the `not-applicable` default (single-source mirror).
      */
     localConvergence: { status: inputs.localConvergence ?? 'not-applicable' },
     /*

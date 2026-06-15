@@ -38,12 +38,17 @@ import {
   statusSpanAttributes,
 } from '../observability/observability.ts'
 import {
+  applyConvergenceVerdicts,
+  type PropertyConvergenceVerdict,
+} from '../planner/local-convergence.ts'
+import {
   planIntent,
   withAuthorityMode,
   type BodyEditIntent,
   type LocalDeleteIntent,
   type PlanDecision,
   type PlannerIntent,
+  type PlannerProjectionSnapshot,
 } from '../planner/planner.ts'
 import { pageLifecycleHash } from '../store/projections.ts'
 import type { NotionSyncStore } from '../store/store.ts'
@@ -103,6 +108,15 @@ export type OneShotPushOptions = {
    * proof. Absent leaves the planner's `shared` default.
    */
   readonly authorityMode?: AuthorityMode
+  /**
+   * SM5c local-convergence property verdicts, overlaid onto every planner
+   * property snapshot's `localConvergence` before planning. A `disagrees` verdict
+   * makes the shared PropertyWriteCore block the write as `LocalSurfaceDisagreement`
+   * (the SQLite `pages` edit and the page's `.nmd` frontmatter diverge). Empty /
+   * absent leaves the planner's `not-applicable` default. Only meaningful in
+   * `shared` mode; the caller computes it via `convergeLocalSurfaces`.
+   */
+  readonly convergenceVerdicts?: ReadonlyArray<PropertyConvergenceVerdict>
 }
 
 /** Combined options for `syncOneShot`, merging pull and push settings into a single pass. */
@@ -663,12 +677,31 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
             (yield* observeLocalWorkspace(options.workspaceRoot)))
       const summaries: OneShotPlanSummary[] = []
 
-      yield* reportSyncProgress({ _tag: 'phase', phase: 'planning' })
-      for (const intent of options.localIntents ?? []) {
-        const snapshot = withAuthorityMode({
+      /*
+       * Read the planner snapshot with the authority-mode overlay AND the SM5c
+       * local-convergence property verdicts applied. The convergence verdicts set
+       * `localConvergence` per `(pageId, propertyId)` so a divergent SQLite-vs-`.nmd`
+       * property blocks as `LocalSurfaceDisagreement` through the shared proof core.
+       */
+      const readConvergedSnapshot = (): PlannerProjectionSnapshot => {
+        const withMode = withAuthorityMode({
           snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
           authorityMode: options.authorityMode,
         })
+        return options.convergenceVerdicts === undefined || options.convergenceVerdicts.length === 0
+          ? withMode
+          : {
+              ...withMode,
+              properties: applyConvergenceVerdicts({
+                properties: withMode.properties,
+                verdicts: options.convergenceVerdicts,
+              }),
+            }
+      }
+
+      yield* reportSyncProgress({ _tag: 'phase', phase: 'planning' })
+      for (const intent of options.localIntents ?? []) {
+        const snapshot = readConvergedSnapshot()
         summaries.push(
           appendDecision({
             store: options.store,
@@ -682,10 +715,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
       }
 
       for (const observation of local.observations) {
-        const snapshot = withAuthorityMode({
-          snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
-          authorityMode: options.authorityMode,
-        })
+        const snapshot = readConvergedSnapshot()
         const bodySurface = snapshot.bodies.find(
           (candidate) => candidate.pageId === observation.pageId,
         )

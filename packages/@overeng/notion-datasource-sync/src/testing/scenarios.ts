@@ -664,12 +664,12 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L3-local-surface-convergence',
     title:
-      'shared-mode local convergence reconciles the SQLite `pages` and `.nmd` surfaces per stable identity: agreeing surfaces coalesce to one intent, a single surface passes through, and a divergence raises a local conflict (in the read-only `conflicts` surface, not a page-adjacent file) and — for a property — drives `LocalSurfaceDisagreement` through the shared proof core. NOTE: the engine is unit-proven; production push-path wiring is still pending (TODO(phase-4-local-convergence)), so coverage is L1 today.',
+      'shared-mode local convergence (R06) reconciles the SQLite `pages` and `.nmd` frontmatter surfaces per stable `(page_id, property_id)`: agreeing values coalesce to one intent, an untouched `.nmd` leaves a SQLite-only edit single-surface, and a divergent scalar property raises a local conflict (in the read-only `conflicts` surface, not a page-adjacent file) and blocks the remote write as `LocalSurfaceDisagreement`. Wired into the real CLI `push` path on a tracked workspace.',
     requirementIds: ['R06', 'R08'],
     guards: ['LocalSurfaceDisagreement'],
     lowestPlannerLevel: 'L1',
-    highestIntegrationLevel: 'L1',
-    file: 'src/planner/local-convergence.unit.test.ts',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/local-convergence-production.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L1-linked-view-read-only',
