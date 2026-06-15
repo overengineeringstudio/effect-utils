@@ -971,8 +971,8 @@ describe('notion datasource planner', () => {
     // The convergence engine compares the drained SQLite edit against the `.nmd`
     // fact for `(pageId, propertyA)`; a divergent hash yields a `disagrees`
     // verdict, which `applyConvergenceVerdicts` overlays onto the property surface
-    // so the planner blocks with `LocalSurfaceDisagreement` — closing
-    // TODO(phase-4-local-convergence).
+    // so the planner blocks with `LocalSurfaceDisagreement`. The production CLI
+    // push path wires this same chain (see local-convergence-production.e2e).
     const identity = { kind: 'property' as const, pageId, propertyId: propertyA }
     const convergence = convergeLocalSurfaces({
       authorityMode: 'shared',

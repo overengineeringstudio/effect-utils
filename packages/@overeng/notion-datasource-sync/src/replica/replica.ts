@@ -3716,6 +3716,76 @@ export const readPendingReplicaChanges = (replicaPath: string): readonly Replica
   }
 }
 
+/**
+ * Observed-base value for one page property, read from the public data file's
+ * `_nds_replica_cells` projection joined to its schema. Used by SM5c local
+ * convergence to baseline-diff the `.nmd` frontmatter surface: a `.nmd` property
+ * is only a desired fact when its canonical value differs from this base.
+ */
+export type ReplicaCellBase = {
+  readonly pageId: string
+  readonly dataSourceId: string
+  readonly propertyId: string
+  /** Visible property name (the `.nmd` frontmatter key); used for name → id resolution. */
+  readonly propertyName: string
+  readonly propertyType: string
+  /**
+   * Current canonical `value_json` for this cell. NOTE: a local `pages` edit
+   * OVERWRITES this with the desired value, so it is NOT a pristine base — use
+   * {@link remoteHash} for the convergence baseline.
+   */
+  readonly valueJson: string | undefined
+  /**
+   * Hash of the last REMOTE-observed canonical value, in the same space as
+   * `convergenceHash` of the pulled `value_json` (both ultimately
+   * `hashStoreBytes(inlineValueJson)` over clean codec output). A local `pages`
+   * edit does NOT touch this, so it is the pristine convergence base the `.nmd`
+   * surface is diffed against.
+   */
+  readonly remoteHash: string
+}
+
+/**
+ * Read the observed per-property base values from the public data file. Returns
+ * one entry per `(page_id, property_id)` cell, carrying the base `value_json` and
+ * the visible property name so the caller can resolve a `.nmd` frontmatter
+ * property (keyed by name) to its stable `property_id`.
+ */
+export const readReplicaCellBases = (replicaPath: string): readonly ReplicaCellBase[] => {
+  const db = new DatabaseSync(replicaPath)
+  try {
+    createReplicaSchema(db)
+    return (
+      db
+        .prepare(
+          `SELECT
+             c.page_id,
+             c.data_source_id,
+             c.property_id,
+             c.value_json,
+             c.remote_hash,
+             p.property_name,
+             p.property_type
+           FROM _nds_replica_cells c
+           JOIN _nds_replica_properties p
+             ON p.data_source_id = c.data_source_id AND p.property_id = c.property_id
+           ORDER BY c.page_id, c.property_id`,
+        )
+        .all() as SqlRow[]
+    ).map((row) => ({
+      pageId: readString({ row, key: 'page_id' }),
+      dataSourceId: readString({ row, key: 'data_source_id' }),
+      propertyId: readString({ row, key: 'property_id' }),
+      propertyName: readString({ row, key: 'property_name' }),
+      propertyType: readString({ row, key: 'property_type' }),
+      valueJson: readOptionalString({ row, key: 'value_json' }),
+      remoteHash: readString({ row, key: 'remote_hash' }),
+    }))
+  } finally {
+    db.close()
+  }
+}
+
 /** Mark a replica change as planned, applied, rejected, or otherwise progressed. */
 export const markReplicaChangeStatus = ({
   replicaPath,

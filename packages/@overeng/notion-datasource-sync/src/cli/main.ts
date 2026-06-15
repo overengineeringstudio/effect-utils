@@ -118,6 +118,12 @@ import {
   withSpan,
 } from '../observability/observability.ts'
 import {
+  convergeLocalSurfaces,
+  type LocalIdentity,
+  type PropertyConvergenceVerdict,
+} from '../planner/local-convergence.ts'
+import type { PlannerIntent } from '../planner/planner.ts'
+import {
   forgetPageCommand,
   listUserCommandSurface,
   resolveConflictCommand,
@@ -129,6 +135,7 @@ import {
   applyReplicaConflictResolutions,
   projectReplicaFromSyncStore,
   readPendingReplicaChanges,
+  readReplicaCellBases,
   replicaChangesToPlannerIntents,
   settleReplicaChangesAfterSync,
 } from '../replica/replica.ts'
@@ -138,7 +145,8 @@ import {
   type NotionSyncStore,
   type WorkspaceBindingRow,
 } from '../store/store.ts'
-import { type SchemaPropertyObservation } from '../sync/observation.ts'
+import { buildPropertyConvergenceInputs } from '../sync/local-convergence-inputs.ts'
+import { makeConflictRaisedEvent, type SchemaPropertyObservation } from '../sync/observation.ts'
 import {
   establishFromNotion,
   initOneShotSync,
@@ -344,6 +352,141 @@ export type CliContext = {
   readonly webhookReceiverPort?: number
   readonly webhookReceiverPath?: string
   readonly webhookReceiverStarted?: (status: NotionWebhookReceiverStatus) => void
+}
+
+const identityKeyOf = (identity: LocalIdentity): string => {
+  switch (identity.kind) {
+    case 'property':
+      return `property ${identity.pageId} ${identity.propertyId}`
+    case 'body':
+      return `body ${identity.pageId}`
+    case 'lifecycle':
+      return `lifecycle ${identity.pageId}`
+  }
+}
+
+const intentIdentityKey = (intent: PlannerIntent): string | undefined => {
+  switch (intent._tag) {
+    case 'property-edit':
+      return `property ${intent.pageId} ${intent.propertyId}`
+    case 'body-edit':
+      return `body ${intent.pageId}`
+    case 'local-delete':
+      return `lifecycle ${intent.pageId}`
+    default:
+      return undefined
+  }
+}
+
+/**
+ * SM5c shared-mode local convergence (R06). Reconciles the SQLite `pages`
+ * property edits against the page's `.nmd` frontmatter BEFORE remote planning:
+ *
+ * - agreeing surfaces coalesce to the single existing SQLite intent (the `.nmd`
+ *   side carries no intent, so no double-apply) and a `converged` verdict that
+ *   leaves the write unblocked;
+ * - diverging surfaces produce a `disagrees` verdict (returned here and threaded
+ *   into `pushOneShotSync` as `convergenceVerdicts`, where `applyConvergenceVerdicts`
+ *   overlays it onto `PropertySurfaceSnapshot.localConvergence` so the planner
+ *   blocks the property write through the shared proof core as
+ *   `LocalSurfaceDisagreement`) AND a `ConflictRaised` event in the read-only
+ *   `conflicts` view.
+ *
+ * PROPERTY identities are blocked by that planner guard, so their intents are NOT
+ * pre-filtered here — pre-filtering would remove them before planning and the
+ * guard would never fire (the block would silently degrade to a side-channel
+ * intent drop, masked behind `attemptedPatchPageProperties === 0`).
+ *
+ * Scope: only the PROPERTY surface is observed today. BODY and LIFECYCLE
+ * identities have no `localConvergence` proof field, so the engine cannot block
+ * them through the planner; their only block path is the intent-filter retained
+ * below. They are also not yet produced by `buildPropertyConvergenceInputs`, so
+ * body/lifecycle convergence is engine-ready but NOT production-observed — a
+ * follow-up (body materialization is entangled with sidecar identity).
+ *
+ * Runs in `shared` mode ONLY; `local`/`remote` return the intents unchanged with
+ * no verdicts (single-source mirror, `not-applicable`).
+ */
+const runLocalConvergenceForPush = ({
+  context,
+  changes,
+  replicaPath,
+  intents,
+  dryRun,
+}: {
+  readonly context: CliContext
+  readonly changes: readonly { readonly kind: string }[]
+  readonly replicaPath: string
+  readonly intents: ReadonlyArray<PlannerIntent>
+  readonly dryRun?: boolean
+}): {
+  readonly verdicts: ReadonlyArray<PropertyConvergenceVerdict>
+  readonly intents: ReadonlyArray<PlannerIntent>
+} => {
+  if (
+    context.authorityMode !== 'shared' ||
+    context.sourcePagesDir === undefined ||
+    replicaPath === ':memory:'
+  ) {
+    return { verdicts: [], intents }
+  }
+
+  const bases = readReplicaCellBases(replicaPath)
+  const { dataFileEdits, nmdFacts } = buildPropertyConvergenceInputs({
+    workspaceRoot: context.workspaceRoot,
+    pagesDir: context.sourcePagesDir,
+    changes: changes as never,
+    bases,
+  })
+  if (dataFileEdits.length === 0 && nmdFacts.length === 0) {
+    return { verdicts: [], intents }
+  }
+
+  const result = convergeLocalSurfaces({ authorityMode: 'shared', dataFileEdits, nmdFacts })
+  if (result._tag !== 'shared') return { verdicts: [], intents }
+
+  // Raise each local conflict into the read-only `conflicts` view via the normal
+  // ConflictRaised rail (decision 0005 — never a page-adjacent file).
+  if (dryRun !== true) {
+    for (const outcome of result.outcomes) {
+      if (outcome._tag !== 'local-conflict' || outcome.identity.kind !== 'property') continue
+      const { conflict, identity } = outcome
+      context.store.appendEventWithResult(
+        makeConflictRaisedEvent({
+          rootId: context.rootId,
+          pageId: identity.pageId,
+          propertyId: identity.propertyId,
+          surface: conflict.localSurface,
+          baseHash: conflict.baseHash ?? conflict.localHash ?? conflict.remoteHash!,
+          localHash: conflict.localHash ?? conflict.remoteHash!,
+          remoteHash: conflict.remoteHash ?? conflict.localHash!,
+          conflictKind: 'property',
+          message: conflict.message,
+        }),
+      )
+    }
+  }
+
+  // Diverged PROPERTY identities are blocked by the planner itself: the
+  // `disagrees` verdict overlays `PropertySurfaceSnapshot.localConvergence`
+  // (via `convergenceVerdicts → applyConvergenceVerdicts`), so the shared proof
+  // core blocks the write as `LocalSurfaceDisagreement`. We must NOT pre-filter
+  // those intents here — doing so removes them before planning, so the guard
+  // never fires and the block silently degrades to a side-channel intent drop.
+  //
+  // BODY and LIFECYCLE identities carry no `localConvergence` proof field, so
+  // the verdict cannot block them through the planner. For those the intent
+  // drop is the only block, so we keep filtering them (they are not yet wired
+  // through the planner — see the body/lifecycle convergence follow-up).
+  const blocked = new Set(
+    result.blockedIdentities.filter((identity) => identity.kind !== 'property').map(identityKeyOf),
+  )
+  const filtered = intents.filter((intent) => {
+    const key = intentIdentityKey(intent)
+    return key === undefined || blocked.has(key) === false
+  })
+
+  return { verdicts: result.propertyVerdicts, intents: filtered }
 }
 
 /** Environment variables read by `makeCliRuntimeLayer` to obtain the Notion API token. */
@@ -965,9 +1108,19 @@ const runCliCommandEffect = ({
         // appended through `context.store` (control-plane state.sqlite). ADR 0011.
         const replicaPath = replicaPathForContext(context)
         if (replicaPath === undefined)
-          return { changes: [] as const, intents: [] as const, replicaPath: ':memory:' }
+          return {
+            changes: [] as const,
+            intents: [] as const,
+            verdicts: [] as ReadonlyArray<PropertyConvergenceVerdict>,
+            replicaPath: ':memory:',
+          }
         if (existsSync(replicaPath) === false)
-          return { changes: [] as const, intents: [] as const, replicaPath }
+          return {
+            changes: [] as const,
+            intents: [] as const,
+            verdicts: [] as ReadonlyArray<PropertyConvergenceVerdict>,
+            replicaPath,
+          }
         const changes = readPendingReplicaChanges(replicaPath)
         applyReplicaConflictResolutions({
           changes,
@@ -977,19 +1130,32 @@ const runCliCommandEffect = ({
           ...(context.authorityMode === undefined ? {} : { authorityMode: context.authorityMode }),
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
-        const intents = replicaChangesToPlannerIntents({
+        const plannedIntents = replicaChangesToPlannerIntents({
           changes: changes.filter((change) => change.kind !== 'conflict_resolution'),
           replicaPath,
           ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
         })
-        return { changes, intents, replicaPath }
+        const converged = runLocalConvergenceForPush({
+          context,
+          changes,
+          replicaPath,
+          intents: plannedIntents,
+          ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+        })
+        return {
+          changes,
+          intents: converged.intents,
+          verdicts: converged.verdicts,
+          replicaPath,
+        }
       }).pipe(
-        Effect.flatMap(({ changes, intents, replicaPath }) =>
+        Effect.flatMap(({ changes, intents, verdicts, replicaPath }) =>
           pushOneShotSync({
             ...context,
             ...withOptionalRuntimeOptions(context),
             ...withOptionalCommandOptions({ command, context }),
             localIntents: intents,
+            ...(verdicts.length === 0 ? {} : { convergenceVerdicts: verdicts }),
           }).pipe(
             Effect.tap((result) =>
               Effect.sync(() =>
