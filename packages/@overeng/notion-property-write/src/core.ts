@@ -56,9 +56,9 @@ const canonicalTagFitsPropertyType = ({
  * The checks run in this pinned order (return on first block):
  * 1. remote schema not observed -> `RemoteSchemaRequired`
  * 2. display name ambiguous -> `PropertyIdentityAmbiguous`
- * 3. observed schema hash present and differs from authored -> `StaleRemoteSchema`
+ * 3. observed AND expected schema hash both present and differ -> `StaleRemoteSchema`
  * 4. write class computed/unsupported -> `ComputedPropertyWrite`/`UnsupportedRemoteShape`
- * 5. observed config hash present and differs from expected -> `SchemaDriftAffectsIntent`
+ * 5. observed AND expected config hash both present and differ -> `SchemaDriftAffectsIntent`
  * 6. value tag incompatible with property type -> `UnsupportedRemoteShape`
  * 7. base surface incomplete -> `PropertyValueIncomplete`
  * 8. relation targets unavailable / related data source unshared
@@ -87,9 +87,13 @@ export const evaluatePropertyWrite = (
     })
   }
 
-  // 3. A freshly observed schema hash that disagrees with the authored one is stale.
+  // 3. A freshly observed schema hash that disagrees with the authored one is
+  //    stale. Gate on BOTH sides being present: a provider with no observed read
+  //    or no authored expectation has no comparison to make, so the check skips
+  //    rather than fabricating a comparison against a missing hash.
   if (
     schemaConsistency.observedSchemaHash !== undefined &&
+    schemaConsistency.expectedSchemaHash !== undefined &&
     schemaConsistency.observedSchemaHash !== schemaConsistency.expectedSchemaHash
   ) {
     return blocked({
@@ -112,9 +116,13 @@ export const evaluatePropertyWrite = (
     })
   }
 
-  // 5. A freshly observed config hash that disagrees with the expected one is drift affecting intent.
+  // 5. A freshly observed config hash that disagrees with the expected one is
+  //    drift affecting intent. Gate on BOTH sides being present (same rationale
+  //    as check 3): a missing observed read or missing authored config identity
+  //    means no comparison, so the check skips.
   if (
     schemaConsistency.observedConfigHash !== undefined &&
+    schemaConsistency.expectedConfigHash !== undefined &&
     schemaConsistency.observedConfigHash !== schemaConsistency.expectedConfigHash
   ) {
     return blocked({

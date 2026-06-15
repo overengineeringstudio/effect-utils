@@ -57,17 +57,21 @@ export type PropertyWriteIdentity = typeof PropertyWriteIdentity.Type
 /**
  * What a fresh read of the remote schema established for this property.
  *
- * `observedSchemaHash`/`observedConfigHash` are optional: a provider may have
- * no observed hash to compare (the matching checks gate on presence). The
- * `expected*` hashes are the authored identities the proof asserts must hold.
+ * All four hashes are optional, and each staleness check gates on *both* sides
+ * being present (see `core.ts` checks 3 and 5): a provider compares observed vs
+ * expected only when it actually holds both. A standalone provider that has no
+ * authored schema/config-hash oracle simply omits the `expected*` hash, and the
+ * corresponding check honestly skips rather than fabricating a comparison. A
+ * provider with an authored identity but no fresh observation omits the
+ * `observed*` hash instead. Drift is asserted only when both are known and differ.
  */
 export const PropertyWriteSchemaConsistency = Schema.Struct({
   /** `false` when the data source schema was not freshly observed (datasource-scoped). */
   remoteSchemaObserved: Schema.Boolean,
   observedSchemaHash: Schema.optional(SchemaHash),
   observedConfigHash: Schema.optional(ConfigHash),
-  expectedSchemaHash: SchemaHash,
-  expectedConfigHash: ConfigHash,
+  expectedSchemaHash: Schema.optional(SchemaHash),
+  expectedConfigHash: Schema.optional(ConfigHash),
   propertyType: NotionPropertyType,
   writeClass: PropertyWriteClass,
 }).annotations({ identifier: 'Notion.PropertyWrite.SchemaConsistency' })

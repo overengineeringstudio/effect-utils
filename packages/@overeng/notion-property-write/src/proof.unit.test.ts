@@ -75,6 +75,19 @@ describe('decodePropertyWriteProof', () => {
     }
     expect(Exit.isSuccess(run(decodePropertyWriteProof(withObserved)))).toBe(true)
   })
+
+  it('accepts a proof that omits the optional expected hashes', () => {
+    // A standalone provider with no authored schema/config-hash oracle omits
+    // both expected hashes; the proof must still decode (the staleness checks
+    // skip rather than fabricate a comparison).
+    const {
+      expectedSchemaHash: _omitSchema,
+      expectedConfigHash: _omitConfig,
+      ...schemaWithoutExpected
+    } = validProof.schemaConsistency
+    const withoutExpected = { ...validProof, schemaConsistency: schemaWithoutExpected }
+    expect(Exit.isSuccess(run(decodePropertyWriteProof(withoutExpected)))).toBe(true)
+  })
 })
 
 describe('decodeDesiredPropertyWrite', () => {

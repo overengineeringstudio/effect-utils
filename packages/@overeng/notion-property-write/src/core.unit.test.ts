@@ -200,6 +200,32 @@ describe('evaluatePropertyWrite — per-guard block + allow boundary', () => {
     ).toBe('allowed')
   })
 
+  it('skips StaleRemoteSchema when expectedSchemaHash is omitted (observed without authored expectation)', () => {
+    // A standalone provider with a fresh read but no authored schema-hash oracle
+    // omits expectedSchemaHash; the check must skip, not fabricate a comparison.
+    const { expectedSchemaHash: _omit, ...schemaWithoutExpected } = baseProof.schemaConsistency
+    const proof: ProofShape = {
+      ...baseProof,
+      schemaConsistency: {
+        ...schemaWithoutExpected,
+        observedSchemaHash: Schema.decodeSync(SchemaHash)(hashOf(99)),
+      },
+    }
+    expect(evaluatePropertyWrite(proof, selectDesired)._tag).toBe('allowed')
+  })
+
+  it('skips SchemaDriftAffectsIntent when expectedConfigHash is omitted (observed without authored expectation)', () => {
+    const { expectedConfigHash: _omit, ...schemaWithoutExpected } = baseProof.schemaConsistency
+    const proof: ProofShape = {
+      ...baseProof,
+      schemaConsistency: {
+        ...schemaWithoutExpected,
+        observedConfigHash: Schema.decodeSync(ConfigHash)(hashOf(99)),
+      },
+    }
+    expect(evaluatePropertyWrite(proof, selectDesired)._tag).toBe('allowed')
+  })
+
   it('UnsupportedRemoteShape (value tag vs property type)', () => {
     const numberDesired = makeDesired({
       propertyId: 'prop_status',
