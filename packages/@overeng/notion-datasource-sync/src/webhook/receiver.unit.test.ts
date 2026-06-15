@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { makeStoreFixture, testIds } from '../testing/harness.ts'
 import { computeNotionWebhookSignature } from './notion.ts'
-import { startNotionWebhookReceiver, startNotionWebhookReceiverRuntime } from './receiver.ts'
+import {
+  handleNotionWebhookDelivery,
+  startNotionWebhookReceiver,
+  startNotionWebhookReceiverRuntime,
+} from './receiver.ts'
 import type { WebhookRelayProvider } from './tailscale.ts'
 
 const verificationToken = 'receiver-verification-token'
@@ -225,6 +229,38 @@ describe('Notion webhook receiver', () => {
     await runtime.close()
     expect(calls).toEqual([`start:${runtime.receiver.localTarget}:/notion/webhook`, 'stop'])
     expect(runtime.status().receiver.closed).toBe(true)
+  })
+
+  it('leaves the store untouched on signature-mismatch and invalid-payload-shape deliveries', () => {
+    const { store } = makeStoreFixture({ mode: 'memory' })
+    const rootId = testIds.rootId
+
+    const mismatch = handleNotionWebhookDelivery({
+      rawBody: JSON.stringify({ id: 'e1', type: 'page.created' }),
+      headers: { 'x-notion-signature': 'sha256=' + 'a'.repeat(64) },
+      rootId,
+      store,
+      verificationToken: 'token',
+    })
+    expect(mismatch).toEqual({ _tag: 'rejected', reason: 'signature-mismatch' })
+
+    // No verificationToken → HMAC gate skipped → shape decode runs → rejects missing type
+    const badShape = handleNotionWebhookDelivery({
+      rawBody: JSON.stringify({ id: 'e2', missing_type_field: true }),
+      headers: {},
+      rootId,
+      store,
+      verificationToken: undefined,
+    })
+    expect(badShape).toEqual({ _tag: 'rejected', reason: 'invalid-payload-shape' })
+
+    // Both rejections leave signal count at 0
+    expect(store.readSignalStatus(rootId)).toEqual({
+      pending: 0,
+      claimed: 0,
+      processed: 0,
+      failed: 0,
+    })
   })
 
   it('closes the receiver if relay startup fails', async () => {

@@ -331,6 +331,19 @@ export {
   toPlainText,
 } from './rich-text-utils.ts'
 
+// Webhook wire schemas
+export {
+  type NotionWebhookData,
+  NotionWebhookData as NotionWebhookDataSchema,
+  type NotionWebhookEntity,
+  NotionWebhookEntity as NotionWebhookEntitySchema,
+  type NotionWebhookParent,
+  NotionWebhookParent as NotionWebhookParentSchema,
+  type NotionWebhookPayload,
+  NotionWebhookPayload as NotionWebhookPayloadSchema,
+  notionWebhookDecodeOptions,
+} from './webhook.ts'
+
 // User schemas
 export {
   type Bot,
