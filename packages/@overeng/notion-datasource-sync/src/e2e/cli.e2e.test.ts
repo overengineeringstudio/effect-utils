@@ -543,6 +543,32 @@ describe('CLI command surface', () => {
     expect(() => parseCliCommand(['watch', '--state', '/tmp/watch.json'])).toThrow(CliArgumentError)
   })
 
+  // SM5.3 (CLI-R02): a `sync --watch --dry-run` is a non-interfering observer
+  // that writes NOTHING durable, but a webhook receiver enqueues durable signals
+  // on delivery. Reject the combination at parse time (before any receiver
+  // starts) for both providers; the default `--webhook none` dry-run watch and
+  // an explicit `--webhook none` still parse.
+  it('rejects a webhook receiver under sync --watch --dry-run at parse time', () => {
+    const webhookRejection =
+      'sync --watch --dry-run cannot run a webhook receiver (it would enqueue durable signals); use --webhook none for a dry-run watch'
+    for (const provider of ['manual', 'tailscale'] as const) {
+      expect(() =>
+        parseCliCommand(['sync', '--watch', '--dry-run', '--webhook', provider]),
+      ).toThrow(webhookRejection)
+    }
+    expect(parseCliCommand(['sync', '--watch', '--dry-run'])).toEqual({
+      _tag: 'sync',
+      dryRun: true,
+      watch: true,
+    })
+    expect(parseCliCommand(['sync', '--watch', '--dry-run', '--webhook', 'none'])).toEqual({
+      _tag: 'sync',
+      dryRun: true,
+      watch: true,
+      webhook: 'none',
+    })
+  })
+
   it('parses track as the adoption verb with a workspace-wide authority --mode', () => {
     // `track <remote> <workspace>` defaults the authority mode to `remote`
     // (safe-by-default mirror adoption; VRS cli/spec.md).
