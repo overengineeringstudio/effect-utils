@@ -72,6 +72,69 @@ export class NmdTokenMissingError extends Schema.TaggedError<NmdTokenMissingErro
   },
 ) {}
 
+/**
+ * Raised when `<page>` is not a valid Notion id/URL, or the page does not exist
+ * (editor surfaces `cat`/`put`/`edit`; exit 4).
+ */
+export class NmdUnresolvablePageError extends Schema.TaggedError<NmdUnresolvablePageError>()(
+  'NmdUnresolvablePageError',
+  {
+    page: Schema.String,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+/**
+ * Raised when a default-mode editor buffer is missing its leading title H1, or a
+ * `--frontmatter` envelope is malformed (editor surfaces; exit 5).
+ */
+export class NmdInvalidDocumentError extends Schema.TaggedError<NmdInvalidDocumentError>()(
+  'NmdInvalidDocumentError',
+  {
+    page_id: Schema.optional(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
+/** Raised when `$EDITOR` exits non-zero during `edit`; nothing is pushed (exit 8). */
+export class NmdEditorAbortedError extends Schema.TaggedError<NmdEditorAbortedError>()(
+  'NmdEditorAbortedError',
+  {
+    page_id: Schema.String,
+    editor: Schema.String,
+    exit_code: Schema.Number,
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when the post-push `semanticEquivalent` gate rejects a `put` result
+ * (the remote may be mutated; re-`cat`; exit 9).
+ */
+export class NmdPostPushGateError extends Schema.TaggedError<NmdPostPushGateError>()(
+  'NmdPostPushGateError',
+  {
+    page_id: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when one of a `put`'s two writes (body, title) landed and the other
+ * failed; the page is in a mixed state (decision 0012; exit 10).
+ */
+export class NmdPartialWriteError extends Schema.TaggedError<NmdPartialWriteError>()(
+  'NmdPartialWriteError',
+  {
+    page_id: Schema.String,
+    body_written: Schema.Boolean,
+    title_written: Schema.Boolean,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
 /** Raised for invalid command-line arguments. */
 export class NmdCliError extends Schema.TaggedError<NmdCliError>()('NmdCliError', {
   message: Schema.String,

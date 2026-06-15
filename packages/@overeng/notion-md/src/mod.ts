@@ -1,13 +1,32 @@
 export {
   NmdCliError,
   NmdConflictError,
+  NmdEditorAbortedError,
   NmdFileSystemError,
   NmdFrontmatterError,
   NmdGatewayError,
+  NmdInvalidDocumentError,
   NmdObjectStoreError,
+  NmdPartialWriteError,
+  NmdPostPushGateError,
+  NmdRemoteBodyLossyError,
   NmdTokenMissingError,
+  NmdUnresolvablePageError,
 } from './errors.ts'
 export type { NmdError } from './errors.ts'
+export { catEditorPage, editEditorPage, putEditorPage } from './editor-commands.ts'
+export type {
+  CatOptions,
+  CatResult,
+  EditOptions,
+  EditorMode,
+  EditResult,
+  PutOptions,
+  PutResult,
+} from './editor-commands.ts'
+export { editorBaseHash, parseTitleBody, serializeTitleBody } from './editor-surface.ts'
+export type { TitleBodyDocument } from './editor-surface.ts'
+export { EDITOR_EXIT_CODES, editorExitCode } from './exit-codes.ts'
 export { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 export type { ParsedNmdFile } from './frontmatter.ts'
 export { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
@@ -56,7 +75,13 @@ export type {
   SyncPathOptions,
   SyncPathResult,
 } from './path.ts'
-export { pullPage, statusPage, syncPage } from './sync.ts'
+export {
+  buildFrontmatterV2,
+  pullPage,
+  statusPage,
+  syncPage,
+  syncPageReplacingBody,
+} from './sync.ts'
 export type {
   PullOptions,
   PullResult,
@@ -92,12 +117,15 @@ export {
   materializeBody,
   NotionMdBodyConflictError,
   observeRemoteBody,
+  observeRemoteEditorPage,
   readLocalBody,
+  replaceRemoteBodyForced,
   replaceRemoteBodyVerified,
   settleVerifiedBodyPush,
 } from './body-facade.ts'
 export type {
   NotionMdBodySnapshot,
+  NotionMdEditorSnapshot,
   NotionMdLocalBodySnapshot,
   NotionMdMaterializedBody,
   NotionMdSettledBodyPush,
