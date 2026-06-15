@@ -77,7 +77,10 @@ const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
 const initGitRepo = (path: AbsoluteDirPath) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    yield* runGitCommand(path, 'init')
+    // `-b main` so the default branch is deterministic regardless of the host's
+    // `init.defaultBranch` (CI git defaults to `master`, which breaks the
+    // `main`-based fixtures and every `refs/remotes/origin/main` assumption).
+    yield* runGitCommand(path, 'init', '-b', 'main')
     const configPath = EffectPath.ops.join(path, EffectPath.unsafe.relativeFile('.git/config'))
     const existing = yield* fs.readFileString(configPath)
     yield* fs.writeFileString(
@@ -137,8 +140,8 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       yield* fs.makeDirectory(bareRepoPath, { recursive: true })
       bareRepoPaths[repoKey] = bareRepoPath
 
-      // Initialize bare repo
-      yield* runGitCommand(bareRepoPath, 'init', '--bare')
+      // Initialize bare repo (`-b main` for a deterministic default branch — see initGitRepo)
+      yield* runGitCommand(bareRepoPath, 'init', '--bare', '-b', 'main')
 
       // For `withRemote`, the store bare fetches from a separate upstream bare so
       // it gains real `refs/remotes/origin/*`. The source repo pushes to that
@@ -151,7 +154,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
           EffectPath.unsafe.relativeDir(`_upstream/${repoKey}.bare/`),
         )
         yield* fs.makeDirectory(upstreamPath, { recursive: true })
-        yield* runGitCommand(upstreamPath, 'init', '--bare')
+        yield* runGitCommand(upstreamPath, 'init', '--bare', '-b', 'main')
         upstreamRepoPaths[repoKey] = upstreamPath
         pushTargetPath = upstreamPath
       }
