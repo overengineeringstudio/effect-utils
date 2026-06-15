@@ -31,11 +31,9 @@ import {
   Hash,
   PageId,
   PropertyId,
-  type AbsolutePath,
   WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
-import { dataFilePath } from '../local/manifest.ts'
 import type { PlanDecision, PlannerIntent } from '../planner/planner.ts'
 import { resolveConflictCommand } from '../planner/user-commands.ts'
 import { BodyProjectionPayload, hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
@@ -46,8 +44,6 @@ const decodeBodyProjectionPayloadJson = Schema.decodeUnknownSync(
   Schema.parseJson(BodyProjectionPayload),
 )
 
-/** Default file name for the on-disk SQLite replica inside a workspace. */
-export const replicaFileName = 'notion.sqlite'
 /** Schema version stored in the replica's `PRAGMA user_version`. */
 export const replicaSchemaVersion = 1
 
@@ -344,13 +340,6 @@ const slugForView = (value: string): string => {
     .replace(/^_+|_+$/gu, '')
   return slug.length === 0 ? 'data_source' : slug
 }
-
-/**
- * Default path for the single-source replica/data file inside a workspace root,
- * under the versioned `data/v1/notion.sqlite` namespace layout.
- */
-export const defaultReplicaPath = (workspaceRoot: AbsolutePath): string =>
-  dataFilePath({ workspaceRoot, name: 'notion' })
 
 const createReplicaSchema = (db: DatabaseSync): void => {
   const localChangesSchema = db
