@@ -1347,32 +1347,20 @@ export const pushGuarded = (opts: {
       }),
     )
 
-    yield* Effect.gen(function* () {
-      if (
-        status.localChanged === true &&
-        status.unresolvedFileIds.length > 0 &&
-        options.allowDeletingUnknownBlocks !== true
-      ) {
-        return yield* new NmdDestructiveBodyBlockedError({
-          page_id: status.pageId,
-          guard: 'UnknownBlockDeletion',
-          message:
-            'Page contains unresolved file/media payloads; refusing push because replace_content can delete or orphan them. Pass --allow-delete-unknown-blocks only for explicit destructive intent.',
-          allowFlag: '--allow-delete-unknown-blocks',
-        })
-      }
-    }).pipe(
-      Observability.withOperation(Observability.DestructiveBodySpan, {
-        guard: 'UnknownBlockDeletion',
-        blockCount: status.unresolvedFileIds.length,
-        verdict:
-          status.localChanged === true &&
-          status.unresolvedFileIds.length > 0 &&
-          options.allowDeletingUnknownBlocks !== true
-            ? 'blocked'
-            : 'inert',
-      }),
-    )
+    if (
+      status.localChanged === true &&
+      status.unresolvedFileIds.length > 0 &&
+      options.allowDeletingUnknownBlocks !== true
+    ) {
+      return yield* new NmdConflictError({
+        path,
+        page_id: status.pageId,
+        local_changed: status.localChanged,
+        remote_changed: status.remoteChanged,
+        message:
+          'Page contains unresolved file/media payloads; refusing push because replace_content can delete or orphan them. Pass allowDeletingUnknownBlocks only for explicit destructive intent.',
+      })
+    }
 
     if (status.remoteBodyChanged === true && options.force !== true) {
       const baseSnapshot = yield* readBaseSnapshot({ path: statePath, syncState: local.syncState })
