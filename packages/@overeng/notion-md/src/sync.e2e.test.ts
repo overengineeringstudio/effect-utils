@@ -7,7 +7,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Deferred, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { BodyCompleteness } from '@overeng/notion-core'
+import { classifyBodyCompleteness, type BodyCompleteness } from '@overeng/notion-core'
 import type { NmdPageState, NmdStorage, NmdSyncStateV1 } from '@overeng/notion-effect-client'
 
 import { resolveNmdTargets, runBatchWatch, syncMany } from './batch.ts'
@@ -727,6 +727,103 @@ describe('notion-md e2e prototype', () => {
       await expect(
         readFile(join(dir, '.notion-md', 'sync', `${pageId}.json`), 'utf8'),
       ).rejects.toThrow()
+    })
+  })
+
+  // R38 / #785: a renderable-but-not-round-trip-safe block (table_of_contents,
+  // synced_block, bookmark, child_database, …) renders to Markdown that Notion
+  // re-parses as a paragraph on push. The classifier must flag it so the pull
+  // gate refuses the page rather than letting an unrelated edit silently destroy
+  // the block. Drive the verdict through the REAL classifier from a block
+  // inventory to prove the classifier→gate wiring, not just the gate.
+  it('refuses a page whose body contains a not-round-trip-safe block (R38)', async () => {
+    await withTempDir(async (dir) => {
+      const completeness = classifyBodyCompleteness({
+        markdown: { markdown: '# Doc\n\n[TOC]\n\nProse', truncated: false, unknownBlockIds: [] },
+        inventory: {
+          entries: [
+            {
+              id: '00000000-0000-4000-8000-00000000a001',
+              type: 'heading_1',
+              hasChildren: false,
+              inTrash: false,
+            },
+            {
+              id: '00000000-0000-4000-8000-00000000a002',
+              type: 'table_of_contents',
+              hasChildren: false,
+              inTrash: false,
+            },
+            {
+              id: '00000000-0000-4000-8000-00000000a003',
+              type: 'paragraph',
+              hasChildren: false,
+              inTrash: false,
+            },
+          ],
+          renderedMarkdown: '# Doc\n\n[TOC]\n\nProse',
+        },
+      })
+      expect(completeness).toEqual({
+        _tag: 'lossy',
+        reasons: ['not_round_trip_safe_blocks'],
+        lossyBlockTypes: ['table_of_contents'],
+      })
+
+      const fake = new FakeNotion([
+        { pageId, title: 'Doc', markdown: '# Doc\n\n[TOC]\n\nProse', completeness },
+      ])
+      const path = join(dir, 'toc.nmd')
+
+      await expect(runWithFake(pullPage({ pageId, outPath: path }), fake)).rejects.toThrow(
+        'table_of_contents',
+      )
+      // Nothing was written: the page is refused before any local base exists,
+      // so no later edit can trigger the silent push-time destruction.
+      await expect(readFile(path, 'utf8')).rejects.toThrow()
+    })
+  })
+
+  // R30: a child_page block *in a single page's body* is refused (the single-page
+  // surface has no tree engine to manage it as a <page> anchor). Contrast with
+  // the tree-node tolerance covered in tree.unit.test.ts.
+  it('refuses a single page whose body contains a child_page block (R30)', async () => {
+    await withTempDir(async (dir) => {
+      const completeness = classifyBodyCompleteness({
+        markdown: { markdown: '# Doc\n\nProse', truncated: false, unknownBlockIds: [] },
+        inventory: {
+          entries: [
+            {
+              id: '00000000-0000-4000-8000-00000000b001',
+              type: 'paragraph',
+              hasChildren: false,
+              inTrash: false,
+            },
+            {
+              id: '00000000-0000-4000-8000-00000000b002',
+              type: 'child_page',
+              hasChildren: true,
+              inTrash: false,
+            },
+          ],
+          renderedMarkdown: '# Doc\n\nProse',
+        },
+      })
+      expect(completeness).toEqual({
+        _tag: 'lossy',
+        reasons: ['not_round_trip_safe_blocks'],
+        lossyBlockTypes: ['child_page'],
+      })
+
+      const fake = new FakeNotion([
+        { pageId, title: 'Doc', markdown: '# Doc\n\nProse', completeness },
+      ])
+      const path = join(dir, 'child.nmd')
+
+      await expect(runWithFake(pullPage({ pageId, outPath: path }), fake)).rejects.toThrow(
+        'child_page',
+      )
+      await expect(readFile(path, 'utf8')).rejects.toThrow()
     })
   })
 

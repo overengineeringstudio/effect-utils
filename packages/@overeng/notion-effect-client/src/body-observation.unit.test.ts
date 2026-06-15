@@ -198,6 +198,7 @@ describe('NotionBody.observeFromSnapshots', () => {
     expect(observed.completeness).toEqual({
       _tag: 'lossy',
       reasons: ['rendered_markdown_has_unobserved_suffix'],
+      lossyBlockTypes: [],
     })
     expect(observed.inventory.entries.map((entry) => entry.type)).toEqual([
       'paragraph',
@@ -352,6 +353,7 @@ describe('NotionBody.observeFromSnapshots', () => {
     expect(observed.completeness).toEqual({
       _tag: 'lossy',
       reasons: ['rendered_markdown_has_unobserved_suffix'],
+      lossyBlockTypes: [],
     })
   })
 })

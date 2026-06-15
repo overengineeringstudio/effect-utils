@@ -3,6 +3,7 @@ import { basename } from 'node:path'
 import type { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
 
+import { describeBodyLossyRefusal, tolerateTreeChildPages } from '@overeng/notion-core'
 import {
   NOTION_API_VERSION,
   type NmdFrontmatterV2,
@@ -392,9 +393,18 @@ const assertRemoteMarkdownComplete = (opts: {
   readonly path?: string
   readonly pageId: string
   readonly markdown: RemoteMarkdownSnapshot
+  /**
+   * Set on tree-node call sites: tolerate the node's own `child_page` blocks
+   * (managed by the file tree engine as `<page>` anchors, R12/R30) while still
+   * refusing any other lossy block on the same page. Single-page surfaces leave
+   * this false so a child-page block in a single page's body is refused.
+   */
+  readonly allowChildPageBlocks?: boolean
 }): Effect.Effect<void, NmdRemoteBodyLossyError> => {
-  const completeness = opts.markdown.completeness
-  if (completeness === undefined || completeness._tag === 'complete') return Effect.void
+  const raw = opts.markdown.completeness
+  if (raw === undefined || raw._tag === 'complete') return Effect.void
+  const completeness = opts.allowChildPageBlocks === true ? tolerateTreeChildPages(raw) : raw
+  if (completeness._tag === 'complete') return Effect.void
 
   return Effect.fail(
     new NmdRemoteBodyLossyError({
@@ -402,7 +412,11 @@ const assertRemoteMarkdownComplete = (opts: {
       page_id: opts.pageId,
       ...(opts.path === undefined ? {} : { path: opts.path }),
       reasons: [...completeness.reasons],
-      message: `Remote Markdown body for page ${opts.pageId} is lossy (${completeness.reasons.join(', ')}); refusing to treat it as a clean notion-md base`,
+      message: describeBodyLossyRefusal({
+        pageId: opts.pageId,
+        completeness,
+        context: 'refusing to treat it as a clean notion-md base',
+      }),
     }),
   )
 }
@@ -987,6 +1001,7 @@ export const treeNodePersist = (opts: {
         path: opts.path,
         pageId: status.pageId,
         markdown: pulled.markdown,
+        allowChildPageBlocks: true,
       })
       yield* assertLocalBodyUnchanged({
         path: opts.path,
@@ -1100,6 +1115,7 @@ export const pushGuarded = (opts: {
       path,
       pageId: status.pageId,
       markdown: remoteForStatus.markdown,
+      allowChildPageBlocks: options.replaceContent === true,
     })
 
     if (
@@ -1243,6 +1259,7 @@ export const pushGuarded = (opts: {
           path,
           pageId: status.pageId,
           markdown: remote.markdown,
+          allowChildPageBlocks: options.replaceContent === true,
         })
         /*
          * TOCTOU: the remote must not have changed since the status pull.

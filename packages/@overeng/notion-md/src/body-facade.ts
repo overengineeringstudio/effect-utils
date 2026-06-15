@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 
 import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-address'
-import type { BodyCompleteness } from '@overeng/notion-core'
+import { describeBodyLossyRefusal, type BodyCompleteness } from '@overeng/notion-core'
 import type {
   BodyEvidenceFingerprint,
   RemoteBodyObservationEvidence,
@@ -104,7 +104,11 @@ const assertSnapshotComplete = (opts: {
       operation: opts.operation,
       page_id: opts.snapshot.pageId,
       reasons: [...completeness.reasons],
-      message: `Remote Markdown body for page ${opts.snapshot.pageId} is lossy (${completeness.reasons.join(', ')}); refusing verified body operation`,
+      message: describeBodyLossyRefusal({
+        pageId: opts.snapshot.pageId,
+        completeness,
+        context: 'refusing verified body operation',
+      }),
     }),
   )
 }

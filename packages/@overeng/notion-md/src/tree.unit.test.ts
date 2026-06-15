@@ -6,7 +6,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { BodyCompleteness } from '@overeng/notion-core'
+import { classifyBodyCompleteness, type BodyCompleteness } from '@overeng/notion-core'
 import { NOTION_API_VERSION, type NmdPageState } from '@overeng/notion-effect-client'
 
 import {
@@ -65,6 +65,11 @@ class FakeTreeNotion {
   /** Simulate a write that succeeds but whose refreshed Markdown observation is lossy. */
   markRemoteBodyLossyAfterNextUpdate(id: string, completeness: BodyCompleteness): void {
     this.lossyAfterNextUpdate.set(id, completeness)
+  }
+
+  /** Set a page's current remote completeness verdict (test-only). */
+  setRemoteCompleteness(id: string, completeness: BodyCompleteness): void {
+    this.require(id).completeness = completeness
   }
 
   childTitles(id: string): readonly string[] {
@@ -854,6 +859,68 @@ describe('notion-md tree reconcile lifecycle', () => {
 
       await expect(run(syncTree({ root: dir }), fake)).rejects.toThrow('Remote Markdown body')
       expect(await readFile(alphaPath, 'utf8')).toContain('Local alpha')
+    })
+  })
+
+  // R38/#785 + R12/R30: a tree PARENT legitimately contains child_page blocks
+  // for its sub-pages. The classifier flags child_page as not-round-trip-safe,
+  // but the tree gate must TOLERATE the node's own child pages (managed as
+  // <page> anchors) — otherwise every multi-page tree would be refused.
+  const childPageVerdict = (extraTypes: readonly string[] = []) =>
+    classifyBodyCompleteness({
+      markdown: { markdown: 'Root body.', truncated: false, unknownBlockIds: [] },
+      inventory: {
+        entries: [
+          { id: 'b-1', type: 'paragraph', hasChildren: false, inTrash: false },
+          { id: 'b-2', type: 'child_page', hasChildren: true, inTrash: false },
+          ...extraTypes.map((type, i) => ({
+            id: `b-x${i}`,
+            type,
+            hasChildren: false,
+            inTrash: false,
+          })),
+        ],
+        renderedMarkdown: 'Root body.',
+      },
+    })
+
+  it('tolerates a tree node whose only lossy block is its own child_page (R12/R30)', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root body.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+
+      // First sync binds ids and establishes baselines.
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      // Now the root's remote body classifies lossy *only* because it contains a
+      // child_page block (its sub-page). The tree gate must not refuse it.
+      const verdict = childPageVerdict()
+      expect(verdict).toEqual({
+        _tag: 'lossy',
+        reasons: ['not_round_trip_safe_blocks'],
+        lossyBlockTypes: ['child_page'],
+      })
+      fake.setRemoteCompleteness(rootPageId, verdict)
+
+      // A subsequent sync must still succeed (no refusal).
+      const result = await run(syncTree({ root: dir }), fake)
+      expect(result.ops.length).toBeGreaterThan(0)
+    })
+  })
+
+  it('still refuses a tree node that ALSO has a real lossy block (#785 stays fixed on the tree path)', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root body.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      // Root now has child_page (tolerated) AND a table_of_contents (must refuse).
+      fake.setRemoteCompleteness(rootPageId, childPageVerdict(['table_of_contents']))
+      // Force a local change so the gate is reached on push.
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Edited root body.' }))
+
+      await expect(run(syncTree({ root: dir }), fake)).rejects.toThrow('table_of_contents')
     })
   })
 

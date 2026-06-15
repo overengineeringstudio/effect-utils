@@ -3,6 +3,7 @@ import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
+import { describeBodyLossyRefusal, tolerateTreeChildPages } from '@overeng/notion-core'
 import {
   NOTION_API_VERSION,
   type NmdFrontmatterV2,
@@ -101,8 +102,16 @@ const assertRemoteMarkdownComplete = (opts: {
   readonly pageId: string
   readonly markdown: RemoteMarkdownSnapshot
 }): Effect.Effect<void, NmdRemoteBodyLossyError> => {
-  const completeness = opts.markdown.completeness
-  if (completeness === undefined || completeness._tag === 'complete') return Effect.void
+  const raw = opts.markdown.completeness
+  if (raw === undefined || raw._tag === 'complete') return Effect.void
+  /*
+   * Tree nodes own their sub-page `child_page` blocks (re-emitted as `<page>`
+   * anchors and managed by the tree engine, R12/R30): tolerate those while
+   * still refusing any other lossy block (toc/synced/…) on the same page so
+   * #785 stays fixed on the tree path too.
+   */
+  const completeness = tolerateTreeChildPages(raw)
+  if (completeness._tag === 'complete') return Effect.void
 
   return Effect.fail(
     new NmdRemoteBodyLossyError({
@@ -110,7 +119,11 @@ const assertRemoteMarkdownComplete = (opts: {
       page_id: opts.pageId,
       ...(opts.relPath === undefined ? {} : { path: opts.relPath }),
       reasons: [...completeness.reasons],
-      message: `Remote Markdown body for page ${opts.pageId} is lossy (${completeness.reasons.join(', ')}); refusing to treat it as a clean notion-md tree base`,
+      message: describeBodyLossyRefusal({
+        pageId: opts.pageId,
+        completeness,
+        context: 'refusing to treat it as a clean notion-md tree base',
+      }),
     }),
   )
 }
