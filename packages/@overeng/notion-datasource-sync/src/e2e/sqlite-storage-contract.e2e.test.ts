@@ -1308,6 +1308,66 @@ describe('clean-break self-contained SQLite storage contract', () => {
     sqliteContractTimeoutMs,
   )
 
+  // SM5.4 (CLI-R07): the mirror guarantee is uniform across one-shot AND watch.
+  // A `remote`-mode workspace must never push local lifecycle/create intents — the
+  // pull-only gate now lives inside `syncOneShot`, so even the ONE-SHOT `sync`
+  // (not `--watch`) path is gated. This closes the hole the planner's per-property
+  // `RemoteAuthoritativeDrift` block never covered: `planLifecycle`/`planRowCreate`
+  // carry no remote-mode guard, so before this gate a one-shot remote `sync` would
+  // enqueue + execute a pending archive (`_in_trash=1`) and a row_create to Notion.
+  it(
+    'one-shot sync on a remote-mode workspace pushes no local lifecycle/create writes to Notion',
+    async () => {
+      const workspace = await tempWorkspace()
+      // Default `remote` (mirror) adoption — the mode under test.
+      const { sqlitePath } = await establishWorkspace(workspace)
+      // Stage BOTH a pending archive (lifecycle) AND a pending row_create — the two
+      // intent kinds the planner's property-write block does not cover.
+      const db = new DatabaseSync(sqlitePath)
+      try {
+        db.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        db.close()
+      }
+      insertPublicRowsCreate({
+        sqlitePath,
+        title: 'Created on a remote-mode workspace',
+        clientRequestKey: 'remote-one-shot-create',
+      })
+
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      // ONE-SHOT `sync` (NOT `--watch`): exercises the `syncOneShot` mirror gate.
+      await runWorkspaceCommand({
+        argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+        gateway,
+      })
+
+      // The hard oracle: the gateway is NEVER asked to mutate — no lifecycle or
+      // create write leaks to Notion under remote authority.
+      expect(gateway.writeCalls()).toBe(0)
+      expect(gateway.ledger.successfulTrashPages).toHaveLength(0)
+      expectNoRemoteWrites(gateway)
+
+      // The local edits are not lost: they survive as PENDING CDC changes in the
+      // public data file (the status/drift surface), never settled to `applied` by a
+      // push that never ran. This is the "follow remote, surface local as status"
+      // guarantee for the one-shot path.
+      openReadOnly(sqlitePath, (readDb) => {
+        expect(
+          rows(
+            readDb,
+            `SELECT kind, status FROM changes WHERE page_id = ? OR kind = 'row_create' ORDER BY created_at`,
+            testIds.pageId,
+          ),
+        ).toEqual([
+          { kind: 'row_archive', status: 'pending' },
+          { kind: 'row_create', status: 'pending' },
+        ])
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
   it(
     'rows enforces current Notion select and status options before queuing CDC',
     async () => {
