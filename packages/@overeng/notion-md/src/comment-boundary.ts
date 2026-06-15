@@ -19,12 +19,19 @@
  * rather than attempting partial-sync semantics that would require missing API
  * support.
  *
- * PRESERVATION: comment inventory preservation is supported because it occurs
- * at the sidecar layer (not the write gate). A `noop` reconcile — where the
- * body has not changed — never reaches the write gate, so the modeled inventory
- * survives the reconcile pass unchanged. The write gate is only evaluated in
- * the write branches (push / pull / shared-merge), mirroring the media boundary
- * placement.
+ * PRESERVATION: comment inventory preservation is supported through the sidecar
+ * layer. `trackPage({source:'shared'})` writes the comment inventory into the
+ * sidecar at track time, so it survives independently of the write gate.
+ * `statusFile` is read-only and never reaches the write gate. The write gate
+ * is only evaluated in write branches (push / pull / shared-merge).
+ *
+ * NOTE: this boundary also blocks when all comments already carry Notion IDs
+ * (i.e. a previously-synced inventory). That is intentional: the single-source
+ * `local`/`remote` write paths are stateless — they write no sidecar — so
+ * there is nowhere to persist the inventory after a write. Letting a synced
+ * comment through would silently drop it. Presence-based fail-closed (symmetric
+ * to SM6.1) is the safe default until a sidecar-aware comment-update path
+ * exists.
  *
  * The reason string `'comments-api-not-implemented'` is shared with the
  * {@link CommentWebhookBoundary} so a single vocabulary covers both the trigger

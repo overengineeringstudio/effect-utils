@@ -555,19 +555,41 @@ describe('reconcileFile — comment-write boundary (SM6.2)', () => {
       expect(fake.updateCount).toBe(1)
     }))
 
-  it('comment inventory preserved through a noop reconcile (inventory round-trips)', () =>
+  it('statusFile over a comment-bearing page succeeds (reads stay supported)', () =>
     withTempDir(async (dir) => {
+      // statusFile is read-only and never reaches the write gate, so a
+      // non-empty comment inventory must not block a status check (R30).
       const path = join(dir, 'doc.nmd')
-      // Body is in-sync, so the reconcile reaches noop — the comment guard
-      // is never evaluated and the modeled inventory survives unchanged.
-      await writeNmd({ path, source: 'remote', pageId, body: '# Same body' })
+      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
       const fake = new FakeGateway([
-        [pageId, { title: 'Doc', markdown: '# Same body', storage: commentStorage() }],
+        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: commentStorage() }],
       ])
 
-      const result = await run(reconcileFile({ path }), fake)
-      expect(result._tag).toBe('noop')
+      const status = await run(statusFile({ path }), fake)
+      expect(status.status).toBe('local-ahead')
       expect(fake.updateCount).toBe(0)
+    }))
+
+  it('comment inventory preserved through sidecar on shared track (inventory round-trips)', () =>
+    withTempDir(async (dir) => {
+      // trackPage{source:shared} writes the sidecar at track time. The
+      // comment inventory in the gateway response must survive unchanged into
+      // the sidecar so a later reconcile can read it back — this is the
+      // preservation path (storage layer, not the write gate).
+      const path = join(dir, 'doc.nmd')
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Shared body', storage: commentStorage() }],
+      ])
+
+      await run(trackPage({ pageId, outPath: path, source: 'shared' }), fake)
+      const sidecar = JSON.parse(await readFile(syncStatePath({ path, pageId }), 'utf8')) as {
+        readonly storage: NmdStorage
+      }
+
+      expect(sidecar.storage).toMatchObject({
+        _tag: 'self_contained',
+        comments: [expect.objectContaining({ id: 'comment-xyz', roughdraft_id: 'rd-002' })],
+      })
     }))
 
   it('blocks shared reconcile path over modeled comments (shared site)', () =>
