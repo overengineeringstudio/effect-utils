@@ -199,8 +199,14 @@ export const makeDryRunWorkspace = async (prefix: string): Promise<AbsolutePathT
   return decode({ schema: AbsolutePath, value: dir })
 }
 
-/** Establish a `shared`-authority tracked workspace with a real file-backed split store. */
-export const establishSharedWorkspace = async (workspace: AbsolutePathType): Promise<void> => {
+/** Establish a tracked workspace under the given authority mode with a real file-backed split store. */
+export const establishWorkspaceWithMode = async ({
+  workspace,
+  mode,
+}: {
+  readonly workspace: AbsolutePathType
+  readonly mode: 'local' | 'remote' | 'shared'
+}): Promise<void> => {
   const gateway = makeFakeGatewayHarness({ propertyPages: [dryRunPropertyPage('init')] })
   const gatewayClient = dryRunDatabaseResolverClient()
   const argv = [
@@ -208,7 +214,7 @@ export const establishSharedWorkspace = async (workspace: AbsolutePathType): Pro
     dryRunWorkspaceDatabaseUrl,
     workspace,
     '--mode',
-    'shared',
+    mode,
     '--schema-properties-json',
     JSON.stringify(dryRunSchemaPropertiesJson),
     '--no-materialize-bodies',
@@ -229,6 +235,10 @@ export const establishSharedWorkspace = async (workspace: AbsolutePathType): Pro
     context.store.close()
   }
 }
+
+/** Establish a `shared`-authority tracked workspace with a real file-backed split store. */
+export const establishSharedWorkspace = (workspace: AbsolutePathType): Promise<void> =>
+  establishWorkspaceWithMode({ workspace, mode: 'shared' })
 
 /** Stage a PENDING local property edit in the public SQLite data file. */
 export const editSelectInSqlite = (sqlitePath: string, value: string): void => {

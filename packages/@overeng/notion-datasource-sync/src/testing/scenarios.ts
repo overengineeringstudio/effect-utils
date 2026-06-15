@@ -100,6 +100,42 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L5',
     file: 'src/e2e/watch-dry-run.e2e.test.ts',
   }),
+  // SM5.4 (CLI-R07 / DAEMON-R07): the watch loop honors the established workspace
+  // authority mode. Over an identical fixture (pending local edit + remote drift):
+  // `remote` (mirror) runs the loop PULL-ONLY — the local-first push pass is gated
+  // off and the gateway is never asked to mutate (`writeCalls === 0`), so local
+  // intent surfaces as pending status, never an outbound write; `local` and
+  // `shared` run the local-first push pass, so the gateway WRITES. This is the
+  // loop-level complement to the planner's per-property `RemoteAuthoritativeDrift`
+  // block, closing the remote-mode lifecycle/create push hole the planner never
+  // covered.
+  scenario({
+    scenarioId: 'NDS-L5-watch-guarantee-by-authority-mode',
+    title:
+      'sync --watch reconciles per established authority mode: remote pulls only with zero gateway writes, local/shared push local outbound',
+    requirementIds: ['R09', 'R10', 'R11', 'R64'],
+    // No guard fires here by design: in `remote` mode the loop gate short-circuits
+    // to pull-only BEFORE the planner runs (so `RemoteAuthoritativeDrift` never
+    // fires), and in `local`/`shared` the write mode is not `remote`. That ordering
+    // — loop gate ahead of the planner block — is the whole point.
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/watch-authority-mode.e2e.test.ts',
+  }),
+  // SM5.4 (CLI-R07): a per-run `--mode` on an established `sync --watch` is
+  // rejected — authority mode is workspace-wide and set once by `track`, never
+  // overridden per run.
+  scenario({
+    scenarioId: 'NDS-L4-authority-mode-established-no-override',
+    title:
+      'sync --watch --mode on an established workspace is rejected: authority mode is workspace-wide',
+    requirementIds: ['R28', 'R64'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L4',
+    file: 'src/e2e/watch-authority-mode.e2e.test.ts',
+  }),
   scenario({
     scenarioId: 'NDS-L5-watch-daemon-local-cycle',
     title: 'local watch daemon preserves pending work across restart and cancellation',
