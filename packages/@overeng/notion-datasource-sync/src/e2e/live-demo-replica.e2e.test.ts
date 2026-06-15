@@ -207,10 +207,11 @@ const syncDemoDataSource = async ({
   }
 
   const argv = [
-    'sync',
-    '--from-notion',
+    'track',
     dataSource.databaseUrl,
     workspace,
+    '--mode',
+    'shared',
     '--no-materialize-bodies',
   ]
   const parsed = parseCliCommand(argv)
@@ -253,16 +254,26 @@ const syncDemoDataSource = async ({
 
 const inspectReplica = ({
   sqlitePath,
+  statePath,
   dataSource,
 }: {
   readonly sqlitePath: string
+  readonly statePath: string
   readonly dataSource: NotionDatasourceSyncDemoDataSource
 }) => {
   const database = new DatabaseSync(sqlitePath, { readOnly: true })
   try {
     const rowCount = readCount(database, 'SELECT count(*) AS count FROM pages')
     const propertyCount = readCount(database, 'SELECT count(*) AS count FROM schema_properties')
-    const cellCount = readCount(database, 'SELECT count(*) AS count FROM _nds_property_shadow')
+    // The control-plane property shadow lives in the split `.notion/v1/state.sqlite`
+    // store, not the public projection data file (ADR 0011).
+    const stateDatabase = new DatabaseSync(statePath, { readOnly: true })
+    let cellCount: number
+    try {
+      cellCount = readCount(stateDatabase, 'SELECT count(*) AS count FROM _nds_property_shadow')
+    } finally {
+      stateDatabase.close()
+    }
     const status = database.prepare('SELECT * FROM sync_status').get() as
       | {
           readonly rows: number
@@ -280,6 +291,9 @@ const inspectReplica = ({
     database.close()
   }
 }
+
+const demoStatePath = (workspace: string): string =>
+  join(workspace, '.notion', 'v1', 'state.sqlite')
 
 const listNmdFiles = async (root: string): Promise<ReadonlyArray<string>> => {
   const entries = await readdir(root, { withFileTypes: true })
@@ -355,7 +369,11 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
         // oxlint-disable-next-line no-await-in-loop -- sequential sync avoids hammering Notion with replica builds.
         await syncDemoDataSource({ dataSource, workspace })
         const sqlitePath = join(workspace, 'data', 'v1', `${dataSource.databaseId}.sqlite`)
-        const replica = inspectReplica({ sqlitePath, dataSource })
+        const replica = inspectReplica({
+          sqlitePath,
+          statePath: demoStatePath(workspace),
+          dataSource,
+        })
 
         expect(replica.rowCount).toBe(dataSource.expectedRows)
         expect(replica.propertyCount).toBe(dataSource.expectedPropertyNames.length)
@@ -385,7 +403,11 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
           // oxlint-disable-next-line no-await-in-loop -- sequential sync avoids hammering Notion with replica builds.
           await syncDemoDataSource({ dataSource, workspace })
           const sqlitePath = join(workspace, 'data', 'v1', `${dataSource.databaseId}.sqlite`)
-          const replica = inspectReplica({ sqlitePath, dataSource })
+          const replica = inspectReplica({
+            sqlitePath,
+            statePath: demoStatePath(workspace),
+            dataSource,
+          })
 
           expect(replica.rowCount).toBe(dataSource.expectedRows)
           expect(replica.propertyCount).toBe(dataSource.expectedPropertyNames.length)
@@ -416,7 +438,7 @@ describe.skipIf(liveDemoEnabled === false)(
       if (bodyRef === undefined) {
         throw new Error('live existing body materialization test could not resolve a body fixture')
       }
-      const argv = ['sync', '--from-notion', bodyRef, workspace]
+      const argv = ['track', bodyRef, workspace, '--mode', 'shared']
       const parsed = parseCliCommand(argv)
       const command = await Effect.runPromise(
         resolveCliCommandNotionRefs({

@@ -1,5 +1,5 @@
 import { HttpClient } from '@effect/platform'
-import { Effect, Layer, Option, Schema, type Scope, Stream } from 'effect'
+import { Context, Effect, Layer, Option, Schema, type Scope, Stream } from 'effect'
 
 import {
   type DatabaseFilter,
@@ -217,7 +217,13 @@ export const makeThrottledProvideClientEnv = (
   Scope.Scope
 > =>
   Effect.gen(function* () {
-    const throttle = yield* NotionThrottle.pipe(Effect.provide(NotionThrottleLive(options)))
+    /* Build the throttle layer into the ambient scope so the RateLimiter's
+       token-refill stays alive for the gateway's lifetime. `Effect.provide`
+       with a scoped layer would close the layer's scope as soon as the tag is
+       read, killing the refill — the bucket then drains after the first request
+       and every subsequent call blocks forever waiting for a token. */
+    const throttleContext = yield* Layer.build(NotionThrottleLive(options))
+    const throttle = Context.get(throttleContext, NotionThrottle)
     return (base) => (effect) => base(Effect.provideService(effect, NotionThrottle, throttle))
   })
 
