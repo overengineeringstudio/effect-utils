@@ -41,32 +41,52 @@ const makeNotionRootCommand = <
   MdRequirements,
   MdError,
   MdConfig,
+  EditName extends string,
+  EditRequirements,
+  EditError,
+  EditConfig,
 >({
   schemaCommand,
   dbCommand,
   notionMdDispatchCommand,
+  notionEditAliasCommand,
 }: {
   readonly schemaCommand: Command.Command<SchemaName, SchemaRequirements, SchemaError, SchemaConfig>
   readonly dbCommand: Command.Command<DbName, DbRequirements, DbError, DbConfig>
   readonly notionMdDispatchCommand: Command.Command<MdName, MdRequirements, MdError, MdConfig>
+  readonly notionEditAliasCommand: Command.Command<
+    EditName,
+    EditRequirements,
+    EditError,
+    EditConfig
+  >
 }) =>
   Command.make('notion').pipe(
-    Command.withSubcommands([schemaCommand, dbCommand, notionMdDispatchCommand]),
+    // `edit` is the top-level marquee alias for `md edit` (R18); it is the only
+    // first-level command outside the md/schema/db namespaces.
+    Command.withSubcommands([
+      notionEditAliasCommand,
+      schemaCommand,
+      dbCommand,
+      notionMdDispatchCommand,
+    ]),
     Command.withDescription(
       'Notion CLI - database operations, schema generation, and markdown sync',
     ),
   )
 
 const runRootCli = async (argv: ReadonlyArray<string>) => {
-  const [{ notionMdDispatchCommand }, { dbCommand }, { schemaCommand }] = await Promise.all([
-    import('@overeng/notion-md/cli-program'),
-    import('./commands/db/mod.ts'),
-    import('./commands/schema/mod.ts'),
-  ])
+  const [{ notionMdDispatchCommand, notionEditAliasCommand }, { dbCommand }, { schemaCommand }] =
+    await Promise.all([
+      import('@overeng/notion-md/cli-program'),
+      import('./commands/db/mod.ts'),
+      import('./commands/schema/mod.ts'),
+    ])
   const command = makeNotionRootCommand({
     schemaCommand,
     dbCommand,
     notionMdDispatchCommand,
+    notionEditAliasCommand,
   })
   const cli = Command.run(command, {
     name: 'notion',

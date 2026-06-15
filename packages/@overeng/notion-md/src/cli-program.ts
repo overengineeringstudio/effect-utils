@@ -767,10 +767,13 @@ const putCommand = Command.make(
   ),
 )
 
-const editCommand = Command.make(
-  'edit',
-  { page: pageArg, frontmatter: frontmatterOption },
-  ({ page, frontmatter }) => {
+/**
+ * Build the `edit` command. Shared by the `notion-md`/`notion md` subcommand and
+ * the top-level `notion edit <page>` alias (R18) so both delegate to the exact
+ * same engine-backed session.
+ */
+const makeEditCommand = (name: string) =>
+  Command.make(name, { page: pageArg, frontmatter: frontmatterOption }, ({ page, frontmatter }) => {
     const mode: EditorMode = frontmatter === true ? 'frontmatter' : 'default'
     return commandSpan({
       command: 'edit',
@@ -780,12 +783,20 @@ const editCommand = Command.make(
         Effect.flatMap(logJson),
       ),
     })
-  },
-).pipe(
-  Command.withDescription(
-    'Edit a Notion page in $EDITOR via an ephemeral .nmd session, then push the change through the sync engine',
-  ),
-)
+  }).pipe(
+    Command.withDescription(
+      'Edit a Notion page in $EDITOR via an ephemeral .nmd session, then push the change through the sync engine',
+    ),
+  )
+
+const editCommand = makeEditCommand('edit')
+
+/**
+ * Top-level `notion edit <page>` alias (R18) — the marquee editor verb, wired
+ * into the umbrella root alongside `md`/`schema`/`db`. Delegates to the same
+ * `editEditorPage` session as `notion md edit`.
+ */
+export const notionEditAliasCommand = makeEditCommand('edit')
 
 const makeNotionMdCommand = (name: 'md' | 'notion-md') =>
   Command.make(name).pipe(

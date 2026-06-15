@@ -1,3 +1,7 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
@@ -51,6 +55,9 @@ const pull = (s: FakeState): PullPageResult => ({
 
 class FakeGateway {
   readonly state: FakeState
+  /** When set, the remote body switches to `body` after `afterPull` pulls. */
+  private switchBodyOnPull: { afterPull: number; body: string } | undefined
+  pullCount = 0
   constructor(initial: { title: string; body: string; completeness?: BodyCompleteness }) {
     this.state = {
       title: initial.title,
@@ -59,8 +66,24 @@ class FakeGateway {
     }
   }
 
+  /** Simulate a concurrent remote writer: after `afterPull` pulls, body becomes `body`. */
+  switchRemoteBodyAfter(afterPull: number, body: string): void {
+    this.switchBodyOnPull = { afterPull, body: normalizeMarkdownLineEndings(body) }
+  }
+
   readonly layer = Layer.succeed(NotionMdGateway, {
-    pullPage: () => Effect.sync(() => pull(this.state)),
+    pullPage: () =>
+      Effect.sync(() => {
+        this.pullCount += 1
+        if (
+          this.switchBodyOnPull !== undefined &&
+          this.pullCount > this.switchBodyOnPull.afterPull
+        ) {
+          this.state.body = this.switchBodyOnPull.body
+          this.switchBodyOnPull = undefined
+        }
+        return pull(this.state)
+      }),
     updateMarkdown: ({ command }) =>
       Effect.sync(() => {
         if (command._tag === 'replace_content') {
@@ -175,6 +198,48 @@ describe('edit (ephemeral file-engine session)', () => {
     expect(result._tag).toBe('Left')
     if (result._tag === 'Left') expect(result.left._tag).toBe('NmdEditorAbortedError')
     expect(gateway.state.body).toBe('safe\n')
+  })
+
+  it('relocates a conflict to a durable <page>.conflict.md when the remote changed concurrently', async () => {
+    // Base body established by the ephemeral pull (pull #1). The editor changes
+    // the line locally; a concurrent remote writer changes the SAME line after
+    // pull #1, so the engine cannot 3-way merge → NmdConflictError with a
+    // roughdraft path, which `edit` relocates out of $TMPDIR to the cwd.
+    const gateway = new FakeGateway({ title: 'Doc', body: 'the original line' })
+    gateway.switchRemoteBodyAfter(1, 'a totally different remote line')
+
+    // Run in a throwaway cwd: the durable `<page>.conflict.md` is written
+    // relative to the process cwd (would otherwise land in the package root).
+    const cwd = mkdtempSync(join(tmpdir(), 'notion-md-conflict-'))
+    const previousCwd = process.cwd()
+    process.chdir(cwd)
+    try {
+      const result = await runEdit(
+        editEditorPage({
+          pageId,
+          mode: 'default',
+          pageRef: pageId,
+          runEditor: scriptedEditor((buffer) =>
+            buffer.replace('the original line', 'my local edit of that line'),
+          ),
+        }),
+        gateway,
+      )
+      expect(result._tag).toBe('Right')
+      if (result._tag === 'Right') {
+        expect(result.right.outcome).toBe('conflict')
+        expect(result.right.conflictPath).toBe(`${pageId}.conflict.md`)
+        // The durable conflict file exists and carries all three bodies so the
+        // edit is recoverable (the $TMPDIR roughdraft is already reaped).
+        const durable = readFileSync(join(cwd, `${pageId}.conflict.md`), 'utf8')
+        expect(durable).toContain('the original line')
+        expect(durable).toContain('my local edit of that line')
+        expect(durable).toContain('a totally different remote line')
+      }
+    } finally {
+      process.chdir(previousCwd)
+      rmSync(cwd, { recursive: true, force: true })
+    }
   })
 
   it('refuses a lossy page at the ephemeral pull (exit 3)', async () => {
