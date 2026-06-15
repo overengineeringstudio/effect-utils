@@ -66,6 +66,9 @@
     },
     {
       "path": "../utils"
+    },
+    {
+      "path": "../utils-dev"
     }
   ]
 }
