@@ -269,6 +269,14 @@ const cleanBreakSqlitePath = ({
   readonly databaseId: string
 }): string => join(workspaceRoot, 'data', 'v1', `${databaseId}.sqlite`)
 
+/**
+ * Control-plane store path for a tracked workspace. The `_nds_*` control-plane
+ * tables (outbox, shadow, sync events) live here, split from the public
+ * projection in the `data/v1/<source>.sqlite` data file (ADR 0011).
+ */
+const cleanBreakStatePath = ({ workspaceRoot }: { readonly workspaceRoot: string }): string =>
+  join(workspaceRoot, '.notion', 'v1', 'state.sqlite')
+
 const liveDatabaseIdForDataSource = (dataSource: unknown): string => {
   if (
     typeof dataSource === 'object' &&
@@ -397,7 +405,13 @@ const runLiveCliCommand = async ({
   }
 }
 
-const readReplicaHealth = (replicaPath: string) => {
+const readReplicaHealth = ({
+  replicaPath,
+  statePath,
+}: {
+  readonly replicaPath: string
+  readonly statePath: string
+}) => {
   const db = new DatabaseSync(replicaPath, { readOnly: true })
   try {
     const status = db.prepare(`SELECT * FROM sync_status`).get() as
@@ -415,12 +429,23 @@ const readReplicaHealth = (replicaPath: string) => {
     const openConflicts = db
       .prepare(`SELECT count(*) AS count FROM conflicts WHERE state = 'open'`)
       .get() as { readonly count: number }
-    const pendingOutbox = db
-      .prepare(`SELECT count(*) AS count FROM _nds_outbox WHERE state != 'settled'`)
-      .get() as { readonly count: number }
 
     if (status === undefined) {
       throw new Error('replica did not expose sync_status')
+    }
+
+    // The control-plane outbox lives in the split `.notion/v1/state.sqlite`
+    // store, not the public projection data file (ADR 0011).
+    const stateDb = new DatabaseSync(statePath, { readOnly: true })
+    let pendingOutboxCount: number
+    try {
+      pendingOutboxCount = (
+        stateDb
+          .prepare(`SELECT count(*) AS count FROM _nds_outbox WHERE state != 'settled'`)
+          .get() as { readonly count: number }
+      ).count
+    } finally {
+      stateDb.close()
     }
 
     return {
@@ -429,7 +454,7 @@ const readReplicaHealth = (replicaPath: string) => {
       workspaceStatus: status.workspace_status,
       pendingChanges: pendingChanges.count,
       openConflicts: openConflicts.count,
-      pendingOutbox: pendingOutbox.count,
+      pendingOutbox: pendingOutboxCount,
     }
   } finally {
     db.close()
@@ -1439,7 +1464,6 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             env,
             NotionDataSources.retrieve({ dataSourceId: provisioned.config.dataSourceId }),
           )
-          const liveDatabaseId = liveDatabaseIdForDataSource(initialDataSource)
           const titlePropertyName = liveTitlePropertyName(initialDataSource.properties)
           const cdcPropertyName = 'CDC Note'
           const patchedDataSource = await runLive(
@@ -1498,17 +1522,18 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await runLiveCliCommand({
             env,
             argv: [
-              'sync',
-              '--from-notion',
-              liveDatabaseId,
+              'track',
+              provisioned.config.dataSourceId,
               workspaceRoot,
+              '--mode',
+              'shared',
               '--no-materialize-bodies',
             ],
           })
 
           const replicaPath = cleanBreakSqlitePath({
             workspaceRoot,
-            databaseId: liveDatabaseId,
+            databaseId: provisioned.config.dataSourceId,
           })
           const syncArgv = ['sync', workspaceRoot]
           await runLiveCliCommand({ env, argv: syncArgv })
@@ -1978,10 +2003,11 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await runLiveCliCommand({
             env,
             argv: [
-              'sync',
-              '--from-notion',
+              'track',
               provisioned.config.dataSourceId,
               workspaceRoot,
+              '--mode',
+              'shared',
               '--no-materialize-bodies',
             ],
           })
@@ -1991,7 +2017,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             databaseId: replicaFileId,
           })
           expect(await listNmdFiles(workspaceRoot)).toHaveLength(0)
-          expect(readReplicaHealth(replicaPath)).toMatchObject({
+          expect(
+            readReplicaHealth({
+              replicaPath,
+              statePath: cleanBreakStatePath({ workspaceRoot }),
+            }),
+          ).toMatchObject({
             conflictsOpen: 0,
             pendingLocalChanges: 0,
             pendingChanges: 0,
@@ -2074,7 +2105,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
             livePropertyPlainText(controlAfterPropertyWatch.properties[bidiPropertyName]),
           ).toBe('control property note')
           expect(await listNmdFiles(workspaceRoot)).toHaveLength(0)
-          expect(readReplicaHealth(replicaPath)).toMatchObject({
+          expect(
+            readReplicaHealth({
+              replicaPath,
+              statePath: cleanBreakStatePath({ workspaceRoot }),
+            }),
+          ).toMatchObject({
             conflictsOpen: 0,
             pendingLocalChanges: 0,
             pendingChanges: 0,
@@ -2120,7 +2156,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           const remoteMarkdown = await runLive(env, NotionPages.getMarkdown({ pageId }))
           expect(remoteMarkdown.markdown).toContain(localBodyEdit)
           const beforeNoOpPage = await runLive(env, NotionPages.retrieve({ pageId }))
-          expect(readReplicaHealth(replicaPath)).toMatchObject({
+          expect(
+            readReplicaHealth({
+              replicaPath,
+              statePath: cleanBreakStatePath({ workspaceRoot }),
+            }),
+          ).toMatchObject({
             conflictsOpen: 0,
             pendingLocalChanges: 0,
             pendingChanges: 0,
@@ -2149,7 +2190,12 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           expect(noOpSync.status.state).toBe('clean')
           expect(noOpSync.status.counts.pending).toBe(0)
           expect(noOpSync.status.counts.conflict).toBe(0)
-          expect(readReplicaHealth(replicaPath)).toMatchObject({
+          expect(
+            readReplicaHealth({
+              replicaPath,
+              statePath: cleanBreakStatePath({ workspaceRoot }),
+            }),
+          ).toMatchObject({
             conflictsOpen: 0,
             pendingLocalChanges: 0,
             pendingChanges: 0,
@@ -2431,10 +2477,11 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           await runLiveCliCommand({
             env,
             argv: [
-              'sync',
-              '--from-notion',
-              fixture.sourceDatabase.id,
+              'track',
+              fixture.sourceDataSourceId,
               workspaceRoot,
+              '--mode',
+              'shared',
               '--schema-properties-json',
               schemaPropertiesJson,
               '--no-materialize-bodies',
@@ -2442,7 +2489,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           })
           const replicaPath = cleanBreakSqlitePath({
             workspaceRoot,
-            databaseId: fixture.sourceDatabase.id,
+            databaseId: fixture.sourceDataSourceId,
           })
           {
             const db = new DatabaseSync(replicaPath, { readOnly: true })
