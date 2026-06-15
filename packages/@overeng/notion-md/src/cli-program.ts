@@ -240,6 +240,8 @@ const safeJsonError = (error: unknown): Record<string, unknown> => {
       readonly object_path?: unknown
       readonly operation?: unknown
       readonly block_id?: unknown
+      readonly guard?: unknown
+      readonly fileIds?: unknown
     }
     return Object.fromEntries(
       Object.entries({
@@ -251,6 +253,8 @@ const safeJsonError = (error: unknown): Record<string, unknown> => {
         object_path: tagged.object_path,
         operation: tagged.operation,
         block_id: tagged.block_id,
+        guard: tagged.guard,
+        fileIds: tagged.fileIds,
       }).filter(([, value]) => value !== undefined),
     )
   }
