@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import type { NmdFrontmatterV2, NmdStorage } from '@overeng/notion-effect-client'
 
 import { canonicalize } from './canonicalizer.ts'
+import { NmdDestructiveBodyBlockedError } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
 import { NotionMdGateway, type NotionMdGatewayShape, type PullPageResult } from './model.ts'
@@ -294,7 +295,11 @@ describe('reconcileFile — source-aware dispatch (R34)', () => {
       })
       const fake = new FakeGateway([[pageId, { title: 'Doc', markdown: '# Old\n\nBody' }]])
 
-      await expect(run(reconcileFile({ path }), fake)).rejects.toThrow(
+      const err = await runFailure(reconcileFile({ path }), fake)
+      expect(err).toBeInstanceOf(NmdDestructiveBodyBlockedError)
+      expect((err as NmdDestructiveBodyBlockedError).guard).toBe('ReviewMarkupAsContent')
+      expect((err as NmdDestructiveBodyBlockedError).allowFlag).toBe('--allow-review-markup')
+      expect((err as NmdDestructiveBodyBlockedError).message).toContain(
         'Local body contains unresolved Roughdraft review markup',
       )
       expect(fake.updateCount).toBe(0)
@@ -320,7 +325,13 @@ describe('reconcileFile — source-aware dispatch (R34)', () => {
         ],
       ])
 
-      await expect(run(reconcileFile({ path }), fake)).rejects.toThrow(
+      const err = await runFailure(reconcileFile({ path }), fake)
+      expect(err).toBeInstanceOf(NmdDestructiveBodyBlockedError)
+      expect((err as NmdDestructiveBodyBlockedError).guard).toBe('UnknownBlockDeletion')
+      expect((err as NmdDestructiveBodyBlockedError).allowFlag).toBe(
+        '--allow-delete-unknown-blocks',
+      )
+      expect((err as NmdDestructiveBodyBlockedError).message).toContain(
         'Page contains unresolved unknown Notion blocks',
       )
       expect(fake.updateCount).toBe(0)
@@ -701,6 +712,58 @@ describe('reconcileFile — dry-run planning', () => {
       expect(result).toEqual({ _tag: 'pushed', path, pageId, dryRun: true })
       expect(fake.updateCount).toBe(0)
       expect(fake.remoteMarkdown(pageId)).toContain('<unknown')
+    }))
+
+  it('dry-run blocked destructive gates surface the named guard (UnknownBlockDeletion / ReviewMarkupAsContent)', () =>
+    withTempDir(async (dir) => {
+      // UnknownBlockDeletion: blocked without --allow-delete-unknown-blocks
+      const unknownPath = join(dir, 'unknown.nmd')
+      await writeNmd({ path: unknownPath, source: 'local', pageId, body: '# Local replacement' })
+      const fakeUnknown = new FakeGateway([
+        [
+          pageId,
+          {
+            title: 'Doc',
+            markdown: '# Remote\n\n<unknown url="https://www.notion.com/" alt="bookmark"/>',
+            storage: unsupportedStorage(),
+            unknownBlockIds: [blockId],
+          },
+        ],
+      ])
+
+      // Without allow flag: dry-run still blocks and surfaces named guard
+      const unknownErr = await runFailure(
+        reconcileFile({ path: unknownPath, dryRun: true }),
+        fakeUnknown,
+      )
+      expect(unknownErr).toBeInstanceOf(NmdDestructiveBodyBlockedError)
+      expect((unknownErr as NmdDestructiveBodyBlockedError).guard).toBe('UnknownBlockDeletion')
+      expect((unknownErr as NmdDestructiveBodyBlockedError).allowFlag).toBe(
+        '--allow-delete-unknown-blocks',
+      )
+      expect(fakeUnknown.updateCount).toBe(0)
+
+      // ReviewMarkupAsContent: blocked without --allow-review-markup
+      const markupPath = join(dir, 'markup.nmd')
+      const markupPageId = '00000000-0000-4000-8000-000000000099'
+      await writeNmd({
+        path: markupPath,
+        source: 'local',
+        pageId: markupPageId,
+        body: '# Local\n\n{==Body==}{>>Needs review.<<}{id="r1"}',
+      })
+      const fakeMarkup = new FakeGateway([
+        [markupPageId, { title: 'Doc', markdown: '# Old\n\nBody' }],
+      ])
+
+      const markupErr = await runFailure(
+        reconcileFile({ path: markupPath, dryRun: true }),
+        fakeMarkup,
+      )
+      expect(markupErr).toBeInstanceOf(NmdDestructiveBodyBlockedError)
+      expect((markupErr as NmdDestructiveBodyBlockedError).guard).toBe('ReviewMarkupAsContent')
+      expect((markupErr as NmdDestructiveBodyBlockedError).allowFlag).toBe('--allow-review-markup')
+      expect(fakeMarkup.updateCount).toBe(0)
     }))
 
   it('plans source: remote pull without mutating the local .nmd file', () =>

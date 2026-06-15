@@ -20,6 +20,7 @@ import { classifyCommentWrite, type CommentWriteOperation } from './comment-boun
 import {
   NmdCliError,
   NmdConflictError,
+  NmdDestructiveBodyBlockedError,
   NmdFrontmatterError,
   NmdNonBodyWriteBlockedError,
   type NmdError,
@@ -28,7 +29,12 @@ import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { classifyMediaWrite, type MediaWriteOperation } from './media-boundary.ts'
 import { NotionMdGateway, type RemotePageSnapshot } from './model.ts'
-import { CommentBoundarySpan, MediaBoundarySpan, withOperation } from './observability.ts'
+import {
+  CommentBoundarySpan,
+  DestructiveBodySpan,
+  MediaBoundarySpan,
+  withOperation,
+} from './observability.ts'
 import {
   decideReconcile,
   porcelainStatus,
@@ -188,38 +194,53 @@ const assertReviewMarkupAllowed = (opts: {
   readonly pageId: string
   readonly body: string
   readonly allowReviewMarkup?: boolean | undefined
-}): Effect.Effect<void, NmdConflictError> =>
-  containsRoughdraftReviewMarkup(opts.body) === true && opts.allowReviewMarkup !== true
-    ? Effect.fail(
-        new NmdConflictError({
-          path: opts.path,
-          page_id: opts.pageId,
-          local_changed: true,
-          remote_changed: false,
-          message:
-            'Local body contains unresolved Roughdraft review markup; refusing sync so review state is not sent as Notion content. Pass --allow-review-markup only when writing the literal markup is intended.',
-        }),
-      )
-    : Effect.void
+}): Effect.Effect<void, NmdDestructiveBodyBlockedError> => {
+  const blocked =
+    containsRoughdraftReviewMarkup(opts.body) === true && opts.allowReviewMarkup !== true
+  return Effect.gen(function* () {
+    if (blocked) {
+      return yield* new NmdDestructiveBodyBlockedError({
+        page_id: opts.pageId,
+        guard: 'ReviewMarkupAsContent',
+        message:
+          'Local body contains unresolved Roughdraft review markup; refusing sync so review state is not sent as Notion content. Pass --allow-review-markup only when writing the literal markup is intended.',
+        allowFlag: '--allow-review-markup',
+      })
+    }
+  }).pipe(
+    withOperation(DestructiveBodySpan, {
+      guard: 'ReviewMarkupAsContent',
+      blockCount: 0,
+      verdict: blocked ? 'blocked' : 'inert',
+    }),
+  )
+}
 
 const assertUnknownDeletionAllowed = (opts: {
   readonly path: string
   readonly pageId: string
   readonly unknownBlockIds: readonly string[]
   readonly allowDeletingUnknownBlocks?: boolean | undefined
-}): Effect.Effect<void, NmdConflictError> =>
-  opts.unknownBlockIds.length > 0 && opts.allowDeletingUnknownBlocks !== true
-    ? Effect.fail(
-        new NmdConflictError({
-          path: opts.path,
-          page_id: opts.pageId,
-          local_changed: true,
-          remote_changed: false,
-          message:
-            'Page contains unresolved unknown Notion blocks; refusing sync because the body write can delete them. Pass --allow-delete-unknown-blocks only for explicit destructive intent.',
-        }),
-      )
-    : Effect.void
+}): Effect.Effect<void, NmdDestructiveBodyBlockedError> => {
+  const blocked = opts.unknownBlockIds.length > 0 && opts.allowDeletingUnknownBlocks !== true
+  return Effect.gen(function* () {
+    if (blocked) {
+      return yield* new NmdDestructiveBodyBlockedError({
+        page_id: opts.pageId,
+        guard: 'UnknownBlockDeletion',
+        message:
+          'Page contains unresolved unknown Notion blocks; refusing sync because the body write can delete them. Pass --allow-delete-unknown-blocks only for explicit destructive intent.',
+        allowFlag: '--allow-delete-unknown-blocks',
+      })
+    }
+  }).pipe(
+    withOperation(DestructiveBodySpan, {
+      guard: 'UnknownBlockDeletion',
+      blockCount: opts.unknownBlockIds.length,
+      verdict: blocked ? 'blocked' : 'inert',
+    }),
+  )
+}
 
 const maybeGcObjects = (opts: {
   readonly path: string

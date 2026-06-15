@@ -15,6 +15,7 @@ import { resolveNmdTargets, runBatchWatch } from './batch.ts'
 import { runWatch } from './cli-program.ts'
 import {
   NmdConflictError,
+  NmdDestructiveBodyBlockedError,
   NmdFrontmatterError,
   NmdGatewayError,
   NmdObjectStoreError,
@@ -1138,7 +1139,15 @@ describe('notion-md e2e prototype', () => {
       const content = await readFile(path, 'utf8')
       await writeFile(path, content.replace('Body', '{==Body==}{>>Needs review.<<}{id="c1"}'))
 
-      await expect(runWithFake(pushPage({ path }), fake)).rejects.toThrow(
+      const result = await runEitherWithFake(pushPage({ path }), fake)
+      expect(result._tag).toBe('Left')
+      if (result._tag !== 'Left') throw new Error('expected left')
+      expect(result.left).toBeInstanceOf(NmdDestructiveBodyBlockedError)
+      expect((result.left as NmdDestructiveBodyBlockedError).guard).toBe('ReviewMarkupAsContent')
+      expect((result.left as NmdDestructiveBodyBlockedError).allowFlag).toBe(
+        '--allow-review-markup',
+      )
+      expect((result.left as NmdDestructiveBodyBlockedError).message).toContain(
         'Local body contains unresolved Roughdraft review markup',
       )
 
@@ -1626,7 +1635,15 @@ describe('notion-md e2e prototype', () => {
       const content = await readFile(path, 'utf8')
       await writeFile(path, content.replace('# Unknowns', '# Unknowns\n\nLocal edit'))
 
-      await expect(runWithFake(pushPage({ path }), fake)).rejects.toThrow(
+      const errResult = await runEitherWithFake(pushPage({ path }), fake)
+      expect(errResult._tag).toBe('Left')
+      if (errResult._tag !== 'Left') throw new Error('expected left')
+      expect(errResult.left).toBeInstanceOf(NmdDestructiveBodyBlockedError)
+      expect((errResult.left as NmdDestructiveBodyBlockedError).guard).toBe('UnknownBlockDeletion')
+      expect((errResult.left as NmdDestructiveBodyBlockedError).allowFlag).toBe(
+        '--allow-delete-unknown-blocks',
+      )
+      expect((errResult.left as NmdDestructiveBodyBlockedError).message).toContain(
         'Page contains unresolved unknown Notion blocks',
       )
       expect(fake.remoteMarkdown(pageId)).toContain('<unknown')
