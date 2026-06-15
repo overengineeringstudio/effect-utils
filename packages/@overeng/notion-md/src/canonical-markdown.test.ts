@@ -85,4 +85,20 @@ describe('semanticEquivalent', () => {
     const same = 'Intro.\n```ts\nconst x = 1\nconst y = 2\n```\n'
     expect(semanticEquivalent({ a: sent, b: same })).toBe(true)
   })
+
+  it('treats two rotated hosted-media signature variants as equivalent', () => {
+    const host = 'https://prod-files-secure.s3.us-west-2.amazonaws.com/abc/photo.png'
+    const params =
+      '?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260615T120000Z&X-Amz-Expires=3600'
+    const pullOne = `![caption](${host}${params}&X-Amz-Signature=deadbeef)\n`
+    const pullTwo = `![caption](${host}${params}&X-Amz-Signature=cafef00d)\n`
+    expect(semanticEquivalent({ a: pullOne, b: pullTwo })).toBe(true)
+  })
+
+  it('still flags a real change to a hosted-media caption', () => {
+    const host = 'https://prod-files-secure.s3.us-west-2.amazonaws.com/abc/photo.png'
+    const a = `![before](${host}?X-Amz-Signature=deadbeef)\n`
+    const b = `![after](${host}?X-Amz-Signature=cafef00d)\n`
+    expect(semanticEquivalent({ a, b })).toBe(false)
+  })
 })

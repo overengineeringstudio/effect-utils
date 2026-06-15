@@ -144,6 +144,7 @@ export {
   NotionMarkdown,
   parseInlineMarkdown,
 } from './markdown.ts'
+export { canonicalizeMediaUrl, canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
 // Notion Markdown local format
 export type {
   ClassifyNmdFrontmatterPayloadOptions,

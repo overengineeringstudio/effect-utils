@@ -128,6 +128,28 @@ describe('Block Helpers', () => {
       expect(getBlockUrl(block)).toBe('https://s3.notion.so/file.pdf')
     })
 
+    it('canonicalizes a signed Notion-hosted file URL (strips signature params)', () => {
+      const block = mockBlock('image', {
+        type: 'file',
+        file: {
+          url:
+            'https://prod-files-secure.s3.us-west-2.amazonaws.com/abc/photo.png' +
+            '?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600&X-Amz-Signature=deadbeef',
+        },
+      })
+      expect(getBlockUrl(block)).toBe(
+        'https://prod-files-secure.s3.us-west-2.amazonaws.com/abc/photo.png',
+      )
+    })
+
+    it('leaves a benign external query param on an external URL untouched', () => {
+      const block = mockBlock('image', {
+        type: 'external',
+        external: { url: 'https://example.com/img.png?v=2' },
+      })
+      expect(getBlockUrl(block)).toBe('https://example.com/img.png?v=2')
+    })
+
     it('extracts URL from bookmark', () => {
       const block = mockBlock('bookmark', { url: 'https://google.com' })
       expect(getBlockUrl(block)).toBe('https://google.com')

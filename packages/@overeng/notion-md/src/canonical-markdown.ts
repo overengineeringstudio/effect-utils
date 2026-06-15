@@ -4,6 +4,8 @@ import remarkStringify from 'remark-stringify'
 import { unified } from 'unified'
 import { visit } from 'unist-util-visit'
 
+import { canonicalizeMediaUrlsInMarkdown } from '@overeng/notion-effect-client'
+
 /*
  * Canonical Markdown serialization used as the wire and on-disk form.
  *
@@ -46,9 +48,17 @@ const processor = unified()
     tightDefinitions: true,
   })
 
-/** Reduce arbitrary Markdown to the canonical form used for hashing and wire transfer. */
+/**
+ * Reduce arbitrary Markdown to the canonical form used for hashing and wire
+ * transfer. Besides whitespace/structure normalization, hosted-media URLs are
+ * canonicalized (volatile signature/expiry query params stripped, decision 0007
+ * / R36) via the same shared function the renderer uses, so a rotated signed URL
+ * compares equal across pulls.
+ */
 export const canonicalizeBlockMarkdown = (markdown: string): string => {
-  const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const normalized = canonicalizeMediaUrlsInMarkdown(
+    markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n'),
+  )
   const rendered = processor.processSync(normalized).toString()
   return rendered.endsWith('\n') === true ? rendered : `${rendered}\n`
 }

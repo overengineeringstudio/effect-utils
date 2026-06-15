@@ -20,6 +20,7 @@ import {
   NotionBlocks,
   type RetrieveNestedOptions,
 } from './blocks.ts'
+import { canonicalizeMediaUrl } from './media-url.ts'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -120,7 +121,10 @@ export const getBlockCaption = (block: BlockWithData): RichTextArray => {
 /**
  * Get URL from various block types (image, video, audio, file, pdf, bookmark, embed, link_preview).
  *
- * Handles both external URLs and Notion-hosted file URLs.
+ * Handles both external URLs and Notion-hosted file URLs. Notion-hosted file
+ * URLs (`file.url`) are canonicalized — their volatile signature/expiry query
+ * params are stripped (decision 0007 / R36) — so the rendered body is
+ * deterministic across pulls. External URLs are returned untouched.
  *
  * @example
  * ```ts
@@ -141,7 +145,7 @@ export const getBlockUrl = (block: BlockWithData): string | undefined => {
 
   if (typeData?.url !== undefined) return typeData.url
   if (typeData?.external?.url !== undefined) return typeData.external.url
-  if (typeData?.file?.url !== undefined) return typeData.file.url
+  if (typeData?.file?.url !== undefined) return canonicalizeMediaUrl(typeData.file.url)
   return undefined
 }
 
