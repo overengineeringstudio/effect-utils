@@ -720,6 +720,26 @@ export const e2eHarnessScenarios = [
     file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-L0-webhook-payload-decode-fail-closed',
+    title:
+      'webhook payload decode is strictly fail-closed: HMAC mismatch and malformed shape both leave the signal store untouched (zero enqueueSignal calls); no raw payload material appears in rejection reasons',
+    requirementIds: ['R46', 'R47'],
+    guards: [],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/webhook/receiver.unit.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L5-webhook-hint-fresh-read-coalesce',
+    title:
+      'a webhook-woken daemon cycle performs a full syncOneShot over all pages (not scoped to the hint pageId), proving decision-0008: webhook hints are acceleration signals only, correctness comes from fresh reads before planning',
+    requirementIds: ['R42', 'R46', 'R47'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/daemon.e2e.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-L2-hidden-control-plane-isolation',
     title:
       'control plane is split into `.notion/v1/state.sqlite`: the public `data/v1/<source>.sqlite` exposes only product views + `_nds_replica_*` cache (no `_nds_outbox`/`_nds_guard_block`/`_nds_sync_event`/`_nds_workspace_binding`/etc), both files are standalone-queryable, and CDC edits in the data file drain across the boundary into the state event log and re-project',

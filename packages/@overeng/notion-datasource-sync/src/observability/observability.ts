@@ -34,6 +34,7 @@ export const spanNames = {
   syncPush: 'notion.datasource.sync.push',
   syncOneShot: 'notion.datasource.sync.one-shot',
   syncQueryAbsence: 'notion.datasource.sync.query-absence',
+  webhookIntake: 'notion.datasource.webhook.intake',
 } as const
 
 /** Typed map of every OTel span attribute key emitted by this package — use instead of raw strings. */
@@ -87,6 +88,14 @@ export const spanAttr = {
   settlementKind: 'notion.datasource.settlement_kind',
   spanLabel: 'span.label',
   statusState: 'notion.datasource.status.state',
+  /** Wake trigger source for a `daemon.pass` span — `'webhook'` when the cycle was woken by a Notion webhook, `'signal'` for any other non-webhook signal, `'poll'` when no signal was claimed. Annotation-only: never gates what gets read. */
+  wakeSource: 'notion.datasource.wake_source',
+  /** Notion event type string from the incoming webhook payload (e.g. `'page.created'`). */
+  webhookEventType: 'notion.datasource.webhook.event_type',
+  /** Outcome of one webhook delivery attempt: `'enqueued'` (new), `'duplicate'` (already known), `'verification'` (token challenge), or `'rejected'`. */
+  webhookOutcome: 'notion.datasource.webhook.outcome',
+  /** Stable rejection reason when `webhookOutcome === 'rejected'`; never contains raw payload material. */
+  webhookRejectionReason: 'notion.datasource.webhook.rejection_reason',
 } as const
 
 /** Canonical OTel span attribute keys emitted by this package. */
@@ -159,6 +168,10 @@ const SpanAttributesSchema = Schema.Struct({
   [spanAttr.settlementKind]: optionalAttr(spanAttr.settlementKind),
   [spanAttr.spanLabel]: Schema.optional(Schema.String.pipe(OtelAttr.spanLabel())),
   [spanAttr.statusState]: optionalAttr(spanAttr.statusState),
+  [spanAttr.wakeSource]: optionalAttr(spanAttr.wakeSource),
+  [spanAttr.webhookEventType]: optionalAttr(spanAttr.webhookEventType),
+  [spanAttr.webhookOutcome]: optionalAttr(spanAttr.webhookOutcome),
+  [spanAttr.webhookRejectionReason]: optionalAttr(spanAttr.webhookRejectionReason),
 })
 
 /** Schema-backed contract for package-level span attributes keyed by their emitted OTel names. */

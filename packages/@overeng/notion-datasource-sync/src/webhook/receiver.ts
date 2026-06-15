@@ -1,7 +1,7 @@
 import { createServer, type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import { Schema } from 'effect'
+import { Effect, Runtime, Schema } from 'effect'
 
 import { DataSourceId, PageId } from '../core/domain.ts'
 import type { SyncRootId } from '../core/events.ts'
@@ -12,6 +12,7 @@ import {
   SignalProvider,
   type EnqueueSignalInput,
 } from '../core/signals.ts'
+import { spanAttr, withSpan } from '../observability/observability.ts'
 import type { NotionSyncStore } from '../store/store.ts'
 import {
   type NotionWebhookRejectionReason,
@@ -32,6 +33,13 @@ export type NotionWebhookReceiverConfig = {
   readonly onSignalEnqueued?: (
     result: Extract<NotionWebhookDeliveryResult, { readonly _tag: 'signal-enqueued' }>,
   ) => void
+  /**
+   * Optional Effect runtime captured from the calling Effect pipeline.
+   * When provided, each webhook delivery is wrapped in a `notion.datasource.webhook.intake`
+   * span so that intake attributes (outcome, event type, page/data-source IDs) flow through
+   * the configured tracer. Without it the delivery still works — spans are simply not emitted.
+   */
+  readonly effectRuntime?: Runtime.Runtime<never>
 }
 
 /** Current local receiver state and loopback callback target. */
@@ -82,6 +90,12 @@ export type NotionWebhookDeliveryResult =
       readonly _tag: 'signal-enqueued'
       readonly signalId: SignalId
       readonly inserted: boolean
+      /** Notion event type string (e.g. `'page.created'`) — for OTEL attribution only, never used for routing. */
+      readonly eventType: string
+      /** Page ID from the webhook signal — for OTEL attribution only. */
+      readonly pageId: string | undefined
+      /** Data-source ID from the webhook signal — for OTEL attribution only. */
+      readonly dataSourceId: string | undefined
     }
   | {
       readonly _tag: 'rejected'
@@ -160,6 +174,16 @@ export const signalInputFromNotionWebhookSignal = ({
   }
 }
 
+/**
+ * Map a `NotionWebhookDeliveryResult` to a stable `webhookOutcome` attribute value
+ * suitable for the `notion.datasource.webhook.intake` span.
+ */
+const webhookOutcomeFromResult = (result: NotionWebhookDeliveryResult): string => {
+  if (result._tag === 'verification-token-observed') return 'verification'
+  if (result._tag === 'rejected') return 'rejected'
+  return result.inserted === true ? 'enqueued' : 'duplicate'
+}
+
 /** Parse, verify, normalize, and persist one Notion webhook delivery as a daemon wake signal. */
 export const handleNotionWebhookDelivery = ({
   rawBody,
@@ -200,6 +224,9 @@ export const handleNotionWebhookDelivery = ({
     _tag: 'signal-enqueued',
     signalId: enqueued.signal.signalId,
     inserted: enqueued.inserted,
+    eventType: parsed.signal.eventType,
+    pageId: parsed.signal.pageId,
+    dataSourceId: parsed.signal.dataSourceId,
   }
 }
 
@@ -267,6 +294,37 @@ export const startNotionWebhookReceiver = async (
         store: config.store,
         verificationToken,
       })
+
+      // When an Effect runtime is present, emit the intake span with outcome/attribution
+      // attributes. Awaited so the span is deterministically recorded before the response
+      // is sent; errors are swallowed so a tracer failure can never 500 a delivery.
+      if (config.effectRuntime !== undefined) {
+        const outcome = webhookOutcomeFromResult(result)
+        await Runtime.runPromise(config.effectRuntime)(
+          Effect.void.pipe(
+            withSpan({
+              span: 'webhookIntake',
+              attributes: {
+                [spanAttr.spanLabel]: 'webhook',
+                [spanAttr.webhookOutcome]: outcome,
+                ...(result._tag === 'rejected'
+                  ? { [spanAttr.webhookRejectionReason]: result.reason }
+                  : {}),
+                ...(result._tag === 'signal-enqueued'
+                  ? { [spanAttr.webhookEventType]: result.eventType }
+                  : {}),
+                ...(result._tag === 'signal-enqueued' && result.pageId !== undefined
+                  ? { [spanAttr.pageId]: result.pageId }
+                  : {}),
+                ...(result._tag === 'signal-enqueued' && result.dataSourceId !== undefined
+                  ? { [spanAttr.dataSourceId]: result.dataSourceId }
+                  : {}),
+              },
+            }),
+          ),
+        ).catch(() => {})
+      }
+
       if (result._tag === 'verification-token-observed') {
         verificationToken = result.verificationToken
         response.writeHead(200, { 'content-type': 'application/json' })
