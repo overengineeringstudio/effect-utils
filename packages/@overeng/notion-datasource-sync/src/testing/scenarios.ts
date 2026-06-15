@@ -68,6 +68,21 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L3',
     file: 'src/e2e/cli.e2e.test.ts',
   }),
+  // SM5.2 (CLI-R02 / R49): the one-shot `sync --dry-run` suppression GUARANTEE.
+  // Proven against a REAL file-backed split workspace by snapshotting every
+  // durable surface and asserting byte/row/count invariance plus a fake-gateway
+  // write-call counter at exactly zero. The same fixture under a non-dry-run sync
+  // mutates those surfaces, so the zero-change assertion is non-vacuous.
+  scenario({
+    scenarioId: 'NDS-L4-dry-run-suppression-all-surfaces',
+    title:
+      'one-shot sync --dry-run writes nothing durable to any surface and never asks the gateway to mutate',
+    requirementIds: ['R49'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L4',
+    file: 'src/e2e/dry-run-suppression.e2e.test.ts',
+  }),
   scenario({
     scenarioId: 'NDS-L5-watch-daemon-local-cycle',
     title: 'local watch daemon preserves pending work across restart and cancellation',
@@ -936,11 +951,9 @@ export const traceabilityResiduals = [
     requirementId: 'R72',
     reason: 'Query contract identity needs multi-scan checkpoint E2E coverage.',
   },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R49',
-    reason: 'Dry-run plans are CLI/user-command scope.',
-  },
+  // R49 (CLI-R02, dry-run suppression) is now mapped by the concrete
+  // `NDS-L4-dry-run-suppression-all-surfaces` scenario (SM5.2), so it is no
+  // longer an unmapped residual.
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R51',
