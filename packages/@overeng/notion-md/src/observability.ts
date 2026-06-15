@@ -201,6 +201,20 @@ export const mediaBoundaryAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Span attributes for a comment write-boundary classification. */
+export const commentBoundaryAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.operation' })),
+    commentCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.comment_boundary.comment_count' }),
+    ),
+    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.verdict' })),
+    guard: Schema.optional(
+      Schema.String.pipe(OtelAttr.key({ key: 'notion_md.comment_boundary.guard' })),
+    ),
+  }),
+)
+
 export const withOperation =
   <S extends Schema.Schema.AnyNoContext>(
     operation: OtelOperationDefinition<S>,
@@ -403,6 +417,13 @@ export const editResultAttrs = OtelAttrs.defineSync(
 export const MediaBoundarySpan = OtelOperation.define({
   name: 'notion-md.media-boundary',
   attributes: mediaBoundaryAttrs,
+  label: ({ operation, verdict }) => `${operation}:${verdict}`,
+})
+
+/** Operation span emitted when the comment write boundary classifies a write. */
+export const CommentBoundarySpan = OtelOperation.define({
+  name: 'notion-md.comment-boundary',
+  attributes: commentBoundaryAttrs,
   label: ({ operation, verdict }) => `${operation}:${verdict}`,
 })
 

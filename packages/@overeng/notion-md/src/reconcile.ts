@@ -16,6 +16,7 @@ import {
 
 import { runBatch, type BatchResult } from './batch.ts'
 import { canonicalize } from './canonicalizer.ts'
+import { classifyCommentWrite, type CommentWriteOperation } from './comment-boundary.ts'
 import {
   NmdCliError,
   NmdConflictError,
@@ -27,7 +28,7 @@ import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { classifyMediaWrite, type MediaWriteOperation } from './media-boundary.ts'
 import { NotionMdGateway, type RemotePageSnapshot } from './model.ts'
-import { MediaBoundarySpan, withOperation } from './observability.ts'
+import { CommentBoundarySpan, MediaBoundarySpan, withOperation } from './observability.ts'
 import {
   decideReconcile,
   porcelainStatus,
@@ -414,6 +415,45 @@ const guardMediaWrite = (opts: {
   )
 }
 
+/**
+ * Comment-write boundary (SM6.2). Classifies the declared storage's comment
+ * inventory at a write site and fails closed with `CommentWriteUnsupported`
+ * when it carries any modeled comment units — a non-empty inventory implies
+ * the comments API would be needed, which is not yet implemented in v-next.
+ *
+ * Evaluated before the dry-run early-return at every call site, so a blocked
+ * comment write surfaces the named guard on both the dry-run plan and the apply
+ * path (R15). An empty comment inventory is inert and proceeds without an API
+ * call.
+ */
+const guardCommentWrite = (opts: {
+  readonly pageId: string
+  readonly storage: NmdStorage | undefined
+  readonly operation: CommentWriteOperation
+}): Effect.Effect<void, NmdNonBodyWriteBlockedError> => {
+  const verdict = classifyCommentWrite({ storage: opts.storage, operation: opts.operation })
+  const commentCount = verdict._tag === 'blocked' ? verdict.commentIds.length : 0
+  return Effect.gen(function* () {
+    if (verdict._tag === 'blocked') {
+      return yield* new NmdNonBodyWriteBlockedError({
+        page_id: opts.pageId,
+        guard: verdict.guard,
+        // Reuse fileIds field to carry the comment ids (same string-array
+        // transport; field semantics extend to "ids of units that blocked").
+        fileIds: verdict.commentIds,
+        message: `Page ${opts.pageId} ${verdict.reason}`,
+      })
+    }
+  }).pipe(
+    withOperation(CommentBoundarySpan, {
+      operation: opts.operation,
+      commentCount,
+      verdict: verdict._tag,
+      ...(verdict._tag === 'blocked' ? { guard: verdict.guard } : {}),
+    }),
+  )
+}
+
 const writeFile = (opts: {
   readonly path: string
   readonly frontmatter: NmdFrontmatterV2
@@ -605,6 +645,11 @@ export const reconcileFile = (
           storage: pulled.storage,
           operation: 'push',
         })
+        yield* guardCommentWrite({
+          pageId,
+          storage: pulled.storage,
+          operation: 'push',
+        })
         yield* assertReviewMarkupAllowed({
           path: opts.path,
           pageId,
@@ -651,6 +696,11 @@ export const reconcileFile = (
       }
       case 'pull': {
         yield* guardMediaWrite({
+          pageId,
+          storage: pulled.storage,
+          operation: 'pull',
+        })
+        yield* guardCommentWrite({
           pageId,
           storage: pulled.storage,
           operation: 'pull',
@@ -732,6 +782,11 @@ const reconcileSharedFile = (opts: {
     const gateway = yield* NotionMdGateway
     const base = yield* readBaseSnapshot({ path: opts.path, syncState: opts.syncState })
     yield* guardMediaWrite({
+      pageId: opts.pageId,
+      storage: opts.syncState.storage,
+      operation: 'shared',
+    })
+    yield* guardCommentWrite({
       pageId: opts.pageId,
       storage: opts.syncState.storage,
       operation: 'shared',
