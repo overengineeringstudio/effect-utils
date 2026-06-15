@@ -93,10 +93,10 @@ export class NmdPropertyWriteBlockedError extends Schema.TaggedError<NmdProperty
 ) {}
 
 /**
- * Raised when a non-body write boundary (files/media this phase) refuses a
- * write that would carry a payload notion-md cannot durably transfer yet.
- * Carries the violated {@link NonBodyGuardName} and the offending file ids so
- * the refusal is observable rather than a silent drop (R13).
+ * Raised when a non-body write boundary (files/media, comments) refuses a write
+ * that would carry a payload or mutation notion-md cannot perform yet. Carries
+ * the violated {@link NonBodyGuardName} and the offending unit ids so the
+ * refusal is observable rather than a silent drop (R13).
  */
 export class NmdNonBodyWriteBlockedError extends Schema.TaggedError<NmdNonBodyWriteBlockedError>()(
   'NmdNonBodyWriteBlockedError',
@@ -105,7 +105,12 @@ export class NmdNonBodyWriteBlockedError extends Schema.TaggedError<NmdNonBodyWr
     /** The violated non-body guard name identifying the missing invariant. */
     guard: NonBodyGuardName,
     message: Schema.String,
-    /** Ids of the file units that triggered the block. */
+    /**
+     * Ids of the units that triggered the block — file unit ids for the
+     * `DurableFile*` guards, comment unit ids for `CommentWriteUnsupported`.
+     * Discriminate by {@link guard}. (Field name predates the comment boundary
+     * and is kept stable for the SM6.1 media call sites.)
+     */
     fileIds: Schema.Array(Schema.String),
   },
 ) {}

@@ -492,7 +492,23 @@ describe('reconcileFile — comment-write boundary (SM6.2)', () => {
     comments: [],
   })
 
-  it('blocks a source: local push over modeled comments with CommentWriteUnsupported', () =>
+  it('proceeds on a source: local body-only push over a comment-bearing page', () =>
+    withTempDir(async (dir) => {
+      // A body-only `replace_content` push is structurally incapable of
+      // mutating Notion comments, so the page merely having comments must not
+      // block the push (mutation-implying, not presence-based).
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: commentStorage() }],
+      ])
+
+      const result = await run(reconcileFile({ path }), fake)
+      expect(result._tag).toBe('pushed')
+      expect(fake.updateCount).toBe(1)
+    }))
+
+  it('proceeds on a dry-run push over a comment-bearing page (no fictitious block)', () =>
     withTempDir(async (dir) => {
       const path = join(dir, 'doc.nmd')
       await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
@@ -500,33 +516,12 @@ describe('reconcileFile — comment-write boundary (SM6.2)', () => {
         [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: commentStorage() }],
       ])
 
-      const error = await runFailure(reconcileFile({ path }), fake)
-      expect(error).toMatchObject({
-        _tag: 'NmdNonBodyWriteBlockedError',
-        page_id: pageId,
-        guard: 'CommentWriteUnsupported',
-        fileIds: ['comment-xyz'],
-      })
+      const result = await run(reconcileFile({ path, dryRun: true }), fake)
+      expect(result).toMatchObject({ _tag: 'pushed', dryRun: true })
       expect(fake.updateCount).toBe(0)
     }))
 
-  it('surfaces CommentWriteUnsupported on the dry-run plan (dry-run-visible, R15)', () =>
-    withTempDir(async (dir) => {
-      const path = join(dir, 'doc.nmd')
-      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
-      const fake = new FakeGateway([
-        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: commentStorage() }],
-      ])
-
-      const error = await runFailure(reconcileFile({ path, dryRun: true }), fake)
-      expect(error).toMatchObject({
-        _tag: 'NmdNonBodyWriteBlockedError',
-        guard: 'CommentWriteUnsupported',
-      })
-      expect(fake.updateCount).toBe(0)
-    }))
-
-  it('blocks a source: remote pull over modeled comments with CommentWriteUnsupported', () =>
+  it('proceeds on a source: remote body-only pull over a comment-bearing page', () =>
     withTempDir(async (dir) => {
       const path = join(dir, 'doc.nmd')
       await writeNmd({ path, source: 'remote', pageId, body: 'stale local' })
@@ -534,12 +529,8 @@ describe('reconcileFile — comment-write boundary (SM6.2)', () => {
         [pageId, { title: 'Doc', markdown: '# Fresh remote', storage: commentStorage() }],
       ])
 
-      const error = await runFailure(reconcileFile({ path }), fake)
-      expect(error).toMatchObject({
-        _tag: 'NmdNonBodyWriteBlockedError',
-        guard: 'CommentWriteUnsupported',
-        fileIds: ['comment-xyz'],
-      })
+      const result = await run(reconcileFile({ path }), fake)
+      expect(result._tag).toBe('pulled')
     }))
 
   it('proceeds over a page with an empty comment inventory (inert)', () =>
@@ -570,12 +561,12 @@ describe('reconcileFile — comment-write boundary (SM6.2)', () => {
       expect(fake.updateCount).toBe(0)
     }))
 
-  it('comment inventory preserved through sidecar on shared track (inventory round-trips)', () =>
+  it('captures the comment inventory into the sidecar at shared track time', () =>
     withTempDir(async (dir) => {
-      // trackPage{source:shared} writes the sidecar at track time. The
-      // comment inventory in the gateway response must survive unchanged into
-      // the sidecar so a later reconcile can read it back — this is the
-      // preservation path (storage layer, not the write gate).
+      // trackPage{source:shared} writes the sidecar at track time. The comment
+      // inventory in the gateway response must survive unchanged into the
+      // sidecar so a later reconcile can read it back (storage layer, not the
+      // write gate). This proves capture, not a full sync-cycle round-trip.
       const path = join(dir, 'doc.nmd')
       const fake = new FakeGateway([
         [pageId, { title: 'Doc', markdown: '# Shared body', storage: commentStorage() }],
@@ -592,30 +583,22 @@ describe('reconcileFile — comment-write boundary (SM6.2)', () => {
       })
     }))
 
-  it('blocks shared reconcile path over modeled comments (shared site)', () =>
+  it('proceeds on the shared merge path over a comment-bearing page (no fictitious block)', () =>
     withTempDir(async (dir) => {
+      // A clean 3-way merge writes only the merged body and does not mutate the
+      // comment inventory, so the shared write site must not block.
       const path = join(dir, 'doc.nmd')
       const fake = new FakeGateway([
         [pageId, { title: 'Doc', markdown: 'alpha\n\nbeta', storage: commentStorage() }],
       ])
-      // Bootstrap as shared — sidecar captures commentStorage() at track time.
       await run(trackPage({ pageId, outPath: path, source: 'shared' }), fake)
 
-      // Create a real divergence: local and remote both changed from the base.
+      // Local-only change from base; remote unchanged -> clean merge.
       await replaceNmdBody(path, 'alpha local\n\nbeta')
-      fake.mutateRemote(pageId, 'alpha\n\nbeta remote')
-      const beforeRemote = fake.remoteMarkdown(pageId)
 
-      const error = await runFailure(reconcileFile({ path }), fake)
-
-      expect(error).toMatchObject({
-        _tag: 'NmdNonBodyWriteBlockedError',
-        page_id: pageId,
-        guard: 'CommentWriteUnsupported',
-        fileIds: ['comment-xyz'],
-      })
-      expect(fake.updateCount).toBe(0)
-      expect(fake.remoteMarkdown(pageId)).toBe(beforeRemote)
+      const result = await run(reconcileFile({ path }), fake)
+      expect(result._tag).toBe('shared-merged')
+      expect(fake.updateCount).toBe(1)
     }))
 })
 

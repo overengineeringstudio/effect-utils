@@ -416,30 +416,32 @@ const guardMediaWrite = (opts: {
 }
 
 /**
- * Comment-write boundary (SM6.2). Classifies the declared storage's comment
- * inventory at a write site and fails closed with `CommentWriteUnsupported`
- * when it carries any modeled comment units — a non-empty inventory implies
- * the comments API would be needed, which is not yet implemented in v-next.
+ * Comment-write boundary (SM6.2). Compares the comment inventory the write would
+ * produce against the current inventory and fails closed with
+ * `CommentWriteUnsupported` only when they differ — a mutation (add/remove/edit)
+ * implies the comments API, which is not yet implemented in v-next. A body-only
+ * `replace_content` write never touches comments, so `produced === current` and
+ * the gate is inert; the guard is dormant until a real comment-mutation path is
+ * wired.
  *
  * Evaluated before the dry-run early-return at every call site, so a blocked
  * comment write surfaces the named guard on both the dry-run plan and the apply
- * path (R15). An empty comment inventory is inert and proceeds without an API
- * call.
+ * path (R15).
  */
 const guardCommentWrite = (opts: {
   readonly pageId: string
   readonly storage: NmdStorage | undefined
   readonly operation: CommentWriteOperation
 }): Effect.Effect<void, NmdNonBodyWriteBlockedError> => {
-  const verdict = classifyCommentWrite({ storage: opts.storage, operation: opts.operation })
+  const verdict = classifyCommentWrite({ current: opts.storage, operation: opts.operation })
   const commentCount = verdict._tag === 'blocked' ? verdict.commentIds.length : 0
   return Effect.gen(function* () {
     if (verdict._tag === 'blocked') {
       return yield* new NmdNonBodyWriteBlockedError({
         page_id: opts.pageId,
         guard: verdict.guard,
-        // Reuse fileIds field to carry the comment ids (same string-array
-        // transport; field semantics extend to "ids of units that blocked").
+        // `fileIds` carries the offending unit ids regardless of unit kind,
+        // discriminated by `guard` (here: comment unit ids). See its JSDoc.
         fileIds: verdict.commentIds,
         message: `Page ${opts.pageId} ${verdict.reason}`,
       })
@@ -786,11 +788,6 @@ const reconcileSharedFile = (opts: {
       storage: opts.syncState.storage,
       operation: 'shared',
     })
-    yield* guardCommentWrite({
-      pageId: opts.pageId,
-      storage: opts.syncState.storage,
-      operation: 'shared',
-    })
     const unknownBlockIds = unresolvedUnknownBlockIds({
       syncState: opts.syncState,
       remoteUnknownBlockIds: opts.remoteUnknownBlockIds,
@@ -798,6 +795,11 @@ const reconcileSharedFile = (opts: {
 
     // --force overrides a shared divergence with a local-wins replace.
     if (opts.force === true) {
+      yield* guardCommentWrite({
+        pageId: opts.pageId,
+        storage: opts.syncState.storage,
+        operation: 'shared',
+      })
       yield* assertReviewMarkupAllowed({
         path: opts.path,
         pageId: opts.pageId,
@@ -877,6 +879,11 @@ const reconcileSharedFile = (opts: {
           ),
         )
       case 'merge': {
+        yield* guardCommentWrite({
+          pageId: opts.pageId,
+          storage: opts.syncState.storage,
+          operation: 'shared',
+        })
         yield* assertReviewMarkupAllowed({
           path: opts.path,
           pageId: opts.pageId,
