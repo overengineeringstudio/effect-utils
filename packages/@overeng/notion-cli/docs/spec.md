@@ -24,11 +24,14 @@ This spec does not define:
 
 ## Command Surface
 
-Trace: R01-R06, R11-R13.
+Trace: R01-R06, R11-R13, R17-R18.
 
 ```text
 notion
+├── edit <page>               # top-level alias → md edit (marquee verb, R18)
 ├── md ...                    # @overeng/notion-md command tree
+│   ├── cat / put / edit      # editor surface: cat/put pipes + engine-backed edit (R17)
+│   └── sync / status / plan  # file-based surface
 ├── schema
 │   ├── generate
 │   ├── introspect
