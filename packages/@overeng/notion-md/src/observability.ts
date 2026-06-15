@@ -310,6 +310,58 @@ export const GatewayArchivePageSpan = OtelOperation.define({
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+const editorModeSchema = Schema.Literal('default', 'frontmatter')
+
+/** Span for `notion-md cat` — read-only editor projection of a Notion page. */
+export const CatSpan = OtelOperation.define({
+  name: 'notion-md.cat',
+  root: true,
+  schema: Schema.Struct({
+    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
+    mode: editorModeSchema.pipe(OtelAttr.key({ key: 'notion_md.editor.mode' })),
+  }),
+  label: ({ pageId }) => pageId.slice(0, 8),
+})
+
+/** Span for `notion-md put` — guarded title+body write to a Notion page. */
+export const PutSpan = OtelOperation.define({
+  name: 'notion-md.put',
+  root: true,
+  schema: Schema.Struct({
+    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
+    force: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.put.force' })),
+  }),
+  label: ({ pageId }) => pageId.slice(0, 8),
+})
+
+/** Result annotations for a completed `notion-md put`. */
+export const putResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    bodyWritten: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.put.body_written' })),
+    titleWritten: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.put.title_written' })),
+  }),
+)
+
+/** Span for `notion-md edit` — ephemeral file-engine editor session (wraps engine spans). */
+export const EditSpan = OtelOperation.define({
+  name: 'notion-md.edit',
+  root: true,
+  schema: Schema.Struct({
+    pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
+    mode: editorModeSchema.pipe(OtelAttr.key({ key: 'notion_md.editor.mode' })),
+  }),
+  label: ({ pageId }) => pageId.slice(0, 8),
+})
+
+/** Outcome annotation for a completed `notion-md edit` session. */
+export const editResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    outcome: Schema.Literal('pushed', 'noop', 'aborted', 'conflict').pipe(
+      OtelAttr.key({ key: 'notion_md.edit.outcome' }),
+    ),
+  }),
+)
+
 export const page = (pageId: string) => GatewayPullPageSpan.encodeSync({ pageId })
 
 export const parentPage = (parentPageId: string) =>

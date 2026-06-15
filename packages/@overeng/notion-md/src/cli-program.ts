@@ -16,7 +16,8 @@ import {
   statusMany,
   syncMany,
 } from './batch.ts'
-import { NmdCliError, NmdTokenMissingError } from './errors.ts'
+import { catEditorPage, editEditorPage, putEditorPage, type EditorMode } from './editor-commands.ts'
+import { NmdCliError, NmdTokenMissingError, NmdUnresolvablePageError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { annotateAttrs, withOperation } from './observability.ts'
@@ -662,9 +663,140 @@ const syncCommand = Command.make(
   ),
 )
 
+// ---------------------------------------------------------------------------
+// Editor surfaces: cat / put / edit (VRS "Editor Surfaces")
+// ---------------------------------------------------------------------------
+
+const pageArg = Args.text({ name: 'page' }).pipe(
+  Args.withDescription('Notion page id, dashed id, or URL'),
+  Args.withSchema(NonEmptyCliText),
+)
+
+const frontmatterOption = Options.boolean('frontmatter').pipe(
+  Options.withDescription(
+    'Use the full strict `.nmd` envelope instead of the default `# title` + body',
+  ),
+  Options.withDefault(false),
+)
+
+const baseHashOption = Options.text('base-hash').pipe(
+  Options.withDescription('Optimistic-concurrency token from a prior `cat` (guards the write)'),
+  Options.optional,
+)
+
+/** Resolve a `<page>` token to a Notion page id, failing with exit 4 when unresolvable. */
+const resolvePageArg = (page: string): Effect.Effect<string, NmdUnresolvablePageError> => {
+  const parsed = parseNotionPageRef(page)
+  return parsed === undefined
+    ? Effect.fail(
+        new NmdUnresolvablePageError({
+          page,
+          message: `\`${page}\` is not a valid Notion page id, dashed id, or URL.`,
+        }),
+      )
+    : Effect.succeed(parsed)
+}
+
+/** Read all of stdin as a UTF-8 string (the `put` body buffer). */
+const readStdin = (): Effect.Effect<string> =>
+  Effect.async<string>((resume) => {
+    const chunks: Buffer[] = []
+    process.stdin.on('data', (chunk: Buffer) => chunks.push(chunk))
+    process.stdin.on('end', () => resume(Effect.succeed(Buffer.concat(chunks).toString('utf8'))))
+    process.stdin.on('error', () => resume(Effect.succeed(Buffer.concat(chunks).toString('utf8'))))
+    process.stdin.resume()
+  })
+
+const catCommand = Command.make(
+  'cat',
+  { page: pageArg, frontmatter: frontmatterOption },
+  ({ page, frontmatter }) => {
+    const mode: EditorMode = frontmatter === true ? 'frontmatter' : 'default'
+    return commandSpan({
+      command: 'cat',
+      label: basename(page),
+      effect: resolvePageArg(page).pipe(
+        Effect.flatMap((pageId) => withNotion(catEditorPage({ pageId, mode }))),
+        Effect.asVoid,
+      ),
+    })
+  },
+).pipe(
+  Command.withDescription(
+    'Print a Notion page as editor Markdown (`# title` + body) with the base hash on stderr; `--frontmatter` dumps the full `.nmd` envelope',
+  ),
+)
+
+const putCommand = Command.make(
+  'put',
+  { page: pageArg, baseHash: baseHashOption, force: forceOption },
+  ({ page, baseHash, force }) =>
+    commandSpan({
+      command: 'put',
+      label: basename(page),
+      effect: resolvePageArg(page).pipe(
+        Effect.flatMap((pageId) =>
+          force === false && Option.isNone(baseHash) === true
+            ? Effect.fail(
+                new NmdCliError({
+                  message:
+                    'put requires either --base-hash <hash> (guarded; capture it from `cat`) or --force (concurrency override).',
+                }),
+              )
+            : readStdin().pipe(
+                Effect.flatMap((buffer) =>
+                  withNotion(
+                    putEditorPage({
+                      pageId,
+                      buffer,
+                      force,
+                      ...(Option.isSome(baseHash) === true
+                        ? { baseHash: baseHash.value as never }
+                        : {}),
+                    }),
+                  ),
+                ),
+              ),
+        ),
+        Effect.flatMap(logJson),
+      ),
+    }),
+).pipe(
+  Command.withDescription(
+    'Write editor Markdown from stdin (`# title` + body) back to a Notion page; guarded by --base-hash, or --force to override concurrency',
+  ),
+)
+
+const editCommand = Command.make(
+  'edit',
+  { page: pageArg, frontmatter: frontmatterOption },
+  ({ page, frontmatter }) => {
+    const mode: EditorMode = frontmatter === true ? 'frontmatter' : 'default'
+    return commandSpan({
+      command: 'edit',
+      label: basename(page),
+      effect: resolvePageArg(page).pipe(
+        Effect.flatMap((pageId) => withNotion(editEditorPage({ pageId, mode, pageRef: page }))),
+        Effect.flatMap(logJson),
+      ),
+    })
+  },
+).pipe(
+  Command.withDescription(
+    'Edit a Notion page in $EDITOR via an ephemeral .nmd session, then push the change through the sync engine',
+  ),
+)
+
 const makeNotionMdCommand = (name: 'md' | 'notion-md') =>
   Command.make(name).pipe(
-    Command.withSubcommands([statusCommand, planCommand, syncCommand]),
+    Command.withSubcommands([
+      statusCommand,
+      planCommand,
+      syncCommand,
+      catCommand,
+      putCommand,
+      editCommand,
+    ]),
     Command.withDescription('Two-way Notion enhanced Markdown sync'),
   )
 

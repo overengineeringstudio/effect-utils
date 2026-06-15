@@ -506,7 +506,14 @@ ${fence}
   })
 }
 
-const buildFrontmatterV2 = (opts: { readonly page: RemotePageSnapshot }): NmdFrontmatterV2 => ({
+/**
+ * Build the strict V2 `.nmd` frontmatter envelope for a remote page. Exported
+ * for the stateless `cat --frontmatter` envelope dump, which renders the full
+ * envelope without writing a `.notion-md/` store (decision 0017).
+ */
+export const buildFrontmatterV2 = (opts: {
+  readonly page: RemotePageSnapshot
+}): NmdFrontmatterV2 => ({
   notion_md: {
     version: 2,
     api_version: NOTION_API_VERSION,
@@ -1367,9 +1374,18 @@ export const pushPage = (
 ): Effect.Effect<PushResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   pushPageWithPolicy(opts)
 
-/** Run one two-way reconciliation pass for a `.nmd` file. */
-export const syncPage = (
-  opts: SyncOptions,
+/**
+ * One two-way reconciliation pass for a `.nmd` file.
+ *
+ * `replaceContent` forces a full-body `replace_content` instead of the narrowest
+ * `update_content` search-replace. The `edit` editor surface sets it (decision
+ * 0017): every page `edit` accepts is fully representable (lossy pages are
+ * refused at the pull), so a full replace is safe and closes the targeted-update
+ * silent-partial-apply window for the single ephemeral session. The default
+ * file-`sync` path leaves it unset and keeps its targeted-update optimization.
+ */
+const runSyncPass = (
+  opts: SyncOptions & { readonly replaceContent?: boolean },
 ): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const status = yield* statusPage({ path: opts.path })
@@ -1379,7 +1395,10 @@ export const syncPage = (
       status.localPageMetadataChanged === true ||
       status.localPropertiesChanged === true
     ) {
-      const push = yield* pushPage(opts)
+      const push =
+        opts.replaceContent === true
+          ? yield* pushPageWithPolicy({ ...opts, replaceContent: true })
+          : yield* pushPage(opts)
       return {
         _tag: 'pushed',
         path: opts.path,
@@ -1406,7 +1425,32 @@ export const syncPage = (
       pageId: status.pageId,
       status,
     } as const
-  }).pipe(
+  })
+
+/** Run one two-way reconciliation pass for a `.nmd` file. */
+export const syncPage = (
+  opts: SyncOptions,
+): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
+  runSyncPass(opts).pipe(
+    Effect.tap((result) =>
+      Observability.annotateAttrs(Observability.syncResultAttrs, {
+        pageId: result.pageId,
+        result: result._tag,
+      }),
+    ),
+    Observability.withOperation(Observability.SyncPageSpan, { basename: basename(opts.path) }),
+  )
+
+/**
+ * `edit`-surface sync pass: forces a full-body `replace_content` (decision
+ * 0017). A thin wrapper over the same engine `syncPage` uses — not a second push
+ * path. Used by the ephemeral `edit` session after the spliced buffer is written
+ * back to the temp `.nmd`.
+ */
+export const syncPageReplacingBody = (
+  opts: SyncOptions,
+): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
+  runSyncPass({ ...opts, replaceContent: true }).pipe(
     Effect.tap((result) =>
       Observability.annotateAttrs(Observability.syncResultAttrs, {
         pageId: result.pageId,
