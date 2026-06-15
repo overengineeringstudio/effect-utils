@@ -259,6 +259,7 @@ const context = (input: {
   readonly clock: ReturnType<typeof makeFakeClock>
   readonly maxExecutorSteps?: number
   readonly workspaceRoot?: CliContext['workspaceRoot']
+  readonly sourcePagesDir?: CliContext['sourcePagesDir']
   readonly schemaProperties?: CliContext['schemaProperties']
   readonly requiredCapabilities?: CliContext['requiredCapabilities']
   readonly materializeBodies?: CliContext['materializeBodies']
@@ -272,6 +273,7 @@ const context = (input: {
   rootId: testIds.rootId,
   dataSourceId: testIds.dataSourceId,
   workspaceRoot: input.workspaceRoot ?? workspaceRoot,
+  ...(input.sourcePagesDir === undefined ? {} : { sourcePagesDir: input.sourcePagesDir }),
   queryContract: defaultQueryContract(),
   schemaProperties: input.schemaProperties ?? schemaProperties,
   ...(input.requiredCapabilities === undefined
@@ -1062,6 +1064,11 @@ describe('CLI command surface', () => {
         expect(ctx.workspaceRoot).toBe(dir)
         // The persisted authority mode is read back onto the context...
         expect(ctx.authorityMode).toBe('shared')
+        // SM5b: the source's page directory is read onto the context too, so the
+        // CLI materializes `.nmd` page files under `pages/v1/<name>/`. This pins
+        // the manifest -> CliContext.sourcePagesDir hop (the on-disk landing is
+        // proven by the real-CLI NotionMD materialization test).
+        expect(ctx.sourcePagesDir).toBe(pagesDirRelativePath('data-source-1'))
       } finally {
         ctx.store.close()
       }
@@ -1508,10 +1515,16 @@ describe('CLI command surface', () => {
         gateway: notionMdGateway,
         stateStore,
       })
+      // SM5b: a tracked workspace carries `sourcePagesDir`, so the production
+      // chain (context.sourcePagesDir -> remoteObservationContext ->
+      // bodyPathForPage -> observeRemoteDataSource -> workspace.materialize)
+      // materializes the `.nmd` under `pages/v1/<name>/` instead of the root.
+      const pagesDir = pagesDirRelativePath(testIds.databaseId)
       const ctx = context({
         store: storeFixture.store,
         clock,
         workspaceRoot: root,
+        sourcePagesDir: pagesDir,
         schemaProperties: [],
       })
 
@@ -1532,16 +1545,16 @@ describe('CLI command surface', () => {
         body,
         workspace,
       })
-      const materialized = await readFile(
-        join(dir, `page-${testIds.pageId}--${testIds.pageId}.nmd`),
-        'utf8',
-      )
+      const materializedPath = join(dir, pagesDir, `page-${testIds.pageId}--${testIds.pageId}.nmd`)
+      const materialized = await readFile(materializedPath, 'utf8')
 
       expect(result).toMatchObject({
         _tag: 'CliResultEnvelope',
         command: 'sync',
         status: { state: 'clean' },
       })
+      // The `.nmd` page file lands under the source's pages/v1/<name> directory.
+      expect(materializedPath).toContain(`pages/v1/${testIds.databaseId}/`)
       expect(materialized).toContain('"page_id": "page-1"')
       expect(materialized).toContain('Real NotionMD CLI body.')
       expect(materialized).not.toContain('notion-datasource-sync body materialization placeholder')
