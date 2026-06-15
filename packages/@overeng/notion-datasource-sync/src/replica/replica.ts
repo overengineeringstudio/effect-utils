@@ -179,7 +179,7 @@ const decode = <TSchema extends Schema.Schema.AnyNoContext>({
 const quoteIdentifier = (value: string): string => `"${value.replaceAll('"', '""')}"`
 const quoteStringLiteral = (value: string): string => `'${value.replaceAll("'", "''")}'`
 
-const rowsViewName = 'rows'
+const pagesViewName = 'pages'
 const schemaViewName = 'schema'
 const schemaPropertiesViewName = 'schema_properties'
 const changesViewName = 'changes'
@@ -192,7 +192,7 @@ const openReplicaConflictsCountSql = `(SELECT count(*) FROM _nds_replica_conflic
 const rowsSystemColumns = [
   '_page_id',
   '_data_source_id',
-  '_local_row_id',
+  '_local_page_id',
   '_client_request_key',
   '_origin',
   '_properties_hash',
@@ -2016,10 +2016,10 @@ const clearProjectedReplicaTables = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS rows_update;
     DROP TRIGGER IF EXISTS rows_insert;
     DROP TRIGGER IF EXISTS rows_delete;
-    DROP TRIGGER IF EXISTS _nds_rows_update;
-    DROP TRIGGER IF EXISTS _nds_rows_insert;
-    DROP TRIGGER IF EXISTS _nds_rows_delete;
-    DROP VIEW IF EXISTS ${quoteIdentifier(rowsViewName)};
+    DROP TRIGGER IF EXISTS _nds_pages_update;
+    DROP TRIGGER IF EXISTS _nds_pages_insert;
+    DROP TRIGGER IF EXISTS _nds_pages_delete;
+    DROP VIEW IF EXISTS ${quoteIdentifier(pagesViewName)};
 
     DELETE FROM _nds_replica_data_sources;
     DELETE FROM _nds_replica_databases;
@@ -2497,7 +2497,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     DROP TRIGGER IF EXISTS rows_update;
     DROP TRIGGER IF EXISTS rows_insert;
     DROP TRIGGER IF EXISTS rows_delete;
-    DROP VIEW IF EXISTS ${quoteIdentifier(rowsViewName)};
+    DROP VIEW IF EXISTS ${quoteIdentifier(pagesViewName)};
     DELETE FROM _nds_replica_property_column_plan;
   `)
 
@@ -2566,12 +2566,12 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     }),
   )
   db.exec(`
-    CREATE VIEW ${quoteIdentifier(rowsViewName)} AS
+    CREATE VIEW ${quoteIdentifier(pagesViewName)} AS
     SELECT
       ${propertySelects.length === 0 ? '' : `${propertySelects.join(',\n      ')},`}
       r.page_id AS ${quoteIdentifier('_page_id')},
       r.data_source_id AS ${quoteIdentifier('_data_source_id')},
-      r.local_row_id AS ${quoteIdentifier('_local_row_id')},
+      r.local_row_id AS ${quoteIdentifier('_local_page_id')},
       rc.client_request_key AS ${quoteIdentifier('_client_request_key')},
       r.origin AS ${quoteIdentifier('_origin')},
       r.properties_hash AS ${quoteIdentifier('_properties_hash')},
@@ -2593,7 +2593,7 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     .filter((column) => column !== '_in_trash')
     .map(
       (column) =>
-        `SELECT RAISE(ABORT, 'rows system columns are read-only except _in_trash')
+        `SELECT RAISE(ABORT, 'pages system columns are read-only except _in_trash')
          WHERE ${rowsValueReference({ scope: 'NEW', columnName: column })} IS NOT ${rowsValueReference({ scope: 'OLD', columnName: column })};`,
     )
   const propertyGuards = plannedProperties.map((property) => {
@@ -2602,11 +2602,11 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     const isWriteSupported = readNumber({ row: property, key: 'is_rows_write_supported' }) === 1
     const changed = `${rowsValueReference({ scope: 'NEW', columnName })} IS NOT ${rowsValueReference({ scope: 'OLD', columnName })}`
     if (isWriteSupported === false) {
-      return `SELECT RAISE(ABORT, 'rows property column is not supported for direct writes')
+      return `SELECT RAISE(ABORT, 'pages property column is not supported for direct writes')
               WHERE ${changed};`
     }
     const configJson = readOptionalString({ row: property, key: 'config_json' })
-    return `SELECT RAISE(ABORT, 'rows property column value is malformed or uses unsupported NULL behavior')
+    return `SELECT RAISE(ABORT, 'pages property column value is malformed or uses unsupported NULL behavior')
             WHERE ${changed} AND NOT (${rowsValueShapePredicate({ columnName, configJson, propertyType })});`
   })
   const propertyUpdates = plannedProperties
@@ -2648,11 +2648,11 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
     const isWriteSupported = readNumber({ row: property, key: 'is_rows_write_supported' }) === 1
     const newValue = rowsValueReference({ scope: 'NEW', columnName })
     if (isWriteSupported === false) {
-      return `SELECT RAISE(ABORT, 'rows INSERT includes a property that is not supported for row-create CDC')
+      return `SELECT RAISE(ABORT, 'pages INSERT includes a property that is not supported for page-create CDC')
               WHERE ${newValue} IS NOT NULL;`
     }
     const configJson = readOptionalString({ row: property, key: 'config_json' })
-    return `SELECT RAISE(ABORT, 'rows INSERT property value is malformed or uses unsupported NULL behavior')
+    return `SELECT RAISE(ABORT, 'pages INSERT property value is malformed or uses unsupported NULL behavior')
             WHERE ${newValue} IS NOT NULL AND NOT (${rowsValueShapePredicate({ columnName, configJson, propertyType })});`
   })
   const insertValueRows = plannedProperties
@@ -2670,14 +2670,14 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
                 END AS value_json`
     })
   db.exec(`
-    CREATE TRIGGER _nds_rows_update
-    INSTEAD OF UPDATE ON ${quoteIdentifier(rowsViewName)}
+    CREATE TRIGGER _nds_pages_update
+    INSTEAD OF UPDATE ON ${quoteIdentifier(pagesViewName)}
     FOR EACH ROW
     BEGIN
-      SELECT RAISE(ABORT, 'rows UPDATE only supports applied remote rows')
+      SELECT RAISE(ABORT, 'pages UPDATE only supports applied remote pages')
       WHERE OLD.${quoteIdentifier('_origin')} != 'remote';
       ${systemGuards.join('\n      ')}
-      SELECT RAISE(ABORT, 'rows._in_trash must be 0 or 1')
+      SELECT RAISE(ABORT, 'pages._in_trash must be 0 or 1')
       WHERE NEW.${quoteIdentifier('_in_trash')} IS NOT OLD.${quoteIdentifier('_in_trash')}
         AND (typeof(NEW.${quoteIdentifier('_in_trash')}) != 'integer' OR NEW.${quoteIdentifier('_in_trash')} NOT IN (0, 1));
       ${propertyGuards.join('\n      ')}
@@ -2688,20 +2688,20 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       ${propertyUpdates.join('\n      ')}
     END;
 
-    CREATE TRIGGER _nds_rows_insert
-    INSTEAD OF INSERT ON ${quoteIdentifier(rowsViewName)}
+    CREATE TRIGGER _nds_pages_insert
+    INSTEAD OF INSERT ON ${quoteIdentifier(pagesViewName)}
     FOR EACH ROW
     BEGIN
-      SELECT RAISE(ABORT, 'rows INSERT cannot create archived rows')
+      SELECT RAISE(ABORT, 'pages INSERT cannot create archived pages')
       WHERE NEW.${quoteIdentifier('_in_trash')} IS NOT NULL AND NEW.${quoteIdentifier('_in_trash')} != 0;
       ${rowsSystemColumns
         .filter(
           (column) =>
-            !['_page_id', '_local_row_id', '_client_request_key', '_in_trash'].includes(column),
+            !['_page_id', '_local_page_id', '_client_request_key', '_in_trash'].includes(column),
         )
         .map(
           (column) =>
-            `SELECT RAISE(ABORT, 'rows INSERT system columns are generated by the replica')
+            `SELECT RAISE(ABORT, 'pages INSERT system columns are generated by the replica')
              WHERE NEW.${quoteIdentifier(column)} IS NOT NULL;`,
         )
         .join('\n      ')}
@@ -2717,8 +2717,8 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
       SELECT
         'row:create:' || lower(hex(randomblob(8))),
         ${quoteStringLiteral(dataSourceId)},
-        COALESCE(NEW.${quoteIdentifier('_local_row_id')}, NEW.${quoteIdentifier('_page_id')}, 'local:' || lower(hex(randomblob(8)))),
-        COALESCE(NEW.${quoteIdentifier('_client_request_key')}, NEW.${quoteIdentifier('_local_row_id')}, NEW.${quoteIdentifier('_page_id')}, 'client:' || lower(hex(randomblob(8)))),
+        COALESCE(NEW.${quoteIdentifier('_local_page_id')}, NEW.${quoteIdentifier('_page_id')}, 'local:' || lower(hex(randomblob(8)))),
+        COALESCE(NEW.${quoteIdentifier('_client_request_key')}, NEW.${quoteIdentifier('_local_page_id')}, NEW.${quoteIdentifier('_page_id')}, 'client:' || lower(hex(randomblob(8)))),
         COALESCE(
           (
             SELECT json_group_object(property_id, json(value_json))
@@ -2732,11 +2732,11 @@ const rebuildCanonicalRowsSurface = (db: DatabaseSync): void => {
         (SELECT schema_hash FROM _nds_replica_data_sources WHERE data_source_id = ${quoteStringLiteral(dataSourceId)});
     END;
 
-    CREATE TRIGGER _nds_rows_delete
-    INSTEAD OF DELETE ON ${quoteIdentifier(rowsViewName)}
+    CREATE TRIGGER _nds_pages_delete
+    INSTEAD OF DELETE ON ${quoteIdentifier(pagesViewName)}
     FOR EACH ROW
     BEGIN
-      SELECT RAISE(ABORT, 'DELETE FROM rows is intentionally unsupported; update _in_trash for archive CDC');
+      SELECT RAISE(ABORT, 'DELETE FROM pages is intentionally unsupported; update _in_trash for archive CDC');
     END;
   `)
 }
@@ -3179,7 +3179,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         .prepare(
           `SELECT
              (SELECT count(*) FROM _nds_replica_data_sources) AS data_sources,
-             (SELECT count(*) FROM _nds_replica_rows) AS rows,
+             (SELECT count(*) FROM _nds_replica_rows) AS replica_rows,
              (SELECT count(*) FROM _nds_replica_cells) AS cells,
              (SELECT count(*) FROM _nds_replica_bodies) AS bodies,
              ${openReplicaConflictsCountSql} AS conflicts_open,
@@ -3195,7 +3195,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         .run(
           options.rootId,
           readNumber({ row: counts, key: 'data_sources' }),
-          readNumber({ row: counts, key: 'rows' }),
+          readNumber({ row: counts, key: 'replica_rows' }),
           readNumber({ row: counts, key: 'cells' }),
           readNumber({ row: counts, key: 'bodies' }),
           readNumber({ row: counts, key: 'conflicts_open' }),
