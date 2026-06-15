@@ -274,10 +274,139 @@ describe('notion-md CLI boundary', () => {
 
         // Output confirms pruning occurred (not plan-only)
         expect(stdout).toContain('objects pruned')
+        // The removed path must be listed so a prune-without-reporting regression is caught
+        expect(stdout).toContain(orphanPath)
 
         // Orphan must be gone
         expect(existsSync(orphanPath)).toBe(false)
         // Base snapshot must still exist
+        expect(existsSync(objectPath({ path: nmdPath, hash: base.hash }))).toBe(true)
+      })
+    },
+    cliTestTimeoutMs,
+  )
+
+  it(
+    'gc --prune across two pages in one dir keeps both base snapshots and deletes only the orphan',
+    async () => {
+      await withTempDir(async (dir) => {
+        // Two .nmd files sharing one .notion-md object store (same dir → same root)
+        const nmdPathA = join(dir, 'alpha.nmd')
+        const nmdPathB = join(dir, 'beta.nmd')
+        writeFileSync(nmdPathA, '')
+        writeFileSync(nmdPathB, '')
+        const pageIdA = '00000000-0000-4000-8000-000000000020'
+        const pageIdB = '00000000-0000-4000-8000-000000000021'
+
+        // Distinct bodies → distinct base object files, so both must survive independently
+        const baseA = await runStore(
+          writeBaseSnapshot({ path: nmdPathA, pageId: pageIdA, body: '# Alpha body' }),
+        )
+        const baseB = await runStore(
+          writeBaseSnapshot({ path: nmdPathB, pageId: pageIdB, body: '# Beta body' }),
+        )
+        expect(baseA.hash).not.toBe(baseB.hash)
+
+        await runStore(
+          writeSyncState({
+            path: nmdPathA,
+            syncState: syncStateFor({ pageId: pageIdA, body: '# Alpha body', base: baseA }),
+          }),
+        )
+        await runStore(
+          writeSyncState({
+            path: nmdPathB,
+            syncState: syncStateFor({ pageId: pageIdB, body: '# Beta body', base: baseB }),
+          }),
+        )
+
+        // One orphan object reachable from neither sync state
+        const orphanContent = '{"orphan":true}\n'
+        const orphanHash = sha256Digest(orphanContent)
+        const orphanPath = objectPath({ path: nmdPathA, hash: orphanHash })
+        mkdirSync(dirname(orphanPath), { recursive: true })
+        writeFileSync(orphanPath, orphanContent)
+
+        // Pass both files; gc must group them under one root and read both sync
+        // states for reachability, so neither sibling base is misclassified.
+        const { stdout } = await runCli(['gc', nmdPathA, nmdPathB, '--prune'])
+
+        expect(stdout).toContain('objects pruned')
+        expect(stdout).toContain(orphanPath)
+
+        // Only the orphan is gone; both base snapshots survive
+        expect(existsSync(orphanPath)).toBe(false)
+        expect(existsSync(objectPath({ path: nmdPathA, hash: baseA.hash }))).toBe(true)
+        expect(existsSync(objectPath({ path: nmdPathB, hash: baseB.hash }))).toBe(true)
+      })
+    },
+    cliTestTimeoutMs,
+  )
+
+  it(
+    'gc fails fast and names the bad path when every target resolves to an error',
+    async () => {
+      await withTempDir(async (dir) => {
+        // A non-.nmd file resolves to a target-resolution error, not a .nmd path
+        const badPath = join(dir, 'not-a-nmd-file.txt')
+        writeFileSync(badPath, 'plain text')
+
+        // Plant an orphan object next to it; a silent no-op would be especially
+        // dangerous, so prove gc neither deletes nor silently succeeds.
+        const orphanContent = '{"orphan":true}\n'
+        const orphanHash = sha256Digest(orphanContent)
+        const orphanPath = objectPath({ path: join(dir, 'doc.nmd'), hash: orphanHash })
+        mkdirSync(dirname(orphanPath), { recursive: true })
+        writeFileSync(orphanPath, orphanContent)
+
+        // gc must reject (non-zero exit) and name the offending path in stdout
+        await expect(runCli(['gc', badPath, '--prune'])).rejects.toMatchObject({
+          stdout: expect.stringContaining(badPath),
+        })
+
+        // Nothing was deleted on the silent-no-op path
+        expect(existsSync(orphanPath)).toBe(true)
+      })
+    },
+    cliTestTimeoutMs,
+  )
+
+  it(
+    'gc --prune proceeds on a valid target while logging a sibling bad path',
+    async () => {
+      await withTempDir(async (dir) => {
+        // One valid .nmd with its own sync state + orphan, plus one bad target.
+        const nmdPath = join(dir, 'doc.nmd')
+        writeFileSync(nmdPath, '')
+        const pageId = '00000000-0000-4000-8000-000000000030'
+        const base = await runStore(writeBaseSnapshot({ path: nmdPath, pageId, body: '# Partial' }))
+        await runStore(
+          writeSyncState({
+            path: nmdPath,
+            syncState: syncStateFor({ pageId, body: '# Partial', base }),
+          }),
+        )
+
+        const orphanContent = '{"orphan":true}\n'
+        const orphanHash = sha256Digest(orphanContent)
+        const orphanPath = objectPath({ path: nmdPath, hash: orphanHash })
+        mkdirSync(dirname(orphanPath), { recursive: true })
+        writeFileSync(orphanPath, orphanContent)
+
+        const badPath = join(dir, 'not-a-nmd-file.txt')
+        writeFileSync(badPath, 'plain text')
+
+        // Partial resolution: the bad path is logged (stderr) but gc proceeds on
+        // the valid target and prunes its orphan. This must NOT fail fast.
+        const { stdout, stderr } = await runCli(['gc', nmdPath, badPath, '--prune'])
+
+        // The bad path is surfaced, not silently dropped
+        expect(stderr).toContain(badPath)
+        // The valid target was processed and its orphan pruned
+        expect(stdout).toContain('objects pruned')
+        expect(stdout).toContain(orphanPath)
+        expect(existsSync(orphanPath)).toBe(false)
+        // The valid target's base snapshot survives
         expect(existsSync(objectPath({ path: nmdPath, hash: base.hash }))).toBe(true)
       })
     },
