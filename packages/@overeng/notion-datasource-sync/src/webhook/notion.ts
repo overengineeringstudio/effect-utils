@@ -56,7 +56,6 @@ export type NotionWebhookRejectionReason =
   | 'missing-signature'
   | 'malformed-signature'
   | 'signature-mismatch'
-  | 'missing-event-type'
   | 'missing-event-id'
 
 /** Minimal header lookup shape accepted by webhook helpers and HTTP server adapters. */
@@ -93,6 +92,9 @@ const decodePayload = Schema.decodeUnknownEither(
  * A normal event payload will fail this decode — that is "fall through," not a rejection.
  */
 const NotionWebhookVerificationStruct = Schema.Struct({
+  // NonEmptyTrimmedString trims then checks: a whitespace-only token (e.g. "   ")
+  // intentionally fails this decode and falls through to the HMAC gate rather than
+  // being treated as a (meaningless) verification challenge.
   verification_token: Schema.NonEmptyTrimmedString,
 }).annotations({ identifier: 'NotionWebhook.VerificationStruct' })
 
