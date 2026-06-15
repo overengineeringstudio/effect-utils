@@ -158,8 +158,13 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
       return yield* Effect.fail(new GitCommandError({ args, exitCode, stderr }))
     }
 
+    yield* Observability.annotateGitCmdOutput({
+      outputBytes: Buffer.byteLength(stdout, 'utf-8'),
+      outputLines: stdout.length === 0 ? 0 : stdout.split('\n').length,
+    })
+
     return stdout.trim()
-  }).pipe(Effect.scoped)
+  }).pipe(Effect.scoped, Observability.withGitCmdSpan({ args, streamed: false }))
 
 /**
  * Run a git command, folding stdout LINE BY LINE through `sink` at constant
@@ -188,9 +193,26 @@ const streamGitCommandLines = <A>({
   Effect.gen(function* () {
     const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
 
+    // SCALAR running counters for the git-cmd output-size span attributes — these
+    // must never accumulate the lines themselves, or we reintroduce the O(n²)
+    // buffering. `Stream.tap` bumps them as each line flows past on its way to the
+    // sink, so memory stays constant.
+    let outputLines = 0
+    let outputBytes = 0
+
     const [result, stderrChunks, exitCode] = yield* Effect.all(
       [
-        process.stdout.pipe(Stream.decodeText('utf-8'), Stream.splitLines, Stream.run(sink)),
+        process.stdout.pipe(
+          Stream.decodeText('utf-8'),
+          Stream.splitLines,
+          Stream.tap((line) =>
+            Effect.sync(() => {
+              outputLines += 1
+              outputBytes += Buffer.byteLength(line, 'utf-8') + 1 // + newline
+            }),
+          ),
+          Stream.run(sink),
+        ),
         Stream.runCollect(process.stderr),
         process.exitCode,
       ],
@@ -203,8 +225,10 @@ const streamGitCommandLines = <A>({
       )
     }
 
+    yield* Observability.annotateGitCmdOutput({ outputBytes, outputLines })
+
     return result
-  }).pipe(Effect.scoped)
+  }).pipe(Effect.scoped, Observability.withGitCmdSpan({ args, streamed: true }))
 
 // =============================================================================
 // Transient Error Retry
