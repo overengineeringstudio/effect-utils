@@ -89,6 +89,20 @@ describe('workspace manifest', () => {
     expect(result._tag).toBe('unknown-namespace')
   })
 
+  it('fails closed on an unknown field in the manifest (no silent strip)', () => {
+    writeFileSync(
+      manifestPath(root),
+      JSON.stringify({
+        namespace_version: 'v1',
+        authority_mode: 'shared',
+        data_sources: [],
+        future_field: 'unexpected',
+      }),
+    )
+    const result = loadWorkspaceManifest(root)
+    expect(result._tag).toBe('unknown-namespace')
+  })
+
   it('fails closed when a sibling non-v1 namespace artifact coexists, listing offending paths', async () => {
     await writeWorkspaceManifest({ workspaceRoot: root, manifest: sampleManifest() })
     mkdirSync(join(root, 'data', 'v2'), { recursive: true })
@@ -98,5 +112,24 @@ describe('workspace manifest', () => {
     expect(result._tag).toBe('mixed-namespace')
     if (result._tag !== 'mixed-namespace') return
     expect([...result.offendingPaths].sort()).toEqual(['data/v2', 'notion.workspace.v2.json'])
+  })
+
+  it('fails closed on a v3 (non-v2) sibling namespace directory', async () => {
+    await writeWorkspaceManifest({ workspaceRoot: root, manifest: sampleManifest() })
+    mkdirSync(join(root, 'pages', 'v3'), { recursive: true })
+
+    const result = loadWorkspaceManifest(root)
+    expect(result._tag).toBe('mixed-namespace')
+    if (result._tag !== 'mixed-namespace') return
+    expect([...result.offendingPaths]).toEqual(['pages/v3'])
+  })
+
+  it('does not flag the v1 namespace directories as mixed', async () => {
+    await writeWorkspaceManifest({ workspaceRoot: root, manifest: sampleManifest() })
+    mkdirSync(join(root, 'data', 'v1'), { recursive: true })
+    mkdirSync(join(root, 'pages', 'v1'), { recursive: true })
+    mkdirSync(join(root, '.notion', 'v1'), { recursive: true })
+
+    expect(loadWorkspaceManifest(root)._tag).toBe('tracked')
   })
 })

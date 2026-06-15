@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
@@ -170,17 +177,57 @@ export const writeWorkspaceManifestSync = ({
   renameSync(temporaryPath, path)
 }
 
+/** Versioned namespace directory matcher: `v0`, `v2`, `v3`, ... (any non-`v1`). */
+const versionedNamespaceDir = /^v\d+$/
+
+/** Versioned manifest file matcher, capturing the version segment. */
+const versionedManifestFile = /^notion\.workspace\.(v\d+)\.json$/
+
+const readDirEntries = (path: string): ReadonlyArray<{ name: string; isDirectory: boolean }> => {
+  try {
+    return readdirSync(path, { withFileTypes: true }).map((entry) => ({
+      name: entry.name,
+      isDirectory: entry.isDirectory(),
+    }))
+  } catch {
+    // Missing dir (ENOENT) or unreadable: nothing to flag here.
+    return []
+  }
+}
+
 /**
- * Sibling namespace artifacts that, when present alongside a `v1` workspace,
- * indicate a mixed (and therefore ambiguous) workspace that must fail closed.
- * Each entry is a workspace-relative path probed for existence.
+ * Detects sibling namespace artifacts that, alongside a `v1` workspace, make the
+ * workspace ambiguous and must fail closed. Generalized beyond `v2`: any
+ * `data/v*`, `pages/v*`, `.notion/v*` directory or `notion.workspace.v*.json`
+ * file whose version segment is not `v1` is offending. Returns the offending
+ * workspace-relative paths (sorted) so the caller can list them.
  */
-const siblingNamespaceArtifacts: ReadonlyArray<string> = [
-  'data/v2',
-  'pages/v2',
-  '.notion/v2',
-  'notion.workspace.v2.json',
-]
+const offendingSiblingNamespaceArtifacts = (
+  workspaceRoot: AbsolutePathType,
+): ReadonlyArray<string> => {
+  const offending: string[] = []
+
+  for (const parent of ['data', 'pages', '.notion']) {
+    for (const entry of readDirEntries(join(workspaceRoot, parent))) {
+      if (
+        entry.isDirectory === true &&
+        versionedNamespaceDir.test(entry.name) === true &&
+        entry.name !== NAMESPACE_VERSION
+      ) {
+        offending.push(`${parent}/${entry.name}`)
+      }
+    }
+  }
+
+  for (const entry of readDirEntries(workspaceRoot)) {
+    const match = versionedManifestFile.exec(entry.name)
+    if (entry.isDirectory === false && match !== null && match[1] !== NAMESPACE_VERSION) {
+      offending.push(entry.name)
+    }
+  }
+
+  return offending.toSorted()
+}
 
 /**
  * Outcome of attempting to load a workspace manifest. A tagged union so callers
@@ -215,9 +262,7 @@ export type LoadWorkspaceManifestResult =
 export const loadWorkspaceManifest = (
   workspaceRoot: AbsolutePathType,
 ): LoadWorkspaceManifestResult => {
-  const offendingPaths = siblingNamespaceArtifacts.filter((relative) =>
-    existsSync(join(workspaceRoot, relative)),
-  )
+  const offendingPaths = offendingSiblingNamespaceArtifacts(workspaceRoot)
   if (offendingPaths.length > 0) {
     return { _tag: 'mixed-namespace', offendingPaths }
   }
@@ -228,10 +273,13 @@ export const loadWorkspaceManifest = (
   }
 
   try {
-    const manifest = decode({
-      schema: WorkspaceManifestV1,
-      value: JSON.parse(readFileSync(path, 'utf8')),
-    })
+    // Fail closed on unknown fields (`onExcessProperty: 'error'`): a manifest
+    // with an unrecognized field is treated as an unknown namespace rather than
+    // silently stripping the field on decode (and losing it on write-back).
+    const manifest = Schema.decodeUnknownSync(WorkspaceManifestV1)(
+      JSON.parse(readFileSync(path, 'utf8')),
+      { onExcessProperty: 'error' },
+    )
     return { _tag: 'tracked', manifest }
   } catch (cause) {
     return {

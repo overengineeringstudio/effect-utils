@@ -1,4 +1,4 @@
-import { access, copyFile, mkdtemp, rm } from 'node:fs/promises'
+import { access, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -14,10 +14,12 @@ import {
 } from '../cli/main.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
 import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
+import { WorkspaceNamespaceError } from '../core/errors.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
 import {
   dataFileRelativePath,
   loadWorkspaceManifest,
+  manifestPath,
   pagesDirRelativePath,
 } from '../local/manifest.ts'
 import { markReplicaChangeStatus, readPendingReplicaChanges } from '../replica/replica.ts'
@@ -1375,6 +1377,59 @@ describe('clean-break self-contained SQLite storage contract', () => {
       })
       expect(await exists(sidecarStorePath(movedWorkspace))).toBe(false)
       expect(await exists(sidecarConfigPath(movedWorkspace))).toBe(false)
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'sync --sqlite fails closed on a mixed or unknown workspace namespace before reading local edits',
+    async () => {
+      const expectSyncSqliteFailsClosed = ({
+        sqlitePath,
+        expectedGuard,
+      }: {
+        readonly sqlitePath: string
+        readonly expectedGuard: 'MixedWorkspaceNamespace' | 'UnknownWorkspaceNamespace'
+      }): void => {
+        const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+        let caught: unknown
+        try {
+          // `sync` is a write-intent command: the namespace guard must fire in
+          // parseCliContext before the store is opened or intents are read.
+          parseCliContext({
+            argv: ['sync', '--sqlite', sqlitePath],
+            resolvedCommand: parseCliCommand(['sync', '--sqlite', sqlitePath]),
+          })
+        } catch (error) {
+          caught = error
+        }
+        expect(caught).toBeInstanceOf(WorkspaceNamespaceError)
+        expect((caught as WorkspaceNamespaceError).guard).toBe(expectedGuard)
+        expectNoRemoteWrites(gateway)
+      }
+
+      // Mixed namespace: a v2 sibling directory coexists with the v1 manifest.
+      const mixedWorkspace = await tempWorkspace()
+      const { sqlitePath: mixedSqlitePath } = await establishWorkspace(mixedWorkspace)
+      await mkdir(join(mixedWorkspace, 'data', 'v2'), { recursive: true })
+      expectSyncSqliteFailsClosed({
+        sqlitePath: mixedSqlitePath,
+        expectedGuard: 'MixedWorkspaceNamespace',
+      })
+
+      // Unknown namespace: the manifest declares a non-v1 version (no sibling,
+      // so detection reaches the decode branch rather than the mixed branch).
+      const unknownWorkspace = await tempWorkspace()
+      const { sqlitePath: unknownSqlitePath } = await establishWorkspace(unknownWorkspace)
+      await writeFile(
+        manifestPath(unknownWorkspace),
+        JSON.stringify({ namespace_version: 'v2', authority_mode: 'shared', data_sources: [] }),
+        'utf8',
+      )
+      expectSyncSqliteFailsClosed({
+        sqlitePath: unknownSqlitePath,
+        expectedGuard: 'UnknownWorkspaceNamespace',
+      })
     },
     sqliteContractTimeoutMs,
   )

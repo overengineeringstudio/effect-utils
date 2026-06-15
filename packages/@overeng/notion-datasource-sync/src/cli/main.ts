@@ -2189,6 +2189,17 @@ export const parseCliContext = ({
           schema: Schema.Array(SchemaPropertyObservationJson),
           value: requiredFlag({ flags, name: 'schema-properties-json' }),
         }) as ReadonlyArray<SchemaPropertyObservation>)
+  // Fail-closed chokepoint for write-intent commands (`sync`, `sync --watch`,
+  // and `push` — `watch` is a `sync` variant) that resolve a data file via
+  // `--sqlite`. Discovery already guards the workspace-rooted path, but the
+  // `--sqlite` branches read `readPendingReplicaChanges` as write intent without
+  // it; guarding here covers them before any file is opened or mutated. A
+  // genuinely standalone `--sqlite` file (binding not inside a tracked
+  // workspace) is exempt automatically: `requireCompatibleWorkspaceNamespace`
+  // returns `untracked` for a workspace without a manifest instead of throwing.
+  if ((command._tag === 'sync' || command._tag === 'push') && discovered.storePath !== ':memory:') {
+    requireCompatibleWorkspaceNamespace(discovered.workspaceRoot)
+  }
   if (discovered.storePath !== ':memory:') {
     mkdirSync(dirname(discovered.storePath), { recursive: true })
     if (command._tag !== 'sync-from-notion' && existsSync(discovered.storePath) === true) {
