@@ -3,18 +3,20 @@ import { describe, expect, it } from 'vitest'
 import { allowed, blocked, propertyWriteGuardNames } from './guards.ts'
 
 describe('property-write guard vocabulary', () => {
-  it('exposes the 11 distinct guard names', () => {
+  it('exposes the 12 distinct guard names', () => {
     expect(new Set(propertyWriteGuardNames).size).toBe(propertyWriteGuardNames.length)
-    expect(propertyWriteGuardNames.length).toBe(11)
+    expect(propertyWriteGuardNames.length).toBe(12)
   })
 
-  it('includes the four new names and the seven reused names', () => {
+  it('includes the core names plus the provider-emitted RemoteAuthoritativeDrift', () => {
     expect(propertyWriteGuardNames).toEqual(
       expect.arrayContaining([
         'RemoteSchemaRequired',
         'PropertyIdentityAmbiguous',
         'StaleRemoteSchema',
         'LocalSurfaceDisagreement',
+        // Provider-emitted (never returned by the pure core).
+        'RemoteAuthoritativeDrift',
         'ComputedPropertyWrite',
         'UnsupportedRemoteShape',
         'SchemaDriftAffectsIntent',

@@ -29,6 +29,15 @@ export const propertyWriteGuardNames = [
   'PropertyIdentityAmbiguous',
   'StaleRemoteSchema',
   'LocalSurfaceDisagreement',
+  /*
+   * PROVIDER-emitted, not core-emitted. The pure {@link evaluatePropertyWrite}
+   * core never returns this name — it is reserved for a proof provider that
+   * refuses to mint a proof at all because the page is Notion-authoritative
+   * (`source: 'remote'`), where a local property mutation is drift. Belongs to
+   * the shared vocabulary so provider refusals type-check against the same
+   * {@link PropertyWriteGuardName} literal as core decisions.
+   */
+  'RemoteAuthoritativeDrift',
   // Reused from the datasource-sync guard vocabulary.
   'ComputedPropertyWrite',
   'UnsupportedRemoteShape',
