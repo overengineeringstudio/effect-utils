@@ -3,11 +3,15 @@ import { GuardName, type GuardName as GuardNameType } from '../core/guards.ts'
 /** Opaque identifier for a VRS requirement, formatted as `R<two-digit-number>`. */
 export type RequirementId = `R${number}`
 
-/** Verification level tier, from L1 (planner-only) through L7 (production). */
-export type VerificationLevel = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7'
+/** Verification level tier, from L0 (sibling-package pure unit) and L1 (planner-only) through L7 (production downstream composition). */
+export type VerificationLevel = 'L0' | 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7'
 
-/** Unique scenario identifier; encodes the integration tier and a slug. Guard-only scenarios use the `NDS-GUARD-` prefix. */
-export type ScenarioId = `NDS-L${number}-${string}` | `NDS-GUARD-${string}` | `NDS-LIVE-${string}`
+/** Unique scenario identifier; encodes the integration tier and a slug. L0 covers sibling-package pure-unit tests; guard-only scenarios use the `NDS-GUARD-` prefix. */
+export type ScenarioId =
+  | `NDS-L0-${string}`
+  | `NDS-L${number}-${string}`
+  | `NDS-GUARD-${string}`
+  | `NDS-LIVE-${string}`
 
 /** Traceability metadata attached to a concrete or placeholder scenario: maps it to requirement ids, guard names, and integration tier bounds. */
 export type ScenarioMetadata = {
@@ -769,6 +773,46 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L1',
     file: 'src/local/manifest.unit.test.ts',
   }),
+  // L0 sibling-package pure-unit registry backfill. These tests live in upstream
+  // packages that datasource-sync composes (`@overeng/notion-effect-schema`,
+  // `@overeng/notion-property-write`); the matrix tracks them as L0 (the cheapest
+  // sufficient layer) so the shared property-write/descriptor vocabulary is
+  // traceable from this one registry. The `file` field is a plain string and is
+  // allowed to cross package boundaries; these tests have no scenario self-check.
+  scenario({
+    scenarioId: 'NDS-L0-descriptor-canonical-codec',
+    title:
+      'shared PropertyDescriptor codec fails closed on unknown/missing/malformed fields, produces key-order-stable canonical bytes, and never classifies computed/unsupported types as writable (R14)',
+    requirementIds: ['R09', 'R10', 'R14'],
+    guards: [],
+    lowestPlannerLevel: 'L0',
+    highestIntegrationLevel: 'L0',
+    file: 'packages/@overeng/notion-effect-schema/src/properties/descriptor.unit.test.ts',
+  }),
+  scenario({
+    scenarioId: 'NDS-L0-property-write-core',
+    title:
+      'shared PropertyWriteCore allow/block boundary: clean local and settled-shared proofs allow, and each missing/stale/ambiguous proof fails closed with its named guard',
+    requirementIds: ['R09', 'R10', 'R11', 'R29'],
+    guards: [],
+    lowestPlannerLevel: 'L0',
+    highestIntegrationLevel: 'L0',
+    file: 'packages/@overeng/notion-property-write/src/core.unit.test.ts',
+  }),
+  // L7 downstream composition: the datasource workspace consumes the STANDALONE
+  // `@overeng/notion-md` package through its body adapter — materializing,
+  // pushing, and verifying a NotionMD-backed local body edit over the real
+  // package boundary (not a fake body port).
+  scenario({
+    scenarioId: 'NDS-L7-datasource-workspace-consumes-standalone-nmd',
+    title:
+      'a tracked datasource workspace drives the standalone @overeng/notion-md body adapter end to end: a local .nmd edit is captured, planned against evidence-backed pointer identity, pushed, and settled by read-after-write verification',
+    requirementIds: ['R02', 'R23', 'R24', 'R65', 'R66'],
+    guards: ['BodyAdapterConflict'],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L7',
+    file: 'src/e2e/body-adapter.e2e.test.ts',
+  }),
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {
@@ -835,8 +879,15 @@ const guardScenarioIds = {
 const vrsRequirementId = (index: number): RequirementId =>
   `R${index.toString().padStart(2, '0')}` as RequirementId
 
-/** Full ordered list of VRS requirement ids from R01 to R73; used to detect unmapped requirements in coverage checks. */
-export const vrsRequirementIds = Array.from({ length: 73 }, (_, index) =>
+/**
+ * Full ordered list of matrix requirement ids from R01 to R80; used to detect
+ * unmapped requirements in coverage checks. The upper bound tracks the highest
+ * requirement id cited by any scenario (R80) so the traceability gate iterates
+ * the full cited range — a hardcoded `length: 73` previously left R74+ silently
+ * un-checked even though scenarios already cite up to R80. The `invalidScenarioRequirementIdGaps`
+ * legality ceiling stays at R81 (typo guard, not an enumeration target).
+ */
+export const vrsRequirementIds = Array.from({ length: 80 }, (_, index) =>
   vrsRequirementId(index + 1),
 )
 
@@ -1061,6 +1112,32 @@ export const traceabilityResiduals = [
     _tag: 'unmapped-requirement',
     requirementId: 'R59',
     reason: 'Safe telemetry requires telemetry-specific checks.',
+  },
+  // R74-R80 are now inside the enumerated range (length bumped to 80 to close the
+  // drift gate). R74/R78/R79/R80 are mapped by concrete scenarios. R75/R76/R77 are
+  // enumeration slots that no current scenario cites; they have no `**RNN` marker
+  // in the cross-cutting requirements.md (which defines only R01-R15 in marker
+  // form), so — like R16-R73 — they are matrix-internal ids whose reconciliation
+  // with requirements.md is flagged for human ratification (proposed decision
+  // 0012). Residual'd here so the gate stays honest rather than silently
+  // un-checking them again.
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R75',
+    reason:
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R76',
+    reason:
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R77',
+    reason:
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
   },
 ] as const satisfies ReadonlyArray<TraceabilityResidual>
 

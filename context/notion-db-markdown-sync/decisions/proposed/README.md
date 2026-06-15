@@ -34,6 +34,7 @@ name or non-secret identifier only.
 | `0009-non-body-lifecycle-v1-boundaries-fail-closed.md`    | D9 — Non-body lifecycle v1 boundaries fail closed    | proposed                  |
 | `0010-shared-guard-vocabulary-adopt-by-composition.md`    | D10 — Shared guard vocabulary, adopt-by-composition  | proposed                  |
 | `0011-control-plane-file-split.md`                        | D11 — Control-plane file split (state.sqlite, DD-A/DD-B) | proposed               |
+| `0012-tracked-phase-followups.md`                         | D12 — Tracked phase follow-ups not closed by PR #775 (F1–F7) | proposed            |
 
 ## Open items deferred to ratification
 

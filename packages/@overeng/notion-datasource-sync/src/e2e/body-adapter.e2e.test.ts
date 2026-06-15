@@ -75,6 +75,10 @@ const notionMdBodyEvidenceFingerprint = Schema.decodeUnknownSync(NotionMdBodyEvi
 const implementedBodyAdapterScenarioIds = new Set<ScenarioId>([
   'NDS-L2-body-adapter-fail-closed-boundary',
   'NDS-L6-bidi-body-local-capture-first',
+  // L7 downstream composition: the 'materializes, pushes, and verifies a
+  // NotionMD-backed local body edit' test drives the standalone @overeng/notion-md
+  // body adapter over the real package boundary.
+  'NDS-L7-datasource-workspace-consumes-standalone-nmd',
 ])
 
 const runWithPorts = <TValue, TError>(
