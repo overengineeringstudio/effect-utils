@@ -67,6 +67,9 @@
       "path": "./packages/@overeng/notion-md"
     },
     {
+      "path": "./packages/@overeng/notion-property-write"
+    },
+    {
       "path": "./packages/@overeng/notion-react"
     },
     {
