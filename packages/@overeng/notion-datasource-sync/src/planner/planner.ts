@@ -1,3 +1,5 @@
+import { evaluatePropertyWrite } from '@overeng/notion-property-write'
+
 import type {
   BodyPushCommand,
   CreatePageCommand,
@@ -26,8 +28,6 @@ import {
   guardBodySafety,
   guardCapabilityPreflight,
   guardPathClaimCollision,
-  guardPropertyAvailability,
-  guardPropertyWriteClass,
   guardQueryAbsence,
   guardQueryCompleteness,
   guardSchemaIntentSafety,
@@ -45,6 +45,7 @@ import {
   type SafeDiagnostic,
   type SchemaIntentSafety,
 } from '../core/guards.ts'
+import { makeWorkspaceProof } from './property-proof.ts'
 
 /** Planner-visible view of a single property column in the remote data source schema. */
 export type SchemaPropertySurface = {
@@ -53,6 +54,25 @@ export type SchemaPropertySurface = {
   readonly schemaHash: Hash
   readonly configHash: Hash
   readonly writeClass: PropertyWriteClass
+  /**
+   * `false` when the remote data-source schema was not freshly observed for this
+   * write; surfaces as `RemoteSchemaRequired`. Defaults to `true` (a present
+   * schema surface is, by construction, an observation).
+   */
+  readonly remoteSchemaObserved?: boolean
+  /**
+   * `false` when the resolved display name maps ambiguously to more than one
+   * property on the observed schema; surfaces as `PropertyIdentityAmbiguous`.
+   * Defaults to `true`.
+   */
+  readonly displayNameUnambiguous?: boolean
+  /**
+   * The authored whole-schema identity hash to compare against the observed
+   * {@link schemaHash}. When present and differing, surfaces as
+   * `StaleRemoteSchema`. Omitted when no authored whole-schema oracle exists, so
+   * the staleness check honestly skips.
+   */
+  readonly expectedSchemaHash?: Hash
 }
 
 /** Planner-visible data-source metadata surface, independent from property schema. */
@@ -81,6 +101,35 @@ export type PropertySurfaceSnapshot = {
         readonly targetHash: Hash
       }
     | undefined
+  /*
+   * WIRED-BUT-DORMANT: the three fields below are threaded into the shared
+   * property-write proof (see `makeWorkspaceProof`), but `sync/observation.ts`
+   * does NOT yet populate them, so they fall back to non-blocking defaults and
+   * the `RemoteAuthoritativeDrift` / `LocalSurfaceDisagreement` /
+   * `ReadAfterWriteMismatch` guards only fire from tests today. Production
+   * population lands with page-authority observation, Phase 4 local convergence,
+   * and outbox settlement wiring respectively (see the markers below).
+   */
+  /**
+   * Workspace entrypoint / page-authority signal threaded into the shared
+   * property-write proof. `remote` marks a Notion-authoritative page, against
+   * which the planner refuses a local property mutation as
+   * `RemoteAuthoritativeDrift` BEFORE building a proof. Defaults to `shared`.
+   */
+  readonly writeMode?: 'local' | 'shared' | 'remote'
+  /**
+   * Whether the local SQLite `pages` projection agrees with the materialized
+   * `.nmd` artifact for this page. `disagrees` surfaces as
+   * `LocalSurfaceDisagreement`. Defaults to `not-applicable`.
+   * TODO(phase-4-local-convergence): populate from the real SQLite-vs-`.nmd` check.
+   */
+  readonly localConvergence?: 'not-applicable' | 'converged' | 'disagrees'
+  /**
+   * Outbox read-after-write settlement context. In `shared` mode a `missing`
+   * settlement surfaces as `ReadAfterWriteMismatch`. Defaults to `present`.
+   * TODO(settlement-wiring): populate from the real outbox settlement verdict.
+   */
+  readonly settlement?: 'not-required' | 'present' | 'missing'
 }
 
 /** Observed state of a remote row used to check lifecycle guards (trash, move-out) before planning writes or deletes. */
@@ -585,15 +634,6 @@ const planPropertyEdit = ({
     })
   }
 
-  baseGuards.push(guardPropertyWriteClass({ writeClass: schemaProperty.writeClass }))
-  baseGuards.push(
-    guardSchemaIntentSafety({
-      affectsLocalIntent: schemaProperty.configHash !== intent.expectedPropertyConfigHash,
-      destructiveMigrationRequired: false,
-      optionDeletionLosesValues: false,
-    }),
-  )
-
   if (propertySurface === undefined) {
     return blockDecision({
       guard: 'CurrentSurfaceMissing',
@@ -603,47 +643,95 @@ const planPropertyEdit = ({
     })
   }
 
-  if (propertySurface !== undefined) {
-    baseGuards.push(guardPropertyAvailability({ availability: propertySurface.availability }))
-    if (propertySurface.remoteHash !== intent.baseHash) {
-      if (
-        propertySurface.availability === 'complete' &&
-        propertySurface.pendingLocal?.targetHash === intent.desiredHash &&
-        propertySurface.remoteHash === intent.desiredHash
-      ) {
-        return { _tag: 'AppendEvents', events: [] }
-      }
-      const localSurface: ConflictSurface = {
-        _tag: 'property',
-        pageId: intent.pageId,
-        propertyId: intent.propertyId,
-        baseHash: intent.baseHash,
-        nextHash: intent.desiredHash,
-        surface: intent.surface,
-      }
-      const remoteSurface: ConflictSurface = {
-        _tag: 'property',
-        pageId: intent.pageId,
-        propertyId: intent.propertyId,
-        baseHash: propertySurface.baseHash,
-        nextHash: propertySurface.remoteHash,
-        surface: intent.surface,
-      }
-      const classification = classifyConflict({ local: localSurface, remote: remoteSurface })
-      return classification._tag === 'conflict'
-        ? { _tag: 'OpenConflict', conflict: classification.conflict }
-        : blockDecision({
-            guard: 'StaleSurfaceBase',
-            surface: intent.surface,
-            summary: 'Local intent base hash is stale for the current surface',
-          })
+  /*
+   * A `remote`-authority page is Notion-authoritative: a local property mutation
+   * against it is drift. Refuse it as `RemoteAuthoritativeDrift` BEFORE building a
+   * proof, so no `remote`-mode proof ever reaches the pure core.
+   */
+  if (propertySurface.writeMode === 'remote') {
+    return blockDecision({
+      guard: 'RemoteAuthoritativeDrift',
+      surface: intent.surface,
+      summary:
+        'Refusing local property write: page is remote-authoritative; a local mutation would be drift',
+    })
+  }
+
+  /*
+   * Route the property-write safety invariants (write class, config-drift intent
+   * safety, base completeness, relation availability, local convergence,
+   * settlement) through the shared PropertyWriteCore via the workspace proof
+   * provider, instead of calling the legacy inline guards. The provider projects
+   * the already-observed schema and property surfaces into a proof; the core's
+   * decision is structurally a `GuardDecision`, so it is pushed straight into
+   * `baseGuards` and evaluated by `firstBlocked` below in the same order the
+   * inline guards used to run.
+   *
+   * `expectedSchemaHash` is deliberately omitted (the planner carries no authored
+   * whole-schema oracle, only the observed `schemaHash`), so the core's
+   * StaleRemoteSchema check honestly skips — preserving the legacy behavior, which
+   * never enforced whole-schema staleness here. `mode`/`localConvergence`/
+   * `settlement` default to the non-blocking verdicts when the surface omits them,
+   * so an ordinary shared-mode write produces no new block.
+   */
+  const { proof, desiredWrite } = makeWorkspaceProof({
+    dataSourceId: row.dataSourceId,
+    propertyId: intent.propertyId,
+    desiredValue: intent.command.propertyPatch[intent.propertyId] ?? { _tag: 'empty' },
+    writeClass: schemaProperty.writeClass,
+    observedSchemaHash: schemaProperty.schemaHash,
+    observedConfigHash: schemaProperty.configHash,
+    expectedConfigHash: intent.expectedPropertyConfigHash,
+    availability: propertySurface.availability,
+    ...(schemaProperty.remoteSchemaObserved !== undefined
+      ? { remoteSchemaObserved: schemaProperty.remoteSchemaObserved }
+      : {}),
+    ...(schemaProperty.displayNameUnambiguous !== undefined
+      ? { displayNameUnambiguous: schemaProperty.displayNameUnambiguous }
+      : {}),
+    ...(schemaProperty.expectedSchemaHash !== undefined
+      ? { expectedSchemaHash: schemaProperty.expectedSchemaHash }
+      : {}),
+    ...(propertySurface.writeMode !== undefined ? { mode: propertySurface.writeMode } : {}),
+    ...(propertySurface.localConvergence !== undefined
+      ? { localConvergence: propertySurface.localConvergence }
+      : {}),
+    ...(propertySurface.settlement !== undefined ? { settlement: propertySurface.settlement } : {}),
+  })
+  baseGuards.push(evaluatePropertyWrite(proof, desiredWrite))
+
+  if (propertySurface.remoteHash !== intent.baseHash) {
+    if (
+      propertySurface.availability === 'complete' &&
+      propertySurface.pendingLocal?.targetHash === intent.desiredHash &&
+      propertySurface.remoteHash === intent.desiredHash
+    ) {
+      return { _tag: 'AppendEvents', events: [] }
     }
-    baseGuards.push(
-      guardStaleSurfaceBase({
-        baseHash: intent.baseHash,
-        currentHash: propertySurface.remoteHash,
-      }),
-    )
+    const localSurface: ConflictSurface = {
+      _tag: 'property',
+      pageId: intent.pageId,
+      propertyId: intent.propertyId,
+      baseHash: intent.baseHash,
+      nextHash: intent.desiredHash,
+      surface: intent.surface,
+    }
+    const remoteSurface: ConflictSurface = {
+      _tag: 'property',
+      pageId: intent.pageId,
+      propertyId: intent.propertyId,
+      baseHash: propertySurface.baseHash,
+      nextHash: propertySurface.remoteHash,
+      surface: intent.surface,
+    }
+    const classification = classifyConflict({ local: localSurface, remote: remoteSurface })
+    return classification._tag === 'conflict'
+      ? { _tag: 'OpenConflict', conflict: classification.conflict }
+      : blockDecision({
+          guard: 'StaleSurfaceBase',
+          surface: intent.surface,
+          summary: 'Local intent base hash is stale for the current surface',
+        })
   }
 
   const blockedDecision = firstBlocked({ surface: intent.surface, guards: baseGuards })

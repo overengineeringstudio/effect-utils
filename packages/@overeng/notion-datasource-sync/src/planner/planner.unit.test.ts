@@ -872,6 +872,172 @@ describe('notion datasource planner', () => {
     expect(decision._tag).toBe('EnqueueCommands')
   })
 
+  const propertyEditIntent = {
+    _tag: 'property-edit' as const,
+    intentEventId,
+    commandKey,
+    surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
+    pageId,
+    propertyId: propertyA,
+    command: propertyCommand,
+    baseHash: hash('a'),
+    desiredHash: hash('f'),
+    expectedPropertyConfigHash: hash('c'),
+  }
+
+  const propertyASurface = (
+    overrides: Partial<PlannerProjectionSnapshot['properties'][number]> = {},
+  ): PlannerProjectionSnapshot['properties'][number] => ({
+    pageId,
+    propertyId: propertyA,
+    baseHash: hash('a'),
+    remoteHash: hash('a'),
+    availability: 'complete',
+    pendingLocal: undefined,
+    ...overrides,
+  })
+
+  const schemaA = (
+    overrides: Partial<PlannerProjectionSnapshot['schema'][number]> = {},
+  ): PlannerProjectionSnapshot['schema'][number] => ({
+    dataSourceId,
+    propertyId: propertyA,
+    schemaHash: hash('b'),
+    configHash: hash('c'),
+    writeClass: 'writable',
+    ...overrides,
+  })
+
+  it('blocks a property edit when the remote schema was not freshly observed', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        schema: [schemaA({ remoteSchemaObserved: false })],
+      }),
+      intent: propertyEditIntent,
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'RemoteSchemaRequired',
+    })
+  })
+
+  it('blocks a property edit when the display name resolves ambiguously', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        schema: [schemaA({ displayNameUnambiguous: false })],
+      }),
+      intent: propertyEditIntent,
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'PropertyIdentityAmbiguous',
+    })
+  })
+
+  it('blocks a property edit when the observed schema hash differs from the authored one', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        schema: [schemaA({ schemaHash: hash('b'), expectedSchemaHash: hash('d') })],
+      }),
+      intent: propertyEditIntent,
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'StaleRemoteSchema',
+    })
+  })
+
+  it('blocks a property edit when the local surface disagrees with the observed remote surface', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        properties: [propertyASurface({ localConvergence: 'disagrees' })],
+      }),
+      intent: propertyEditIntent,
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'LocalSurfaceDisagreement',
+      detail: { summary: 'Local surface disagrees with the observed remote surface' },
+    })
+  })
+
+  it('blocks a shared-mode property edit when the read-after-write settlement is missing', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        properties: [propertyASurface({ writeMode: 'shared', settlement: 'missing' })],
+      }),
+      intent: propertyEditIntent,
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'ReadAfterWriteMismatch',
+      detail: { summary: 'Read-after-write settlement is missing' },
+    })
+  })
+
+  it('refuses a local property mutation against a remote-authoritative page before the core', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        properties: [propertyASurface({ writeMode: 'remote' })],
+      }),
+      intent: propertyEditIntent,
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'RemoteAuthoritativeDrift',
+    })
+  })
+
+  it('blocks a property edit when the property value surface is unsupported', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        properties: [propertyASurface({ availability: 'unsupported' })],
+      }),
+      intent: propertyEditIntent,
+    })
+
+    // `unsupported` availability routes through `writeClass: 'unsupported'`
+    // (core check 4 — unconditional), preserving the legacy `UnsupportedRemoteShape`.
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'UnsupportedRemoteShape',
+    })
+  })
+
+  it('blocks an unsupported-availability clear-to-empty property edit (no fail-open)', () => {
+    // Regression: the planner defaults a missing patch entry to `{_tag:'empty'}`.
+    // An `unsupported`-availability block must hold UNCONDITIONALLY — routing it
+    // through value tag-fit would let `empty` (fits any type) slip through.
+    const clearCommand = decode(PatchPagePropertiesCommand, {
+      _tag: 'PatchPagePropertiesCommand',
+      commandId,
+      pageId,
+      basePropertiesHash: hash('a'),
+      propertyPatch: {
+        // Patch omits `prop-a`, so the planner defaults the desired value to empty.
+        'prop-b': { _tag: 'rich_text', plainText: 'Other' },
+      },
+    })
+
+    const decision = planIntent({
+      snapshot: snapshot({
+        properties: [propertyASurface({ availability: 'unsupported' })],
+      }),
+      intent: { ...propertyEditIntent, command: clearCommand },
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'UnsupportedRemoteShape',
+    })
+  })
+
   it('keeps local file deletion as a candidate by default and does not enqueue trash', () => {
     const decision = planIntent({
       snapshot: snapshot(),
