@@ -11,12 +11,14 @@
  * and point git at it via `GIT_CONFIG_GLOBAL`, pin `GIT_CONFIG_SYSTEM` to
  * `/dev/null`, and export the author/committer identity directly.
  *
- * OTLP: the suite is hermetic by policy — it never exports telemetry to an
- * ambient collector. The dev shell sets `OTEL_EXPORTER_OTLP_ENDPOINT`, so we
- * unset it here to keep the bulk (verdict) tests from POSTing to the dev
- * collector. Tests that DO assert telemetry stand up their own ephemeral otelite
- * receiver and set the endpoint within their own scope, so they remain hermetic
- * by construction and are unaffected by this global unset.
+ * OTLP needs no handling here: the bulk tests run `mrCommand` WITHOUT providing
+ * `makeOtelCliLayer`, so no exporter is ever built and no `OtelConfig` is in
+ * context — telemetry is structurally off regardless of any ambient
+ * `OTEL_EXPORTER_OTLP_ENDPOINT`. The endpoint is now resolved at the binary's
+ * composition root (Effect `Config`) and passed explicitly into the layer, so
+ * the layer never reads `process.env`; tests that DO assert telemetry stand up
+ * their own ephemeral otelite receiver and pass its endpoint into the layer
+ * within their own scope.
  */
 
 import { mkdtempSync, writeFileSync } from 'node:fs'
@@ -42,9 +44,3 @@ process.env.GIT_AUTHOR_NAME = identity.name
 process.env.GIT_AUTHOR_EMAIL = identity.email
 process.env.GIT_COMMITTER_NAME = identity.name
 process.env.GIT_COMMITTER_EMAIL = identity.email
-
-// Hermetic OTLP policy: the bulk suite never exports to an ambient collector.
-// Telemetry-asserting tests opt back in with their own ephemeral receiver inside
-// their own scope (and unset it on scope close), so this global default does not
-// interfere with them.
-delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT

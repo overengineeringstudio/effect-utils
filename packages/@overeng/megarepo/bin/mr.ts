@@ -7,7 +7,7 @@ import { Effect, Layer } from 'effect'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
-import { makeOtelCliLayer } from '@overeng/utils/node/otel'
+import { makeOtelCliLayer, otelEndpointFromConfig } from '@overeng/utils/node/otel'
 
 import { mrCommand } from '../src/cli/mod.ts'
 import { MR_VERSION } from '../src/lib/version.ts'
@@ -37,10 +37,20 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-const baseLayer = Layer.mergeAll(
-  NodeContext.layer,
-  makeOtelCliLayer({
+/**
+ * Resolve the OTLP endpoint at the composition root via Effect `Config`, then
+ * build the OTEL layer from that explicit endpoint and provide it to the command.
+ * Resolving here (not inside `makeOtelCliLayer`) keeps the layer a pure function
+ * of its input and confines env access to the edge. `Effect.provide` bounds the
+ * layer's scope to the command effect, so the still-sync `Layer.suspend` exporter
+ * finalizers still flush on shutdown (no `Layer.unwrapEffect`).
+ */
+const program = Effect.gen(function* () {
+  const endpoint = yield* otelEndpointFromConfig()
+
+  const otelLayer = makeOtelCliLayer({
     serviceName: 'megarepo',
+    endpoint,
     exportInterval: 50,
     // Flush the `megarepo_store_gc_rss_bytes` gauge often enough to be usable on
     // short (~10s) gc runs — the @effect/opentelemetry default 10s metrics reader
@@ -48,16 +58,17 @@ const baseLayer = Layer.mergeAll(
     // this is a no-op for other `mr` commands.
     metricsExportInterval: 1000,
     shutdownTimeout: 50,
-  }),
-)
+  })
 
-Cli.Command.run(mrCommand, {
-  name: 'mr',
-  version,
-})(rewriteHelpSubcommand(process.argv)).pipe(
-  Effect.scoped,
-  CliVersion.enrichErrors,
-  Effect.provideService(CliVersion, { name: 'mr', version }),
-  Effect.provide(baseLayer),
-  runTuiMain(NodeRuntime),
-)
+  yield* Cli.Command.run(mrCommand, {
+    name: 'mr',
+    version,
+  })(rewriteHelpSubcommand(process.argv)).pipe(
+    Effect.scoped,
+    CliVersion.enrichErrors,
+    Effect.provideService(CliVersion, { name: 'mr', version }),
+    Effect.provide(Layer.mergeAll(NodeContext.layer, otelLayer)),
+  )
+})
+
+program.pipe(runTuiMain(NodeRuntime))

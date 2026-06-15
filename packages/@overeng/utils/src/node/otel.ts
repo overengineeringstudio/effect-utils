@@ -14,9 +14,40 @@
 
 import * as Otlp from '@effect/opentelemetry/Otlp'
 import { FetchHttpClient } from '@effect/platform'
-import { Effect, Layer, Tracer } from 'effect'
+import { Config, Context, Effect, Layer, Option, Tracer } from 'effect'
 
 export * from './otel-attrs.ts'
+
+/**
+ * Resolved OTEL configuration, provided by {@link makeOtelCliLayer} so command
+ * code can gate optional telemetry work (e.g. forking a periodic sampler) on the
+ * SAME signal the exporter was built from, instead of reading `process.env`
+ * directly.
+ *
+ * `endpoint` is `Some(url)` when telemetry is exported and `None` otherwise. Read
+ * it with {@link Effect.serviceOption} so commands stay runnable without the
+ * layer (absent tag ≡ telemetry disabled), keeping the tag out of their `R`.
+ */
+export class OtelConfig extends Context.Tag('@overeng/utils/OtelConfig')<
+  OtelConfig,
+  { readonly endpoint: Option.Option<string> }
+>() {}
+
+/**
+ * Resolve the OTLP endpoint at a binary's composition root via Effect `Config`,
+ * returning `Option<string>` to hand straight to {@link makeOtelCliLayer}'s
+ * `endpoint` field. This keeps env access at the edge: the layer itself becomes a
+ * pure function of the resolved endpoint and never touches `process.env`.
+ *
+ * @default env var 'OTEL_EXPORTER_OTLP_ENDPOINT'
+ */
+export const otelEndpointFromConfig = (
+  envVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
+): Effect.Effect<Option.Option<string>> =>
+  // `Config.option` already maps missing data to `None`; any other config error
+  // (malformed value) at the composition root is a defect, so die rather than
+  // widen every binary's error channel with `ConfigError`.
+  Config.option(Config.string(envVar)).pipe(Effect.orDie)
 
 /**
  * Parses a W3C Trace Context TRACEPARENT header/env var.
@@ -79,7 +110,17 @@ export interface OtelCliLayerConfig {
    */
   serviceName: string
   /**
-   * Environment variable containing the OTLP endpoint URL.
+   * Explicitly-resolved OTLP endpoint. When provided, it is authoritative and
+   * the layer does NOT read `process.env`: `Some(url)` exports to `url`, `None`
+   * disables export (empty layer). Resolve it at the binary's composition root —
+   * e.g. {@link otelEndpointFromConfig} — to keep this layer a pure function of
+   * its input. When omitted, the layer falls back to reading `endpointEnvVar`
+   * (backward-compat for callers not yet resolving at the edge).
+   */
+  endpoint?: Option.Option<string>
+  /**
+   * Environment variable containing the OTLP endpoint URL. Only consulted when
+   * `endpoint` is omitted (the explicit `endpoint` takes precedence).
    * @default 'OTEL_EXPORTER_OTLP_ENDPOINT'
    */
   endpointEnvVar?: string
@@ -108,8 +149,9 @@ export interface OtelCliLayerConfig {
  *
  * Features:
  * - Optionally joins an existing trace via W3C TRACEPARENT env var (dt task integration)
- * - Exports to OTLP endpoint if configured
- * - Zero overhead when OTEL_EXPORTER_OTLP_ENDPOINT is not set
+ * - Exports to OTLP endpoint if configured (explicit `endpoint`, else env fallback)
+ * - Zero exporter overhead when no endpoint is configured (only the lightweight
+ *   {@link OtelConfig} marker is provided so command code can gate on it)
  *
  * @example
  * ```typescript
@@ -129,9 +171,10 @@ export interface OtelCliLayerConfig {
  *   )
  * ```
  */
-export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never> => {
+export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelConfig> => {
   const {
     serviceName,
+    endpoint: explicitEndpoint,
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
     exportInterval = 250,
     metricsExportInterval,
@@ -142,13 +185,23 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
   // Layer.unwrapEffect doesn't properly chain scopes, causing OTEL exporter finalizers
   // (which flush spans via HTTP) to not be awaited on shutdown.
   return Layer.suspend(() => {
-    const endpoint = process.env[endpointEnvVar]
+    // The explicit `endpoint` is authoritative (pure: no env read). Only fall
+    // back to `process.env` when the caller didn't resolve it at the edge.
+    const resolved =
+      explicitEndpoint !== undefined
+        ? explicitEndpoint
+        : Option.fromNullable(process.env[endpointEnvVar])
 
-    // No endpoint configured - return empty layer (zero overhead)
-    if (endpoint === undefined) {
-      return Layer.empty
+    // Always provide the resolved config so command code can gate optional
+    // telemetry work on the same signal the exporter is built from.
+    const configLive = Layer.succeed(OtelConfig, { endpoint: resolved })
+
+    // No endpoint configured - return config-only layer (zero exporter overhead).
+    if (Option.isNone(resolved) === true) {
+      return configLive
     }
 
+    const endpoint = resolved.value
     const parentSpan = getParentSpanFromTraceparent()
 
     // Propagate parent trace context from TRACEPARENT without creating a bridge span.
@@ -166,6 +219,6 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
       shutdownTimeout,
     }).pipe(Layer.provide(FetchHttpClient.layer))
 
-    return parentLive.pipe(Layer.provideMerge(exporterLive))
+    return Layer.mergeAll(configLive, parentLive.pipe(Layer.provideMerge(exporterLive)))
   })
 }
