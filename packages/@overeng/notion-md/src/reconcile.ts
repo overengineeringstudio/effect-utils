@@ -12,6 +12,7 @@ import {
   type NmdParentRef,
   type NmdStorage,
   type NmdSyncStateV1,
+  type NmdWritablePropertyValue,
 } from '@overeng/notion-effect-client'
 
 import { runBatch, type BatchResult } from './batch.ts'
@@ -369,6 +370,14 @@ const boundFrontmatter = (opts: {
 const remoteFrontmatter = (opts: {
   readonly source: NmdFrontmatterV2['notion_md']['source']
   readonly page: RemotePageSnapshot
+  /**
+   * Writable frontmatter properties to embed (visible-name → value). notion-md
+   * does NOT decide which properties are user-editable — the caller (e.g.
+   * datasource-sync, from its observed schema/cells) supplies exactly the
+   * writable set. Omitted/absent keeps the standalone `{}` behavior so a plain
+   * `.nmd` is byte-unchanged (Phase 2 standalone contract).
+   */
+  readonly properties?: Readonly<Record<string, NmdWritablePropertyValue>>
 }): NmdFrontmatterV2 => ({
   notion_md: {
     version: 2,
@@ -385,7 +394,7 @@ const remoteFrontmatter = (opts: {
       in_trash: opts.page.in_trash,
       is_locked: opts.page.is_locked,
     },
-    properties: {},
+    properties: opts.properties === undefined ? {} : { ...opts.properties },
   },
 })
 
@@ -1056,6 +1065,12 @@ export const trackPage = (opts: {
   readonly outPath: string
   readonly source: NmdFrontmatterV2['notion_md']['source']
   readonly dryRun?: boolean
+  /**
+   * Writable frontmatter properties to embed in the materialized `.nmd`
+   * (visible-name → value). Absent keeps the current empty-`properties` behavior;
+   * standalone notion-md never passes this. See `remoteFrontmatter`.
+   */
+  readonly properties?: Readonly<Record<string, NmdWritablePropertyValue>>
 }): Effect.Effect<TrackResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
@@ -1091,7 +1106,11 @@ export const trackPage = (opts: {
     }
     yield* writeFile({
       path: opts.outPath,
-      frontmatter: remoteFrontmatter({ source: opts.source, page: pulled.page }),
+      frontmatter: remoteFrontmatter({
+        source: opts.source,
+        page: pulled.page,
+        ...(opts.properties === undefined ? {} : { properties: opts.properties }),
+      }),
       body,
     })
 

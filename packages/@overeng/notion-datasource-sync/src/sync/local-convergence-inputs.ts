@@ -17,17 +17,15 @@
  * space the `.nmd` surface can reach) so the SQLite and `.nmd` surfaces compare
  * like-with-like.
  *
- * INERT IN THE REAL FLOW — TODO(phase-4-property-materialization). The convergence
- * machinery here is wired and correct, but production materialization writes an
- * EMPTY frontmatter `properties: {}` (notion-md `buildFrontmatter`; datasource-sync
- * `materialize` passes no observed properties). So a real pulled `.nmd` carries no
- * writable property values, and `nmdPropertyFacts` finds nothing to converge — the
- * property surface only fires for hand-authored `.nmd` (as in the SM5c tests). R06
- * property convergence is NOT closed end-to-end until datasource-sync materializes
- * frontmatter `properties` from its observed schema/cells. That requires either a
- * notion-md `materializeBody` signature change or a new datasource-sync frontmatter
- * writer (inverse of `nmdWritableToRawNotion` + schema descriptors + sidecar/own-
- * write interaction) — out of this sub-milestone's bounded scope.
+ * ACTIVE IN THE REAL FLOW (SM5d). A datasource pull now MATERIALIZES the writable
+ * frontmatter properties into the pulled `.nmd`: the observation pass decodes each
+ * observed cell to an `NmdWritablePropertyValue` (`canonicalValueToNmdWritable`,
+ * filtered to `write_class === 'writable'`) and passes them to `materializeBody`.
+ * So `scanNmdPageSurfaces` reads a real property surface and the convergence here
+ * fires on production data, not just hand-authored `.nmd`. The materialized value
+ * round-trips into the same name-only `convergence_hash` space, so an UNEDITED
+ * pulled `.nmd` does not false-diverge (proven in
+ * `property-materialization-production.e2e.test.ts`).
  *
  * @module
  */

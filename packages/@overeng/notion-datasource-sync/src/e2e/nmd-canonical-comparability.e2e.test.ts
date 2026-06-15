@@ -35,7 +35,11 @@ import {
 import { PagePropertyItemPage } from '../core/commands.ts'
 import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
-import { convergenceFormHash, nmdPropertyDesiredHash } from '../planner/nmd-property-facts.ts'
+import {
+  canonicalValueToNmdWritable,
+  convergenceFormHash,
+  nmdPropertyDesiredHash,
+} from '../planner/nmd-property-facts.ts'
 import { readPendingReplicaChanges } from '../replica/replica.ts'
 import {
   decode,
@@ -395,5 +399,55 @@ describe('SM5c cross-surface canonical comparability (two-oracle)', () => {
     expect(nmdPropertyDesiredHash({ _tag: 'multi_select', value: ['a', 'b'] })).toBeUndefined()
     expect(nmdPropertyDesiredHash({ _tag: 'relation', value: [] })).toBeUndefined()
     expect(nmdPropertyDesiredHash({ _tag: 'people', value: [] })).toBeUndefined()
+  })
+})
+
+describe('SM5d materialization inverse map (canonical value_json → .nmd writable)', () => {
+  // The materialization fidelity invariant: an observed canonical `value_json`
+  // projected to an `.nmd` writable value MUST round-trip back to the same
+  // `convergence_hash` space — otherwise a freshly materialized `.nmd` would
+  // false-diverge against the cell it was materialized from. The full remote
+  // select (id+color) deliberately exercises the name-only fold.
+  const roundtrip: ReadonlyArray<{ readonly type: string; readonly valueJson: string }> = [
+    {
+      type: 'select',
+      valueJson: JSON.stringify({
+        _tag: 'select',
+        option: { _tag: 'CanonicalOptionValue', id: 'hi', name: 'High', color: 'red' },
+      }),
+    },
+    {
+      type: 'status',
+      valueJson: JSON.stringify({
+        _tag: 'status',
+        option: { _tag: 'CanonicalOptionValue', id: 'd', name: 'Done', color: 'green' },
+      }),
+    },
+    { type: 'number', valueJson: JSON.stringify({ _tag: 'number', value: 42 }) },
+    { type: 'number', valueJson: JSON.stringify({ _tag: 'empty' }) },
+    { type: 'title', valueJson: JSON.stringify({ _tag: 'title', plainText: 'Hello' }) },
+    { type: 'rich_text', valueJson: JSON.stringify({ _tag: 'rich_text', plainText: 'Note' }) },
+    { type: 'checkbox', valueJson: JSON.stringify({ _tag: 'checkbox', checked: true }) },
+    { type: 'date', valueJson: JSON.stringify({ _tag: 'date', start: '2026-06-15', end: null }) },
+    { type: 'url', valueJson: JSON.stringify({ _tag: 'url', value: 'https://example.com' }) },
+    { type: 'email', valueJson: JSON.stringify({ _tag: 'email', value: 'a@b.com' }) },
+  ]
+
+  for (const { type, valueJson } of roundtrip) {
+    it(`round-trips ${type} (${valueJson}) to the same convergence hash`, () => {
+      const writable = canonicalValueToNmdWritable({ valueJson, propertyType: type })
+      expect(writable, `writable defined for ${type}`).toBeDefined()
+      expect(nmdPropertyDesiredHash(writable!)).toBe(convergenceFormHash(valueJson))
+    })
+  }
+
+  it('non-scalar canonical values are not materialized into frontmatter', () => {
+    const multiSelect = JSON.stringify({
+      _tag: 'multi_select',
+      options: [{ _tag: 'CanonicalOptionValue', name: 'A' }],
+    })
+    expect(
+      canonicalValueToNmdWritable({ valueJson: multiSelect, propertyType: 'multi_select' }),
+    ).toBeUndefined()
   })
 })

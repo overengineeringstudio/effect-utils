@@ -6,7 +6,7 @@ import {
   descriptorForUtf8,
   type ContentDigest as ContentDigestType,
 } from '@overeng/content-address'
-import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
+import { NmdWritablePropertyValueSchema, NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import {
   DataSourceId as SchemaDataSourceId,
   PageId as SchemaPageId,
@@ -449,6 +449,18 @@ export const MaterializePlan = Schema.TaggedStruct('MaterializePlan', {
   pageId: PageId,
   path: WorkspaceRelativePath,
   bodyPointer: BodyPointer,
+  /**
+   * Observed WRITABLE frontmatter properties to embed in the materialized `.nmd`
+   * (visible-name → value), so the pulled file carries the property surface that
+   * local-surface convergence reads (SM5d). Built by the observation pass from the
+   * page's observed cells, filtered to `write_class === 'writable'`. Absent for a
+   * body-only materialization (e.g. `--no-materialize-bodies` paths or callers
+   * that do not supply schema/cell evidence), which keeps the empty-`properties`
+   * behavior.
+   */
+  writableProperties: Schema.optional(
+    Schema.Record({ key: Schema.String, value: NmdWritablePropertyValueSchema }),
+  ),
 }).annotations({ identifier: 'NotionDatasourceSync.MaterializePlan' })
 export type MaterializePlan = typeof MaterializePlan.Type
 

@@ -114,13 +114,12 @@ const availabilityProjection = (
  *
  * Production wiring: `writeMode` is populated from the manifest authority mode
  * (`withAuthorityMode`), so `RemoteAuthoritativeDrift` fires from real production
- * state. `localConvergence` is wired from the Phase 4 shared-mode local
+ * state. `localConvergence` is populated from the Phase 4 shared-mode local
  * convergence (`buildPropertyConvergenceInputs` + `convergeLocalSurfaces` +
- * `applyConvergenceVerdicts` in the CLI push path) and the verdict→guard chain is
- * correct, but it is INERT on real data: pulled `.nmd` files carry no writable
- * frontmatter properties yet, so `LocalSurfaceDisagreement` fires only for hand-
- * authored `.nmd` (`TODO(phase-4-property-materialization)`). `settlement` remains
- * WIRED-BUT-DORMANT — the outbox does not yet supply a real read-after-write
+ * `applyConvergenceVerdicts` in the CLI push path) and is ACTIVE on real data
+ * (SM5d): pulls materialize the writable frontmatter properties into the `.nmd`, so
+ * `LocalSurfaceDisagreement` fires on a genuine pulled-page divergence. `settlement`
+ * remains WIRED-BUT-DORMANT — the outbox does not yet supply a real read-after-write
  * verdict, so it falls back to its non-blocking default and `ReadAfterWriteMismatch`
  * fires only from tests (`TODO(settlement-wiring)`).
  */

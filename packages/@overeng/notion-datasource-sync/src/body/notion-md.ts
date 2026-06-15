@@ -505,6 +505,9 @@ export const makeNotionMdMaterializingLocalWorkspacePort = ({
         const materialized = yield* materializeBody({
           pageId: plan.pageId,
           outPath: absolutePath,
+          // SM5d: embed observed writable frontmatter properties when the plan
+          // carries them, so the pulled `.nmd` is a real convergence surface.
+          ...(plan.writableProperties === undefined ? {} : { properties: plan.writableProperties }),
         }).pipe(
           provideNotionMdGatewayAndStateStore({ gateway, stateStore }),
           Effect.provide(NodeContext.layer),

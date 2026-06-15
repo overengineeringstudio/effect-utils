@@ -129,11 +129,11 @@ export type PropertySurfaceSnapshot = {
    * (`convergeLocalSurfaces` + `applyConvergenceVerdicts`) computes this verdict
    * by comparing the drained SQLite data-file edits against the decoded `.nmd`
    * frontmatter desired facts per `(pageId, propertyId)`, wired into the CLI push
-   * path. The verdict→guard chain is correct, but it is INERT on production data
-   * today — pulled `.nmd` files carry no writable frontmatter properties, so a real
-   * `disagrees` only arises from a hand-authored `.nmd`
-   * (TODO(phase-4-property-materialization)). `local`/`remote` mode is always
-   * `not-applicable` (single source mirrors the other).
+   * path. ACTIVE on production data (SM5d): pulls materialize the writable
+   * frontmatter properties into the `.nmd`, so a real `disagrees` arises from an
+   * actual divergence between a pulled page's `.nmd` and the SQLite projection.
+   * `local`/`remote` mode is always `not-applicable` (single source mirrors the
+   * other).
    */
   readonly localConvergence?: 'not-applicable' | 'converged' | 'disagrees'
   /**

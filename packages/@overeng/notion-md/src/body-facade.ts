@@ -5,6 +5,7 @@ import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-addr
 import { describeBodyLossyRefusal, type BodyCompleteness } from '@overeng/notion-core'
 import type {
   BodyEvidenceFingerprint,
+  NmdWritablePropertyValue,
   RemoteBodyObservationEvidence,
   Sha256Digest,
 } from '@overeng/notion-effect-client'
@@ -196,13 +197,26 @@ export const readLocalBody = (opts: {
 export const materializeBody = (opts: {
   readonly pageId: string
   readonly outPath: string
+  /**
+   * Writable frontmatter properties to embed in the materialized `.nmd`
+   * (visible-name → value). Absent keeps the empty-`properties` behavior, so a
+   * standalone notion-md materialization is byte-unchanged. A datasource caller
+   * supplies its observed writable cells so the pulled `.nmd` carries them, which
+   * is what makes local-surface convergence active in production.
+   */
+  readonly properties?: Readonly<Record<string, NmdWritablePropertyValue>>
 }): Effect.Effect<
   NotionMdMaterializedBody,
   NmdError,
   FileSystem.FileSystem | NotionMdGateway | NmdStateStore
 > =>
   Effect.gen(function* () {
-    const track = yield* trackPage({ pageId: opts.pageId, outPath: opts.outPath, source: 'shared' })
+    const track = yield* trackPage({
+      pageId: opts.pageId,
+      outPath: opts.outPath,
+      source: 'shared',
+      ...(opts.properties === undefined ? {} : { properties: opts.properties }),
+    })
     const local = yield* readLocalBody({ path: opts.outPath })
     return { ...local, track }
   })
