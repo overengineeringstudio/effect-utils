@@ -64,8 +64,8 @@ reports the database as unsafe instead of inferring remote writes.
 ## CLI Shape
 
 ```sh
-notion db sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
-notion db sync --from-notion <database-url> "$PWD/notion-workspace" --dry-run --limit 25
+notion db track <data-source-id-or-database-url> "$PWD/notion-workspace"
+notion db track <database-url> "$PWD/notion-workspace" --dry-run --limit 25
 notion db sync "$PWD/notion-workspace"
 notion db sync --watch "$PWD/notion-workspace"
 notion db status "$PWD/notion-workspace"

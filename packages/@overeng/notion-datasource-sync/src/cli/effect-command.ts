@@ -76,24 +76,11 @@ const leafCommand = ({
 export const makeDatasourceDbSubcommands = (
   handler: DatasourceDbCommandHandler = defaultHandler,
 ) => {
-  const initCommand = leafCommand({
-    name: 'init',
-    description: 'Initialize a local SQLite sync store',
-    handler,
-    extraConfig: {
-      dryRun: dryRunOption,
-    },
-  })
-
   const syncCommand = Command.make(
     'sync',
     {
       ...commonOptions,
       workspaceRoot: workspaceRootArg,
-      fromNotion: Options.text('from-notion').pipe(
-        Options.withDescription('Adopt a Notion data source/database URL into a workspace'),
-        Options.optional,
-      ),
       dryRun: dryRunOption,
       watch: Options.boolean('watch').pipe(
         Options.withDescription('Continuously sync and process local SQLite changes'),
@@ -124,14 +111,14 @@ export const makeDatasourceDbSubcommands = (
         Options.withDescription('Disable interactive daemon affordances'),
         Options.withDefault(false),
       ),
-      limit: Options.integer('limit').pipe(
-        Options.withDescription('Dry-run preview row limit for sync --from-notion'),
-        Options.optional,
-      ),
       noMaterializeBodies: noMaterializeBodiesOption,
     },
     () => handler('sync'),
-  ).pipe(Command.withDescription('Run pull and push, or adopt from Notion with --from-notion'))
+  ).pipe(
+    Command.withDescription(
+      'Reconcile an established workspace, or run the watch daemon with --watch',
+    ),
+  )
 
   const conflictsCommand = Command.make('conflicts').pipe(
     Command.withSubcommands([
@@ -189,20 +176,6 @@ export const makeDatasourceDbSubcommands = (
 
   return [
     trackCommand,
-    initCommand,
-    leafCommand({
-      name: 'pull',
-      description: 'Pull remote Notion changes into SQLite',
-      handler,
-    }),
-    leafCommand({
-      name: 'push',
-      description: 'Push accepted local SQLite changes to Notion',
-      handler,
-      extraConfig: {
-        dryRun: dryRunOption,
-      },
-    }),
     syncCommand,
     Command.make(
       'export',
@@ -210,9 +183,11 @@ export const makeDatasourceDbSubcommands = (
         ...commonOptions,
         workspaceRoot: workspaceRootArg,
         output: outputOption,
-        fromNotion: Options.text('from-notion').pipe(
-          Options.withDescription('Refresh from a Notion data source/database URL before export'),
-          Options.optional,
+        refresh: Options.boolean('refresh').pipe(
+          Options.withDescription(
+            'Re-observe the established binding (remote observe/project only) before exporting',
+          ),
+          Options.withDefault(false),
         ),
         format: Options.choice('format', ['ndjson', 'json']).pipe(
           Options.withDescription('Export file format'),
@@ -222,6 +197,7 @@ export const makeDatasourceDbSubcommands = (
           Options.withDescription('Fail if the replica has pending local changes or conflicts'),
           Options.withDefault(false),
         ),
+        dryRun: dryRunOption,
         noMaterializeBodies: noMaterializeBodiesOption,
       },
       () => handler('export'),

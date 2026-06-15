@@ -26,7 +26,7 @@ as incomplete or ambiguous.
 Start from an existing Notion data source or database URL:
 
 ```sh
-notion db sync --from-notion \
+notion db track \
   00000000000040008000000000000001 \
   "$PWD/notion-workspace"
 ```
@@ -52,7 +52,7 @@ Preview establishment without writing SQLite files, body files, or Notion
 state:
 
 ```sh
-notion db sync --from-notion \
+notion db track \
   <database-url-or-data-source-id> \
   "$PWD/notion-workspace" \
   --dry-run
@@ -61,7 +61,7 @@ notion db sync --from-notion \
 For large existing databases, cap the no-write preview:
 
 ```sh
-notion db sync --from-notion \
+notion db track \
   <database-url-or-data-source-id> \
   "$PWD/notion-workspace" \
   --dry-run \

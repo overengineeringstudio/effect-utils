@@ -15,7 +15,7 @@ A database-ID-named file is always the full Notion database replica. Filtered
 query contracts and subset membership are not product replica modes.
 
 ```sh
-notion db sync --from-notion <data-source-id-or-database-url> ./workspace
+notion db track <data-source-id-or-database-url> ./workspace
 sqlite3 ./workspace/<database-id>.sqlite
 ```
 

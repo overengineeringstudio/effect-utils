@@ -46,7 +46,7 @@ Symptom:
 Fix:
 
 ```sh
-notion db sync --from-notion <data-source-id-or-database-url> "$PWD/notion-workspace"
+notion db track <data-source-id-or-database-url> "$PWD/notion-workspace"
 ```
 
 `sync <workspace-root>` only works after establishment has written
@@ -66,7 +66,7 @@ and private `_nds_*` sync state. User tools must not patch `_nds_*`.
 
 ## Database URL Is Ambiguous
 
-`sync --from-notion <database-url>` resolves the database to its child data
+`track <database-url>` resolves the database to its child data
 source only when Notion reports exactly one child data source. If the database
 has multiple data sources, rerun with the explicit data-source id. For large
 databases, start with `--dry-run --limit <rows>` to avoid an expensive full

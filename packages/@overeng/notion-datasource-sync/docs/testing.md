@@ -75,7 +75,7 @@ Live write lanes must build a write allowlist from the fixture ledger and
 scenario input; every Notion mutation, SQLite write, body materialization, and
 cleanup operation must target an allowlisted fixture.
 
-The live suite includes `sync --from-notion` adoption semantics against a
+The live suite includes `track` adoption semantics against a
 disposable database/data source with title, checkbox, rich text, number, select,
 and date properties. It omits schema JSON, proves the live schema is discovered
 into `schema_properties`, projects values into `rows`, and verifies `rows`
@@ -177,7 +177,7 @@ state, and archive fixtures during cleanup.
 
 Real user database checks are read-only/downsync only:
 
-- `sync --from-notion <database-url> <workspace> --dry-run --limit <rows>`,
+- `track <database-url> <workspace> --dry-run --limit <rows>`,
 - bounded downsync with `--no-materialize-bodies`,
 - local `<database-id>.sqlite` readback comparisons,
 - before/after sample checks proving Notion `last_edited_time`, `in_trash`, and

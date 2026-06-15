@@ -182,7 +182,14 @@ const establishShared = async (workspace: AbsolutePathType): Promise<string> => 
   return sqlitePathForWorkspace(workspace)
 }
 
-/** Run the real CLI `push` on a tracked workspace with the fake gateway. */
+/**
+ * Run the internal `push` reconciliation phase on a tracked workspace with the
+ * fake gateway. `push` is no longer a public verb (CLI-R01), so the command is
+ * constructed directly and dispatched through the retained internal `push`
+ * dispatch (`runLocalConvergenceForPush` → `pushOneShotSync`) rather than parsed
+ * from argv. The argv is still used to extract context flags (`--sqlite`,
+ * `--no-materialize-bodies`) via `resolvedCommand`, which bypasses the parser.
+ */
 const runPush = async (workspace: AbsolutePathType) => {
   const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('init')] })
   // `--no-materialize-bodies`: the push must not re-scan/observe the synthetic
@@ -194,7 +201,7 @@ const runPush = async (workspace: AbsolutePathType) => {
     sqlitePathForWorkspace(workspace),
     '--no-materialize-bodies',
   ] as readonly string[]
-  const command = parseCliCommand(argv)
+  const command = { _tag: 'push', dryRun: false } as const
   const context = parseCliContext({ argv, resolvedCommand: command })
   try {
     const result = await Effect.runPromise(

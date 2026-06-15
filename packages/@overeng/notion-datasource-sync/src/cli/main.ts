@@ -272,12 +272,23 @@ export type CliCommand =
       readonly _tag: 'export'
       readonly outputPath: typeof AbsolutePath.Type
       readonly workspaceRoot?: typeof AbsolutePath.Type
-      readonly fromNotion?: {
-        readonly dataSourceId: typeof DataSourceId.Type
-        readonly remoteRef: NotionRemoteRef
-      }
+      /**
+       * `--refresh` re-observes the established binding through
+       * remote-observation/project-only work before exporting (CLI-R02). Export
+       * does not accept a remote id or database URL: it operates on the existing
+       * data file only; `track` is the adoption verb. Refresh requires an
+       * already-bound store.
+       */
+      readonly refresh?: boolean
       readonly format: ReplicaExportFormat
       readonly requireClean?: boolean
+      /**
+       * Dry-run suppresses the export output-file write (CLI-R02): the export
+       * plan and counts are still computed from real reads, but no file is
+       * written. With `--refresh`, the remote re-observation and projection
+       * writes are likewise suppressed (the plan is reported, nothing persists).
+       */
+      readonly dryRun?: boolean
     }
   | { readonly _tag: 'status'; readonly workspaceRoot?: typeof AbsolutePath.Type }
   | { readonly _tag: 'conflicts-list' }
@@ -1244,7 +1255,7 @@ const runCliCommandEffect = ({
         if (binding === undefined) {
           return Effect.fail(
             new CliArgumentError({
-              message: `Workspace ${command.workspaceRoot} has no recorded binding; establish it with sync --from-notion before running sync <workspace-root>`,
+              message: `Workspace ${command.workspaceRoot} has no recorded binding; establish it with track <id-or-url> <workspace-root> before running sync <workspace-root>`,
             }),
           )
         }
@@ -1317,25 +1328,29 @@ const runCliCommandEffect = ({
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
     case 'export': {
+      // `--refresh` re-observes the established binding only (no establish, no
+      // remote ref): export operates on the existing data file (CLI-R02). Under
+      // `--dry-run`, the re-observation and projection are suppressed so the
+      // refresh/export plan is reported without persisting anything.
       const refresh =
-        command.fromNotion === undefined
+        command.refresh !== true
           ? Effect.void
-          : context.store.readWorkspaceBinding(context.rootId) === undefined
-            ? establishFromNotion({
-                ...context,
-                ...remoteObservationContext(context),
-                ...withOptionalObservationLimit(context),
-                dataSourceId: command.fromNotion.dataSourceId,
-                workspaceRoot: context.workspaceRoot,
-              }).pipe(Effect.asVoid)
-            : pullOneShotSync({
-                ...context,
-                ...remoteObservationContext(context),
-                ...withOptionalObservationLimit(context),
-              }).pipe(Effect.asVoid)
+          : pullOneShotSync({
+              ...context,
+              ...remoteObservationContext(context),
+              ...withOptionalObservationLimit(context),
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+            }).pipe(Effect.asVoid)
 
       return refresh.pipe(
-        Effect.tap(() => Effect.sync(() => projectReplicaIfWritable({ context }))),
+        Effect.tap(() =>
+          Effect.sync(() =>
+            projectReplicaIfWritable({
+              context,
+              ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+            }),
+          ),
+        ),
         Effect.flatMap(() =>
           Effect.try({
             try: () => {
@@ -1351,6 +1366,7 @@ const runCliCommandEffect = ({
                 ...(command.requireClean === undefined
                   ? {}
                   : { requireClean: command.requireClean }),
+                ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
               })
             },
             catch: (cause) =>
@@ -1558,10 +1574,8 @@ Supported runtime:
   notion db ...            Packaged Node-backed entrypoint from Nix/devenv
 
 Commands:
-  init                    Initialize a local SQLite sync store
-  pull                    Pull remote Notion changes into SQLite
-  push                    Push accepted local SQLite changes to Notion
-  sync                    Run pull and push, or adopt from Notion with --from-notion
+  track                   Adopt a Notion data source into a workspace (the adoption verb)
+  sync                    Reconcile an established workspace, or run the watch daemon with --watch
   export                  Export rows, schema, and sync metadata from SQLite
   status                  Print workspace sync status
   conflicts list          List unresolved conflicts
@@ -1909,58 +1923,25 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
         ...(limit === undefined ? {} : { limit }),
       }
     }
+    // `init`, `pull`, and `push` are internal reconciliation phases, not public
+    // commands (CLI-R01). The internal functions (`initOneShotSync`,
+    // `pullOneShotSync`, `pushOneShotSync`) remain; `track` and established
+    // `sync` drive them. Reject the public verbs with a clean-break message.
     case 'init':
-      return {
-        _tag: 'init',
-        dataSourceId: decode({
-          schema: DataSourceId,
-          value: requiredFlag({ flags, name: 'data-source-id' }),
-        }),
-        workspaceRoot: decode({
-          schema: AbsolutePath,
-          value: requiredFlag({ flags, name: 'workspace-root' }),
-        }),
-        dryRun: flags.has('dry-run'),
-      }
     case 'pull':
-      return { _tag: 'pull' }
     case 'push':
-      return { _tag: 'push', dryRun: flags.has('dry-run') }
+      throw new CliArgumentError({
+        message: `${command} is an internal reconciliation phase, not a public command; use \`sync\``,
+      })
     case 'sync': {
-      const fromNotion = optionalFlag({ flags, name: 'from-notion' })
+      // `sync --from-notion` was the legacy adoption alias; adoption is now
+      // `track` (CLI-R01). Reject it with the migration message before any
+      // further parsing.
       if (flags.has('from-notion') === true) {
-        if (fromNotion === undefined) {
-          throw new CliArgumentError({ message: 'Missing value for --from-notion' })
-        }
-        const workspace = words[1]
-        if (workspace === undefined) {
-          throw new CliArgumentError({
-            message: 'sync --from-notion requires a workspace root positional argument',
-          })
-        }
-        if (words.length > 2) {
-          throw new CliArgumentError({
-            message: 'sync --from-notion accepts exactly one workspace root positional argument',
-          })
-        }
-        const limit = optionalLimitFlag(flags)
-        if (limit !== undefined && flags.has('dry-run') === false) {
-          throw new CliArgumentError({
-            message: '--limit is only supported with sync --from-notion --dry-run',
-          })
-        }
-        const remoteRef = parseNotionRemoteRef(fromNotion)
-        return {
-          _tag: 'sync-from-notion',
-          dataSourceId:
-            remoteRef._tag === 'data-source'
-              ? remoteRef.dataSourceId
-              : decode({ schema: DataSourceId, value: remoteRef.databaseId }),
-          remoteRef,
-          workspaceRoot: normalizeAbsolutePath(workspace),
-          dryRun: flags.has('dry-run'),
-          ...(limit === undefined ? {} : { limit }),
-        }
+        throw new CliArgumentError({
+          message:
+            'sync --from-notion has been removed; use `track <id-or-url> <root> --mode <local|remote|shared>` to adopt a Notion data source',
+        })
       }
       if (words.length > 2) {
         throw new CliArgumentError({
@@ -2019,34 +2000,27 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
           message: 'export accepts at most one workspace root positional argument',
         })
       }
-      const fromNotion = optionalFlag({ flags, name: 'from-notion' })
-      if (flags.has('from-notion') === true && fromNotion === undefined) {
-        throw new CliArgumentError({ message: 'Missing value for --from-notion' })
-      }
-      if (flags.has('dry-run') === true) {
-        throw new CliArgumentError({ message: 'export does not support --dry-run' })
+      // Export does not accept a remote id or database URL (CLI-R02): the
+      // legacy `export --from-notion <ref>` surface is removed. `--refresh` is a
+      // boolean that re-observes the established binding before exporting; use
+      // `track` first to adopt a remote source.
+      if (flags.has('from-notion') === true) {
+        throw new CliArgumentError({
+          message:
+            'export does not accept --from-notion; use `track <id-or-url> <root>` to adopt, then `export --refresh` to re-observe the established binding',
+        })
       }
       if (flags.has('limit') === true || flags.has('max-rows') === true) {
         throw new CliArgumentError({ message: 'export does not support --limit or --max-rows' })
       }
-      const remoteRef = fromNotion === undefined ? undefined : parseNotionRemoteRef(fromNotion)
       return {
         _tag: 'export',
         outputPath: normalizeAbsolutePath(requiredFlag({ flags, name: 'output' })),
         ...(words[1] === undefined ? {} : { workspaceRoot: normalizeAbsolutePath(words[1]) }),
-        ...(remoteRef === undefined
-          ? {}
-          : {
-              fromNotion: {
-                dataSourceId:
-                  remoteRef._tag === 'data-source'
-                    ? remoteRef.dataSourceId
-                    : decode({ schema: DataSourceId, value: remoteRef.databaseId }),
-                remoteRef,
-              },
-            }),
+        ...(flags.has('refresh') === false ? {} : { refresh: true }),
         format: exportFormatFlag(flags),
         ...(flags.has('require-clean') === false ? {} : { requireClean: true }),
+        dryRun: flags.has('dry-run'),
       }
     }
     case 'status':
@@ -2090,7 +2064,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   }
   throw new CliArgumentError({
     message:
-      'Expected one of: track, init, pull, push, sync, export, status, conflicts list, conflicts resolve, forget, restore, doctor',
+      'Expected one of: track, sync, export, status, conflicts list, conflicts resolve, forget, restore, doctor',
   })
 }
 
@@ -2566,91 +2540,35 @@ export const parseCliContext = ({
             pagesDir: pagesDirRelativePath(databaseId),
           }
         })()
-      : command._tag === 'export' && command.fromNotion !== undefined
-        ? (() => {
-            const workspaceRoot = command.workspaceRoot
-            if (workspaceRoot === undefined && explicitSqlitePath === undefined) {
-              throw new CliArgumentError({
-                message: 'export --from-notion requires a workspace root or --sqlite <path>',
-              })
-            }
-            const existingBinding =
-              explicitSqlitePath === undefined
-                ? undefined
-                : readSelfContainedBinding(explicitSqlitePath)
-            if (
-              existingBinding !== undefined &&
-              existingBinding.dataSourceId !== command.fromNotion.dataSourceId
-            ) {
-              throw new CliArgumentError({
-                message: `SQLite file is already bound to data source ${existingBinding.dataSourceId}; refusing to export ${command.fromNotion.dataSourceId}`,
-              })
-            }
-            const resolvedWorkspaceRoot = decode({
-              schema: AbsolutePath,
-              value: workspaceRoot ?? existingBinding?.workspaceRoot,
+      : (command._tag === 'sync' || command._tag === 'status' || command._tag === 'export') &&
+          command.workspaceRoot !== undefined
+        ? explicitSqlitePath === undefined
+          ? discoverSelfContainedStore(command.workspaceRoot)
+          : resolveExplicitSqliteStore({
+              explicitSqlitePath,
+              fallbackWorkspaceRoot: command.workspaceRoot,
             })
-            // When export targets a workspace root (not an explicit --sqlite
-            // file), fail closed on an incompatible namespace before reading.
-            if (explicitSqlitePath === undefined && commandDryRun !== true) {
-              requireCompatibleWorkspaceNamespace(resolvedWorkspaceRoot)
-            }
-            const databaseId =
-              command.fromNotion.remoteRef._tag === 'database'
-                ? command.fromNotion.remoteRef.databaseId
-                : (command.fromNotion.remoteRef.sourceDatabaseId ?? command.fromNotion.dataSourceId)
-            // A standalone `--sqlite` file holds both control plane and projection
-            // (unified). A workspace-rooted export splits them. ADR 0011.
-            const storePath =
-              explicitSqlitePath ??
-              decode({ schema: AbsolutePath, value: stateSqlitePath(resolvedWorkspaceRoot) })
-            const dataFile =
-              explicitSqlitePath ??
-              defaultSqlitePath({ workspaceRoot: resolvedWorkspaceRoot, databaseId })
-            return {
-              storePath,
-              dataFilePath: dataFile,
-              rootId: rootIdForDataSource(command.fromNotion.dataSourceId),
-              dataSourceId: command.fromNotion.dataSourceId,
-              workspaceRoot: resolvedWorkspaceRoot,
-            }
-          })()
-        : (command._tag === 'sync' || command._tag === 'status') &&
-            command.workspaceRoot !== undefined
-          ? explicitSqlitePath === undefined
-            ? discoverSelfContainedStore(command.workspaceRoot)
-            : resolveExplicitSqliteStore({
-                explicitSqlitePath,
-                fallbackWorkspaceRoot: command.workspaceRoot,
-              })
-          : command._tag === 'export' && command.workspaceRoot !== undefined
-            ? explicitSqlitePath === undefined
-              ? discoverSelfContainedStore(command.workspaceRoot)
-              : resolveExplicitSqliteStore({
-                  explicitSqlitePath,
-                  fallbackWorkspaceRoot: command.workspaceRoot,
-                })
-            : explicitSqlitePath !== undefined && flags.has('root-id') === false
-              ? resolveExplicitSqliteStore({ explicitSqlitePath })
-              : (() => {
-                  const storePath = explicitSqlitePath ?? requiredFlag({ flags, name: 'sqlite' })
-                  return {
-                    storePath,
-                    dataFilePath: storePath,
-                    rootId: decode({
-                      schema: SyncRootId,
-                      value: requiredFlag({ flags, name: 'root-id' }),
-                    }),
-                    dataSourceId: decode({
-                      schema: DataSourceId,
-                      value: requiredFlag({ flags, name: 'data-source-id' }),
-                    }),
-                    workspaceRoot: decode({
-                      schema: AbsolutePath,
-                      value: requiredFlag({ flags, name: 'workspace-root' }),
-                    }),
-                  }
-                })()
+        : explicitSqlitePath !== undefined && flags.has('root-id') === false
+          ? resolveExplicitSqliteStore({ explicitSqlitePath })
+          : (() => {
+              const storePath = explicitSqlitePath ?? requiredFlag({ flags, name: 'sqlite' })
+              return {
+                storePath,
+                dataFilePath: storePath,
+                rootId: decode({
+                  schema: SyncRootId,
+                  value: requiredFlag({ flags, name: 'root-id' }),
+                }),
+                dataSourceId: decode({
+                  schema: DataSourceId,
+                  value: requiredFlag({ flags, name: 'data-source-id' }),
+                }),
+                workspaceRoot: decode({
+                  schema: AbsolutePath,
+                  value: requiredFlag({ flags, name: 'workspace-root' }),
+                }),
+              }
+            })()
   const rowLimit =
     command._tag === 'sync-from-notion' || command._tag === 'track' ? command.limit : undefined
   const baseQueryContract = fullReplicaQueryContract()
@@ -2700,7 +2618,6 @@ export const parseCliContext = ({
   if (
     command._tag !== 'sync-from-notion' &&
     command._tag !== 'track' &&
-    (command._tag !== 'export' || command.fromNotion === undefined) &&
     discovered.storePath !== ':memory:'
   ) {
     const binding = store.readWorkspaceBinding(discovered.rootId)
@@ -2809,7 +2726,7 @@ const resolveDatabaseDataSourceId = ({
       () =>
         new CliArgumentError({
           message:
-            'Unable to retrieve the Notion database while resolving --from-notion; verify the integration can access the database, or pass a data source ID directly.',
+            'Unable to retrieve the Notion database while resolving the adoption ref; verify the integration can access the database, or pass a data source ID directly.',
         }),
     ),
     Effect.flatMap((database) => {
@@ -2840,15 +2757,14 @@ export const resolveCliCommandNotionRefs = ({
   readonly command: CliCommand
   readonly options?: CliRuntimeOptions
 }): Effect.Effect<CliCommand, CliArgumentError> => {
+  // Only adoption (`track`, or the legacy `sync-from-notion`) carries a Notion
+  // remote ref to resolve. Export operates on the existing binding and never
+  // accepts a remote id/URL (CLI-R02), so it needs no resolution here.
   const databaseRef =
     (command._tag === 'sync-from-notion' || command._tag === 'track') &&
     command.remoteRef._tag === 'database'
       ? command.remoteRef
-      : command._tag === 'export' &&
-          command.fromNotion !== undefined &&
-          command.fromNotion.remoteRef._tag === 'database'
-        ? command.fromNotion.remoteRef
-        : undefined
+      : undefined
 
   if (databaseRef === undefined) {
     return Effect.succeed(command)
@@ -2857,7 +2773,7 @@ export const resolveCliCommandNotionRefs = ({
   if (client === undefined) {
     return Effect.fail(
       new CliArgumentError({
-        message: `${command._tag === 'export' ? 'export' : command._tag === 'track' ? 'track' : 'sync'} received a Notion database URL, but no Notion client is configured to resolve its child data source; set NOTION_API_TOKEN/NOTION_TOKEN or pass a data source ID directly.`,
+        message: `${command._tag === 'track' ? 'track' : 'sync'} received a Notion database URL, but no Notion client is configured to resolve its child data source; set NOTION_API_TOKEN/NOTION_TOKEN or pass a data source ID directly.`,
       }),
     )
   }
@@ -2866,29 +2782,15 @@ export const resolveCliCommandNotionRefs = ({
     databaseId,
     client,
   }).pipe(
-    Effect.map((resolved) =>
-      command._tag === 'sync-from-notion' || command._tag === 'track'
-        ? {
-            ...command,
-            dataSourceId: resolved.dataSourceId,
-            remoteRef: {
-              _tag: 'data-source' as const,
-              dataSourceId: resolved.dataSourceId,
-              sourceDatabaseId: resolved.databaseId,
-            },
-          }
-        : {
-            ...command,
-            fromNotion: {
-              dataSourceId: resolved.dataSourceId,
-              remoteRef: {
-                _tag: 'data-source' as const,
-                dataSourceId: resolved.dataSourceId,
-                sourceDatabaseId: resolved.databaseId,
-              },
-            },
-          },
-    ),
+    Effect.map((resolved) => ({
+      ...command,
+      dataSourceId: resolved.dataSourceId,
+      remoteRef: {
+        _tag: 'data-source' as const,
+        dataSourceId: resolved.dataSourceId,
+        sourceDatabaseId: resolved.databaseId,
+      },
+    })),
   )
 }
 
