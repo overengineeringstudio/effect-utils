@@ -131,6 +131,17 @@ export type OneShotSyncOptions = OneShotPullOptions &
     | 'authorityMode'
   > & {
     readonly deferLocalPlanningUntilAfterPull?: boolean
+    /**
+     * Mirror (`remote`-authority) reconcile: run ONLY the remote→local pull pass
+     * and skip BOTH internal local→remote push passes, so no local intent reaches
+     * the executor or the gateway (SM5.4 / CLI-R07). The watch daemon sets this for
+     * a `remote`-mode workspace; one-shot `sync` never does, so the default
+     * push+pull behavior is preserved. This is the loop-level complement to the
+     * planner's per-write `RemoteAuthoritativeDrift` block — it keeps the daemon's
+     * promise to "follow remote" structurally, instead of relying on every staged
+     * intent being individually refused.
+     */
+    readonly pullOnly?: boolean
   }
 
 /** Options for first establishment from an existing Notion data source into a local workspace. */
@@ -318,6 +329,20 @@ const appendDecision = ({
     }
   }
 }
+
+/** Empty push result for a mirror (`remote`-authority) cycle that ran no push pass; carries the current status so the daemon plan frame stays well-formed. */
+const emptyPushResult = ({
+  store,
+  rootId,
+}: {
+  readonly store: NotionSyncStore
+  readonly rootId: RemoteObservationOptions['rootId']
+}): OneShotPushResult => ({
+  localObservations: 0,
+  plan: { decisions: [], appendedEvents: 0, enqueuedCommands: 0, blocked: 0, conflicts: 0 },
+  executor: { steps: 0, maxStepsReached: false, results: [] },
+  status: readOneShotSyncStatus({ store, rootId }),
+})
 
 const mergePlanSummaries = (summaries: ReadonlyArray<OneShotPlanSummary>): OneShotPlanSummary => ({
   decisions: summaries.flatMap((summary) => summary.decisions),
@@ -893,7 +918,7 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
           : { leaseDurationMs: options.leaseDurationMs }),
       })
       const local =
-        options.materializeBodies === false
+        options.materializeBodies === false || options.pullOnly === true
           ? { observations: [] }
           : yield* observeLocalWorkspace(options.workspaceRoot)
       const localWorkspaceChanged = hasLocalWorkspaceChange({
@@ -901,8 +926,14 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
         store: options.store,
         rootId: options.rootId,
       })
+      // Mirror (`remote`-authority) reconcile: skip BOTH push passes so no local
+      // intent is ever planned, enqueued, or executed against the gateway — the
+      // pull pass alone converges remote→local (SM5.4). The empty push result keeps
+      // the `OneShotSyncResult` shape stable for the daemon's plan frame and status.
       const prePullPush =
-        localWorkspaceChanged === false || options.deferLocalPlanningUntilAfterPull === true
+        options.pullOnly === true ||
+        localWorkspaceChanged === false ||
+        options.deferLocalPlanningUntilAfterPull === true
           ? undefined
           : yield* pushOneShotSync({
               ...options,
@@ -913,13 +944,16 @@ export const syncOneShot = Effect.fn(spanNames.syncOneShot)(
         ...options,
         ...(localWorkspaceChanged === true ? { materializeBodyArtifacts: false } : {}),
       })
-      const pushAfterPull = yield* pushOneShotSync({
-        ...options,
-        localWorkspaceObservation:
-          localWorkspaceChanged === true && options.deferLocalPlanningUntilAfterPull === true
-            ? local
-            : { observations: [] },
-      })
+      const pushAfterPull =
+        options.pullOnly === true
+          ? emptyPushResult({ store: options.store, rootId: options.rootId })
+          : yield* pushOneShotSync({
+              ...options,
+              localWorkspaceObservation:
+                localWorkspaceChanged === true && options.deferLocalPlanningUntilAfterPull === true
+                  ? local
+                  : { observations: [] },
+            })
       const push =
         prePullPush === undefined
           ? pushAfterPull

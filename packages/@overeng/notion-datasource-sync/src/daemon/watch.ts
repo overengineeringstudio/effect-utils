@@ -671,8 +671,25 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           : claimedSignal
       const replicaInputs = yield* Effect.sync(() => readPendingReplicaPlannerInputs({ options }))
       const effectiveQueryContract = incrementalQueryContractForWatch({ options })
+      // SM5.4 / CLI-R07: the established workspace authority mode decides WHAT the
+      // loop reconciles (orthogonal to `--watch-priority`, which decides how often).
+      // A `remote` (mirror) workspace is pull-only: the remote→local pull pass always
+      // runs, but the local-first PUSH passes are gated OFF entirely, so a pending
+      // local edit surfaces as status/conflict and NEVER as a Notion write (no
+      // outbound execution — the daemon's promise is to follow remote). `local` and
+      // `shared` keep the full local-first push + remote pull cycle; their per-write
+      // semantics are carried by the planner's `writeMode` overlay, not the loop.
+      //
+      // This is a deliberate, mode-scoped exception to DAEMON-R07's mandatory
+      // local-first fast-push pass: DAEMON-R07 governs `local`/`shared`; `remote` is
+      // mirror/pull-only. It is the loop-level complement to the planner's per-write
+      // `RemoteAuthoritativeDrift` block (planner.ts) — together they make the
+      // remote-mode "zero outbound write" guarantee structural rather than reliant on
+      // every staged intent being individually refused.
+      const isMirrorMode = options.authorityMode === 'remote'
       const shouldRunFastPush =
-        replicaInputs.intents.length > 0 || hasRunnableOutboxWork(options) === true
+        isMirrorMode === false &&
+        (replicaInputs.intents.length > 0 || hasRunnableOutboxWork(options) === true)
       const fastPush =
         shouldRunFastPush === true
           ? yield* pushOneShotSync({
@@ -729,7 +746,11 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
           : { materializeBodies: options.materializeBodies }),
         ...(options.authorityMode === undefined ? {} : { authorityMode: options.authorityMode }),
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
-        localIntents: fastPush === undefined ? replicaInputs.intents : [],
+        // Mirror mode runs the reconcile pull-only: no push pass, so the captured
+        // local intents are deliberately not handed to the planner — they survive as
+        // pending CDC/status and never become outbound work.
+        ...(isMirrorMode === true ? { pullOnly: true } : {}),
+        localIntents: isMirrorMode === true || fastPush !== undefined ? [] : replicaInputs.intents,
         deferLocalPlanningUntilAfterPull: fastPush !== undefined,
         maxExecutorSteps: options.maxExecutorSteps ?? 8,
         leaseToken,

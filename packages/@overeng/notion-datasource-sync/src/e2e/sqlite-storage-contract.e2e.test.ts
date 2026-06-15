@@ -847,7 +847,10 @@ describe('clean-break self-contained SQLite storage contract', () => {
     'sync --watch drains a direct public rows INSERT row_create through fake Notion and settles it',
     async () => {
       const workspace = await tempWorkspace()
-      const { sqlitePath } = await establishWorkspace(workspace)
+      // shared (push-capable): this drains+settles an outbound row_create, which a
+      // `remote`-mirror workspace forbids under SM5.4 (CLI-R07 / the loop-level
+      // mirror gate). The default `remote` mode would gate this push off.
+      const { sqlitePath } = await establishWorkspace(workspace, { authorityMode: 'shared' })
       insertPublicRowsCreate({
         sqlitePath,
         title: 'Created by watch',
@@ -1258,7 +1261,10 @@ describe('clean-break self-contained SQLite storage contract', () => {
     'sync --watch drains a direct public rows archive through fake Notion and settles it',
     async () => {
       const workspace = await tempWorkspace()
-      const { sqlitePath } = await establishWorkspace(workspace)
+      // shared (push-capable): this drains+settles an outbound row_archive, which a
+      // `remote`-mirror workspace forbids under SM5.4 (CLI-R07 / the loop-level
+      // mirror gate). The default `remote` mode would gate this push off.
+      const { sqlitePath } = await establishWorkspace(workspace, { authorityMode: 'shared' })
       const db = new DatabaseSync(sqlitePath)
       try {
         db.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
