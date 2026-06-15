@@ -35,7 +35,7 @@ import {
 import { PagePropertyItemPage } from '../core/commands.ts'
 import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
-import { convergenceHash, nmdPropertyDesiredHash } from '../planner/nmd-property-facts.ts'
+import { convergenceFormHash, nmdPropertyDesiredHash } from '../planner/nmd-property-facts.ts'
 import { readPendingReplicaChanges } from '../replica/replica.ts'
 import {
   decode,
@@ -352,12 +352,35 @@ describe('SM5c cross-surface canonical comparability (two-oracle)', () => {
       const nmdHash = nmdPropertyDesiredHash(testCase.nmd)
       expect(nmdHash, `${testCase.name}: .nmd hash must be defined (scalar type)`).toBeDefined()
       // The load-bearing invariant: both surfaces hash equal through the shared
-      // convergence normalizer (which folds SQLite's REAL number coercion and
-      // JSON-escaping differences). This is what the engine consumes.
+      // convergence normalizer (`convergenceFormHash`, which strips option
+      // id/color, folds SQLite's REAL number coercion, and normalizes JSON
+      // escaping). This is what the engine consumes.
       expect(nmdHash, `${testCase.name}: SQLite vs .nmd convergence hash`).toBe(
-        convergenceHash(valueJson),
+        convergenceFormHash(valueJson),
       )
     }
+  })
+
+  it('a FULL remote select canonical (id+color) folds to the SAME convergence hash as the name-only .nmd value', () => {
+    // The cross-space invariant: production `remote_hash`/`value_json` keep the
+    // option id+color (`canonicalOptionFromRemote`), but the `.nmd` surface is
+    // name-only. `convergenceFormHash` must fold the rich remote form DOWN to the
+    // name-only space, or an untouched select false-diverges. (Asserting hashEQ
+    // here is NOT circular: the left side carries id+color, the right does not.)
+    const fullRemoteSelectJson = JSON.stringify({
+      _tag: 'select',
+      option: { _tag: 'CanonicalOptionValue', id: 'hi', name: 'High', color: 'red' },
+    })
+    expect(convergenceFormHash(fullRemoteSelectJson)).toBe(
+      nmdPropertyDesiredHash({ _tag: 'select', value: 'High' }),
+    )
+  })
+
+  it('a cleared number folds equal across the SQLite (value:null) and codec (empty) shapes', () => {
+    const sqliteNullNumberJson = JSON.stringify({ _tag: 'number', value: null })
+    expect(convergenceFormHash(sqliteNullNumberJson)).toBe(
+      nmdPropertyDesiredHash({ _tag: 'number', value: null }),
+    )
   })
 
   it('a different .nmd value produces a different hash (real divergence is detectable)', () => {

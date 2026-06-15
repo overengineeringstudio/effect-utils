@@ -113,13 +113,16 @@ const availabilityProjection = (
  * and a converged local surface produces no new block.
  *
  * Production wiring: `writeMode` is populated from the manifest authority mode
- * (`withAuthorityMode`) and `localConvergence` from the Phase 4 shared-mode local
+ * (`withAuthorityMode`), so `RemoteAuthoritativeDrift` fires from real production
+ * state. `localConvergence` is wired from the Phase 4 shared-mode local
  * convergence (`buildPropertyConvergenceInputs` + `convergeLocalSurfaces` +
- * `applyConvergenceVerdicts` in the CLI push path), so `RemoteAuthoritativeDrift`
- * and `LocalSurfaceDisagreement` fire from real production state. `settlement`
- * remains WIRED-BUT-DORMANT — the outbox does not yet supply a real
- * read-after-write verdict, so it falls back to its non-blocking default and
- * `ReadAfterWriteMismatch` fires only from tests (`TODO(settlement-wiring)`).
+ * `applyConvergenceVerdicts` in the CLI push path) and the verdict→guard chain is
+ * correct, but it is INERT on real data: pulled `.nmd` files carry no writable
+ * frontmatter properties yet, so `LocalSurfaceDisagreement` fires only for hand-
+ * authored `.nmd` (`TODO(phase-4-property-materialization)`). `settlement` remains
+ * WIRED-BUT-DORMANT — the outbox does not yet supply a real read-after-write
+ * verdict, so it falls back to its non-blocking default and `ReadAfterWriteMismatch`
+ * fires only from tests (`TODO(settlement-wiring)`).
  */
 export interface WorkspaceProofInputs {
   readonly dataSourceId: DataSourceId
