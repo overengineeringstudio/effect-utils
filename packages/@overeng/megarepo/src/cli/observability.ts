@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { Effect, Schema } from 'effect'
+import { Duration, Effect, Metric, MetricLabel, Schedule, Schema } from 'effect'
 
 import {
   OtelAttr,
@@ -155,6 +155,9 @@ export const storeGcResultAttrs = OtelAttrs.defineSync(
     ),
     candidateNamedRefs: Schema.Number.pipe(
       OtelAttr.key({ key: 'megarepo.store.gc.candidate_named_refs' }),
+    ),
+    repoConcurrency: Schema.Number.pipe(
+      OtelAttr.key({ key: 'megarepo.store.gc.repo_concurrency' }),
     ),
   }),
 )
@@ -407,3 +410,110 @@ export const storeSource = ({
   })
 
 export const pathLabel = (value: string): string => shortPath(path.normalize(value))
+
+// =============================================================================
+// Store GC phase spans + RSS gauge (decision 0007: bounded memory + throughput)
+// =============================================================================
+
+/** One of the gc/status pipeline phases, used as the `megarepo/store/gc/<phase>`
+ *  span name suffix. */
+export type StoreGcPhase =
+  | 'collect-liveness'
+  | 'list-repos'
+  | 'collect-worktrees'
+  | 'resolve-pr'
+  | 'cold-reclaim'
+  | 'legacy-sweep'
+
+export const storeGcPhaseAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
+    phase: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.store.gc.phase' })),
+    repoCount: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.repo_count' })),
+    ),
+    worktreeCount: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.worktree_count' })),
+    ),
+    repoConcurrency: Schema.optional(
+      Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.repo_concurrency' })),
+    ),
+  }),
+)
+
+/** Wrap a gc phase in a `megarepo/store/gc/<phase>` span with bounded counts. */
+export const withStoreGcPhaseSpan = ({
+  phase,
+  repoCount,
+  worktreeCount,
+  repoConcurrency,
+}: {
+  phase: StoreGcPhase
+  repoCount?: number
+  worktreeCount?: number
+  repoConcurrency?: number
+}) =>
+  trustedWith(
+    OtelOperation.define({
+      name: `megarepo/store/gc/${phase}`,
+      attributes: storeGcPhaseAttrs,
+      label: ({ label }) => label,
+    }),
+    {
+      label: phase,
+      phase,
+      ...(repoCount === undefined ? {} : { repoCount }),
+      ...(worktreeCount === undefined ? {} : { worktreeCount }),
+      ...(repoConcurrency === undefined ? {} : { repoConcurrency }),
+    },
+  )
+
+/**
+ * Resident-set gauge sampled periodically across a gc run
+ * (`megarepo_store_gc_rss_bytes`). A gauge (not a counter): RSS goes up and down.
+ * `repo_concurrency` is a label so a parameter sweep produces one comparable
+ * series per operating point (decision 0007 — the sweep plots RSS-vs-concurrency).
+ *
+ * Built with `Metric.gauge` + `Metric.set` (the gauge constructor and `set` are
+ * NOT in the `no-raw-otel-primitives` banned set; `Metric.counter`/`histogram`/
+ * `update`/`increment*` are). The schema-first OTEL contract (`@overeng/otel-
+ * contract`) has no gauge primitive yet, so this short-lived CLI gauge is emitted
+ * directly here rather than through a contract. Flows to the OTLP exporter when
+ * one is configured and is a no-op otherwise.
+ */
+const storeGcRssGauge = Metric.gauge('megarepo_store_gc_rss_bytes', {
+  description: 'Resident set size (bytes) sampled during mr store gc/status',
+  bigint: false,
+})
+
+/**
+ * Fork a fiber that samples `process.memoryUsage().rss` into
+ * {@link storeGcRssGauge} every `interval` for the lifetime of the enclosing
+ * scope. Tagged with `repo_concurrency` so sweep runs are comparable.
+ *
+ * Gated by the caller on `OTEL_EXPORTER_OTLP_ENDPOINT` being set: the periodic
+ * fiber has a (small) cost, so "zero overhead when unset" means not forking it.
+ */
+export const sampleStoreGcRss = ({
+  repoConcurrency,
+  interval = Duration.millis(250),
+}: {
+  repoConcurrency: number
+  interval?: Duration.Duration
+}) =>
+  Effect.sync(() => process.memoryUsage().rss).pipe(
+    Effect.flatMap((rss) =>
+      Metric.set(
+        // `taggedWithLabels` (not the banned `Metric.tagged`) adds the
+        // `repo_concurrency` label so a sweep yields one series per operating
+        // point.
+        storeGcRssGauge.pipe(
+          Metric.taggedWithLabels([MetricLabel.make('repo_concurrency', String(repoConcurrency))]),
+        ),
+        rss,
+      ),
+    ),
+    Effect.repeat(Schedule.spaced(interval)),
+    Effect.forkScoped,
+    Effect.asVoid,
+  )

@@ -91,7 +91,21 @@ type GcWorktreeDecision =
       }
     }
 
-const GC_REPO_CONCURRENCY = 1
+/**
+ * Per-repo gc concurrency. Default 1 (memory-safe, the conservative cold-path
+ * point). Streaming the subprocess output (constant per-operation memory) is
+ * what makes raising this safe; the memory↔throughput sweet spot is fixed
+ * experimentally via the OTEL sweep (decision 0007), so it is env-overridable
+ * with `MEGAREPO_GC_REPO_CONCURRENCY`. Back-pressure stays structural (bounded
+ * `Stream.mapEffect` concurrency); cross-megarepo safety is unaffected because
+ * reconcile-all + per-worktree locks gate every destructive step regardless.
+ */
+const gcRepoConcurrency = (): number => {
+  const raw = process.env['MEGAREPO_GC_REPO_CONCURRENCY']
+  if (raw === undefined) return 1
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isInteger(parsed) === true && parsed > 0 ? parsed : 1
+}
 const GC_WORKTREE_CONCURRENCY = 1
 const GC_PROGRESS_BATCH_SIZE = 10
 const STORE_REF_TYPES = ['heads', 'tags', 'commits'] as const
@@ -149,7 +163,12 @@ const toStoreGcAction = ({
 }): StoreAction => ({
   _tag: 'SetGc',
   basePath,
-  results: [...results],
+  // Pass the accumulator by reference, not a fresh `[...results]` copy on every
+  // progressive dispatch: the reducer/view treat `results` as read-only and the
+  // array is only ever appended to. The final `-o json` document still carries
+  // the full array (the JSON schema is unchanged); this just removes a per-batch
+  // O(n) copy so progressive dispatch cost stays linear in total work.
+  results,
   dryRun,
   warning,
   showForceHint: !force,
@@ -591,10 +610,12 @@ const coldReclaimRepo = ({
         continue
       }
 
-      const prState: PrStateInfo = yield* prResolver.resolve({
-        relativePath: EffectPath.unsafe.relativeDir(target.repoRelativePath),
-        branch: worktree.ref,
-      })
+      const prState: PrStateInfo = yield* prResolver
+        .resolve({
+          relativePath: EffectPath.unsafe.relativeDir(target.repoRelativePath),
+          branch: worktree.ref,
+        })
+        .pipe(Observability.withStoreGcPhaseSpan({ phase: 'resolve-pr' }))
 
       const head = yield* Git.getCurrentCommit(worktree.path).pipe(
         Effect.map(Option.some),
@@ -1072,6 +1093,7 @@ const storeGcCommand = Cli.Command.make(
       let liveSetForMetrics: StoreLiveSet | undefined
       let gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined
       let repoCount: number | undefined
+      let repoConcurrencyForMetrics = 1
 
       const processGcDecision = ({
         decision,
@@ -1251,6 +1273,19 @@ const storeGcCommand = Cli.Command.make(
           // persistence path reads THIS value, never the ambient wall clock again.
           const now = yield* Clock.currentTimeMillis
 
+          // Resolve the tunable per-repo concurrency ONCE per run so the whole
+          // run uses one consistent operating point (and one span attribute).
+          const repoConcurrency = gcRepoConcurrency()
+          repoConcurrencyForMetrics = repoConcurrency
+
+          // Sample RSS into the `megarepo_store_gc_rss_bytes` gauge across the run
+          // so the OTEL sweep can plot memory vs concurrency. Fork ONLY when an
+          // OTLP endpoint is configured — zero overhead (no periodic fiber) when
+          // unset, matching the empty-exporter behaviour.
+          if (process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] !== undefined) {
+            yield* Observability.sampleStoreGcRss({ repoConcurrency })
+          }
+
           statusMessage = 'collecting liveness registry'
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
@@ -1266,7 +1301,7 @@ const storeGcCommand = Cli.Command.make(
             refreshCurrentWorkspace: dryRun === false,
             ...(all === false ? { reconcileAllWorkspaces: true } : {}),
             now,
-          })
+          }).pipe(Observability.withStoreGcPhaseSpan({ phase: 'collect-liveness' }))
           liveSetForMetrics = liveSet
 
           gcWarning =
@@ -1280,7 +1315,9 @@ const storeGcCommand = Cli.Command.make(
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
-          const repos = yield* store.listRepos()
+          const repos = yield* store
+            .listRepos()
+            .pipe(Observability.withStoreGcPhaseSpan({ phase: 'list-repos' }))
           repoCount = repos.length
           statusMessage = 'checking worktrees'
           if (progressive === true) {
@@ -1305,7 +1342,13 @@ const storeGcCommand = Cli.Command.make(
                 return { repo, bareRepoPath, worktrees }
               }),
             ),
-            { concurrency: GC_REPO_CONCURRENCY },
+            { concurrency: repoConcurrency },
+          ).pipe(
+            Observability.withStoreGcPhaseSpan({
+              phase: 'collect-worktrees',
+              repoCount: repos.length,
+              repoConcurrency,
+            }),
           )
 
           // Default cold reclamation path (decisions 0001–0010): additive third
@@ -1414,9 +1457,15 @@ const storeGcCommand = Cli.Command.make(
                       yield* dispatchGc({ done: false, forceDispatch: true })
                     }
                   }),
-                { concurrency: GC_REPO_CONCURRENCY, unordered: true },
+                { concurrency: repoConcurrency, unordered: true },
               ),
               Stream.runDrain,
+              Observability.withStoreGcPhaseSpan({
+                phase: 'cold-reclaim',
+                repoCount: repoWorktrees.length,
+                worktreeCount: namedTargets.length,
+                repoConcurrency,
+              }),
             )
           }
 
@@ -1509,9 +1558,14 @@ const storeGcCommand = Cli.Command.make(
                     ref: Observability.shortPath(repo.relativePath),
                   }),
                 ),
-              { concurrency: GC_REPO_CONCURRENCY, unordered: true },
+              { concurrency: repoConcurrency, unordered: true },
             ),
             Stream.runDrain,
+            Observability.withStoreGcPhaseSpan({
+              phase: 'legacy-sweep',
+              repoCount: repoWorktrees.length,
+              repoConcurrency,
+            }),
           )
 
           statusMessage = undefined
@@ -1566,6 +1620,7 @@ const storeGcCommand = Cli.Command.make(
         candidateNamedRefs: results.filter(
           (result) => result.refType === 'heads' || result.refType === 'tags',
         ).length,
+        repoConcurrency: repoConcurrencyForMetrics,
       })
     }).pipe(
       Effect.provide(StoreLayer),
