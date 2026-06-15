@@ -16,10 +16,18 @@ import {
 
 import { runBatch, type BatchResult } from './batch.ts'
 import { canonicalize } from './canonicalizer.ts'
-import { NmdCliError, NmdConflictError, NmdFrontmatterError, type NmdError } from './errors.ts'
+import {
+  NmdCliError,
+  NmdConflictError,
+  NmdFrontmatterError,
+  NmdNonBodyWriteBlockedError,
+  type NmdError,
+} from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
+import { classifyMediaWrite, type MediaWriteOperation } from './media-boundary.ts'
 import { NotionMdGateway, type RemotePageSnapshot } from './model.ts'
+import { MediaBoundarySpan, withOperation } from './observability.ts'
 import {
   decideReconcile,
   porcelainStatus,
@@ -369,28 +377,39 @@ const emptyStorage = (): NmdStorage => ({
   comments: [],
 })
 
-const storageFileIds = (storage: NmdStorage | undefined): readonly string[] => {
-  if (storage === undefined) return []
-  switch (storage._tag) {
-    case 'self_contained':
-      return storage.files.map((file) => file.id)
-    case 'object_store':
-      return storage.file_ids
-  }
-}
-
-const rejectModeledMediaPayloadWrite = (opts: {
-  readonly path: string
+/**
+ * Files/media write boundary (SM6.1). Classifies the declared storage at a
+ * write site and fails closed with a named guard when it carries modeled,
+ * byte-backed file/media payloads notion-md cannot durably transfer yet.
+ *
+ * Evaluated before the dry-run early-return at every call site, so a blocked
+ * media write surfaces the named guard on both the dry-run plan and the apply
+ * path (R15). An empty file-unit set (no media, or external-URL-only media,
+ * which never enters `storage.files`) is inert and proceeds with no byte
+ * transfer.
+ */
+const guardMediaWrite = (opts: {
   readonly pageId: string
   readonly storage: NmdStorage | undefined
-  readonly operation: string
-}): Effect.Effect<void, NmdFrontmatterError> => {
-  const fileIds = storageFileIds(opts.storage)
-  if (fileIds.length === 0) return Effect.void
-  return Effect.fail(
-    new NmdFrontmatterError({
-      path: opts.path,
-      message: `Page ${opts.pageId} contains modeled file/media payloads (${fileIds.join(', ')}); ${opts.operation} is not implemented because notion-md has no v-next file upload/preservation gateway yet.`,
+  readonly operation: MediaWriteOperation
+}): Effect.Effect<void, NmdNonBodyWriteBlockedError> => {
+  const verdict = classifyMediaWrite({ storage: opts.storage, operation: opts.operation })
+  const fileCount = verdict._tag === 'blocked' ? verdict.fileIds.length : 0
+  return Effect.gen(function* () {
+    if (verdict._tag === 'blocked') {
+      return yield* new NmdNonBodyWriteBlockedError({
+        page_id: opts.pageId,
+        guard: verdict.guard,
+        fileIds: verdict.fileIds,
+        message: `Page ${opts.pageId} ${verdict.reason}`,
+      })
+    }
+  }).pipe(
+    withOperation(MediaBoundarySpan, {
+      operation: opts.operation,
+      fileCount,
+      verdict: verdict._tag,
+      ...(verdict._tag === 'blocked' ? { guard: verdict.guard } : {}),
     }),
   )
 }
@@ -581,11 +600,10 @@ export const reconcileFile = (
           ),
         )
       case 'push': {
-        yield* rejectModeledMediaPayloadWrite({
-          path: opts.path,
+        yield* guardMediaWrite({
           pageId,
           storage: pulled.storage,
-          operation: 'source: local Markdown push',
+          operation: 'push',
         })
         yield* assertReviewMarkupAllowed({
           path: opts.path,
@@ -632,11 +650,10 @@ export const reconcileFile = (
         )
       }
       case 'pull': {
-        yield* rejectModeledMediaPayloadWrite({
-          path: opts.path,
+        yield* guardMediaWrite({
           pageId,
           storage: pulled.storage,
-          operation: 'source: remote Markdown pull',
+          operation: 'pull',
         })
         if (opts.dryRun === true) {
           return result(
@@ -714,11 +731,10 @@ const reconcileSharedFile = (opts: {
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
     const base = yield* readBaseSnapshot({ path: opts.path, syncState: opts.syncState })
-    yield* rejectModeledMediaPayloadWrite({
-      path: opts.path,
+    yield* guardMediaWrite({
       pageId: opts.pageId,
       storage: opts.syncState.storage,
-      operation: 'source: shared Markdown reconcile',
+      operation: 'shared',
     })
     const unknownBlockIds = unresolvedUnknownBlockIds({
       syncState: opts.syncState,
