@@ -18,8 +18,8 @@ import { Schema } from 'effect'
 /**
  * The set of non-body write guard names.
  *
- * This phase (SM6.1) only exercises the file/media guards; the comment and
- * destructive-body guards land in SM6.2/SM6.3. `Replacement`/`Deletion` are
+ * SM6.1 exercises the file/media guards; SM6.2 adds the comment guard;
+ * SM6.3 will add the destructive-body guard. `Replacement`/`Deletion` are
  * declared now but have no call site yet — they describe invariants the
  * file/media boundary will name once mutation paths exist.
  */
@@ -29,6 +29,10 @@ export const nonBodyGuardNames = [
   'DurableFileUploadUnsupported',
   'DurableFileReplacementUnsupported',
   'DurableFileDeletionUnsupported',
+  // Comment-write boundary (SM6.2). Shares the reason string
+  // `'comments-api-not-implemented'` with the webhook CommentWebhookBoundary
+  // so both trigger and write surfaces use a single vocabulary.
+  'CommentWriteUnsupported',
 ] as const
 
 /** A single non-body write guard name. */

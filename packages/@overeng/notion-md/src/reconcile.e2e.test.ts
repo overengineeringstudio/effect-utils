@@ -471,6 +471,132 @@ describe('reconcileFile — files/media write boundary (SM6.1)', () => {
     }))
 })
 
+describe('reconcileFile — comment-write boundary (SM6.2)', () => {
+  const commentStorage = (): NmdStorage => ({
+    _tag: 'self_contained',
+    unsupported_blocks: [],
+    files: [],
+    comments: [
+      {
+        _tag: 'comment_unit',
+        id: 'comment-xyz',
+        roughdraft_id: 'rd-002',
+      },
+    ],
+  })
+
+  const emptyCommentStorage = (): NmdStorage => ({
+    _tag: 'self_contained',
+    unsupported_blocks: [],
+    files: [],
+    comments: [],
+  })
+
+  it('blocks a source: local push over modeled comments with CommentWriteUnsupported', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: commentStorage() }],
+      ])
+
+      const error = await runFailure(reconcileFile({ path }), fake)
+      expect(error).toMatchObject({
+        _tag: 'NmdNonBodyWriteBlockedError',
+        page_id: pageId,
+        guard: 'CommentWriteUnsupported',
+        fileIds: ['comment-xyz'],
+      })
+      expect(fake.updateCount).toBe(0)
+    }))
+
+  it('surfaces CommentWriteUnsupported on the dry-run plan (dry-run-visible, R15)', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: commentStorage() }],
+      ])
+
+      const error = await runFailure(reconcileFile({ path, dryRun: true }), fake)
+      expect(error).toMatchObject({
+        _tag: 'NmdNonBodyWriteBlockedError',
+        guard: 'CommentWriteUnsupported',
+      })
+      expect(fake.updateCount).toBe(0)
+    }))
+
+  it('blocks a source: remote pull over modeled comments with CommentWriteUnsupported', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'remote', pageId, body: 'stale local' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Fresh remote', storage: commentStorage() }],
+      ])
+
+      const error = await runFailure(reconcileFile({ path }), fake)
+      expect(error).toMatchObject({
+        _tag: 'NmdNonBodyWriteBlockedError',
+        guard: 'CommentWriteUnsupported',
+        fileIds: ['comment-xyz'],
+      })
+    }))
+
+  it('proceeds over a page with an empty comment inventory (inert)', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Old\n\nold text', storage: emptyCommentStorage() }],
+      ])
+
+      const result = await run(reconcileFile({ path }), fake)
+      expect(result._tag).toBe('pushed')
+      expect(fake.updateCount).toBe(1)
+    }))
+
+  it('comment inventory preserved through a noop reconcile (inventory round-trips)', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      // Body is in-sync, so the reconcile reaches noop — the comment guard
+      // is never evaluated and the modeled inventory survives unchanged.
+      await writeNmd({ path, source: 'remote', pageId, body: '# Same body' })
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: '# Same body', storage: commentStorage() }],
+      ])
+
+      const result = await run(reconcileFile({ path }), fake)
+      expect(result._tag).toBe('noop')
+      expect(fake.updateCount).toBe(0)
+    }))
+
+  it('blocks shared reconcile path over modeled comments (shared site)', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: 'alpha\n\nbeta', storage: commentStorage() }],
+      ])
+      // Bootstrap as shared — sidecar captures commentStorage() at track time.
+      await run(trackPage({ pageId, outPath: path, source: 'shared' }), fake)
+
+      // Create a real divergence: local and remote both changed from the base.
+      await replaceNmdBody(path, 'alpha local\n\nbeta')
+      fake.mutateRemote(pageId, 'alpha\n\nbeta remote')
+      const beforeRemote = fake.remoteMarkdown(pageId)
+
+      const error = await runFailure(reconcileFile({ path }), fake)
+
+      expect(error).toMatchObject({
+        _tag: 'NmdNonBodyWriteBlockedError',
+        page_id: pageId,
+        guard: 'CommentWriteUnsupported',
+        fileIds: ['comment-xyz'],
+      })
+      expect(fake.updateCount).toBe(0)
+      expect(fake.remoteMarkdown(pageId)).toBe(beforeRemote)
+    }))
+})
+
 describe('reconcileFile — dry-run planning', () => {
   it('plans track/bootstrap without writing the .nmd file or shared sidecars', () =>
     withTempDir(async (dir) => {
