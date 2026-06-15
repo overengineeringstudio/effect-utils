@@ -2,6 +2,7 @@ import { Schema } from 'effect'
 
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 import type { PropertyWriteClassType } from '@overeng/notion-effect-schema'
+import { propertyWriteGuardNames } from '@overeng/notion-property-write'
 
 import type { QueryRowsPage } from './commands.ts'
 import type {
@@ -13,21 +14,20 @@ import type {
 } from './domain.ts'
 export type { BodyAdapterMutationSurface, BodySafetySnapshot } from './domain.ts'
 
-/** Exhaustive set of named safety guards; each guard represents a distinct safety check the sync engine may enforce. */
-export const GuardName = Schema.Literal(
+/**
+ * Guard names owned solely by datasource-sync (not part of the shared
+ * `propertyWriteGuardNames` vocabulary). Combined with `propertyWriteGuardNames`
+ * to form the full `GuardName` superset literal.
+ */
+const syncOnlyGuardNames = [
   'ApiVersionUnsupported',
   'ApiVersionUnverified',
   'ApiVersionCompatibilityMissing',
   'DecodeDriftUnsupported',
   'CapabilityPreflightFailed',
-  'UnsupportedRemoteShape',
-  'ComputedPropertyWrite',
-  'PropertyValueIncomplete',
-  'RelatedDataSourceUnshared',
   'StaleSurfaceBase',
   'CurrentSurfaceMissing',
   'PageTimestampWakeupOnly',
-  'SchemaDriftAffectsIntent',
   'DestructiveSchemaMigrationRequired',
   'OptionDeletionLosesValues',
   'BodyLossyRemote',
@@ -46,9 +46,7 @@ export const GuardName = Schema.Literal(
   'PermissionAmbiguous',
   'DeleteVsEdit',
   'MoveOutNotDelete',
-  'UnavailableRelationTarget',
   'ExpiringFileUrl',
-  'ReadAfterWriteMismatch',
   'AmbiguousCommandOutcome',
   'PendingIntentShadowViolation',
   'BodyAdapterNonBodyMutation',
@@ -63,6 +61,12 @@ export const GuardName = Schema.Literal(
   'StoreMigrationBlocked',
   'QueueBackpressureExceeded',
   'RawPayloadRetentionUnsafe',
+] as const
+
+/** Exhaustive set of named safety guards; each guard represents a distinct safety check the sync engine may enforce. */
+export const GuardName = Schema.Literal(
+  ...propertyWriteGuardNames,
+  ...syncOnlyGuardNames,
 ).annotations({ identifier: 'NotionDatasourceSync.GuardName' })
 export type GuardName = typeof GuardName.Type
 

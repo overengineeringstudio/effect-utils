@@ -628,6 +628,14 @@ export const e2eHarnessScenarios = [
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {
+  // Shared property-write guard vocabulary (from @overeng/notion-property-write).
+  // Planner routing happens in 3c-ii; these are placeholder entries for the
+  // compose-only 3c-i milestone so the Record<GuardName, ScenarioId> satisfies.
+  RemoteSchemaRequired: 'NDS-GUARD-remote-schema-required',
+  PropertyIdentityAmbiguous: 'NDS-GUARD-property-identity-ambiguous',
+  StaleRemoteSchema: 'NDS-GUARD-stale-remote-schema',
+  LocalSurfaceDisagreement: 'NDS-GUARD-local-surface-disagreement',
+  RemoteAuthoritativeDrift: 'NDS-GUARD-remote-authoritative-drift',
   ApiVersionUnsupported: 'NDS-GUARD-api-version-unsupported',
   ApiVersionUnverified: 'NDS-GUARD-api-version-unverified',
   ApiVersionCompatibilityMissing: 'NDS-GUARD-api-compatibility-missing',
@@ -808,6 +816,48 @@ export const traceabilityResiduals = [
     scenarioId: 'NDS-GUARD-store-migration-blocked',
     requirementIds: ['R12', 'R62'],
     reason: 'Store migration blocking is covered by store tests and awaits E2E promotion.',
+  },
+  // Shared property-write guards added to GuardName in 3c-i (vocabulary compose).
+  // Planner routing and E2E promotion are deferred to 3c-ii.
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'RemoteSchemaRequired',
+    scenarioId: 'NDS-GUARD-remote-schema-required',
+    requirementIds: ['R18', 'R29'],
+    reason:
+      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'PropertyIdentityAmbiguous',
+    scenarioId: 'NDS-GUARD-property-identity-ambiguous',
+    requirementIds: ['R18', 'R29'],
+    reason:
+      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'StaleRemoteSchema',
+    scenarioId: 'NDS-GUARD-stale-remote-schema',
+    requirementIds: ['R18', 'R29'],
+    reason:
+      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'LocalSurfaceDisagreement',
+    scenarioId: 'NDS-GUARD-local-surface-disagreement',
+    requirementIds: ['R18', 'R29'],
+    reason:
+      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'RemoteAuthoritativeDrift',
+    scenarioId: 'NDS-GUARD-remote-authoritative-drift',
+    requirementIds: ['R18', 'R29'],
+    reason:
+      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
   },
   {
     _tag: 'unmapped-requirement',
