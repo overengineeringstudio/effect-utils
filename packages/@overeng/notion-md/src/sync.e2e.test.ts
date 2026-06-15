@@ -17,10 +17,16 @@ import {
   NmdFrontmatterError,
   NmdGatewayError,
   NmdObjectStoreError,
+  NmdSchemaDriftError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
-import { NotionMdGateway, type MarkdownUpdateCommand, type PullPageResult } from './model.ts'
+import {
+  NotionMdGateway,
+  type MarkdownUpdateCommand,
+  type PullPageResult,
+  type RemoteParent,
+} from './model.ts'
 import {
   NmdStateStoreLive,
   objectPath,
@@ -65,6 +71,13 @@ interface FakePage {
   readonly unknownBlockIds?: readonly string[]
   readonly completeness?: BodyCompleteness
   readonly lastEditedTime?: string
+  /** Remote parent; defaults to the shared `page_id` standalone parent. */
+  readonly parent?: RemoteParent
+  /**
+   * When set, `retrieveDataSource` resolves this property schema for the page's
+   * `data_source_id` parent — drives schema-drift coverage (Group F, R14).
+   */
+  readonly dataSourceSchema?: Record<string, unknown>
 }
 
 const unsupportedStorage = (payload: unknown = { url: 'https://www.notion.com/' }): NmdStorage => ({
@@ -113,6 +126,8 @@ const unsupportedStorage = (payload: unknown = { url: 'https://www.notion.com/' 
 
 class FakeNotion {
   private readonly pages = new Map<string, Required<FakePage>>()
+  /** Live property schema per data_source_id, recomputed against on retrieve. */
+  private readonly dataSourceSchemas = new Map<string, Record<string, unknown>>()
   private tick = 0
   private afterPagePropertiesUpdate: (() => void) | undefined
   private afterNextPullPage: (() => void) | undefined
@@ -141,9 +156,22 @@ class FakeNotion {
         inTrash: false,
         isLocked: false,
         lastEditedTime: '2026-05-22T12:00:00.000Z',
+        parent: { type: 'page_id', page_id: pageId },
+        dataSourceSchema: {},
         ...page,
       })
     }
+    /* seed the live schema registry for data-source-backed pages */
+    for (const page of pages) {
+      if (page.parent?.type === 'data_source_id' && page.dataSourceSchema !== undefined) {
+        this.dataSourceSchemas.set(page.parent.data_source_id, page.dataSourceSchema)
+      }
+    }
+  }
+
+  /** Mutate a data source's live property schema to simulate remote drift. */
+  setDataSourceSchema(dataSourceId: string, schema: Record<string, unknown>): void {
+    this.dataSourceSchemas.set(dataSourceId, schema)
   }
 
   readonly layer = Layer.succeed(NotionMdGateway, {
@@ -237,6 +265,21 @@ class FakeNotion {
         afterUpdate?.()
         return this.toPullResult(next).page
       }),
+    retrieveDataSource: ({ dataSourceId }) =>
+      Effect.sync(() => {
+        const schema = this.dataSourceSchemas.get(dataSourceId)
+        if (schema === undefined) {
+          throw new NmdGatewayError({
+            operation: 'retrieve_data_source',
+            message: `Unknown fake data source: ${dataSourceId}`,
+          })
+        }
+        return {
+          dataSourceId,
+          databaseId: undefined,
+          properties: schema,
+        }
+      }),
     updatePageMetadata: ({ pageId: id, metadata }) =>
       Effect.sync(() => {
         const page = this.requirePage(id)
@@ -278,6 +321,8 @@ class FakeNotion {
           properties: {},
           unknownBlockIds: [],
           completeness: { _tag: 'complete' },
+          parent: { type: 'page_id', page_id: parentPageId },
+          dataSourceSchema: {},
         })
         this.pages.set(parentPageId, {
           ...parent,
@@ -397,7 +442,7 @@ class FakeNotion {
         title: page.title,
         title_property_key: 'title',
         url: `https://www.notion.so/${page.pageId.replaceAll('-', '')}`,
-        parent: { type: 'page_id', page_id: pageId },
+        parent: page.parent,
         icon: page.icon,
         cover: page.cover,
         in_trash: page.inTrash,
@@ -1135,6 +1180,143 @@ describe('notion-md e2e prototype', () => {
         property_type: 'unknown',
         value: { checkbox: true },
       })
+    })
+  })
+
+  it('refuses a property write when the data-source schema drifted since pull (exit 6, R14)', async () => {
+    await withTempDir(async (dir) => {
+      const dataSourceId = '00000000-0000-4000-8000-0000000000d5'
+      const schema = {
+        Name: { id: 'title', name: 'Name', type: 'title', title: {} },
+        Done: { id: 'vV%3AO', name: 'Done', type: 'checkbox', checkbox: {} },
+        Priority: {
+          id: 'm%7Bm%3C',
+          name: 'Priority',
+          type: 'select',
+          select: { options: [{ id: 'opt-low', name: 'Low', color: 'gray' }] },
+        },
+      }
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Row',
+          markdown: '# Row\n\nBody',
+          parent: { type: 'data_source_id', data_source_id: dataSourceId },
+          dataSourceSchema: schema,
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'row.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const pulledSync = await readSyncStateFile(path)
+      // the schema_snapshot was captured into the sidecar data_source binding
+      expect(pulledSync.data_source?.data_source_id).toBe(dataSourceId)
+
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      // remote schema drifts: a new select option appears after the clean pull
+      fake.setDataSourceSchema(dataSourceId, {
+        ...schema,
+        Priority: {
+          id: 'm%7Bm%3C',
+          name: 'Priority',
+          type: 'select',
+          select: {
+            options: [
+              { id: 'opt-low', name: 'Low', color: 'gray' },
+              { id: 'opt-high', name: 'High', color: 'red' },
+            ],
+          },
+        },
+      })
+
+      const result = await runEitherWithFake(pushPage({ path }), fake)
+
+      expect(result).toMatchObject({
+        _tag: 'Left',
+        left: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
+      })
+      if (result._tag !== 'Left') throw new Error('Expected pushPage to fail on schema drift')
+      expect(result.left).toBeInstanceOf(NmdSchemaDriftError)
+      // the property write was refused — remote stays at its pre-edit value
+      expect(fake.remoteProperties(pageId).Done).toEqual({ type: 'checkbox', checkbox: false })
+    })
+  })
+
+  it('allows a property write when only a benign (color-only) schema change occurred', async () => {
+    await withTempDir(async (dir) => {
+      const dataSourceId = '00000000-0000-4000-8000-0000000000d5'
+      const schema = {
+        Name: { id: 'title', name: 'Name', type: 'title', title: {} },
+        Done: { id: 'vV%3AO', name: 'Done', type: 'checkbox', checkbox: {} },
+        Priority: {
+          id: 'm%7Bm%3C',
+          name: 'Priority',
+          type: 'select',
+          select: { options: [{ id: 'opt-low', name: 'Low', color: 'gray' }] },
+        },
+      }
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Row',
+          markdown: '# Row\n\nBody',
+          parent: { type: 'data_source_id', data_source_id: dataSourceId },
+          dataSourceSchema: schema,
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'row.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      // benign drift: only an option color changed — the writable projection is unchanged
+      fake.setDataSourceSchema(dataSourceId, {
+        ...schema,
+        Priority: {
+          id: 'm%7Bm%3C',
+          name: 'Priority',
+          type: 'select',
+          select: { options: [{ id: 'opt-low', name: 'Low', color: 'purple' }] },
+        },
+      })
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteProperties(pageId).Done).toEqual({ checkbox: true })
     })
   })
 

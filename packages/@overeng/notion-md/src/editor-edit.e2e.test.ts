@@ -69,6 +69,7 @@ class FakeGateway {
         return { markdown: pull(this.state).markdown }
       }),
     updatePageProperties: () => Effect.dieMessage('unexpected updatePageProperties'),
+    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
     updatePageMetadata: ({ metadata }) =>
       Effect.sync(() => {
         if (metadata.title !== undefined) this.state.title = metadata.title.value

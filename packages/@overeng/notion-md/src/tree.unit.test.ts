@@ -170,6 +170,7 @@ class FakeTreeNotion {
         }
       }),
     updatePageProperties: ({ pageId }) => Effect.sync(() => this.snapshot(pageId)),
+    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
     updatePageMetadata: ({ pageId }) => Effect.sync(() => this.snapshot(pageId)),
     listChildPages: ({ pageId }) =>
       Effect.sync(() =>

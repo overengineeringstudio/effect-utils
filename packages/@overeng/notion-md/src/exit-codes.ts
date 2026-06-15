@@ -17,7 +17,7 @@ import { Cause, Exit } from 'effect'
  * | 3    | NmdRemoteBodyLossyError                     |
  * | 4    | NmdUnresolvablePageError                    |
  * | 5    | NmdInvalidDocumentError                     |
- * | 6    | NmdSchemaDriftError (Group F; not yet emitted) |
+ * | 6    | NmdSchemaDriftError                         |
  * | 7    | NotionMdBodyConflictError / NmdConflictError |
  * | 8    | NmdEditorAbortedError                       |
  * | 9    | NmdPostPushGateError                        |
@@ -28,10 +28,10 @@ export const EDITOR_EXIT_CODES: Readonly<Record<string, number>> = {
   NmdRemoteBodyLossyError: 3,
   NmdUnresolvablePageError: 4,
   NmdInvalidDocumentError: 5,
-  // Exit 6 (NmdSchemaDriftError) is reserved for `edit --frontmatter` / `sync`
-  // schema-drift refusal (R14, impl-delta Group F). The error is not yet
-  // defined or thrown in Group A; the slot is pre-wired so Group F only adds the
-  // error class. Until then no code path produces exit 6.
+  // Exit 6: data-source schema drift detected by the engine `schema_snapshot`
+  // comparison before a property write (`edit --frontmatter` / file `sync`;
+  // R14, decision 0017). Distinct from the exit-7 conflict — not `--force`-able.
+  NmdSchemaDriftError: 6,
   NotionMdBodyConflictError: 7,
   NmdConflictError: 7,
   NmdEditorAbortedError: 8,

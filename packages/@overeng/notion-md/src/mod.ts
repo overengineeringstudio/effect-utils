@@ -10,6 +10,7 @@ export {
   NmdPartialWriteError,
   NmdPostPushGateError,
   NmdRemoteBodyLossyError,
+  NmdSchemaDriftError,
   NmdTokenMissingError,
   NmdUnresolvablePageError,
 } from './errors.ts'

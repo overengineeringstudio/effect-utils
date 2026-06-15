@@ -6,6 +6,7 @@ import { Effect, Option } from 'effect'
 import { describeBodyLossyRefusal, tolerateTreeChildPages } from '@overeng/notion-core'
 import {
   NOTION_API_VERSION,
+  type NmdDataSourceBinding,
   type NmdFrontmatterV2,
   type NmdObjectRef,
   type NmdParentRef,
@@ -20,6 +21,7 @@ import {
   NmdConflictError,
   NmdFrontmatterError,
   NmdRemoteBodyLossyError,
+  NmdSchemaDriftError,
   type NmdError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
@@ -35,6 +37,12 @@ import {
   type WritablePageIcon,
 } from './model.ts'
 import * as Observability from './observability.ts'
+import {
+  propertyIdMap,
+  readOnlyPropertyNames,
+  titlePropertyName,
+  writableSchemaHash,
+} from './schema-snapshot.ts'
 import {
   NmdStateStore,
   readBaseSnapshot,
@@ -511,6 +519,65 @@ ${fence}
  * for the stateless `cat --frontmatter` envelope dump, which renders the full
  * envelope without writing a `.notion-md/` store (decision 0017).
  */
+/**
+ * Capture a `schema_snapshot` of the parent data source for a
+ * data-source-backed page (decision 0017, R14). Retrieves the live property
+ * schema and projects it to the sidecar `data_source` binding — the base the
+ * push compares against to refuse a property write across schema drift.
+ *
+ * Standalone (non-data-source) pages return `null`: they have no data-source
+ * schema, so the drift check does not apply.
+ */
+const captureDataSourceBinding = (opts: {
+  readonly page: RemotePageSnapshot
+}): Effect.Effect<NmdDataSourceBinding | null, NmdError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    if (opts.page.parent.type !== 'data_source_id') return null
+    const gateway = yield* NotionMdGateway
+    const dataSourceId = opts.page.parent.data_source_id
+    const schema = yield* gateway.retrieveDataSource({ dataSourceId })
+    return {
+      database_id: schema.databaseId ?? dataSourceId,
+      data_source_id: dataSourceId,
+      schema_hash: writableSchemaHash(schema.properties),
+      title_property: titlePropertyName(schema.properties) ?? opts.page.title_property_key,
+      property_ids: propertyIdMap(schema.properties),
+      read_only_properties: readOnlyPropertyNames(schema.properties),
+    }
+  })
+
+/**
+ * Refuse a property write when the parent data source's writable schema drifted
+ * since the clean pull (decision 0017, R14). Re-retrieves the live schema and
+ * compares the recomputed hash against the sidecar `schema_snapshot`; on drift
+ * fails with `NmdSchemaDriftError` (exit 6) — distinct from the exit-7
+ * value/body conflict and not `--force`-able. Resolve by re-pulling.
+ *
+ * Standalone pages (`syncState.data_source === null`) skip the check.
+ */
+const assertSchemaUnchanged = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly dataSource: NmdDataSourceBinding | null
+}): Effect.Effect<void, NmdError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    const binding = opts.dataSource
+    if (binding === null) return
+    const gateway = yield* NotionMdGateway
+    const schema = yield* gateway.retrieveDataSource({ dataSourceId: binding.data_source_id })
+    const liveHash = writableSchemaHash(schema.properties)
+    if (liveHash === binding.schema_hash) return
+    yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+      decision: 'schema_drift',
+    })
+    return yield* new NmdSchemaDriftError({
+      page_id: opts.pageId,
+      data_source_id: binding.data_source_id,
+      path: opts.path,
+      message: `Data-source schema changed since the last clean pull (data source ${binding.data_source_id}); refusing the property write so an unknown value is not silently auto-created. Re-pull the page to adopt the new schema, then re-apply your edit.`,
+    })
+  })
+
 export const buildFrontmatterV2 = (opts: {
   readonly page: RemotePageSnapshot
 }): NmdFrontmatterV2 => ({
@@ -550,6 +617,12 @@ const buildSyncState = (opts: {
    * oracle. For single-page the fake/real round-trip makes these equal.
    */
   readonly baselineBody: string
+  /**
+   * Schema snapshot of the parent data source for a data-source-backed page
+   * (decision 0017, R14), or `null` for a standalone page. Captured at pull and
+   * compared before a property write to refuse on schema drift (exit 6).
+   */
+  readonly dataSource: NmdDataSourceBinding | null
 }): NmdSyncStateV1 => {
   const baseline = normalizeMarkdownLineEndings(opts.baselineBody)
   return {
@@ -566,7 +639,7 @@ const buildSyncState = (opts: {
     },
     storage: opts.storage,
     read_only_properties: readOnlyPropertyEchoes(opts.page.properties),
-    data_source: null,
+    data_source: opts.dataSource,
   }
 }
 
@@ -583,7 +656,7 @@ const writeNmdWithStoragePolicy = (opts: {
    * compares composed-vs-composed; for single-page it equals `fileBody`.
    */
   readonly baselineBody: string
-}): Effect.Effect<PullResult, NmdError, NmdStateStore> =>
+}): Effect.Effect<PullResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     yield* assertRemoteMarkdownComplete({
       operation: 'write_clean_base',
@@ -591,6 +664,7 @@ const writeNmdWithStoragePolicy = (opts: {
       pageId: opts.page.id,
       markdown: opts.markdown,
     })
+    const dataSource = yield* captureDataSourceBinding({ page: opts.page })
     const base = yield* writeBaseSnapshot({
       path: opts.path,
       pageId: opts.page.id,
@@ -603,6 +677,7 @@ const writeNmdWithStoragePolicy = (opts: {
       storage: opts.storage,
       base,
       baselineBody: opts.baselineBody,
+      dataSource,
     })
     const decision = decideStorage(syncState)
     let storageObjectPath: string | undefined
@@ -701,6 +776,7 @@ const establishSidecarFromRemote = (opts: {
       markdown: pulled.markdown,
     })
     const baselineBody = normalizeMarkdownLineEndings(pulled.markdown.markdown)
+    const dataSource = yield* captureDataSourceBinding({ page: pulled.page })
     const base = yield* writeBaseSnapshot({
       path: opts.path,
       pageId: opts.pageId,
@@ -714,6 +790,7 @@ const establishSidecarFromRemote = (opts: {
         storage: pulled.storage ?? emptyStorage(),
         base,
         baselineBody,
+        dataSource,
       }),
     })
   }).pipe(Observability.withOperation(Observability.EstablishSidecarSpan, { pageId: opts.pageId }))
@@ -1023,6 +1100,7 @@ export const treeNodePersist = (opts: {
         content: renderNmdFile({ frontmatter: opts.frontmatter, body: opts.bareBody }),
       })
       /* sidecar + base snapshot live at the tree root, keyed by page id */
+      const dataSource = yield* captureDataSourceBinding({ page: pulled.page })
       const base = yield* writeBaseSnapshot({
         path: opts.statePath,
         pageId: status.pageId,
@@ -1036,6 +1114,7 @@ export const treeNodePersist = (opts: {
           storage: pulled.storage ?? emptyStorage(),
           base,
           baselineBody: pushedBody,
+          dataSource,
         }),
       })
     }),
@@ -1176,6 +1255,11 @@ export const pushGuarded = (opts: {
           yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
         }
         if (status.localPropertiesChanged === true) {
+          yield* assertSchemaUnchanged({
+            path,
+            pageId: status.pageId,
+            dataSource: local.syncState.data_source,
+          })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
@@ -1219,6 +1303,11 @@ export const pushGuarded = (opts: {
             options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
         })
         if (status.localPropertiesChanged === true) {
+          yield* assertSchemaUnchanged({
+            path,
+            pageId: status.pageId,
+            dataSource: local.syncState.data_source,
+          })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
@@ -1311,6 +1400,11 @@ export const pushGuarded = (opts: {
       })
     }
     if (status.localPropertiesChanged === true) {
+      yield* assertSchemaUnchanged({
+        path,
+        pageId: status.pageId,
+        dataSource: local.syncState.data_source,
+      })
       yield* gateway.updatePageProperties({
         pageId: status.pageId,
         properties: yield* encodeWritableProperties({

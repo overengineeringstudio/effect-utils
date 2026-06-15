@@ -63,6 +63,18 @@ export interface RemoteMarkdownSnapshot {
   readonly body_evidence_fingerprint?: BodyEvidenceFingerprint
 }
 
+/**
+ * Live property schema of a Notion data source, retrieved for schema-drift
+ * detection on data-source-backed pages (decision 0017, R14). In API
+ * 2026-03-11 the property schema lives on the data source, not the database.
+ */
+export interface RemoteDataSourceSchema {
+  readonly dataSourceId: string
+  readonly databaseId: string | undefined
+  /** Raw property definitions keyed by display name (`{ id, name, type, … }`). */
+  readonly properties: Record<string, unknown>
+}
+
 /** Complete remote page snapshot used by the sync engine. */
 export interface PullPageResult {
   readonly page: RemotePageSnapshot
@@ -135,6 +147,15 @@ export interface NotionMdGatewayShape {
     readonly pageId: string
     readonly properties: Record<string, unknown>
   }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
+  /**
+   * Retrieve a data source's live property schema for schema-drift detection
+   * (`GET /v1/data_sources/{id}`; decision 0017, R14). Used only for
+   * data-source-backed pages at pull (to capture the `schema_snapshot`) and at
+   * push (to recompute it before a property write).
+   */
+  readonly retrieveDataSource: (opts: {
+    readonly dataSourceId: string
+  }) => Effect.Effect<RemoteDataSourceSchema, NmdGatewayError>
   readonly updatePageMetadata: (opts: {
     readonly pageId: string
     readonly metadata: PageMetadataUpdate

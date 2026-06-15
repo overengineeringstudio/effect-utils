@@ -6,6 +6,7 @@ import {
   NotionBody,
   type NotionBodyObservation,
   NotionConfig,
+  NotionDataSources,
   NotionPages,
   type NmdStorage,
   type UpdateMarkdownOptions,
@@ -305,6 +306,19 @@ export const NotionMdGatewayLive = Layer.effect(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'update_page_properties', pageId })),
           Observability.withOperation(Observability.GatewayUpdatePagePropertiesSpan, { pageId }),
+        ),
+      retrieveDataSource: ({ dataSourceId }) =>
+        provideHttp(NotionDataSources.retrieve({ dataSourceId })).pipe(
+          Effect.map((dataSource) => ({
+            dataSourceId: dataSource.id,
+            databaseId:
+              dataSource.parent.type === 'database_id' ? dataSource.parent.database_id : undefined,
+            properties: dataSource.properties,
+          })),
+          Effect.mapError(mapGatewayError({ operation: 'retrieve_data_source' })),
+          Observability.withOperation(Observability.GatewayRetrieveDataSourceSpan, {
+            dataSourceId,
+          }),
         ),
       updatePageMetadata: ({ pageId, metadata }) =>
         provideHttp(

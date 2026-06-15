@@ -64,6 +64,22 @@ export class NmdRemoteBodyLossyError extends Schema.TaggedError<NmdRemoteBodyLos
   },
 ) {}
 
+/**
+ * Raised when a data-source-backed page's writable property schema changed
+ * since the clean pull and a property write was attempted (`edit --frontmatter`
+ * / file `sync`; exit 6, R14, decision 0017). Distinct from the exit-7
+ * value/body conflict and **not** `--force`-able — resolve by re-pulling.
+ */
+export class NmdSchemaDriftError extends Schema.TaggedError<NmdSchemaDriftError>()(
+  'NmdSchemaDriftError',
+  {
+    page_id: Schema.String,
+    data_source_id: Schema.String,
+    path: Schema.optional(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
 /** Raised when a command needs a Notion token and none was supplied. */
 export class NmdTokenMissingError extends Schema.TaggedError<NmdTokenMissingError>()(
   'NmdTokenMissingError',
@@ -148,4 +164,5 @@ export type NmdError =
   | NmdFileSystemError
   | NmdGatewayError
   | NmdRemoteBodyLossyError
+  | NmdSchemaDriftError
   | NmdCliError
