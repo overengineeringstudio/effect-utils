@@ -39,7 +39,16 @@ const version = resolveCliVersion({
 
 const baseLayer = Layer.mergeAll(
   NodeContext.layer,
-  makeOtelCliLayer({ serviceName: 'megarepo', exportInterval: 50, shutdownTimeout: 50 }),
+  makeOtelCliLayer({
+    serviceName: 'megarepo',
+    exportInterval: 50,
+    // Flush the `megarepo_store_gc_rss_bytes` gauge often enough to be usable on
+    // short (~10s) gc runs — the @effect/opentelemetry default 10s metrics reader
+    // interval undersamples them (decision 0007). Only gc registers a metric, so
+    // this is a no-op for other `mr` commands.
+    metricsExportInterval: 1000,
+    shutdownTimeout: 50,
+  }),
 )
 
 Cli.Command.run(mrCommand, {
