@@ -58,6 +58,7 @@ import type { NotionGatewayClient, NotionGatewayPage } from '../gateway/notion.t
 import {
   dataFilePath,
   dataFileRelativePath,
+  loadWorkspaceManifest,
   pagesDirRelativePath,
   stateSqlitePath,
   writeWorkspaceManifestSync,
@@ -494,7 +495,7 @@ describe('CLI command surface', () => {
         '--watch',
         '--webhook',
         'none',
-        '--mode',
+        '--watch-priority',
         'development',
         '--non-interactive',
       ]),
@@ -502,7 +503,7 @@ describe('CLI command surface', () => {
       _tag: 'sync',
       dryRun: false,
       watch: true,
-      mode: 'development',
+      watchPriority: 'development',
       webhook: 'none',
       nonInteractive: true,
     })
@@ -531,6 +532,55 @@ describe('CLI command surface', () => {
       webhook: 'manual',
     })
     expect(() => parseCliCommand(['watch', '--state', '/tmp/watch.json'])).toThrow(CliArgumentError)
+  })
+
+  it('parses track as the adoption verb with a workspace-wide authority --mode', () => {
+    // `track <remote> <workspace>` defaults the authority mode to `shared`.
+    expect(parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace'])).toMatchObject({
+      _tag: 'track',
+      dataSourceId: 'data-source-1',
+      remoteRef: { _tag: 'data-source', dataSourceId: 'data-source-1' },
+      workspaceRoot: '/tmp/notion-workspace',
+      authorityMode: 'shared',
+      dryRun: false,
+    })
+    // `track --mode <m>` carries the chosen workspace-wide authority mode.
+    for (const mode of ['local', 'remote', 'shared'] as const) {
+      expect(
+        parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace', '--mode', mode]),
+      ).toMatchObject({ _tag: 'track', authorityMode: mode })
+    }
+    // An unknown authority mode is rejected.
+    expect(() =>
+      parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace', '--mode', 'bogus']),
+    ).toThrow('--mode must be one of: local, remote, shared')
+    // Missing positionals fail closed.
+    expect(() => parseCliCommand(['track'])).toThrow(
+      'track requires a Notion data source or database URL',
+    )
+    expect(() => parseCliCommand(['track', 'data-source-1'])).toThrow(
+      'track requires a workspace root',
+    )
+    // `--limit` is dry-run only, mirroring the legacy establish path.
+    expect(() =>
+      parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace', '--limit', '25']),
+    ).toThrow('--limit is only supported with track --dry-run')
+  })
+
+  it('rejects a per-run --mode on established commands (authority is workspace-wide)', () => {
+    // Authority mode is set once by `track`; every established command refuses a
+    // per-run override (decisions 0003, 0010) instead of silently ignoring it.
+    const rejected = 'authority mode is workspace-wide; set it with `track --mode`'
+    expect(() => parseCliCommand(['sync', '/tmp/ws', '--mode', 'shared'])).toThrow(rejected)
+    expect(() => parseCliCommand(['sync', '--watch', '--mode', 'local'])).toThrow(rejected)
+    expect(() => parseCliCommand(['status', '/tmp/ws', '--mode', 'remote'])).toThrow(rejected)
+    expect(() =>
+      parseCliCommand(['export', '/tmp/ws', '--output', '/tmp/out', '--mode', 'shared']),
+    ).toThrow(rejected)
+    expect(() => parseCliCommand(['doctor', '--mode', 'shared'])).toThrow(rejected)
+    expect(() =>
+      parseCliCommand(['sync', '--from-notion', 'data-source-1', '/tmp/ws', '--mode', 'shared']),
+    ).toThrow(rejected)
   })
 
   it(
@@ -992,6 +1042,86 @@ describe('CLI command surface', () => {
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+
+  it('track --mode establishes the workspace and round-trips authority_mode into the manifest', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-track-'))
+    try {
+      // `track --mode shared` establishes the workspace (closing the SM2 M3 gap:
+      // track has the data_source_id to write a complete manifest entry) and
+      // records the workspace-wide authority mode.
+      const command = parseCliCommand(['track', 'data-source-1', dir, '--mode', 'shared'])
+      const ctx = parseCliContext({
+        argv: ['track', 'data-source-1', dir],
+        resolvedCommand: command,
+      })
+      try {
+        expect(ctx.dataSourceId).toBe('data-source-1')
+        expect(ctx.workspaceRoot).toBe(dir)
+        // The persisted authority mode is read back onto the context...
+        expect(ctx.authorityMode).toBe('shared')
+      } finally {
+        ctx.store.close()
+      }
+      // ...and durably written into notion.workspace.v1.json.
+      const manifest = loadWorkspaceManifest(decode({ schema: AbsolutePath, value: dir }))
+      expect(manifest._tag).toBe('tracked')
+      if (manifest._tag === 'tracked') {
+        expect(manifest.manifest.authority_mode).toBe('shared')
+        expect(manifest.manifest.data_sources).toMatchObject([
+          { data_source_id: 'data-source-1', database_id: 'data-source-1' },
+        ])
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('track --mode local persists the local authority mode', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-track-'))
+    try {
+      const command = parseCliCommand(['track', 'data-source-1', dir, '--mode', 'local'])
+      const ctx = parseCliContext({
+        argv: ['track', 'data-source-1', dir],
+        resolvedCommand: command,
+      })
+      ctx.store.close()
+      const manifest = loadWorkspaceManifest(decode({ schema: AbsolutePath, value: dir }))
+      expect(manifest._tag === 'tracked' && manifest.manifest.authority_mode).toBe('local')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('resolves a Notion database URL to a child data source for track', async () => {
+    const calls = {
+      retrieveDataSource: 0,
+      queryDataSource: 0,
+      retrievePage: 0,
+      retrieveDatabase: 0,
+    }
+    const command = parseCliCommand([
+      'track',
+      'https://www.notion.so/example/0123456789abcdef0123456789abcdef?v=feedfacefeedfacefeedfacefeedface',
+      '/tmp/notion-workspace',
+      '--mode',
+      'remote',
+    ])
+
+    const resolved = await Effect.runPromise(
+      resolveCliCommandNotionRefs({
+        command,
+        options: { gatewayClient: makeInjectedNotionClient(calls) },
+      }),
+    )
+
+    expect(resolved).toMatchObject({
+      _tag: 'track',
+      dataSourceId: testIds.dataSourceId,
+      remoteRef: { _tag: 'data-source', dataSourceId: testIds.dataSourceId },
+      authorityMode: 'remote',
+    })
+    expect(calls.retrieveDatabase).toBe(1)
   })
 
   it.each([
@@ -2060,7 +2190,7 @@ describe('CLI command surface', () => {
             _tag: 'sync',
             watch: true,
             webhook: 'manual',
-            mode: 'normal',
+            watchPriority: 'normal',
             statePath: join(dir, 'watch.json'),
             maxCycles: 2,
           },
@@ -2211,7 +2341,7 @@ describe('CLI command surface', () => {
             _tag: 'sync',
             watch: true,
             webhook: 'tailscale',
-            mode: 'normal',
+            watchPriority: 'normal',
             statePath: join(dir, 'watch.json'),
             maxCycles: 2,
           },

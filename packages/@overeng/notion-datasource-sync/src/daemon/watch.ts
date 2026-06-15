@@ -22,6 +22,7 @@ import {
 import { reportSyncProgress } from '../core/progress.ts'
 import type { SignalInboxRecord } from '../core/signals.ts'
 import type { OneShotSyncStatus } from '../core/status.ts'
+import type { AuthorityMode } from '../local/manifest.ts'
 import {
   annotateSpan,
   shortSpanId,
@@ -120,6 +121,8 @@ export type WatchDaemonOptions = {
   readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
+  /** Workspace-wide authority mode threaded into the planner's `writeMode` (decisions 0003, 0010). */
+  readonly authorityMode?: AuthorityMode
   readonly statePath: string
   readonly mode?: WatchDaemonMode
   readonly maxCycles?: number
@@ -614,6 +617,9 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
               localIntents: replicaInputs.intents,
               materializeBodies: false,
               maxExecutorSteps: options.maxExecutorSteps ?? 8,
+              ...(options.authorityMode === undefined
+                ? {}
+                : { authorityMode: options.authorityMode }),
               leaseToken,
               leaseDurationMs,
               now,
@@ -648,6 +654,7 @@ export const runWatchDaemonCycle = Effect.fn(spanNames.daemonPass, {
         ...(options.materializeBodies === undefined
           ? {}
           : { materializeBodies: options.materializeBodies }),
+        ...(options.authorityMode === undefined ? {} : { authorityMode: options.authorityMode }),
         localIntents: fastPush === undefined ? replicaInputs.intents : [],
         deferLocalPlanningUntilAfterPull: fastPush !== undefined,
         maxExecutorSteps: options.maxExecutorSteps ?? 8,

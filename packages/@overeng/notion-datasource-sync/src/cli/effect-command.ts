@@ -107,10 +107,11 @@ export const makeDatasourceDbSubcommands = (
         Options.withDescription('Maximum watch cycles before exiting'),
         Options.optional,
       ),
-      mode: Options.choice('mode', ['development', 'normal', 'low-priority']).pipe(
-        Options.withDescription('Watch daemon pacing mode'),
-        Options.optional,
-      ),
+      watchPriority: Options.choice('watch-priority', [
+        'development',
+        'normal',
+        'low-priority',
+      ]).pipe(Options.withDescription('Watch daemon pacing priority'), Options.optional),
       webhook: Options.choice('webhook', ['none', 'tailscale', 'manual']).pipe(
         Options.withDescription('Webhook wakeup provider'),
         Options.optional,
@@ -163,7 +164,31 @@ export const makeDatasourceDbSubcommands = (
     Command.withDescription('Inspect and resolve SQLite sync conflicts'),
   )
 
+  const trackCommand = Command.make(
+    'track',
+    {
+      ...commonOptions,
+      remoteRef: Args.text({ name: 'remote-ref' }).pipe(
+        Args.withDescription('Notion data source or database URL to adopt'),
+        Args.optional,
+      ),
+      workspaceRoot: workspaceRootArg,
+      mode: Options.choice('mode', ['local', 'remote', 'shared']).pipe(
+        Options.withDescription('Workspace authority mode (persisted to the manifest)'),
+        Options.optional,
+      ),
+      dryRun: dryRunOption,
+      limit: Options.integer('limit').pipe(
+        Options.withDescription('Dry-run preview row limit for track --dry-run'),
+        Options.optional,
+      ),
+      noMaterializeBodies: noMaterializeBodiesOption,
+    },
+    () => handler('track'),
+  ).pipe(Command.withDescription('Adopt a Notion data source into a workspace (the adoption verb)'))
+
   return [
+    trackCommand,
     initCommand,
     leafCommand({
       name: 'pull',
