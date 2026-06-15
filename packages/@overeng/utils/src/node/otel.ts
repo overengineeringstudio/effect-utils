@@ -89,7 +89,15 @@ export interface OtelCliLayerConfig {
    */
   exportInterval?: number
   /**
-   * Timeout for graceful shutdown (final span flush) in milliseconds.
+   * Metrics reader export interval in milliseconds. The OTLP metrics reader is
+   * pull-based and POSTs every registered metric on this cadence; the default
+   * (`@effect/opentelemetry`'s 10s) undersamples short CLI runs, so set a small
+   * value when a gauge must flush within a ~10s run.
+   * @default 10_000 (the @effect/opentelemetry default)
+   */
+  metricsExportInterval?: number
+  /**
+   * Timeout for graceful shutdown (final span/metric flush) in milliseconds.
    * @default 2000
    */
   shutdownTimeout?: number
@@ -126,6 +134,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
     serviceName,
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
     exportInterval = 250,
+    metricsExportInterval,
     shutdownTimeout = 2000,
   } = config
 
@@ -153,6 +162,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
       baseUrl,
       resource: { serviceName },
       tracerExportInterval: exportInterval,
+      ...(metricsExportInterval === undefined ? {} : { metricsExportInterval }),
       shutdownTimeout,
     }).pipe(Layer.provide(FetchHttpClient.layer))
 
