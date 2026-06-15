@@ -201,6 +201,17 @@ export const mediaBoundaryAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Span attributes for a destructive body write gate. */
+export const destructiveBodyAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    guard: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.destructive_body.guard' })),
+    blockCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.destructive_body.block_count' }),
+    ),
+    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.destructive_body.verdict' })),
+  }),
+)
+
 /** Span attributes for a comment write-boundary classification. */
 export const commentBoundaryAttrs = OtelAttrs.defineSync(
   Schema.Struct({
@@ -373,6 +384,13 @@ export const CommentBoundarySpan = OtelOperation.define({
   name: 'notion-md.comment-boundary',
   attributes: commentBoundaryAttrs,
   label: ({ operation, verdict }) => `${operation}:${verdict}`,
+})
+
+/** Operation span emitted when a destructive body write gate blocks or allows. */
+export const DestructiveBodySpan = OtelOperation.define({
+  name: 'notion-md.destructive-body',
+  attributes: destructiveBodyAttrs,
+  label: ({ guard, verdict }) => `${guard}:${verdict}`,
 })
 
 /** Operation span emitted when a webhook signal is mapped to watch triggers. */

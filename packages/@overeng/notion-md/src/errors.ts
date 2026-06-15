@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 
 import { PropertyWriteGuardName } from '@overeng/notion-property-write'
 
-import { NonBodyGuardName } from './non-body-guards.ts'
+import { DestructiveBodyGuardName, NonBodyGuardName } from './non-body-guards.ts'
 
 /** Raised when a local `.nmd` file is missing or has malformed frontmatter. */
 export class NmdFrontmatterError extends Schema.TaggedError<NmdFrontmatterError>()(
@@ -115,6 +115,29 @@ export class NmdNonBodyWriteBlockedError extends Schema.TaggedError<NmdNonBodyWr
   },
 ) {}
 
+/**
+ * Raised when a destructive body write gate blocks because the required allow
+ * flag was not passed. Carries the named guard identifying which invariant was
+ * violated and the flag that would unblock it, so the refusal is observable in
+ * OTEL, dry-run plans, and JSON output (R13).
+ *
+ * This error is distinct from {@link NmdConflictError} (genuine 3-way edit
+ * conflicts) and {@link NmdNonBodyWriteBlockedError} (files/media/comment write
+ * boundaries): destructive body gates are a separate invariant family, opt-in
+ * via explicit allow flags.
+ */
+export class NmdDestructiveBodyBlockedError extends Schema.TaggedError<NmdDestructiveBodyBlockedError>()(
+  'NmdDestructiveBodyBlockedError',
+  {
+    page_id: Schema.String,
+    /** The violated destructive body guard name. */
+    guard: DestructiveBodyGuardName,
+    message: Schema.String,
+    /** The CLI flag that would unblock this gate. */
+    allowFlag: Schema.String,
+  },
+) {}
+
 /** Raised when a command needs a Notion token and none was supplied. */
 export class NmdTokenMissingError extends Schema.TaggedError<NmdTokenMissingError>()(
   'NmdTokenMissingError',
@@ -138,4 +161,5 @@ export type NmdError =
   | NmdRemoteBodyLossyError
   | NmdPropertyWriteBlockedError
   | NmdNonBodyWriteBlockedError
+  | NmdDestructiveBodyBlockedError
   | NmdCliError
