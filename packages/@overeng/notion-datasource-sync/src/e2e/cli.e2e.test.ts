@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -59,6 +59,7 @@ import {
   dataFilePath,
   dataFileRelativePath,
   pagesDirRelativePath,
+  stateSqlitePath,
   writeWorkspaceManifestSync,
 } from '../local/manifest.ts'
 import { presentArtifactObservation } from '../local/workspace.ts'
@@ -354,6 +355,40 @@ const createBoundSqlite = async ({
   projectReplicaFromSyncStore({
     syncStorePath: path,
     replicaPath: path,
+    rootId: testIds.rootId,
+  })
+}
+
+/**
+ * Establishes a split workspace (ADR 0011): the control plane in
+ * `.notion/v1/state.sqlite` and the public projection in the data file. Mirrors
+ * what `sync --from-notion` produces, for tests that exercise workspace-rooted
+ * discovery rather than a standalone `--sqlite` file.
+ */
+const createSplitWorkspaceStore = async (workspace: typeof AbsolutePath.Type): Promise<void> => {
+  const statePath = stateSqlitePath(workspace)
+  const dataPath = dataFilePath({ workspaceRoot: workspace, name: testIds.databaseId })
+  await mkdir(dirname(statePath), { recursive: true })
+  await mkdir(dirname(dataPath), { recursive: true })
+  const clock = makeFakeClock()
+  const store = openNotionSyncStore({ path: statePath, now: clock.now })
+  try {
+    initOneShotSync({
+      store,
+      rootId: testIds.rootId,
+      dataSourceId: testIds.dataSourceId,
+      workspaceRoot: workspace,
+      now: clock.now,
+    })
+    await runWithPorts(pullOneShotSync(context({ store, clock, workspaceRoot: workspace })), {
+      gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway,
+    })
+  } finally {
+    store.close()
+  }
+  projectReplicaFromSyncStore({
+    syncStorePath: statePath,
+    replicaPath: dataPath,
     rootId: testIds.rootId,
   })
 }
@@ -927,12 +962,9 @@ describe('CLI command surface', () => {
       // Untracked workspace (no v1 manifest) fails closed with tracking guidance.
       expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(/sync --from-notion/)
 
-      const sqlitePath = dataFilePath({
-        workspaceRoot: workspaceRootDir,
-        name: testIds.databaseId,
-      })
-      await mkdir(join(dir, 'data', 'v1'), { recursive: true })
-      await createBoundSqlite({ path: sqlitePath, workspace: workspaceRootDir })
+      // Establish a split workspace (ADR 0011): control plane in state.sqlite,
+      // public projection in the data file, mirroring sync --from-notion.
+      await createSplitWorkspaceStore(workspaceRootDir)
       writeWorkspaceManifestSync({
         workspaceRoot: workspaceRootDir,
         manifest: {

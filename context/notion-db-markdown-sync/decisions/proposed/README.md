@@ -33,6 +33,7 @@ name or non-secret identifier only.
 | `0008-webhook-scope-boundary-decoded-dirty-hints-only.md` | D8 — Webhook scope: decoded dirty hints only         | proposed                  |
 | `0009-non-body-lifecycle-v1-boundaries-fail-closed.md`    | D9 — Non-body lifecycle v1 boundaries fail closed    | proposed                  |
 | `0010-shared-guard-vocabulary-adopt-by-composition.md`    | D10 — Shared guard vocabulary, adopt-by-composition  | proposed                  |
+| `0011-control-plane-file-split.md`                        | D11 — Control-plane file split (state.sqlite, DD-A/DD-B) | proposed               |
 
 ## Open items deferred to ratification
 

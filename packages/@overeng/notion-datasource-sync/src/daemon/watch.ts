@@ -106,7 +106,13 @@ export type WatchDaemonWakeNotifier = {
  */
 export type WatchDaemonOptions = {
   readonly store: NotionSyncStore
+  /** Control-plane sync store path (`.notion/v1/state.sqlite` for a tracked workspace). */
   readonly storePath?: string
+  /**
+   * Public projection / CDC data file. Distinct from `storePath` for a tracked
+   * workspace (control-plane split, ADR 0011); equal to it for a standalone file.
+   */
+  readonly replicaPath?: string
   readonly rootId: SyncRootId
   readonly dataSourceId: DataSourceId
   readonly workspaceRoot: AbsolutePath
@@ -425,7 +431,9 @@ const interruptOnTimeout = <TValue, TError, TContext>({
       )
 
 const readPendingReplicaPlannerInputs = ({ options }: { readonly options: WatchDaemonOptions }) => {
-  const replicaPath = options.storePath
+  // CDC + planner intents target the public data file; the event log is the
+  // control-plane store (`options.store`). ADR 0011.
+  const replicaPath = options.replicaPath ?? options.storePath
   if (
     replicaPath === undefined ||
     replicaPath === ':memory:' ||
@@ -455,8 +463,11 @@ const projectReplicaIfWritable = ({
   readonly replicaPath: string | undefined
 }): void => {
   if (replicaPath === undefined || replicaPath === ':memory:') return
+  // The control-plane store and the public projection may be distinct files
+  // (ADR 0011); project FROM the store INTO the data file. When they coincide
+  // (standalone) this is the in-place unified projection.
   projectReplicaFromSyncStore({
-    syncStorePath: replicaPath,
+    syncStorePath: options.storePath ?? replicaPath,
     replicaPath,
     rootId: options.rootId,
   })

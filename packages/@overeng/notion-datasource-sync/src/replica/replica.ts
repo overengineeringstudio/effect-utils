@@ -419,7 +419,12 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       description_plain_text TEXT,
       observed_event_id TEXT NOT NULL,
       observed_at TEXT,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      -- Materialized from the control-plane _nds_workspace_binding at projection
+      -- time so the public schema view stays standalone-queryable once the
+      -- control plane moves to .notion/v1/state.sqlite (DD-A/DD-B, ADR 0011).
+      workspace_binding_database_id TEXT,
+      workspace_root TEXT
     );
 
     CREATE TABLE IF NOT EXISTS _nds_replica_databases (
@@ -817,11 +822,23 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     CREATE TABLE IF NOT EXISTS _nds_replica_sync_status (
       root_id TEXT PRIMARY KEY,
       data_sources INTEGER NOT NULL,
-      rows INTEGER NOT NULL,
+      pages INTEGER NOT NULL,
       cells INTEGER NOT NULL,
       bodies INTEGER NOT NULL,
       conflicts_open INTEGER NOT NULL,
       pending_local_changes INTEGER NOT NULL,
+      -- Control-plane aggregate counts materialized from state.sqlite at
+      -- projection time (DD-B, ADR 0011): the sync_status view reads ONLY this
+      -- projection table so the data file never ATTACHes the control plane.
+      pending_outbox INTEGER NOT NULL DEFAULT 0,
+      blocked_outbox INTEGER NOT NULL DEFAULT 0,
+      guard_blocks INTEGER NOT NULL DEFAULT 0,
+      unclassified_tombstones INTEGER NOT NULL DEFAULT 0,
+      unsupported_capabilities INTEGER NOT NULL DEFAULT 0,
+      incomplete_hydration INTEGER NOT NULL DEFAULT 0,
+      -- Resolved workspace root, materialized so the view keeps move-detection
+      -- (pragma_database_list self-join) without joining the control plane.
+      workspace_root TEXT,
       updated_at TEXT NOT NULL
     );
 
@@ -940,9 +957,9 @@ const createReplicaSchema = (db: DatabaseSync): void => {
       SELECT
         ds.data_source_id,
         ds.root_id,
-        COALESCE(binding.database_id, ds.parent_database_id) AS database_id,
+        COALESCE(ds.workspace_binding_database_id, ds.parent_database_id) AS database_id,
         ds.parent_database_id,
-        binding.workspace_root,
+        ds.workspace_root,
         ds.schema_hash,
         ds.metadata_hash,
         ds.title_plain_text,
@@ -954,10 +971,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
           WHEN (SELECT count(*) FROM _nds_replica_data_sources) = 1 THEN 1
           ELSE 0
         END AS is_primary_rows_source
-      FROM _nds_replica_data_sources ds
-      LEFT JOIN _nds_workspace_binding binding
-        ON binding.root_id = ds.root_id
-       AND binding.data_source_id = ds.data_source_id;
+      FROM _nds_replica_data_sources ds;
 
     CREATE VIEW IF NOT EXISTS ${quoteIdentifier(schemaPropertiesViewName)} AS
       SELECT
@@ -1010,7 +1024,7 @@ const createReplicaSchema = (db: DatabaseSync): void => {
         SELECT
           status.root_id,
           status.data_sources,
-          status.rows,
+          status.pages,
           status.cells,
           status.bodies,
           ${openReplicaConflictsCountSql} AS conflicts_open,
@@ -1018,24 +1032,23 @@ const createReplicaSchema = (db: DatabaseSync): void => {
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'conflict') AS conflicted_local_changes,
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'unsupported') AS unsupported_local_changes,
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'needs_reconciliation') AS reconciliation_local_changes,
-          (SELECT count(*) FROM _nds_outbox WHERE root_id = status.root_id AND state IN ('queued', 'running', 'retryable')) AS pending_outbox,
-          (SELECT count(*) FROM _nds_outbox WHERE root_id = status.root_id AND state IN ('blocked', 'fenced', 'ambiguous')) AS blocked_outbox,
-          (SELECT count(*) FROM _nds_guard_block WHERE root_id = status.root_id) AS guard_blocks,
-          (SELECT count(*) FROM _nds_tombstone WHERE root_id = status.root_id AND classification = 'unclassified') AS unclassified_tombstones,
-          (SELECT count(*) FROM _nds_capability WHERE root_id = status.root_id AND supported = 0) AS unsupported_capabilities,
-          (
-            (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND complete = 0)
-            + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND capped_at_limit = 1)
-            + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = status.root_id AND contract_changed = 1)
-            + (SELECT count(*) FROM _nds_page_property_checkpoint WHERE root_id = status.root_id AND complete = 0)
-          ) AS incomplete_hydration,
+          -- DD-B (ADR 0011): control-plane counts are materialized into this
+          -- projection table at projection time; the view never reaches the
+          -- control plane (which now lives in .notion/v1/state.sqlite).
+          status.pending_outbox,
+          status.blocked_outbox,
+          status.guard_blocks,
+          status.unclassified_tombstones,
+          status.unsupported_capabilities,
+          status.incomplete_hydration,
+          status.workspace_root,
           status.updated_at
         FROM _nds_replica_sync_status status
       )
       SELECT
         status.root_id,
         status.data_sources,
-        status.rows,
+        status.pages,
         status.cells,
         status.bodies,
         status.conflicts_open,
@@ -1058,13 +1071,15 @@ const createReplicaSchema = (db: DatabaseSync): void => {
           ELSE 'clean'
         END AS state,
         status.updated_at,
+        -- Move-detection stays a self-join on this file's own main database
+        -- (no ATTACH); workspace_root is the value materialized at projection
+        -- time, so a file relocated AFTER projection still reports moved.
         CASE
-          WHEN binding.workspace_root IS NULL THEN 'unbound'
-          WHEN database_list.file LIKE binding.workspace_root || '/%' THEN 'bound'
+          WHEN status.workspace_root IS NULL THEN 'unbound'
+          WHEN database_list.file LIKE status.workspace_root || '/%' THEN 'bound'
           ELSE 'moved'
         END AS workspace_status
       FROM status_counts status
-      LEFT JOIN _nds_workspace_binding binding ON binding.root_id = status.root_id
       JOIN pragma_database_list AS database_list ON database_list.name = 'main';
 
     CREATE VIEW IF NOT EXISTS debug_data_sources AS
@@ -2781,6 +2796,93 @@ const rebuildGeneratedViews = (db: DatabaseSync): void => {
   rebuildCanonicalRowsSurface(db)
 }
 
+/** Workspace binding materialized from the control plane for the public views. */
+type ProjectionWorkspaceBinding = {
+  readonly dataSourceId: string
+  readonly databaseId: string | undefined
+  readonly workspaceRoot: string
+}
+
+/**
+ * Reads the root's workspace binding from the control-plane store. Returns
+ * `undefined` when the store carries no binding (e.g. a freshly-discovered
+ * source) so the public views fall back to `NULL` columns rather than failing.
+ */
+const readWorkspaceBindingForProjection = ({
+  syncDb,
+  rootId,
+}: {
+  readonly syncDb: DatabaseSync
+  readonly rootId: string
+}): ProjectionWorkspaceBinding | undefined => {
+  const row = syncDb
+    .prepare(
+      `SELECT data_source_id, database_id, workspace_root
+       FROM _nds_workspace_binding
+       WHERE root_id = ?
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+    )
+    .get(rootId) as SqlRow | undefined
+  if (row === undefined) return undefined
+  const workspaceRoot = readOptionalString({ row, key: 'workspace_root' })
+  if (workspaceRoot === undefined) return undefined
+  return {
+    dataSourceId: readString({ row, key: 'data_source_id' }),
+    databaseId: readOptionalString({ row, key: 'database_id' }),
+    workspaceRoot,
+  }
+}
+
+/** Control-plane aggregate counts materialized into `_nds_replica_sync_status`. */
+type ControlPlaneStatusCounts = {
+  readonly pendingOutbox: number
+  readonly blockedOutbox: number
+  readonly guardBlocks: number
+  readonly unclassifiedTombstones: number
+  readonly unsupportedCapabilities: number
+  readonly incompleteHydration: number
+}
+
+/**
+ * Computes the `sync_status` aggregate counts that source from control-plane
+ * tables (DD-B, ADR 0011). Run against the sync store (`state.sqlite` once the
+ * control plane is split out) so the data file's `sync_status` view can read
+ * only the materialized projection table.
+ */
+const readControlPlaneStatusCounts = ({
+  syncDb,
+  rootId,
+}: {
+  readonly syncDb: DatabaseSync
+  readonly rootId: string
+}): ControlPlaneStatusCounts => {
+  const row = syncDb
+    .prepare(
+      `SELECT
+         (SELECT count(*) FROM _nds_outbox WHERE root_id = ? AND state IN ('queued', 'running', 'retryable')) AS pending_outbox,
+         (SELECT count(*) FROM _nds_outbox WHERE root_id = ? AND state IN ('blocked', 'fenced', 'ambiguous')) AS blocked_outbox,
+         (SELECT count(*) FROM _nds_guard_block WHERE root_id = ?) AS guard_blocks,
+         (SELECT count(*) FROM _nds_tombstone WHERE root_id = ? AND classification = 'unclassified') AS unclassified_tombstones,
+         (SELECT count(*) FROM _nds_capability WHERE root_id = ? AND supported = 0) AS unsupported_capabilities,
+         (
+           (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = ? AND complete = 0)
+           + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = ? AND capped_at_limit = 1)
+           + (SELECT count(*) FROM _nds_query_scan_checkpoint WHERE root_id = ? AND contract_changed = 1)
+           + (SELECT count(*) FROM _nds_page_property_checkpoint WHERE root_id = ? AND complete = 0)
+         ) AS incomplete_hydration`,
+    )
+    .get(rootId, rootId, rootId, rootId, rootId, rootId, rootId, rootId, rootId) as SqlRow
+  return {
+    pendingOutbox: readNumber({ row, key: 'pending_outbox' }),
+    blockedOutbox: readNumber({ row, key: 'blocked_outbox' }),
+    guardBlocks: readNumber({ row, key: 'guard_blocks' }),
+    unclassifiedTombstones: readNumber({ row, key: 'unclassified_tombstones' }),
+    unsupportedCapabilities: readNumber({ row, key: 'unsupported_capabilities' }),
+    incompleteHydration: readNumber({ row, key: 'incomplete_hydration' }),
+  }
+}
+
 /** Project the sync store's authoritative events into a user-facing SQLite replica. */
 export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): void => {
   mkdirSync(dirname(options.replicaPath), { recursive: true })
@@ -2791,6 +2893,10 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
     createReplicaSchema(replicaDb)
     const schemaPayloads = latestDataSourcePayloads({ syncDb, rootId: options.rootId })
     const valueJsonByCell = latestPropertyValueJson({ syncDb, rootId: options.rootId })
+    // Materialize the control-plane workspace binding (lives in state.sqlite once
+    // the control plane is split out) so the public `schema`/`sync_status` views
+    // stay standalone-queryable against the data file (DD-A/DD-B, ADR 0011).
+    const workspaceBinding = readWorkspaceBindingForProjection({ syncDb, rootId: options.rootId })
     replicaDb.exec('BEGIN IMMEDIATE')
     try {
       clearProjectedReplicaTables(replicaDb)
@@ -2848,12 +2954,18 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         .all(options.rootId) as SqlRow[]) {
         const dataSourceId = readString({ row, key: 'data_source_id' })
         const metadataRow = metadata.get(dataSourceId)
+        // The binding is root-keyed; it materializes onto exactly the data source
+        // it names, matching the prior `binding.data_source_id = ds.data_source_id`
+        // join (ADR 0011). Other sources in a multi-source root carry no binding.
+        const bindingForSource =
+          workspaceBinding?.dataSourceId === dataSourceId ? workspaceBinding : undefined
         replicaDb
           .prepare(
             `INSERT INTO _nds_replica_data_sources (
                data_source_id, root_id, schema_hash, metadata_hash, metadata_json, title_plain_text,
-               description_plain_text, parent_database_id, observed_event_id, observed_at, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               description_plain_text, parent_database_id, observed_event_id, observed_at, updated_at,
+               workspace_binding_database_id, workspace_root
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             dataSourceId,
@@ -2867,6 +2979,8 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
             readString({ row, key: 'observed_event_id' }),
             readOptionalString({ row, key: 'observed_at' }) ?? null,
             readString({ row, key: 'updated_at' }),
+            bindingForSource?.databaseId ?? null,
+            bindingForSource?.workspaceRoot ?? null,
           )
         if (metadataRow?.parentDatabaseId !== undefined && metadataRow.metadataJson !== undefined) {
           replicaDb
@@ -3179,11 +3293,21 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
              ${pendingReplicaChangesCountSql} AS pending_local_changes`,
         )
         .get() as SqlRow
+      // DD-B (ADR 0011): aggregate counts sourced from control-plane tables are
+      // computed against `syncDb` (state.sqlite) here and materialized into the
+      // projection table, so the public `sync_status` view never reaches across
+      // the file boundary.
+      const controlPlaneCounts = readControlPlaneStatusCounts({
+        syncDb,
+        rootId: options.rootId,
+      })
       replicaDb
         .prepare(
           `INSERT INTO _nds_replica_sync_status (
-             root_id, data_sources, rows, cells, bodies, conflicts_open, pending_local_changes, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             root_id, data_sources, pages, cells, bodies, conflicts_open, pending_local_changes,
+             pending_outbox, blocked_outbox, guard_blocks, unclassified_tombstones,
+             unsupported_capabilities, incomplete_hydration, workspace_root, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           options.rootId,
@@ -3193,6 +3317,13 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
           readNumber({ row: counts, key: 'bodies' }),
           readNumber({ row: counts, key: 'conflicts_open' }),
           readNumber({ row: counts, key: 'pending_local_changes' }),
+          controlPlaneCounts.pendingOutbox,
+          controlPlaneCounts.blockedOutbox,
+          controlPlaneCounts.guardBlocks,
+          controlPlaneCounts.unclassifiedTombstones,
+          controlPlaneCounts.unsupportedCapabilities,
+          controlPlaneCounts.incompleteHydration,
+          workspaceBinding?.workspaceRoot ?? null,
           now,
         )
 

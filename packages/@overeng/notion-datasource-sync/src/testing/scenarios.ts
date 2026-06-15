@@ -651,6 +651,16 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L2',
     file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
   }),
+  scenario({
+    scenarioId: 'NDS-L2-hidden-control-plane-isolation',
+    title:
+      'control plane is split into `.notion/v1/state.sqlite`: the public `data/v1/<source>.sqlite` exposes only product views + `_nds_replica_*` cache (no `_nds_outbox`/`_nds_guard_block`/`_nds_sync_event`/`_nds_workspace_binding`/etc), both files are standalone-queryable, and CDC edits in the data file drain across the boundary into the state event log and re-project',
+    requirementIds: ['R01', 'R05'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
+  }),
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {
