@@ -423,7 +423,7 @@ describe('reconcileFile — files/media write boundary (SM6.1)', () => {
       })
     }))
 
-  it('proceeds over a page whose storage carries no byte-backed file units (external-URL-only)', () =>
+  it('proceeds over a page with no modeled file bytes (inert)', () =>
     withTempDir(async (dir) => {
       const path = join(dir, 'doc.nmd')
       await writeNmd({ path, source: 'local', pageId, body: '# Local edit\n\nnew text' })
@@ -435,6 +435,39 @@ describe('reconcileFile — files/media write boundary (SM6.1)', () => {
       expect(result._tag).toBe('pushed')
       expect(fake.updateCount).toBe(1)
       expect(fake.remoteMarkdown(pageId)).toContain('Local edit')
+    }))
+
+  it('blocks the shared reconcile path over byte-backed media with DurableFileWriteUnsupported (shared site)', () =>
+    withTempDir(async (dir) => {
+      const path = join(dir, 'doc.nmd')
+      const fake = new FakeGateway([
+        [pageId, { title: 'Doc', markdown: 'alpha\n\nbeta\n\ngamma', storage: mediaStorage() }],
+      ])
+      // Bootstrap as shared — sidecar captures mediaStorage() at track time.
+      await run(trackPage({ pageId, outPath: path, source: 'shared' }), fake)
+
+      // Create a real divergence: local and remote both changed from the base.
+      await replaceNmdBody(path, 'alpha local\n\nbeta\n\ngamma')
+      fake.mutateRemote(pageId, 'alpha\n\nbeta remote\n\ngamma')
+      const beforeFile = await readFile(path, 'utf8')
+      const sidecarPath = syncStatePath({ path, pageId })
+      const beforeSidecar = await readFile(sidecarPath, 'utf8')
+      const beforeRemote = fake.remoteMarkdown(pageId)
+
+      const error = await runFailure(reconcileFile({ path }), fake)
+
+      expect(error).toMatchObject({
+        _tag: 'NmdNonBodyWriteBlockedError',
+        page_id: pageId,
+        guard: 'DurableFileWriteUnsupported',
+        fileIds: ['hero-image'],
+      })
+      // Guard must short-circuit before any mutation.
+      expect(fake.updateCount).toBe(0)
+      expect(fake.remoteMarkdown(pageId)).toBe(beforeRemote)
+      expect(await readFile(path, 'utf8')).toBe(beforeFile)
+      expect(await readFile(sidecarPath, 'utf8')).toBe(beforeSidecar)
+      expect(await exists(`${path}.conflict.roughdraft.md`)).toBe(false)
     }))
 })
 
