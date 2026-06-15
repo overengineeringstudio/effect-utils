@@ -625,17 +625,33 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L6',
     file: 'src/e2e/live-notion.e2e.test.ts',
   }),
+  scenario({
+    scenarioId: 'NDS-L1-planner-property-write-core-routing',
+    title:
+      'planner routes property edits through the shared PropertyWriteCore: schema-observation, identity, local-convergence, settlement, and remote-authority blocks',
+    requirementIds: ['R18', 'R29'],
+    guards: [
+      'RemoteSchemaRequired',
+      'PropertyIdentityAmbiguous',
+      'StaleRemoteSchema',
+      'LocalSurfaceDisagreement',
+      'RemoteAuthoritativeDrift',
+    ],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/planner/planner.unit.test.ts',
+  }),
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {
-  // Shared property-write guard vocabulary (from @overeng/notion-property-write).
-  // Planner routing happens in 3c-ii; these are placeholder entries for the
-  // compose-only 3c-i milestone so the Record<GuardName, ScenarioId> satisfies.
-  RemoteSchemaRequired: 'NDS-GUARD-remote-schema-required',
-  PropertyIdentityAmbiguous: 'NDS-GUARD-property-identity-ambiguous',
-  StaleRemoteSchema: 'NDS-GUARD-stale-remote-schema',
-  LocalSurfaceDisagreement: 'NDS-GUARD-local-surface-disagreement',
-  RemoteAuthoritativeDrift: 'NDS-GUARD-remote-authoritative-drift',
+  // Shared property-write guard vocabulary (from @overeng/notion-property-write),
+  // routed through the planner's workspace proof provider in 3c-ii. Each is
+  // backed by a concrete planner scenario in `src/planner/planner.unit.test.ts`.
+  RemoteSchemaRequired: 'NDS-L1-planner-property-write-core-routing',
+  PropertyIdentityAmbiguous: 'NDS-L1-planner-property-write-core-routing',
+  StaleRemoteSchema: 'NDS-L1-planner-property-write-core-routing',
+  LocalSurfaceDisagreement: 'NDS-L1-planner-property-write-core-routing',
+  RemoteAuthoritativeDrift: 'NDS-L1-planner-property-write-core-routing',
   ApiVersionUnsupported: 'NDS-GUARD-api-version-unsupported',
   ApiVersionUnverified: 'NDS-GUARD-api-version-unverified',
   ApiVersionCompatibilityMissing: 'NDS-GUARD-api-compatibility-missing',
@@ -817,48 +833,10 @@ export const traceabilityResiduals = [
     requirementIds: ['R12', 'R62'],
     reason: 'Store migration blocking is covered by store tests and awaits E2E promotion.',
   },
-  // Shared property-write guards added to GuardName in 3c-i (vocabulary compose).
-  // Planner routing and E2E promotion are deferred to 3c-ii.
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'RemoteSchemaRequired',
-    scenarioId: 'NDS-GUARD-remote-schema-required',
-    requirementIds: ['R18', 'R29'],
-    reason:
-      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'PropertyIdentityAmbiguous',
-    scenarioId: 'NDS-GUARD-property-identity-ambiguous',
-    requirementIds: ['R18', 'R29'],
-    reason:
-      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'StaleRemoteSchema',
-    scenarioId: 'NDS-GUARD-stale-remote-schema',
-    requirementIds: ['R18', 'R29'],
-    reason:
-      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'LocalSurfaceDisagreement',
-    scenarioId: 'NDS-GUARD-local-surface-disagreement',
-    requirementIds: ['R18', 'R29'],
-    reason:
-      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'RemoteAuthoritativeDrift',
-    scenarioId: 'NDS-GUARD-remote-authoritative-drift',
-    requirementIds: ['R18', 'R29'],
-    reason:
-      'Guard added in 3c-i vocabulary compose; planner routing and E2E coverage land in 3c-ii.',
-  },
+  // Shared property-write guards (3c-i vocabulary compose) are now routed through
+  // the planner's workspace proof provider in 3c-ii and covered by the concrete
+  // `NDS-L1-planner-property-write-core-routing` scenario, so they no longer need
+  // placeholder residuals.
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R01',
