@@ -242,6 +242,7 @@ const safeJsonError = (error: unknown): Record<string, unknown> => {
       readonly block_id?: unknown
       readonly guard?: unknown
       readonly fileIds?: unknown
+      readonly allowFlag?: unknown
     }
     return Object.fromEntries(
       Object.entries({
@@ -255,6 +256,7 @@ const safeJsonError = (error: unknown): Record<string, unknown> => {
         block_id: tagged.block_id,
         guard: tagged.guard,
         fileIds: tagged.fileIds,
+        allowFlag: tagged.allowFlag,
       }).filter(([, value]) => value !== undefined),
     )
   }
@@ -265,6 +267,19 @@ const safeJsonError = (error: unknown): Record<string, unknown> => {
     }
   }
   return { message: String(error) }
+}
+
+/** Returns ` [GuardName]` when the error carries a named guard, otherwise `''`. */
+const guardSuffix = (error: unknown): string => {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'guard' in error &&
+    typeof (error as { guard: unknown }).guard === 'string'
+  ) {
+    return ` [${(error as { guard: string }).guard}]`
+  }
+  return ''
 }
 
 const writeJsonLine = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value))
@@ -592,7 +607,7 @@ const syncCommand = Command.make(
                     yield* Console.log(
                       item._tag === 'success'
                         ? `${item.result._tag.padEnd(16)} ${basename(item.result.path)}`
-                        : `error            ${basename(item.path)}`,
+                        : `error            ${basename(item.path)}${guardSuffix(item.error)}`,
                     )
                   }
                   yield* Console.log('')

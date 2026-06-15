@@ -939,8 +939,9 @@ const syncTreeLocal = (opts: {
       /*
        * Route the composed body through the ONE guarded engine. A remote-edit
        * conflict writes `.conflict.roughdraft.md` and surfaces here as
-       * `NmdConflictError`; we record a `conflict` op and continue reconciling
-       * the rest of the tree rather than clobbering or aborting the whole run.
+       * `NmdConflictError`; a destructive body gate block surfaces as
+       * `NmdDestructiveBodyBlockedError`. Both are recorded as `conflict` ops so
+       * the rest of the tree continues reconciling rather than aborting.
        */
       const pushed = yield* pushGuarded({
         local,
@@ -964,6 +965,14 @@ const syncTreeLocal = (opts: {
         Effect.catchTag('NmdConflictError', (error) =>
           Effect.as(
             Effect.logWarning(`notion-md tree conflict on ${page.relPath}: ${error.message}`),
+            { ok: false as const },
+          ),
+        ),
+        Effect.catchTag('NmdDestructiveBodyBlockedError', (error) =>
+          Effect.as(
+            Effect.logWarning(
+              `notion-md tree destructive-body blocked on ${page.relPath}: [${error.guard}] ${error.message}`,
+            ),
             { ok: false as const },
           ),
         ),
