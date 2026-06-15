@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { Duration, Effect, Metric, MetricLabel, Schedule, Schema } from 'effect'
+import { Clock, Duration, Effect, Metric, MetricLabel, Schedule, Schema } from 'effect'
 
 import {
   OtelAttr,
@@ -514,6 +514,15 @@ export const sampleStoreGcRss = ({
       ),
     ),
     Effect.repeat(Schedule.spaced(interval)),
+    // Decouple the sampler from the contextual (possibly test/fixed) decision
+    // clock: this RSS sampler is infrastructure and must tick on real wall time
+    // regardless of any ambient clock. `Effect.withClock` overrides the
+    // `defaultServices` FiberRef that `Clock.sleep`/`Schedule.spaced` resolve
+    // through (the same one `Layer.setClock` populates) — `provideService` does
+    // NOT work for Clock, since it is a default service read via `clockWith`, not
+    // from the environment `R`. Placed BEFORE `forkScoped` so it wraps the forked
+    // fiber, not the fork action.
+    Effect.withClock(Clock.make()),
     Effect.forkScoped,
     Effect.asVoid,
   )
