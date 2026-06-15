@@ -92,19 +92,22 @@ type GcWorktreeDecision =
     }
 
 /**
- * Per-repo gc concurrency. Default 1 (memory-safe, the conservative cold-path
- * point). Streaming the subprocess output (constant per-operation memory) is
- * what makes raising this safe; the memory↔throughput sweet spot is fixed
- * experimentally via the OTEL sweep (decision 0007), so it is env-overridable
- * with `MEGAREPO_GC_REPO_CONCURRENCY`. Back-pressure stays structural (bounded
- * `Stream.mapEffect` concurrency); cross-megarepo safety is unaffected because
- * reconcile-all + per-worktree locks gate every destructive step regardless.
+ * Per-repo gc concurrency. Default 4 — the throughput sweet spot proven by the
+ * OTEL sweep (decision 0007): 1→4 is a 2.2× speedup and captures ~76% of the
+ * achievable gain, while 4→8 falls to the run-to-run noise floor and memory
+ * stays flat (whole process tree sub-GB even at 32×). Streaming the subprocess
+ * output (constant per-operation memory) is what makes raising this safe; it is
+ * env-overridable with `MEGAREPO_GC_REPO_CONCURRENCY`. Back-pressure stays
+ * structural (bounded `Stream.mapEffect` concurrency); cross-megarepo safety is
+ * unaffected because reconcile-all + per-worktree locks gate every destructive
+ * step regardless.
  */
+const GC_REPO_CONCURRENCY_DEFAULT = 4
 const gcRepoConcurrency = (): number => {
   const raw = process.env['MEGAREPO_GC_REPO_CONCURRENCY']
-  if (raw === undefined) return 1
+  if (raw === undefined) return GC_REPO_CONCURRENCY_DEFAULT
   const parsed = Number.parseInt(raw, 10)
-  return Number.isInteger(parsed) === true && parsed > 0 ? parsed : 1
+  return Number.isInteger(parsed) === true && parsed > 0 ? parsed : GC_REPO_CONCURRENCY_DEFAULT
 }
 const GC_WORKTREE_CONCURRENCY = 1
 const GC_PROGRESS_BATCH_SIZE = 10
