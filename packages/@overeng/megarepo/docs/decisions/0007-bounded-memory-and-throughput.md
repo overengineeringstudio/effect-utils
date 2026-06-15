@@ -73,9 +73,23 @@ not an accident:
   its cadence to the decision clock was the latent defect (a zero-sleep clock turns
   `Schedule.spaced` into a hot loop). The sampler is wrapped in
   `Effect.withClock(Clock.make())` so it ticks on wall time regardless of the
-  ambient clock. The bulk verdict tests stay hermetic w.r.t. OTLP (the setupFile
-  unsets `OTEL_EXPORTER_OTLP_ENDPOINT` so they never POST to a dev collector);
-  telemetry-asserting tests opt back in with their own ephemeral receiver and a
-  fixed DECISION clock whose `sleep` delegates to a live clock (so the exporter's
-  reader fibers tick on wall time too). The sampler is gated on the endpoint being
-  set, so it is zero-overhead when OTLP is off.
+  ambient clock. Telemetry-asserting tests use a fixed DECISION clock whose `sleep`
+  delegates to a live clock (so the exporter's reader fibers tick on wall time too).
+- **The OTLP endpoint is resolved at the composition root, never read ambiently in
+  library/command code (no test env handling needed).** `makeOtelCliLayer` is a pure
+  function of an explicit `endpoint: Option<string>` and stays `Layer.suspend` (so
+  exporter finalizers still flush on shutdown — verified: `unwrapEffect`/`unwrapScoped`
+  also flush in the current `@effect/opentelemetry`, but the pure layer sidesteps the
+  question). The `mr` binary resolves the endpoint via Effect `Config`
+  (`otelEndpointFromConfig` → `Config.option(Config.string('OTEL_EXPORTER_OTLP_ENDPOINT'))`)
+  and passes it in; the layer also provides that resolved signal as an `OtelConfig`
+  context tag, which the RSS-sampler gate reads via `Effect.serviceOption` instead of
+  `process.env`. Consequence: the bulk suite is hermetic by CONSTRUCTION — it runs
+  `mrCommand` without `makeOtelCliLayer`, so no exporter exists and the gate is a no-op
+  regardless of any ambient `OTEL_EXPORTER_OTLP_ENDPOINT` (proven: env set + no test
+  handling ⇒ zero `POST /v1/{traces,metrics}` reached a listener, suite green). The
+  earlier `delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT` in the setupFile is removed.
+  Telemetry-asserting tests pass their otelite receiver's endpoint EXPLICITLY into the
+  layer (no `process.env` mutation). This is a reusable cross-project pattern for any
+  env-derived config; the other `makeOtelCliLayer` call sites keep the env fallback and
+  can migrate incrementally.

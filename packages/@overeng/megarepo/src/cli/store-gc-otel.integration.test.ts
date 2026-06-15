@@ -21,7 +21,7 @@ import * as Cli from '@effect/cli'
 import { Command, FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Clock, Effect, Exit, Layer, Schema } from 'effect'
+import { Clock, Effect, Exit, Layer, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
@@ -97,9 +97,9 @@ const decodeGc = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
  * Run `mr store gc` end-to-end with the REAL OTEL exporter pointed at the given
  * base endpoint. Mirrors the cold-path harness (fixed clock + stub resolver),
  * but additionally provides `makeOtelCliLayer` so the gc's spans/metrics are
- * actually exported. The otel layer is built lazily (`makeOtelCliLayer` reads the
- * endpoint env inside `Layer.suspend`), so the endpoint must already be set when
- * this runs — the caller sets it within the capture scope. A small
+ * actually exported. The endpoint is passed EXPLICITLY into the layer (no
+ * `process.env` mutation): the layer stays a pure function of its input, and the
+ * `OtelConfig` it provides is what the gc's RSS-sampler gate reads. A small
  * `metricsExportInterval` + generous `shutdownTimeout` guarantee ≥1 metrics
  * collection (or the shutdown flush) lands the gauge for a sub-interval run.
  */
@@ -107,11 +107,13 @@ const runGcExported = ({
   cwd,
   storePath,
   prRepos,
+  endpoint,
   now = NOW,
 }: {
   cwd: AbsoluteDirPath
   storePath: AbsoluteDirPath
   prRepos: ReadonlyArray<StubPrRepo>
+  endpoint: string
   now?: number
 }) =>
   Effect.gen(function* () {
@@ -121,6 +123,7 @@ const runGcExported = ({
 
     const otelLayer = makeOtelCliLayer({
       serviceName: 'megarepo',
+      endpoint: Option.some(endpoint),
       exportInterval: 50,
       metricsExportInterval: 250,
       shutdownTimeout: 4000,
@@ -149,13 +152,16 @@ const runGcExported = ({
 const seedColdObservation = ({
   cwd,
   storePath,
+  endpoint,
 }: {
   cwd: AbsoluteDirPath
   storePath: AbsoluteDirPath
+  endpoint: string
 }) =>
   runGcExported({
     cwd,
     storePath,
+    endpoint,
     prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
     now: NOW - 20 * DAY_MS,
   })
@@ -169,19 +175,13 @@ const outsideCwd = () =>
     return cwd
   })
 
-/** Open a scoped ephemeral otelite receiver and point the gc's exporter at it for
- *  the lifetime of the scope. The endpoint is set as the BASE URL (Otlp.layerJson
- *  appends `/v1/traces` + `/v1/metrics` itself) and unset on scope close. */
+/** Open a scoped ephemeral otelite receiver. Its base URL (Otlp.layerJson appends
+ *  `/v1/traces` + `/v1/metrics` itself) is passed EXPLICITLY into the gc's
+ *  `makeOtelCliLayer` by the caller — no `process.env` mutation, so the exporter
+ *  is wired purely from the resolved endpoint. */
 const withCapture = Effect.gen(function* () {
   const otelite = yield* Otelite
-  const cap = yield* otelite.capture({})
-  process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = cap.endpoints.http
-  yield* Effect.addFinalizer(() =>
-    Effect.sync(() => {
-      delete process.env['OTEL_EXPORTER_OTLP_ENDPOINT']
-    }),
-  )
-  return cap
+  return yield* otelite.capture({})
 })
 
 const EXPECTED_PHASES = [
@@ -218,11 +218,12 @@ describe('mr store gc — OTEL instrumentation contract', () => {
         // Seed cold (absence grace) so the asserted run takes the cold-reclaim
         // path. The fixed DECISION clock keeps this reproducible; the real `sleep`
         // lets the exporter/sampler infra timers tick without busy-spinning.
-        yield* seedColdObservation({ cwd, storePath })
+        yield* seedColdObservation({ cwd, storePath, endpoint: cap.endpoints.http })
 
         const { results } = yield* runGcExported({
           cwd,
           storePath,
+          endpoint: cap.endpoints.http,
           prRepos: [
             { relativePath: REPO_RELATIVE, prs: [mergedPr('feature/merged', NOW - 30 * DAY_MS)] },
           ],
