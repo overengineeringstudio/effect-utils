@@ -267,7 +267,7 @@ const cleanBreakSqlitePath = ({
 }: {
   readonly workspaceRoot: string
   readonly databaseId: string
-}): string => join(workspaceRoot, `${databaseId}.sqlite`)
+}): string => join(workspaceRoot, 'data', 'v1', `${databaseId}.sqlite`)
 
 const liveDatabaseIdForDataSource = (dataSource: unknown): string => {
   if (

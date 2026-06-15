@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -55,6 +55,12 @@ import {
 } from '../core/ports.ts'
 import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
 import type { NotionGatewayClient, NotionGatewayPage } from '../gateway/notion.ts'
+import {
+  dataFilePath,
+  dataFileRelativePath,
+  pagesDirRelativePath,
+  writeWorkspaceManifestSync,
+} from '../local/manifest.ts'
 import { presentArtifactObservation } from '../local/workspace.ts'
 import { projectReplicaFromSyncStore } from '../replica/replica.ts'
 import { NotionSyncStore, openNotionSyncStore } from '../store/store.ts'
@@ -917,12 +923,31 @@ describe('CLI command surface', () => {
   it('discovers established workspace config for sync and suggests establishment when missing', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-config-'))
     try {
-      expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(
-        'No self-contained datasource-sync SQLite file found',
-      )
-      await createBoundSqlite({
-        path: join(dir, `${testIds.databaseId}.sqlite`),
-        workspace: decode({ schema: AbsolutePath, value: dir }),
+      const workspaceRootDir = decode({ schema: AbsolutePath, value: dir })
+      // Untracked workspace (no v1 manifest) fails closed with tracking guidance.
+      expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(/sync --from-notion/)
+
+      const sqlitePath = dataFilePath({
+        workspaceRoot: workspaceRootDir,
+        name: testIds.databaseId,
+      })
+      await mkdir(join(dir, 'data', 'v1'), { recursive: true })
+      await createBoundSqlite({ path: sqlitePath, workspace: workspaceRootDir })
+      writeWorkspaceManifestSync({
+        workspaceRoot: workspaceRootDir,
+        manifest: {
+          namespace_version: 'v1',
+          authority_mode: 'shared',
+          data_sources: [
+            {
+              name: testIds.databaseId,
+              data_source_id: testIds.dataSourceId,
+              database_id: testIds.databaseId,
+              data_file: dataFileRelativePath(testIds.databaseId),
+              pages_dir: pagesDirRelativePath(testIds.databaseId),
+            },
+          ],
+        },
       })
       const ctx = parseCliContext({ argv: ['sync', dir] })
       try {

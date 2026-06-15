@@ -63,6 +63,33 @@ export class SyncGuardError extends Schema.TaggedError<SyncGuardError>()('SyncGu
   message: Schema.String,
 }) {}
 
+/**
+ * Raised when a workspace is tracked but its namespace version is unknown
+ * (`UnknownWorkspaceNamespace`) or sibling namespace artifacts coexist
+ * (`MixedWorkspaceNamespace`). Both fail closed: the engine never migrates,
+ * rewrites, or reinterprets local artifacts under an unrecognized namespace.
+ */
+export class WorkspaceNamespaceError extends Schema.TaggedError<WorkspaceNamespaceError>()(
+  'WorkspaceNamespaceError',
+  {
+    guard: Schema.Literal('UnknownWorkspaceNamespace', 'MixedWorkspaceNamespace'),
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when a command is invoked against a workspace root that has no
+ * `notion.workspace.v1.json` manifest. A guidance error (not a guard): the
+ * workspace simply is not tracked yet, and the message tells the user how to
+ * establish it.
+ */
+export class WorkspaceNotTracked extends Schema.TaggedError<WorkspaceNotTracked>()(
+  'WorkspaceNotTracked',
+  {
+    message: Schema.String,
+  },
+) {}
+
 /** Union of all typed errors that the sync engine can raise in its Effect channel. */
 export type NotionDatasourceSyncError =
   | ApiVersionCompatibilityMissing

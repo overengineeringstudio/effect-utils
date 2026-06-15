@@ -15,6 +15,11 @@ import {
 import { PagePropertyItemPage } from '../core/commands.ts'
 import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
+import {
+  dataFileRelativePath,
+  loadWorkspaceManifest,
+  pagesDirRelativePath,
+} from '../local/manifest.ts'
 import { markReplicaChangeStatus, readPendingReplicaChanges } from '../replica/replica.ts'
 import {
   decode,
@@ -117,7 +122,7 @@ const makeDatabaseResolverClient = (calls: { retrieveDatabase: number }): Notion
 })
 
 const sqlitePathForWorkspace = (workspace: string): string =>
-  join(workspace, `${testIds.databaseId}.sqlite`)
+  join(workspace, 'data', 'v1', `${testIds.databaseId}.sqlite`)
 
 const sidecarStorePath = (workspace: string): string =>
   join(workspace, '.notion-datasource-sync', 'store.sqlite')
@@ -405,6 +410,24 @@ describe('clean-break self-contained SQLite storage contract', () => {
       expect(await exists(sidecarStorePath(workspace))).toBe(false)
       expect(await exists(sidecarConfigPath(workspace))).toBe(false)
       expectNoRemoteWrites(gateway)
+
+      // sync --from-notion writes the v1 manifest tracking the established source.
+      const manifestResult = loadWorkspaceManifest(workspace)
+      expect(manifestResult._tag).toBe('tracked')
+      if (manifestResult._tag === 'tracked') {
+        expect(manifestResult.manifest).toMatchObject({
+          namespace_version: 'v1',
+          authority_mode: 'shared',
+          data_sources: [
+            {
+              data_source_id: testIds.dataSourceId,
+              database_id: testIds.databaseId,
+              data_file: dataFileRelativePath(testIds.databaseId),
+              pages_dir: pagesDirRelativePath(testIds.databaseId),
+            },
+          ],
+        })
+      }
 
       openReadOnly(sqlitePath, (db) => {
         assertStorageTaxonomy(db)
@@ -1224,24 +1247,51 @@ describe('clean-break self-contained SQLite storage contract', () => {
       const workspace = await tempWorkspace()
       const { sqlitePath } = await establishWorkspace(workspace)
 
-      const tamperCases: ReadonlyArray<{
+      // Workspace-rooted tamper cases resolve their data file through the v1
+      // manifest, so each tampers the manifest-resolved file in its own fresh
+      // workspace (an in-place tamper, not a root copy) and runs against that
+      // workspace. This exercises the real integrity path: a corrupt/missing
+      // binding makes discovery refuse before any remote write.
+      const workspaceRootedTamperCases: ReadonlyArray<{
         readonly name: string
         readonly sql: (db: DatabaseSync) => void
-        readonly argv: (path: string) => ReadonlyArray<string>
+        readonly argv: (workspaceRoot: string) => ReadonlyArray<string>
       }> = [
         {
           name: 'missing workspace binding',
           sql: (db) => db.prepare(`DELETE FROM _nds_workspace_binding`).run(),
-          argv: () => ['sync', workspace],
+          argv: (workspaceRoot) => ['sync', workspaceRoot],
         },
         {
           name: 'invalid binding',
           sql: (db) =>
             db
               .prepare(`UPDATE _nds_workspace_binding SET workspace_root = ?`)
-              .run(join(workspace, 'moved')),
-          argv: () => ['status', workspace],
+              .run('/some/other/workspace'),
+          argv: (workspaceRoot) => ['status', workspaceRoot],
         },
+      ]
+
+      await Promise.all(
+        workspaceRootedTamperCases.map(async (tamperCase) => {
+          const caseWorkspace = await tempWorkspace()
+          const { sqlitePath: caseSqlitePath } = await establishWorkspace(caseWorkspace)
+          const db = new DatabaseSync(caseSqlitePath)
+          try {
+            tamperCase.sql(db)
+          } finally {
+            db.close()
+          }
+          const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+          await expectCommandFailsClosed({ argv: tamperCase.argv(caseWorkspace), gateway })
+        }),
+      )
+
+      const tamperCases: ReadonlyArray<{
+        readonly name: string
+        readonly sql: (db: DatabaseSync) => void
+        readonly argv: (path: string) => ReadonlyArray<string>
+      }> = [
         {
           name: 'dropped private state',
           sql: (db) => {

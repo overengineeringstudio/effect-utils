@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 import { Schema } from 'effect'
@@ -35,6 +35,7 @@ import {
   WorkspaceRelativePath,
 } from '../core/domain.ts'
 import { IdempotencyKey, SyncEventId, type SyncRootId } from '../core/events.ts'
+import { dataFilePath } from '../local/manifest.ts'
 import type { PlanDecision, PlannerIntent } from '../planner/planner.ts'
 import { resolveConflictCommand } from '../planner/user-commands.ts'
 import { BodyProjectionPayload, hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
@@ -344,9 +345,12 @@ const slugForView = (value: string): string => {
   return slug.length === 0 ? 'data_source' : slug
 }
 
-/** Default path for the replica file inside a workspace root. */
+/**
+ * Default path for the single-source replica/data file inside a workspace root,
+ * under the versioned `data/v1/notion.sqlite` namespace layout.
+ */
 export const defaultReplicaPath = (workspaceRoot: AbsolutePath): string =>
-  join(workspaceRoot, replicaFileName)
+  dataFilePath({ workspaceRoot, name: 'notion' })
 
 const createReplicaSchema = (db: DatabaseSync): void => {
   const localChangesSchema = db

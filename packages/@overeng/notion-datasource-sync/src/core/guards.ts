@@ -61,6 +61,8 @@ const syncOnlyGuardNames = [
   'StoreMigrationBlocked',
   'QueueBackpressureExceeded',
   'RawPayloadRetentionUnsafe',
+  'UnknownWorkspaceNamespace',
+  'MixedWorkspaceNamespace',
 ] as const
 
 /** Exhaustive set of named safety guards; each guard represents a distinct safety check the sync engine may enforce. */

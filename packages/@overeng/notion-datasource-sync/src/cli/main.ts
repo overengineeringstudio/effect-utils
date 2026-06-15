@@ -2,7 +2,7 @@
 
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
@@ -42,6 +42,7 @@ import {
   PropertyId,
   type CapabilityName,
 } from '../core/domain.ts'
+import { WorkspaceNamespaceError, WorkspaceNotTracked } from '../core/errors.ts'
 import type {
   BodySyncError,
   LocalStorageError,
@@ -86,6 +87,16 @@ import {
   NotionDataSourceGatewayLive,
   type NotionGatewayClient,
 } from '../gateway/notion.ts'
+import {
+  dataFilePath,
+  dataFileRelativePath,
+  hiddenStateDirectoryName,
+  loadWorkspaceManifest,
+  pagesDirRelativePath,
+  writeWorkspaceManifestSync,
+  type WorkspaceManifestDataSourceV1,
+  type WorkspaceManifestV1,
+} from '../local/manifest.ts'
 import { filesystemLocalWorkspacePortLayer } from '../local/workspace.ts'
 import {
   annotateSpan,
@@ -288,7 +299,7 @@ const defaultSqlitePath = ({
 }): typeof AbsolutePath.Type =>
   decode({
     schema: AbsolutePath,
-    value: join(workspaceRoot, `${databaseId}.sqlite`),
+    value: dataFilePath({ workspaceRoot, name: databaseId }),
   })
 
 const projectReplicaIfWritable = ({
@@ -570,10 +581,11 @@ const withOptionalCommandOptions = ({
 const withOptionalObservationLimit = (context: CliContext): { readonly rowLimit?: number } =>
   context.rowLimit === undefined ? {} : { rowLimit: context.rowLimit }
 
+// Watch daemon state is hidden implementation state (R02): it always lives under
+// the versioned `.notion/v1` namespace, never inside the public `data/v1` SQL
+// surface dir alongside the data file.
 const defaultWatchStatePath = (context: CliContext): string =>
-  context.storePath === undefined || context.storePath === ':memory:'
-    ? join(context.workspaceRoot, '.notion-datasource-sync', 'watch.json')
-    : `${context.storePath}.watch.json`
+  join(context.workspaceRoot, hiddenStateDirectoryName, 'watch.json')
 
 const defaultWebhookReceiverPort = 39231
 const defaultWebhookReceiverPathPrefix = '/notion-datasource-sync/webhook/notion'
@@ -1834,35 +1846,108 @@ const validateSelfContainedSqlite = (storePath: string): void => {
   }
 }
 
+/**
+ * Fail closed on a workspace whose namespace is unknown or mixed. Must run
+ * before any local edit is read as write intent. Returns the loaded manifest
+ * result so callers can branch on `tracked` vs `untracked` without reloading.
+ */
+const requireCompatibleWorkspaceNamespace = (workspaceRoot: typeof AbsolutePath.Type) => {
+  const result = loadWorkspaceManifest(workspaceRoot)
+  if (result._tag === 'mixed-namespace') {
+    throw new WorkspaceNamespaceError({
+      guard: 'MixedWorkspaceNamespace',
+      message: `Workspace ${workspaceRoot} mixes namespace versions (${result.offendingPaths.join(', ')}); resolve to a single namespace before running. The system will not migrate or reinterpret artifacts.`,
+    })
+  }
+  if (result._tag === 'unknown-namespace') {
+    throw new WorkspaceNamespaceError({
+      guard: 'UnknownWorkspaceNamespace',
+      message: `Workspace manifest ${result.manifestPath} is not a supported v1 namespace; refusing to open. ${result.reason}`,
+    })
+  }
+  return result
+}
+
+/**
+ * Writes (or updates) the v1 workspace manifest when a `sync --from-notion`
+ * establishes a tracked source. Preserves an existing manifest's
+ * `authority_mode` and other sources; upserts the established source by
+ * `data_source_id`. The source `name` reuses the database ID, so artifacts land
+ * at `data/v1/<databaseId>.sqlite` and `pages/v1/<databaseId>` — the previous
+ * single-file location, relocated into the versioned namespace.
+ */
+const writeEstablishedWorkspaceManifest = (source: {
+  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly name: string
+  readonly dataSourceId: typeof DataSourceId.Type
+  readonly databaseId: string
+}): void => {
+  const existing = loadWorkspaceManifest(source.workspaceRoot)
+  const entry: WorkspaceManifestDataSourceV1 = {
+    name: source.name,
+    data_source_id: source.dataSourceId,
+    database_id: source.databaseId,
+    data_file: dataFileRelativePath(source.name),
+    pages_dir: pagesDirRelativePath(source.name),
+  }
+  const priorSources =
+    existing._tag === 'tracked'
+      ? existing.manifest.data_sources.filter(
+          (current) => current.data_source_id !== source.dataSourceId,
+        )
+      : []
+  const manifest: WorkspaceManifestV1 = {
+    namespace_version: 'v1',
+    authority_mode: existing._tag === 'tracked' ? existing.manifest.authority_mode : 'shared',
+    data_sources: [...priorSources, entry],
+    ...(existing._tag === 'tracked' && existing.manifest.linked_views !== undefined
+      ? { linked_views: existing.manifest.linked_views }
+      : {}),
+  }
+  writeWorkspaceManifestSync({ workspaceRoot: source.workspaceRoot, manifest })
+}
+
+/**
+ * Resolves the tracked data file for an established workspace from its v1
+ * manifest. The manifest is the location source-of-truth; the binding in the
+ * resolved SQLite file is then verified for integrity.
+ */
 const discoverSelfContainedStore = (
   workspaceRoot: typeof AbsolutePath.Type,
 ): DiscoveredSelfContainedStore => {
-  const explicitSqliteFiles = readdirSync(workspaceRoot)
-    .filter((entry) => entry.endsWith('.sqlite'))
-    .map((entry) => join(workspaceRoot, entry))
-  const matches = explicitSqliteFiles
-    .map((storePath) => ({ storePath, binding: readSelfContainedBinding(storePath) }))
-    .filter(
-      (entry): entry is { readonly storePath: string; readonly binding: WorkspaceBindingRow } =>
-        entry.binding !== undefined,
-    )
-  if (explicitSqliteFiles.length !== matches.length) {
-    throw new CliArgumentError({
-      message: `Found a SQLite file in ${workspaceRoot} with missing or corrupt datasource-sync internals; pass --sqlite <path> after repair`,
+  const result = requireCompatibleWorkspaceNamespace(workspaceRoot)
+  if (result._tag === 'untracked') {
+    throw new WorkspaceNotTracked({
+      message: `No workspace manifest at ${result.manifestPath}; this directory is not a tracked datasource workspace. Run sync --from-notion <database-url> ${workspaceRoot} to establish it.`,
     })
   }
-  if (matches.length !== 1) {
+
+  const sources = result.manifest.data_sources
+  if (sources.length !== 1) {
     throw new CliArgumentError({
       message:
-        matches.length === 0
-          ? `No self-contained datasource-sync SQLite file found in ${workspaceRoot}; run sync --from-notion <database-url> ${workspaceRoot}`
-          : `Multiple datasource-sync SQLite files found in ${workspaceRoot}; pass --sqlite <path>`,
+        sources.length === 0
+          ? `Workspace manifest in ${workspaceRoot} tracks no data sources; run sync --from-notion <database-url> ${workspaceRoot}`
+          : `Workspace manifest in ${workspaceRoot} tracks multiple data sources; pass --sqlite <path>`,
     })
   }
-  const { storePath, binding } = matches[0]!
+
+  const source = sources[0]!
+  const storePath = join(workspaceRoot, source.data_file)
+  const binding = readSelfContainedBinding(storePath)
+  if (binding === undefined) {
+    throw new CliArgumentError({
+      message: `Workspace data file ${storePath} is missing or has corrupt datasource-sync internals; pass --sqlite <path> after repair`,
+    })
+  }
   if (binding.workspaceRoot !== workspaceRoot) {
     throw new CliArgumentError({
       message: `SQLite binding workspace mismatch for ${storePath}; refusing to open it from ${workspaceRoot}`,
+    })
+  }
+  if (binding.dataSourceId !== source.data_source_id) {
+    throw new CliArgumentError({
+      message: `Workspace data file ${storePath} is bound to ${binding.dataSourceId} but the manifest declares ${source.data_source_id}; refusing to open`,
     })
   }
   return {
@@ -1919,6 +2004,16 @@ export const parseCliContext = ({
         'sync --from-notion always creates <workspace>/<database-id>.sqlite; --sqlite is only for established replica commands',
     })
   }
+  // Captured when a workspace-rooted command establishes a tracked source, so
+  // the v1 manifest can be (re)written after the store is opened.
+  let establishManifestSource:
+    | {
+        readonly workspaceRoot: typeof AbsolutePath.Type
+        readonly name: string
+        readonly dataSourceId: typeof DataSourceId.Type
+        readonly databaseId: string
+      }
+    | undefined
   const discovered =
     command._tag === 'sync-from-notion'
       ? (() => {
@@ -1926,6 +2021,11 @@ export const parseCliContext = ({
             command.remoteRef._tag === 'database'
               ? command.remoteRef.databaseId
               : (command.remoteRef.sourceDatabaseId ?? command.dataSourceId)
+          // Fail closed on a mixed or unknown namespace before establishing
+          // anything. An absent manifest (untracked) is fine here: we create it.
+          if (commandDryRun !== true) {
+            requireCompatibleWorkspaceNamespace(command.workspaceRoot)
+          }
           const storePath =
             explicitSqlitePath ??
             defaultSqlitePath({ workspaceRoot: command.workspaceRoot, databaseId })
@@ -1940,6 +2040,14 @@ export const parseCliContext = ({
             throw new CliArgumentError({
               message: `SQLite file is already bound to data source ${existingBinding.dataSourceId}; refusing to establish ${command.dataSourceId}`,
             })
+          if (commandDryRun !== true) {
+            establishManifestSource = {
+              workspaceRoot: command.workspaceRoot,
+              name: databaseId,
+              dataSourceId: decode({ schema: DataSourceId, value: command.dataSourceId }),
+              databaseId,
+            }
+          }
           return {
             storePath: commandDryRun === true ? ':memory:' : storePath,
             rootId: rootIdForDataSource(command.dataSourceId),
@@ -1971,6 +2079,11 @@ export const parseCliContext = ({
               schema: AbsolutePath,
               value: workspaceRoot ?? existingBinding?.workspaceRoot,
             })
+            // When export targets a workspace root (not an explicit --sqlite
+            // file), fail closed on an incompatible namespace before reading.
+            if (explicitSqlitePath === undefined && commandDryRun !== true) {
+              requireCompatibleWorkspaceNamespace(resolvedWorkspaceRoot)
+            }
             const databaseId =
               command.fromNotion.remoteRef._tag === 'database'
                 ? command.fromNotion.remoteRef.databaseId
@@ -2104,6 +2217,10 @@ export const parseCliContext = ({
         message: `SQLite binding mismatch for ${discovered.storePath}; refusing to open`,
       })
     }
+  }
+
+  if (establishManifestSource !== undefined) {
+    writeEstablishedWorkspaceManifest(establishManifestSource)
   }
 
   return {
