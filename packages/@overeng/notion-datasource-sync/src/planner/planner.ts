@@ -207,6 +207,38 @@ export type PlannerProjectionSnapshot = {
   readonly remoteChanges: ReadonlyArray<ConflictSurface>
 }
 
+/**
+ * Overlays the workspace-wide authority mode (decisions 0003, 0010) onto every
+ * property snapshot's `writeMode`. This is the single chokepoint applied wherever
+ * a `readPlannerProjectionSnapshot` result is handed to `planIntent`: the manifest
+ * authority mode drives property-write authority, not yet-to-be-built per-page
+ * observation. `remote` makes a local property edit drift
+ * (`RemoteAuthoritativeDrift`); `local`/`shared` reach the property-write proof.
+ * `undefined` leaves the snapshot untouched so the planner keeps its `shared`
+ * default (behavior-preserving for standalone/untracked stores).
+ *
+ * Every code path that plans a local property write — `pushOneShotSync`, the
+ * `conflicts resolve` command, and the CDC `conflict_resolution` path — MUST route
+ * its snapshot through this helper, or a `remote`-mode workspace silently bypasses
+ * the drift guard.
+ */
+export const withAuthorityMode = ({
+  snapshot,
+  authorityMode,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly authorityMode: 'local' | 'shared' | 'remote' | undefined
+}): PlannerProjectionSnapshot =>
+  authorityMode === undefined
+    ? snapshot
+    : {
+        ...snapshot,
+        properties: snapshot.properties.map((property) => ({
+          ...property,
+          writeMode: authorityMode,
+        })),
+      }
+
 /** Wrapper that pairs a `RemoteWriteCommand` with its sync metadata (surface key, intent event id, preflight guards) for safe outbox enqueuing. */
 export type OutboxCommandEnvelope = {
   readonly commandId: CommandId

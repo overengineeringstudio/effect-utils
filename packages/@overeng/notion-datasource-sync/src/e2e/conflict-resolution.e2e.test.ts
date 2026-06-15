@@ -224,6 +224,64 @@ describe('conflict resolution user command E2E', () => {
     },
   )
 
+  // SM4 authority-mode invariant (HIGH regression): in a `remote`-authoritative
+  // workspace, resolving a same-property conflict with a local/manual value must
+  // be refused as `RemoteAuthoritativeDrift` and enqueue NO remote write — the
+  // conflict-resolution path must thread `authorityMode` into the planner exactly
+  // like `pushOneShotSync` does.
+  it.each([
+    ['keep-local', { _tag: 'keep-local', value: propertyPatchValue('Local wins') }],
+    ['manual', { _tag: 'manual', value: propertyPatchValue('Manual value') }],
+  ] satisfies ReadonlyArray<readonly [string, ConflictResolutionChoice]>)(
+    'refuses a %s conflict resolution as drift in a remote-authoritative workspace',
+    async (_label, choice) => {
+      const { clock, storeFixture } = await seedSamePropertyConflict()
+      const conflictId = conflictIdFromList(storeFixture.store)
+
+      try {
+        clock.advanceMillis(1)
+        const result = resolveConflictCommand({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          conflictId,
+          choice,
+          authorityMode: 'remote',
+          now: clock.now,
+        })
+
+        expect(result).toMatchObject({
+          planned: {
+            events: [],
+            commands: [],
+            guards: [{ guard: 'RemoteAuthoritativeDrift' }],
+          },
+          applied: {
+            events: [],
+            commands: [],
+            guards: [{ guard: 'RemoteAuthoritativeDrift' }],
+          },
+          // The conflict stays open; no remote write was enqueued.
+          surface: { conflicts: [{ conflictId, state: 'open' }], outbox: [] },
+        })
+
+        // Contrast: the SAME resolution in a `shared` workspace reaches the proof
+        // and enqueues a write — proving the block is mode-driven, not blanket.
+        const sharedResult = resolveConflictCommand({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          conflictId,
+          choice,
+          authorityMode: 'shared',
+          now: clock.now,
+        })
+        expect(sharedResult.planned.commands).toHaveLength(1)
+        expect(sharedResult.planned.guards).toHaveLength(0)
+      } finally {
+        storeFixture.cleanup()
+      }
+    },
+  )
+
   it('lists and resolves a same-property conflict by keeping remote without enqueueing a write', async () => {
     const { clock, storeFixture } = await seedSamePropertyConflict()
 

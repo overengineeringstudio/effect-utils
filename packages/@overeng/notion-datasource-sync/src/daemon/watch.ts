@@ -450,6 +450,7 @@ const readPendingReplicaPlannerInputs = ({ options }: { readonly options: WatchD
     replicaPath,
     store: options.store,
     rootId: options.rootId,
+    ...(options.authorityMode === undefined ? {} : { authorityMode: options.authorityMode }),
   })
   const intents = replicaChangesToPlannerIntents({
     changes: changes.filter((change) => change.kind !== 'conflict_resolution'),

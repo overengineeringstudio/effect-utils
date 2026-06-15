@@ -18,10 +18,16 @@ import {
 import { type GuardName as GuardNameType } from '../core/guards.ts'
 import { readUserActionSurface, type PlannedGuard } from '../core/result-envelope.ts'
 import { readOneShotSyncStatus } from '../core/status.ts'
+import type { AuthorityMode } from '../local/manifest.ts'
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import type { ConflictProjectionRow, NotionSyncStore } from '../store/store.ts'
 import { makeGuardBlockedEvent, makeRemoteWritePlannedEvent } from '../sync/observation.ts'
-import { planIntent, type OutboxCommandEnvelope, type PropertyEditIntent } from './planner.ts'
+import {
+  planIntent,
+  withAuthorityMode,
+  type OutboxCommandEnvelope,
+  type PropertyEditIntent,
+} from './planner.ts'
 
 /** The user's chosen strategy when resolving a same-property conflict: keep the local value, accept the remote value, or supply a manual replacement. */
 export type ConflictResolutionChoice =
@@ -49,6 +55,13 @@ type UserActionOptions = {
   readonly rootId: SyncRootId
   readonly dryRun?: boolean
   readonly now?: () => Date
+  /**
+   * Workspace-wide authority mode (decisions 0003, 0010). Threaded onto the
+   * planner snapshot so a `keep-local`/`manual` conflict resolution against a
+   * `remote`-authoritative workspace is refused as `RemoteAuthoritativeDrift`
+   * rather than silently enqueuing a property patch.
+   */
+  readonly authorityMode?: AuthorityMode
 }
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>({
@@ -268,6 +281,7 @@ const conflictResolutionPlan = ({
   rootId,
   conflictId,
   choice,
+  authorityMode,
   now,
 }: UserActionOptions & {
   readonly conflictId: SyncEventId
@@ -300,7 +314,10 @@ const conflictResolutionPlan = ({
     }
   }
 
-  const snapshot = store.readPlannerProjectionSnapshot(rootId)
+  const snapshot = withAuthorityMode({
+    snapshot: store.readPlannerProjectionSnapshot(rootId),
+    authorityMode,
+  })
   const row = snapshot.rows.find((candidate) => candidate.pageId === conflict.pageId)
   const schemaProperty = snapshot.schema.find(
     (candidate) =>

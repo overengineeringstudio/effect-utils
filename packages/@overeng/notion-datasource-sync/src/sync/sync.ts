@@ -39,11 +39,11 @@ import {
 } from '../observability/observability.ts'
 import {
   planIntent,
+  withAuthorityMode,
   type BodyEditIntent,
   type LocalDeleteIntent,
   type PlanDecision,
   type PlannerIntent,
-  type PlannerProjectionSnapshot,
 } from '../planner/planner.ts'
 import { pageLifecycleHash } from '../store/projections.ts'
 import type { NotionSyncStore } from '../store/store.ts'
@@ -186,31 +186,6 @@ const propertyIdFromSurface = (surface: string): typeof PropertyId.Type | undefi
   const match = /^page:[^:]+:property:(.+)$/.exec(surface)
   return match?.[1] === undefined ? undefined : decode({ schema: PropertyId, value: match[1] })
 }
-
-/**
- * Overlays the workspace-wide authority mode onto every property snapshot's
- * `writeMode`. The single chokepoint where a `readPlannerProjectionSnapshot`
- * result is handed to the planner: the manifest authority mode (decisions 0003,
- * 0010) drives property-write authority, not yet-to-be-built per-page
- * observation. `undefined` leaves the snapshot untouched so the planner keeps its
- * `shared` default and behavior is preserved for standalone/untracked stores.
- */
-const withAuthorityMode = ({
-  snapshot,
-  authorityMode,
-}: {
-  readonly snapshot: PlannerProjectionSnapshot
-  readonly authorityMode: AuthorityMode | undefined
-}): PlannerProjectionSnapshot =>
-  authorityMode === undefined
-    ? snapshot
-    : {
-        ...snapshot,
-        properties: snapshot.properties.map((property) => ({
-          ...property,
-          writeMode: authorityMode,
-        })),
-      }
 
 const appendDecision = ({
   store,

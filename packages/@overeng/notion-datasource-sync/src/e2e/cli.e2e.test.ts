@@ -535,13 +535,14 @@ describe('CLI command surface', () => {
   })
 
   it('parses track as the adoption verb with a workspace-wide authority --mode', () => {
-    // `track <remote> <workspace>` defaults the authority mode to `shared`.
+    // `track <remote> <workspace>` defaults the authority mode to `remote`
+    // (safe-by-default mirror adoption; VRS cli/spec.md).
     expect(parseCliCommand(['track', 'data-source-1', '/tmp/notion-workspace'])).toMatchObject({
       _tag: 'track',
       dataSourceId: 'data-source-1',
       remoteRef: { _tag: 'data-source', dataSourceId: 'data-source-1' },
       workspaceRoot: '/tmp/notion-workspace',
-      authorityMode: 'shared',
+      authorityMode: 'remote',
       dryRun: false,
     })
     // `track --mode <m>` carries the chosen workspace-wide authority mode.
@@ -1009,11 +1010,12 @@ describe('CLI command surface', () => {
     const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-config-'))
     try {
       const workspaceRootDir = decode({ schema: AbsolutePath, value: dir })
-      // Untracked workspace (no v1 manifest) fails closed with tracking guidance.
-      expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(/sync --from-notion/)
+      // Untracked workspace (no v1 manifest) fails closed with tracking guidance
+      // that points at the canonical adoption verb (`track`).
+      expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(/Run track <database-url>/)
 
       // Establish a split workspace (ADR 0011): control plane in state.sqlite,
-      // public projection in the data file, mirroring sync --from-notion.
+      // public projection in the data file, mirroring the adoption path.
       await createSplitWorkspaceStore(workspaceRootDir)
       writeWorkspaceManifestSync({
         workspaceRoot: workspaceRootDir,
