@@ -5,7 +5,7 @@
  */
 
 import { Command } from '@effect/platform'
-import { Cause, Chunk, Duration, Effect, Option, Schedule, Stream } from 'effect'
+import { Cause, Chunk, Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
 
 import * as Observability from './observability.ts'
 
@@ -85,11 +85,25 @@ export class GitCommandError extends Error {
 // Git Commands
 // =============================================================================
 
+/** Decode a chunk of byte buffers into a string with a single O(n) allocation. */
+const decodeChunks = (chunks: Chunk.Chunk<Uint8Array>): string => {
+  const arr = Chunk.toReadonlyArray(chunks)
+  let total = 0
+  for (const chunk of arr) total += chunk.length
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of arr) {
+    merged.set(chunk, offset)
+    offset += chunk.length
+  }
+  return new TextDecoder('utf-8').decode(merged)
+}
+
 /**
- * Run a git command and return stdout.
- * Fails with GitCommandError if exit code is non-zero.
+ * Start a git subprocess with piped stdout/stderr and register a SIGKILL
+ * finalizer so an interrupted command never leaks a running child.
  */
-const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
+const startGitProcess = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   Effect.gen(function* () {
     const cmd = Command.make('git', ...args).pipe(
       cwd !== undefined ? Command.workingDirectory(cwd) : (x) => x,
@@ -112,31 +126,31 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
         yield* process.kill('SIGKILL').pipe(Effect.catchAll(() => Effect.void))
       }),
     )
+    return process
+  })
 
-    // Collect stdout and stderr
-    const decoder = new TextDecoder('utf-8')
+/**
+ * Run a git command and return stdout.
+ * Fails with GitCommandError if exit code is non-zero.
+ *
+ * Buffers the full output, so use {@link streamGitCommandLines} for commands
+ * whose output is unbounded (large `status`/`worktree list`/`rev-list`).
+ */
+const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
+  Effect.gen(function* () {
+    const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
+
+    // Collect stdout and stderr. Concat is a single O(n) allocation per stream
+    // (sum lengths once, allocate once, copy once) — the previous per-chunk
+    // `reduce` reallocated the whole buffer on every chunk, which is O(n²) in
+    // output size and OOM-killed the host on large `git status` output.
     const [stdoutChunks, stderrChunks] = yield* Effect.all([
       Stream.runCollect(process.stdout),
       Stream.runCollect(process.stderr),
     ])
 
-    const stdout = decoder.decode(
-      Chunk.toReadonlyArray(stdoutChunks).reduce((acc, chunk) => {
-        const result = new Uint8Array(acc.length + chunk.length)
-        result.set(acc)
-        result.set(chunk, acc.length)
-        return result
-      }, new Uint8Array()),
-    )
-
-    const stderr = decoder.decode(
-      Chunk.toReadonlyArray(stderrChunks).reduce((acc, chunk) => {
-        const result = new Uint8Array(acc.length + chunk.length)
-        result.set(acc)
-        result.set(chunk, acc.length)
-        return result
-      }, new Uint8Array()),
-    )
+    const stdout = decodeChunks(stdoutChunks)
+    const stderr = decodeChunks(stderrChunks)
 
     const exitCode = yield* process.exitCode
 
@@ -145,6 +159,51 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
     }
 
     return stdout.trim()
+  }).pipe(Effect.scoped)
+
+/**
+ * Run a git command, folding stdout LINE BY LINE through `sink` at constant
+ * memory — stdout is never materialized, so peak memory is independent of output
+ * size. stderr is collected (bounded: small for the commands this is used with)
+ * and the exit code is checked, so {@link GitCommandError} semantics are
+ * identical to {@link runGitCommand}.
+ *
+ * `streamLines` alone is unsuitable here: it discards the exit code and stderr,
+ * silently returning an empty stream on a failing command. We therefore drive the
+ * process explicitly via {@link startGitProcess}.
+ *
+ * Lines are split with `Stream.splitLines`, which (like a trailing-newline-aware
+ * `split('\n')`) drops only the final empty segment after the trailing newline;
+ * interior blank lines are preserved, so porcelain record separators survive.
+ */
+const streamGitCommandLines = <A>({
+  args,
+  cwd,
+  sink,
+}: {
+  args: ReadonlyArray<string>
+  cwd?: string
+  sink: Sink.Sink<A, string>
+}) =>
+  Effect.gen(function* () {
+    const process = yield* startGitProcess(cwd !== undefined ? { args, cwd } : { args })
+
+    const [result, stderrChunks, exitCode] = yield* Effect.all(
+      [
+        process.stdout.pipe(Stream.decodeText('utf-8'), Stream.splitLines, Stream.run(sink)),
+        Stream.runCollect(process.stderr),
+        process.exitCode,
+      ],
+      { concurrency: 'unbounded' },
+    )
+
+    if (exitCode !== 0) {
+      return yield* Effect.fail(
+        new GitCommandError({ args, exitCode, stderr: decodeChunks(stderrChunks) }),
+      )
+    }
+
+    return result
   }).pipe(Effect.scoped)
 
 // =============================================================================
@@ -367,46 +426,59 @@ export const moveWorktree = (args: { repoPath: string; fromPath: string; toPath:
  */
 export const listWorktrees = (repoPath: string) =>
   Effect.gen(function* () {
-    const output = yield* runGitCommand({
-      args: ['worktree', 'list', '--porcelain'],
-      cwd: repoPath,
-    })
-    const worktrees: Array<{
-      path: string
-      head: string
-      branch: Option.Option<string>
-    }> = []
+    type Worktree = { path: string; head: string; branch: Option.Option<string> }
+    type ParserState = {
+      readonly worktrees: ReadonlyArray<Worktree>
+      readonly current: { path?: string; head?: string; branch?: string }
+    }
 
-    let current: { path?: string; head?: string; branch?: string } = {}
-    for (const line of output.split('\n')) {
-      if (line.startsWith('worktree ') === true) {
-        current.path = line.slice(9)
-      } else if (line.startsWith('HEAD ') === true) {
-        current.head = line.slice(5)
-      } else if (line.startsWith('branch ') === true) {
-        current.branch = line.slice(7).replace('refs/heads/', '')
-      } else if (line === '') {
-        if (current.path !== undefined && current.head !== undefined) {
-          worktrees.push({
+    const flush = (state: ParserState): ParserState => {
+      const { current } = state
+      if (current.path === undefined || current.head === undefined) {
+        return { worktrees: state.worktrees, current: {} }
+      }
+      return {
+        worktrees: [
+          ...state.worktrees,
+          {
             path: current.path,
             head: current.head,
             branch: Option.fromNullable(current.branch),
-          })
-        }
-        current = {}
+          },
+        ],
+        current: {},
       }
     }
 
-    // Flush remaining entry if output doesn't end with blank line
-    if (current.path !== undefined && current.head !== undefined) {
-      worktrees.push({
-        path: current.path,
-        head: current.head,
-        branch: Option.fromNullable(current.branch),
-      })
-    }
+    // Fold one line at a time so memory is bounded by the parsed worktree set,
+    // never the full subprocess output. `worktree list --porcelain` emits
+    // newline-delimited records separated by blank lines; a record ends on a
+    // blank line, and the final record is flushed at end-of-stream.
+    const finalState = yield* streamGitCommandLines({
+      args: ['worktree', 'list', '--porcelain'],
+      cwd: repoPath,
+      sink: Sink.foldLeft<ParserState, string>({ worktrees: [], current: {} }, (state, line) => {
+        if (line.startsWith('worktree ') === true) {
+          return { ...state, current: { ...state.current, path: line.slice(9) } }
+        }
+        if (line.startsWith('HEAD ') === true) {
+          return { ...state, current: { ...state.current, head: line.slice(5) } }
+        }
+        if (line.startsWith('branch ') === true) {
+          return {
+            ...state,
+            current: { ...state.current, branch: line.slice(7).replace('refs/heads/', '') },
+          }
+        }
+        if (line === '') {
+          return flush(state)
+        }
+        return state
+      }),
+    })
 
-    return worktrees
+    // Flush remaining entry if output doesn't end with a blank line.
+    return [...flush(finalState).worktrees]
   })
 
 // =============================================================================
@@ -533,13 +605,15 @@ export const refExists = (args: { repoPath: string; ref: string }) =>
  * refs every commit is reported as unpushed.
  */
 export const revListUnpushed = (args: { repoPath: string; ref: string }) =>
-  Effect.gen(function* () {
-    const output = yield* runGitCommand({
-      args: ['rev-list', args.ref, '--not', '--remotes'],
-      cwd: args.repoPath,
-    })
-    return output.split('\n').filter((line) => line.trim().length > 0)
-  })
+  streamGitCommandLines({
+    args: ['rev-list', args.ref, '--not', '--remotes'],
+    cwd: args.repoPath,
+    // Fold line-by-line into the commit list so the unbounded `rev-list` output
+    // is never materialized as one buffer (it can list an entire branch history).
+    sink: Sink.foldLeft<ReadonlyArray<string>, string>([], (commits, line) =>
+      line.trim().length > 0 ? [...commits, line] : commits,
+    ),
+  }).pipe(Effect.map((commits) => [...commits]))
 
 /**
  * Whether the repo has a non-empty stash.
@@ -706,14 +780,20 @@ const getUnpushedStatus = (worktreePath: string) =>
  */
 export const getWorktreeStatus = (worktreePath: string) =>
   Effect.gen(function* () {
-    // Check for uncommitted changes
-    const statusOutput = yield* runGitCommand({
+    // Count uncommitted changes by folding `status --porcelain` lines one at a
+    // time. `--untracked-files=all` enumerates every untracked file, so a large
+    // untracked tree yields huge output — never materialize it (the previous
+    // single-buffer collect was the OOM trigger). Counting non-empty lines gives
+    // the EXACT `changesCount`/`isDirty` at constant memory, so verdicts are
+    // unchanged.
+    const changesCount = yield* streamGitCommandLines({
       args: ['status', '--porcelain', '--untracked-files=all'],
       cwd: worktreePath,
+      sink: Sink.foldLeft<number, string>(0, (count, line) =>
+        line.trim() !== '' ? count + 1 : count,
+      ),
     })
-
-    const changes = statusOutput.split('\n').filter((line) => line.trim() !== '')
-    const isDirty = changes.length > 0
+    const isDirty = changesCount > 0
 
     // Check for unpushed commits (only relevant for branches)
     const unpushedOutput = yield* getUnpushedStatus(worktreePath)
@@ -721,7 +801,7 @@ export const getWorktreeStatus = (worktreePath: string) =>
     return {
       isDirty,
       hasUnpushed: unpushedOutput,
-      changesCount: changes.length,
+      changesCount,
     } satisfies WorktreeStatus
   }).pipe(
     Observability.withWorktreePathSpan({
@@ -741,9 +821,14 @@ export const getWorktreeStatus = (worktreePath: string) =>
  */
 export const getWorktreeRemovalStatus = (worktreePath: string) =>
   Effect.gen(function* () {
-    const statusOutput = yield* runGitCommand({
+    const changesCount = yield* streamGitCommandLines({
       args: ['status', '--porcelain', '--untracked-files=normal'],
       cwd: worktreePath,
+      // `=normal` collapses large untracked dirs to one entry, but stream-count
+      // anyway so the dirty preflight stays constant-memory regardless of tree.
+      sink: Sink.foldLeft<number, string>(0, (count, line) =>
+        line.trim() !== '' ? count + 1 : count,
+      ),
     }).pipe(
       Observability.withWorktreePathSpan({
         name: 'git/worktree-removal-status/dirty',
@@ -751,13 +836,12 @@ export const getWorktreeRemovalStatus = (worktreePath: string) =>
         worktreePath,
       }),
     )
-    const changes = statusOutput.split('\n').filter((line) => line.trim() !== '')
 
-    if (changes.length > 0) {
+    if (changesCount > 0) {
       return {
         isDirty: true,
         hasUnpushed: false,
-        changesCount: changes.length,
+        changesCount,
       } satisfies WorktreeStatus
     }
 
