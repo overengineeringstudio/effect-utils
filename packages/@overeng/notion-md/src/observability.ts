@@ -445,6 +445,47 @@ export const DestructiveBodySpan = OtelOperation.define({
   label: ({ guard, verdict }) => `${guard}:${verdict}`,
 })
 
+/** Span attributes for an object-GC pass (dry-run or live prune). */
+export const objectGcAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    /** Whether this was a plan-only (dry-run) pass — known before GC runs. */
+    dryRun: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.object_gc.dry_run' })),
+    /**
+     * Number of reachable objects — annotated after GC completes.
+     * @see {@link annotateAttrs} called with {@link objectGcResultAttrs}
+     */
+    reachableCount: Schema.optional(
+      Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.object_gc.reachable_count' })),
+    ),
+    /**
+     * Number of removed (or would-be-removed) objects — annotated after GC completes.
+     * @see {@link annotateAttrs} called with {@link objectGcResultAttrs}
+     */
+    removedCount: Schema.optional(
+      Schema.NonNegativeInt.pipe(OtelAttr.key({ key: 'notion_md.object_gc.removed_count' })),
+    ),
+  }),
+)
+
+/** Post-GC result attributes annotated onto the {@link ObjectGcSpan}. */
+export const objectGcResultAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    reachableCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.object_gc.reachable_count' }),
+    ),
+    removedCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.object_gc.removed_count' }),
+    ),
+  }),
+)
+
+/** Operation span emitted when object GC runs (plan-only or live prune). */
+export const ObjectGcSpan = OtelOperation.define({
+  name: 'notion-md.object-gc',
+  attributes: objectGcAttrs,
+  label: ({ dryRun }) => (dryRun ? 'plan' : 'prune'),
+})
+
 /** Operation span emitted when a webhook signal is mapped to watch triggers. */
 export const WebhookTriggerSpan = OtelOperation.define({
   name: 'notion-md.webhook.trigger',

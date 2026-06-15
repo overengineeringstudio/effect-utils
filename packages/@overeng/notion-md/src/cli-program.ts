@@ -4,7 +4,13 @@ import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
 import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream } from 'effect'
 
-import { NotionConfigLive, resolveNotionToken } from '@overeng/notion-effect-client'
+import {
+  NMD_SYNC_DIRECTORY,
+  NotionConfigLive,
+  NmdSyncStateV1Schema,
+  resolveNotionToken,
+  type NmdSyncStateV1,
+} from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { OtelAttr, OtelAttrs, OtelOperation } from '@overeng/otel-contract'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
@@ -17,18 +23,29 @@ import {
   putEditorPage,
   type EditorMode,
 } from './editor-commands.ts'
-import { NmdCliError, NmdTokenMissingError, NmdUnresolvablePageError } from './errors.ts'
+import {
+  NmdCliError,
+  NmdFileSystemError,
+  NmdObjectStoreError,
+  NmdTokenMissingError,
+  NmdUnresolvablePageError,
+} from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
-import { annotateAttrs, withOperation } from './observability.ts'
-import { ProgressReporterStderrLines } from './progress.ts'
+import { annotateAttrs, ObjectGcSpan, objectGcResultAttrs, withOperation } from './observability.ts'
 import {
-  clonePage as trackPage,
   reconcileFile,
   reconcileTree,
   statusTree,
+  trackPage,
 } from './reconcile.ts'
-import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
+import {
+  garbageCollectObjects,
+  NmdStateStoreLive,
+  stateRootPath,
+  type NmdStateStore,
+  type NmdObjectGcResult,
+} from './state-store.ts'
 import type { SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
 
@@ -156,6 +173,20 @@ const allowReviewMarkupOption = Options.boolean('allow-review-markup').pipe(
 const gcObjectsOption = Options.boolean('gc-objects').pipe(
   Options.withDescription(
     'After validation, remove unreachable .notion-md/objects files; with --dry-run, report the GC plan only',
+  ),
+  Options.withDefault(false),
+)
+
+/*
+ * TODO(phase-5-dry-run-convention): The standalone `gc` command defaults to
+ * dry-run (plan-only) and requires an explicit `--prune` flag to delete.
+ * Phase 5 will normalize the global `--dry-run` convention; at that point this
+ * per-command `--prune` flag should be reconciled with the global convention.
+ * For now, default-dry-run + explicit-prune is the safe interim (R15).
+ */
+const pruneOption = Options.boolean('prune').pipe(
+  Options.withDescription(
+    'Actually delete unreachable .notion-md/objects files (default: plan-only, no deletion)',
   ),
   Options.withDefault(false),
 )
@@ -625,6 +656,219 @@ const syncCommand = Command.make(
 )
 
 // ---------------------------------------------------------------------------
+// Local object-store GC
+// ---------------------------------------------------------------------------
+
+/**
+ * Token-free layer for the `gc` command: only NmdStateStore + filesystem.
+ * GC is a local-only operation and must not require NOTION_API_TOKEN.
+ */
+const GcLayer = Layer.mergeAll(NmdStateStoreLive, Path.layer)
+
+const withGc = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.provide(effect, GcLayer)
+
+/**
+ * Read all sync states that exist on disk under the `.notion-md/sync/` directory
+ * adjacent to the given `.nmd` file path. This is the correct set to pass to
+ * `garbageCollectObjects` for that state root so we never mark live sibling
+ * objects as unreachable.
+ *
+ * @internal exported for testing
+ */
+export const readAllSyncStates = (
+  nmdPath: string,
+): Effect.Effect<
+  readonly NmdSyncStateV1[],
+  NmdFileSystemError | NmdObjectStoreError,
+  FileSystem.FileSystem | Path.Path
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const syncDir = path.join(path.dirname(nmdPath), NMD_SYNC_DIRECTORY)
+    const exists = yield* fs.exists(syncDir).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NmdFileSystemError({
+            operation: 'gc_probe_sync_dir',
+            path: syncDir,
+            cause,
+            message: `Failed to probe .notion-md/sync directory ${syncDir}`,
+          }),
+      ),
+    )
+    if (exists === false) return []
+    const entries = yield* fs.readDirectory(syncDir).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NmdFileSystemError({
+            operation: 'gc_list_sync_dir',
+            path: syncDir,
+            cause,
+            message: `Failed to list .notion-md/sync directory ${syncDir}`,
+          }),
+      ),
+    )
+    const strictOptions = { errors: 'all', onExcessProperty: 'error' } as const
+    const decodeSyncState = Schema.decodeUnknown(
+      Schema.parseJson(NmdSyncStateV1Schema),
+      strictOptions,
+    )
+    const syncStates: NmdSyncStateV1[] = []
+    for (const entry of entries) {
+      if (entry.endsWith('.json') === false) continue
+      const fullPath = path.join(syncDir, entry)
+      const content = yield* fs.readFileString(fullPath).pipe(
+        Effect.mapError(
+          (cause) =>
+            new NmdFileSystemError({
+              operation: 'gc_read_sync_state',
+              path: fullPath,
+              cause,
+              message: `Failed to read sync state ${fullPath}`,
+            }),
+        ),
+      )
+      const decoded = yield* decodeSyncState(content).pipe(
+        Effect.mapError(
+          (cause) =>
+            new NmdObjectStoreError({
+              path: nmdPath,
+              object_path: fullPath,
+              cause,
+              message: `Failed to parse sync state ${fullPath}`,
+            }),
+        ),
+      )
+      syncStates.push(decoded)
+    }
+    return syncStates
+  })
+
+/**
+ * GC result for one state root: the root path, reachable/removed counts, and
+ * the removed file list.
+ */
+interface GcRootResult {
+  readonly root: string
+  readonly reachableCount: number
+  readonly removed: readonly string[]
+  readonly dryRun: boolean
+}
+
+/**
+ * Collect GC results across all unique state roots implied by the target paths.
+ * Each target maps to one state root (its parent directory + `.notion-md/`).
+ * We group targets by unique state root so we can pass the complete syncStates
+ * for that root to `garbageCollectObjects` — never a partial per-file subset,
+ * which would misclassify sibling objects as unreachable.
+ */
+const gcNmdTargets = (opts: {
+  readonly paths: readonly string[]
+  readonly recursive: boolean
+  readonly dryRun: boolean
+}): Effect.Effect<
+  readonly GcRootResult[],
+  NmdCliError | NmdFileSystemError | NmdObjectStoreError,
+  FileSystem.FileSystem | Path.Path | NmdStateStore
+> =>
+  Effect.gen(function* () {
+    const resolved = yield* resolveNmdTargets({
+      targets: opts.paths,
+      recursive: opts.recursive,
+      operation: 'sync',
+    }).pipe(Effect.map((r) => r.paths))
+
+    // Group resolved .nmd paths by their unique state root (parent dir).
+    const rootToNmdPaths = new Map<string, string[]>()
+    for (const nmdPath of resolved) {
+      const stateRoot = stateRootPath(nmdPath)
+      const existing = rootToNmdPaths.get(stateRoot) ?? []
+      existing.push(nmdPath)
+      rootToNmdPaths.set(stateRoot, existing)
+    }
+
+    const results: GcRootResult[] = []
+    for (const [, nmdPaths] of rootToNmdPaths) {
+      // Use any of the nmd paths — they share the same parent dir, so one
+      // representative path is enough to resolve the state root.
+      const representativePath = nmdPaths[0]!
+      const syncStates = yield* readAllSyncStates(representativePath)
+
+      const gcResult: NmdObjectGcResult = yield* withOperation(ObjectGcSpan, {
+        dryRun: opts.dryRun,
+      })(
+        Effect.gen(function* () {
+          const result = yield* garbageCollectObjects({
+            path: representativePath,
+            syncStates,
+            dryRun: opts.dryRun,
+          })
+          yield* annotateAttrs(objectGcResultAttrs, {
+            reachableCount: result.reachable.length,
+            removedCount: result.removed.length,
+          })
+          return result
+        }),
+      )
+
+      results.push({
+        root: gcResult.root,
+        reachableCount: gcResult.reachable.length,
+        removed: gcResult.removed,
+        dryRun: opts.dryRun,
+      })
+    }
+    return results
+  })
+
+/** `gc [path...]` — object-store garbage collection; plan-only by default, `--prune` to delete. */
+const gcCommand = Command.make(
+  'gc',
+  {
+    paths: localTargetsArg,
+    recursive: recursiveOption,
+    prune: pruneOption,
+  },
+  ({ paths, recursive, prune }) => {
+    const dryRun = prune === false
+    return commandSpan({
+      command: 'gc',
+      label: paths.length === 1 ? basename(paths[0] ?? 'target') : `${paths.length} targets`,
+      effect: withGc(
+        gcNmdTargets({ paths, recursive, dryRun }).pipe(
+          Effect.flatMap((results) =>
+            Effect.gen(function* () {
+              for (const r of results) {
+                yield* Console.log(`root: ${r.root}`)
+                yield* Console.log(`  reachable: ${r.reachableCount}`)
+                if (r.removed.length === 0) {
+                  yield* Console.log(`  removed:   0 (nothing to remove)`)
+                } else {
+                  yield* Console.log(`  removed:   ${r.removed.length}`)
+                  for (const file of r.removed) {
+                    yield* Console.log(`    - ${file}`)
+                  }
+                }
+                if (r.dryRun === true) {
+                  yield* Console.log('  (plan only — pass --prune to delete)')
+                } else {
+                  yield* Console.log('  (objects pruned)')
+                }
+              }
+            }),
+          ),
+        ),
+      ),
+    })
+  },
+).pipe(
+  Command.withDescription(
+    'Garbage-collect unreachable .notion-md/objects files (dry-run by default; pass --prune to delete)',
+  ),
+)
+
+// ---------------------------------------------------------------------------
 // Editor surfaces: cat / put / edit (VRS "Editor Surfaces")
 // ---------------------------------------------------------------------------
 
@@ -798,12 +1042,13 @@ const makeNotionMdCommand = (name: 'md' | 'notion-md') =>
       trackCommand,
       statusCommand,
       syncCommand,
+      gcCommand,
       catCommand,
       putCommand,
       editCommand,
     ]),
     Command.withDescription(
-      'Frictionless Notion enhanced Markdown sync plus editor surfaces',
+      'Frictionless Notion enhanced Markdown sync, local object GC, and editor surfaces',
     ),
   )
 
