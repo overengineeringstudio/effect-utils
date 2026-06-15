@@ -831,6 +831,9 @@ importers:
       '@overeng/notion-md':
         specifier: workspace:^
         version: link:../notion-md
+      '@overeng/notion-property-write':
+        specifier: workspace:^
+        version: link:../notion-property-write
       '@overeng/otel-contract':
         specifier: workspace:^
         version: link:../otel-contract

@@ -61,6 +61,7 @@
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
     "@overeng/notion-md": "workspace:^",
+    "@overeng/notion-property-write": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "@overeng/tui-react": "workspace:^",
     "@overeng/utils": "workspace:^",
