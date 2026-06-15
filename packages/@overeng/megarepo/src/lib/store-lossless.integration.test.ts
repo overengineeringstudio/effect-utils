@@ -60,11 +60,13 @@ const makeWiredBare = Effect.fnUntraced(function* () {
   const bare = EffectPath.ops.join(tmp, EffectPath.unsafe.relativeDir('store.bare/'))
   const source = EffectPath.ops.join(tmp, EffectPath.unsafe.relativeDir('source/'))
 
+  // `-b main` so the default branch is deterministic regardless of the host's
+  // `init.defaultBranch` (CI git defaults to `master`).
   yield* fs.makeDirectory(upstream, { recursive: true })
-  yield* git(upstream, 'init', '--bare')
+  yield* git(upstream, 'init', '--bare', '-b', 'main')
 
   yield* fs.makeDirectory(source, { recursive: true })
-  yield* git(source, 'init')
+  yield* git(source, 'init', '-b', 'main')
   yield* fs.writeFileString(
     EffectPath.ops.join(source, EffectPath.unsafe.relativeFile('f.txt')),
     'base\n',
@@ -77,7 +79,7 @@ const makeWiredBare = Effect.fnUntraced(function* () {
 
   // Wire the bare to the upstream with a fetching refspec (mirrors Git.cloneBare).
   yield* fs.makeDirectory(bare, { recursive: true })
-  yield* git(bare, 'init', '--bare')
+  yield* git(bare, 'init', '--bare', '-b', 'main')
   yield* git(bare, 'remote', 'add', 'origin', upstream)
   yield* git(bare, 'config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*')
   yield* git(bare, 'fetch', '--tags', '--prune', 'origin')
@@ -193,9 +195,9 @@ describe('store-lossless', () => {
 
         // A bare with a branch but NO refs/remotes/* (never fetched a remote).
         yield* fs.makeDirectory(bare, { recursive: true })
-        yield* git(bare, 'init', '--bare')
+        yield* git(bare, 'init', '--bare', '-b', 'main')
         yield* fs.makeDirectory(source, { recursive: true })
-        yield* git(source, 'init')
+        yield* git(source, 'init', '-b', 'main')
         yield* fs.writeFileString(
           EffectPath.ops.join(source, EffectPath.unsafe.relativeFile('f.txt')),
           'x\n',
