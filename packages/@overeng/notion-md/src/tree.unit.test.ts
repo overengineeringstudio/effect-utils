@@ -166,6 +166,7 @@ class FakeTreeNotion {
       }),
     updatePageProperties: ({ pageId }) => Effect.sync(() => this.snapshot(pageId)),
     updatePageMetadata: ({ pageId }) => Effect.sync(() => this.snapshot(pageId)),
+    retrieveDataSource: ({ dataSourceId }) => Effect.succeed({ id: dataSourceId, properties: {} }),
     listChildPages: ({ pageId }) =>
       Effect.sync(() =>
         [...this.pages.entries()]

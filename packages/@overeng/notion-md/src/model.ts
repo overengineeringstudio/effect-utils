@@ -70,6 +70,20 @@ export interface PullPageResult {
   readonly storage?: NmdStorage
 }
 
+/**
+ * Live data-source schema snapshot used by the standalone property-write proof
+ * provider (`property-proof.ts`). Carries only the property schema map keyed by
+ * property name — the proof provider re-reads it to establish stable property
+ * identity (display-name disambiguation), the live property type/write-class,
+ * and the freshly observed schema/config identity hashes. The raw per-property
+ * value is `unknown`: each entry is a Notion property-schema object carrying at
+ * least `id`, `name`, and `type`.
+ */
+export interface RemoteDataSourceSchema {
+  readonly id: string
+  readonly properties: Record<string, unknown>
+}
+
 /** Markdown update response from the live Notion gateway. */
 export interface UpdateMarkdownResult {
   readonly markdown: RemoteMarkdownSnapshot
@@ -135,6 +149,14 @@ export interface NotionMdGatewayShape {
     readonly pageId: string
     readonly properties: Record<string, unknown>
   }) => Effect.Effect<RemotePageSnapshot, NmdGatewayError>
+  /**
+   * Re-read the live property schema of a data source. Used by the standalone
+   * property-write proof provider to establish stable property identity and the
+   * freshly observed schema/config hashes for a datasource-scoped property write.
+   */
+  readonly retrieveDataSource: (opts: {
+    readonly dataSourceId: string
+  }) => Effect.Effect<RemoteDataSourceSchema, NmdGatewayError>
   readonly updatePageMetadata: (opts: {
     readonly pageId: string
     readonly metadata: PageMetadataUpdate

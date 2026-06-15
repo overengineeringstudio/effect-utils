@@ -159,6 +159,7 @@ class FakeGateway {
       }),
     updatePageProperties: ({ pageId: id }) => Effect.sync(() => this.toPull(id).page),
     updatePageMetadata: ({ pageId: id }) => Effect.sync(() => this.toPull(id).page),
+    retrieveDataSource: ({ dataSourceId }) => Effect.succeed({ id: dataSourceId, properties: {} }),
     listChildPages: () => Effect.succeed([]),
     createPage: ({ parentPageId, title, markdown }) =>
       Effect.sync(() => {

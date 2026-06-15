@@ -22,6 +22,12 @@ export const parentPageAttrs = OtelAttrs.defineSync(
   }),
 )
 
+export const dataSourceAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    dataSourceId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.data_source_id' })),
+  }),
+)
+
 export const pathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
@@ -295,6 +301,12 @@ export const GatewayUpdatePageMetadataSpan = OtelOperation.define({
   name: 'notion-md.gateway.update-page-metadata',
   attributes: metadataUpdateAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
+})
+
+export const GatewayRetrieveDataSourceSpan = OtelOperation.define({
+  name: 'notion-md.gateway.retrieve-data-source',
+  attributes: dataSourceAttrs,
+  label: ({ dataSourceId }) => dataSourceId.slice(0, 8),
 })
 
 export const GatewayListChildPagesSpan = OtelOperation.define({

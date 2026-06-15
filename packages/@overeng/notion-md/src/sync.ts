@@ -19,6 +19,7 @@ import {
   NmdCliError,
   NmdConflictError,
   NmdFrontmatterError,
+  NmdPropertyWriteBlockedError,
   NmdRemoteBodyLossyError,
   type NmdError,
 } from './errors.ts'
@@ -35,6 +36,7 @@ import {
   type WritablePageIcon,
 } from './model.ts'
 import * as Observability from './observability.ts'
+import { makeStandaloneLiveProof } from './property-proof.ts'
 import {
   NmdStateStore,
   readBaseSnapshot,
@@ -372,6 +374,62 @@ const encodeWritableProperties = (opts: {
       if (encoded !== undefined) entries.push([name, encoded])
     }
     return Object.fromEntries(entries)
+  })
+
+/**
+ * Route each writable property through the shared property-write core when the
+ * page belongs to a Notion data source. This sits AFTER notion-md's existing
+ * writability filter (it only sees properties the engine already intends to
+ * write), so on a green path every property evaluates to `allowed()` and
+ * behavior is unchanged; a blocked verdict surfaces as
+ * {@link NmdPropertyWriteBlockedError} instead of a silent property update.
+ *
+ * Standalone (non-datasource) pages have no `data_source` parent and keep their
+ * current path untouched — the core only governs datasource-scoped writes.
+ */
+const guardDatasourcePropertyWrites = (opts: {
+  readonly pageId: string
+  readonly frontmatter: NmdFrontmatterV2
+}): Effect.Effect<void, NmdPropertyWriteBlockedError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    const notionMd = opts.frontmatter.notion_md
+    if (notionMd.parent._tag !== 'data_source') return
+    const dataSourceId = notionMd.parent.id
+    /* Re-key the branded-name descriptor map by plain string for lookup. */
+    const descriptors: Record<
+      string,
+      { readonly property_id: string; readonly config_hash: string }
+    > =
+      notionMd.property_descriptors === undefined
+        ? {}
+        : Object.fromEntries(Object.entries(notionMd.property_descriptors))
+
+    for (const [name, property] of Object.entries(notionMd.properties)) {
+      const descriptor = descriptors[name]
+      const decision = yield* makeStandaloneLiveProof({
+        pageId: opts.pageId,
+        dataSourceId,
+        source: notionMd.source,
+        propertyName: name,
+        property,
+        ...(descriptor !== undefined
+          ? {
+              descriptor: {
+                property_id: descriptor.property_id,
+                config_hash: descriptor.config_hash,
+              },
+            }
+          : {}),
+      })
+      if (decision._tag === 'blocked') {
+        return yield* new NmdPropertyWriteBlockedError({
+          page_id: opts.pageId,
+          property_name: name,
+          guard: decision.guard,
+          message: `Property write to ${name} blocked by ${decision.guard}: ${decision.message}`,
+        })
+      }
+    }
   })
 
 const storageUnknownBlockIds = (storage: NmdStorage): readonly string[] => {
@@ -1235,6 +1293,10 @@ export const pushGuarded = (opts: {
           yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
         }
         if (status.localPropertiesChanged === true) {
+          yield* guardDatasourcePropertyWrites({
+            pageId: status.pageId,
+            frontmatter: local.frontmatter,
+          })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
@@ -1278,6 +1340,10 @@ export const pushGuarded = (opts: {
             options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
         })
         if (status.localPropertiesChanged === true) {
+          yield* guardDatasourcePropertyWrites({
+            pageId: status.pageId,
+            frontmatter: local.frontmatter,
+          })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
@@ -1373,6 +1439,10 @@ export const pushGuarded = (opts: {
       })
     }
     if (status.localPropertiesChanged === true) {
+      yield* guardDatasourcePropertyWrites({
+        pageId: status.pageId,
+        frontmatter: local.frontmatter,
+      })
       yield* gateway.updatePageProperties({
         pageId: status.pageId,
         properties: yield* encodeWritableProperties({

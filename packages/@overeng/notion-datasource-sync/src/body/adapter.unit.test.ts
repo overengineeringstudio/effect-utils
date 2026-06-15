@@ -153,6 +153,7 @@ const fakeNotionMdGateway = (
   updatePageProperties: () =>
     Effect.die('updatePageProperties should not be called by these tests'),
   updatePageMetadata: () => Effect.die('updatePageMetadata should not be called by these tests'),
+  retrieveDataSource: () => Effect.die('retrieveDataSource should not be called by these tests'),
   listChildPages: () => Effect.succeed([]),
   createPage: () => Effect.die('createPage should not be called by these tests'),
   movePage: () => Effect.die('movePage should not be called by these tests'),

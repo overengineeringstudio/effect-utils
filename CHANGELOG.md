@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/notion-md**: Route datasource-scoped property writes through the shared `@overeng/notion-property-write` core via a new standalone live proof provider (`makeStandaloneLiveProof`). For a page whose parent is a Notion data source, each writable property is evaluated against a freshly re-read data-source schema + live page (stable property identity, write class, base completeness, relation availability) before the write proceeds; green paths evaluate to `allowed()` so existing behavior is unchanged, blocked verdicts surface as `NmdPropertyWriteBlockedError` instead of a silent property update, and a `source: remote` page refuses local property mutation as drift. The gateway gains a `retrieveDataSource` operation; standalone (non-datasource) pages keep their current path untouched. Full live schema-drift / relation-completeness coverage (Phase 8) is marked with `TODO(phase-8-live-l6)`.
+
 - **@overeng/utils-dev/otelite**: Resolve the `otelite` binary from `OTELITE_BIN` before falling back to `PATH`, and document the plain-shell Nix workflow for focused wrapper tests.
 
 - **@overeng/otel-contract**: Add branded/refined OTEL name schemas (`OtelAttributeKey`, `OtelSpanName`, `OtelMetricName`, `OtelServiceName`), validate contract names/keys at definition time, add an Effect `Metric` runtime bridge for schema-first metric contracts, and extend the raw-OTEL lint rule to ban raw Effect `Metric.*` APIs outside approved contract/test boundaries.

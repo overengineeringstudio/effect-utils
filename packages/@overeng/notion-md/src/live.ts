@@ -6,6 +6,7 @@ import {
   NotionBody,
   type NotionBodyObservation,
   NotionConfig,
+  NotionDataSources,
   NotionPages,
   type NmdStorage,
   type UpdateMarkdownOptions,
@@ -305,6 +306,32 @@ export const NotionMdGatewayLive = Layer.effect(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'update_page_properties', pageId })),
           Observability.withOperation(Observability.GatewayUpdatePagePropertiesSpan, { pageId }),
+        ),
+      retrieveDataSource: ({ dataSourceId }) =>
+        provideHttp(NotionDataSources.retrieve({ dataSourceId })).pipe(
+          /*
+           * `dataSource.properties` is Notion's property-schema map keyed by the
+           * property's DISPLAY NAME; each entry is expected to carry at least
+           * `{ id, name, type }` plus type-specific config (the standalone proof
+           * provider reads only `id`/`name`/`type`). The notion-effect-client
+           * `DataSourceSchema` currently types this map as
+           * `Record<string, unknown>`, so the entry shape is NOT validated at the
+           * client boundary.
+           *
+           * TODO: once the client validates the per-property schema shape, the
+           * provider's `readSchemaProperty` fallback can be tightened — a
+           * malformed entry presently makes the name resolve to zero properties
+           * and surfaces as a misleading `PropertyIdentityAmbiguous` rather than
+           * a schema-shape error.
+           */
+          Effect.map((dataSource) => ({
+            id: dataSource.id,
+            properties: dataSource.properties,
+          })),
+          Effect.mapError(mapGatewayError({ operation: 'retrieve_data_source' })),
+          Observability.withOperation(Observability.GatewayRetrieveDataSourceSpan, {
+            dataSourceId,
+          }),
         ),
       updatePageMetadata: ({ pageId, metadata }) =>
         provideHttp(
