@@ -10,6 +10,7 @@ import kdlPkg from '../kdl/package.json.genie.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
+import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
@@ -28,7 +29,7 @@ const runtimeDeps = catalog.compose({
     external: catalog.pick('react'),
   },
   devDependencies: {
-    workspace: [tuiCorePkg],
+    workspace: [tuiCorePkg, utilsDevPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,
