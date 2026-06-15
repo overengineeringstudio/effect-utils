@@ -18,9 +18,15 @@ Both files are standalone-queryable: neither ATTACHes the other at query time.
 "No `_nds_*` in the public data file" means no CONTROL-PLANE `_nds_*`. The
 `_nds_replica_*` projection tables are a rebuildable read-model CACHE and STAY in
 the data file: they back the dynamic-column `pages` view and are the sanctioned
-read surface behind `debug_*`. Deleting the data file is a performance event, not
-a correctness event — `projectReplicaFromSyncStore` rebuilds the entire
+read surface behind `debug_*`. Deleting the data file rebuilds losslessly for
+_settled_ state — `projectReplicaFromSyncStore` reconstructs the entire
 `_nds_replica_*` cache and the public views from the event log in state.sqlite.
+The one exception: a local edit lives only in the data file's transient
+`_nds_replica_*_changes` CDC inbox until a `sync`/`push` drains it into the
+state.sqlite event log, so deleting the data file with un-drained edits loses
+those edits. Drain first (`sync`/`push`) for a clean disposal. (A future
+refinement could make the data file truly disposable by draining the CDC inbox
+into state.sqlite synchronously or on next open — recorded as a follow-up.)
 
 The public-surface contract test asserts this invariant directly: every `_nds_*`
 object in the data file is `_nds_replica_*` (or a public `_nds_pages_*` CDC
@@ -91,19 +97,23 @@ workspace, not the data file alone.
 
 ## Considered Options
 
-| Option                                                                                                | Result   | Reason                                                                                                                                                                                       |
-| ----------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Keep control plane in the data file; hide it behind a naming convention                               | Rejected | The product surface would still ship the event log, outbox, and guards to users; "public file" would leak internal state. R02 wants control plane to be hidden implementation state.       |
-| Split control plane into state.sqlite; ATTACH it from the data file for `sync_status`/`schema`        | Rejected | Cross-file ATTACH breaks standalone-queryability of the data file (a backup/copy would error), and couples the public surface to the hidden file's path at query time.                     |
+| Option                                                                                                                 | Result   | Reason                                                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Keep control plane in the data file; hide it behind a naming convention                                                | Rejected | The product surface would still ship the event log, outbox, and guards to users; "public file" would leak internal state. R02 wants control plane to be hidden implementation state.       |
+| Split control plane into state.sqlite; ATTACH it from the data file for `sync_status`/`schema`                         | Rejected | Cross-file ATTACH breaks standalone-queryability of the data file (a backup/copy would error), and couples the public surface to the hidden file's path at query time.                     |
 | Split control plane into state.sqlite; materialize control-plane facts into the projection at project time (DD-A/DD-B) | Selected | The data file stays standalone-queryable with no ATTACH; control-plane state is fully hidden; the `_nds_replica_*` cache remains rebuildable; CDC drains across the boundary idempotently. |
 
 ## Consequences
 
 - The public data file ships only the product surface; control-plane internals
   are invisible to SQL users.
-- `sync_status`/`schema` reflect control-plane state as of the last projection,
-  not live — acceptable because projection runs after every sync/settle.
-- Deleting `data/v1/<source>.sqlite` is recoverable: re-project from
-  state.sqlite. Deleting `.notion/v1/state.sqlite` is the durable-state loss.
+- `sync_status`/`schema` reflect control-plane state as of the last _successful_
+  projection, not live — projection is wired on the success channel, so on a
+  failed/blocked sync the `blocked_outbox`/`guard_blocks`/`incomplete_hydration`
+  counts stay stale until the next successful projection (a follow-up could
+  also project on the failure branch so blocked counts update when they matter).
+- Deleting `data/v1/<source>.sqlite` is recoverable for settled state (re-project
+  from state.sqlite); un-drained CDC-inbox edits are lost (drain via `sync`/`push`
+  first). Deleting `.notion/v1/state.sqlite` is the durable-state loss.
 - `--sqlite` against a workspace data file resolves the sibling control plane; a
   data-file-only copy is query-only, not operable.
