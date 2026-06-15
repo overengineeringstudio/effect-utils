@@ -1389,7 +1389,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               db
                 .prepare(
                   `SELECT "Name", "Done", "Notes", "Count", "Stage", "Due"
-                   FROM rows
+                   FROM pages
                    WHERE _page_id = ?`,
                 )
                 .get(seededPage.id),
@@ -1533,7 +1533,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 throw new Error('live public SQLite rows test did not project the CDC column')
               }
               db.prepare(
-                `UPDATE rows
+                `UPDATE pages
                  SET ${quoteSqlIdentifier(propertyColumn.column_name)} = ?
                  WHERE _page_id = ?`,
               ).run(updatedTitle, livePageId)
@@ -1605,7 +1605,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 db
                   .prepare(
                     `SELECT ${quoteSqlIdentifier(propertyColumn.column_name)} AS value
-                     FROM rows
+                     FROM pages
                      WHERE _page_id = ?`,
                   )
                   .get(livePageId),
@@ -1619,7 +1619,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           {
             const db = new DatabaseSync(replicaPath)
             try {
-              db.prepare(`UPDATE rows SET _in_trash = 1 WHERE _page_id = ?`).run(livePageId)
+              db.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(livePageId)
               expect(
                 db
                   .prepare(
@@ -1647,7 +1647,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           {
             const db = new DatabaseSync(replicaPath)
             try {
-              db.prepare(`UPDATE rows SET _in_trash = 0 WHERE _page_id = ?`).run(livePageId)
+              db.prepare(`UPDATE pages SET _in_trash = 0 WHERE _page_id = ?`).run(livePageId)
               expect(
                 db
                   .prepare(
@@ -1734,10 +1734,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 throw new Error('live public SQLite rows create did not project required columns')
               }
               db.prepare(
-                `INSERT INTO rows (
+                `INSERT INTO pages (
                    ${quoteSqlIdentifier(titleColumn)},
                    ${quoteSqlIdentifier(cdcColumn)},
-                   _local_row_id,
+                   _local_page_id,
                    _client_request_key
                  ) VALUES (?, ?, ?, ?)`,
               ).run(
@@ -1750,8 +1750,8 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 db
                   .prepare(
                     `SELECT _sync_status
-                     FROM rows
-                     WHERE _local_row_id = ?`,
+                     FROM pages
+                     WHERE _local_page_id = ?`,
                   )
                   .get(`local-${provisioned.config.runId}`),
               ).toMatchObject({ _sync_status: 'pending' })
@@ -1766,7 +1766,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
               const createRow = db
                 .prepare(
                   `SELECT _sync_status, _page_id
-                   FROM rows
+                   FROM pages
                    WHERE _client_request_key = ?`,
                 )
                 .get(`client-${provisioned.config.runId}`) as
@@ -2018,7 +2018,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
                 throw new Error('combined live bidi test did not project the note column')
               }
               db.prepare(
-                `UPDATE rows
+                `UPDATE pages
                  SET ${quoteSqlIdentifier(notesColumn.column_name)} = ?
                  WHERE _page_id = ?`,
               ).run(propertyOnlyNote, pageId)

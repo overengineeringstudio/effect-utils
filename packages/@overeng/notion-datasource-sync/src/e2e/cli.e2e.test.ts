@@ -2419,7 +2419,7 @@ describe('CLI command surface', () => {
       const database = new DatabaseSync(sqlitePath)
       try {
         database
-          .prepare(`UPDATE rows SET "Row_prop_a" = ? WHERE _page_id = ?`)
+          .prepare(`UPDATE pages SET "Row_prop_a" = ? WHERE _page_id = ?`)
           .run('CLI push row edit', testIds.pageId)
       } finally {
         database.close()
@@ -2460,7 +2460,7 @@ describe('CLI command surface', () => {
       const database = new DatabaseSync(sqlitePath)
       try {
         database
-          .prepare(`UPDATE rows SET "Row_prop_a" = ? WHERE _page_id = ?`)
+          .prepare(`UPDATE pages SET "Row_prop_a" = ? WHERE _page_id = ?`)
           .run('Pending export edit', testIds.pageId)
       } finally {
         database.close()
@@ -2483,14 +2483,14 @@ describe('CLI command surface', () => {
       expect(result.result).toMatchObject({
         _tag: 'ReplicaExportResult',
         clean: false,
-        counts: { rows: 1, pendingChanges: 1 },
+        counts: { pages: 1, pendingChanges: 1 },
       })
       const lines = (await readFile(outputPath, 'utf8'))
         .trim()
         .split('\n')
         .map((line) => JSON.parse(line))
       expect(lines.map((line) => line.type)).toEqual(
-        expect.arrayContaining(['metadata', 'sync_status', 'schema', 'schema_property', 'row']),
+        expect.arrayContaining(['metadata', 'sync_status', 'schema', 'schema_property', 'page']),
       )
       expect(lines).toContainEqual(
         expect.objectContaining({

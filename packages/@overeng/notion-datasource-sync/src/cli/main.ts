@@ -1801,15 +1801,15 @@ const validateSelfContainedSqlite = (storePath: string): void => {
       ['table', '_nds_row'],
       ['table', '_nds_schema_property'],
       ['table', '_nds_tombstone'],
-      ['view', 'rows'],
+      ['view', 'pages'],
       ['view', 'schema'],
       ['view', 'schema_properties'],
       ['view', 'changes'],
       ['view', 'conflicts'],
       ['view', 'sync_status'],
-      ['trigger', '_nds_rows_update'],
-      ['trigger', '_nds_rows_insert'],
-      ['trigger', '_nds_rows_delete'],
+      ['trigger', '_nds_pages_update'],
+      ['trigger', '_nds_pages_insert'],
+      ['trigger', '_nds_pages_delete'],
     ] as const
     for (const [type, name] of requiredObjects) {
       const found = db

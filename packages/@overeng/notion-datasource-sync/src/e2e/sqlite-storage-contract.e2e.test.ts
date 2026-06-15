@@ -166,7 +166,7 @@ const sqliteMasterObjects = (db: DatabaseSync) =>
   )
 
 const publicSafeNames = new Set([
-  'rows',
+  'pages',
   'schema',
   'schema_properties',
   'changes',
@@ -216,7 +216,7 @@ const insertPublicRowsCreate = ({
 }): void => {
   const db = new DatabaseSync(sqlitePath)
   try {
-    db.prepare(`INSERT INTO rows ("Task name", _client_request_key) VALUES (?, ?)`).run(
+    db.prepare(`INSERT INTO pages ("Task name", _client_request_key) VALUES (?, ?)`).run(
       title,
       clientRequestKey,
     )
@@ -234,7 +234,7 @@ const updatePublicRowsTitle = ({
 }): void => {
   const db = new DatabaseSync(sqlitePath)
   try {
-    db.prepare(`UPDATE rows SET "Task name" = ? WHERE _page_id = ?`).run(title, testIds.pageId)
+    db.prepare(`UPDATE pages SET "Task name" = ? WHERE _page_id = ?`).run(title, testIds.pageId)
   } finally {
     db.close()
   }
@@ -420,7 +420,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
           property_type: 'title',
         })
 
-        const columns = tableColumns(db, 'rows')
+        const columns = tableColumns(db, 'pages')
         expect(columns).not.toContain('schema_json')
         const firstPrivateColumn = columns.findIndex((column) => column.startsWith('_'))
         expect(firstPrivateColumn).toBeGreaterThan(0)
@@ -428,6 +428,39 @@ describe('clean-break self-contained SQLite storage contract', () => {
         expect(columns.slice(firstPrivateColumn).every((column) => column.startsWith('_'))).toBe(
           true,
         )
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'exposes the v1 clean-break `pages` surface and no public `rows` view or `_local_row_id` column [NDS-L2-pages-clean-break-surface]',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace)
+
+      openReadOnly(sqlitePath, (db) => {
+        const objects = sqliteMasterObjects(db)
+        const names = objects.map((object) => String(object.name))
+
+        // Clean break (R05): no public `rows` view and no `rows`-named view/trigger leak.
+        expect(names).toContain('pages')
+        expect(names).not.toContain('rows')
+        const rowsLeak = objects.filter(
+          (object) =>
+            object.type !== 'table' &&
+            (String(object.name) === 'rows' || String(object.name).startsWith('_nds_rows_')),
+        )
+        expect(rowsLeak).toEqual([])
+
+        // The public surface uses `_local_page_id`, never the internal `_local_row_id`.
+        const pageColumns = tableColumns(db, 'pages')
+        expect(pageColumns).toContain('_local_page_id')
+        expect(pageColumns).not.toContain('_local_row_id')
+
+        // `SELECT * FROM pages` works; `SELECT * FROM rows` fails closed.
+        expect(() => db.prepare(`SELECT * FROM pages`).all()).not.toThrow()
+        expect(() => db.prepare(`SELECT * FROM rows`).all()).toThrow(/no such table/i)
       })
     },
     sqliteContractTimeoutMs,
@@ -534,16 +567,16 @@ describe('clean-break self-contained SQLite storage contract', () => {
 
       const db = new DatabaseSync(sqlitePath)
       try {
-        db.prepare(`UPDATE rows SET "Task name" = ? WHERE _page_id = ?`).run(
+        db.prepare(`UPDATE pages SET "Task name" = ? WHERE _page_id = ?`).run(
           'Updated through rows',
           testIds.pageId,
         )
-        db.prepare(`INSERT INTO rows ("Task name", _client_request_key) VALUES (?, ?)`).run(
+        db.prepare(`INSERT INTO pages ("Task name", _client_request_key) VALUES (?, ?)`).run(
           'Created through rows',
           'contract-create-1',
         )
-        db.prepare(`UPDATE rows SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
-        db.prepare(`UPDATE rows SET _in_trash = 0 WHERE _page_id = ?`).run(testIds.pageId)
+        db.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+        db.prepare(`UPDATE pages SET _in_trash = 0 WHERE _page_id = ?`).run(testIds.pageId)
 
         expect(
           rows(db, `SELECT kind, status FROM changes ORDER BY created_at, change_id`).map(
@@ -564,9 +597,9 @@ describe('clean-break self-contained SQLite storage contract', () => {
           pending_local_changes: 3,
         })
 
-        expect(() => db.prepare(`DELETE FROM rows WHERE _page_id = ?`).run(testIds.pageId)).toThrow(
-          /unsupported|unsafe|archive/i,
-        )
+        expect(() =>
+          db.prepare(`DELETE FROM pages WHERE _page_id = ?`).run(testIds.pageId),
+        ).toThrow(/unsupported|unsafe|archive/i)
         expect(() =>
           db
             .prepare(
@@ -577,7 +610,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
         ).toThrow(/view|read-only|modify/i)
         expect(() =>
           db
-            .prepare(`UPDATE rows SET _page_id = 'other-page' WHERE _page_id = ?`)
+            .prepare(`UPDATE pages SET _page_id = 'other-page' WHERE _page_id = ?`)
             .run(testIds.pageId),
         ).toThrow(/read-only|system|identity/i)
         expect(() => db.prepare(`UPDATE schema SET name = 'Unsafe'`).run()).toThrow(
@@ -724,7 +757,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
           row(
             db,
             `SELECT _page_id, _client_request_key, _sync_status
-             FROM rows
+             FROM pages
              WHERE _client_request_key = ?`,
             'watch-create-settled',
           ),
@@ -1067,7 +1100,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
       const { sqlitePath } = await establishWorkspace(workspace)
       const db = new DatabaseSync(sqlitePath)
       try {
-        db.prepare(`UPDATE rows SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+        db.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
       } finally {
         db.close()
       }
@@ -1101,7 +1134,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
           ),
         ).toEqual([expect.objectContaining({ kind: 'row_archive', status: 'applied' })])
         expect(
-          row(readDb, `SELECT _in_trash FROM rows WHERE _page_id = ?`, testIds.pageId),
+          row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
         ).toMatchObject({ _in_trash: 1 })
       })
     },
@@ -1124,24 +1157,24 @@ describe('clean-break self-contained SQLite storage contract', () => {
       try {
         expect(() =>
           db
-            .prepare(`UPDATE rows SET "Status" = ? WHERE _page_id = ?`)
+            .prepare(`UPDATE pages SET "Status" = ? WHERE _page_id = ?`)
             .run('Definitely not real', testIds.pageId),
         ).toThrow(/malformed|unsupported/i)
         expect(() =>
-          db.prepare(`UPDATE rows SET "Priority" = ? WHERE _page_id = ?`).run('', testIds.pageId),
+          db.prepare(`UPDATE pages SET "Priority" = ? WHERE _page_id = ?`).run('', testIds.pageId),
         ).toThrow(/malformed|unsupported/i)
         expect(() =>
           db
-            .prepare(`INSERT INTO rows ("Task name", "Status") VALUES (?, ?)`)
+            .prepare(`INSERT INTO pages ("Task name", "Status") VALUES (?, ?)`)
             .run('Bad status create', 'Definitely not real'),
         ).toThrow(/malformed|unsupported/i)
 
-        db.prepare(`UPDATE rows SET "Status" = ?, "Priority" = ? WHERE _page_id = ?`).run(
+        db.prepare(`UPDATE pages SET "Status" = ?, "Priority" = ? WHERE _page_id = ?`).run(
           'Next up',
           'High',
           testIds.pageId,
         )
-        db.prepare(`INSERT INTO rows ("Task name", "Status", "Priority") VALUES (?, ?, ?)`).run(
+        db.prepare(`INSERT INTO pages ("Task name", "Status", "Priority") VALUES (?, ?, ?)`).run(
           'Good option create',
           'Done',
           'Low',
@@ -1224,12 +1257,12 @@ describe('clean-break self-contained SQLite storage contract', () => {
           argv: (path) => ['doctor', '--sqlite', path],
         },
         {
-          name: 'dropped rows trigger',
+          name: 'dropped pages trigger',
           sql: (db) => {
             const trigger = row(
               db,
               `SELECT name FROM sqlite_master
-               WHERE type = 'trigger' AND sql LIKE '%rows%'
+               WHERE type = 'trigger' AND name LIKE '_nds_pages_%'
                ORDER BY name LIMIT 1`,
             )
             expect(trigger?.name).toEqual(expect.any(String))
@@ -1238,8 +1271,8 @@ describe('clean-break self-contained SQLite storage contract', () => {
           argv: (path) => ['sync', '--sqlite', path, '--dry-run'],
         },
         {
-          name: 'dropped public rows view',
-          sql: (db) => db.prepare(`DROP VIEW rows`).run(),
+          name: 'dropped public pages view',
+          sql: (db) => db.prepare(`DROP VIEW pages`).run(),
           argv: (path) => ['doctor', '--sqlite', path],
         },
       ]

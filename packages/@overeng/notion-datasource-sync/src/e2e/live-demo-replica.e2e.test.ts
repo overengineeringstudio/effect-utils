@@ -260,7 +260,7 @@ const inspectReplica = ({
 }) => {
   const database = new DatabaseSync(sqlitePath, { readOnly: true })
   try {
-    const rowCount = readCount(database, 'SELECT count(*) AS count FROM rows')
+    const rowCount = readCount(database, 'SELECT count(*) AS count FROM pages')
     const propertyCount = readCount(database, 'SELECT count(*) AS count FROM schema_properties')
     const cellCount = readCount(database, 'SELECT count(*) AS count FROM _nds_property_shadow')
     const status = database.prepare('SELECT * FROM sync_status').get() as

@@ -641,6 +641,16 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L1',
     file: 'src/planner/planner.unit.test.ts',
   }),
+  scenario({
+    scenarioId: 'NDS-L2-pages-clean-break-surface',
+    title:
+      'public SQL surface is the v1 clean-break `pages` view: no `rows` view, no `_local_row_id` column, and `SELECT * FROM rows` fails closed',
+    requirementIds: ['R01', 'R05'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L2',
+    file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
+  }),
 ] as const satisfies ReadonlyArray<ScenarioMetadata>
 
 const guardScenarioIds = {
@@ -837,11 +847,6 @@ export const traceabilityResiduals = [
   // the planner's workspace proof provider in 3c-ii and covered by the concrete
   // `NDS-L1-planner-property-write-core-routing` scenario, so they no longer need
   // placeholder residuals.
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R01',
-    reason: 'Package boundary is validated by package/export checks rather than fake-service E2E.',
-  },
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R03',

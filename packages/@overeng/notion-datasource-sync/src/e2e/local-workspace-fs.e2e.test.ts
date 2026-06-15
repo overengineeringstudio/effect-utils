@@ -630,20 +630,20 @@ describe('filesystem local workspace E2E', () => {
     try {
       const pageId = testPageId('page-1')
       const workspace = makeFilesystemLocalWorkspacePort({ root: fixture.root })
-      await mkdir(join(fixture.root, 'rows'), { recursive: true })
+      await mkdir(join(fixture.root, 'nested'), { recursive: true })
 
       await expect(
         Effect.runPromise(
           workspace.materialize({
             _tag: 'MaterializePlan',
             pageId,
-            path: testWorkspacePath('rows/weekly-notes--page-1.nmd'),
+            path: testWorkspacePath('nested/weekly-notes--page-1.nmd'),
             bodyPointer: testBodyPointer({ pageId }),
           }),
         ),
       ).resolves.toMatchObject({
         _tag: 'MaterializeResult',
-        path: 'rows/weekly-notes--page-1.nmd',
+        path: 'nested/weekly-notes--page-1.nmd',
       })
     } finally {
       await fixture.cleanup()
