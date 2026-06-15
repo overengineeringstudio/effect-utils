@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 import { nmdObjectRelativePath, type NmdSyncStateV1 } from '@overeng/notion-effect-client'
 
+import { readAllSyncStates } from './cli-program.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import {
   garbageCollectObjects,
@@ -17,6 +18,7 @@ import {
   NmdStateStoreLive,
   objectPath,
   writeBaseSnapshot,
+  writeSyncState,
 } from './state-store.ts'
 
 const withPath = async <A>(fn: (path: Path.Path) => A): Promise<A> =>
@@ -129,6 +131,107 @@ describe('notion-md state store object lifecycle', () => {
       expect(result.removed).toEqual([orphanPath])
       await expect(readFile(basePath, 'utf8')).resolves.toContain('# Base')
       await expect(readFile(orphanPath, 'utf8')).rejects.toThrow()
+    })
+  })
+})
+
+const runFs = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(NodeContext.layer)))
+
+describe('notion-md gc command discovery', () => {
+  it('readAllSyncStates returns empty array when no sync directory exists', async () => {
+    await withTempDir(async (dir) => {
+      const nmdPath = join(dir, 'doc.nmd')
+      const syncStates = await runFs(readAllSyncStates(nmdPath))
+      expect(syncStates).toEqual([])
+    })
+  })
+
+  it('readAllSyncStates discovers sync states written by writeSyncState', async () => {
+    await withTempDir(async (dir) => {
+      const nmdPath = join(dir, 'doc.nmd')
+      const pageId = '00000000-0000-4000-8000-000000000002'
+      const base = await runStore(writeBaseSnapshot({ path: nmdPath, pageId, body: '# Hello' }))
+      const syncState = syncStateFor({ pageId, body: '# Hello', base })
+      await runStore(writeSyncState({ path: nmdPath, syncState }))
+
+      const found = await runFs(readAllSyncStates(nmdPath))
+      expect(found).toHaveLength(1)
+      expect(found[0]?.page_id).toBe(pageId)
+    })
+  })
+
+  it('gc plan-only (no --prune): identifies unreachable objects without deleting them', async () => {
+    await withTempDir(async (dir) => {
+      const nmdPath = join(dir, 'doc.nmd')
+      const pageId = '00000000-0000-4000-8000-000000000003'
+      const base = await runStore(writeBaseSnapshot({ path: nmdPath, pageId, body: '# Plan' }))
+      const syncState = syncStateFor({ pageId, body: '# Plan', base })
+      await runStore(writeSyncState({ path: nmdPath, syncState }))
+
+      // Add an orphan object
+      const orphanContent = '{"orphan":true}\n'
+      const orphanHash = sha256Digest(orphanContent)
+      const orphanPath = objectPath({ path: nmdPath, hash: orphanHash })
+      await mkdir(dirname(orphanPath), { recursive: true })
+      await writeFile(orphanPath, orphanContent)
+
+      // Dry-run (plan only): discover sync states from disk, do not delete
+      const syncStates = await runFs(readAllSyncStates(nmdPath))
+      const result = await runStore(
+        garbageCollectObjects({ path: nmdPath, syncStates, dryRun: true }),
+      )
+
+      expect(result.dryRun).toBe(true)
+      expect(result.removed).toContain(orphanPath)
+      // Object must still exist on disk
+      await expect(readFile(orphanPath, 'utf8')).resolves.toBe(orphanContent)
+    })
+  })
+
+  it('gc --prune: removes unreachable objects, keeps all objects reachable from sync states', async () => {
+    await withTempDir(async (dir) => {
+      const nmdPath = join(dir, 'doc.nmd')
+      const pageIdA = '00000000-0000-4000-8000-000000000004'
+      const pageIdB = '00000000-0000-4000-8000-000000000005'
+
+      // Write two base snapshots (two pages in the same directory / state root)
+      const baseA = await runStore(
+        writeBaseSnapshot({ path: nmdPath, pageId: pageIdA, body: '# A' }),
+      )
+      const baseB = await runStore(
+        writeBaseSnapshot({ path: nmdPath, pageId: pageIdB, body: '# B' }),
+      )
+      const syncStateA = syncStateFor({ pageId: pageIdA, body: '# A', base: baseA })
+      const syncStateB = syncStateFor({ pageId: pageIdB, body: '# B', base: baseB })
+      await runStore(writeSyncState({ path: nmdPath, syncState: syncStateA }))
+      await runStore(writeSyncState({ path: nmdPath, syncState: syncStateB }))
+
+      // Add an orphan object
+      const orphanContent = '{"orphan":true}\n'
+      const orphanHash = sha256Digest(orphanContent)
+      const orphanPath = objectPath({ path: nmdPath, hash: orphanHash })
+      await mkdir(dirname(orphanPath), { recursive: true })
+      await writeFile(orphanPath, orphanContent)
+
+      // Discover sync states from disk (as the gc command does), then prune
+      const syncStates = await runFs(readAllSyncStates(nmdPath))
+      expect(syncStates).toHaveLength(2)
+      const result = await runStore(
+        garbageCollectObjects({ path: nmdPath, syncStates, dryRun: false }),
+      )
+
+      // Orphan removed, both base snapshots kept
+      expect(result.removed).toContain(orphanPath)
+      expect(result.reachable).toContain(objectPath({ path: nmdPath, hash: baseA.hash }))
+      expect(result.reachable).toContain(objectPath({ path: nmdPath, hash: baseB.hash }))
+      await expect(readFile(orphanPath, 'utf8')).rejects.toThrow()
+      await expect(
+        readFile(objectPath({ path: nmdPath, hash: baseA.hash }), 'utf8'),
+      ).resolves.toContain('# A')
+      await expect(
+        readFile(objectPath({ path: nmdPath, hash: baseB.hash }), 'utf8'),
+      ).resolves.toContain('# B')
     })
   })
 })

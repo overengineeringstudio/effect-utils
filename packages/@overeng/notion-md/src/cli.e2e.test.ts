@@ -140,4 +140,34 @@ describe('notion-md CLI boundary', () => {
     },
     cliTestTimeoutMs,
   )
+
+  it(
+    'renders gc help with --prune option (no Notion token required)',
+    async () => {
+      const { stdout } = await runCli(['gc', '--help'])
+
+      expect(stdout).toContain('--prune')
+      expect(stdout).toContain('--recursive')
+      expect(stdout).toContain('path')
+    },
+    cliTestTimeoutMs,
+  )
+
+  it(
+    'gc is registered in top-level help',
+    async () => {
+      const { stdout } = await runCli(['--help'])
+
+      expect(stdout).toContain('gc')
+    },
+    cliTestTimeoutMs,
+  )
+
+  it(
+    'gc validates missing targets without requiring a Notion token',
+    async () => {
+      await expect(runCli(['gc'])).rejects.toThrow('Missing argument <path>')
+    },
+    cliTestTimeoutMs,
+  )
 })
