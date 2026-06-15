@@ -722,7 +722,7 @@ describe('body adapter contract', () => {
         'utf8',
       )
       const datasourceSidecar = await readFile(
-        join(rootPath, '.notion-datasource-sync', 'pages', `${encodeURIComponent(nmdPageId)}.json`),
+        join(rootPath, '.notion', 'v1', 'pages', `${encodeURIComponent(nmdPageId)}.json`),
         'utf8',
       )
 

@@ -28,6 +28,7 @@ import {
   filesystemWorkspacePageSidecarPath,
   makeFilesystemWorkspaceSidecar,
   metadataDirectoryName,
+  namespaceRootDirectoryName,
   ownWriteSuppressionToken,
   pageSidecarDirectoryName,
   type FilesystemWorkspaceSidecar as FilesystemWorkspaceSidecarType,
@@ -673,9 +674,12 @@ const scanFilesystemWorkspace = async ({
     const observations = await Promise.all(
       entries.map(async (entry): Promise<ReadonlyArray<LocalArtifactObservationType>> => {
         const absolutePath = join(directory, entry.name)
+        // Exclude the entire hidden namespace tree (e.g. `.notion/v1/...`) from
+        // the scan. The namespace root is a single top-level segment, so this
+        // also covers `metadataDirectoryName` (`.notion/v1`) beneath it.
         if (
-          absolutePath === join(root, metadataDirectoryName) ||
-          entry.name === metadataDirectoryName
+          absolutePath === join(root, namespaceRootDirectoryName) ||
+          entry.name === namespaceRootDirectoryName
         ) {
           return []
         }

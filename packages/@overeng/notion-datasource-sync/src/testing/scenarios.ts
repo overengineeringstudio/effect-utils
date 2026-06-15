@@ -710,6 +710,8 @@ const guardScenarioIds = {
   StoreMigrationBlocked: 'NDS-GUARD-store-migration-blocked',
   QueueBackpressureExceeded: 'NDS-L5-daemon-bounded-outbox-drain',
   RawPayloadRetentionUnsafe: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
+  UnknownWorkspaceNamespace: 'NDS-GUARD-unknown-workspace-namespace',
+  MixedWorkspaceNamespace: 'NDS-GUARD-mixed-workspace-namespace',
 } as const satisfies Record<GuardNameType, ScenarioId>
 
 const vrsRequirementId = (index: number): RequirementId =>
@@ -842,6 +844,22 @@ export const traceabilityResiduals = [
     scenarioId: 'NDS-GUARD-store-migration-blocked',
     requirementIds: ['R12', 'R62'],
     reason: 'Store migration blocking is covered by store tests and awaits E2E promotion.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'UnknownWorkspaceNamespace',
+    scenarioId: 'NDS-GUARD-unknown-workspace-namespace',
+    requirementIds: ['R04', 'R05'],
+    reason:
+      'Unknown workspace namespace fail-closed is covered by manifest unit tests; fake E2E promotion (NDS-L3-versioned-namespace-fail-closed) is pending.',
+  },
+  {
+    _tag: 'placeholder-guard-scenario',
+    guard: 'MixedWorkspaceNamespace',
+    scenarioId: 'NDS-GUARD-mixed-workspace-namespace',
+    requirementIds: ['R04', 'R05'],
+    reason:
+      'Mixed workspace namespace fail-closed is covered by manifest unit tests; fake E2E promotion (NDS-L3-versioned-namespace-fail-closed) is pending.',
   },
   // Shared property-write guards (3c-i vocabulary compose) are now routed through
   // the planner's workspace proof provider in 3c-ii and covered by the concrete

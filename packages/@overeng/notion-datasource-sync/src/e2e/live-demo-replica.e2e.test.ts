@@ -354,7 +354,7 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
       for (const dataSource of resolvedDataSources.filter((source) => source.fastReplica)) {
         // oxlint-disable-next-line no-await-in-loop -- sequential sync avoids hammering Notion with replica builds.
         await syncDemoDataSource({ dataSource, workspace })
-        const sqlitePath = join(workspace, `${dataSource.databaseId}.sqlite`)
+        const sqlitePath = join(workspace, 'data', 'v1', `${dataSource.databaseId}.sqlite`)
         const replica = inspectReplica({ sqlitePath, dataSource })
 
         expect(replica.rowCount).toBe(dataSource.expectedRows)
@@ -384,7 +384,7 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
         for (const dataSource of resolvedDataSources) {
           // oxlint-disable-next-line no-await-in-loop -- sequential sync avoids hammering Notion with replica builds.
           await syncDemoDataSource({ dataSource, workspace })
-          const sqlitePath = join(workspace, `${dataSource.databaseId}.sqlite`)
+          const sqlitePath = join(workspace, 'data', 'v1', `${dataSource.databaseId}.sqlite`)
           const replica = inspectReplica({ sqlitePath, dataSource })
 
           expect(replica.rowCount).toBe(dataSource.expectedRows)
