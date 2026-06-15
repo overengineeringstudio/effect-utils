@@ -230,9 +230,14 @@ export const makeWorkspaceProof = (
     baseCompleteness: { surfaceComplete: availability.surfaceComplete },
     relationAvailability: { status: availability.relationStatus },
     /*
-     * TODO(phase-4-local-convergence): defaulted to `not-applicable` until Phase 4
-     * proves real convergence (local SQLite `pages` vs the `.nmd` artifact). See
-     * the WIRED-BUT-DORMANT note in WorkspaceProofInputs.
+     * TODO(phase-4-local-convergence): the Phase 4 local-convergence engine
+     * (`planner/local-convergence.ts`) compares the local SQLite `pages` surface
+     * against the `.nmd` artifact per `(page_id, property_id)` and produces a
+     * `converged`/`disagrees` verdict that `applyConvergenceVerdicts` overlays onto
+     * `PropertySurfaceSnapshot.localConvergence`; a `disagrees` is surfaced here as
+     * `LocalSurfaceDisagreement`. The engine is unit-proven but NOT yet wired into
+     * a production push path (the `.nmd` feeder under `pages/v1/<source>` is also
+     * unwired), so production proofs default to `not-applicable`.
      */
     localConvergence: { status: inputs.localConvergence ?? 'not-applicable' },
     /*

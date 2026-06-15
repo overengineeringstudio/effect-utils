@@ -132,4 +132,41 @@ describe('workspace manifest', () => {
 
     expect(loadWorkspaceManifest(root)._tag).toBe('tracked')
   })
+
+  it('accepts a linked view that references a tracked data source (read-only projection)', () => {
+    const manifest = decode(WorkspaceManifestV1, {
+      ...sampleManifest(),
+      linked_views: [
+        {
+          name: 'tasks-board',
+          view_id: 'view-1',
+          data_source_id: 'data-source-1',
+          mode: 'projection',
+        },
+      ],
+    })
+    writeFileSync(manifestPath(root), JSON.stringify(manifest))
+
+    expect(loadWorkspaceManifest(root)._tag).toBe('tracked')
+  })
+
+  it('fails closed (R08) on a linked view referencing an untracked data source', () => {
+    const manifest = decode(WorkspaceManifestV1, {
+      ...sampleManifest(),
+      linked_views: [
+        {
+          name: 'orphan-board',
+          view_id: 'view-9',
+          data_source_id: 'data-source-unknown',
+          mode: 'projection',
+        },
+      ],
+    })
+    writeFileSync(manifestPath(root), JSON.stringify(manifest))
+
+    const result = loadWorkspaceManifest(root)
+    expect(result._tag).toBe('invalid-linked-view')
+    if (result._tag !== 'invalid-linked-view') return
+    expect(result.offendingViews).toEqual(['orphan-board'])
+  })
 })

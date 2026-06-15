@@ -38,6 +38,8 @@ import {
   guardStaleSurfaceBase,
   guardTombstoneSafety,
   guardUnavailableRelationTarget,
+  applyConvergenceVerdicts,
+  convergeLocalSurfaces,
   pageSurfaceKey,
   pathSurfaceKey,
   planIntent,
@@ -962,6 +964,33 @@ describe('notion datasource planner', () => {
       _tag: 'BlockedByGuard',
       guard: 'LocalSurfaceDisagreement',
       detail: { summary: 'Local surface disagrees with the observed remote surface' },
+    })
+  })
+
+  it('drives LocalSurfaceDisagreement from the real convergence engine (not a test literal)', () => {
+    // The convergence engine compares the drained SQLite edit against the `.nmd`
+    // fact for `(pageId, propertyA)`; a divergent hash yields a `disagrees`
+    // verdict, which `applyConvergenceVerdicts` overlays onto the property surface
+    // so the planner blocks with `LocalSurfaceDisagreement` — closing
+    // TODO(phase-4-local-convergence).
+    const identity = { kind: 'property' as const, pageId, propertyId: propertyA }
+    const convergence = convergeLocalSurfaces({
+      authorityMode: 'shared',
+      dataFileEdits: [{ identity, desiredHash: hash('a') }],
+      nmdFacts: [{ identity, desiredHash: hash('b') }],
+    })
+    if (convergence._tag !== 'shared') throw new Error('expected shared convergence')
+    expect(convergence.conflicts).toHaveLength(1)
+
+    const properties = applyConvergenceVerdicts({
+      properties: [propertyASurface()],
+      verdicts: convergence.propertyVerdicts,
+    })
+    const decision = planIntent({ snapshot: snapshot({ properties }), intent: propertyEditIntent })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'LocalSurfaceDisagreement',
     })
   })
 

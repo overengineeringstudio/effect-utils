@@ -65,14 +65,20 @@ export class SyncGuardError extends Schema.TaggedError<SyncGuardError>()('SyncGu
 
 /**
  * Raised when a workspace is tracked but its namespace version is unknown
- * (`UnknownWorkspaceNamespace`) or sibling namespace artifacts coexist
- * (`MixedWorkspaceNamespace`). Both fail closed: the engine never migrates,
- * rewrites, or reinterprets local artifacts under an unrecognized namespace.
+ * (`UnknownWorkspaceNamespace`), sibling namespace artifacts coexist
+ * (`MixedWorkspaceNamespace`), or a linked view references an untracked data
+ * source (`InvalidLinkedView`, R08). All fail closed: the engine never migrates,
+ * rewrites, or reinterprets local artifacts under an unrecognized or
+ * inconsistent namespace.
  */
 export class WorkspaceNamespaceError extends Schema.TaggedError<WorkspaceNamespaceError>()(
   'WorkspaceNamespaceError',
   {
-    guard: Schema.Literal('UnknownWorkspaceNamespace', 'MixedWorkspaceNamespace'),
+    guard: Schema.Literal(
+      'UnknownWorkspaceNamespace',
+      'MixedWorkspaceNamespace',
+      'InvalidLinkedView',
+    ),
     message: Schema.String,
   },
 ) {}
