@@ -187,6 +187,20 @@ export const webhookTriggerAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Span attributes for a files/media write-boundary classification. */
+export const mediaBoundaryAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.operation' })),
+    fileCount: Schema.NonNegativeInt.pipe(
+      OtelAttr.key({ key: 'notion_md.media_boundary.file_count' }),
+    ),
+    verdict: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.verdict' })),
+    guard: Schema.optional(
+      Schema.String.pipe(OtelAttr.key({ key: 'notion_md.media_boundary.guard' })),
+    ),
+  }),
+)
+
 export const withOperation =
   <S extends Schema.Schema.AnyNoContext>(
     operation: OtelOperationDefinition<S>,
@@ -309,12 +323,6 @@ export const GatewayUpdatePageMetadataSpan = OtelOperation.define({
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
-export const GatewayRetrieveDataSourceSpan = OtelOperation.define({
-  name: 'notion-md.gateway.retrieve-data-source',
-  attributes: dataSourceAttrs,
-  label: ({ dataSourceId }) => dataSourceId.slice(0, 8),
-})
-
 export const GatewayListChildPagesSpan = OtelOperation.define({
   name: 'notion-md.gateway.list-child-pages',
   attributes: pageAttrs,
@@ -390,6 +398,13 @@ export const editResultAttrs = OtelAttrs.defineSync(
     ),
   }),
 )
+
+/** Operation span emitted when the files/media write boundary classifies a write. */
+export const MediaBoundarySpan = OtelOperation.define({
+  name: 'notion-md.media-boundary',
+  attributes: mediaBoundaryAttrs,
+  label: ({ operation, verdict }) => `${operation}:${verdict}`,
+})
 
 /** Operation span emitted when a webhook signal is mapped to watch triggers. */
 export const WebhookTriggerSpan = OtelOperation.define({

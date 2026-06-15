@@ -6,6 +6,7 @@ export {
   NmdFrontmatterError,
   NmdGatewayError,
   NmdInvalidDocumentError,
+  NmdNonBodyWriteBlockedError,
   NmdObjectStoreError,
   NmdPartialWriteError,
   NmdPostPushGateError,
@@ -29,6 +30,9 @@ export type {
 export { editorBaseHash, parseTitleBody, serializeTitleBody } from './editor-surface.ts'
 export type { TitleBodyDocument } from './editor-surface.ts'
 export { EDITOR_EXIT_CODES, editorExitCode } from './exit-codes.ts'
+export { classifyMediaWrite } from './media-boundary.ts'
+export type { MediaWriteOperation, MediaWriteVerdict } from './media-boundary.ts'
+export { NonBodyGuardName, nonBodyGuardNames } from './non-body-guards.ts'
 export { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 export type { ParsedNmdFile } from './frontmatter.ts'
 export { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'

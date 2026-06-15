@@ -2,6 +2,8 @@ import { Schema } from 'effect'
 
 import { PropertyWriteGuardName } from '@overeng/notion-property-write'
 
+import { NonBodyGuardName } from './non-body-guards.ts'
+
 /** Raised when a local `.nmd` file is missing or has malformed frontmatter. */
 export class NmdFrontmatterError extends Schema.TaggedError<NmdFrontmatterError>()(
   'NmdFrontmatterError',
@@ -108,6 +110,24 @@ export class NmdPropertyWriteBlockedError extends Schema.TaggedError<NmdProperty
   },
 ) {}
 
+/**
+ * Raised when a non-body write boundary (files/media this phase) refuses a
+ * write that would carry a payload notion-md cannot durably transfer yet.
+ * Carries the violated {@link NonBodyGuardName} and the offending file ids so
+ * the refusal is observable rather than a silent drop (R13).
+ */
+export class NmdNonBodyWriteBlockedError extends Schema.TaggedError<NmdNonBodyWriteBlockedError>()(
+  'NmdNonBodyWriteBlockedError',
+  {
+    page_id: Schema.String,
+    /** The violated non-body guard name identifying the missing invariant. */
+    guard: NonBodyGuardName,
+    message: Schema.String,
+    /** Ids of the file units that triggered the block. */
+    fileIds: Schema.Array(Schema.String),
+  },
+) {}
+
 /** Raised when a command needs a Notion token and none was supplied. */
 export class NmdTokenMissingError extends Schema.TaggedError<NmdTokenMissingError>()(
   'NmdTokenMissingError',
@@ -194,4 +214,5 @@ export type NmdError =
   | NmdRemoteBodyLossyError
   | NmdSchemaDriftError
   | NmdPropertyWriteBlockedError
+  | NmdNonBodyWriteBlockedError
   | NmdCliError
