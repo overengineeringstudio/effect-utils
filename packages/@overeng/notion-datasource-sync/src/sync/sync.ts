@@ -28,6 +28,7 @@ import {
 } from '../core/ports.ts'
 import { reportSyncProgress } from '../core/progress.ts'
 import { readOneShotSyncStatus, type OneShotSyncStatus } from '../core/status.ts'
+import type { AuthorityMode } from '../local/manifest.ts'
 import {
   annotateSpan,
   shortSpanId,
@@ -42,6 +43,7 @@ import {
   type LocalDeleteIntent,
   type PlanDecision,
   type PlannerIntent,
+  type PlannerProjectionSnapshot,
 } from '../planner/planner.ts'
 import { pageLifecycleHash } from '../store/projections.ts'
 import type { NotionSyncStore } from '../store/store.ts'
@@ -94,13 +96,25 @@ export type OneShotPushOptions = {
   readonly leaseDurationMs?: number
   readonly now?: () => Date
   readonly dryRun?: boolean
+  /**
+   * Workspace-wide authority mode (decisions 0003, 0010), threaded onto every
+   * planner property snapshot's `writeMode`. `remote` makes local property edits
+   * drift (`RemoteAuthoritativeDrift`); `local`/`shared` reach the property-write
+   * proof. Absent leaves the planner's `shared` default.
+   */
+  readonly authorityMode?: AuthorityMode
 }
 
 /** Combined options for `syncOneShot`, merging pull and push settings into a single pass. */
 export type OneShotSyncOptions = OneShotPullOptions &
   Pick<
     OneShotPushOptions,
-    'localIntents' | 'materializeBodies' | 'maxExecutorSteps' | 'leaseToken' | 'leaseDurationMs'
+    | 'localIntents'
+    | 'materializeBodies'
+    | 'maxExecutorSteps'
+    | 'leaseToken'
+    | 'leaseDurationMs'
+    | 'authorityMode'
   > & {
     readonly deferLocalPlanningUntilAfterPull?: boolean
   }
@@ -172,6 +186,31 @@ const propertyIdFromSurface = (surface: string): typeof PropertyId.Type | undefi
   const match = /^page:[^:]+:property:(.+)$/.exec(surface)
   return match?.[1] === undefined ? undefined : decode({ schema: PropertyId, value: match[1] })
 }
+
+/**
+ * Overlays the workspace-wide authority mode onto every property snapshot's
+ * `writeMode`. The single chokepoint where a `readPlannerProjectionSnapshot`
+ * result is handed to the planner: the manifest authority mode (decisions 0003,
+ * 0010) drives property-write authority, not yet-to-be-built per-page
+ * observation. `undefined` leaves the snapshot untouched so the planner keeps its
+ * `shared` default and behavior is preserved for standalone/untracked stores.
+ */
+const withAuthorityMode = ({
+  snapshot,
+  authorityMode,
+}: {
+  readonly snapshot: PlannerProjectionSnapshot
+  readonly authorityMode: AuthorityMode | undefined
+}): PlannerProjectionSnapshot =>
+  authorityMode === undefined
+    ? snapshot
+    : {
+        ...snapshot,
+        properties: snapshot.properties.map((property) => ({
+          ...property,
+          writeMode: authorityMode,
+        })),
+      }
 
 const appendDecision = ({
   store,
@@ -651,7 +690,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
 
       yield* reportSyncProgress({ _tag: 'phase', phase: 'planning' })
       for (const intent of options.localIntents ?? []) {
-        const snapshot = options.store.readPlannerProjectionSnapshot(options.rootId)
+        const snapshot = withAuthorityMode({
+          snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
+          authorityMode: options.authorityMode,
+        })
         summaries.push(
           appendDecision({
             store: options.store,
@@ -665,7 +707,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
       }
 
       for (const observation of local.observations) {
-        const snapshot = options.store.readPlannerProjectionSnapshot(options.rootId)
+        const snapshot = withAuthorityMode({
+          snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
+          authorityMode: options.authorityMode,
+        })
         const bodySurface = snapshot.bodies.find(
           (candidate) => candidate.pageId === observation.pageId,
         )
@@ -758,7 +803,10 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
             store: options.store,
             rootId: options.rootId,
             decision: planIntent({
-              snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
+              snapshot: withAuthorityMode({
+                snapshot: options.store.readPlannerProjectionSnapshot(options.rootId),
+                authorityMode: options.authorityMode,
+              }),
               intent,
             }),
             pageId: observation.pageId,

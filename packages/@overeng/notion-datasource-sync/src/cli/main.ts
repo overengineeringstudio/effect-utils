@@ -96,6 +96,7 @@ import {
   pagesDirRelativePath,
   stateSqlitePath,
   writeWorkspaceManifestSync,
+  type AuthorityMode,
   type WorkspaceManifestDataSourceV1,
   type WorkspaceManifestV1,
 } from '../local/manifest.ts'
@@ -197,7 +198,7 @@ export type CliCommand =
       readonly watch?: boolean
       readonly statePath?: string
       readonly maxCycles?: number
-      readonly mode?: WatchDaemonMode
+      readonly watchPriority?: WatchDaemonMode
       readonly webhook?: 'none' | 'tailscale' | 'manual'
       readonly webhookRequired?: boolean
       readonly nonInteractive?: boolean
@@ -207,6 +208,23 @@ export type CliCommand =
       readonly dataSourceId: typeof DataSourceId.Type
       readonly remoteRef: NotionRemoteRef
       readonly workspaceRoot: typeof AbsolutePath.Type
+      readonly dryRun?: boolean
+      readonly limit?: number
+    }
+  | {
+      /**
+       * `track` is the adoption verb (decision 0004): it adopts a Notion data
+       * source into a workspace and is the canonical workspace-establish command.
+       * It is the ONLY command that accepts `--mode`; the chosen authority mode is
+       * persisted into `notion.workspace.v1.json`. Shares the establish machinery
+       * of `sync-from-notion`.
+       */
+      readonly _tag: 'track'
+      readonly dataSourceId: typeof DataSourceId.Type
+      readonly remoteRef: NotionRemoteRef
+      readonly workspaceRoot: typeof AbsolutePath.Type
+      /** Workspace authority mode persisted to the manifest. Defaults to `shared`. */
+      readonly authorityMode: AuthorityMode
       readonly dryRun?: boolean
       readonly limit?: number
     }
@@ -264,6 +282,14 @@ export type CliContext = {
   readonly rootId: SyncRootIdType
   readonly dataSourceId: typeof DataSourceId.Type
   readonly workspaceRoot: typeof AbsolutePath.Type
+  /**
+   * Workspace-wide authority mode read from `notion.workspace.v1.json` for a
+   * tracked workspace (decisions 0003, 0010). Threads into the planner's
+   * per-property `writeMode`: `remote` makes local edits drift, `local`/`shared`
+   * reach the property-write proof. Absent for a standalone `--sqlite` file or an
+   * untracked establish run; the planner then keeps its `shared` default.
+   */
+  readonly authorityMode?: AuthorityMode
   readonly queryContract: QueryContract
   readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
@@ -869,6 +895,10 @@ const runCliCommandEffect = ({
         Effect.tap(() => Effect.sync(() => projectReplicaIfWritable({ context }))),
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
+    // `track` is the canonical adoption verb; `sync-from-notion` is its legacy
+    // alias. Both route through the same establish machinery. The authority mode
+    // for `track` is persisted by `parseCliContext` into the manifest.
+    case 'track':
     case 'sync-from-notion':
       return establishFromNotion({
         ...context,
@@ -962,7 +992,7 @@ const runCliCommandEffect = ({
               ...withOptionalObservationLimit(context),
               statePath: command.statePath ?? defaultWatchStatePath(context),
               ...(command.maxCycles === undefined ? {} : { maxCycles: command.maxCycles }),
-              ...(command.mode === undefined ? {} : { mode: command.mode }),
+              ...(command.watchPriority === undefined ? {} : { mode: command.watchPriority }),
               ...(webhook.wakeNotifier === undefined ? {} : { wakeNotifier: webhook.wakeNotifier }),
               ...withOptionalRuntimeOptions(context),
             }).pipe(
@@ -1455,18 +1485,53 @@ const positiveIntegerFlag = ({
   })
 }
 
-const watchModeFlag = (flags: Map<string, string | true>): WatchDaemonMode | undefined => {
-  const mode = optionalFlag({ flags, name: 'mode' })
-  if (mode === undefined) return undefined
-  switch (mode) {
+const watchPriorityFlag = (flags: Map<string, string | true>): WatchDaemonMode | undefined => {
+  const priority = optionalFlag({ flags, name: 'watch-priority' })
+  if (priority === undefined) return undefined
+  switch (priority) {
     case 'development':
     case 'normal':
     case 'low-priority':
+      return priority
+    default:
+      throw new CliArgumentError({
+        message: '--watch-priority must be one of: development, normal, low-priority',
+      })
+  }
+}
+
+/**
+ * Parses the authority `--mode` flag accepted ONLY by `track`. The chosen mode
+ * (`local`, `remote`, or `shared`) is persisted workspace-wide in the manifest;
+ * `shared` is the default when the flag is omitted. Established commands reject
+ * `--mode` entirely (see `rejectPerRunAuthorityMode`).
+ */
+const authorityModeFlag = (flags: Map<string, string | true>): AuthorityMode => {
+  const mode = optionalFlag({ flags, name: 'mode' })
+  if (mode === undefined) return 'shared'
+  switch (mode) {
+    case 'local':
+    case 'remote':
+    case 'shared':
       return mode
     default:
       throw new CliArgumentError({
-        message: '--mode must be one of: development, normal, low-priority',
+        message: '--mode must be one of: local, remote, shared',
       })
+  }
+}
+
+/**
+ * Authority mode is workspace-wide and set only by `track` (decisions 0003,
+ * 0010): established commands reject a per-run `--mode` instead of silently
+ * ignoring it.
+ */
+const rejectPerRunAuthorityMode = (flags: Map<string, string | true>): void => {
+  if (flags.has('mode') === true) {
+    throw new CliArgumentError({
+      message:
+        'authority mode is workspace-wide; set it with `track --mode`; established commands do not accept --mode',
+    })
   }
 }
 
@@ -1577,7 +1642,48 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   const flags = parseFlags(argv)
   const words = parsePositionals(argv)
   const [command, subcommand] = words
+  // Authority `--mode` is accepted ONLY by `track`; every other command rejects
+  // a per-run override before any further parsing (decisions 0003, 0010).
+  if (command !== 'track') rejectPerRunAuthorityMode(flags)
   switch (command) {
+    case 'track': {
+      const remote = words[1]
+      if (remote === undefined) {
+        throw new CliArgumentError({
+          message: 'track requires a Notion data source or database URL positional argument',
+        })
+      }
+      const workspace = words[2]
+      if (workspace === undefined) {
+        throw new CliArgumentError({
+          message: 'track requires a workspace root positional argument',
+        })
+      }
+      if (words.length > 3) {
+        throw new CliArgumentError({
+          message: 'track accepts exactly a remote ref and a workspace root positional argument',
+        })
+      }
+      const limit = optionalLimitFlag(flags)
+      if (limit !== undefined && flags.has('dry-run') === false) {
+        throw new CliArgumentError({
+          message: '--limit is only supported with track --dry-run',
+        })
+      }
+      const remoteRef = parseNotionRemoteRef(remote)
+      return {
+        _tag: 'track',
+        dataSourceId:
+          remoteRef._tag === 'data-source'
+            ? remoteRef.dataSourceId
+            : decode({ schema: DataSourceId, value: remoteRef.databaseId }),
+        remoteRef,
+        workspaceRoot: normalizeAbsolutePath(workspace),
+        authorityMode: authorityModeFlag(flags),
+        dryRun: flags.has('dry-run'),
+        ...(limit === undefined ? {} : { limit }),
+      }
+    }
     case 'init':
       return {
         _tag: 'init',
@@ -1646,8 +1752,10 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
             message: '--max-cycles is only supported with sync --watch',
           })
         }
-        if (flags.has('mode') === true) {
-          throw new CliArgumentError({ message: '--mode is only supported with sync --watch' })
+        if (flags.has('watch-priority') === true) {
+          throw new CliArgumentError({
+            message: '--watch-priority is only supported with sync --watch',
+          })
         }
         if (flags.has('webhook') === true) {
           throw new CliArgumentError({ message: '--webhook is only supported with sync --watch' })
@@ -1665,7 +1773,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
       }
       const statePath = optionalFlag({ flags, name: 'state' })
       const maxCycles = positiveIntegerFlag({ flags, name: 'max-cycles' })
-      const mode = watchModeFlag(flags)
+      const watchPriority = watchPriorityFlag(flags)
       const webhook = webhookProviderFlag(flags)
       return {
         _tag: 'sync',
@@ -1674,7 +1782,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
         ...(watch === false ? {} : { watch: true }),
         ...(statePath === undefined ? {} : { statePath }),
         ...(maxCycles === undefined ? {} : { maxCycles }),
-        ...(mode === undefined ? {} : { mode }),
+        ...(watchPriority === undefined ? {} : { watchPriority }),
         ...(webhook === undefined ? {} : { webhook }),
         ...(flags.has('webhook-required') === false ? {} : { webhookRequired: true }),
         ...(flags.has('non-interactive') === false ? {} : { nonInteractive: true }),
@@ -1757,7 +1865,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   }
   throw new CliArgumentError({
     message:
-      'Expected one of: init, pull, push, sync, export, status, conflicts list, conflicts resolve, forget, restore, doctor',
+      'Expected one of: track, init, pull, push, sync, export, status, conflicts list, conflicts resolve, forget, restore, doctor',
   })
 }
 
@@ -1942,18 +2050,25 @@ const requireCompatibleWorkspaceNamespace = (workspaceRoot: typeof AbsolutePath.
 }
 
 /**
- * Writes (or updates) the v1 workspace manifest when a `sync --from-notion`
- * establishes a tracked source. Preserves an existing manifest's
- * `authority_mode` and other sources; upserts the established source by
- * `data_source_id`. The source `name` reuses the database ID, so artifacts land
- * at `data/v1/<databaseId>.sqlite` and `pages/v1/<databaseId>` — the previous
- * single-file location, relocated into the versioned namespace.
+ * Writes (or updates) the v1 workspace manifest when an adoption command
+ * (`track`, or the legacy `sync --from-notion`) establishes a tracked source.
+ * Upserts the established source by `data_source_id`. The source `name` reuses
+ * the database ID, so artifacts land at `data/v1/<databaseId>.sqlite` and
+ * `pages/v1/<databaseId>` — the previous single-file location, relocated into
+ * the versioned namespace.
+ *
+ * `authorityMode` is the workspace-wide authority mode. `track --mode` supplies
+ * it explicitly (closing the SM2 M3 gap where adoption could not record a
+ * complete manifest with an authority mode); the legacy `sync --from-notion`
+ * path omits it and preserves any existing manifest mode, defaulting to
+ * `shared` for a fresh workspace.
  */
 const writeEstablishedWorkspaceManifest = (source: {
   readonly workspaceRoot: typeof AbsolutePath.Type
   readonly name: string
   readonly dataSourceId: typeof DataSourceId.Type
   readonly databaseId: string
+  readonly authorityMode?: AuthorityMode
 }): void => {
   const existing = loadWorkspaceManifest(source.workspaceRoot)
   const entry: WorkspaceManifestDataSourceV1 = {
@@ -1971,7 +2086,9 @@ const writeEstablishedWorkspaceManifest = (source: {
       : []
   const manifest: WorkspaceManifestV1 = {
     namespace_version: 'v1',
-    authority_mode: existing._tag === 'tracked' ? existing.manifest.authority_mode : 'shared',
+    authority_mode:
+      source.authorityMode ??
+      (existing._tag === 'tracked' ? existing.manifest.authority_mode : 'shared'),
     data_sources: [...priorSources, entry],
     ...(existing._tag === 'tracked' && existing.manifest.linked_views !== undefined
       ? { linked_views: existing.manifest.linked_views }
@@ -2125,24 +2242,29 @@ export const parseCliContext = ({
         '--query-contract-json is not supported by the product CLI; database-ID SQLite files are always full Notion database replicas',
     })
   }
-  if (command._tag === 'sync-from-notion' && explicitSqlitePath !== undefined) {
+  if (
+    (command._tag === 'sync-from-notion' || command._tag === 'track') &&
+    explicitSqlitePath !== undefined
+  ) {
+    const verb = command._tag === 'track' ? 'track' : 'sync --from-notion'
     throw new CliArgumentError({
-      message:
-        'sync --from-notion always creates <workspace>/<database-id>.sqlite; --sqlite is only for established replica commands',
+      message: `${verb} always creates <workspace>/<database-id>.sqlite; --sqlite is only for established replica commands`,
     })
   }
   // Captured when a workspace-rooted command establishes a tracked source, so
-  // the v1 manifest can be (re)written after the store is opened.
+  // the v1 manifest can be (re)written after the store is opened. `authorityMode`
+  // is carried only by `track --mode`, which sets the workspace-wide mode.
   let establishManifestSource:
     | {
         readonly workspaceRoot: typeof AbsolutePath.Type
         readonly name: string
         readonly dataSourceId: typeof DataSourceId.Type
         readonly databaseId: string
+        readonly authorityMode?: AuthorityMode
       }
     | undefined
   const discovered =
-    command._tag === 'sync-from-notion'
+    command._tag === 'sync-from-notion' || command._tag === 'track'
       ? (() => {
           const databaseId =
             command.remoteRef._tag === 'database'
@@ -2153,9 +2275,10 @@ export const parseCliContext = ({
           if (commandDryRun !== true) {
             requireCompatibleWorkspaceNamespace(command.workspaceRoot)
           }
-          // `sync --from-notion` always establishes inside a workspace (--sqlite
-          // is rejected above), so the control plane lives in the hidden
-          // state.sqlite and the public projection in the data file. ADR 0011.
+          // `track` (and the legacy `sync --from-notion`) always establishes
+          // inside a workspace (--sqlite is rejected above), so the control plane
+          // lives in the hidden state.sqlite and the public projection in the
+          // data file. ADR 0011.
           const dataFile = defaultSqlitePath({ workspaceRoot: command.workspaceRoot, databaseId })
           const storePath = decode({
             schema: AbsolutePath,
@@ -2178,6 +2301,9 @@ export const parseCliContext = ({
               name: databaseId,
               dataSourceId: decode({ schema: DataSourceId, value: command.dataSourceId }),
               databaseId,
+              // `track --mode` records the workspace-wide authority mode; the
+              // legacy `sync --from-notion` path preserves the existing mode.
+              ...(command._tag === 'track' ? { authorityMode: command.authorityMode } : {}),
             }
           }
           return {
@@ -2273,7 +2399,8 @@ export const parseCliContext = ({
                     }),
                   }
                 })()
-  const rowLimit = command._tag === 'sync-from-notion' ? command.limit : undefined
+  const rowLimit =
+    command._tag === 'sync-from-notion' || command._tag === 'track' ? command.limit : undefined
   const baseQueryContract = fullReplicaQueryContract()
   const queryContract =
     rowLimit === undefined
@@ -2306,7 +2433,11 @@ export const parseCliContext = ({
   if (discovered.storePath !== ':memory:') {
     mkdirSync(dirname(discovered.storePath), { recursive: true })
     mkdirSync(dirname(discovered.dataFilePath), { recursive: true })
-    if (command._tag !== 'sync-from-notion' && existsSync(discovered.storePath) === true) {
+    if (
+      command._tag !== 'sync-from-notion' &&
+      command._tag !== 'track' &&
+      existsSync(discovered.storePath) === true
+    ) {
       validateSelfContainedSqlite({
         storePath: discovered.storePath,
         dataFilePath: discovered.dataFilePath,
@@ -2316,6 +2447,7 @@ export const parseCliContext = ({
   const store = openNotionSyncStore({ path: discovered.storePath })
   if (
     command._tag !== 'sync-from-notion' &&
+    command._tag !== 'track' &&
     (command._tag !== 'export' || command.fromNotion === undefined) &&
     discovered.storePath !== ':memory:'
   ) {
@@ -2341,6 +2473,18 @@ export const parseCliContext = ({
     writeEstablishedWorkspaceManifest(establishManifestSource)
   }
 
+  // Read the workspace-wide authority mode from the manifest (now reflecting any
+  // freshly-written `track --mode`). Absent for a standalone `--sqlite` file or a
+  // dry run; the planner keeps its `shared` default in that case.
+  const manifestResult =
+    discovered.storePath === ':memory:'
+      ? undefined
+      : loadWorkspaceManifest(discovered.workspaceRoot)
+  const authorityMode =
+    manifestResult !== undefined && manifestResult._tag === 'tracked'
+      ? manifestResult.manifest.authority_mode
+      : undefined
+
   return {
     store,
     storePath: discovered.storePath,
@@ -2349,6 +2493,7 @@ export const parseCliContext = ({
     dataSourceId: discovered.dataSourceId,
     workspaceRoot: discovered.workspaceRoot,
     queryContract,
+    ...(authorityMode === undefined ? {} : { authorityMode }),
     ...(schemaProperties === undefined ? {} : { schemaProperties }),
     ...(requiredCapabilities === undefined ? {} : { requiredCapabilities }),
     ...(flags.has('no-materialize-bodies') === false && commandDryRun !== true
@@ -2441,7 +2586,8 @@ export const resolveCliCommandNotionRefs = ({
   readonly options?: CliRuntimeOptions
 }): Effect.Effect<CliCommand, CliArgumentError> => {
   const databaseRef =
-    command._tag === 'sync-from-notion' && command.remoteRef._tag === 'database'
+    (command._tag === 'sync-from-notion' || command._tag === 'track') &&
+    command.remoteRef._tag === 'database'
       ? command.remoteRef
       : command._tag === 'export' &&
           command.fromNotion !== undefined &&
@@ -2456,7 +2602,7 @@ export const resolveCliCommandNotionRefs = ({
   if (client === undefined) {
     return Effect.fail(
       new CliArgumentError({
-        message: `${command._tag === 'export' ? 'export' : 'sync'} --from-notion received a Notion database URL, but no Notion client is configured to resolve its child data source; set NOTION_API_TOKEN/NOTION_TOKEN or pass a data source ID directly.`,
+        message: `${command._tag === 'export' ? 'export' : command._tag === 'track' ? 'track' : 'sync'} received a Notion database URL, but no Notion client is configured to resolve its child data source; set NOTION_API_TOKEN/NOTION_TOKEN or pass a data source ID directly.`,
       }),
     )
   }
@@ -2466,7 +2612,7 @@ export const resolveCliCommandNotionRefs = ({
     client,
   }).pipe(
     Effect.map((resolved) =>
-      command._tag === 'sync-from-notion'
+      command._tag === 'sync-from-notion' || command._tag === 'track'
         ? {
             ...command,
             dataSourceId: resolved.dataSourceId,
@@ -2620,6 +2766,7 @@ export const runCliCommandWithRuntime = ({
   runCliCommand(command, context).pipe(Effect.provide(makeCliRuntimeLayer({ context, options })))
 
 const syncProgressCommandTags = new Set<CliCommand['_tag']>([
+  'track',
   'init',
   'pull',
   'push',
