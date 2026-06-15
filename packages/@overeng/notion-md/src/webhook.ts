@@ -1,56 +1,24 @@
 import { Effect, Schema, Stream } from 'effect'
 
+import {
+  NotionWebhookPayloadSchema,
+  notionWebhookDecodeOptions,
+  type NotionWebhookPayload as CanonicalNotionWebhookPayload,
+} from '@overeng/notion-effect-schema'
+
 import type { WatchTrigger } from './batch.ts'
 import * as Observability from './observability.ts'
 
 const decoder = new TextDecoder()
 
-const strictOptions = {
-  errors: 'all',
-  onExcessProperty: 'preserve',
-} as const
-
-const NonEmptyWebhookString = Schema.NonEmptyTrimmedString.annotations({
-  identifier: 'NotionMd.Webhook.NonEmptyString',
-})
-
-const NotionWebhookEntity = Schema.Struct({
-  id: NonEmptyWebhookString,
-  type: NonEmptyWebhookString,
-}).annotations({ identifier: 'NotionMd.Webhook.Entity' })
-
-const NotionWebhookParent = Schema.Struct({
-  page_id: Schema.optional(NonEmptyWebhookString),
-  data_source_id: Schema.optional(NonEmptyWebhookString),
-  database_id: Schema.optional(NonEmptyWebhookString),
-}).annotations({ identifier: 'NotionMd.Webhook.Parent' })
-
-const NotionWebhookData = Schema.Struct({
-  parent: Schema.optional(NotionWebhookParent),
-}).annotations({ identifier: 'NotionMd.Webhook.Data' })
-
-/** Minimal Notion webhook event payload accepted by the trigger layer. */
-export const NotionWebhookPayload = Schema.Struct({
-  id: Schema.optional(NonEmptyWebhookString),
-  event_id: Schema.optional(NonEmptyWebhookString),
-  type: NonEmptyWebhookString,
-  timestamp: Schema.optional(NonEmptyWebhookString),
-  created_time: Schema.optional(NonEmptyWebhookString),
-  api_version: Schema.optional(NonEmptyWebhookString),
-  attempt_number: Schema.optional(Schema.NonNegativeInt),
-  subscription_id: Schema.optional(NonEmptyWebhookString),
-  workspace_id: Schema.optional(NonEmptyWebhookString),
-  integration_id: Schema.optional(NonEmptyWebhookString),
-  is_aggregated: Schema.optional(Schema.Boolean),
-  entity: Schema.optional(NotionWebhookEntity),
-  data: Schema.optional(NotionWebhookData),
-}).annotations({ identifier: 'NotionMd.Webhook.Payload' })
-
-export type NotionWebhookPayload = typeof NotionWebhookPayload.Type
+/** Canonical Notion webhook event payload wire schema (shared with datasource-sync). */
+export const NotionWebhookPayload = NotionWebhookPayloadSchema
+/** @see {@link NotionWebhookPayload} */
+export type NotionWebhookPayload = CanonicalNotionWebhookPayload
 
 const decodeWebhookJson = Schema.decodeUnknown(
   Schema.parseJson(NotionWebhookPayload),
-  strictOptions,
+  notionWebhookDecodeOptions,
 )
 
 /** Expected failure while decoding or normalizing a Notion webhook payload. */
