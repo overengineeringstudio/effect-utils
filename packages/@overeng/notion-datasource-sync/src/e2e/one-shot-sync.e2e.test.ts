@@ -15,7 +15,12 @@ import {
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
 import { readOneShotSyncStatus } from '../core/status.ts'
 import { allGatewayCapabilities } from '../gateway/gateway.ts'
-import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local/workspace.ts'
+import { pagesDirRelativePath } from '../local/manifest.ts'
+import {
+  bodyPathForRowInDir,
+  makeFakeLocalWorkspacePort,
+  presentArtifactObservation,
+} from '../local/workspace.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
 import {
@@ -1076,6 +1081,60 @@ describe('one-shot sync orchestration', () => {
       expect(gatewayHarness.ledger.successfulPatchPageProperties).toEqual([])
       expect(gatewayHarness.ledger.successfulPatchDataSourceSchemas).toEqual([])
       expect(gatewayHarness.ledger.successfulTrashPages).toEqual([])
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  it('materializes a tracked source body under its pages/v1/<name> directory', async () => {
+    // SM5b: a tracked workspace wires `bodyPathForPage` to the source's
+    // `pages_dir`, so materialized `.nmd` page files land at
+    // `pages/v1/<name>/...` rather than the workspace root. This mirrors the
+    // production CLI wiring (`bodyPathForPageInSourceDir` in `cli/main.ts`).
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gatewayHarness = makeFakeGatewayHarness({ propertyPages: [propertyPage()] })
+    const materializedPlans: MaterializePlan[] = []
+    const baseWorkspace = makeFakeLocalWorkspacePort()
+    const workspace = {
+      ...baseWorkspace,
+      materialize: (plan: MaterializePlan) =>
+        baseWorkspace
+          .materialize(plan)
+          .pipe(Effect.tap(() => Effect.sync(() => materializedPlans.push(plan)))),
+    }
+    const body = makeFakePageBodySyncPort({ pages: [fakeBodyPage()] })
+    const pagesDir = pagesDirRelativePath('tasks')
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          bodyPathForPage: (pageId) => {
+            const decision = bodyPathForRowInDir({ pagesDir, title: `page-${pageId}`, pageId })
+            if (decision._tag !== 'allowed') throw new Error('expected allowed body path')
+            return decision.path
+          },
+          now: clock.now,
+        }),
+        { gateway: gatewayHarness.gateway, body, workspace },
+      )
+
+      expect(materializedPlans).toHaveLength(1)
+      expect(materializedPlans[0]?.path).toBe(`pages/v1/tasks/page-${testIds.pageId}--page-1.nmd`)
+      expect(materializedPlans[0]?.path.startsWith('pages/v1/tasks/')).toBe(true)
     } finally {
       storeFixture.cleanup()
     }

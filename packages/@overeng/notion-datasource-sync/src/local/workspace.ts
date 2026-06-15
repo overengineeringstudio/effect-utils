@@ -236,6 +236,30 @@ export const bodyPathForRow = ({
   })
 
 /**
+ * Derives the body file path for a page UNDER a source's page directory:
+ * `<pagesDir>/<title-slug>--<pageId><extension>`. This is the tracked-workspace
+ * variant of {@link bodyPathForRow} — each tracked source materializes its `.nmd`
+ * page files into its own `pages/v1/<name>` directory rather than at the workspace
+ * root. `pagesDir` is the manifest's `data_sources[].pages_dir` (already a safe,
+ * canonical workspace-relative directory).
+ */
+export const bodyPathForRowInDir = ({
+  pagesDir,
+  title,
+  pageId,
+  policy = defaultPathPolicy,
+}: {
+  readonly pagesDir: string
+  readonly title: string
+  readonly pageId: PageIdType
+  readonly policy?: PathPolicy
+}): WorkspacePathDecision =>
+  canonicalizeWorkspaceRelativePath({
+    path: `${pagesDir}/${titleSlug(title)}--${pageId}${policy.bodyExtension}`,
+    policy,
+  })
+
+/**
  * Describes a workspace file that is a candidate for deletion.
  *
  * `remoteTrash` is always `'blocked-by-default'` until an explicit remote-trash policy is active,

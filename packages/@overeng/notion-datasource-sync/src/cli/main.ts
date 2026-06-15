@@ -40,7 +40,9 @@ import {
   Hash,
   PageId,
   PropertyId,
+  WorkspaceRelativePath,
   type CapabilityName,
+  type WorkspaceRelativePath as WorkspaceRelativePathType,
 } from '../core/domain.ts'
 import { WorkspaceNamespaceError, WorkspaceNotTracked } from '../core/errors.ts'
 import type {
@@ -100,7 +102,7 @@ import {
   type WorkspaceManifestDataSourceV1,
   type WorkspaceManifestV1,
 } from '../local/manifest.ts'
-import { filesystemLocalWorkspacePortLayer } from '../local/workspace.ts'
+import { bodyPathForRowInDir, filesystemLocalWorkspacePortLayer } from '../local/workspace.ts'
 import {
   annotateSpan,
   otelServiceNameForCliArgv,
@@ -167,6 +169,27 @@ const cliVersion = resolveCliVersion({
   buildStamp,
 })
 
+/**
+ * Body path for a page within a tracked source's page directory
+ * (`pages/v1/<name>/<title-slug>--<pageId>.nmd`). The title is synthesized from
+ * the page id at observation time (the row title is not threaded here), matching
+ * the legacy `defaultBodyPathForPage` filename convention but rooted in the
+ * source's `pages_dir`. Falls back to a bare `pages/v1/<name>/page-<id>.nmd` if
+ * the canonical filename is somehow rejected.
+ */
+const bodyPathForPageInSourceDir = ({
+  pagesDir,
+  pageId,
+}: {
+  readonly pagesDir: string
+  readonly pageId: typeof PageId.Type
+}): WorkspaceRelativePathType => {
+  const decision = bodyPathForRowInDir({ pagesDir, title: `page-${pageId}`, pageId })
+  return decision._tag === 'blocked'
+    ? decode({ schema: WorkspaceRelativePath, value: `${pagesDir}/page-${pageId}.nmd` })
+    : decision.path
+}
+
 const remoteObservationContext = (context: CliContext) => ({
   ...(context.requiredCapabilities === undefined
     ? {}
@@ -174,6 +197,15 @@ const remoteObservationContext = (context: CliContext) => ({
   ...(context.materializeBodies === undefined
     ? {}
     : { materializeBodies: context.materializeBodies }),
+  // Tracked workspace: materialize `.nmd` page files under the source's
+  // `pages/v1/<name>` directory (one page directory per source). A standalone
+  // `--sqlite` file has no page directory and keeps the legacy root-level path.
+  ...(context.sourcePagesDir === undefined
+    ? {}
+    : {
+        bodyPathForPage: (pageId: typeof PageId.Type): WorkspaceRelativePathType =>
+          bodyPathForPageInSourceDir({ pagesDir: context.sourcePagesDir!, pageId }),
+      }),
 })
 
 /**
@@ -290,6 +322,14 @@ export type CliContext = {
    * untracked establish run; the planner then keeps its `shared` default.
    */
   readonly authorityMode?: AuthorityMode
+  /**
+   * Workspace-relative page directory for the tracked source (`pages/v1/<name>`),
+   * from the manifest. Materialized `.nmd` page files land under here so a tracked
+   * source's Markdown surface lives at `pages/v1/<name>/...` (one page directory
+   * per source). Absent for a standalone `--sqlite` file, which keeps the legacy
+   * workspace-root body path.
+   */
+  readonly sourcePagesDir?: string
   readonly queryContract: QueryContract
   readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
@@ -1894,6 +1934,15 @@ type DiscoveredSelfContainedStore = {
   readonly rootId: SyncRootIdType
   readonly dataSourceId: typeof DataSourceId.Type
   readonly workspaceRoot: typeof AbsolutePath.Type
+  /**
+   * Workspace-relative page directory for this tracked source (`pages/v1/<name>`,
+   * from the manifest's `data_sources[].pages_dir`). Materialized `.nmd` page
+   * files land under here, one page directory per tracked source (epic R: each
+   * tracked data source owns exactly one data file and one page directory).
+   * Absent for a standalone `--sqlite` file, which has no versioned layout and
+   * keeps the legacy workspace-root body path.
+   */
+  readonly pagesDir?: string
 }
 
 const readSelfContainedBinding = (storePath: string): WorkspaceBindingRow | undefined => {
@@ -2176,6 +2225,7 @@ const discoverSelfContainedStore = (
     rootId: binding.rootId,
     dataSourceId: binding.dataSourceId,
     workspaceRoot,
+    pagesDir: source.pages_dir,
   }
 }
 
@@ -2338,6 +2388,10 @@ export const parseCliContext = ({
             rootId: rootIdForDataSource(command.dataSourceId),
             dataSourceId: command.dataSourceId,
             workspaceRoot: command.workspaceRoot,
+            // Establish/track materializes `.nmd` page files into the source's
+            // page directory (`pages/v1/<name>`); the manifest establish path
+            // writes the same `pages_dir`.
+            pagesDir: pagesDirRelativePath(databaseId),
           }
         })()
       : command._tag === 'export' && command.fromNotion !== undefined
@@ -2519,6 +2573,9 @@ export const parseCliContext = ({
     dataSourceId: discovered.dataSourceId,
     workspaceRoot: discovered.workspaceRoot,
     queryContract,
+    ...('pagesDir' in discovered && discovered.pagesDir !== undefined
+      ? { sourcePagesDir: discovered.pagesDir }
+      : {}),
     ...(authorityMode === undefined ? {} : { authorityMode }),
     ...(schemaProperties === undefined ? {} : { schemaProperties }),
     ...(requiredCapabilities === undefined ? {} : { requiredCapabilities }),
