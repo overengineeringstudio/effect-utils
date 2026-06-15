@@ -451,58 +451,49 @@ export const moveWorktree = (args: { repoPath: string; fromPath: string; toPath:
 export const listWorktrees = (repoPath: string) =>
   Effect.gen(function* () {
     type Worktree = { path: string; head: string; branch: Option.Option<string> }
-    type ParserState = {
-      readonly worktrees: ReadonlyArray<Worktree>
-      readonly current: { path?: string; head?: string; branch?: string }
+
+    // Mutable accumulator: each completed record is PUSHED (amortized O(1)), so
+    // the whole parse is O(n) — NOT a per-record `[...worktrees, x]` spread, which
+    // would be O(n²) and reintroduce the buffering this refactor removes. `current`
+    // stays small/immutable. Lines are folded one at a time, so memory is bounded
+    // by the parsed worktree set, never the full subprocess output.
+    const worktrees: Array<Worktree> = []
+    let current: { path?: string; head?: string; branch?: string } = {}
+    const flush = () => {
+      if (current.path !== undefined && current.head !== undefined) {
+        worktrees.push({
+          path: current.path,
+          head: current.head,
+          branch: Option.fromNullable(current.branch),
+        })
+      }
+      current = {}
     }
 
-    const flush = (state: ParserState): ParserState => {
-      const { current } = state
-      if (current.path === undefined || current.head === undefined) {
-        return { worktrees: state.worktrees, current: {} }
-      }
-      return {
-        worktrees: [
-          ...state.worktrees,
-          {
-            path: current.path,
-            head: current.head,
-            branch: Option.fromNullable(current.branch),
-          },
-        ],
-        current: {},
-      }
-    }
-
-    // Fold one line at a time so memory is bounded by the parsed worktree set,
-    // never the full subprocess output. `worktree list --porcelain` emits
-    // newline-delimited records separated by blank lines; a record ends on a
-    // blank line, and the final record is flushed at end-of-stream.
-    const finalState = yield* streamGitCommandLines({
+    // `worktree list --porcelain` emits newline-delimited records separated by
+    // blank lines; a record ends on a blank line, and the final record is flushed
+    // at end-of-stream.
+    yield* streamGitCommandLines({
       args: ['worktree', 'list', '--porcelain'],
       cwd: repoPath,
-      sink: Sink.foldLeft<ParserState, string>({ worktrees: [], current: {} }, (state, line) => {
-        if (line.startsWith('worktree ') === true) {
-          return { ...state, current: { ...state.current, path: line.slice(9) } }
-        }
-        if (line.startsWith('HEAD ') === true) {
-          return { ...state, current: { ...state.current, head: line.slice(5) } }
-        }
-        if (line.startsWith('branch ') === true) {
-          return {
-            ...state,
-            current: { ...state.current, branch: line.slice(7).replace('refs/heads/', '') },
+      sink: Sink.forEach((line: string) =>
+        Effect.sync(() => {
+          if (line.startsWith('worktree ') === true) {
+            current.path = line.slice(9)
+          } else if (line.startsWith('HEAD ') === true) {
+            current.head = line.slice(5)
+          } else if (line.startsWith('branch ') === true) {
+            current.branch = line.slice(7).replace('refs/heads/', '')
+          } else if (line === '') {
+            flush()
           }
-        }
-        if (line === '') {
-          return flush(state)
-        }
-        return state
-      }),
+        }),
+      ),
     })
 
     // Flush remaining entry if output doesn't end with a blank line.
-    return [...flush(finalState).worktrees]
+    flush()
+    return worktrees
   })
 
 // =============================================================================
@@ -629,15 +620,22 @@ export const refExists = (args: { repoPath: string; ref: string }) =>
  * refs every commit is reported as unpushed.
  */
 export const revListUnpushed = (args: { repoPath: string; ref: string }) =>
-  streamGitCommandLines({
-    args: ['rev-list', args.ref, '--not', '--remotes'],
-    cwd: args.repoPath,
-    // Fold line-by-line into the commit list so the unbounded `rev-list` output
-    // is never materialized as one buffer (it can list an entire branch history).
-    sink: Sink.foldLeft<ReadonlyArray<string>, string>([], (commits, line) =>
-      line.trim().length > 0 ? [...commits, line] : commits,
-    ),
-  }).pipe(Effect.map((commits) => [...commits]))
+  Effect.gen(function* () {
+    // Push each non-empty commit line into a mutable array (amortized O(1)) so the
+    // unbounded `rev-list` output (a whole branch history) is consumed at O(n) —
+    // NOT a per-line `[...commits, line]` spread, which would be O(n²).
+    const commits: Array<string> = []
+    yield* streamGitCommandLines({
+      args: ['rev-list', args.ref, '--not', '--remotes'],
+      cwd: args.repoPath,
+      sink: Sink.forEach((line: string) =>
+        Effect.sync(() => {
+          if (line.trim().length > 0) commits.push(line)
+        }),
+      ),
+    })
+    return commits
+  })
 
 /**
  * Whether the repo has a non-empty stash.
