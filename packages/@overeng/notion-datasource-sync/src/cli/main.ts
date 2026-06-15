@@ -1981,6 +1981,24 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
       const maxCycles = positiveIntegerFlag({ flags, name: 'max-cycles' })
       const watchPriority = watchPriorityFlag(flags)
       const webhook = webhookProviderFlag(flags)
+      // CLI-R02: a `sync --watch --dry-run` is a non-interfering observer that
+      // writes NOTHING durable. A webhook receiver, however, enqueues durable
+      // signals on delivery (`handleNotionWebhookDelivery` → `store.enqueueSignal`,
+      // unconditionally — there is no dry-run path in the receiver), so running
+      // one under dry-run would violate the guarantee. Reject at parse time,
+      // before any receiver starts, rather than threading dry-run into the
+      // receiver: a dry-run observer should not run a network receiver at all.
+      if (
+        watch === true &&
+        flags.has('dry-run') === true &&
+        webhook !== undefined &&
+        webhook !== 'none'
+      ) {
+        throw new CliArgumentError({
+          message:
+            'sync --watch --dry-run cannot run a webhook receiver (it would enqueue durable signals); use --webhook none for a dry-run watch',
+        })
+      }
       return {
         _tag: 'sync',
         ...(words[1] === undefined ? {} : { workspaceRoot: normalizeAbsolutePath(words[1]) }),
