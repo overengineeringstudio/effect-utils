@@ -12,6 +12,12 @@ export type ReplicaExportOptions = {
   readonly format: ReplicaExportFormat
   readonly requireClean?: boolean
   readonly exportedAt?: string
+  /**
+   * Dry-run preview: read the replica and compute the export plan/counts, but
+   * write no output file and create no output directory (CLI-R02). The returned
+   * result still reports the `outputPath` that a real run would write.
+   */
+  readonly dryRun?: boolean
 }
 
 /** Summary returned after a replica export file is written. */
@@ -158,6 +164,12 @@ export const exportReplica = (options: ReplicaExportOptions): ReplicaExportResul
         pendingChanges: pendingChanges.length,
         conflicts: conflicts.length,
       },
+    }
+
+    // Dry-run: the plan/counts are computed from the reads above; suppress the
+    // output-file write (and its directory creation) so nothing on disk changes.
+    if (options.dryRun === true) {
+      return result
     }
 
     mkdirSync(dirname(options.outputPath), { recursive: true })

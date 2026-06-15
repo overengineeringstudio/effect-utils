@@ -382,8 +382,8 @@ const establishWorkspace = async (
     /**
      * When set, adopt via `track --mode <authorityMode>` so the workspace permits
      * the asserted authority contract (e.g. `shared`/`local` for local-write +
-     * settle flows). When omitted, keep the legacy `sync --from-notion` adoption,
-     * which defaults to the safe-by-default `remote` mode.
+     * settle flows). When omitted, adopt via `track --mode remote`, the
+     * safe-by-default mirror mode.
      */
     readonly authorityMode?: 'local' | 'remote' | 'shared'
   } = {},
@@ -396,7 +396,7 @@ const establishWorkspace = async (
   const schemaPropertiesJson = JSON.stringify(schemaProperties)
   const argv = (
     authorityMode === undefined
-      ? ['sync', '--from-notion', databaseUrl, workspace]
+      ? ['track', databaseUrl, workspace, '--mode', 'remote']
       : ['track', databaseUrl, workspace, '--mode', authorityMode]
   ).concat([
     '--schema-properties-json',
@@ -488,13 +488,13 @@ describe('clean-break self-contained SQLite storage contract', () => {
   })
 
   it(
-    'fresh sync --from-notion creates one required database-id SQLite file without store or config sidecars',
+    'fresh track --mode remote creates one required database-id SQLite file without store or config sidecars',
     async () => {
       const workspace = await tempWorkspace()
       const { gateway, sqlitePath, result } = await establishWorkspace(workspace)
 
       expect(result).toMatchObject({
-        command: 'sync-from-notion',
+        command: 'track',
         result: { pushed: false },
       })
       expect(await exists(sqlitePath)).toBe(true)
@@ -502,9 +502,9 @@ describe('clean-break self-contained SQLite storage contract', () => {
       expect(await exists(sidecarConfigPath(workspace))).toBe(false)
       expectNoRemoteWrites(gateway)
 
-      // sync --from-notion writes the v1 manifest tracking the established
-      // source; a fresh adoption with no explicit mode defaults to the
-      // safe-by-default `remote` authority mode (VRS cli/spec.md).
+      // `track` writes the v1 manifest tracking the established source; a fresh
+      // adoption with `--mode remote` records the safe-by-default `remote`
+      // authority mode (VRS cli/spec.md).
       const manifestResult = loadWorkspaceManifest(workspace)
       expect(manifestResult._tag).toBe('tracked')
       if (manifestResult._tag === 'tracked') {
@@ -611,22 +611,23 @@ describe('clean-break self-contained SQLite storage contract', () => {
       expect(() =>
         parseCliContext({
           argv: [
-            'sync',
-            '--from-notion',
+            'track',
             databaseUrl,
             workspace,
+            '--mode',
+            'remote',
             '--query-contract-json',
             queryContractJson,
           ],
-          resolvedCommand: parseCliCommand(['sync', '--from-notion', databaseUrl, workspace]),
+          resolvedCommand: parseCliCommand(['track', databaseUrl, workspace, '--mode', 'remote']),
         }),
       ).toThrow('--query-contract-json is not supported')
       expect(await exists(sqlitePathForWorkspace(workspace))).toBe(false)
 
       expect(() =>
         parseCliContext({
-          argv: ['sync', '--from-notion', databaseUrl, workspace, '--sqlite', explicitPath],
-          resolvedCommand: parseCliCommand(['sync', '--from-notion', databaseUrl, workspace]),
+          argv: ['track', databaseUrl, workspace, '--mode', 'remote', '--sqlite', explicitPath],
+          resolvedCommand: parseCliCommand(['track', databaseUrl, workspace, '--mode', 'remote']),
         }),
       ).toThrow('always creates <workspace>/<database-id>.sqlite')
       expect(await exists(explicitPath)).toBe(false)

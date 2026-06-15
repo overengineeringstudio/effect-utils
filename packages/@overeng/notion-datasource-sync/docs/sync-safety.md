@@ -81,7 +81,7 @@ CDC processing.
 The normal onboarding command is:
 
 ```sh
-notion db sync --from-notion <data-source-id-or-url> <workspace-root>
+notion db track <data-source-id-or-url> <workspace-root>
 ```
 
 Establishment validates the existing Notion database/data source, creates
@@ -91,7 +91,7 @@ enabled. It does not scan local write intents, plan local writes, enqueue outbox
 commands, execute remote writes, or rebind an already established database file
 to a different Notion database.
 
-`sync --from-notion ... --dry-run` is no-write: no SQLite database file, body
+`track ... --dry-run` is no-write: no SQLite database file, body
 files, outbox commands, or Notion mutations. For large existing databases, add
 `--limit <rows>` to bound the remote preview; capped previews are reported as
 incomplete and cannot be applied as partial adoption. Established

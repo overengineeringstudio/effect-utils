@@ -9,6 +9,7 @@ notion db track <data-source-id-or-database-url> <workspace-root> [--mode <local
 notion db sync <workspace-root> [--dry-run]
 notion db sync --watch <workspace-root> [--state <path>] [--max-cycles <n>] [--watch-priority <development|normal|low-priority>] [--webhook <none|tailscale|manual>] [--webhook-required]
 notion db status <workspace-root>
+notion db export <workspace-root> --output <path> [--format <ndjson|json>] [--require-clean] [--refresh] [--dry-run]
 notion db doctor --sqlite <workspace-root>/<database-id>.sqlite
 sqlite3 <workspace-root>/<database-id>.sqlite
 
@@ -19,7 +20,9 @@ notion db restore --sqlite <workspace-root>/<database-id>.sqlite --page-id <id> 
 ```
 
 `migrate`, `repair`, `dump`, `replica`, and standalone
-`notion-datasource-sync` commands are not public CLI surfaces.
+`notion-datasource-sync` commands are not public CLI surfaces. `init`, `pull`,
+and `push` are internal reconciliation phases, not public commands; adoption is
+`track`, and the legacy `sync --from-notion` adoption alias has been removed.
 
 ## Environment
 
@@ -42,8 +45,10 @@ request count, remaining quota when present, reset timing, and retry delay.
 | Flag                       | Meaning                                                                                                 |
 | -------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `--mode`                   | `track`-only: workspace authority mode `local`, `remote`, or `shared`; persisted once. Default `remote` |
-| `--from-notion`            | Legacy adoption alias on `sync` (`track` is the canonical adoption verb); resolves a data source/URL    |
 | `--limit`, `--max-rows`    | Dry-run-only `track` preview row cap; writes nothing and reports capped query state                     |
+| `--dry-run`                | Mutating commands preview without writing; `export --dry-run` reports the plan/counts but writes no output file |
+| `--output`                 | `export` output file path                                                                               |
+| `--refresh`                | `export`-only: refresh the local data file via remote observe/project before exporting                  |
 | `--schema-properties-json` | Advanced/debug override for schema-property observations; normal sync discovers schema from Notion      |
 | `--required-capabilities`  | Comma-separated capability preflight list                                                               |
 | `--max-executor-steps`     | Bound outbox execution in `sync` and `sync --watch`                                                     |
@@ -61,10 +66,10 @@ request count, remaining quota when present, reset timing, and retry delay.
 | Command              | Effect                                                                                                                             |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `track`              | Canonical adoption verb: adopts a Notion database/data source into a workspace and records the workspace authority mode (`--mode`) |
-| `sync --from-notion` | Legacy adoption alias for `track`; establishes a workspace from an existing Notion database/data source                            |
 | `sync <workspace>`   | Reconciles all established database files in a workspace                                                                           |
 | `sync --watch`       | Repeats sync cycles and processes local SQLite CDC with daemon state                                                               |
 | `status <workspace>` | Reads public status and pending work for established database files                                                                |
+| `export <workspace>` | Exports rows, schema, and sync metadata from the established data file; `--dry-run` reports the plan without writing the output    |
 | `doctor <sqlite>`    | Verifies one database file, including private `_nds_*` integrity                                                                   |
 | `conflicts list`     | Prints conflicts, guards, tombstones, and pending outbox actions                                                                   |
 | `conflicts resolve`  | Resolves a conflict by explicit user action                                                                                        |
@@ -126,7 +131,7 @@ IDs, data-source IDs, and local paths.
 
 ## Workspace Files
 
-`sync --from-notion <data-source-id-or-database-url> <workspace-root>` creates
+`track <data-source-id-or-database-url> <workspace-root>` creates
 one SQLite file per Notion database:
 
 ```text
@@ -139,7 +144,7 @@ state, migrations, checkpoints, and integrity digests all live inside the same
 SQLite database. A `.notion-datasource-sync/store.sqlite` or config sidecar is
 not required state.
 
-When `--from-notion` receives a Notion database/container URL, the CLI retrieves
+When `track` receives a Notion database/container URL, the CLI retrieves
 the database and uses its single child data source. Databases with zero or
 multiple child data sources fail closed; pass the exact data-source ID instead.
 
