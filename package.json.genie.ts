@@ -20,6 +20,7 @@ import notionDatasourceSyncPkg from './packages/@overeng/notion-datasource-sync/
 import notionEffectClientPkg from './packages/@overeng/notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from './packages/@overeng/notion-effect-schema/package.json.genie.ts'
 import notionMdPkg from './packages/@overeng/notion-md/package.json.genie.ts'
+import notionPropertyWritePkg from './packages/@overeng/notion-property-write/package.json.genie.ts'
 import notionReactPkg from './packages/@overeng/notion-react/package.json.genie.ts'
 import otelContractPkg from './packages/@overeng/otel-contract/package.json.genie.ts'
 import oxcConfigPkg from './packages/@overeng/oxc-config/package.json.genie.ts'
@@ -55,6 +56,7 @@ export const rootWorkspacePackages = [
   notionEffectClientPkg,
   notionEffectSchemaPkg,
   notionMdPkg,
+  notionPropertyWritePkg,
   notionReactPkg,
   otelContractPkg,
   oxcConfigPkg,
