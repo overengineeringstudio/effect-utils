@@ -159,6 +159,33 @@ describe('Notion webhook receiver helpers', () => {
     expect(JSON.stringify(result.signal)).not.toContain('do-not-carry-forward')
   })
 
+  it('rejects a valid-HMAC request whose payload shape is malformed with invalid-payload-shape', () => {
+    // Cross-product the existing bad-shape and valid-signature coverage: a body
+    // that carries a CORRECT X-Notion-Signature but is missing the required
+    // `type` field must still be rejected for shape — proving the shape decode
+    // runs (and fails closed) AFTER signature verification passes, not only on
+    // the unsigned path.
+    const rawBody = JSON.stringify({ id: 'event-1', entity: { id: 'page-1', type: 'page' } })
+    const signatureHeader = computeNotionWebhookSignature({ rawBody, verificationToken })
+
+    // The signature itself is valid over these exact bytes...
+    expect(verifyNotionWebhookSignature({ rawBody, verificationToken, signatureHeader })).toEqual({
+      _tag: 'valid',
+    })
+
+    // ...yet the request is still rejected for its malformed shape.
+    expect(
+      parseNotionWebhookRequest({
+        rawBody,
+        headers: { 'X-Notion-Signature': signatureHeader },
+        verificationToken,
+      }),
+    ).toEqual({
+      _tag: 'NotionWebhookRejected',
+      reason: 'invalid-payload-shape',
+    })
+  })
+
   it('rejects malformed JSON with invalid-json reason', () => {
     expect(parseNotionWebhookRequest({ rawBody: 'not-json', headers: {} })).toEqual({
       _tag: 'NotionWebhookRejected',

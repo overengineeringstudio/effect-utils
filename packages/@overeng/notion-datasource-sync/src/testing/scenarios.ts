@@ -734,6 +734,16 @@ export const e2eHarnessScenarios = [
     file: 'src/webhook/receiver.unit.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-L0-webhook-decode-helpers',
+    title:
+      'webhook parsing-layer helpers (`src/webhook/notion.ts`): one-time verification-token parse, X-Notion-Signature verify over exact raw bytes (incl. valid-HMAC + malformed-shape cross-product), strict fail-closed payload decode, and forward-compatible normalization that never carries raw payload material into the signal',
+    requirementIds: ['R46', 'R47'],
+    guards: [],
+    lowestPlannerLevel: 'L0',
+    highestIntegrationLevel: 'L0',
+    file: 'src/webhook/notion.unit.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-L5-webhook-hint-fresh-read-coalesce',
     title:
       'a webhook-woken daemon cycle performs a full syncOneShot over all pages (not scoped to the hint pageId), proving decision-0008: webhook hints are acceleration signals only, correctness comes from fresh reads before planning',
