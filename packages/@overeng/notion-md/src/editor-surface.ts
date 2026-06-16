@@ -21,11 +21,14 @@ import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
  * the missing-title-H1 refusal anchor, so `serialize ∘ parse` must round-trip
  * exactly (spec "Edge behavior").
  *
- * Hosted-media URL canonicalization (decision 0007, impl-delta Group B) is the
- * one piece not applied here: on representable non-media pages the body URLs are
- * stable, so the serialized form is already idempotent. When Group B lands, the
- * media-canonicalized body flows in through `body` unchanged — this module
- * serializes whatever body it is given.
+ * The body arrives here already in the single canonical form (pull routes every
+ * body through `canonicalizeBlockMarkdown`, hosted-media URL canonicalization /
+ * Group B included — decision 0018). This module frames that canonical body
+ * verbatim and must NOT re-canonicalize it: the `# <title>` line is a
+ * presentation affordance, not body Markdown, and routing the title-framed
+ * buffer back through the Markdown parser would break the load-bearing H1
+ * round-trip. Line-ending normalization (idempotent over a canonical body) is
+ * the only transform applied.
  */
 
 /** A default-mode editor document: the page title plus its Markdown body. */
