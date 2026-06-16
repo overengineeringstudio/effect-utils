@@ -266,7 +266,7 @@ export const e2eHarnessScenarios = [
     guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-same-property-race-conflict',
@@ -284,7 +284,7 @@ export const e2eHarnessScenarios = [
     guards: [],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/fake-service.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-archive-edit-race',
@@ -342,7 +342,7 @@ export const e2eHarnessScenarios = [
     guards: ['AmbiguousCommandOutcome', 'OutboxFirstSettlementWins', 'ReadAfterWriteMismatch'],
     lowestPlannerLevel: 'L3',
     highestIntegrationLevel: 'L3',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/fake-service.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-conflict-resolution-lifecycle',
@@ -351,7 +351,7 @@ export const e2eHarnessScenarios = [
     guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/conflict-resolution.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-rebuild-replay-safety',
@@ -360,7 +360,7 @@ export const e2eHarnessScenarios = [
     guards: [],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/realistic-workflows.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L5-bidi-local-first-slow-pull',
@@ -408,7 +408,7 @@ export const e2eHarnessScenarios = [
     guards: ['StaleSurfaceBase', 'BodyAdapterConflict'],
     lowestPlannerLevel: 'L3',
     highestIntegrationLevel: 'L6',
-    file: 'docs/vrs/spec.md',
+    file: 'src/e2e/live-notion.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L5-high-cardinality-fake-soak',

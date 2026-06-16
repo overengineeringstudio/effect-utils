@@ -70,6 +70,8 @@ const implementedRealisticWorkflowScenarioIds = new Set<ScenarioId>([
   'NDS-L3-realistic-local-remote-conflict',
   'NDS-L3-realistic-schema-capability-failure',
   'NDS-L4-realistic-filesystem-delete-repair',
+  'NDS-L4-bidi-clean-outbound-after-remote-observation',
+  'NDS-L4-bidi-rebuild-replay-safety',
 ])
 
 const propertyPage = ({
