@@ -37,7 +37,12 @@ import {
   OteliteCapture,
 } from '@overeng/utils-dev/otelite'
 
-import { catEditorPage, editEditorPage, putEditorPage } from './editor-commands.ts'
+import {
+  catEditorPage,
+  editEditorPage,
+  editReadOnlyPage,
+  putEditorPage,
+} from './editor-commands.ts'
 import { editorBaseHash } from './editor-surface.ts'
 import { NmdGatewayError } from './errors.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
@@ -270,6 +275,36 @@ layer(CaptureLayer, { excludeTestServices: true })('editor span shapes (Group G)
       expect(pushPage[0]!.trace_id).toBe(root.trace_id)
 
       // R24 across the whole tree, including the wrapped engine spans.
+      assertNoSensitiveAttrs(yield* cap.inspect({ signal: 'traces' }))
+    }),
+  )
+
+  it.effect('notion-md.edit --read-only records outcome=read-only and never pushes', () =>
+    Effect.gen(function* () {
+      const cap = yield* OteliteCapture
+      const gateway = new FakeGateway({ title: 'Doc', body: SENTINEL_BODY })
+
+      const result = yield* editReadOnlyPage({
+        pageId,
+        mode: 'default',
+        writeStderr: () => Effect.void,
+        // The editor "edits" the buffer, but read-only discards it.
+        runEditor: scriptedEditor((buffer) => `${buffer}\ndiscarded edit`),
+      }).pipe(Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeContext.layer)))
+      expect(result.outcome).toBe('read-only')
+      // Read-only never calls updateMarkdown: the remote body is untouched.
+      expect(gateway.state.body).toBe(normalizeMarkdownLineEndings(SENTINEL_BODY))
+
+      yield* flushCaptureSpans({ exportInterval })
+
+      // The capture layer accumulates across the cases in this block, so select
+      // the read-only span by its outcome rather than asserting a global count.
+      const editSpans = yield* cap.inspect({ signal: 'traces', name: 'notion-md.edit' })
+      const root = editSpans.find((s) => s.attrs['notion_md.edit.outcome'] === 'read-only')
+      expect(root).toBeDefined()
+      expect(root!.attrs['notion_md.page_id']).toBe(pageId)
+      expect(root!.attrs['notion_md.editor.mode']).toBe('default')
+
       assertNoSensitiveAttrs(yield* cap.inspect({ signal: 'traces' }))
     }),
   )

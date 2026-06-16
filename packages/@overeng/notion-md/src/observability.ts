@@ -368,7 +368,7 @@ export const EditSpan = OtelOperation.define({
 /** Outcome annotation for a completed `notion-md edit` session. */
 export const editResultAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    outcome: Schema.Literal('pushed', 'noop', 'aborted', 'conflict').pipe(
+    outcome: Schema.Literal('pushed', 'noop', 'aborted', 'conflict', 'read-only').pipe(
       OtelAttr.key({ key: 'notion_md.edit.outcome' }),
     ),
   }),

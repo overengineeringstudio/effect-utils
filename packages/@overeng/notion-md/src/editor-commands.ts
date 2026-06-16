@@ -62,6 +62,60 @@ export interface CatResult {
   readonly baseHash?: Sha256Digest
 }
 
+/** A projected editor buffer for a page (base hash present only in default mode). */
+interface ProjectedPageBuffer {
+  readonly pageId: string
+  readonly buffer: string
+  readonly baseHash?: Sha256Digest
+}
+
+/**
+ * Project a Notion page into the editor buffer for the active mode, refusing a
+ * lossy page (exit 3) at observe/pull time. The single source of truth for the
+ * `cat` / read-only `edit` presentation: default mode is `# title` + body (via
+ * `observeRemoteEditorPage`), `--frontmatter` is the full strict `.nmd` envelope
+ * (via the engine pull). Pure projection — no stdout/stderr side effects — so
+ * each caller owns its own sinks (`cat`'s `base-hash:` line, the byte-exact pipe
+ * output) without duplicating the lossy-refusal logic.
+ */
+const projectPageBuffer = (opts: {
+  readonly pageId: string
+  readonly mode: EditorMode
+}): Effect.Effect<ProjectedPageBuffer, NmdError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    if (opts.mode === 'frontmatter') {
+      const gateway = yield* NotionMdGateway
+      const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
+      const completeness = pulled.markdown.completeness
+      if (completeness !== undefined && completeness._tag !== 'complete') {
+        return yield* new NmdRemoteBodyLossyError({
+          operation: 'cat_frontmatter',
+          page_id: pulled.page.id,
+          reasons: [...completeness.reasons],
+          message: describeBodyLossyRefusal({
+            pageId: pulled.page.id,
+            completeness,
+            context: 'refusing to dump a lossy page envelope',
+          }),
+        })
+      }
+      return {
+        pageId: pulled.page.id,
+        buffer: renderNmdFile({
+          frontmatter: buildFrontmatterV2({ page: pulled.page }),
+          body: pulled.markdown.markdown,
+        }),
+      }
+    }
+
+    const snapshot = yield* observeRemoteEditorPage({ pageId: opts.pageId })
+    return {
+      pageId: snapshot.pageId,
+      buffer: serializeTitleBody({ title: snapshot.title, body: snapshot.body }),
+      baseHash: snapshot.baseHash,
+    }
+  })
+
 /**
  * `cat <page> [--frontmatter]` — emit the editor projection of a Notion page.
  *
@@ -82,34 +136,16 @@ export const catEditorPage = (
       opts.writeStdout ?? ((value: string) => Effect.sync(() => void process.stdout.write(value)))
     const writeStderr = opts.writeStderr ?? Console.error
 
-    if (opts.mode === 'frontmatter') {
-      const gateway = yield* NotionMdGateway
-      const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
-      const completeness = pulled.markdown.completeness
-      if (completeness !== undefined && completeness._tag !== 'complete') {
-        return yield* new NmdRemoteBodyLossyError({
-          operation: 'cat_frontmatter',
-          page_id: pulled.page.id,
-          reasons: [...completeness.reasons],
-          message: describeBodyLossyRefusal({
-            pageId: pulled.page.id,
-            completeness,
-            context: 'refusing to dump a lossy page envelope',
-          }),
-        })
-      }
-      const envelope = renderNmdFile({
-        frontmatter: buildFrontmatterV2({ page: pulled.page }),
-        body: pulled.markdown.markdown,
-      })
-      yield* writeStdout(envelope)
-      return { pageId: pulled.page.id, mode: opts.mode }
+    const projected = yield* projectPageBuffer({ pageId: opts.pageId, mode: opts.mode })
+    yield* writeStdout(projected.buffer)
+    if (projected.baseHash !== undefined) {
+      yield* writeStderr(`base-hash: ${projected.baseHash}`)
     }
-
-    const snapshot = yield* observeRemoteEditorPage({ pageId: opts.pageId })
-    yield* writeStdout(serializeTitleBody({ title: snapshot.title, body: snapshot.body }))
-    yield* writeStderr(`base-hash: ${snapshot.baseHash}`)
-    return { pageId: snapshot.pageId, mode: opts.mode, baseHash: snapshot.baseHash }
+    return {
+      pageId: projected.pageId,
+      mode: opts.mode,
+      ...(projected.baseHash === undefined ? {} : { baseHash: projected.baseHash }),
+    }
   }).pipe(withOperation(CatSpan, { pageId: opts.pageId, mode: opts.mode }))
 
 // ---------------------------------------------------------------------------
@@ -418,6 +454,99 @@ export const editEditorPage = (
         Effect.zipRight(Effect.fail(error)),
       ),
     ),
+    withOperation(EditSpan, { pageId: opts.pageId, mode: opts.mode }),
+  )
+
+// ---------------------------------------------------------------------------
+// edit --read-only
+// ---------------------------------------------------------------------------
+
+/** Inputs for a read-only `edit --read-only` inspection session. */
+export interface ReadOnlyEditOptions {
+  readonly pageId: string
+  readonly mode: EditorMode
+  /**
+   * Sink for the `read-only: changes were not synced` note. Defaults to
+   * `Console.error` (stderr); overridable for tests.
+   */
+  readonly writeStderr?: (line: string) => Effect.Effect<void>
+  /**
+   * Launch the editor on the buffer file. Same default as `edit`
+   * (`$VISUAL`→`$EDITOR`→`vi`); overridable for tests.
+   */
+  readonly runEditor?: (opts: {
+    readonly filePath: string
+  }) => Effect.Effect<
+    number,
+    NmdGatewayError,
+    CommandExecutor.CommandExecutor | FileSystem.FileSystem
+  >
+}
+
+/** Outcome of a read-only `edit --read-only` session (always a discarding no-op). */
+export interface ReadOnlyEditResult {
+  readonly pageId: string
+  readonly outcome: 'read-only'
+}
+
+/**
+ * `edit <page> --read-only [--frontmatter]` — open the page in `$EDITOR` for
+ * inspection only (the terminal analogue of `vim -R` / `git show`).
+ *
+ * Reuses the exact `cat` presentation via `projectPageBuffer` (default `# title`
+ * + body, or the full `.nmd` envelope with `--frontmatter`), refusing a lossy
+ * page (exit 3) at observe/pull time just like `edit`/`cat`. Unlike `edit`, this
+ * is a deliberately lighter path: a single observe/pull into a `$TMPDIR` temp
+ * file (no engine round-trip, no `NmdStateStore`). On editor exit — **regardless
+ * of the exit code** — nothing is ever pushed or written remotely (no
+ * `syncPage`, no `replaceRemoteBodyVerified`, no metadata/property writes); every
+ * edit is discarded, the scoped temp tree is reaped, a `read-only: changes were
+ * not synced` note is printed to stderr, and the session exits 0. There is no
+ * base-hash/guard machinery because nothing is written.
+ */
+export const editReadOnlyPage = (
+  opts: ReadOnlyEditOptions,
+): Effect.Effect<
+  ReadOnlyEditResult,
+  NmdError,
+  FileSystem.FileSystem | NotionMdGateway | CommandExecutor.CommandExecutor
+> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const runEditor = opts.runEditor ?? defaultRunEditor
+      const writeStderr = opts.writeStderr ?? Console.error
+
+      // 1. Observe/pull the page projection (refuses a lossy page here, exit 3).
+      const projected = yield* projectPageBuffer({ pageId: opts.pageId, mode: opts.mode })
+
+      // 2. Materialize the buffer in a scoped temp tree (reaped on every path).
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: 'notion-md-view-' }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new NmdGatewayError({
+              operation: 'edit_read_only_mktemp',
+              page_id: opts.pageId,
+              message: `Failed to create read-only session temp dir: ${String(cause)}`,
+              cause,
+            }),
+        ),
+      )
+      const bufferPath = join(dir, opts.mode === 'frontmatter' ? 'page.nmd' : 'page.md')
+      yield* fs
+        .writeFileString(bufferPath, projected.buffer)
+        .pipe(Effect.mapError(editorIoError({ pageId: opts.pageId, path: bufferPath })))
+
+      // 3. Launch the editor for inspection. The exit code is irrelevant: there
+      // is nothing to push, so a non-zero exit is just a clean no-op too.
+      yield* runEditor({ filePath: bufferPath })
+
+      // 4. Always discard. Never push, never write anything remote.
+      yield* writeStderr('read-only: changes were not synced')
+      return { pageId: opts.pageId, outcome: 'read-only' as const }
+    }),
+  ).pipe(
+    Effect.tap((result) => annotateAttrs(editResultAttrs, { outcome: result.outcome })),
     withOperation(EditSpan, { pageId: opts.pageId, mode: opts.mode }),
   )
 
