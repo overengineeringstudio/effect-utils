@@ -47,6 +47,16 @@ genuinely drive a media-boundary attach. Genuinely enabling external-URL attach
 requires a property-boundary change so the external URL crosses into the media/
 storage surface, not just the property frontmatter.
 
+CORRECTION (superseded by ADR 0016): the "structural-only / does not genuinely
+attach" framing above was corrected by validation. External-URL attach already
+works end to end on the PROPERTY surface — an `external_url` `NmdPropertyFileRef`
+encodes to a real Notion external-file property write
+(`@overeng/notion-md/src/sync.ts:339`, proven by `sync.e2e.test.ts:1284`). The
+property and media boundaries are disjoint by type, so external URLs never need
+to "cross into" the byte-backed media surface. The real residual is the
+byte-path lowering guard, wiring the dormant `ExpiringFileUrl` guard, and an
+explicit external-URL durability stance — see ADR 0016.
+
 ## F4 — `local_file` property-ref boundary is guarded at property encoding, not the media boundary (Phase 6)
 
 The `local_file` property reference is guarded at the `sync.ts` property-encoding
