@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
@@ -1317,6 +1317,10 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           workspaceRoot,
           databaseId: liveDatabaseIdForDataSource(liveDataSource),
         })
+        // The versioned `data/v1` directory is created by `track`; this test
+        // drives `establishFromNotion` against a unified store directly, so it
+        // must create the parent directory before opening the SQLite file.
+        await mkdir(dirname(sqlitePath), { recursive: true })
         const store = openNotionSyncStore({ path: sqlitePath })
         const queryContract = {
           _tag: 'QueryContract' as const,
@@ -1537,7 +1541,15 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           })
           const syncArgv = ['sync', workspaceRoot]
           await runLiveCliCommand({ env, argv: syncArgv })
-          const materializedBodyPath = join(workspaceRoot, `page-${livePageId}--${livePageId}.nmd`)
+          // Materialized `.nmd` bodies land in the versioned per-source page
+          // directory (`pages/v1/<source>`), not the flat workspace root (SM5b).
+          const materializedBodyPath = join(
+            workspaceRoot,
+            'pages',
+            'v1',
+            provisioned.config.dataSourceId,
+            `page-${livePageId}--${livePageId}.nmd`,
+          )
           const materializedBody = await readFile(materializedBodyPath, 'utf8')
           expect(materializedBody).toContain(`Materialized through default live CLI`)
           expect(materializedBody).toContain(provisioned.config.runId)
