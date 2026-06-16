@@ -1459,16 +1459,13 @@ describe('clean-break self-contained SQLite storage contract', () => {
             testIds.pageId,
           ),
         ).toEqual([expect.objectContaining({ kind: 'row_archive', status: 'applied' })])
-        // NOTE: this used to also assert `pages._in_trash = 1`, but that only held
-        // because the trashed row was re-observed `inTrash=true` from an UNFAITHFUL
-        // fake query (real Notion excludes trashed rows from `data_source.query`).
-        // Under the faithful fake the row drops out, and the F8 re-projection that
-        // would keep `_in_trash = 1` does not engage on the watch INCREMENTAL scan:
-        // disappearance classification is gated to full scans (an absence under an
-        // incremental scan is not trash-proof). So no `remote_trash` tombstone is
-        // recorded here and `_in_trash` reprojects to 0. Converging the watch path's
-        // archived `in_trash` projection is a separate gap (see follow-up #775); the
-        // claim under test — the archive is pushed and settled — is unaffected.
+        // F8 (#775 M2a'): the archive settle converges `_nds_row.in_trash = 1` from
+        // the SETTLED LOCAL intent (not from disappearance classification, which is
+        // gated off on the watch INCREMENTAL scan), so `pages._in_trash` stays 1 even
+        // though the faithful fake drops the trashed row from `data_source.query`.
+        expect(
+          row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+        ).toMatchObject({ _in_trash: 1 })
       })
     },
     sqliteContractTimeoutMs,
@@ -1570,13 +1567,108 @@ describe('clean-break self-contained SQLite storage contract', () => {
           expect.objectContaining({ kind: 'row_restore', status: 'applied' }),
         ])
       })
-      // NOTE: re-observing the now-restored row back to `pages._in_trash = 0` is a
-      // SEPARATE gap (see follow-up #775): a restore with no property change yields
-      // a byte-identical `RowObserved` that `appendEventWithResult` dedups, so the
-      // natural re-projection that would clear F8's `_nds_row.in_trash = 1` and the
-      // stale `remote_trash` tombstone never runs. Clearing them needs a design
-      // decision (which writer clears them), not one of the four F8 seams, so it is
-      // out of scope here and asserted no further.
+      // F8 (#775 M2a'): the settled restore converges `_nds_row.in_trash = 0` from
+      // the SETTLED LOCAL intent. This fixes the post-restore staleness bug — a
+      // byte-identical `RowObserved` is deduped, so without the settle-driven
+      // convergence `_in_trash` would stay 1 forever.
+      openReadOnly(sqlitePath, (readDb) => {
+        expect(
+          row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+        ).toMatchObject({ _in_trash: 0 })
+      })
+      // The settle also CLEARS the stale `remote_trash` tombstone, so reprojection
+      // and status no longer treat the now-active row as trashed.
+      openReadOnly(statePath, (stateDb) => {
+        expect(
+          row(
+            stateDb,
+            `SELECT classification, reason FROM _nds_tombstone WHERE page_id = ?`,
+            testIds.pageId,
+          ),
+        ).toBeUndefined()
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  // F8 (#775 M2a'): the LOCAL archive -> restore round trip on the WATCH path. The
+  // watch incremental scan never records a `remote_trash` tombstone (disappearance
+  // classification is gated off on incremental scans), so `in_trash` is converged
+  // purely from the SETTLED LOCAL intent — archive settle -> `_in_trash = 1`,
+  // restore settle -> `_in_trash = 0`. This is the watch-path gap that previously
+  // had no coverage: before M2a' a local archive on `sync --watch` left `_in_trash`
+  // at 0 (a stable divergence — local active while remote trashed).
+  it(
+    'archives then restores a row round-trip on watch: settled local intent converges _in_trash',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace, { authorityMode: 'shared' })
+      // `watch.json` is the watch daemon's incremental cursor (the `--state` flag);
+      // the control-plane store (tombstones, event log) lives at `statePathForWorkspace`.
+      const watchStatePath = join(workspace, 'watch.json')
+      const controlPlanePath = statePathForWorkspace(workspace)
+      // ONE shared fake gateway across both watch invocations: it holds page trash
+      // state in a closure, so the remote trash from the archive push persists into
+      // the restore run.
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      const watchOnce = () =>
+        runWorkspaceCommand({
+          argv: [
+            'sync',
+            '--watch',
+            '--sqlite',
+            sqlitePath,
+            '--state',
+            watchStatePath,
+            '--max-cycles',
+            '1',
+            '--no-materialize-bodies',
+          ],
+          gateway,
+        })
+
+      // 1. Local archive on watch: `_in_trash 0->1` queues a `row_archive`, the watch
+      // cycle drains+settles it, and the settled intent converges `_in_trash = 1`.
+      const archiveDb = new DatabaseSync(sqlitePath)
+      try {
+        archiveDb.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        archiveDb.close()
+      }
+      await watchOnce()
+      expect(gateway.ledger.successfulTrashPages).toHaveLength(1)
+      openReadOnly(sqlitePath, (readDb) => {
+        expect(
+          row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+        ).toMatchObject({ _in_trash: 1 })
+      })
+      // No `remote_trash` tombstone is recorded on the incremental watch scan — the
+      // convergence is driven entirely by the settled intent, not classification.
+      openReadOnly(controlPlanePath, (stateDb) => {
+        expect(
+          row(
+            stateDb,
+            `SELECT classification, reason FROM _nds_tombstone WHERE page_id = ?`,
+            testIds.pageId,
+          ),
+        ).toBeUndefined()
+      })
+
+      // 2. Local restore on watch: `_in_trash 1->0` queues a `row_restore`, the next
+      // watch cycle drains+settles it, and the settled intent converges `_in_trash = 0`.
+      const restoreDb = new DatabaseSync(sqlitePath)
+      try {
+        restoreDb.prepare(`UPDATE pages SET _in_trash = 0 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        restoreDb.close()
+      }
+      await watchOnce()
+      expect(gateway.ledger.successfulRestorePages).toHaveLength(1)
+      openReadOnly(sqlitePath, (readDb) => {
+        expect(
+          row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+        ).toMatchObject({ _in_trash: 0 })
+      })
     },
     sqliteContractTimeoutMs,
   )

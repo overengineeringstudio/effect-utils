@@ -2859,6 +2859,43 @@ CREATE TABLE _nds_body_pointer (
                 )
             }
           }
+
+          // F8: converge `_nds_row.in_trash` from the SETTLED LOCAL lifecycle
+          // intent. This is driven by the settle we KNOW succeeded, independent of
+          // remote-disappearance classification — so it holds on BOTH one-shot and
+          // watch (the incremental scan never records a `remote_trash` tombstone),
+          // and complements (does not replace) the tombstone path for
+          // remote-initiated trash. Surface for Trash/Restore is `page:<pageId>`.
+          if (
+            (event.commandTag === 'TrashPage' || event.commandTag === 'RestorePage') &&
+            event.surface !== null
+          ) {
+            const match = /^page:(?<pageId>[^:]+)$/u.exec(event.surface)
+            const pageId = match?.groups?.pageId
+            if (pageId !== undefined) {
+              const decodedPageId = decodePageId(pageId)
+              const inTrash = event.commandTag === 'TrashPage' ? 1 : 0
+              this.#db
+                .prepare(
+                  `UPDATE _nds_row
+                   SET in_trash = ?,
+                       updated_at = ?
+                   WHERE root_id = ? AND page_id = ?`,
+                )
+                .run(inTrash, currentIso(this.#now), event.rootId, decodedPageId)
+              // On restore, clear the `remote_trash` tombstone so reprojection and
+              // status no longer treat the now-active row as trashed. Scoped to
+              // `remote_trash` — moved_out/inaccessible are not restorable trash.
+              if (event.commandTag === 'RestorePage') {
+                this.#db
+                  .prepare(
+                    `DELETE FROM _nds_tombstone
+                     WHERE root_id = ? AND page_id = ? AND reason = 'remote_trash'`,
+                  )
+                  .run(event.rootId, decodedPageId)
+              }
+            }
+          }
         }
         break
       }
