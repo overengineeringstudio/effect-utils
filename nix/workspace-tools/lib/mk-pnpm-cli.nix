@@ -739,9 +739,26 @@ let
       "root"
     else
       lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] installDir);
-  installRootDerivationName =
-    installDir:
-    if installDir == "." then name else "${name}-${lib.replaceStrings [ "/" ] [ "-" ] installDir}";
+  # Name the prepared-deps fixed-output derivation by its dependency profile
+  # (install dir + member set) instead of the consumer's CLI name, so that
+  # byte-identical profiles shared by many consumers collapse to one in-store
+  # derivation rather than N consumer-named copies of the same content. The FOD
+  # output hash is content-addressed, so this rename is hash-neutral: only the
+  # store-path name changes, which is exactly what enables the deduplication.
+  #
+  # This assumes member-set identity implies staged-content identity: the
+  # prepared tree also depends on the consumer's root pnpm-lock.yaml /
+  # pnpm-workspace.yaml (staged for patch inheritance) and on the source bound
+  # to each `workspaceSources` entry. That holds when consumers sharing a
+  # profile compose the same source at a fixed root lock — the case in a single
+  # pnpm workspace with one pinned dependency. If a consumer varied the root
+  # lock or the bound source under the same member set, this key would alias
+  # distinct trees and must be widened to fingerprint the staged content.
+  installRootDepsDerivationName =
+    root:
+    "${lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] root.installDir)}-deps-${
+      builtins.substring 0 12 (installRootProfileKey root)
+    }";
   installRootMemberDirs =
     root:
     if root ? memberDirs then
@@ -1017,7 +1034,7 @@ let
   externalInstallRootDeps = map (
     root:
     let
-      depsSrc = pkgs.runCommand "${installRootDerivationName root.installDir}-pnpm-deps-src" { } (
+      depsSrc = pkgs.runCommand "${installRootDepsDerivationName root}-pnpm-deps-src" { } (
         ''
           set -euo pipefail
           mkdir -p "$out"
@@ -1036,7 +1053,7 @@ let
       );
       lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
       depsBuild = pnpmDepsHelper.mkDeps {
-        name = installRootDerivationName root.installDir;
+        name = installRootDepsDerivationName root;
         src = depsSrc;
         sourceRoot = ".";
         lockfilePaths = [ lockfilePath ];

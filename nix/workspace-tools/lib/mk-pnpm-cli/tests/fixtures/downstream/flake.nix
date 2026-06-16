@@ -76,6 +76,33 @@
           };
           smokeTestArgs = [ ];
         };
+        # Two consumers that differ ONLY in `name` but share the same external
+        # install-root profile. Their prepared deps for that shared root must
+        # collapse to one in-store derivation (profileKey dedup), while their
+        # consumer-specific root (".") derivations stay distinct.
+        mkProfileDedupConsumer =
+          consumerName:
+          mkPnpmCli {
+            name = consumerName;
+            binaryName = consumerName;
+            entry = "app/src/mod.ts";
+            packageDir = "app";
+            workspaceRoot = ./fixture-workspace;
+            workspaceSources = {
+              "repos/effect-utils" = effectUtilsSource;
+            };
+            depsBuilds = {
+              "." = {
+                hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+              };
+              "repos/effect-utils" = {
+                hash = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+              };
+            };
+            smokeTestArgs = [ ];
+          };
+        profileDedupConsumerA = mkProfileDedupConsumer "profile-dedup-consumer-alpha";
+        profileDedupConsumerB = mkProfileDedupConsumer "profile-dedup-consumer-bravo";
       in
       {
         packages = {
@@ -129,6 +156,24 @@
               fi
               printf '%s' "$actual" > "$out"
             '';
+        checks.pure-eval-profile-dedup = pkgs.runCommand "mk-pnpm-cli-pure-eval-profile-dedup" { } ''
+          actual='${
+            builtins.toJSON {
+              externalSharedDeduped =
+                profileDedupConsumerA.passthru.depsBuildsByInstallRoot."repos-effect-utils".drvPath
+                == profileDedupConsumerB.passthru.depsBuildsByInstallRoot."repos-effect-utils".drvPath;
+              rootDistinct =
+                profileDedupConsumerA.passthru.depsBuildsByInstallRoot."root".drvPath
+                != profileDedupConsumerB.passthru.depsBuildsByInstallRoot."root".drvPath;
+            }
+          }'
+          expected='{"externalSharedDeduped":true,"rootDistinct":true}'
+          if [ "$actual" != "$expected" ]; then
+            echo "unexpected profile dedup result: $actual" >&2
+            exit 1
+          fi
+          printf '%s' "$actual" > "$out"
+        '';
       }
     );
 }
