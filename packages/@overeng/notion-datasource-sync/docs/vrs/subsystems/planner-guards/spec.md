@@ -122,6 +122,14 @@ explicit `_in_trash` edits. `forget` (drop local tracking, no remote effect)
 stays a CLI-only operation and is not reachable through SQL. There is no API
 path to permanent deletion.
 
+**Reserved guards.** `LinkedDataSourceUnsupported`, `StoreMigrationBlocked`, and
+`PageTimestampWakeupOnly` are designed above but not yet wired into a production
+dispatch path; they live in `reservedGuardNames` (`src/core/guards.ts`) rather
+than the active `GuardName` vocabulary, and the traceability matrix does not claim
+test coverage for them. Each is realized — moved into `GuardName` with a scenario —
+when its owning path lands (linked-data-source binding, store-migration blocking,
+and the watch timestamp-wakeup pass respectively).
+
 ## Delete, Move, And Restore Semantics
 
 ```mermaid
