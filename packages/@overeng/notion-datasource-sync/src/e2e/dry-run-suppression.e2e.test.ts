@@ -40,6 +40,7 @@
  * reusable: SM5.3 (`sync --watch --dry-run`) reuses it to assert per-cycle
  * non-interference.
  */
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -48,9 +49,18 @@ import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { parseCliCommand, parseCliContext, runCliCommandWithRuntime } from '../cli/main.ts'
-import { CreatePageCommand } from '../core/commands.ts'
-import { AbsolutePath, CommandId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
-import { dataFilePath, stateSqlitePath } from '../local/manifest.ts'
+import { CreatePageCommand, PagePropertyItemPage } from '../core/commands.ts'
+import {
+  AbsolutePath,
+  CommandId,
+  WorkspaceRelativePath,
+  type AbsolutePath as AbsolutePathType,
+  type PageId as PageIdType,
+} from '../core/domain.ts'
+import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
+import { dataFilePath, pagesDirRelativePath, stateSqlitePath } from '../local/manifest.ts'
+import { makeFilesystemLocalWorkspacePort } from '../local/workspace.ts'
+import { initOneShotSync, syncOneShot } from '../sync/sync.ts'
 import {
   captureWorkspaceSurfaces,
   dryRunPropertyPage,
@@ -59,11 +69,22 @@ import {
   establishSharedWorkspace,
   writePageNmd,
 } from '../testing/dry-run-workspace.ts'
-import { decode, hash, makeFakeGatewayHarness, testIds } from '../testing/harness.ts'
+import { makeTempWorkspace } from '../testing/filesystem.ts'
+import {
+  decode,
+  defaultQueryContract,
+  hash,
+  makeFakeClock,
+  makeFakeGatewayHarness,
+  makeHarnessPorts,
+  makeStoreFixture,
+  testIds,
+} from '../testing/harness.ts'
 import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
 
 const implementedDryRunSuppressionScenarioIds = new Set<ScenarioId>([
   'NDS-L4-dry-run-suppression-all-surfaces',
+  'NDS-L4-dry-run-suppression-nmd-bodies',
 ])
 
 const scratchDirs: string[] = []
@@ -237,5 +258,152 @@ describe('SM5.2 one-shot sync --dry-run suppression guarantee (all surfaces)', (
     // so the dry-run invariant `dataChanges === [{cell_patch, pending}]` is
     // falsifiable rather than a value that never moves.
     expect(after.dataChanges).not.toEqual(before.dataChanges)
+  })
+})
+
+/**
+ * F2 (#775): bodies-ON falsifiable proof for the `.nmd` materialization surface
+ * (CLI-R02 surface 6). The all-surfaces proof above runs
+ * `--no-materialize-bodies`, so its `pages` invariance rests on the unconditional
+ * `materializeBodies:false` force, NOT a falsifiable delta. Here the SAME pull
+ * path runs with bodies ON: under `--dry-run` the body-observe + materialize
+ * stage is suppressed (`sync.ts`, `dryRun → materializeBodies:false`), so the
+ * `pages/v1/<src>/` dir stays empty; without `--dry-run` it materializes a
+ * `.nmd`, proving the dry-run "no body write" assertion is non-vacuous.
+ *
+ * Driven through `syncOneShot` directly (not the CLI) because the CLI's body
+ * runtime is fail-closed when a fake gateway is injected (the live NotionMD body
+ * runtime is only wired for real Notion tokens), so a CLI fake-gateway run can
+ * never materialize a body and the non-vacuity control would be impossible.
+ * `syncOneShot` with the fake body port + a real filesystem workspace port
+ * materializes a `.nmd` exactly through the production pull path being gated.
+ */
+describe('F2 one-shot sync --dry-run suppresses bodies-on .nmd materialization', () => {
+  const schemaProperties = [
+    {
+      propertyId: testIds.propertyA,
+      configHash: hash('config-a'),
+      writeClass: 'writable' as const,
+    },
+  ]
+
+  // Materialize the page body under `pages/v1/<databaseId>/<pageId>.nmd` so the
+  // assertion reads the same dir the all-surfaces proof's `pages` surface does.
+  const bodyPathForPage = (pageId: PageIdType): typeof WorkspaceRelativePath.Type =>
+    decode({
+      schema: WorkspaceRelativePath,
+      value: `${pagesDirRelativePath(testIds.databaseId)}/${pageId}.nmd`,
+    })
+
+  const bodiesOnPropertyPage = decode({
+    schema: PagePropertyItemPage,
+    value: {
+      _tag: 'PagePropertyItemPage',
+      apiVersion: '2026-03-11',
+      requestId: testIds.requestId,
+      pageId: testIds.pageId,
+      propertyId: testIds.propertyA,
+      items: [
+        {
+          _tag: 'PagePropertyItem',
+          pageId: testIds.pageId,
+          propertyId: testIds.propertyA,
+          itemHash: hash('item'),
+          valueHash: hash('value'),
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    },
+  })
+
+  const runBodiesOnSync = async ({
+    root,
+    dryRun,
+  }: {
+    readonly root: AbsolutePathType
+    readonly dryRun: boolean
+  }): Promise<void> => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const workspace = makeFilesystemLocalWorkspacePort({ root })
+    const gateway = makeFakeGatewayHarness({ propertyPages: [bodiesOnPropertyPage] })
+    const ports = makeHarnessPorts()
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot: root,
+        now: clock.now,
+      })
+      await Effect.runPromise(
+        syncOneShot({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot: root,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          bodyPathForPage,
+          now: clock.now,
+          ...(dryRun === true ? { dryRun: true } : {}),
+        }).pipe(
+          Effect.provideService(NotionDataSourceGateway, gateway.gateway),
+          Effect.provideService(PageBodySyncPort, ports.body),
+          Effect.provideService(LocalWorkspacePort, workspace),
+        ),
+      )
+    } finally {
+      storeFixture.cleanup()
+    }
+  }
+
+  const pagesDirEntries = (root: AbsolutePathType): ReadonlyArray<string> => {
+    const dir = join(root, pagesDirRelativePath(testIds.databaseId))
+    return existsSync(dir) === true ? readdirSync(dir).toSorted() : []
+  }
+
+  it('keeps the bodies-on dry-run scenario metadata implemented', () => {
+    expect(
+      scenarioImplementationGaps({
+        file: 'src/e2e/dry-run-suppression.e2e.test.ts',
+        implementedScenarioIds: implementedDryRunSuppressionScenarioIds,
+      }),
+    ).toEqual([])
+  })
+
+  // NDS-L4-dry-run-suppression-nmd-bodies
+  it('writes NO .nmd page body under sync --dry-run with bodies enabled', async () => {
+    const fixture = await makeTempWorkspace()
+    try {
+      const before = pagesDirEntries(fixture.root)
+      await runBodiesOnSync({ root: fixture.root, dryRun: true })
+      const after = pagesDirEntries(fixture.root)
+
+      // The body materialize stage is gated off under dry-run, so no `.nmd` lands.
+      expect(after).toEqual(before)
+      expect(after).toEqual([])
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  // Falsifiability anchor: the SAME bodies-on path WITHOUT --dry-run materializes
+  // a `.nmd`, proving the dry-run assertion above is suppression, not a body that
+  // would never have been written.
+  it('DOES materialize a .nmd under a non-dry bodies-on sync (proof is non-vacuous)', async () => {
+    const fixture = await makeTempWorkspace()
+    try {
+      const before = pagesDirEntries(fixture.root)
+      await runBodiesOnSync({ root: fixture.root, dryRun: false })
+      const after = pagesDirEntries(fixture.root)
+
+      expect(before).toEqual([])
+      expect(after).not.toEqual(before)
+      expect(after).toContain(`${testIds.pageId}.nmd`)
+    } finally {
+      await fixture.cleanup()
+    }
   })
 })

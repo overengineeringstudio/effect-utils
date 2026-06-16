@@ -87,6 +87,23 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L4',
     file: 'src/e2e/dry-run-suppression.e2e.test.ts',
   }),
+  // F2 (#775): the bodies-ON falsifiable complement to SM5.2. The all-surfaces
+  // proof runs `--no-materialize-bodies`, so its `pages/v1/<src>/*.nmd` invariant
+  // rests on the unconditional `materializeBodies:false` force rather than a
+  // falsifiable delta. This scenario materializes bodies under `sync --dry-run`
+  // and asserts the `pages/v1/<src>/` dir gains NO `.nmd`, while the SAME path
+  // without `--dry-run` DOES materialize a `.nmd` — making the body-suppression
+  // gate (sync.ts `dryRun → materializeBodies:false`) observably non-vacuous.
+  scenario({
+    scenarioId: 'NDS-L4-dry-run-suppression-nmd-bodies',
+    title:
+      'bodies-on sync --dry-run materializes no .nmd page body while a non-dry control does (falsifiable)',
+    requirementIds: ['R49'],
+    guards: [],
+    lowestPlannerLevel: 'L3',
+    highestIntegrationLevel: 'L4',
+    file: 'src/e2e/dry-run-suppression.e2e.test.ts',
+  }),
   // SM5.3 (CLI-R02 watch dimension / R49 + R64): `sync --watch --dry-run` runs as
   // an observe/plan/report loop. Each bounded cycle reports a plan frame while
   // every loop-level durable effect is suppressed — and, critically, a REAL
@@ -850,7 +867,6 @@ const guardScenarioIds = {
   RelatedDataSourceUnshared: 'NDS-GUARD-related-data-source-unshared',
   StaleSurfaceBase: 'NDS-L3-realistic-local-remote-conflict',
   CurrentSurfaceMissing: 'NDS-L3-doctor-guard-state',
-  PageTimestampWakeupOnly: 'NDS-GUARD-page-timestamp-wakeup-only',
   SchemaDriftAffectsIntent: 'NDS-L3-realistic-schema-capability-failure',
   DestructiveSchemaMigrationRequired: 'NDS-L2-schema-destructive-fail-closed',
   OptionDeletionLosesValues: 'NDS-L2-schema-destructive-fail-closed',
@@ -866,7 +882,6 @@ const guardScenarioIds = {
   QueryContractChanged: 'NDS-GUARD-query-contract-changed',
   QueryResultCapExceeded: 'NDS-L2-query-cap-blocks-absence',
   FilteredAbsenceNotProof: 'NDS-L2-filtered-absence-not-proof',
-  LinkedDataSourceUnsupported: 'NDS-GUARD-linked-data-source-unsupported',
   PermissionAmbiguous: 'NDS-L2-permission-ambiguity-fail-closed',
   DeleteVsEdit: 'NDS-GUARD-delete-vs-edit',
   MoveOutNotDelete: 'NDS-L2-membership-lost-restored',
@@ -884,7 +899,6 @@ const guardScenarioIds = {
   LeaseFenceMismatch: 'NDS-L3-outbox-legacy-running-lease-fence',
   OutboxFirstSettlementWins: 'NDS-L3-outbox-invalid-settlement-rejected',
   CheckpointDigestMismatch: 'NDS-GUARD-checkpoint-digest-mismatch',
-  StoreMigrationBlocked: 'NDS-GUARD-store-migration-blocked',
   QueueBackpressureExceeded: 'NDS-L5-daemon-bounded-outbox-drain',
   RawPayloadRetentionUnsafe: 'NDS-LIVE-skeleton-gated-cleanup-ledger',
   UnknownWorkspaceNamespace: 'NDS-GUARD-unknown-workspace-namespace',
@@ -961,13 +975,6 @@ export const traceabilityResiduals = [
   },
   {
     _tag: 'placeholder-guard-scenario',
-    guard: 'PageTimestampWakeupOnly',
-    scenarioId: 'NDS-GUARD-page-timestamp-wakeup-only',
-    requirementIds: ['R22', 'R43'],
-    reason: 'Timestamp wake-up semantics are daemon-scope and await watch scenario ownership.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
     guard: 'QueryAbsenceUnclassified',
     scenarioId: 'NDS-GUARD-query-absence-unclassified',
     requirementIds: ['R36', 'R37'],
@@ -979,14 +986,6 @@ export const traceabilityResiduals = [
     scenarioId: 'NDS-GUARD-query-contract-changed',
     requirementIds: ['R72', 'R73'],
     reason: 'Query contract drift needs multi-scan checkpoint fixtures.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'LinkedDataSourceUnsupported',
-    scenarioId: 'NDS-GUARD-linked-data-source-unsupported',
-    requirementIds: ['R05', 'R29'],
-    reason:
-      'Reserved guard: the LinkedDataSourceUnsupported name is declared but not yet wired into any planner/gateway path, so it has no unit or E2E coverage; it awaits both wiring and a representative Notion linked-data-source fixture.',
   },
   {
     _tag: 'placeholder-guard-scenario',
@@ -1022,14 +1021,6 @@ export const traceabilityResiduals = [
     scenarioId: 'NDS-GUARD-checkpoint-digest-mismatch',
     requirementIds: ['R08', 'R47'],
     reason: 'Checkpoint digest mismatch coverage requires repair-scan fixtures.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'StoreMigrationBlocked',
-    scenarioId: 'NDS-GUARD-store-migration-blocked',
-    requirementIds: ['R12', 'R62'],
-    reason:
-      'Reserved guard: the store fails closed on a newer-than-supported migration history (store.unit.test.ts), but that path throws a store-open error rather than routing through this named guard, which is declared but not yet wired; it awaits wiring before any E2E promotion.',
   },
   {
     _tag: 'placeholder-guard-scenario',
