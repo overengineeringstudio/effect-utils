@@ -617,17 +617,28 @@ const coldReclaimRepo = ({
     // Fetch --prune so `refs/remotes/*` is fresh (the reachability + PR-prune
     // signal). A repo whose fetch fails keeps ALL its named worktrees — the
     // conservative direction (every commit would read as unpushed).
-    const fetchResult = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.either)
-    const fetchOk = fetchResult._tag === 'Right'
-    if (fetchResult._tag === 'Left') {
-      // Classification needs fresh `refs/remotes/*`, so keep all named worktrees;
-      // do NOT return — archive reaping below is time/veto-based and needs no fetch.
-      const message =
-        fetchResult.left instanceof Error === true
-          ? fetchResult.left.message
-          : String(fetchResult.left)
-      for (const target of namedWorktrees) {
-        results.push(coldResult({ target, status: 'kept', reason: 'fetch-failed', message }))
+    //
+    // `--dry-run` must not mutate `.bare`, and `git fetch --prune` rewrites
+    // `refs/remotes/*`, so the fetch is SKIPPED entirely in dry-run. Classification
+    // then runs against the currently-present (last-known) `refs/remotes/*` instead
+    // of a freshly refreshed set; `classify === true` so the preview still proceeds.
+    // The TUI's dry-run banner states that remotes were not refreshed.
+    let classify: boolean
+    if (dryRun === true) {
+      classify = true
+    } else {
+      const fetchResult = yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.either)
+      classify = fetchResult._tag === 'Right'
+      if (fetchResult._tag === 'Left') {
+        // Classification needs fresh `refs/remotes/*`, so keep all named worktrees;
+        // do NOT return — archive reaping below is time/veto-based and needs no fetch.
+        const message =
+          fetchResult.left instanceof Error === true
+            ? fetchResult.left.message
+            : String(fetchResult.left)
+        for (const target of namedWorktrees) {
+          results.push(coldResult({ target, status: 'kept', reason: 'fetch-failed', message }))
+        }
       }
     }
 
@@ -635,13 +646,14 @@ const coldReclaimRepo = ({
     // PR state or liveness — archiving a dependency's default branch is never
     // wanted, and common names (`main`/`master`) are prone to PR-join false
     // positives. Read locally from the bare's HEAD (offline). Only needed when
-    // classifying, i.e. the fetch succeeded.
-    const defaultBranch = fetchOk
-      ? Option.getOrUndefined(yield* Git.getStoreDefaultBranch({ bareRepoPath }))
-      : undefined
+    // classifying, i.e. the fetch succeeded (live) or was skipped (dry-run).
+    const defaultBranch =
+      classify === true
+        ? Option.getOrUndefined(yield* Git.getStoreDefaultBranch({ bareRepoPath }))
+        : undefined
 
     for (const target of namedWorktrees) {
-      if (fetchOk === false) break
+      if (classify === false) break
       const { worktree } = target
       // Only `refs/heads/*` carries a branch identity to reclaim; tags have no
       // PR/branch to free, so they are always kept by the cold path.

@@ -538,6 +538,49 @@ describe('store discovery is bounded to the layout', () => {
       Effect.scoped,
     ),
   )
+
+  it.effect(
+    'listWorktrees caps the nested-worktree walk and still finds a real deeply-nested worktree',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        // A real worktree at a legitimately-nested ref (`refs/heads/a/b/c/wt`,
+        // depth 4 under refs/heads) must still be discovered.
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'r', branches: ['a/b/c/wt'] },
+        ])
+        const realWt = worktreePaths['github.com/acme/r#a/b/c/wt']!
+
+        // A worktree-LESS subtree nested far past the walk's depth cap (no `.git`
+        // anywhere). Pre-fix this drove unbounded recursion; the cap must stop it.
+        const headsDir = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir('github.com/acme/r/refs/heads/'),
+        )
+        const deep = Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')
+        yield* fs.makeDirectory(
+          EffectPath.ops.join(headsDir, EffectPath.unsafe.relativeDir(`deep/${deep}/`)),
+          { recursive: true },
+        )
+
+        const source = parseSourceString('acme/r')!
+        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const worktrees = yield* store.listWorktrees(source)
+
+        // The real worktree is found...
+        const real = worktrees.find((w) => w.path === realWt)
+        expect(real).toBeDefined()
+        expect(real?.broken).toBe(false)
+        // ...and the walk terminated at the cap: no ref nests anywhere near the
+        // 30-deep stray tree (the cap is 8 segments under refs/heads), so the
+        // enumeration never followed the pathological subtree to its leaf.
+        expect(worktrees.every((w) => w.ref.split('/').length <= 8)).toBe(true)
+        expect(worktrees.some((w) => w.ref.includes('d29'))).toBe(false)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('mr store ls', () => {

@@ -777,6 +777,67 @@ describe('mr store gc — cold named-branch reclamation', () => {
   )
 
   it.effect(
+    '--dry-run does NOT fetch/prune the bare (refs/remotes left intact); live run does',
+    Effect.fnUntraced(
+      function* () {
+        const { storePath, bareRepoPaths, upstreamRepoPaths, worktreePaths } =
+          yield* createStoreFixture([
+            { ...REPO, branches: ['feature/pruneable'], withRemote: true },
+          ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const upstreamPath = upstreamRepoPaths[REPO_KEY]!
+        const commit = yield* getWorktreeCommit(worktreePaths[`${REPO_KEY}#feature/pruneable`]!)
+        yield* materializeBranchRef({ bareRepoPath, branch: 'feature/pruneable', commit })
+
+        // Precondition: the store bare tracks the branch on the remote.
+        expect(
+          yield* Git.refExists({
+            repoPath: bareRepoPath,
+            ref: 'refs/remotes/origin/feature/pruneable',
+          }),
+        ).toBe(true)
+
+        // Delete the branch on the UPSTREAM, so the next `fetch --prune` in the
+        // store bare would remove `refs/remotes/origin/feature/pruneable`. This is
+        // the discriminator: only a real fetch mutates the bare.
+        yield* git(upstreamPath, 'branch', '-D', 'feature/pruneable')
+
+        const cwd = yield* outsideCwd()
+
+        // Dry-run must SKIP the fetch — the (now-stale) remote-tracking ref survives.
+        yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
+          args: ['--dry-run'],
+        })
+        expect(
+          yield* Git.refExists({
+            repoPath: bareRepoPath,
+            ref: 'refs/remotes/origin/feature/pruneable',
+          }),
+        ).toBe(true)
+
+        // The paired live run DOES fetch --prune, proving the assertion above
+        // discriminates rather than passing vacuously: the ref is now gone.
+        yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
+        })
+        expect(
+          yield* Git.refExists({
+            repoPath: bareRepoPath,
+            ref: 'refs/remotes/origin/feature/pruneable',
+          }),
+        ).toBe(false)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'archive past retention ⇒ reaped; within retention ⇒ kept',
     Effect.fnUntraced(
       function* () {
