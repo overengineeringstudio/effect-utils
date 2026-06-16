@@ -131,7 +131,15 @@ export const remoteMarkdownFromBodyObservation = (
 ): RemoteMarkdownSnapshot => {
   const renderedMarkdown = body.inventory.renderedMarkdown
   return {
-    markdown: normalizeMarkdownLineEndings(renderedMarkdown ?? body.markdown.markdown),
+    /*
+     * Pull receive: canonicalize the rendered body so the body a consumer reads
+     * (`cat` / `edit` / file sync / baseline), the body hashed, and the body
+     * pushed are the same bytes — one canonical form at both wire boundaries
+     * (decision 0018). Without this, pull emitted the raw loose-list render
+     * while push canonicalized, the two-oracle divergence behind the list
+     * line-break bug.
+     */
+    markdown: canonicalizeBlockMarkdown(renderedMarkdown ?? body.markdown.markdown),
     endpoint_markdown: normalizeMarkdownLineEndings(body.markdown.markdown),
     truncated: body.markdown.truncated,
     unknown_block_ids: body.markdown.unknownBlockIds,

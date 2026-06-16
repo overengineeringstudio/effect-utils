@@ -92,6 +92,54 @@ describe('remoteMarkdownFromBodyObservation', () => {
     })
   })
 
+  it('canonicalizes the rendered body on pull (loose render → tight body)', () => {
+    const entries = [
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        type: 'bulleted_list_item',
+        hasChildren: false,
+        inTrash: false,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000003',
+        type: 'bulleted_list_item',
+        hasChildren: false,
+        inTrash: false,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000004',
+        type: 'paragraph',
+        hasChildren: false,
+        inTrash: false,
+      },
+    ] as const
+    // The renderer joins every sibling with `\n\n`, so a tight Notion list
+    // arrives loose. Pull must canonicalize it tight while keeping the blank
+    // line before the trailing paragraph.
+    const renderedMarkdown = '- Bullet A\n\n- Bullet B\n\nA paragraph after the list.'
+    const observation: NotionBodyObservation = {
+      pageId: '00000000-0000-4000-8000-000000000001',
+      markdown: {
+        markdown: '- Bullet A\n- Bullet B\nA paragraph after the list.\n',
+        truncated: false,
+        unknownBlockIds: [],
+      },
+      inventory: { entries, renderedMarkdown },
+      completeness: { _tag: 'complete' },
+      ...evidenceFor({
+        pageId: '00000000-0000-4000-8000-000000000001',
+        endpointMarkdown: '- Bullet A\n- Bullet B\nA paragraph after the list.\n',
+        renderedMarkdown,
+        entries,
+        completeness: 'complete',
+      }),
+    }
+
+    expect(remoteMarkdownFromBodyObservation(observation)).toMatchObject({
+      markdown: '- Bullet A\n- Bullet B\n\nA paragraph after the list.\n',
+    })
+  })
+
   it('fails closed when block-tree-rendered Markdown is unavailable', () => {
     const entries = [] as const
     const observation: NotionBodyObservation = {
