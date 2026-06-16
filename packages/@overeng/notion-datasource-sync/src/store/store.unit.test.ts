@@ -1436,6 +1436,7 @@ describe('Notion sync SQLite store', () => {
           pendingLocal: {
             intentEventId: 'intent-property-1',
             targetHash: hash('b'),
+            state: 'queued',
           },
         },
       ])
@@ -1479,6 +1480,7 @@ describe('Notion sync SQLite store', () => {
           pendingLocal: {
             intentEventId: 'intent-property-second',
             targetHash: hash('c'),
+            state: 'queued',
           },
         }),
       ])

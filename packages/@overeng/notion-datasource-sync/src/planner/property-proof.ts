@@ -119,10 +119,13 @@ const availabilityProjection = (
  * `convergeLocalSurfaces` + `applyConvergenceVerdicts` in the CLI push path) and is
  * ACTIVE on real data (SM5d): pulls materialize the writable frontmatter properties
  * into the `.nmd`, so `LocalSurfaceDisagreement` fires on a genuine pulled-page
- * divergence. `settlement` comes from real outbox read-after-write state: an
- * unsettled prior write for the property (`PropertySurfaceSnapshot.pendingLocal`,
- * derived from `#pendingPropertyIntents`) maps to `missing` in `shared` mode, so
- * `ReadAfterWriteMismatch` fires when a new write would race an unsettled prior one.
+ * divergence. `settlement` comes from real outbox read-after-write state: a
+ * genuinely in-flight prior write for the property (`PropertySurfaceSnapshot.pendingLocal`
+ * present with an in-flight outbox `state`, derived from `#pendingPropertyIntents`)
+ * maps to `missing` in `shared` mode, so `ReadAfterWriteMismatch` fires when a new
+ * write would race a still-driving prior one. A terminal `blocked` refusal (a
+ * pre-write `StaleSurfaceBase`/`CurrentSurfaceMissing` that never executed and
+ * never settles) is NOT a verification failure and does NOT gate.
  */
 export interface WorkspaceProofInputs {
   readonly dataSourceId: DataSourceId
