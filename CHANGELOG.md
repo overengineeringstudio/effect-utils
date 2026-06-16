@@ -60,7 +60,7 @@ All notable changes to this project will be documented in this file.
 
 - **CI / Nix packages**: Refresh the stale `genie`, `megarepo`, `notion-md`, and `tui-stories` pnpm fixed-output hashes after the schema-first OTEL contract change updated the workspace dependency closure.
 
-- **CI / Nix packages**: Refresh the `oxc-config`, `genie`, and `notion-cli` pnpm fixed-output hashes to the values observed by PR #780 CI/local proof so lint, typecheck, test, and FOD validation jobs can realize their Nix dependencies again.
+- **CI / Nix packages**: Refresh the `oxc-config`, `genie`, `megarepo`, and `notion-cli` pnpm fixed-output hashes to the values observed by PR #780 CI/local proof so lint, typecheck, test, and FOD validation jobs can realize their Nix dependencies again.
 
 - **@overeng/megarepo tests**: Make the missing-remote sync error fixture deterministic by using a local `file://` clone failure instead of a fake GitHub SSH remote, and give the heavier cold store-GC liveness/archive integration case its own timeout budget.
 
