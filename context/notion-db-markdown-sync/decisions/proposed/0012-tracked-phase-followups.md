@@ -112,6 +112,71 @@ until this is ratified. This is unrelated to multi-source establish, which is a
 supported and accepted feature (one workspace, many tracked sources sharing one
 `.notion/v1/state.sqlite`).
 
+## F9 — Spec-declared scenarios are realized in the matrix but not yet executable (cross-phase)
+
+Thirteen scenarios in `e2eHarnessScenarios`
+(`packages/@overeng/notion-datasource-sync/src/testing/scenarios.ts`) remain
+`file: docs/vrs/spec.md` — declared in the traceability matrix but not pointed at a
+concrete executable test. This is deliberate: each names behavior that is either
+mechanism-backed but not yet falsifiably driven, or whose production logic is not
+wired, or whose proof needs a fixture or timing context that does not exist today.
+Six sibling scenarios that previously sat here were repointed to the concrete tests
+that already exercise them (`NDS-L4-bidi-disjoint-property-merge`,
+`NDS-L3-bidi-ambiguous-write-idempotency` →
+`src/e2e/fake-service.e2e.test.ts`; `NDS-L4-bidi-conflict-resolution-lifecycle`
+→ `src/e2e/conflict-resolution.e2e.test.ts`;
+`NDS-L4-bidi-clean-outbound-after-remote-observation`,
+`NDS-L4-bidi-rebuild-replay-safety` → `src/e2e/realistic-workflows.e2e.test.ts`;
+`NDS-L6-live-workspace-scratch-row-bidi` → `src/e2e/live-notion.e2e.test.ts`).
+The thirteen below are the residue that no current test genuinely proves.
+
+Each is listed with the single reason it stays declared:
+
+- `NDS-L6-bidi-body-local-capture-first` — body-convergence-pending. Tracked by F1:
+  production emits property facts only into the convergence engine, so a local
+  `.nmd` body capture preceding remote body materialization has no convergence path
+  to prove.
+- `NDS-L4-bidi-same-property-race-conflict` — daemon-incremental-timing-scope. The
+  same-property conflict base behavior is covered; the concurrent SQLite/Notion race
+  variant depends on daemon incremental timing not yet scoped.
+- `NDS-L4-bidi-archive-edit-race` — daemon-incremental-timing-scope. Row-lifecycle
+  vs property-edit fail-closed is covered at base; the race ordering between archive
+  and edit is a daemon incremental-timing variant.
+- `NDS-L5-bidi-watermark-boundary-overlap` — daemon-incremental-timing-scope.
+  Incremental last-edited-time boundary draining is a daemon-loop timing concern not
+  yet wired for a falsifiable boundary-overlap proof.
+- `NDS-L5-bidi-incremental-absence-not-tombstone` — daemon-incremental-timing-scope.
+  Polling-omission-is-not-a-tombstone needs an incremental poll loop to drive the
+  filtered-absence path.
+- `NDS-L5-bidi-local-first-slow-pull` — daemon-incremental-timing-scope. Pushing
+  eligible CDC before a slow remote pull completes is a watch-loop interleaving not
+  yet scoped.
+- `NDS-L5-bidi-inline-hydration-correctness` — daemon-incremental-timing-scope.
+  Inline query-row hydration correctness across incremental polls needs the same
+  daemon timing context.
+- `NDS-L5-bidi-relation-pagination-scoped-block` — relation-rollup-file-fixtures-missing.
+  Scoped blocking on incomplete relation pagination needs relation/rollup fixture
+  types that do not exist in the corpus today.
+- `NDS-L3-conflict-soak-matrix` — matrix-umbrella-over-tested-cells. An umbrella
+  declaration over same-surface and cross-surface replay cells, individual cells of
+  which are already exercised by concrete conflict tests.
+- `NDS-L5-high-cardinality-fake-soak` — matrix-umbrella-over-tested-cells. An umbrella
+  over bounded pagination and outbox-pressure cells whose primitives are individually
+  proven; the soak aggregate is not run as one declared case.
+- `NDS-L3-property-data-type-matrix` — matrix-umbrella-over-tested-cells. An umbrella
+  over writable/computed/relation/file/rollup property cells; the writable cells are
+  exercised, the computed/relation/rollup cells need the missing fixtures above.
+- `NDS-L6-live-workspace-provisioner-lane` — live-workspace-lane-incomplete. The
+  canonical synthetic-workspace provisioner lane is not fully stood up outside the
+  repository, so its stable-fixture-ID guarantee is not driven end to end.
+- `NDS-L6-live-workspace-read-only-downsync` — live-workspace-lane-incomplete. The
+  #715 read-only live downsync depends on the same provisioner lane.
+
+These remain `file: docs/vrs/spec.md` on purpose: declared-but-not-executable so the
+matrix stays honest about what is named versus what is proven. They are to be
+realized post-merge, each repointed to a concrete test once its mechanism is wired,
+its fixture exists, or its daemon-timing/live lane is stood up.
+
 ## Considered Options
 
 | Option                                                          | Result   | Reason                                                                                                                                                                          |

@@ -106,6 +106,8 @@ const implementedFakeScenarioIds = new Set<ScenarioId>([
   'NDS-L3-outbox-rate-limit-retry-after',
   'NDS-L3-outbox-crash-after-attempt-recovery',
   'NDS-L3-outbox-legacy-running-lease-fence',
+  'NDS-L4-bidi-disjoint-property-merge',
+  'NDS-L3-bidi-ambiguous-write-idempotency',
 ])
 
 const expectedPatchHash = () =>
