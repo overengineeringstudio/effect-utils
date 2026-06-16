@@ -1414,25 +1414,28 @@ const runCliCommandEffect = ({
         }),
       )
     case 'conflicts-resolve':
-      return Effect.sync(() =>
-        envelope({
-          command: command._tag,
+      return Effect.sync(() => {
+        const result = resolveConflictCommand({
+          store: context.store,
+          rootId: context.rootId,
+          conflictId: command.conflictId,
+          choice: command.choice,
+          // Authority mode must reach the conflict-resolution planner: a
+          // `keep-local`/`manual` resolution in a `remote`-mode workspace is
+          // refused as `RemoteAuthoritativeDrift` (decisions 0003, 0010).
+          ...(context.authorityMode === undefined ? {} : { authorityMode: context.authorityMode }),
+          ...withOptionalCommandOptions({ command, context }),
+        })
+        // Reproject the public data file so a lifecycle `keep-remote` resolution
+        // (decision 0018) — which reconverges `_nds_row.in_trash` in the apply
+        // path — is immediately reflected in the public `pages._in_trash`,
+        // instead of remaining stale until the next sync.
+        projectReplicaIfWritable({
           context,
-          result: resolveConflictCommand({
-            store: context.store,
-            rootId: context.rootId,
-            conflictId: command.conflictId,
-            choice: command.choice,
-            // Authority mode must reach the conflict-resolution planner: a
-            // `keep-local`/`manual` resolution in a `remote`-mode workspace is
-            // refused as `RemoteAuthoritativeDrift` (decisions 0003, 0010).
-            ...(context.authorityMode === undefined
-              ? {}
-              : { authorityMode: context.authorityMode }),
-            ...withOptionalCommandOptions({ command, context }),
-          }),
-        }),
-      )
+          ...(command.dryRun === undefined ? {} : { dryRun: command.dryRun }),
+        })
+        return envelope({ command: command._tag, context, result })
+      })
     case 'forget':
       return Effect.sync(() =>
         envelope({

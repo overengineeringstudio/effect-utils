@@ -2092,4 +2092,95 @@ describe('Notion sync SQLite store', () => {
       })
     })
   })
+
+  // Decision 0018: the `RowObserved` apply freezes `_nds_row.in_trash` ONLY when an
+  // OPEN `lifecycle` conflict exists for the page. The discriminator is the decoded
+  // `conflictKind`, NOT a null `property_id` — a `body` (body-body merge) conflict
+  // also has a null `property_id` and must NOT freeze `in_trash`.
+  const pageConflictRaised = (kind: 'lifecycle' | 'body') =>
+    decode(SyncEvent, {
+      _tag: 'ConflictRaised',
+      ...eventBase({
+        eventId: `conflict-${kind}`,
+        family: 'ConflictDetected',
+        eventType: 'ConflictRaised',
+        idempotencyKey: `conflict:${kind}:page-1`,
+        canonicalJson: '{"message":"divergence"}',
+        surface: 'page:page-1',
+      }),
+      conflictKind: kind,
+      pageId: 'page-1',
+      ...(kind === 'lifecycle' ? { remoteInTrash: false } : {}),
+      baseHash: hash('a'),
+      localHash: hash('b'),
+      remoteHash: hash('c'),
+    })
+
+  it('freezes _nds_row.in_trash while an open lifecycle conflict gates the RowObserved', () => {
+    withStore((store) => {
+      // Settled-archive baseline: a prior observation set in_trash = 1.
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-active',
+          idempotencyKey: 'row-active',
+          propertiesHash: hash('a1'),
+          inTrash: true,
+        }),
+      )
+      // The lifecycle conflict opens at a LOWER sequence than the gated RowObserved.
+      store.appendEvent(pageConflictRaised('lifecycle'))
+      // A NOVEL propertiesHash → a distinct, non-deduped RowObserved that APPLIES.
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-restored',
+          idempotencyKey: 'row-restored',
+          propertiesHash: hash('b2'),
+          inTrash: false,
+        }),
+      )
+
+      // in_trash is FROZEN at the settled target (true), not flipped to the
+      // remote-observed false — yet the rest of the row converged (the apply ran).
+      expect(store.readPlannerProjectionSnapshot(rootId).rows).toMatchObject([
+        { pageId: 'page-1', inTrash: true, propertiesHash: hash('b2') },
+      ])
+
+      // Replay determinism: the ConflictRaised precedes the RowObserved, so a full
+      // rebuild reproduces the freeze with no L recomputation in the apply path.
+      store.clearProjectionTables()
+      store.rebuildProjections(rootId)
+      expect(store.readPlannerProjectionSnapshot(rootId).rows).toMatchObject([
+        { pageId: 'page-1', inTrash: true, propertiesHash: hash('b2') },
+      ])
+    })
+  })
+
+  it('does NOT freeze in_trash for an open body-body conflict (the null-property_id discriminator trap)', () => {
+    withStore((store) => {
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-active',
+          idempotencyKey: 'row-active',
+          propertiesHash: hash('a1'),
+          inTrash: true,
+        }),
+      )
+      // An open body conflict ALSO has a null property_id, but must not freeze
+      // the lifecycle column.
+      store.appendEvent(pageConflictRaised('body'))
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-restored',
+          idempotencyKey: 'row-restored',
+          propertiesHash: hash('b2'),
+          inTrash: false,
+        }),
+      )
+
+      // in_trash FOLLOWS the remote observation (false): the freeze did not fire.
+      expect(store.readPlannerProjectionSnapshot(rootId).rows).toMatchObject([
+        { pageId: 'page-1', inTrash: false, propertiesHash: hash('b2') },
+      ])
+    })
+  })
 })

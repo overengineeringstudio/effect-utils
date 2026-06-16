@@ -5,6 +5,7 @@ import {
   type CanonicalPropertyValue,
   PatchPagePropertiesCommand,
   RestorePageCommand,
+  TrashPageCommand,
 } from '../core/commands.ts'
 import { CommandId, PageId } from '../core/domain.ts'
 import {
@@ -276,6 +277,88 @@ const resolveValue = (choice: ConflictResolutionChoice): CanonicalPropertyValue 
   }
 }
 
+/**
+ * Resolve an open `lifecycle` conflict (decision 0018). Unlike property conflicts
+ * this never enqueues a `PatchPageProperties`:
+ *
+ * - `keep-remote` (and `manual`): emit `ConflictResolved(keep-remote)`. The store
+ *   apply arm reconverges `_nds_row.in_trash` to the recorded `remoteInTrash` and
+ *   clears the `remote_trash` tombstone when the remote target is active.
+ * - `keep-local`: re-assert the local target `L` (= `!remoteInTrash`) by
+ *   re-enqueueing a `TrashPage` (L=1) or `RestorePage` (L=0) push, then emit
+ *   `ConflictResolved(keep-local)` with the followup command id. The F8 settle
+ *   handler reconverges `in_trash` on settlement. The frozen `_nds_row.in_trash`
+ *   already holds L, so this round-trips the user's intent back to the remote.
+ */
+const resolveLifecycleConflict = ({
+  rootId,
+  conflict,
+  choice,
+  now,
+}: {
+  readonly rootId: SyncRootId
+  readonly conflict: ConflictProjectionRow
+  readonly choice: ConflictResolutionChoice
+  readonly now: () => Date
+}): PlannedUserAction => {
+  // A lifecycle conflict is raised only when remote `R !== L`, so `L = !R`.
+  const remoteInTrash = conflict.remoteInTrash ?? false
+  const localTarget = remoteInTrash === false
+  const pageId = conflict.pageId ?? decode({ schema: PageId, value: 'unknown-page' })
+
+  if (choice._tag !== 'keep-local') {
+    // keep-remote / manual: accept the remote target. The store reconverges
+    // `in_trash` from the recorded `remoteInTrash` deterministically on replay.
+    return {
+      events: [makeConflictResolvedEvent({ rootId, conflict, choice, now })],
+      commands: [],
+      guards: [],
+    }
+  }
+
+  // keep-local: re-assert `L` via a fresh lifecycle push. The base hash is the
+  // OPPOSITE lifecycle hash (the remote state we are overriding), matching the
+  // stale-base contract used by the trash/restore planning paths.
+  const basePropertiesHash = pageLifecycleHash({ pageId, inTrash: remoteInTrash })
+  const desiredHash = pageLifecycleHash({ pageId, inTrash: localTarget })
+  const commandId = commandIdFor(
+    `resolve-lifecycle:${conflict.conflictId}:${localTarget === true ? 'trash' : 'restore'}`,
+  )
+  const commandKey = decode({
+    schema: IdempotencyKey,
+    value: `resolve-lifecycle:${eventIdPart(conflict.conflictId)}:${localTarget === true ? 'trash' : 'restore'}`,
+  })
+  const command =
+    localTarget === true
+      ? decode({
+          schema: TrashPageCommand,
+          value: { _tag: 'TrashPageCommand', commandId, pageId, basePropertiesHash },
+        })
+      : decode({
+          schema: RestorePageCommand,
+          value: { _tag: 'RestorePageCommand', commandId, pageId, basePropertiesHash },
+        })
+  const followupCommand: OutboxCommandEnvelope = {
+    commandId,
+    commandKey,
+    rootId,
+    intentEventId: intentEventIdFor(
+      `resolve-lifecycle:${conflict.conflictId}:${localTarget === true ? 'trash' : 'restore'}`,
+    ),
+    surface: pageSurfaceKey(pageId),
+    command,
+    baseHash: basePropertiesHash,
+    desiredHash,
+    preflight: ['CapabilityPreflightFailed', 'StaleSurfaceBase', 'DeleteVsEdit'] as const,
+  }
+
+  return {
+    events: [makeConflictResolvedEvent({ rootId, conflict, choice, followupCommand, now })],
+    commands: [followupCommand],
+    guards: [],
+  }
+}
+
 const conflictResolutionPlan = ({
   store,
   rootId,
@@ -295,6 +378,13 @@ const conflictResolutionPlan = ({
       surface: undefined,
       message: `Open conflict is missing: ${conflictId}`,
     })
+  }
+
+  // Lifecycle conflicts (decision 0018) have a `pageId` but no `propertyId`, and
+  // do NOT mirror the property resolution path (no PatchPageProperties). Route
+  // them to their own resolver before the property-only refuse block below.
+  if (conflict.kind === 'lifecycle' && conflict.pageId !== undefined) {
+    return resolveLifecycleConflict({ rootId, conflict, choice, now })
   }
 
   if (conflict.pageId === undefined || conflict.propertyId === undefined) {

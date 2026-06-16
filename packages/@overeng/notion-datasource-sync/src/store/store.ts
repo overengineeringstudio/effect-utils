@@ -5,7 +5,7 @@ import { Schema } from 'effect'
 
 import { NOTION_API_VERSION } from '@overeng/notion-effect-client'
 
-import { propertySurfaceKey } from '../core/canonical.ts'
+import { pageSurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
 import { RemoteWritePlanPayload, type RemoteWriteCommand } from '../core/commands.ts'
 import {
   BodyPointer,
@@ -118,6 +118,7 @@ export type ConflictProjectionRow = {
     | 'body'
     | 'schema'
     | 'delete-vs-edit'
+    | 'lifecycle'
     | 'path'
     | 'relation'
     | 'permission'
@@ -125,6 +126,8 @@ export type ConflictProjectionRow = {
   readonly baseHash: Hash | undefined
   readonly localHash: Hash | undefined
   readonly remoteHash: Hash | undefined
+  /** Remote trash target for `lifecycle` conflicts; `undefined` for other kinds. The local target `L` is recoverable as `!remoteInTrash`. */
+  readonly remoteInTrash: boolean | undefined
   readonly message: string | undefined
   readonly openedEventId: SyncEventId
   readonly resolutionEventId: SyncEventId | undefined
@@ -1228,6 +1231,8 @@ export class NotionSyncStore {
           openedEvent._tag === 'ConflictRaised'
             ? decodeConflictPayloadMessage(openedEvent.payload.canonicalJson).message
             : undefined
+        const remoteInTrash =
+          openedEvent._tag === 'ConflictRaised' ? openedEvent.remoteInTrash : undefined
 
         return {
           conflictId: decodeSyncEventId(readString({ row: row, key: 'conflict_id' })),
@@ -1254,6 +1259,7 @@ export class NotionSyncStore {
             readOptionalString({ row: row, key: 'remote_hash' }) === undefined
               ? undefined
               : decodeHash(readString({ row: row, key: 'remote_hash' })),
+          remoteInTrash,
           message,
           openedEventId: decodeSyncEventId(readString({ row: row, key: 'opened_event_id' })),
           resolutionEventId:
@@ -1262,6 +1268,48 @@ export class NotionSyncStore {
               : decodeSyncEventId(readString({ row: row, key: 'resolution_event_id' })),
         }
       })
+  }
+
+  /**
+   * The local lifecycle target `L` for a page, derived from the latest SETTLED
+   * `TrashPage`/`RestorePage` command in the outbox: `1` (TrashPage settled),
+   * `0` (RestorePage settled), or `undefined` (no settled lifecycle intent).
+   *
+   * This is the authoritative source of `L` for lifecycle-divergence detection
+   * (decision 0018). It deliberately does NOT read `_nds_row.in_trash`, which is
+   * overloaded — written by `RowObserved`, `TombstoneRecorded`, AND settled local
+   * intent — so reading it for `L` would manufacture false-positive conflicts on
+   * benign remote changes. The settlement is identified by a non-null
+   * `settlement_event_id`; ordering is by the SETTLEMENT event's `sequence` (last
+   * wins), with `command_id` as a deterministic tiebreaker. (CDC/replica intents
+   * are not always materialized in `_nds_sync_event`, but every settled command
+   * has a `RemoteWriteSettled` row, so the settlement-event join is total.)
+   */
+  readSettledLifecycleTarget({
+    rootId,
+    pageId,
+  }: {
+    readonly rootId: SyncRootId
+    readonly pageId: PageId
+  }): boolean | undefined {
+    const row = this.#db
+      .prepare(
+        `SELECT _nds_outbox.command_tag
+         FROM _nds_outbox
+         JOIN _nds_sync_event AS settlement_event
+           ON settlement_event.root_id = _nds_outbox.root_id
+          AND settlement_event.event_id = _nds_outbox.settlement_event_id
+         WHERE _nds_outbox.root_id = ?
+           AND _nds_outbox.surface = ?
+           AND _nds_outbox.command_tag IN ('TrashPage', 'RestorePage')
+           AND _nds_outbox.settlement_event_id IS NOT NULL
+         ORDER BY settlement_event.sequence DESC, _nds_outbox.command_id DESC
+         LIMIT 1`,
+      )
+      .get(rootId, pageSurfaceKey(pageId))
+
+    if (row === undefined) return undefined
+    return readString({ row, key: 'command_tag' }) === 'TrashPage'
   }
 
   readGuardBlocks(rootId: SyncRootId): readonly GuardBlockProjectionRow[] {
@@ -2070,6 +2118,40 @@ CREATE TABLE _nds_body_pointer (
     }))
   }
 
+  /**
+   * Whether the page has an OPEN `lifecycle` conflict (decision 0018). Used by
+   * the `RowObserved` apply to freeze `_nds_row.in_trash`. The `lifecycle`
+   * discriminator is recovered by decoding the opened `ConflictRaised` event and
+   * reading `conflictKind` — `property_id IS NULL` alone is NOT sufficient because
+   * `body-body-delegated` conflicts also have a null `property_id`, and freezing
+   * `in_trash` on an open body conflict would be a bug.
+   */
+  #hasOpenLifecycleConflict({
+    rootId,
+    pageId,
+  }: {
+    readonly rootId: SyncRootId
+    readonly pageId: PageId
+  }): boolean {
+    const rows = this.#db
+      .prepare(
+        `SELECT opened.event_json
+         FROM _nds_conflict conflict
+         JOIN _nds_sync_event opened
+           ON opened.root_id = conflict.root_id
+          AND opened.event_id = conflict.opened_event_id
+         WHERE conflict.root_id = ?
+           AND conflict.page_id = ?
+           AND conflict.state = 'open'`,
+      )
+      .all(rootId, pageId)
+
+    return rows.some((row) => {
+      const openedEvent = decodeEventFromJson(readString({ row: row, key: 'event_json' }))
+      return openedEvent._tag === 'ConflictRaised' && openedEvent.conflictKind === 'lifecycle'
+    })
+  }
+
   #pendingPropertyIntents(rootId: SyncRootId): ReadonlyMap<string, PropertyPendingLocalIntent> {
     const pending = new Map<string, PropertyPendingLocalIntent>()
 
@@ -2582,6 +2664,18 @@ CREATE TABLE _nds_body_pointer (
       }
       case 'RowObserved': {
         const payload = decodePayload({ event: event, decode: decodeRowProjectionPayload })
+        // Lifecycle-conflict suppression (decision 0018): when an open `lifecycle`
+        // conflict exists for this page, a `RowObserved` must NOT overwrite the
+        // settled local lifecycle target — keep the existing `in_trash`. Properties,
+        // body, moved-out, etc. still converge unconditionally. This is replay-pure:
+        // the gating ConflictRaised is persisted at a LOWER sequence (appended at
+        // detection time), so reprojection sees the open conflict before this
+        // RowObserved applies. The suppression is a pure function of the persisted
+        // open-conflict row — no `L` recomputation happens in the apply path.
+        const freezeInTrash = this.#hasOpenLifecycleConflict({
+          rootId: event.rootId,
+          pageId: event.pageId,
+        })
         this.#db
           .prepare(
             `INSERT INTO _nds_row (
@@ -2600,7 +2694,7 @@ CREATE TABLE _nds_body_pointer (
              ON CONFLICT(root_id, page_id) DO UPDATE SET
                data_source_id = excluded.data_source_id,
                properties_hash = excluded.properties_hash,
-               in_trash = excluded.in_trash,
+               in_trash = ${freezeInTrash === true ? '_nds_row.in_trash' : 'excluded.in_trash'},
                moved_out = excluded.moved_out,
                local_delete_candidate = excluded.local_delete_candidate,
                observed_event_id = excluded.observed_event_id,
@@ -2930,7 +3024,7 @@ CREATE TABLE _nds_body_pointer (
             currentIso(this.#now),
           )
         break
-      case 'ConflictResolved':
+      case 'ConflictResolved': {
         this.#db
           .prepare(
             `UPDATE _nds_conflict
@@ -2942,7 +3036,65 @@ CREATE TABLE _nds_body_pointer (
                AND state = 'open'`,
           )
           .run(event.eventId, currentIso(this.#now), event.rootId, event.conflictId)
+
+        // Lifecycle keep-remote reconvergence (decision 0018). A lifecycle
+        // conflict froze `_nds_row.in_trash` at the settled local target. On
+        // `keep-remote` the projection must adopt the remote trash state recorded
+        // on the opened `ConflictRaised` (`remoteInTrash`) — read from the recorded
+        // boolean, never from the frozen `_nds_row.in_trash`. This is replay-pure
+        // and deterministic; `keep-local` re-asserts the local target through a
+        // re-enqueued Trash/Restore push that reconverges via the F8 settle handler.
+        if (event.resolutionChoice === 'keep-remote') {
+          const openedRow = this.#db
+            .prepare(
+              `SELECT opened.event_json
+               FROM _nds_conflict conflict
+               JOIN _nds_sync_event opened
+                 ON opened.root_id = conflict.root_id
+                AND opened.event_id = conflict.opened_event_id
+               WHERE conflict.root_id = ?
+                 AND conflict.conflict_id = ?`,
+            )
+            .get(event.rootId, event.conflictId)
+          if (openedRow !== undefined) {
+            const openedEvent = decodeEventFromJson(
+              readString({ row: openedRow, key: 'event_json' }),
+            )
+            if (
+              openedEvent._tag === 'ConflictRaised' &&
+              openedEvent.conflictKind === 'lifecycle' &&
+              openedEvent.remoteInTrash !== undefined
+            ) {
+              const remoteInTrash = openedEvent.remoteInTrash
+              this.#db
+                .prepare(
+                  `UPDATE _nds_row
+                   SET in_trash = ?,
+                       updated_at = ?
+                   WHERE root_id = ? AND page_id = ?`,
+                )
+                .run(
+                  remoteInTrash === true ? 1 : 0,
+                  currentIso(this.#now),
+                  event.rootId,
+                  event.pageId,
+                )
+              // Mirror the F8 restore arm: when the remote target is active, clear
+              // the `remote_trash` tombstone so status and reprojection no longer
+              // treat the now-active row as trashed.
+              if (remoteInTrash === false) {
+                this.#db
+                  .prepare(
+                    `DELETE FROM _nds_tombstone
+                     WHERE root_id = ? AND page_id = ? AND reason = 'remote_trash'`,
+                  )
+                  .run(event.rootId, event.pageId)
+              }
+            }
+          }
+        }
         break
+      }
       case 'TombstoneCandidateObserved':
         const queryAbsencePayload = decodePayload({
           event: event,

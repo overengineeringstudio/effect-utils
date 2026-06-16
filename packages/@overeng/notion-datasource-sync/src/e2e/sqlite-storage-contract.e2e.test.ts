@@ -36,11 +36,13 @@ import {
   projectReplicaFromSyncStore,
   readPendingReplicaChanges,
 } from '../replica/replica.ts'
+import { openNotionSyncStore } from '../store/store.ts'
 import {
   decode,
   fixedObservedAt,
   hash,
   makeFakeGatewayHarness,
+  pageSnapshot,
   testIds,
 } from '../testing/harness.ts'
 
@@ -2257,4 +2259,356 @@ describe('clean-break self-contained SQLite storage contract', () => {
     },
     sqliteContractTimeoutMs,
   )
+
+  // Decision 0018: lifecycle divergence (remote restore after a SETTLED local
+  // archive) is a first-class CONFLICT, not a silent last-writer-wins flip
+  // (XC-R02). These exercise the full CDC path through the public `pages` table.
+  //
+  // The "someone independently restored the page in Notion" half is modeled by a
+  // FRESH gateway whose page defaults to active (`inTrash: false`): after the
+  // first gateway settles the archive (the trashed row drops out of its query),
+  // a second sync against the fresh gateway observes the row ACTIVE — exactly the
+  // post-settlement remote restore the ADR motivates.
+  describe('lifecycle divergence is a conflict (decision 0018)', () => {
+    /** Drive a local archive to settlement, then return the sqlite/state paths. */
+    const settleLocalArchive = async (workspace: AbsolutePathType) => {
+      const { sqlitePath, statePath } = await establishWorkspace(workspace, {
+        authorityMode: 'shared',
+      })
+      const archiveDb = new DatabaseSync(sqlitePath)
+      try {
+        archiveDb.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        archiveDb.close()
+      }
+      // Archive gateway: settles the trash push (the row then drops from query).
+      const archiveGateway = makeFakeGatewayHarness({
+        propertyPages: [propertyPage('Initial task')],
+      })
+      await runWorkspaceCommand({
+        argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+        gateway: archiveGateway,
+      })
+      expect(archiveGateway.ledger.successfulTrashPages).toHaveLength(1)
+      return { sqlitePath, statePath }
+    }
+
+    /** Read the single open conflict row from the control-plane store. */
+    const openConflict = (statePath: string): SqlRow | undefined =>
+      openReadOnly(statePath, (stateDb) =>
+        row(
+          stateDb,
+          `SELECT conflict_id, page_id, state FROM _nds_conflict WHERE state = 'open' AND page_id = ?`,
+          testIds.pageId,
+        ),
+      )
+
+    it(
+      'raises ONE open lifecycle conflict on remote restore after settled archive; _in_trash stays 1, no silent flip',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleLocalArchive(workspace)
+
+        // Remote restore (fresh gateway, page active) → RowObserved(R=0) while the
+        // settled local target L=1. Detection raises a lifecycle conflict BEFORE
+        // the RowObserved applies, and the projection freezes `_in_trash` at 1.
+        // A DISTINCT row propertiesHash gives the restore RowObserved a novel
+        // event_id that is NOT deduped against the earlier active observation, so it
+        // actually APPLIES in this sync — exercising the in_trash freeze (detection
+        // appends the ConflictRaised first in the loop, at a LOWER sequence). With a
+        // byte-identical observation the RowObserved would dedupe and the freeze
+        // would never fire (the row would stay 1 only via the F8 settle handler).
+        const restoreGateway = makeFakeGatewayHarness({
+          pages: [pageSnapshot({ propertiesHash: hash('properties-after-remote-restore') })],
+          propertyPages: [propertyPage('Restored remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: restoreGateway,
+        })
+
+        // Exactly one open lifecycle conflict; no silent in_trash flip.
+        openReadOnly(statePath, (stateDb) => {
+          expect(
+            rows(
+              stateDb,
+              `SELECT page_id FROM _nds_conflict WHERE state = 'open' AND page_id = ?`,
+              testIds.pageId,
+            ),
+          ).toHaveLength(1)
+          // The opened event carries conflictKind 'lifecycle' and remoteInTrash.
+          expect(
+            row(
+              stateDb,
+              `SELECT guard FROM _nds_guard_block WHERE guard = 'PendingIntentShadowViolation'`,
+            ),
+          ).toMatchObject({ guard: 'PendingIntentShadowViolation' })
+
+          // Determinism invariant: the ConflictRaised sits at a LOWER sequence than
+          // the restore RowObserved it gates, so on full-log replay the freeze is
+          // already in effect when the RowObserved applies. (A novel propertiesHash
+          // ensures the restore RowObserved is not deduped against the active one.)
+          const conflictSeq = row(
+            stateDb,
+            `SELECT sequence FROM _nds_sync_event WHERE event_type = 'ConflictRaised' ORDER BY sequence DESC LIMIT 1`,
+          )?.sequence
+          const restoreRowSeq = row(
+            stateDb,
+            `SELECT MAX(sequence) AS sequence FROM _nds_sync_event WHERE event_type = 'RowObserved'`,
+          )?.sequence
+          expect(Number(conflictSeq)).toBeLessThan(Number(restoreRowSeq))
+          // The freeze is COLUMN-SCOPED: the row's non-lifecycle columns DID converge
+          // to the new remote observation (observed_event_id advanced to the novel
+          // restore RowObserved), proving the RowObserved applied and was not deduped
+          // — yet in_trash was preserved.
+          expect(
+            row(stateDb, `SELECT in_trash FROM _nds_row WHERE page_id = ?`, testIds.pageId),
+          ).toMatchObject({ in_trash: 1 })
+          expect(
+            row(stateDb, `SELECT observed_event_id FROM _nds_row WHERE page_id = ?`, testIds.pageId)
+              ?.observed_event_id,
+          ).toBe(
+            row(
+              stateDb,
+              `SELECT event_id FROM _nds_sync_event WHERE event_type = 'RowObserved' ORDER BY sequence DESC LIMIT 1`,
+            )?.event_id,
+          )
+        })
+        openReadOnly(sqlitePath, (readDb) => {
+          // Public in_trash is frozen at the settled local target (1), no silent flip.
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 1 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    it(
+      'keep-remote resolves the lifecycle conflict, flips _in_trash to 0, and clears the remote_trash tombstone',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleLocalArchive(workspace)
+
+        // A DISTINCT row propertiesHash gives the restore RowObserved a novel
+        // event_id that is NOT deduped against the earlier active observation, so it
+        // actually APPLIES in this sync — exercising the in_trash freeze (detection
+        // appends the ConflictRaised first in the loop, at a LOWER sequence). With a
+        // byte-identical observation the RowObserved would dedupe and the freeze
+        // would never fire (the row would stay 1 only via the F8 settle handler).
+        const restoreGateway = makeFakeGatewayHarness({
+          pages: [pageSnapshot({ propertiesHash: hash('properties-after-remote-restore') })],
+          propertyPages: [propertyPage('Restored remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: restoreGateway,
+        })
+        const conflict = openConflict(statePath)
+        expect(conflict).toBeDefined()
+        const conflictId = String(conflict?.conflict_id)
+
+        // keep-remote: adopt the remote active target.
+        await runWorkspaceCommand({
+          argv: [
+            'conflicts',
+            'resolve',
+            '--sqlite',
+            sqlitePath,
+            '--conflict-id',
+            conflictId,
+            '--strategy',
+            'keep-remote',
+          ],
+        })
+
+        // Conflict resolved; public _in_trash now follows remote (0).
+        openReadOnly(statePath, (stateDb) => {
+          expect(
+            row(stateDb, `SELECT state FROM _nds_conflict WHERE conflict_id = ?`, conflictId),
+          ).toMatchObject({ state: 'resolved' })
+        })
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 0 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    it(
+      'keep-local resolves the lifecycle conflict, re-enqueues a Trash push, and keeps _in_trash at 1',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleLocalArchive(workspace)
+
+        // A DISTINCT row propertiesHash gives the restore RowObserved a novel
+        // event_id that is NOT deduped against the earlier active observation, so it
+        // actually APPLIES in this sync — exercising the in_trash freeze (detection
+        // appends the ConflictRaised first in the loop, at a LOWER sequence). With a
+        // byte-identical observation the RowObserved would dedupe and the freeze
+        // would never fire (the row would stay 1 only via the F8 settle handler).
+        const restoreGateway = makeFakeGatewayHarness({
+          pages: [pageSnapshot({ propertiesHash: hash('properties-after-remote-restore') })],
+          propertyPages: [propertyPage('Restored remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: restoreGateway,
+        })
+        const conflictId = String(openConflict(statePath)?.conflict_id)
+
+        // keep-local: re-assert the local archive (L=1) via a fresh TrashPage push.
+        // The CLI keep-local choice carries a property `value` (`--value-json`)
+        // shared with property conflicts; the lifecycle resolver ignores it and
+        // derives the target from `L = !remoteInTrash`, so a placeholder is passed.
+        await runWorkspaceCommand({
+          argv: [
+            'conflicts',
+            'resolve',
+            '--sqlite',
+            sqlitePath,
+            '--conflict-id',
+            conflictId,
+            '--strategy',
+            'keep-local',
+            '--value-json',
+            JSON.stringify({ _tag: 'title', plainText: 'ignored' }),
+          ],
+        })
+
+        // The re-asserted trash command lands in the outbox.
+        openReadOnly(statePath, (stateDb) => {
+          expect(
+            row(stateDb, `SELECT state FROM _nds_conflict WHERE conflict_id = ?`, conflictId),
+          ).toMatchObject({ state: 'resolved' })
+          expect(
+            rows(
+              stateDb,
+              `SELECT command_tag FROM _nds_outbox WHERE command_tag = 'TrashPage' AND surface = ?`,
+              `page:${testIds.pageId}`,
+            ).length,
+          ).toBeGreaterThanOrEqual(1)
+        })
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 1 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    it(
+      'BENIGN: no settled lifecycle intent + RowObserved raises NO conflict and in_trash follows remote (false-positive guard)',
+      async () => {
+        const workspace = await tempWorkspace()
+        // No local archive/restore: the only lifecycle source is the remote
+        // observation. `readSettledLifecycleTarget` returns undefined → benign.
+        const { sqlitePath, statePath } = await establishWorkspace(workspace, {
+          authorityMode: 'shared',
+        })
+        const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway,
+        })
+
+        // NO conflict, NO shadow guard: a benign remote observation must never
+        // manufacture a false-positive lifecycle conflict.
+        openReadOnly(statePath, (stateDb) => {
+          expect(
+            rows(
+              stateDb,
+              `SELECT conflict_id FROM _nds_conflict WHERE page_id = ?`,
+              testIds.pageId,
+            ),
+          ).toEqual([])
+          expect(
+            rows(
+              stateDb,
+              `SELECT guard FROM _nds_guard_block WHERE guard = 'PendingIntentShadowViolation'`,
+            ),
+          ).toEqual([])
+        })
+        // in_trash follows the remote active state.
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 0 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    it(
+      'REPLAY determinism: rebuilding projections twice yields identical _nds_conflict and _nds_row.in_trash',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleLocalArchive(workspace)
+        // A DISTINCT row propertiesHash gives the restore RowObserved a novel
+        // event_id that is NOT deduped against the earlier active observation, so it
+        // actually APPLIES in this sync — exercising the in_trash freeze (detection
+        // appends the ConflictRaised first in the loop, at a LOWER sequence). With a
+        // byte-identical observation the RowObserved would dedupe and the freeze
+        // would never fire (the row would stay 1 only via the F8 settle handler).
+        const restoreGateway = makeFakeGatewayHarness({
+          pages: [pageSnapshot({ propertiesHash: hash('properties-after-remote-restore') })],
+          propertyPages: [propertyPage('Restored remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: restoreGateway,
+        })
+
+        // Snapshot the conflict + in_trash projection.
+        const snapshotState = () =>
+          openReadOnly(statePath, (stateDb) => ({
+            conflicts: rows(
+              stateDb,
+              `SELECT conflict_id, page_id, state FROM _nds_conflict ORDER BY conflict_id`,
+            ),
+            inTrash: row(
+              stateDb,
+              `SELECT in_trash FROM _nds_row WHERE page_id = ?`,
+              testIds.pageId,
+            ),
+          }))
+
+        const before = snapshotState()
+        expect(before.conflicts).toHaveLength(1)
+        expect(before.inTrash).toMatchObject({ in_trash: 1 })
+
+        const rootId = decode({
+          schema: SyncRootId,
+          value: String(
+            openReadOnly(statePath, (stateDb) =>
+              row(stateDb, `SELECT root_id FROM _nds_data_source LIMIT 1`),
+            )?.root_id,
+          ),
+        })
+
+        // Rebuild projections from the persisted event log twice; the ConflictRaised
+        // sits at a LOWER sequence than the RowObserved, so the freeze is replayed
+        // deterministically without any L recomputation in the apply path.
+        const rebuild = () => {
+          const store = openNotionSyncStore({ path: statePath, busyTimeoutMs: 2_500 })
+          try {
+            store.rebuildProjections(rootId)
+          } finally {
+            store.close()
+          }
+        }
+        rebuild()
+        const afterFirst = snapshotState()
+        rebuild()
+        const afterSecond = snapshotState()
+
+        expect(afterFirst).toEqual(before)
+        expect(afterSecond).toEqual(before)
+      },
+      sqliteContractTimeoutMs,
+    )
+  })
 })
