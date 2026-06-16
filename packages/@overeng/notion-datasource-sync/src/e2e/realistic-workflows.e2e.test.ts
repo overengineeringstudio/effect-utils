@@ -463,6 +463,125 @@ describe('realistic offline workflow E2E matrix', () => {
     }
   })
 
+  it('does not poison a re-converged cell with a terminal blocked outbox row (#775 F5)', async () => {
+    /*
+     * Regression for the settlement-gate poison bug (#775 F5). A `blocked` outbox
+     * row is a pre-write `StaleSurfaceBase` refusal: the write never executed, the
+     * claim query never reclaims it, and `settle()` never clears it, so it is a
+     * permanent dead end — NOT an in-flight read-after-write that should gate.
+     *
+     * Convergent reproduction:
+     *  1. Clean pull (page propertiesHash `properties-a`, propertyA value
+     *     `property-a-base`).
+     *  2. A shared-mode property write whose executor observes a DRIFTED whole-page
+     *     propertiesHash (`properties-drifted`) against the command base
+     *     `properties-a` -> real `{guard: StaleSurfaceBase}` -> outbox `blocked`.
+     *  3. Re-pull whose page propertiesHash re-converges to `properties-a` and whose
+     *     propertyA VALUE is unchanged -> the planner property base re-converges
+     *     (`remoteHash === baseHash`).
+     *  4. A fresh same-cell edit (`baseHash === remoteHash`) skips the remoteHash
+     *     drift branch and reaches the settlement gate. The dead `blocked` row must
+     *     NOT surface as a misleading `ReadAfterWriteMismatch`.
+     */
+    const driftedPropertiesHash = hash('properties-drifted')
+    const { clock, storeFixture } = initializedStore()
+    const baseGateway = makeFakeGatewayHarness({ propertyPages: propertyPages() })
+    // Same property VALUE so per-property base/remote stay converged across pulls,
+    // but a different whole-page propertiesHash so the executor refuses the write
+    // with `StaleSurfaceBase` (the command base is the pulled `properties-a`).
+    const driftedGateway = makeFakeGatewayHarness({
+      pages: [pageSnapshot({ propertiesHash: driftedPropertiesHash })],
+      propertyPages: propertyPages(),
+    })
+
+    const planFreshWrite = () =>
+      planIntent({
+        snapshot: withAuthorityMode({
+          snapshot: storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId),
+          authorityMode: 'shared',
+        }),
+        intent: propertyEditIntent({
+          desiredHash: hash('property-a-fresh'),
+          expectedPropertyConfigHash: hash('config-a'),
+        }),
+      })
+
+    try {
+      await runWithPorts(pullOneShotSync(pullOptions({ store: storeFixture.store, clock })), {
+        gateway: baseGateway.gateway,
+      })
+
+      // Drive the executor against the drifted page -> real StaleSurfaceBase block.
+      await runWithPorts(
+        pushOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot,
+          authorityMode: 'shared',
+          localIntents: [
+            propertyEditIntent({
+              desiredHash: expectedPatchHash(),
+              expectedPropertyConfigHash: hash('config-a'),
+            }),
+          ],
+          now: clock.now,
+        }),
+        { gateway: driftedGateway.gateway },
+      )
+
+      // Proof the blocked row genuinely exists: a real StaleSurfaceBase refusal,
+      // never executed, never reclaimed, never settled.
+      const outbox = storeFixture.store.readOutbox(testIds.rootId)
+      expect(outbox).toContainEqual(
+        expect.objectContaining({
+          commandTag: 'PatchPageProperties',
+          state: 'blocked',
+          settlementEventId: undefined,
+        }),
+      )
+      expect(driftedGateway.ledger.attemptedPatchPageProperties).toEqual([])
+
+      // The terminal blocked row still projects as the pending local intent...
+      const beforeReconverge = withAuthorityMode({
+        snapshot: storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId),
+        authorityMode: 'shared',
+      })
+      expect(beforeReconverge.properties).toContainEqual(
+        expect.objectContaining({
+          propertyId: testIds.propertyA,
+          pendingLocal: expect.objectContaining({ state: 'blocked' }),
+          // ...but it does NOT gate the cell: settlement is `present`, not `missing`.
+          settlement: 'present',
+        }),
+      )
+
+      // Re-pull: whole-page propertiesHash re-converges to `properties-a`, property
+      // value unchanged -> planner property base re-converges.
+      clock.advanceMillis(1)
+      await runWithPorts(pullOneShotSync(pullOptions({ store: storeFixture.store, clock })), {
+        gateway: baseGateway.gateway,
+      })
+      const reconverged = storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId)
+      expect(reconverged.properties).toContainEqual(
+        expect.objectContaining({
+          propertyId: testIds.propertyA,
+          baseHash: hash('property-a-base'),
+          remoteHash: hash('property-a-base'),
+        }),
+      )
+
+      // The fresh same-cell write must NOT be poisoned by the dead blocked row.
+      const decision = planFreshWrite()
+      expect(decision).not.toMatchObject({
+        _tag: 'BlockedByGuard',
+        guard: 'ReadAfterWriteMismatch',
+      })
+      expect(decision).toMatchObject({ _tag: 'EnqueueCommands' })
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('keeps a pending local property intent while remote same-property drift becomes a durable conflict', async () => {
     const { clock, storeFixture } = initializedStore()
     const baseGateway = makeFakeGatewayHarness({ propertyPages: propertyPages() })
@@ -500,6 +619,7 @@ describe('realistic offline workflow E2E matrix', () => {
           pendingLocal: {
             intentEventId: testIds.intentEventId,
             targetHash: expectedPatchHash(),
+            state: 'queued',
           },
         }),
       )
@@ -516,6 +636,7 @@ describe('realistic offline workflow E2E matrix', () => {
           pendingLocal: {
             intentEventId: testIds.intentEventId,
             targetHash: expectedPatchHash(),
+            state: 'queued',
           },
         }),
       )

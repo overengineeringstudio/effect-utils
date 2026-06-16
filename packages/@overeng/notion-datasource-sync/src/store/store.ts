@@ -402,6 +402,15 @@ const readOutboxState = ({
   readonly key: string
 }): typeof OutboxState.Type => Schema.decodeUnknownSync(OutboxState)(readString({ row, key }))
 
+/**
+ * The non-empty `pendingLocal` projection the store hands to the planner for a
+ * single `(pageId, propertyId)`. Anchored to the planner's `PropertySurfaceSnapshot`
+ * so the carried `state` stays the single source of truth for the settlement gate.
+ */
+type PropertyPendingLocalIntent = NonNullable<
+  PlannerProjectionSnapshot['properties'][number]['pendingLocal']
+>
+
 const readConflictState = ({
   row,
   key,
@@ -2061,23 +2070,16 @@ CREATE TABLE _nds_body_pointer (
     }))
   }
 
-  #pendingPropertyIntents(
-    rootId: SyncRootId,
-  ): ReadonlyMap<
-    string,
-    { readonly intentEventId: typeof SyncEventId.Type; readonly targetHash: typeof Hash.Type }
-  > {
-    const pending = new Map<
-      string,
-      { readonly intentEventId: typeof SyncEventId.Type; readonly targetHash: typeof Hash.Type }
-    >()
+  #pendingPropertyIntents(rootId: SyncRootId): ReadonlyMap<string, PropertyPendingLocalIntent> {
+    const pending = new Map<string, PropertyPendingLocalIntent>()
 
     const rows = this.#db
       .prepare(
         `SELECT
            _nds_outbox.intent_event_id,
            _nds_outbox.surface,
-           _nds_outbox.desired_hash
+           _nds_outbox.desired_hash,
+           _nds_outbox.state
          FROM _nds_outbox
          LEFT JOIN _nds_sync_event AS intent_event
            ON intent_event.root_id = _nds_outbox.root_id
@@ -2098,9 +2100,16 @@ CREATE TABLE _nds_body_pointer (
       const surface = parsePropertySurface(readOptionalString({ row: row, key: 'surface' }))
       if (surface === undefined) continue
 
+      const state = readOutboxState({ row: row, key: 'state' })
+      // The query's WHERE clause restricts `state` to the pending-intent subset
+      // (queued/running/retryable/blocked/ambiguous); `settled`/`fenced` cannot
+      // appear, so this narrowing is exhaustive for the projection type.
+      if (state === 'settled' || state === 'fenced') continue
+
       pending.set(`${surface.pageId}\0${surface.propertyId}`, {
         intentEventId: decodeSyncEventId(readString({ row: row, key: 'intent_event_id' })),
         targetHash: decodeHash(readString({ row: row, key: 'desired_hash' })),
+        state,
       })
     }
 
