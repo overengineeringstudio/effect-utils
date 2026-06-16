@@ -60,19 +60,23 @@ Status distinguishes `remoteBodyChanged` from `remotePageMetadataChanged`. The c
 7. If the remote body changed and local body changed, attempt a conservative three-way merge ([03-sync-engine](../03-sync-engine/spec.md)).
 8. If merge succeeds, update Markdown and then properties. Before a property write, compare the data-source schema against the pull-time `schema_snapshot`; on drift, refuse with exit 6 (`NmdSchemaDriftError`, R14, [06-data-source](../06-data-source/spec.md)) rather than risk silently auto-creating options — resolve by re-pulling.
 9. If merge fails, write a Roughdraft conflict artifact and leave remote unchanged.
-10. If remote body is still at base, use a targeted Markdown update when safe or guarded replace when necessary.
-11. Re-observe the remote body after writes and rewrite `.nmd` with fresh body, base, page metadata, storage, and completeness evidence.
+10. Land the merged (or still-at-base) body through the engine's write-verb
+    selection — targeted `update_content` when safe, guarded `replace_content`
+    otherwise ([03-sync-engine](../03-sync-engine/spec.md#update_content-vs-replace_content)).
+11. Settle: re-observe the remote body after writes and rewrite `.nmd` with fresh
+    body, base, page metadata, storage, and completeness evidence. The post-push
+    `semanticEquivalent` gate and the trusted-base refresh are owned by the engine
+    ([03-sync-engine](../03-sync-engine/spec.md#settle-and-post-push-verification)).
 
-The local file is read once for a push decision to avoid local snapshot drift. Remote body is re-read immediately before guarded Markdown updates to catch races between status and write.
+The local file is read once for a push decision to avoid local snapshot drift.
 
 Clean-base writes are allowed only from complete body observations with
 block-tree-rendered Markdown available. Endpoint truncation, unknown block IDs,
 unsupported inventory entries, missing rendered evidence, or a rendered
 block-tree suffix not present in the endpoint Markdown all block establishment,
-tree materialization, facade settlement, and post-write clean-base refresh. A
-successful remote write is not considered settled until the refreshed
-observation is complete; otherwise the local `.nmd` base remains untrusted and
-the caller receives a typed lossy-remote-body error.
+tree materialization, facade settlement, and post-write clean-base refresh. The
+engine governs when a write is considered settled (an incomplete refreshed
+observation leaves the local `.nmd` base untrusted; [03-sync-engine](../03-sync-engine/spec.md#settle-and-post-push-verification)).
 
 Pull adoption is block-aware. Notion's Markdown endpoint may omit blank block
 boundaries around heading/paragraph/divider sequences; reparsing that endpoint

@@ -84,31 +84,23 @@ The pipe base hash ([01-editor](../01-editor/spec.md#guard-plumbing)) and the
 engine's base snapshot ([03-sync-engine](../03-sync-engine/spec.md)) both depend on
 this canonicalization for idempotence.
 
-## Push Strategy and Canonical Base
+## Push Strategy (fidelity intersection)
 
-Because the page is refused unless its body is fully representable (decision
-0016), the stateless `put` is a **guarded body replace plus a typed title write**
-— no block-level reconciliation, no client-side Markdown→block converter, no
-stateless property write (decision 0017). The body goes through Notion's own
-`replace_content` parser server-side (`replaceRemoteBodyVerified`); since the
-body contains no opaque blocks, `replace_content` can never destroy one. (`edit`
-takes a different path — it reuses the file engine's guarded push; see
-[03-sync-engine](../03-sync-engine/spec.md) and [01-editor](../01-editor/spec.md#edit-session).)
+Refuse-lossy is what makes the **server-side `replace_content` push** safe: because
+the page is refused unless its body is fully representable (decision 0016), the body
+goes through Notion's own `replace_content` parser server-side
+(`replaceRemoteBodyVerified`) with no block-level reconciliation and no client-side
+Markdown→block converter — and since the body contains no opaque blocks,
+`replace_content` can never destroy one (decision 0017).
 
-- `put` writes the body via `replaceRemoteBodyVerified` (guarded by the base
-  hash), then the title via the typed page API — **two writes, body first**
-  (decision [0012](../.decisions/0012-non-atomic-title-body-write-order.md)). `put` has no `--frontmatter`; writable-property editing is
-  `edit --frontmatter` or the file-based `sync`.
-- A partial failure (one write landed, the other failed) reports which landed and
-  exits 10; this dominates the exit-9 post-push gate (decision 0012).
-- The post-push `semanticEquivalent` gate runs with hosted-media URL
-  canonicalization (decision 0007).
-- **Base = the canonical body, and only ever the value `cat` emitted.** Notion
-  canonicalizes lists, ordered-list counters, code-fence language, and blank
-  lines at write time, so the editor adopts the canonical body returned by the
-  first pull as the base. The base hash is the value `cat` printed to stderr; a
-  client must **never** recompute it locally over the editable buffer (which is
-  pre-canonical until the next pull).
+The guarded-push engine that owns `replace_content` vs `update_content` selection,
+the canonical base, the post-push `semanticEquivalent` gate, and settle/re-pull is
+[03-sync-engine](../03-sync-engine/spec.md#update_content-vs-replace_content); that
+gate runs with the hosted-media URL canonicalization owned here (decision 0007). The
+surface framing — `put` as a guarded body replace plus a typed title write, two
+writes body-first, partial-write reporting (decision 0017, decision 0012) — is in
+[01-editor](../01-editor/spec.md#edge-behavior) and the file path in
+[02-file-sync](../02-file-sync/spec.md).
 
 ## Feature Mapping
 
