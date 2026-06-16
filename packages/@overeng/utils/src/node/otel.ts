@@ -271,6 +271,12 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
 
     const baseUrl = endpoint.endsWith('/') === true ? endpoint.slice(0, -1) : endpoint
 
+    // `Otlp.layerJson` is the pure-Effect front door — it never touches the
+    // `@opentelemetry/api` GLOBAL registry. Long-lived SDK-global consumers that
+    // read `trace.getActiveSpan()` (restate's `./otel` bridge) intentionally use
+    // a SIBLING provider layer that calls `provider.register()`, NOT this layer —
+    // serving them here would double-export + drag `@opentelemetry/sdk-*` and a
+    // process-global onto every CLI (restate-effect decision 0007).
     const exporterLive = Otlp.layerJson({
       baseUrl,
       resource,
