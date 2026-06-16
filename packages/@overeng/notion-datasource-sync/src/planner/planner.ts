@@ -103,15 +103,15 @@ export type PropertySurfaceSnapshot = {
     | undefined
   /*
    * The three fields below are threaded into the shared property-write proof
-   * (see `makeWorkspaceProof`). `writeMode` is populated in production from the
-   * manifest authority mode (`withAuthorityMode`); `localConvergence` from the
-   * Phase 4 shared-mode local convergence (`buildPropertyConvergenceInputs` +
-   * `convergeLocalSurfaces` + `applyConvergenceVerdicts` in the CLI push path), so
-   * `RemoteAuthoritativeDrift` and `LocalSurfaceDisagreement` fire from real
-   * production state. `settlement` remains WIRED-BUT-DORMANT — no production path
-   * supplies a real outbox read-after-write verdict, so it falls back to its
-   * non-blocking default and `ReadAfterWriteMismatch` fires only from tests
-   * (TODO(settlement-wiring)).
+   * (see `makeWorkspaceProof`). All three are populated in production by
+   * `withAuthorityMode`: `writeMode` from the manifest authority mode;
+   * `localConvergence` from the Phase 4 shared-mode local convergence
+   * (`buildPropertyConvergenceInputs` + `convergeLocalSurfaces` +
+   * `applyConvergenceVerdicts` in the CLI push path); and `settlement` from real
+   * outbox read-after-write state — `withAuthorityMode` maps an unsettled prior
+   * write (`pendingLocal` present, from `#pendingPropertyIntents`) to `missing` in
+   * `shared` mode. So `RemoteAuthoritativeDrift`, `LocalSurfaceDisagreement`, and
+   * `ReadAfterWriteMismatch` all fire from real production state.
    */
   /**
    * Workspace entrypoint / page-authority signal threaded into the shared
@@ -138,8 +138,12 @@ export type PropertySurfaceSnapshot = {
   readonly localConvergence?: 'not-applicable' | 'converged' | 'disagrees'
   /**
    * Outbox read-after-write settlement context. In `shared` mode a `missing`
-   * settlement surfaces as `ReadAfterWriteMismatch`. Defaults to `present`.
-   * TODO(settlement-wiring): populate from the real outbox settlement verdict.
+   * settlement surfaces as `ReadAfterWriteMismatch`. Populated by
+   * `withAuthorityMode` from real outbox state: an unsettled prior write for this
+   * `(pageId, propertyId)` (`pendingLocal` present) is `missing`; otherwise
+   * `present`. `local`/`remote` mode carries no read-after-write requirement and is
+   * `not-required`. When the surface omits it (no authority mode / untracked store)
+   * the proof falls back to the non-blocking `present` default.
    */
   readonly settlement?: 'not-required' | 'present' | 'missing'
 }
@@ -221,13 +225,28 @@ export type PlannerProjectionSnapshot = {
 
 /**
  * Overlays the workspace-wide authority mode (decisions 0003, 0010) onto every
- * property snapshot's `writeMode`. This is the single chokepoint applied wherever
- * a `readPlannerProjectionSnapshot` result is handed to `planIntent`: the manifest
- * authority mode drives property-write authority, not yet-to-be-built per-page
- * observation. `remote` makes a local property edit drift
+ * property snapshot's `writeMode`, and derives each property's `settlement`
+ * verdict from real outbox read-after-write state. This is the single chokepoint
+ * applied wherever a `readPlannerProjectionSnapshot` result is handed to
+ * `planIntent`: the manifest authority mode drives property-write authority, not
+ * yet-to-be-built per-page observation. `remote` makes a local property edit drift
  * (`RemoteAuthoritativeDrift`); `local`/`shared` reach the property-write proof.
  * `undefined` leaves the snapshot untouched so the planner keeps its `shared`
  * default (behavior-preserving for standalone/untracked stores).
+ *
+ * Settlement wiring: a property's `pendingLocal` is populated by the store from
+ * `#pendingPropertyIntents`, which selects exactly the outbox `PatchPageProperties`
+ * commands for this `(pageId, propertyId)` that are still unsettled
+ * (`settlement_event_id IS NULL` and state ∈ queued/running/retryable/blocked/
+ * ambiguous). That is the persisted read-after-write verdict: an unsettled prior
+ * write — whether in-flight or verification-failed (`ReadAfterWriteMismatch`,
+ * `AmbiguousCommandOutcome`) — has NOT been settled, so in `shared` mode a new
+ * property write against it must be gated as `missing` and block via the core's
+ * `ReadAfterWriteMismatch`. When no prior write is pending the prior surface is
+ * settled (or there is nothing to settle), so `present` is the genuinely-safe
+ * verdict. The core's settlement check is mode-blind, so mode-awareness lives
+ * HERE: `local`/`remote` writes carry no read-after-write requirement and map to
+ * `not-required`.
  *
  * Every code path that plans a local property write — `pushOneShotSync`, the
  * `conflicts resolve` command, and the CDC `conflict_resolution` path — MUST route
@@ -248,6 +267,12 @@ export const withAuthorityMode = ({
         properties: snapshot.properties.map((property) => ({
           ...property,
           writeMode: authorityMode,
+          settlement:
+            authorityMode === 'shared'
+              ? property.pendingLocal !== undefined
+                ? 'missing'
+                : 'present'
+              : 'not-required',
         })),
       }
 
