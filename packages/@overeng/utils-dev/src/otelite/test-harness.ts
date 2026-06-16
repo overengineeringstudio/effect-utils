@@ -159,6 +159,18 @@ const makeInProcessLayer = (
  * `Layer.suspend` keeps the exporter's scope-close finalizers (the final flush
  * of every signal) tied to the layer scope — matching prod `otel.ts` and the
  * traces-only path.
+ *
+ * Knobs mirror the prod `test` shape (`@overeng/utils/node` `Shape`/`shapeDefaults('test')`):
+ * short, equal intervals on all three signals + a tight `shutdownTimeout`. This
+ * is a deliberate SIBLING of the typed front door (`withTelemetry`), not an
+ * import of it — `@overeng/utils-dev` is the universal test-harness leaf that
+ * every first-party package's tests depend on, so importing `withTelemetry`
+ * (from `@overeng/utils`) or `ServiceIdentity` (from `@overeng/otel-contract`)
+ * would close a `tsc --build` project-reference cycle. The test↔prod fidelity is
+ * instead proven one level up, in `@overeng/utils/src/node/otel-telemetry.test.ts`,
+ * which exercises the real `withTelemetry({ shape: 'cli' })` front door against
+ * the SAME otelite receiver this harness boots. See the telemetry-foundation VRS
+ * (`@overeng/utils/docs/vrs`, decision 0002).
  */
 const makeInProcessAllSignalsLayer = (
   handle: CaptureHandle,
@@ -171,6 +183,11 @@ const makeInProcessAllSignalsLayer = (
       tracerExportInterval: options.exportInterval,
       metricsExportInterval: options.exportInterval,
       loggerExportInterval: options.exportInterval,
+      // Mirror `shapeDefaults('test').shutdownTimeout` (2000ms): an explicit,
+      // tight ceiling on the scope-close flush matching the prod `test` shape, so
+      // a hung receiver fails fast in a test (was omitted before, relying on
+      // scope-close alone).
+      shutdownTimeout: 2000,
     }).pipe(Layer.provide(FetchHttpClient.layer)),
   )
 
