@@ -909,14 +909,27 @@ const vrsRequirementId = (index: number): RequirementId =>
   `R${index.toString().padStart(2, '0')}` as RequirementId
 
 /**
- * Full ordered list of matrix requirement ids from R01 to R80; used to detect
- * unmapped requirements in coverage checks. The upper bound tracks the highest
- * requirement id cited by any scenario (R80) so the traceability gate iterates
- * the full cited range — a hardcoded `length: 73` previously left R74+ silently
- * un-checked even though scenarios already cite up to R80. The `invalidScenarioRequirementIdGaps`
- * legality ceiling stays at R81 (typo guard, not an enumeration target).
+ * Full ordered list of matrix requirement ids from R01 to R82; used to detect
+ * unmapped requirements in coverage checks. The upper bound extends two ids past
+ * the highest id cited by any scenario (R80) to reserve R81/R82 for the two
+ * newest ratified requirements ahead of their implementation scenarios — a
+ * hardcoded `length: 73` previously left R74+ silently un-checked even though
+ * scenarios already cite up to R80. The `invalidScenarioRequirementIdGaps`
+ * legality ceiling stays one above the enumeration (R83) as a typo guard, not an
+ * enumeration target.
+ *
+ * Flat→namespaced mapping for the two newest ratified requirements (#775): the
+ * flat matrix ids and the namespaced requirements.md ids are parallel
+ * enumerations — there is no global mapping table, only per-scenario
+ * `requirementIds` citations and residual reasons (global reconciliation is
+ * deferred to proposed decision 0012). For traceability:
+ *   - R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline)
+ *   - R82 → REPLICA-R12 (archive/restore round-trip reprojection retention)
+ * No scenario cites R81/R82 yet, so both are recorded as `unmapped-requirement`
+ * residuals below (mirroring R75/R76/R77) so the drift gate stays honest until
+ * implementation scenarios cite them.
  */
-export const vrsRequirementIds = Array.from({ length: 80 }, (_, index) =>
+export const vrsRequirementIds = Array.from({ length: 82 }, (_, index) =>
   vrsRequirementId(index + 1),
 )
 
@@ -1131,6 +1144,24 @@ export const traceabilityResiduals = [
     requirementId: 'R77',
     reason:
       'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
+  },
+  // R81/R82 (#775): the two newest ratified requirements, enumerated so future
+  // implementation scenarios can cite them without tripping the legality gate.
+  // R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline);
+  // R82 → REPLICA-R12 (archive/restore round-trip reprojection retention). No
+  // scenario cites them yet — coverage lands during implementation — so they are
+  // residual'd here to keep the drift gate honest, mirroring R75/R76/R77.
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R81',
+    reason:
+      'EFF-R01 API resourcefulness & rate-limit discipline (#775); enumerated ahead of its implementation scenarios (observable-budget call-count ceilings + rate-limit signals, decision 0017).',
+  },
+  {
+    _tag: 'unmapped-requirement',
+    requirementId: 'R82',
+    reason:
+      'REPLICA-R12 archive/restore round-trip (#775); enumerated ahead of its implementation scenarios (remote-trash reprojects in_trash=1 + guarded restore, decisions 0014/0015).',
   },
 ] as const satisfies ReadonlyArray<TraceabilityResidual>
 
@@ -1349,7 +1380,7 @@ export const scenarioImplementationGaps = ({
       file: entry.file,
     }))
 
-/** Reports requirement ids within scenarios that fall outside the valid R01–R81 range. */
+/** Reports requirement ids within scenarios that fall outside the valid R01–R83 range. */
 export const invalidScenarioRequirementIdGaps = (
   scenarios: ReadonlyArray<ScenarioMetadata> = e2eHarnessScenarios,
 ): ReadonlyArray<ScenarioCoverageGap> =>
@@ -1360,7 +1391,7 @@ export const invalidScenarioRequirementIdGaps = (
         if (match?.[1] === undefined) return true
 
         const requirementNumber = Number.parseInt(match[1], 10)
-        return requirementNumber < 1 || requirementNumber > 81
+        return requirementNumber < 1 || requirementNumber > 83
       })
       .map((requirementId) => ({
         _tag: 'invalid-scenario-requirement-id',

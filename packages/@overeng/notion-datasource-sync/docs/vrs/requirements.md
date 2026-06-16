@@ -38,6 +38,10 @@ These constraints apply across every sub-system and stay single-sourced here.
 - **OBS-R02 Trace attributes:** Spans must include concise labels plus data-source, row, property, command, conflict, surface, operation, result, and Notion request identifiers when available.
 - **OBS-R03 Safe telemetry:** Telemetry must not include credentials, full document bodies, raw private payloads, or signed file URLs.
 
+### Efficiency & Resourcefulness
+
+- **EFF-R01 API resourcefulness & rate-limit discipline:** Sync minimizes and bounds external API usage and is observable. All Notion access flows through the token-bucket rate limiter honoring retry-after; reads prefer incremental last-edited-time polling and batch/query endpoints over per-entity probes; observations are reused within a sync pass; the watch daemon coalesces/debounces dirty hints; a webhook hint triggers a bounded fresh read, never a per-hint full rescan. Enforced by an observable budget: key paths carry a falsifiable logical-request ceiling (one `notion.api.request` span per logical request, counted under the operation span), and rate-limit pressure — HTTP-attempt count, throttle-wait time, retry-after backoffs — is emitted as distinct OTEL spans + metrics. A path that issues unbounded or per-entity reads where a bounded/batched alternative exists is a defect. _(Enforced by the observable budget recorded in [decision 0017](../../../../../context/notion-db-markdown-sync/decisions/proposed/0017-api-efficiency-observable-budget.md).)_
+
 ### Verification
 
 - **VERIFY-R01 Unit coverage:** Canonicalization, schema hashing, row hashing, planners, conflict classification, and guard decisions must have deterministic unit tests.
@@ -62,17 +66,17 @@ Only cross-cutting tradeoffs live here; subsystem-specific tradeoffs live in the
 
 ### Sub-system id ranges
 
-| Sub-system               | Namespaced id range                                 | Requirements slice                                                                    |
-| ------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| domain-model             | DOMAIN-R01–R10                                      | [domain-model/requirements.md](./subsystems/domain-model/requirements.md)             |
-| sync-store               | STORE-R01–R08, STORE-T01                            | [sync-store/requirements.md](./subsystems/sync-store/requirements.md)                 |
-| notion-gateway           | GW-R01–R08, GW-T01                                  | [notion-gateway/requirements.md](./subsystems/notion-gateway/requirements.md)         |
-| body-adapter             | BODY-R01–R02                                        | [body-adapter/requirements.md](./subsystems/body-adapter/requirements.md)             |
-| local-workspace          | FS-R01–R02                                          | [local-workspace/requirements.md](./subsystems/local-workspace/requirements.md)       |
-| replica-api              | REPLICA-R01–R11, REPLICA-T01                        | [replica-api/requirements.md](./subsystems/replica-api/requirements.md)               |
-| planner-guards           | PLAN-R01–R13, PLAN-T01–T02                          | [planner-guards/requirements.md](./subsystems/planner-guards/requirements.md)         |
-| schema-migration         | SCHEMA-R01–R06, SCHEMA-T01                          | [schema-migration/requirements.md](./subsystems/schema-migration/requirements.md)     |
-| sync-orchestration       | SYNC-R01–R02                                        | [sync-orchestration/requirements.md](./subsystems/sync-orchestration/requirements.md) |
-| watch-daemon             | DAEMON-R01–R10, DAEMON-T01                          | [watch-daemon/requirements.md](./subsystems/watch-daemon/requirements.md)             |
-| cli                      | CLI-R01–R07                                         | [cli/requirements.md](./subsystems/cli/requirements.md)                               |
-| cross-cutting (this doc) | XC-R01–R04, OBS-R01–R03, VERIFY-R01–R09, VERIFY-T01 | this file                                                                             |
+| Sub-system               | Namespaced id range                                          | Requirements slice                                                                    |
+| ------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| domain-model             | DOMAIN-R01–R10                                               | [domain-model/requirements.md](./subsystems/domain-model/requirements.md)             |
+| sync-store               | STORE-R01–R08, STORE-T01                                     | [sync-store/requirements.md](./subsystems/sync-store/requirements.md)                 |
+| notion-gateway           | GW-R01–R08, GW-T01                                           | [notion-gateway/requirements.md](./subsystems/notion-gateway/requirements.md)         |
+| body-adapter             | BODY-R01–R02                                                 | [body-adapter/requirements.md](./subsystems/body-adapter/requirements.md)             |
+| local-workspace          | FS-R01–R02                                                   | [local-workspace/requirements.md](./subsystems/local-workspace/requirements.md)       |
+| replica-api              | REPLICA-R01–R12, REPLICA-T01                                 | [replica-api/requirements.md](./subsystems/replica-api/requirements.md)               |
+| planner-guards           | PLAN-R01–R13, PLAN-T01–T02                                   | [planner-guards/requirements.md](./subsystems/planner-guards/requirements.md)         |
+| schema-migration         | SCHEMA-R01–R06, SCHEMA-T01                                   | [schema-migration/requirements.md](./subsystems/schema-migration/requirements.md)     |
+| sync-orchestration       | SYNC-R01–R02                                                 | [sync-orchestration/requirements.md](./subsystems/sync-orchestration/requirements.md) |
+| watch-daemon             | DAEMON-R01–R10, DAEMON-T01                                   | [watch-daemon/requirements.md](./subsystems/watch-daemon/requirements.md)             |
+| cli                      | CLI-R01–R07                                                  | [cli/requirements.md](./subsystems/cli/requirements.md)                               |
+| cross-cutting (this doc) | XC-R01–R04, OBS-R01–R03, EFF-R01, VERIFY-R01–R10, VERIFY-T01 | this file                                                                             |
