@@ -112,9 +112,11 @@ describe('lifecycle conflict resolution (decision 0018)', () => {
       expect(result.applied.commands).toMatchObject([
         { command: { _tag: 'TrashPageCommand', pageId: testIds.pageId } },
       ])
-      // The conflict stays open until the followup settles (mirrors property conflicts).
+      // #775 M2a'-2: keep-local on a lifecycle conflict moves to `resolving` (NOT
+      // `resolved`), keeping the freeze active until the re-asserted Trash/Restore
+      // genuinely settles. The F8 settle handler then transitions it to `resolved`.
       expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
-        { conflictId: conflict.eventId, state: 'resolved' },
+        { conflictId: conflict.eventId, state: 'resolving' },
       ])
       expect(storeFixture.store.readOutbox(testIds.rootId)).toMatchObject([
         { commandTag: 'TrashPage' },
