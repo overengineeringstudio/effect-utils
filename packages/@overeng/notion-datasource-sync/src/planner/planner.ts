@@ -99,6 +99,14 @@ export type PropertySurfaceSnapshot = {
     | {
         readonly intentEventId: SyncEventId
         readonly targetHash: Hash
+        /**
+         * Outbox state of the unsettled prior write. The settlement gate fires
+         * only for genuinely in-flight states ({@link PENDING_INTENT_IN_FLIGHT_STATES});
+         * terminal/non-reclaimable refusals (`blocked` from a pre-write
+         * `StaleSurfaceBase`/`CurrentSurfaceMissing`) never settle and must NOT
+         * poison the cell as a misleading `ReadAfterWriteMismatch`.
+         */
+        readonly state: 'queued' | 'running' | 'retryable' | 'blocked' | 'ambiguous'
       }
     | undefined
   /*
@@ -108,9 +116,10 @@ export type PropertySurfaceSnapshot = {
    * `localConvergence` from the Phase 4 shared-mode local convergence
    * (`buildPropertyConvergenceInputs` + `convergeLocalSurfaces` +
    * `applyConvergenceVerdicts` in the CLI push path); and `settlement` from real
-   * outbox read-after-write state — `withAuthorityMode` maps an unsettled prior
-   * write (`pendingLocal` present, from `#pendingPropertyIntents`) to `missing` in
-   * `shared` mode. So `RemoteAuthoritativeDrift`, `LocalSurfaceDisagreement`, and
+   * outbox read-after-write state — `withAuthorityMode` maps a genuinely in-flight
+   * prior write (`pendingLocal` present with an in-flight `state`, from
+   * `#pendingPropertyIntents`) to `missing` in `shared` mode. So
+   * `RemoteAuthoritativeDrift`, `LocalSurfaceDisagreement`, and
    * `ReadAfterWriteMismatch` all fire from real production state.
    */
   /**
@@ -139,11 +148,14 @@ export type PropertySurfaceSnapshot = {
   /**
    * Outbox read-after-write settlement context. In `shared` mode a `missing`
    * settlement surfaces as `ReadAfterWriteMismatch`. Populated by
-   * `withAuthorityMode` from real outbox state: an unsettled prior write for this
-   * `(pageId, propertyId)` (`pendingLocal` present) is `missing`; otherwise
-   * `present`. `local`/`remote` mode carries no read-after-write requirement and is
-   * `not-required`. When the surface omits it (no authority mode / untracked store)
-   * the proof falls back to the non-blocking `present` default.
+   * `withAuthorityMode` from real outbox state: a genuinely in-flight prior write
+   * for this `(pageId, propertyId)` (`pendingLocal` present with an in-flight
+   * `state` — see {@link PENDING_INTENT_IN_FLIGHT_STATES}) is `missing`; otherwise
+   * `present`. A terminal `blocked` refusal does NOT gate, since the write never
+   * executed and never settles. `local`/`remote` mode carries no read-after-write
+   * requirement and is `not-required`. When the surface omits it (no authority
+   * mode / untracked store) the proof falls back to the non-blocking `present`
+   * default.
    */
   readonly settlement?: 'not-required' | 'present' | 'missing'
 }
@@ -238,14 +250,21 @@ export type PlannerProjectionSnapshot = {
  * `#pendingPropertyIntents`, which selects exactly the outbox `PatchPageProperties`
  * commands for this `(pageId, propertyId)` that are still unsettled
  * (`settlement_event_id IS NULL` and state ∈ queued/running/retryable/blocked/
- * ambiguous). That is the persisted read-after-write verdict: an unsettled prior
- * write — whether in-flight or verification-failed (`ReadAfterWriteMismatch`,
- * `AmbiguousCommandOutcome`) — has NOT been settled, so in `shared` mode a new
- * property write against it must be gated as `missing` and block via the core's
- * `ReadAfterWriteMismatch`. When no prior write is pending the prior surface is
- * settled (or there is nothing to settle), so `present` is the genuinely-safe
- * verdict. The core's settlement check is mode-blind, so mode-awareness lives
- * HERE: `local`/`remote` writes carry no read-after-write requirement and map to
+ * ambiguous) and carries the outbox `state`. The settlement gate fires only for a
+ * GENUINELY IN-FLIGHT prior write — state ∈ {queued, running, retryable, ambiguous}
+ * (see {@link PENDING_INTENT_IN_FLIGHT_STATES}): the write is still being driven
+ * toward settlement, or its verification was ambiguous and will be re-driven, so a
+ * new property write must be gated as `missing` and block via the core's
+ * `ReadAfterWriteMismatch`. A `blocked` state is EXCLUDED: it is a pre-write
+ * `StaleSurfaceBase`/`CurrentSurfaceMissing` refusal — the write never executed,
+ * the claim query never reclaims it, and `settle()` never clears it, so it is a
+ * permanent dead end that never represents a real read-after-write race. Gating on
+ * it would falsely poison the cell; genuine remote drift is handled by the
+ * remoteHash-drift branch below, and a stuck `StaleSurfaceBase` must surface as its
+ * own cause. When no in-flight prior write is pending the prior surface is settled
+ * (or there is nothing to settle), so `present` is the genuinely-safe verdict. The
+ * core's settlement check is mode-blind, so mode-awareness lives HERE:
+ * `local`/`remote` writes carry no read-after-write requirement and map to
  * `not-required`.
  *
  * Every code path that plans a local property write — `pushOneShotSync`, the
@@ -253,6 +272,24 @@ export type PlannerProjectionSnapshot = {
  * its snapshot through this helper, or a `remote`-mode workspace silently bypasses
  * the drift guard.
  */
+/**
+ * Outbox states whose pending property write is genuinely in-flight — the write
+ * is still being driven toward settlement (or its verification was ambiguous and
+ * will be re-driven). Only these gate a new shared-mode write as `missing`.
+ *
+ * `blocked` is deliberately excluded: it is a pre-write refusal recorded for a
+ * `StaleSurfaceBase`/`CurrentSurfaceMissing` guard — the write never executed,
+ * the claim query never reclaims it, and `settle()` never clears it, so it is a
+ * permanent dead end. Gating on it would poison the cell with a misleading
+ * `ReadAfterWriteMismatch` for a write that never raced anything; genuine drift
+ * is surfaced by the remoteHash-drift branch in {@link planIntent} and a stuck
+ * `StaleSurfaceBase` must surface as its own cause. (`fenced` is likewise
+ * terminal and already excluded upstream by `#pendingPropertyIntents`.)
+ */
+const PENDING_INTENT_IN_FLIGHT_STATES: ReadonlySet<
+  'queued' | 'running' | 'retryable' | 'ambiguous'
+> = new Set(['queued', 'running', 'retryable', 'ambiguous'])
+
 export const withAuthorityMode = ({
   snapshot,
   authorityMode,
@@ -269,7 +306,10 @@ export const withAuthorityMode = ({
           writeMode: authorityMode,
           settlement:
             authorityMode === 'shared'
-              ? property.pendingLocal !== undefined
+              ? property.pendingLocal !== undefined &&
+                (PENDING_INTENT_IN_FLIGHT_STATES as ReadonlySet<string>).has(
+                  property.pendingLocal.state,
+                )
                 ? 'missing'
                 : 'present'
               : 'not-required',
