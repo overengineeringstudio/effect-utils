@@ -38,13 +38,6 @@ const workspaceDeps = catalog.compose({
       otelContractPkg,
       utilsPkg,
     ],
-    external: catalog.pick(
-      'remark-gfm',
-      'remark-parse',
-      'remark-stringify',
-      'unified',
-      'unist-util-visit',
-    ),
   },
   devDependencies: {
     workspace: [tuiReactPkg, utilsDevPkg],

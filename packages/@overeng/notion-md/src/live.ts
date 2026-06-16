@@ -136,6 +136,16 @@ export const remoteMarkdownFromBodyObservation = (
    * than silently falling back to the endpoint Markdown (which runs headings
    * together and drops inter-block blanks, the latent symptom-2 trap).
    */
+  /*
+   * `observeFromSnapshots` renders the block tree and canonicalizes it once at
+   * the source (`body-observation.ts`), so `renderedMarkdown` is already the
+   * single canonical body form — the same bytes the evidence fingerprint, the
+   * fidelity classifier, hash, and push see (decision 0018, "agree by
+   * construction"). It is total on the pull path; a missing value is an
+   * invariant violation, not a recoverable state — fail as a defect rather than
+   * silently falling back to the endpoint Markdown (which runs headings together
+   * and drops inter-block blanks, the latent symptom-2 trap).
+   */
   const renderedMarkdown = body.inventory.renderedMarkdown
   if (renderedMarkdown === undefined) {
     throw new Error(
@@ -144,15 +154,7 @@ export const remoteMarkdownFromBodyObservation = (
     )
   }
   return {
-    /*
-     * Pull receive: canonicalize the rendered body so the body a consumer reads
-     * (`cat` / `edit` / file sync / baseline), the body hashed, and the body
-     * pushed are the same bytes — one canonical form at both wire boundaries
-     * (decision 0018). Without this, pull emitted the raw loose-list render
-     * while push canonicalized, the two-oracle divergence behind the list
-     * line-break bug.
-     */
-    markdown: canonicalizeBlockMarkdown(renderedMarkdown),
+    markdown: renderedMarkdown,
     endpoint_markdown: normalizeMarkdownLineEndings(body.markdown.markdown),
     truncated: body.markdown.truncated,
     unknown_block_ids: body.markdown.unknownBlockIds,

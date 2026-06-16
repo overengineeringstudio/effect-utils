@@ -15,6 +15,13 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-client' }),
   dependencies: {
     workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg, otelContractPkg],
+    external: catalog.pick(
+      'remark-gfm',
+      'remark-parse',
+      'remark-stringify',
+      'unified',
+      'unist-util-visit',
+    ),
   },
   devDependencies: {
     workspace: [utilsDevPkg, utilsPkg],

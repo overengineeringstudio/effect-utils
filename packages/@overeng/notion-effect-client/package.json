@@ -17,7 +17,12 @@
     "@overeng/content-address": "workspace:^",
     "@overeng/notion-core": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
-    "@overeng/otel-contract": "workspace:^"
+    "@overeng/otel-contract": "workspace:^",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
+    "unified": "11.0.5",
+    "unist-util-visit": "5.1.0"
   },
   "devDependencies": {
     "@effect/platform": "0.96.1",

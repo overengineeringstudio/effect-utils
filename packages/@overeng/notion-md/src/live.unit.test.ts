@@ -39,6 +39,14 @@ const evidenceFor = (input: {
   return { evidence, evidenceFingerprint: fingerprintBodyEvidence(evidence) }
 }
 
+/*
+ * `observeFromSnapshots` now canonicalizes `renderedMarkdown` at the source
+ * (body-observation.ts), so these inputs are the already-canonical body and
+ * `remoteMarkdownFromBodyObservation` projects it through verbatim. The
+ * canonicalization behavior itself is locked in canonical-markdown.unit.test.ts
+ * and body-observation.unit.test.ts; here we assert the projection and that the
+ * endpoint Markdown is never adopted in place of the rendered body.
+ */
 describe('remoteMarkdownFromBodyObservation', () => {
   it('adopts block-tree-rendered Markdown instead of endpoint Markdown', () => {
     const entries = [
@@ -70,13 +78,13 @@ describe('remoteMarkdownFromBodyObservation', () => {
       },
       inventory: {
         entries,
-        renderedMarkdown: '## Section\n\nParagraph that the endpoint left adjacent\n\n---',
+        renderedMarkdown: '## Section\n\nParagraph that the endpoint left adjacent\n\n---\n',
       },
       completeness: { _tag: 'complete' },
       ...evidenceFor({
         pageId: '00000000-0000-4000-8000-000000000001',
         endpointMarkdown: '## Section\nParagraph that the endpoint left adjacent\n---\n',
-        renderedMarkdown: '## Section\n\nParagraph that the endpoint left adjacent\n\n---',
+        renderedMarkdown: '## Section\n\nParagraph that the endpoint left adjacent\n\n---\n',
         entries,
         completeness: 'complete',
       }),
@@ -92,7 +100,7 @@ describe('remoteMarkdownFromBodyObservation', () => {
     })
   })
 
-  it('canonicalizes the rendered body on pull (loose render → tight body)', () => {
+  it('projects the canonical (tight) list body through to the pull snapshot', () => {
     const entries = [
       {
         id: '00000000-0000-4000-8000-000000000002',
@@ -113,10 +121,10 @@ describe('remoteMarkdownFromBodyObservation', () => {
         inTrash: false,
       },
     ] as const
-    // The renderer joins every sibling with `\n\n`, so a tight Notion list
-    // arrives loose. Pull must canonicalize it tight while keeping the blank
-    // line before the trailing paragraph.
-    const renderedMarkdown = '- Bullet A\n\n- Bullet B\n\nA paragraph after the list.'
+    // `observeFromSnapshots` already canonicalized the loose renderer output to
+    // this tight form; the projection passes it through, keeping the blank line
+    // before the trailing paragraph.
+    const renderedMarkdown = '- Bullet A\n- Bullet B\n\nA paragraph after the list.\n'
     const observation: NotionBodyObservation = {
       pageId: '00000000-0000-4000-8000-000000000001',
       markdown: {
@@ -163,7 +171,7 @@ describe('remoteMarkdownFromBodyObservation', () => {
         inTrash: false,
       },
     ] as const
-    const renderedMarkdown = '# H1\n\n## H2\n\n### H3'
+    const renderedMarkdown = '# H1\n\n## H2\n\n### H3\n'
     const observation: NotionBodyObservation = {
       pageId: '00000000-0000-4000-8000-000000000001',
       // Endpoint shape with headings run together — must NOT leak through.

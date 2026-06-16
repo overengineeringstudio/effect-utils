@@ -16,6 +16,7 @@ import {
   type BodyEvidenceFingerprint,
   type RemoteBodyObservationEvidence,
 } from './body-evidence.ts'
+import { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
 import { NotionMarkdown } from './markdown.ts'
@@ -73,7 +74,17 @@ export const observeFromSnapshots = Effect.fn('NotionBody.observeFromSnapshots')
   readonly beforeLastEditedTime?: string
   readonly afterLastEditedTime?: string
 }) {
-  const renderedMarkdown = yield* NotionMarkdown.treeToMarkdown({ tree: opts.tree })
+  /*
+   * Canonicalize the rendered body once, at the source, before it flows into
+   * the inventory, the fidelity classifier, and the evidence fingerprint — so
+   * the evidence, the classifier, pull, hash, and push all see the same
+   * canonical bytes (decision 0018, "agree by construction"). The renderer
+   * emits parseable-not-canonical Markdown (it joins sibling blocks with `\n\n`);
+   * this is the single place that turns that into the one canonical form.
+   */
+  const renderedMarkdown = canonicalizeBlockMarkdown(
+    yield* NotionMarkdown.treeToMarkdown({ tree: opts.tree }),
+  )
   const markdown = {
     markdown: opts.markdown.markdown,
     truncated: opts.markdown.truncated,

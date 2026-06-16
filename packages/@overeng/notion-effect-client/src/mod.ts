@@ -143,6 +143,7 @@ export {
   isTodoChecked,
   NotionMarkdown,
 } from './markdown.ts'
+export { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
 export { canonicalizeMediaUrl, canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
 // Notion Markdown local format
 export type {
