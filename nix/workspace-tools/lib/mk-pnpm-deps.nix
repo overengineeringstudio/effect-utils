@@ -432,6 +432,21 @@ in
       lockfilePaths ? [ "pnpm-lock.yaml" ],
       pnpmFilters ? [ ],
       includeOptionalDependencies ? false,
+      # Optional explicit, content-derived fingerprint for the derivation name.
+      #
+      # By default the fingerprint is the first 8 chars of `src`'s store-path
+      # basename. That hash is consumer-specific for shared install roots
+      # (each consumer stages `src` under its own derivation name), so two
+      # consumers with byte-identical prepared deps still get distinct FOD names
+      # and therefore distinct output store paths even though the recursive
+      # output hash is identical.
+      #
+      # Callers that want byte-identical prepared deps to collapse onto one FOD
+      # output (one build, one cache entry) can pass a fingerprint derived from
+      # the staged content itself rather than the consumer-named `src` path. It
+      # must still change whenever the prepared tree would change, to preserve
+      # the stale-cache protection documented below.
+      nameFingerprint ? null,
     }:
     let
       # Embed a fingerprint of the FOD's inputs (lockfile, package.json, etc.)
@@ -456,9 +471,11 @@ in
       # experimental feature is production-ready and binary cache support is
       # complete. CA derivations eliminate manually-maintained FOD hashes entirely.
       # Track: NixOS/nix#6623
-      srcFingerprint = builtins.substring 0 8 (
-        builtins.unsafeDiscardStringContext (baseNameOf (toString src))
-      );
+      srcFingerprint =
+        if nameFingerprint != null then
+          nameFingerprint
+        else
+          builtins.substring 0 8 (builtins.unsafeDiscardStringContext (baseNameOf (toString src)));
       pnpmPackageImportMethod =
         /*
           Self-hosted darwin rebuild-checks compare a trusted realized output with

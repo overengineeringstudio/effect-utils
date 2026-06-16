@@ -766,6 +766,79 @@ let
     );
 
   /**
+    Extract the top-level `patchedDependencies:` block from a lockfile string.
+
+    Root patches are folded into an external install root's lockfile at build
+    time by `inheritRootPatchedDependenciesScript`, so they affect the prepared
+    deps even though they are not part of the install root's own staged
+    lockfile. The fingerprint below therefore has to account for them. We only
+    keep the `patchedDependencies` section (not the whole root lockfile) so an
+    unrelated root dependency bump does not invalidate the external install
+    root's prepared deps, preserving the reuse boundary documented at
+    `externalInstallRootDeps`.
+  */
+  rootPatchedDependenciesSection =
+    lockfileContent:
+    let
+      lines = lib.splitString "\n" lockfileContent;
+      startIndex = lib.lists.findFirstIndex (line: line == "patchedDependencies:") null lines;
+    in
+    if startIndex == null then
+      ""
+    else
+      let
+        rest = lib.lists.drop (startIndex + 1) lines;
+        # The section ends at the next top-level key (a non-indented,
+        # non-blank line). Default to consuming the rest of the file when this
+        # is the last section.
+        endOffset = lib.lists.findFirstIndex (
+          line: line != "" && !(lib.hasPrefix " " line)
+        ) (builtins.length rest) rest;
+        sectionLines = lib.lists.take endOffset rest;
+      in
+      builtins.concatStringsSep "\n" sectionLines;
+
+  /**
+    Content-derived, consumer-invariant fingerprint for an external install
+    root's prepared deps.
+
+    The default `mk-pnpm-deps` fingerprint is the staged-source store-path
+    basename, which is consumer-specific (each consumer stages the same content
+    under its own derivation name). That keeps byte-identical prepared deps on
+    distinct output store paths. This fingerprint instead hashes the staged
+    content itself:
+
+    - the external install root's own lockfile (which records dependency
+      versions and `patchedDependencies` content hashes for that workspace), and
+    - the root lockfile's `patchedDependencies` section (root patches inherited
+      into this install root at build time).
+
+    Both are read through the eval workspace root (no import-from-derivation).
+    The result changes whenever the prepared tree would change, preserving the
+    stale-cache protection of the default fingerprint, but is identical across
+    consumers that compose the same member set, so their FODs collapse onto one
+    output store path.
+  */
+  externalInstallRootContentFingerprint =
+    root:
+    let
+      installRootLockfile = builtins.readFile (
+        resolveEvalSourceFor (installRootScopedPath root.installDir "pnpm-lock.yaml")
+      );
+      rootLockfile = builtins.readFile (resolveEvalSourceFor "pnpm-lock.yaml");
+    in
+    builtins.substring 0 8 (
+      builtins.hashString "sha256" (
+        builtins.toJSON {
+          inherit (root) installDir;
+          memberDirs = installRootMemberDirs root;
+          inherit installRootLockfile;
+          rootPatchedDependencies = rootPatchedDependenciesSection rootLockfile;
+        }
+      )
+    );
+
+  /**
     `depsBuilds` is the canonical source of truth for prepared pnpm artifacts.
 
     Each install root gets one fixed-output derivation, and the downstream CLI
@@ -1036,7 +1109,19 @@ let
       );
       lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
       depsBuild = pnpmDepsHelper.mkDeps {
-        name = installRootDerivationName root.installDir;
+        # Name the prepared-deps FOD by the install root (its directory plus a
+        # short member-set profile key) instead of the consumer prefix, so
+        # consumers that compose the same external install root share a single
+        # FOD output store path (one build, one cache entry) instead of N
+        # byte-identical copies. The directory tag keeps the derivation
+        # debuggable; the profile key disambiguates different member sets that
+        # share a directory.
+        name = "${lib.replaceStrings [ "/" ] [ "-" ] root.installDir}-deps-${
+          builtins.substring 0 12 (installRootProfileKey root)
+        }";
+        # Use a content-derived, consumer-invariant fingerprint so the shared
+        # name still changes whenever the prepared tree would change.
+        nameFingerprint = externalInstallRootContentFingerprint root;
         src = depsSrc;
         sourceRoot = ".";
         lockfilePaths = [ lockfilePath ];
