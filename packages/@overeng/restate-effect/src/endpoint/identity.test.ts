@@ -8,7 +8,7 @@
  * options it receives (a real verification handshake belongs to the integration
  * lane), then build the layer into a closed scope.
  */
-import type * as restateNode from '@restatedev/restate-sdk/node'
+import * as restateNode from '@restatedev/restate-sdk/node'
 import { Effect, Layer, Schema } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

@@ -88,7 +88,7 @@ export const projectionValidators = {
       const issues: GenieValidationIssue[] = []
 
       for (const value of args.values(validatorArgs)) {
-        if (seen.has(value) === true) {
+        if (seen.has(value)) {
           issues.push({
             severity: 'error',
             packageName: validatorArgs.ctx.location,
@@ -116,7 +116,7 @@ function withSchemaVersion<TProjection extends ProjectionJsonObject>(
 }
 
 function asJsonObject(value: unknown): ProjectionJsonObject {
-  if (value === null || Array.isArray(value) === true || typeof value !== 'object') {
+  if (value === null || Array.isArray(value) || typeof value !== 'object') {
     throw new Error('projectionArtifact.json data must project to a JSON object')
   }
 
@@ -124,7 +124,7 @@ function asJsonObject(value: unknown): ProjectionJsonObject {
 }
 
 function stableJsonValue(value: unknown): unknown {
-  if (Array.isArray(value) === true) {
+  if (Array.isArray(value)) {
     return value.map(stableJsonValue)
   }
 
@@ -134,7 +134,7 @@ function stableJsonValue(value: unknown): unknown {
 
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
-      .toSorted(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, nestedValue]) => [key, stableJsonValue(nestedValue)]),
   )
 }

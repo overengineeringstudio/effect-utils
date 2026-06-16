@@ -226,7 +226,7 @@ const matchesAttrs = (span: SpanRow, attrs: AttrExpectations): boolean =>
 
 const matchesAttr = (actual: string, matcher: AttrMatcher, span: SpanRow): boolean => {
   if (matcher instanceof RegExp) return matcher.test(actual)
-  if (isStructuredAttrMatcher(matcher) === true) {
+  if (isStructuredAttrMatcher(matcher)) {
     switch (matcher._tag) {
       case 'Present':
         return true
@@ -280,7 +280,7 @@ const describeAttrs = (attrs: AttrExpectations): string =>
 
 const describeMatcher = (matcher: AttrMatcher): string => {
   if (matcher instanceof RegExp) return matcher.toString()
-  if (isStructuredAttrMatcher(matcher) === true) {
+  if (isStructuredAttrMatcher(matcher)) {
     switch (matcher._tag) {
       case 'Present':
         return 'present'

@@ -38,7 +38,7 @@ const daysInMonth = (year: number, month: number): number | undefined => {
     case 11:
       return 30
     case 2:
-      return isLeapYear(year) === true ? 29 : 28
+      return isLeapYear(year) ? 29 : 28
     default:
       return undefined
   }

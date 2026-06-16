@@ -308,7 +308,7 @@ const matchesAttr = <Row>(
   row: Row,
 ): boolean => {
   if (matcher instanceof RegExp) return matcher.test(actual)
-  if (isStructuredAttrMatcher(matcher) === true) {
+  if (isStructuredAttrMatcher(matcher)) {
     switch (matcher._tag) {
       case 'Present':
         return true
@@ -394,7 +394,7 @@ const describeAttrs = <Row>(attrs: TelemetryAttrExpectations<Row>): string =>
 
 const describeMatcher = <Row>(matcher: TelemetryAttrMatcher<Row>): string => {
   if (matcher instanceof RegExp) return matcher.toString()
-  if (isStructuredAttrMatcher(matcher) === true) {
+  if (isStructuredAttrMatcher(matcher)) {
     switch (matcher._tag) {
       case 'Present':
         return 'present'

@@ -18,13 +18,17 @@ describe('concurrent command-tree import (#787)', () => {
   it('loads all three trees concurrently under Bun without a TDZ crash', () => {
     const fixture = fileURLToPath(new URL('./concurrent-import.fixture.ts', import.meta.url))
 
-    const proc = spawnSync('bun', ['run', fixture], { encoding: 'utf8' })
+    const proc = spawnSync('bun', ['run', fixture], {
+      encoding: 'utf8',
+      timeout: 25_000,
+    })
 
     const stdout = proc.stdout ?? ''
     const stderr = proc.stderr ?? ''
 
+    expect(proc.error, `${stderr}\n${String(proc.error)}`).toBeUndefined()
     expect(stderr, stderr).not.toContain('before initialization')
     expect(stdout).toContain('CONCURRENT_IMPORT_OK')
     expect(proc.status).toBe(0)
-  })
+  }, 30_000)
 })
