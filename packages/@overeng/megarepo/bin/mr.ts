@@ -2,8 +2,9 @@
 
 import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 
+import { ServiceIdentity } from '@overeng/otel-contract'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
@@ -45,19 +46,26 @@ const version = resolveCliVersion({
  * layer's scope to the command effect, so the still-sync `Layer.suspend` exporter
  * finalizers still flush on shutdown (no `Layer.unwrapEffect`).
  */
+const identity = Schema.decodeSync(ServiceIdentity)({
+  name: 'megarepo',
+  namespace: 'overeng',
+  version,
+})
+
 const program = Effect.gen(function* () {
   const endpoint = yield* otelEndpointFromConfig()
 
   const otelLayer = makeOtelCliLayer({
-    serviceName: 'megarepo',
+    identity,
     endpoint,
     exportInterval: 50,
-    // Flush the `megarepo_store_gc_rss_bytes` gauge often enough to be usable on
-    // short (~10s) gc runs — the @effect/opentelemetry default 10s metrics reader
-    // interval undersamples them (decision 0007). Only gc registers a metric, so
-    // this is a no-op for other `mr` commands.
+    // Mid-run granularity only: sample the `megarepo_store_gc_rss_bytes` gauge
+    // often enough to plot RSS-vs-time on a ~10s gc run (decision 0007); the
+    // final value flushes on shutdown regardless of this interval. Only gc
+    // registers a metric, so it's a no-op for other `mr` commands. shutdownTimeout
+    // is intentionally left at the safe TTY-aware default (never a small override,
+    // which would interrupt and drop the final flush).
     metricsExportInterval: 1000,
-    shutdownTimeout: 50,
   })
 
   yield* Cli.Command.run(mrCommand, {

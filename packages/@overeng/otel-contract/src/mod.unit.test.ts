@@ -15,6 +15,7 @@ import {
   OtelServiceName,
   OtelSpan,
   OtelSpanName,
+  ServiceIdentity,
 } from './mod.ts'
 
 describe('OTEL schema names', () => {
@@ -74,6 +75,44 @@ describe('OTEL schema names', () => {
         }),
       }),
     ).toThrow(OtelAttrPlanError)
+  })
+})
+
+describe('ServiceIdentity', () => {
+  it('decodes a valid identity into branded name/namespace/version', async () => {
+    const identity = await Effect.runPromise(
+      Schema.decodeUnknown(ServiceIdentity)({
+        name: 'megarepo',
+        namespace: 'overeng',
+        version: '1.2.3',
+      }),
+    )
+    expect(identity).toEqual({ name: 'megarepo', namespace: 'overeng', version: '1.2.3' })
+  })
+
+  it('rejects an invalid (non-pattern) service name', async () => {
+    await expect(
+      Effect.runPromise(
+        Effect.either(
+          Schema.decodeUnknown(ServiceIdentity)({
+            name: 'bad name',
+            namespace: 'overeng',
+            version: '1.0.0',
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({ _tag: 'Left' })
+  })
+
+  it('rejects empty namespace/version', async () => {
+    for (const bad of [
+      { name: 'svc', namespace: '', version: '1.0.0' },
+      { name: 'svc', namespace: 'overeng', version: '' },
+    ]) {
+      await expect(
+        Effect.runPromise(Effect.either(Schema.decodeUnknown(ServiceIdentity)(bad))),
+      ).resolves.toMatchObject({ _tag: 'Left' })
+    }
   })
 })
 

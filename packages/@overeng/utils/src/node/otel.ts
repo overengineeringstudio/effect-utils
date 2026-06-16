@@ -16,6 +16,8 @@ import * as Otlp from '@effect/opentelemetry/Otlp'
 import { FetchHttpClient } from '@effect/platform'
 import { Config, Context, Effect, Layer, Option, Tracer } from 'effect'
 
+import type { ServiceIdentity } from '@overeng/otel-contract'
+
 export * from './otel-attrs.ts'
 
 /**
@@ -105,10 +107,24 @@ export const parentSpanFromTraceparent: Effect.Effect<Tracer.ExternalSpan | unde
 /** Configuration options for the CLI OTEL tracing layer. */
 export interface OtelCliLayerConfig {
   /**
-   * Service name for OTEL traces.
-   * This identifies the CLI in trace visualizations.
+   * Service name for OTEL traces. This identifies the CLI in trace
+   * visualizations.
+   *
+   * Legacy: prefer the typed {@link OtelCliLayerConfig.identity}, which also
+   * stamps `service.namespace` + `service.version` onto every signal's resource
+   * and validates the name via the branded `OtelServiceName`. `serviceName` is
+   * ignored when `identity` is provided. (Not yet `@deprecated` — the remaining
+   * CLIs are migrated to `identity` first, then this is deprecated + removed.)
    */
-  serviceName: string
+  serviceName?: string
+  /**
+   * Typed, decoded service identity stamped onto the OTLP resource for ALL
+   * signals (traces, metrics, logs): `service.name` + `service.namespace` +
+   * `service.version`. Construct it through `Schema.decode(ServiceIdentity)` so
+   * a malformed name is a type/decode error at the composition root. Takes
+   * precedence over {@link OtelCliLayerConfig.serviceName}.
+   */
+  identity?: ServiceIdentity
   /**
    * Explicitly-resolved OTLP endpoint. When provided, it is authoritative and
    * the layer does NOT read `process.env`: `Some(url)` exports to `url`, `None`
@@ -138,8 +154,13 @@ export interface OtelCliLayerConfig {
    */
   metricsExportInterval?: number
   /**
-   * Timeout for graceful shutdown (final span/metric flush) in milliseconds.
-   * @default 2000
+   * Safety *ceiling* for the graceful-shutdown flush, in milliseconds. The flush
+   * is a scope finalizer that Effect awaits to completion, so this is a ceiling
+   * never a floor: it costs nothing on a healthy collector (exit ≈ one
+   * round-trip) and only bounds the worst case when the collector is
+   * black-holed. Do NOT set a small per-CLI override — that turns the ceiling
+   * into a dropped final batch (the cap interrupts the in-flight export).
+   * @default 30_000 (non-interactive) / 10_000 (interactive TTY)
    */
   shutdownTimeout?: number
 }
@@ -171,15 +192,43 @@ export interface OtelCliLayerConfig {
  *   )
  * ```
  */
+/**
+ * Default graceful-shutdown cap. The flush is a scope finalizer Effect awaits to
+ * completion, so this only bounds the worst case when the collector is
+ * black-holed (never the happy path). Interactive TTYs get a tighter bound so a
+ * human never waits long on a dead collector; non-interactive (CI) gets a
+ * generous one. Ctrl-C escapes either in tens of ms (the flush stays
+ * interruptible).
+ */
+const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 10_000 : 30_000)
+
 export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelConfig> => {
   const {
     serviceName,
+    identity,
     endpoint: explicitEndpoint,
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
     exportInterval = 250,
     metricsExportInterval,
-    shutdownTimeout = 2000,
+    shutdownTimeout = defaultShutdownTimeoutMs(),
   } = config
+
+  if (identity === undefined && serviceName === undefined) {
+    return Layer.die('makeOtelCliLayer requires either `identity` or `serviceName`')
+  }
+
+  // The typed `identity` is authoritative: its name/namespace/version flow onto
+  // every signal's resource. The `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME`
+  // env attrs are still merged in by `@effect/opentelemetry` (explicit wins on
+  // collision, env-only attrs are preserved), so runtime provenance is intact.
+  const resource =
+    identity !== undefined
+      ? {
+          serviceName: identity.name,
+          serviceVersion: identity.version,
+          attributes: { 'service.namespace': identity.namespace },
+        }
+      : { serviceName: serviceName! }
 
   // Use Layer.suspend instead of Layer.unwrapEffect to ensure proper scope propagation.
   // Layer.unwrapEffect doesn't properly chain scopes, causing OTEL exporter finalizers
@@ -213,7 +262,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
 
     const exporterLive = Otlp.layerJson({
       baseUrl,
-      resource: { serviceName },
+      resource,
       tracerExportInterval: exportInterval,
       ...(metricsExportInterval === undefined ? {} : { metricsExportInterval }),
       shutdownTimeout,
