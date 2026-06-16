@@ -128,24 +128,12 @@ export const parentSpanFromTraceparent: Effect.Effect<Tracer.ExternalSpan | unde
 /** Configuration options for the CLI OTEL tracing layer. */
 export interface OtelCliLayerConfig {
   /**
-   * Service name for OTEL traces. This identifies the CLI in trace
-   * visualizations.
-   *
-   * Legacy: prefer the typed {@link OtelCliLayerConfig.identity}, which also
-   * stamps `service.namespace` + `service.version` onto every signal's resource
-   * and validates the name via the branded `OtelServiceName`. `serviceName` is
-   * ignored when `identity` is provided. (Not yet `@deprecated` — the remaining
-   * CLIs are migrated to `identity` first, then this is deprecated + removed.)
-   */
-  serviceName?: string
-  /**
    * Typed, decoded service identity stamped onto the OTLP resource for ALL
    * signals (traces, metrics, logs): `service.name` + `service.namespace` +
    * `service.version`. Construct it through `Schema.decode(ServiceIdentity)` so
-   * a malformed name is a type/decode error at the composition root. Takes
-   * precedence over {@link OtelCliLayerConfig.serviceName}.
+   * a malformed name is a type/decode error at the composition root.
    */
-  identity?: ServiceIdentity
+  identity: ServiceIdentity
   /**
    * Explicitly-resolved OTLP endpoint. When provided, it is authoritative and
    * the layer does NOT read `process.env`: `Some(url)` exports to `url`, `None`
@@ -207,9 +195,12 @@ export interface OtelCliLayerConfig {
  * // In bin/my-cli.ts
  * import { makeOtelCliLayer } from '@overeng/utils/node/otel'
  *
+ * const identity = Schema.decodeSync(ServiceIdentity)({
+ *   name: 'my-cli', namespace: 'overeng', version,
+ * })
  * const baseLayer = Layer.mergeAll(
  *   NodeContext.layer,
- *   makeOtelCliLayer({ serviceName: 'my-cli' }),
+ *   makeOtelCliLayer({ identity }),
  * )
  *
  * Cli.Command.run(command, { name: 'my-cli', version })
@@ -232,7 +223,6 @@ const defaultShutdownTimeoutMs = (): number => (process.stdout.isTTY === true ? 
 
 export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelConfig> => {
   const {
-    serviceName,
     identity,
     endpoint: explicitEndpoint,
     endpointEnvVar = 'OTEL_EXPORTER_OTLP_ENDPOINT',
@@ -241,22 +231,15 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
     shutdownTimeout = defaultShutdownTimeoutMs(),
   } = config
 
-  if (identity === undefined && serviceName === undefined) {
-    return Layer.die('makeOtelCliLayer requires either `identity` or `serviceName`')
+  // The typed `identity`'s name/namespace/version flow onto every signal's
+  // resource. The `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME` env attrs are
+  // still merged in by `@effect/opentelemetry` (explicit wins on collision,
+  // env-only attrs are preserved), so runtime provenance is intact.
+  const resource = {
+    serviceName: identity.name,
+    serviceVersion: identity.version,
+    attributes: { 'service.namespace': identity.namespace },
   }
-
-  // The typed `identity` is authoritative: its name/namespace/version flow onto
-  // every signal's resource. The `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME`
-  // env attrs are still merged in by `@effect/opentelemetry` (explicit wins on
-  // collision, env-only attrs are preserved), so runtime provenance is intact.
-  const resource =
-    identity !== undefined
-      ? {
-          serviceName: identity.name,
-          serviceVersion: identity.version,
-          attributes: { 'service.namespace': identity.namespace },
-        }
-      : { serviceName: serviceName! }
 
   // Use Layer.suspend instead of Layer.unwrapEffect to ensure proper scope propagation.
   // Layer.unwrapEffect doesn't properly chain scopes, causing OTEL exporter finalizers

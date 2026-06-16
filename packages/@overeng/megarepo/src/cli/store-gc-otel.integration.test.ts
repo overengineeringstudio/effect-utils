@@ -2,31 +2,33 @@
  * OTEL instrumentation contract test for `mr store gc` (decision 0007).
  *
  * The principled replacement for "disable OTEL in tests": instead of asserting
- * nothing about telemetry, this stands up a REAL ephemeral OTLP receiver
- * (`Otelite.capture`), points the gc's REAL exporter (`makeOtelCliLayer` →
- * `Otlp.layerJson`, both traces AND metrics) at it within the test scope, runs
- * the gc in-process through the same deterministic harness the cold test uses
- * (fixed decision clock + stub `PrStateResolver`, no real `gh`/network), and
- * asserts the spans + the RSS gauge actually land in Tempo-shaped capture.
+ * nothing about telemetry, this runs the gc in-process through the foundation
+ * `OteliteTestHarness.runInProcessAllSignals` capture — a REAL ephemeral OTLP
+ * receiver wired to the gc's spans + metrics + logs — and asserts the contract
+ * via the `expectTrace`/`expectMetrics` DSL. The gc runs through the same
+ * deterministic harness the cold test uses (fixed decision clock + stub
+ * `PrStateResolver`, no real `gh`/network).
  *
- * It is hermetic by construction (its own ephemeral receiver, unset on scope
- * close) and non-vacuous (it fails loudly if the phase spans, the `git/cmd`
- * span's `git.output.bytes`, or the `megarepo_store_gc_rss_bytes` gauge are
- * absent). Because it sets the endpoint itself under the fixed clock, it ALSO
- * proves the sampler + exporter no longer hang under a zero-sleep clock (with
- * the old, clock-coupled sampler/exporter this run would time out).
+ * It is hermetic by construction (its own ephemeral receiver, torn down on scope
+ * close) and non-vacuous: it fails loudly if a gc phase span is renamed/dropped,
+ * if the `git/cmd` span loses `git.output.bytes`, or if the
+ * `megarepo_store_gc_rss_bytes` gauge is absent / stubbed to a non-positive value
+ * (the `metrics.expectSome` value predicate + label assertion). Because the
+ * asserted run executes under the fixed clock with the foundation sampler active,
+ * it ALSO proves the sampler ticks on a real clock under a zero-sleep decision
+ * clock (the old clock-coupled sampler would hot-loop and hang).
  */
 
 import * as Cli from '@effect/cli'
 import { Command, FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Clock, Effect, Exit, Layer, Option, Schema } from 'effect'
+import { Clock, Effect, Layer, Option, Ref, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
-import { Otelite } from '@overeng/utils-dev/otelite'
-import { makeOtelCliLayer } from '@overeng/utils/node/otel'
+import { attr, metricValue, OteliteTestHarness, telemetryAttr } from '@overeng/utils-dev/otelite'
+import { OtelConfig } from '@overeng/utils/node/otel'
 
 import { makeStubPrStateResolverLayer, type GhPr, type StubPrRepo } from '../lib/store-pr-state.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
@@ -34,6 +36,7 @@ import { createStoreFixture, getWorktreeCommit } from '../test-utils/store-setup
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 
+const SERVICE = 'megarepo'
 const DAY_MS = 24 * 60 * 60 * 1000
 /** A fixed decision clock: well past every default grace window. */
 const NOW = Date.parse('2026-06-11T12:00:00.000Z')
@@ -51,11 +54,11 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
  * `() => Effect.void`.
  *
  * Why real sleep here: this test runs the gc with the OTEL exporter active, and
- * both the forked RSS sampler and `Otlp.layerJson`'s reader fibers schedule on
- * `Clock.sleep`. A zero-sleep clock turns those infra timers into hot loops that
- * starve the runtime and hang the run. A real `sleep` (decision time still fixed)
- * lets the infra timers tick on wall time while keeping gc decisions deterministic
- * — the root-cause fix, with no production workaround in `makeOtelCliLayer`.
+ * both the foundation RSS sampler and the all-signals exporter's reader fibers
+ * schedule on `Clock.sleep`. A zero-sleep clock turns those infra timers into hot
+ * loops that starve the runtime and hang the run. A real `sleep` (decision time
+ * still fixed) lets the infra timers tick on wall time while keeping gc decisions
+ * deterministic — the root-cause fix, with no production workaround.
  */
 const liveClock = Clock.make()
 const fixedClockLayer = (nowMs: number) =>
@@ -92,28 +95,31 @@ const StoreGcJsonOutput = Schema.Struct({
   ),
 })
 const decodeGc = Schema.decodeUnknownSync(Schema.parseJson(StoreGcJsonOutput))
+type GcResults = (typeof StoreGcJsonOutput.Type)['results']
 
 /**
- * Run `mr store gc` end-to-end with the REAL OTEL exporter pointed at the given
- * base endpoint. Mirrors the cold-path harness (fixed clock + stub resolver),
- * but additionally provides `makeOtelCliLayer` so the gc's spans/metrics are
- * actually exported. The endpoint is passed EXPLICITLY into the layer (no
- * `process.env` mutation): the layer stays a pure function of its input, and the
- * `OtelConfig` it provides is what the gc's RSS-sampler gate reads. A small
- * `metricsExportInterval` + generous `shutdownTimeout` guarantee ≥1 metrics
- * collection (or the shutdown flush) lands the gauge for a sub-interval run.
+ * `mr store gc` as an in-process WORKLOAD effect (no exporter of its own — the
+ * harness owns the OTLP layer). The gc's RSS sampler gates on `OtelConfig`, so we
+ * provide it here with `endpoint: Some` when `telemetry` is on (the gate only
+ * checks `isSome`; export itself is the harness's all-signals layer) and `None`
+ * otherwise (sampler no-ops — exercises the off-path for the seed run). No
+ * `process.env` mutation beyond `MEGAREPO_STORE`, restored on exit. The decoded
+ * `results` are written to `resultsRef` because `runInProcessAllSignals` returns
+ * only the signal expectations, not the workload value.
  */
-const runGcExported = ({
+const runGc = ({
   cwd,
   storePath,
   prRepos,
-  endpoint,
+  resultsRef,
+  telemetry,
   now = NOW,
 }: {
   cwd: AbsoluteDirPath
   storePath: AbsoluteDirPath
   prRepos: ReadonlyArray<StubPrRepo>
-  endpoint: string
+  resultsRef: Ref.Ref<GcResults>
+  telemetry: Option.Option<string>
   now?: number
 }) =>
   Effect.gen(function* () {
@@ -121,20 +127,12 @@ const runGcExported = ({
     const previous = process.env['MEGAREPO_STORE']
     process.env['MEGAREPO_STORE'] = storePath
 
-    const otelLayer = makeOtelCliLayer({
-      serviceName: 'megarepo',
-      endpoint: Option.some(endpoint),
-      exportInterval: 50,
-      metricsExportInterval: 250,
-      shutdownTimeout: 4000,
-    })
-
     const argv = ['node', 'mr', 'store', 'gc', '--output', 'json']
-    const exit = yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
+    yield* Cli.Command.run(mrCommand, { name: 'mr', version: 'test' })(argv).pipe(
       Effect.provideService(Cwd, cwd),
       Effect.provide(consoleLayer),
       Effect.provide(makeStubPrStateResolverLayer(prRepos)),
-      Effect.provide(otelLayer),
+      Effect.provideService(OtelConfig, { endpoint: telemetry }),
       Effect.provide(fixedClockLayer(now)),
       Effect.scoped,
       Effect.exit,
@@ -144,26 +142,7 @@ const runGcExported = ({
     else process.env['MEGAREPO_STORE'] = previous
 
     const stdout = (yield* getStdoutLines).join('\n')
-    return { exitCode: Exit.isSuccess(exit) === true ? 0 : 1, results: decodeGc(stdout).results }
-  })
-
-/** Seed the observation ledger so absence grace is satisfied at NOW. Runs an
- *  earlier exported gc with no PR evidence (recording `firstSeenColdAtMs`). */
-const seedColdObservation = ({
-  cwd,
-  storePath,
-  endpoint,
-}: {
-  cwd: AbsoluteDirPath
-  storePath: AbsoluteDirPath
-  endpoint: string
-}) =>
-  runGcExported({
-    cwd,
-    storePath,
-    endpoint,
-    prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
-    now: NOW - 20 * DAY_MS,
+    yield* Ref.set(resultsRef, decodeGc(stdout).results)
   })
 
 const outsideCwd = () =>
@@ -175,15 +154,6 @@ const outsideCwd = () =>
     return cwd
   })
 
-/** Open a scoped ephemeral otelite receiver. Its base URL (Otlp.layerJson appends
- *  `/v1/traces` + `/v1/metrics` itself) is passed EXPLICITLY into the gc's
- *  `makeOtelCliLayer` by the caller — no `process.env` mutation, so the exporter
- *  is wired purely from the resolved endpoint. */
-const withCapture = Effect.gen(function* () {
-  const otelite = yield* Otelite
-  return yield* otelite.capture({})
-})
-
 const EXPECTED_PHASES = [
   'collect-liveness',
   'list-repos',
@@ -194,7 +164,7 @@ const EXPECTED_PHASES = [
 ] as const
 
 describe('mr store gc — OTEL instrumentation contract', () => {
-  it.scoped(
+  it.scopedLive(
     'exports the gc phase spans, a git/cmd span with git.output.bytes, and the RSS gauge',
     () =>
       Effect.gen(function* () {
@@ -210,59 +180,73 @@ describe('mr store gc — OTEL instrumentation contract', () => {
 
         const cwd = yield* outsideCwd()
 
-        // Stand up the ephemeral receiver + point the gc exporter at it for the
-        // whole run. Telemetry being active must NOT change gc decisions, so the
-        // seed below runs under the exporter exactly as a real gc would.
-        const cap = yield* withCapture
+        // Stand up the in-process all-signals capture (traces + metrics + logs).
+        const harness = yield* OteliteTestHarness
+        const capture = yield* harness.capture({ serviceName: SERVICE, exportInterval: 50 })
+        const endpoint = capture.capture.endpoints.http
+
+        const seedResults = yield* Ref.make<GcResults>([])
+        const assertedResults = yield* Ref.make<GcResults>([])
 
         // Seed cold (absence grace) so the asserted run takes the cold-reclaim
-        // path. The fixed DECISION clock keeps this reproducible; the real `sleep`
-        // lets the exporter/sampler infra timers tick without busy-spinning.
-        yield* seedColdObservation({ cwd, storePath, endpoint: cap.endpoints.http })
-
-        const { results } = yield* runGcExported({
+        // path. Runs OUTSIDE the capture with telemetry OFF: keeps the captured
+        // signals single-valued (so `expectOne` works) and exercises the sampler
+        // no-op path. The fixed DECISION clock keeps this reproducible.
+        yield* runGc({
           cwd,
           storePath,
-          endpoint: cap.endpoints.http,
-          prRepos: [
-            { relativePath: REPO_RELATIVE, prs: [mergedPr('feature/merged', NOW - 30 * DAY_MS)] },
-          ],
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
+          resultsRef: seedResults,
+          telemetry: Option.none(),
+          now: NOW - 20 * DAY_MS,
         })
 
-        // The gc actually did its work (sanity: the cold-reclaim path ran).
+        // The asserted run executes INSIDE the all-signals capture with telemetry
+        // ON, so its spans + the RSS gauge land in the ephemeral receiver. The
+        // sampler gate reads the `OtelConfig` endpoint we provide in `runGc`.
+        // `spanLabelPolicy: 'off'` because the still-raw `git/cmd` / store spans
+        // (Track-A, out of scope) deliberately lack `span.label`.
+        const { trace, metrics } = yield* capture.runInProcessAllSignals(
+          runGc({
+            cwd,
+            storePath,
+            prRepos: [
+              { relativePath: REPO_RELATIVE, prs: [mergedPr('feature/merged', NOW - 30 * DAY_MS)] },
+            ],
+            resultsRef: assertedResults,
+            telemetry: Option.some(endpoint),
+          }),
+          { trace: { spanLabelPolicy: 'off' } },
+        )
+
+        // --- Behavioral non-vacuity: the gc actually did cold-reclaim work. ---
+        const results = yield* Ref.get(assertedResults)
         expect(results.some((r) => r.ref === 'feature/merged' && r.status === 'archived')).toBe(
           true,
         )
         // The worktree was archived away (cold-reclaim executed, not a no-op).
         expect(yield* fs.exists(worktreePath)).toBe(false)
 
-        // --- Assert the phase spans landed in Tempo-shaped capture. ---
-        const capturedPhases = new Set<string>()
+        // --- All six phases of the default cold path emitted ≥1 span. ---
         for (const phase of EXPECTED_PHASES) {
-          const spans = yield* cap.inspect({
-            signal: 'traces',
-            name: `megarepo/store/gc/${phase}`,
-          })
-          if (spans.length > 0) capturedPhases.add(phase)
+          trace.expectSome({ name: `megarepo/store/gc/${phase}` })
         }
-        // All six phases of the default cold path must have emitted ≥1 span.
-        expect([...capturedPhases].sort()).toEqual([...EXPECTED_PHASES].sort())
 
-        // --- Assert a git/cmd span carries the scalar git.output.bytes attr. ---
-        const gitSpans = yield* cap.inspect({ signal: 'traces', name: 'git/cmd' })
-        expect(gitSpans.length).toBeGreaterThan(0)
-        expect(gitSpans.some((s) => 'git.output.bytes' in s.attrs)).toBe(true)
+        // --- A git/cmd span carries the scalar git.output.bytes attr. ---
+        trace.expectSome({ name: 'git/cmd', attrs: { 'git.output.bytes': attr.present() } })
 
-        // --- Assert the RSS gauge landed with value>0 and a repo_concurrency label. ---
-        const rss = yield* cap.inspect({
-          signal: 'metrics',
+        // --- The RSS gauge landed with value>0 and a repo_concurrency label. ---
+        // `expectSome` (not `expectOne`): the sampler may emit several data points
+        // across collection intervals — the contract is ≥1 positive-valued,
+        // labeled point, which the selector enforces non-vacuously.
+        metrics.expectSome({
           name: 'megarepo_store_gc_rss_bytes',
+          service: SERVICE,
+          type: 'gauge',
+          value: metricValue.predicate('rss > 0', (rss) => rss > 0),
+          attrs: { repo_concurrency: telemetryAttr.present() },
         })
-        expect(rss.length).toBeGreaterThan(0)
-        const withValue = rss.find((row) => (row.value ?? 0) > 0)
-        expect(withValue).toBeDefined()
-        expect(withValue!.attrs['repo_concurrency']).toBeDefined()
-      }).pipe(Effect.provide(Otelite.Default), Effect.provide(NodeContext.layer)),
+      }).pipe(Effect.provide(OteliteTestHarness.Default), Effect.provide(NodeContext.layer)),
     60_000,
   )
 })

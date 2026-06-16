@@ -2,13 +2,14 @@
 
 import { Command } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Cause, Effect, type Exit, Layer, Option } from 'effect'
+import { Cause, Effect, type Exit, Layer, Option, Schema } from 'effect'
 
 import { editorExitCode } from '@overeng/notion-md'
+import { ServiceIdentity } from '@overeng/otel-contract'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
-import { makeOtelCliLayer } from '@overeng/utils/node/otel'
+import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
 export { runNotionCliMain }
 export { makeNotionRootCommand }
@@ -21,6 +22,12 @@ const buildStamp = '__CLI_BUILD_STAMP__'
 const version = resolveCliVersion({
   baseVersion: '0.1.0',
   buildStamp,
+})
+
+const identity = Schema.decodeSync(ServiceIdentity)({
+  name: 'notion-cli',
+  namespace: 'overeng',
+  version,
 })
 
 const isRootVersionArgv = (argv: ReadonlyArray<string>): boolean => {
@@ -87,10 +94,7 @@ const makeNotionRootCommand = <
  * back to 1 for any unmapped failure and 0 on success, matching the previous
  * default teardown (Ctrl+C now maps to 130, consistent with `notion-md`).
  */
-const editorTeardown = (
-  exit: Exit.Exit<unknown, unknown>,
-  onExit: (code: number) => void,
-): void => {
+const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
   onExit(editorExitCode(exit))
 }
 
@@ -122,35 +126,36 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
     version,
   })
 
-  const effect = cli(argv).pipe(
-    Effect.tapErrorCause((cause) => {
-      if (Cause.isInterruptedOnly(cause) === true) {
-        return Effect.void
-      }
+  Effect.gen(function* () {
+    const endpoint = yield* otelEndpointFromConfig()
 
-      return Option.match(Cause.failureOption(cause), {
-        onNone: () => Effect.logError(cause),
-        onSome: (error) => {
-          const unknownError: unknown = error
-          return hasTag(unknownError) === true && unknownError._tag === 'SchemaDriftDetectedError'
-            ? Effect.void
-            : Effect.logError(cause)
-        },
-      })
-    }),
-    CliVersion.enrichErrors,
-    Effect.provideService(CliVersion, { name: 'notion', version }),
-    Effect.provide(
-      Layer.mergeAll(
-        NodeContext.layer,
-        CurrentWorkingDirectory.live,
-        makeOtelCliLayer({ serviceName: 'notion-cli' }),
+    yield* cli(argv).pipe(
+      Effect.tapErrorCause((cause) => {
+        if (Cause.isInterruptedOnly(cause) === true) {
+          return Effect.void
+        }
+
+        return Option.match(Cause.failureOption(cause), {
+          onNone: () => Effect.logError(cause),
+          onSome: (error) => {
+            const unknownError: unknown = error
+            return hasTag(unknownError) === true && unknownError._tag === 'SchemaDriftDetectedError'
+              ? Effect.void
+              : Effect.logError(cause)
+          },
+        })
+      }),
+      CliVersion.enrichErrors,
+      Effect.provideService(CliVersion, { name: 'notion', version }),
+      Effect.provide(
+        Layer.mergeAll(
+          NodeContext.layer,
+          CurrentWorkingDirectory.live,
+          withTelemetry({ identity, shape: 'cli', endpoint }),
+        ),
       ),
-    ),
-  )
-  NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown })(
-    effect as Effect.Effect<void, unknown, never>,
-  )
+    )
+  }).pipe(NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown }))
 }
 
 const hasTag = (u: unknown): u is { readonly _tag: string } =>
