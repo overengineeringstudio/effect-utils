@@ -3,9 +3,11 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { GenerateConfigApp } from './GenerateConfigOutput/mod.ts'
+import { getGenerateConfigApp } from './GenerateConfigOutput/mod.ts'
 import type { GenerateConfigAction, GenerateConfigState } from './GenerateConfigOutput/schema.ts'
 import { GenerateConfigView } from './GenerateConfigOutput/view.tsx'
+
+const GenerateConfigApp = getGenerateConfigApp()
 
 export default {
   title: 'NotionCLI/Generate Config Output',

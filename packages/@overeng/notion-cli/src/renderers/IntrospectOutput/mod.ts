@@ -6,7 +6,7 @@ export type {
 } from './schema.ts'
 
 // App
-export { IntrospectApp } from './app.ts'
+export { getIntrospectApp } from './app.ts'
 
 // Views
 export { IntrospectView, type IntrospectViewProps } from './view.tsx'
