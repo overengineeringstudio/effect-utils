@@ -114,11 +114,11 @@ supported and accepted feature (one workspace, many tracked sources sharing one
 
 ## Considered Options
 
-| Option                                                          | Result   | Reason                                                                                                                                                  |
-| --------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Document each tracked-but-open follow-up as a ratification gate | Selected | Honors decision 0007 ("document the gap, don't silently drop"); keeps the matrix green and honest while making the residue reviewable in one durable place. |
+| Option                                                          | Result   | Reason                                                                                                                                                                          |
+| --------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Document each tracked-but-open follow-up as a ratification gate | Selected | Honors decision 0007 ("document the gap, don't silently drop"); keeps the matrix green and honest while making the residue reviewable in one durable place.                     |
 | Force-close each follow-up inside PR #775                       | Rejected | Several need a property/media boundary change (F3, F4) or real outbox/settlement wiring (F5) that is out of PR #775's stated scope; rushing them risks unsafe partial surfaces. |
-| Leave them only in scenario comments / transcript              | Rejected | Not durable for ratification; violates decision 0007's "don't silently drop".                                                                            |
+| Leave them only in scenario comments / transcript               | Rejected | Not durable for ratification; violates decision 0007's "don't silently drop".                                                                                                   |
 
 ## Consequences
 
