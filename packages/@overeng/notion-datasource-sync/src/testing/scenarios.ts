@@ -775,6 +775,23 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L5',
     file: 'src/e2e/otel.e2e.test.ts',
   }),
+  // EFF-R01 / R81 (#775, decision 0017 Half 1): the OBSERVABLE call-count budget.
+  // Counts `notion.api.request` spans (one per LOGICAL request) under the one-shot
+  // sync span and asserts a falsifiable CEILING (<= 5) plus the exact read-endpoint
+  // multiset, so a regression that adds a per-entity read is caught test-side. A
+  // no-change re-sync is asserted to issue zero write operations. This is the
+  // call-count half only; the rate-limit half (throttle-wait, retry signals) lives
+  // in `@overeng/notion-effect-client` and is out of scope here.
+  scenario({
+    scenarioId: 'NDS-L3-api-call-count-budget',
+    title:
+      'a clean one-shot sync issues at most 5 logical Notion API requests with an exact read-endpoint multiset, and a no-change re-sync issues no writes (EFF-R01 observable call-count budget)',
+    requirementIds: ['R81'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/otel.e2e.test.ts',
+  }),
   scenario({
     scenarioId: 'NDS-L2-hidden-control-plane-isolation',
     title:
@@ -1145,18 +1162,17 @@ export const traceabilityResiduals = [
     reason:
       'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
   },
-  // R81/R82 (#775): the two newest ratified requirements, enumerated so future
-  // implementation scenarios can cite them without tripping the legality gate.
-  // R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline);
+  // R82 (#775): the newest ratified requirement, enumerated so future
+  // implementation scenarios can cite it without tripping the legality gate.
   // R82 → REPLICA-R12 (archive/restore round-trip reprojection retention). No
-  // scenario cites them yet — coverage lands during implementation — so they are
+  // scenario cites it yet — coverage lands during implementation — so it is
   // residual'd here to keep the drift gate honest, mirroring R75/R76/R77.
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R81',
-    reason:
-      'EFF-R01 API resourcefulness & rate-limit discipline (#775); enumerated ahead of its implementation scenarios (observable-budget call-count ceilings + rate-limit signals, decision 0017).',
-  },
+  //
+  // R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline) is
+  // NO LONGER a residual: the call-count half of decision 0017 is implemented and
+  // R81 is now mapped by the concrete `NDS-L3-api-call-count-budget` scenario
+  // (observable call-count ceilings in `src/e2e/otel.e2e.test.ts`). The rate-limit
+  // half (Half 2, `@overeng/notion-effect-client`) is a separate change.
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R82',
