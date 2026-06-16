@@ -48,6 +48,8 @@ export class NmdGatewayError extends Schema.TaggedError<NmdGatewayError>()('NmdG
   operation: Schema.String,
   page_id: Schema.optional(Schema.String),
   block_id: Schema.optional(Schema.String),
+  /** Log-safe fingerprint of the active Notion integration token (see `notionTokenFingerprint`). */
+  token_fingerprint: Schema.optional(Schema.String),
   message: Schema.String,
   cause: Schema.optional(Schema.Defect),
 }) {}
