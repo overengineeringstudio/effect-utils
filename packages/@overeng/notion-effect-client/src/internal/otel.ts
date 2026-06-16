@@ -44,6 +44,12 @@ const HttpRateLimitAttrs = OtelAttrs.defineSync(
   }),
 )
 
+const HttpRateLimitWaitAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    rateLimitWaitMs: Schema.Number.pipe(OtelAttr.key({ key: 'notion.rate_limit.wait_ms' })),
+  }),
+)
+
 const DataSourceQueryAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     dataSourceId: Schema.String.pipe(OtelAttr.key({ key: 'notion.data_source_id' })),
@@ -138,6 +144,15 @@ export const annotateNotionHttpRateLimitSpan = (input: {
     rateLimitResetAfterMs: isSome ? rateLimit.value.resetAfterSeconds * 1000 : undefined,
   })
 }
+
+/**
+ * Stamp the throttle-token wait (ms) on the CURRENT span — the surrounding
+ * `NotionHttp.<METHOD>` span (decision 0017 Half 2). Called from the throttle
+ * seam where no route is in scope, so it carries only the wait duration; the
+ * method/operation slice already rides the request span's other attributes.
+ */
+export const annotateNotionRateLimitWaitSpan = (rateLimitWaitMs: number): Effect.Effect<void> =>
+  annotateAttrs(HttpRateLimitWaitAttrs, { rateLimitWaitMs })
 
 export const withNotionDatabasesQuerySpan = (dataSourceId: string) =>
   withOperation(NotionDatabasesQuerySpan, { dataSourceId })
