@@ -533,7 +533,9 @@ const StoreGcView = ({
         <Text bold>store gc</Text>
         <Text dim> path</Text>
         <Text>: {basePath}</Text>
-        {dryRun && <Text dim> mode: dry run</Text>}
+        {dryRun && (
+          <Text dim> mode: dry run (remotes not refreshed; preview uses last-known refs)</Text>
+        )}
         {(done === false || interrupted === true) && (
           <>
             {statusMessage !== undefined && <Text dim> status: {statusMessage}</Text>}

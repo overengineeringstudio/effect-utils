@@ -117,12 +117,15 @@ const shouldSkipStoreRootEntry = (entry: string): boolean =>
   // member. `tmp` is a conventional scratch dir.
   entry.startsWith('.') === true || entry.startsWith('_') === true || entry === 'tmp'
 
-// Backstop depth for the `listRepos` layout walk. The documented store layout is
-// `<host>/<owner>/<repo>/.bare` (repos at depth ~2–3 from the store root); this
-// generous bound lets nested namespaces (e.g. GitLab subgroups) resolve while
-// guaranteeing the walk can never descend into a checked-out working tree
-// (node_modules, build output) and exhaust memory. Hitting it is logged, never
-// silent.
+// Backstop depth for the store filesystem walks. For the `listRepos` layout walk
+// the documented layout is `<host>/<owner>/<repo>/.bare` (repos at depth ~2–3
+// from the store root); this generous bound lets nested namespaces (e.g. GitLab
+// subgroups) resolve while guaranteeing the walk can never descend into a
+// checked-out working tree (node_modules, build output) and exhaust memory.
+// `collectNestedWorktrees` reuses it as a ref-NAME-nesting bound under
+// `refs/heads/<a>/<b>/…`; real branch names nest only a few segments, so the same
+// value (8) comfortably clears any legitimate worktree while still capping a
+// pathological worktree-less subtree. Hitting it is logged, never silent.
 const STORE_REPO_WALK_MAX_DEPTH = 8
 
 const make = ({
@@ -167,10 +170,12 @@ const make = ({
     refTypePath,
     currentPath,
     refType,
+    depth,
   }: {
     refTypePath: AbsoluteDirPath
     currentPath: AbsoluteDirPath
     refType: RefType
+    depth: number
   }): Effect.Effect<
     Array<{
       ref: string
@@ -186,6 +191,21 @@ const make = ({
       if (isWorktree === true) {
         const ref = currentPath.slice(refTypePath.length).replace(/\/$/, '')
         return [{ ref, refType, path: currentPath, broken: false }]
+      }
+
+      // Backstop: a worktree-less subtree (a stray dir, or a broken worktree whose
+      // working tree — `node_modules`, build output — survived a dropped `.git`)
+      // would otherwise recurse to the filesystem's depth. The `.git` check above
+      // runs first, so a real worktree sitting exactly at the cap is still found;
+      // we only refuse to descend PAST it. `depth` is measured in ref-name
+      // segments under `refTypePath` (`refs/heads/<a>/<b>/…`), and real branch
+      // names nest only a handful of levels, so reusing the layout walk's bound (8)
+      // can never truncate a legitimate worktree.
+      if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
+        yield* Effect.logWarning(
+          'store listWorktrees: nested-worktree walk depth limit reached; not descending',
+        ).pipe(Effect.annotateLogs({ currentPath, depth }))
+        return []
       }
 
       const entries = yield* fs.readDirectory(currentPath)
@@ -213,6 +233,7 @@ const make = ({
             refTypePath,
             currentPath: entryPath,
             refType,
+            depth: depth + 1,
           })),
         )
       }
@@ -387,6 +408,7 @@ const make = ({
               refTypePath,
               currentPath: refTypePath,
               refType,
+              depth: 0,
             })),
           )
         }
