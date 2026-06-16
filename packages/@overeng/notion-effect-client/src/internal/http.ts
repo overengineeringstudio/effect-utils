@@ -17,6 +17,7 @@ import {
 
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError, NotionErrorResponse } from '../error.ts'
+import { NotionRateLimitMetricBridges } from './metrics.ts'
 import { annotateNotionHttpRateLimitSpan, withNotionHttpSpan } from './otel.ts'
 import { NotionThrottle } from './throttle.ts'
 
@@ -435,6 +436,18 @@ export const executeRequest = <A, I, R>({
       Effect.gen(function* () {
         const attempt = (yield* Schedule.CurrentIterationMetadata).recurrence
         const request = yield* buildRequest({ method, path, body })
+        /* HTTP-attempt PRESSURE counter (decision 0017 Half 2): incremented once
+         * per INITIATED HTTP attempt — after the request is built, BEFORE the
+         * call — so every wire attempt counts, including the initial try, each
+         * retry, AND transport-level failures (which map to a retryable
+         * status:0 / service_unavailable and would be invisible if counted only
+         * on a received response). Body-encoding failures never reach here, so
+         * they are correctly excluded. This diverges from the logical-request
+         * budget ceiling exactly under retry/connection-drop pressure. */
+        yield* NotionRateLimitMetricBridges.httpAttemptsTotal.trustedIncrement({
+          method,
+          operation: route.operation,
+        })
         const response = yield* client
           .execute(request)
           .pipe(Effect.mapError((error) => mapHttpClientError({ error, path, method })))
@@ -524,28 +537,50 @@ export const executeRequest = <A, I, R>({
         const delayMs = retryDelayMs({ error, attempt })
         const rateLimit = retryRateLimit(error)
 
+        /* Retry-After PRESSURE counters (decision 0017 Half 2): count + sum the
+         * server-advised backpressure when this retry honors a `Retry-After`
+         * header. `retryAfterMillis` is Some only when the server sent one. */
+        const retryAfterMs = Option.getOrUndefined(error.retryAfterMillis)
+        const emitRetryAfter =
+          retryAfterMs === undefined
+            ? Effect.void
+            : Effect.zipRight(
+                NotionRateLimitMetricBridges.retryAfterTotal.trustedIncrement({
+                  method,
+                  operation: route.operation,
+                }),
+                NotionRateLimitMetricBridges.retryAfterMsTotal.trustedIncrementBy(
+                  { method, operation: route.operation },
+                  retryAfterMs,
+                ),
+              )
+
         return Effect.as(
-          Effect.zipRight(
-            annotateRateLimitSpan({
-              method,
-              route,
-              status: error.status,
-              attempt,
-              attempts: attempt + 1,
-              retryDelayMs: delayMs,
-              rateLimit,
-            }),
-            reportHttpTelemetry({
-              _tag: 'retry',
-              method,
-              route: route.route,
-              operation: route.operation,
-              status: error.status,
-              attempt,
-              nextAttempt: attempt + 1,
-              delayMs,
-              rateLimit,
-            }),
+          Effect.all(
+            [
+              emitRetryAfter,
+              annotateRateLimitSpan({
+                method,
+                route,
+                status: error.status,
+                attempt,
+                attempts: attempt + 1,
+                retryDelayMs: delayMs,
+                rateLimit,
+              }),
+              reportHttpTelemetry({
+                _tag: 'retry',
+                method,
+                route: route.route,
+                operation: route.operation,
+                status: error.status,
+                attempt,
+                nextAttempt: attempt + 1,
+                delayMs,
+                rateLimit,
+              }),
+            ],
+            { discard: true },
           ),
           [
             attempt + 1,
