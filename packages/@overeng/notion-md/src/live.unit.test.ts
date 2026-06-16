@@ -140,18 +140,56 @@ describe('remoteMarkdownFromBodyObservation', () => {
     })
   })
 
-  it('fails closed when block-tree-rendered Markdown is unavailable', () => {
+  it('never runs consecutive headings together on pull', () => {
+    // The endpoint Markdown drops inter-block blank lines (headings run
+    // together); the canonical rendered body must keep them blank-separated.
+    const entries = [
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        type: 'heading_1',
+        hasChildren: false,
+        inTrash: false,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000003',
+        type: 'heading_2',
+        hasChildren: false,
+        inTrash: false,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000004',
+        type: 'heading_3',
+        hasChildren: false,
+        inTrash: false,
+      },
+    ] as const
+    const renderedMarkdown = '# H1\n\n## H2\n\n### H3'
+    const observation: NotionBodyObservation = {
+      pageId: '00000000-0000-4000-8000-000000000001',
+      // Endpoint shape with headings run together — must NOT leak through.
+      markdown: { markdown: '# H1\n## H2\n### H3\n', truncated: false, unknownBlockIds: [] },
+      inventory: { entries, renderedMarkdown },
+      completeness: { _tag: 'complete' },
+      ...evidenceFor({
+        pageId: '00000000-0000-4000-8000-000000000001',
+        endpointMarkdown: '# H1\n## H2\n### H3\n',
+        renderedMarkdown,
+        entries,
+        completeness: 'complete',
+      }),
+    }
+
+    expect(remoteMarkdownFromBodyObservation(observation)).toMatchObject({
+      markdown: '# H1\n\n## H2\n\n### H3\n',
+    })
+  })
+
+  it('throws an invariant defect when block-tree-rendered Markdown is unavailable', () => {
     const entries = [] as const
     const observation: NotionBodyObservation = {
       pageId: '00000000-0000-4000-8000-000000000001',
-      markdown: {
-        markdown: 'Endpoint only',
-        truncated: false,
-        unknownBlockIds: [],
-      },
-      inventory: {
-        entries,
-      },
+      markdown: { markdown: 'Endpoint only', truncated: false, unknownBlockIds: [] },
+      inventory: { entries },
       completeness: { _tag: 'complete' },
       ...evidenceFor({
         pageId: '00000000-0000-4000-8000-000000000001',
@@ -162,16 +200,8 @@ describe('remoteMarkdownFromBodyObservation', () => {
       }),
     }
 
-    expect(remoteMarkdownFromBodyObservation(observation)).toMatchObject({
-      markdown: 'Endpoint only\n',
-      endpoint_markdown: 'Endpoint only\n',
-      truncated: false,
-      unknown_block_ids: [],
-      body_evidence_fingerprint: observation.evidenceFingerprint,
-      completeness: {
-        _tag: 'lossy',
-        reasons: ['rendered_markdown_unavailable'],
-      },
-    })
+    expect(() => remoteMarkdownFromBodyObservation(observation)).toThrow(
+      /has no rendered Markdown/u,
+    )
   })
 })

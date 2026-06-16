@@ -129,7 +129,20 @@ const unknownPlaceholders = (markdown: string): readonly string[] =>
 export const remoteMarkdownFromBodyObservation = (
   body: NotionBodyObservation,
 ): RemoteMarkdownSnapshot => {
+  /*
+   * `observeFromSnapshots` always renders the block tree into `renderedMarkdown`
+   * (`body-observation.ts`), so it is total on the pull path. A missing value
+   * is an invariant violation, not a recoverable state — fail as a defect rather
+   * than silently falling back to the endpoint Markdown (which runs headings
+   * together and drops inter-block blanks, the latent symptom-2 trap).
+   */
   const renderedMarkdown = body.inventory.renderedMarkdown
+  if (renderedMarkdown === undefined) {
+    throw new Error(
+      `Body observation for page ${body.pageId} has no rendered Markdown; ` +
+        'observeFromSnapshots must always render the block tree.',
+    )
+  }
   return {
     /*
      * Pull receive: canonicalize the rendered body so the body a consumer reads
@@ -139,19 +152,13 @@ export const remoteMarkdownFromBodyObservation = (
      * while push canonicalized, the two-oracle divergence behind the list
      * line-break bug.
      */
-    markdown: canonicalizeBlockMarkdown(renderedMarkdown ?? body.markdown.markdown),
+    markdown: canonicalizeBlockMarkdown(renderedMarkdown),
     endpoint_markdown: normalizeMarkdownLineEndings(body.markdown.markdown),
     truncated: body.markdown.truncated,
     unknown_block_ids: body.markdown.unknownBlockIds,
     body_evidence: body.evidence,
     body_evidence_fingerprint: body.evidenceFingerprint,
-    completeness:
-      renderedMarkdown === undefined
-        ? {
-            _tag: 'lossy',
-            reasons: ['rendered_markdown_unavailable'],
-          }
-        : body.completeness,
+    completeness: body.completeness,
   }
 }
 
