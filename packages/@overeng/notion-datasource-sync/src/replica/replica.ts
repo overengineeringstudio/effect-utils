@@ -348,7 +348,16 @@ const slugForView = (value: string): string => {
 export const defaultReplicaPath = (workspaceRoot: AbsolutePath): string =>
   join(workspaceRoot, replicaFileName)
 
-const createReplicaSchema = (db: DatabaseSync): void => {
+/**
+ * Install the replica schema and its CDC triggers. Assumes the connection is
+ * already inside a write transaction and that the non-transactional PRAGMAs
+ * (`foreign_keys`, `journal_mode`) have been applied — see {@link createReplicaSchema},
+ * which is the entry point that establishes both. Keeping the DDL in one
+ * transaction makes the schema and triggers all-or-nothing: a failure mid-install
+ * leaves no partial schema, and the triggers can never exist without the tables
+ * they reference (or vice versa).
+ */
+export const createReplicaSchemaInTransaction = (db: DatabaseSync): void => {
   const localChangesSchema = db
     .prepare(
       `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '_nds_replica_local_changes'`,
@@ -411,8 +420,6 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP VIEW IF EXISTS ${quoteIdentifier(schemaPropertiesViewName)};
     DROP VIEW IF EXISTS ${quoteIdentifier(schemaViewName)};
 
-    PRAGMA foreign_keys = ON;
-    PRAGMA journal_mode = WAL;
     PRAGMA user_version = ${replicaSchemaVersion.toString()};
 
     CREATE TABLE IF NOT EXISTS _nds_replica_data_sources (
@@ -1997,6 +2004,33 @@ const createReplicaSchema = (db: DatabaseSync): void => {
   `)
 }
 
+/**
+ * Install (or idempotently upgrade) the replica schema and its CDC triggers.
+ *
+ * Applies the connection-level PRAGMAs that cannot run inside a transaction
+ * (`foreign_keys`, `journal_mode`), then wraps the entire schema + trigger
+ * installation in a single `BEGIN IMMEDIATE`/`COMMIT` so it is all-or-nothing:
+ * a failure mid-install rolls back to the pre-existing state, closing the
+ * window where triggers could exist without the tables they reference.
+ *
+ * Every statement is `IF NOT EXISTS` / `OR IGNORE`, so re-running on an existing
+ * replica is safe and idempotent. Callers that are already inside a write
+ * transaction (and have set the PRAGMAs) must call
+ * {@link createReplicaSchemaInTransaction} directly instead.
+ */
+export const createReplicaSchema = (db: DatabaseSync): void => {
+  db.exec('PRAGMA foreign_keys = ON;')
+  db.exec('PRAGMA journal_mode = WAL;')
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    createReplicaSchemaInTransaction(db)
+    db.exec('COMMIT')
+  } catch (cause) {
+    db.exec('ROLLBACK')
+    throw cause
+  }
+}
+
 const clearProjectedReplicaTables = (db: DatabaseSync): void => {
   db.exec(`
     DROP TRIGGER IF EXISTS _nds_replica_cells_direct_value_update_intent;
@@ -3204,7 +3238,10 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         )
 
       rebuildGeneratedViews(replicaDb)
-      createReplicaSchema(replicaDb)
+      // Already inside the projection's BEGIN IMMEDIATE transaction (and the
+      // initial createReplicaSchema call above set the connection PRAGMAs), so
+      // re-apply the schema with the in-transaction variant to avoid a nested BEGIN.
+      createReplicaSchemaInTransaction(replicaDb)
       replicaDb.exec('COMMIT')
     } catch (error) {
       replicaDb.exec('ROLLBACK')
