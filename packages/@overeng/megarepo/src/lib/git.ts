@@ -496,6 +496,31 @@ export const listWorktrees = (repoPath: string) =>
     return worktrees
   })
 
+/**
+ * List ref short-names under a `refs/<namespace>/` prefix in a bare repo (e.g.
+ * `namespace: 'heads'` yields branch names like `main`, `schickling/foo`).
+ *
+ * Names are folded one line at a time (bounded memory), so this is safe on repos
+ * with very large ref sets. The bare repo's ref set is the authoritative source
+ * of truth for which store-layout directories are worktree roots vs intermediate
+ * namespace directories.
+ */
+export const listRefShortNames = (args: { bareRepoPath: string; namespace: 'heads' | 'tags' }) =>
+  Effect.gen(function* () {
+    const prefix = `refs/${args.namespace}/`
+    const names: Array<string> = []
+    yield* streamGitCommandLines({
+      args: ['for-each-ref', '--format=%(refname)', prefix],
+      cwd: args.bareRepoPath,
+      sink: Sink.forEach((line: string) =>
+        Effect.sync(() => {
+          if (line.startsWith(prefix) === true) names.push(line.slice(prefix.length))
+        }),
+      ),
+    })
+    return names
+  })
+
 // =============================================================================
 // Bare Repo Operations
 // =============================================================================

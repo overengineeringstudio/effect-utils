@@ -442,6 +442,104 @@ describe('mr store gc', () => {
   })
 })
 
+describe('store discovery is bounded to the layout', () => {
+  // Regression: the store-layer fs walks must never descend into a checked-out
+  // working tree or a non-member directory. Before these guards a single broken
+  // worktree (no `.git`) or a stray dir under `~/.megarepo` (e.g. `_iso/` holding
+  // isolated experiment stores) made the walk enumerate the entire subtree,
+  // exhausting memory on the real store.
+
+  it.effect(
+    'listRepos returns only layout members, excluding _-prefixed dirs, nested stores, and worktrees',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'real', branches: ['main'] },
+        ])
+        const mkdirp = (rel: string) =>
+          fs.makeDirectory(
+            EffectPath.ops.join(storePath, EffectPath.unsafe.relativeDir(`${rel}/`)),
+            { recursive: true },
+          )
+
+        // Legit member at depth 2 (a bare repo placed directly under a pseudo-host
+        // dir, like the real store's `other/contrib-bare`) — must be INCLUDED.
+        yield* mkdirp('other/contrib/.bare')
+        // `_`-prefixed scratch dir holding a NESTED store with a deep working tree:
+        // root-skipped, so its `.bare` is never discovered AND its subtree never walked.
+        yield* mkdirp('_iso/exp/github.com/x/y/.bare')
+        yield* mkdirp('_iso/exp/github.com/x/y/refs/heads/b/node_modules/a/b/c')
+        // A nested megarepo store (own `.state`/`.locks`): its repos are its members,
+        // not ours — must be EXCLUDED, not walked.
+        yield* mkdirp('evergreen/.state')
+        yield* mkdirp('evergreen/.locks')
+        yield* mkdirp('evergreen/github.com/x/z/.bare')
+        // A bare git worktree (`.git`) sitting in the store: never a namespace dir,
+        // its working tree must not be descended.
+        yield* mkdirp('stray/.git')
+        yield* mkdirp('stray/node_modules/deep/deeper')
+
+        const store = yield* Store.pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        const repos = (yield* store.listRepos()).map((r) => r.relativePath)
+
+        expect(repos).toContain('github.com/acme/real/')
+        expect(repos).toContain('other/contrib/')
+        expect(repos.some((p) => p.startsWith('_iso/'))).toBe(false)
+        expect(repos.some((p) => p.startsWith('evergreen/'))).toBe(false)
+        expect(repos.some((p) => p.startsWith('stray/'))).toBe(false)
+        expect(repos).toHaveLength(2)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'store gc --dry-run treats a broken worktree as one entry, not its whole working tree',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'r', branches: ['main', 'feature'] },
+        ])
+        const wt = worktreePaths['github.com/acme/r#feature']!
+        // Break the worktree (interrupted op): drop `.git`, leave a working tree.
+        yield* fs
+          .remove(EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('.git')), {
+            recursive: true,
+          })
+          .pipe(Effect.catchAll(() => Effect.void))
+        for (const sub of ['node_modules/a/b/c', 'src/x/y', 'dist/p/q']) {
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(wt, EffectPath.unsafe.relativeDir(`${sub}/`)),
+            { recursive: true },
+          )
+        }
+
+        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const { stdout } = yield* runMrCommand({
+          cwd,
+          command: ['store', 'gc', '--dry-run', '--output', 'json'],
+          env: { MEGAREPO_STORE: storePath },
+        })
+        const { results } = decodeStoreGcJsonOutput(stdout)
+
+        // Exactly one result for the broken worktree root, and NONE for paths
+        // inside its working tree (pre-fix the walk emitted one per leaf dir).
+        const featureResults = results.filter(
+          (r) => r.ref === 'feature' || r.ref.startsWith('feature/'),
+        )
+        expect(featureResults).toHaveLength(1)
+        expect(featureResults[0]?.ref).toBe('feature')
+        expect(results.some((r) => r.ref.includes('node_modules'))).toBe(false)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+})
+
 describe('mr store ls', () => {
   it.effect(
     'should list repos in the store',

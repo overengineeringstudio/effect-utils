@@ -213,16 +213,37 @@ const classifyGcProtection = ({
     })
   })
 
+/**
+ * True if any ref in `knownRefs` is nested under `prefix` — i.e. `prefix` is an
+ * intermediate namespace directory (e.g. `schickling` for branch `schickling/foo`)
+ * that must be descended into, not treated as a worktree root.
+ */
+const isNamespacePrefix = ({
+  knownRefs,
+  prefix,
+}: {
+  knownRefs: ReadonlySet<string>
+  prefix: string
+}): boolean => {
+  const needle = `${prefix}/`
+  for (const ref of knownRefs) {
+    if (ref.startsWith(needle) === true) return true
+  }
+  return false
+}
+
 const collectStoreWorktrees = ({
   fs,
   refTypePath,
   currentPath,
   refType,
+  knownRefs,
 }: {
   fs: FileSystem.FileSystem
   refTypePath: AbsoluteDirPath
   currentPath: AbsoluteDirPath
   refType: 'heads' | 'tags' | 'commits'
+  knownRefs: ReadonlySet<string>
 }): Effect.Effect<Array<CollectedWorktree>, PlatformError.PlatformError> =>
   Effect.gen(function* () {
     const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
@@ -236,6 +257,34 @@ const collectStoreWorktrees = ({
           broken: false,
         },
       ]
+    }
+
+    // Source-of-truth descend guard. WITHOUT this, a broken worktree root (one
+    // whose `.git` is missing after an interrupted `git worktree add` / prune)
+    // makes the walk recurse into its ENTIRE checked-out working tree — every
+    // `node_modules`/`src` leaf becomes a bogus `broken` worktree, exhausting
+    // memory on a real store (OOM). The bare repo's ref set (`knownRefs`) tells
+    // us which directories are worktree roots:
+    //  - `rel` IS a known ref           → worktree root, `.git` missing → ONE
+    //    broken entry; do NOT descend into its working tree.
+    //  - `rel` is a strict prefix of a  → intermediate namespace dir (branch
+    //    known ref                        names contain `/`) → recurse.
+    //  - otherwise                      → orphan dir not on any ref path (deleted
+    //    branch leftover / junk)        → ONE broken entry; do NOT descend.
+    // The walk is thereby bounded to O(refs), never the checked-out file tree.
+    const rel = currentPath.slice(refTypePath.length).replace(/\/$/, '')
+    if (rel !== '') {
+      const isKnownRoot = knownRefs.has(rel)
+      if (isKnownRoot === true || isNamespacePrefix({ knownRefs, prefix: rel }) === false) {
+        return [
+          {
+            ref: rel,
+            refType,
+            path: currentPath,
+            broken: true,
+          },
+        ]
+      }
     }
 
     const entries = yield* fs.readDirectory(currentPath)
@@ -254,20 +303,9 @@ const collectStoreWorktrees = ({
           refTypePath,
           currentPath: entryPath,
           refType,
+          knownRefs,
         })),
       )
-    }
-
-    /** If no worktrees found and this isn't the refType root, it's a broken worktree */
-    if (result.length === 0 && currentPath !== refTypePath) {
-      return [
-        {
-          ref: currentPath.slice(refTypePath.length).replace(/\/$/, ''),
-          refType,
-          path: currentPath,
-          broken: true,
-        },
-      ]
     }
 
     return result
@@ -292,6 +330,15 @@ const collectRepoStoreWorktrees = ({
     const realRefsPrefix = `${realRepoPrefix}/refs/`
     const result: Array<CollectedWorktree> = []
     const seenPaths = new Set<string>()
+    // Authoritative worktree-root names per ref type (the bare's ref set ∪ the
+    // registered worktree list). Used by `collectStoreWorktrees` as the descend
+    // guard so the layout walk never recurses into a broken worktree's working
+    // tree. Seeded from the worktree list below, then unioned with `for-each-ref`.
+    const knownRefsByType: Record<'heads' | 'tags' | 'commits', Set<string>> = {
+      heads: new Set(),
+      tags: new Set(),
+      commits: new Set(),
+    }
 
     // Git's worktree registry can be stale or incomplete after interrupted
     // operations. Use it as a fast hint, then merge in the path layout because
@@ -334,6 +381,7 @@ const collectRepoStoreWorktrees = ({
 
         seenPaths.add(normalizedPath)
         seenPaths.add(`${repoPrefix}/refs/${relativePath}`)
+        knownRefsByType[refType].add(ref)
         result.push({
           ref,
           refType,
@@ -341,6 +389,17 @@ const collectRepoStoreWorktrees = ({
           broken: false,
         })
       }
+    }
+
+    // Union in the bare's ref set — the source of truth for worktree roots, and
+    // the only signal for a broken worktree absent from the registry above.
+    // Cheap (one streamed `for-each-ref` per namespace); failure degrades to the
+    // worktree-list names already collected.
+    for (const namespace of ['heads', 'tags'] as const) {
+      const refNames = yield* Git.listRefShortNames({ bareRepoPath, namespace }).pipe(
+        Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<string>)),
+      )
+      for (const refName of refNames) knownRefsByType[namespace].add(refName)
     }
 
     for (const refType of STORE_REF_TYPES) {
@@ -358,6 +417,7 @@ const collectRepoStoreWorktrees = ({
         refTypePath,
         currentPath: refTypePath,
         refType,
+        knownRefs: knownRefsByType[refType],
       })
 
       for (const worktree of layoutWorktrees) {
@@ -859,32 +919,14 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
           const refsExists = yield* fs.exists(refsDir)
           if (refsExists === false) return []
 
-          const refTypes = yield* fs.readDirectory(refsDir)
-          const validRefTypes = refTypes.filter(
-            (d): d is 'heads' | 'tags' | 'commits' =>
-              d === 'heads' || d === 'tags' || d === 'commits',
-          )
-
-          const allWorktrees: Array<CollectedWorktree> = []
-
-          for (const refTypeDir of validRefTypes) {
-            const refTypePath = EffectPath.ops.join(
-              refsDir,
-              EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
-            )
-            const refTypeStat = yield* fs
-              .stat(refTypePath)
-              .pipe(Effect.catchAll(() => Effect.succeed(null)))
-            if (refTypeStat?.type !== 'Directory') continue
-
-            const worktrees = yield* collectStoreWorktrees({
-              fs,
-              refTypePath,
-              currentPath: refTypePath,
-              refType: refTypeDir,
-            })
-            allWorktrees.push(...worktrees)
-          }
+          // Reuse the bounded, source-of-truth-guarded collector (same path gc
+          // uses) so a broken worktree never makes the walk enumerate its entire
+          // checked-out working tree (the store-status OOM, same root cause).
+          const allWorktrees = yield* collectRepoStoreWorktrees({
+            fs,
+            repoPath: repo.fullPath,
+            bareRepoPath,
+          })
 
           // Analyze all worktrees for this repo in parallel
           return yield* Effect.all(
