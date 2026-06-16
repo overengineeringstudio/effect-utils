@@ -10,6 +10,7 @@ export const ConflictKind = Schema.Literal(
   'property-vs-body',
   'body-body-delegated',
   'delete-vs-edit',
+  'lifecycle',
   'schema-affects-property',
   'relation-unavailable',
   'path-collision',

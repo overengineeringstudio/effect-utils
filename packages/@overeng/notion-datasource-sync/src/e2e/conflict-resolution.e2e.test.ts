@@ -19,6 +19,7 @@ import {
   defaultQueryContract,
   decode,
   hash,
+  localDeleteIntent,
   makeFakeClock,
   makeFakeGatewayHarness,
   makeHarnessPorts,
@@ -556,6 +557,133 @@ describe('conflict resolution user command E2E', () => {
       })
       expect(storeFixture.store.replay(testIds.rootId)).toHaveLength(beforeEvents)
       expect(storeFixture.store.readOutbox(testIds.rootId)).toHaveLength(beforeOutbox)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
+  // Decision 0018 end-to-end: a SETTLED local archive followed by a remote
+  // observation showing the page ACTIVE raises a `lifecycle` conflict, and
+  // keep-remote resolves it (reconverging `_nds_row.in_trash` to the remote
+  // target). Exercises the full raise -> resolve loop through the real
+  // pull/push/executor/store path.
+  it('raises a lifecycle conflict on remote restore after a settled archive and resolves it keep-remote', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    // One gateway across the archive+settle (its page becomes trashed); a fresh
+    // gateway models the independent remote restore (page active again).
+    const archiveGateway = makeFakeGatewayHarness({
+      pages: [pageSnapshot({ inTrash: false })],
+      propertyPages: [propertyPage()],
+    })
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: clock.now,
+      })
+      // 1. Observe the active page so a row projection exists for the trash base.
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: archiveGateway.gateway },
+      )
+
+      // 2. Push a local archive (trusted) and settle it → settled lifecycle L=1.
+      clock.advanceMillis(1)
+      await runWithPorts(
+        pushOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot,
+          localIntents: [
+            localDeleteIntent({
+              policy: 'trustedRemoteTrash',
+              explicitDestructiveIntent: true,
+            }),
+          ],
+          maxExecutorSteps: 1,
+          now: clock.now,
+        }),
+        { gateway: archiveGateway.gateway },
+      )
+      await runExecutor({ store: storeFixture.store, gateway: archiveGateway.gateway })
+      expect(archiveGateway.ledger.successfulTrashPages).toHaveLength(1)
+      expect(
+        storeFixture.store.readSettledLifecycleTarget({
+          rootId: testIds.rootId,
+          pageId: testIds.pageId,
+        }),
+      ).toBe(true)
+
+      // 3. Remote restore: a fresh gateway observes the page ACTIVE (R=0) while the
+      // settled local target is L=1 → a lifecycle conflict is raised.
+      const restoreGateway = makeFakeGatewayHarness({
+        pages: [pageSnapshot({ inTrash: false })],
+        propertyPages: [propertyPage()],
+      })
+      clock.advanceMillis(1)
+      await runWithPorts(
+        pullOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          dataSourceId: testIds.dataSourceId,
+          workspaceRoot,
+          queryContract: defaultQueryContract(),
+          schemaProperties,
+          now: clock.now,
+        }),
+        { gateway: restoreGateway.gateway },
+      )
+
+      const conflicts = storeFixture.store.readConflicts(testIds.rootId)
+      expect(conflicts).toMatchObject([
+        { kind: 'lifecycle', state: 'open', pageId: testIds.pageId, remoteInTrash: false },
+      ])
+      // The projection froze in_trash at the settled local target (1), not the
+      // remote-observed 0.
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toMatchObject([
+        { pageId: testIds.pageId, inTrash: true },
+      ])
+
+      // 4. keep-remote resolves it: conflict resolved, in_trash reconverges to 0.
+      clock.advanceMillis(1)
+      const resolved = resolveConflictCommand({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        conflictId: decode({ schema: SyncEventId, value: conflicts[0]!.conflictId }),
+        choice: { _tag: 'keep-remote' },
+        now: clock.now,
+      })
+      expect(resolved.applied.events).toMatchObject([
+        { _tag: 'ConflictResolved', resolutionChoice: 'keep-remote' },
+      ])
+      expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
+        { state: 'resolved' },
+      ])
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toMatchObject([
+        { pageId: testIds.pageId, inTrash: false },
+      ])
+
+      // Replay safety: rebuilding projections preserves the resolved state.
+      storeFixture.store.clearProjectionTables()
+      storeFixture.store.rebuildProjections(testIds.rootId)
+      expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
+        { state: 'resolved' },
+      ])
+      expect(storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId).rows).toMatchObject([
+        { pageId: testIds.pageId, inTrash: false },
+      ])
     } finally {
       storeFixture.cleanup()
     }

@@ -551,6 +551,8 @@ export const makeConflictRaisedEvent = (input: {
     SyncEventType,
     { readonly _tag: 'ConflictRaised' }
   >['conflictKind']
+  /** Remote trash target, recorded for `lifecycle` conflicts so `keep-remote` can reconverge `in_trash` deterministically (decision 0018). */
+  readonly remoteInTrash?: boolean
   readonly message: string
   readonly now?: () => Date
 }): Extract<SyncEventType, { readonly _tag: 'ConflictRaised' }> => {
@@ -572,6 +574,7 @@ export const makeConflictRaisedEvent = (input: {
       conflictKind: input.conflictKind,
       pageId: input.pageId,
       propertyId: input.propertyId,
+      ...(input.remoteInTrash === undefined ? {} : { remoteInTrash: input.remoteInTrash }),
       baseHash: input.baseHash,
       localHash: input.localHash,
       remoteHash: input.remoteHash,
