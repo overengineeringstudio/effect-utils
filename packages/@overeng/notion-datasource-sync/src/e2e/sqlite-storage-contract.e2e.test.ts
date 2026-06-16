@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
@@ -13,7 +13,15 @@ import {
   runCliCommandWithRuntime,
 } from '../cli/main.ts'
 import { PagePropertyItemPage } from '../core/commands.ts'
-import { AbsolutePath, PropertyId, type AbsolutePath as AbsolutePathType } from '../core/domain.ts'
+import {
+  AbsolutePath,
+  DatabaseId,
+  DataSourceId,
+  PropertyId,
+  PropertyName,
+  type AbsolutePath as AbsolutePathType,
+  type DataSourceSnapshot,
+} from '../core/domain.ts'
 import { WorkspaceNamespaceError } from '../core/errors.ts'
 import { SyncRootId } from '../core/events.ts'
 import type { NotionGatewayClient } from '../gateway/notion.ts'
@@ -550,6 +558,157 @@ describe('clean-break self-contained SQLite storage contract', () => {
         expect(columns.slice(firstPrivateColumn).every((column) => column.startsWith('_'))).toBe(
           true,
         )
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  it(
+    'tracks a second data source into the same workspace, keeping one binding row per source in the shared state store',
+    async () => {
+      const workspace = await tempWorkspace()
+
+      // First source: the default harness data source ("Rows" / database-1).
+      await establishWorkspace(workspace)
+
+      // Second source: a distinct data source / database tracked into the SAME
+      // workspace. The VRS multi-source workspace shares one
+      // `.notion/v1/state.sqlite` across every tracked source, so this must be
+      // allowed — the establish guard only refuses a control-plane store bound to
+      // a DIFFERENT workspace root, not the addition of a new source.
+      const secondDatabaseId = decode({ schema: DatabaseId, value: 'database-2' })
+      const secondDataSourceId = decode({ schema: DataSourceId, value: 'data-source-2' })
+      const secondDatabaseUrl =
+        'https://www.notion.so/example/89abcdef0123456789abcdef01234567?v=feedfacefeedfacefeedfacefeedface'
+      const secondSnapshot: DataSourceSnapshot = {
+        _tag: 'DataSourceSnapshot',
+        dataSourceId: secondDataSourceId,
+        parentDatabaseId: secondDatabaseId,
+        requestId: testIds.requestId,
+        observedAt: decode({ schema: Schema.DateTimeUtc, value: fixedObservedAt }),
+        schemaHash: hash('schema-2'),
+        schemaProperties: [
+          {
+            _tag: 'DataSourcePropertySnapshot',
+            propertyId: testIds.propertyA,
+            name: decode({ schema: PropertyName, value: 'Title' }),
+            type: 'title',
+            configHash: hash('property-2-config'),
+            writeClass: 'writable',
+            ordinal: 0,
+            configJson: JSON.stringify({ type: 'title' }),
+          },
+        ],
+        metadataHash: hash('metadata-2'),
+        metadataJson: JSON.stringify({
+          _tag: 'CanonicalDataSourceMetadata',
+          titlePlainText: 'Second source',
+          descriptionPlainText: 'Second tracked data source',
+          icon: { _tag: 'none' },
+        }),
+        metadataTitlePlainText: 'Second source',
+        metadataDescriptionPlainText: 'Second tracked data source',
+      }
+      const secondGateway = makeFakeGatewayHarness({ dataSource: secondSnapshot })
+      const secondResolver: NotionGatewayClient = {
+        retrieveDataSource: () => Effect.succeed({ id: secondDataSourceId, properties: {} }),
+        queryDataSource: () =>
+          Effect.succeed({ results: [], nextCursor: Option.none(), hasMore: false }),
+        retrievePage: () =>
+          Effect.succeed({
+            id: testIds.pageId,
+            parent: { type: 'data_source_id', data_source_id: secondDataSourceId },
+            properties: {},
+            last_edited_time: fixedObservedAt,
+            in_trash: false,
+          }),
+        retrievePageProperty: () =>
+          Effect.succeed({ results: [], nextCursor: Option.none(), hasMore: false }),
+        retrieveDatabase: () =>
+          Effect.succeed({
+            id: secondDatabaseId,
+            title: [],
+            description: [],
+            icon: null,
+            data_sources: [{ id: secondDataSourceId, name: 'Second' }],
+          }),
+        updatePage: () =>
+          Effect.succeed({
+            id: testIds.pageId,
+            parent: { type: 'data_source_id', data_source_id: secondDataSourceId },
+            properties: {},
+            last_edited_time: fixedObservedAt,
+            in_trash: false,
+          }),
+        createPage: () =>
+          Effect.succeed({
+            id: 'created-page',
+            parent: { type: 'data_source_id', data_source_id: secondDataSourceId },
+            properties: {},
+            last_edited_time: fixedObservedAt,
+            in_trash: false,
+          }),
+        updateDataSource: () => Effect.succeed({ id: secondDataSourceId, properties: {} }),
+        updateDatabase: () =>
+          Effect.succeed({ id: secondDatabaseId, title: [], description: [], icon: null }),
+      }
+      const secondArgv = [
+        'track',
+        secondDatabaseUrl,
+        workspace,
+        '--mode',
+        'remote',
+        '--no-materialize-bodies',
+      ] as readonly string[]
+      const secondCommand = await Effect.runPromise(
+        resolveCliCommandNotionRefs({
+          command: parseCliCommand(secondArgv),
+          options: { gatewayClient: secondResolver },
+        }),
+      )
+      const secondContext = parseCliContext({ argv: secondArgv, resolvedCommand: secondCommand })
+      try {
+        // The establish guard must NOT throw here — it would have, pre-fix, with
+        // "Control-plane store is already bound to data source ...".
+        await Effect.runPromise(
+          runCliCommandWithRuntime({
+            command: secondCommand,
+            context: secondContext,
+            options: { gateway: secondGateway.gateway, gatewayClient: secondResolver },
+          }),
+        )
+      } finally {
+        secondContext.store.close()
+      }
+
+      // The manifest tracks both sources; the shared state store holds one
+      // binding row per source (keyed by the derived `data-source:<id>` root id).
+      const manifestResult = loadWorkspaceManifest(workspace)
+      expect(manifestResult._tag).toBe('tracked')
+      if (manifestResult._tag === 'tracked') {
+        expect(manifestResult.manifest.data_sources.map((source) => source.data_source_id)).toEqual(
+          expect.arrayContaining([testIds.dataSourceId, secondDataSourceId]),
+        )
+      }
+      openReadOnly(statePathForWorkspace(workspace), (db) => {
+        const bindings = rows(
+          db,
+          `SELECT root_id, data_source_id, workspace_root
+           FROM _nds_workspace_binding
+           ORDER BY data_source_id`,
+        )
+        expect(bindings).toEqual([
+          {
+            root_id: `data-source:${testIds.dataSourceId}`,
+            data_source_id: testIds.dataSourceId,
+            workspace_root: workspace,
+          },
+          {
+            root_id: `data-source:${secondDataSourceId}`,
+            data_source_id: secondDataSourceId,
+            workspace_root: workspace,
+          },
+        ])
       })
     },
     sqliteContractTimeoutMs,

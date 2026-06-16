@@ -81,6 +81,37 @@ without the full schema (or vice versa). This is PRE-EXISTING and shared with th
 one-shot sync path — PR #775 neither introduces nor closes it. Recorded here so the
 window is tracked for a future transactional-creation fix rather than rediscovered.
 
+## F8 — Archived-row restore round trip is not supported (archived rows leave the query window) (Phase 8, live L6)
+
+A row archived via the public SQLite surface (`UPDATE pages SET _in_trash = 1`)
+pushes and applies end-to-end: the `row_archive` CDC intent drains to Notion and
+the page is confirmed trashed remotely. The inverse — restoring that same row by
+toggling `_in_trash` back to `0` after the archive has synced — is NOT supported.
+Notion's data-source query does not return trashed pages, so the next
+reprojection rebuilds the row from observations that no longer include the
+archive, and the local replica reads `_in_trash = 0`. A subsequent
+`UPDATE pages SET _in_trash = 0` is then a no-op and emits no `row_restore`
+intent: there is nothing to toggle.
+
+What is proven: the archive round trip (local CDC toggle → push → remote-confirmed
+trash) and that the local restore CDC trigger itself emits `row_restore` when a
+row genuinely transitions `1 → 0` (non-live `sqlite-storage-contract` coverage).
+What is not: a live archive-then-restore round trip on the same row, because the
+archived row drops out of the active projection window and cannot be locally
+restored.
+
+Closing this needs a projection change so an archived page's trash state survives
+reprojection (e.g. retaining the archive-observed event or probing the page's
+trash state directly rather than relying solely on the data-source query window).
+That is a fidelity/projection-semantics change out of PR #775's stated scope. The
+live CDC scenario (`NDS-LIVE-public-sqlite-cdc-write`, single source) asserts the
+observed behavior (post-archive-sync the row reads `_in_trash = 0`; the local
+restore toggle is a no-op) rather than a contrived restore, and the
+archive↔restore round-trip portion of that CDC acceptance should be untracked
+until this is ratified. This is unrelated to multi-source establish, which is a
+supported and accepted feature (one workspace, many tracked sources sharing one
+`.notion/v1/state.sqlite`).
+
 ## Considered Options
 
 | Option                                                          | Result   | Reason                                                                                                                                                  |
