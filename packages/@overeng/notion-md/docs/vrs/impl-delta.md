@@ -43,6 +43,9 @@ Spec: [01-editor](./01-editor/spec.md) "Editor Surfaces". Requirements: R32–R3
       → reattach → `syncPage` (force full `replace_content`) → relocate any
       `.conflict.roughdraft.md` out of `$TMPDIR` → scope-clean. No bespoke push
       path, no base-hash threading, no partial-write model.
+- [ ] `edit <page> --read-only` (R46) — pull + present in `$EDITOR`, **never push**
+      (discard edits, clean up, stderr note); composes with `--frontmatter`, rejects
+      `--read-only --force`. May use the lighter `observeRemoteEditorPage` read.
 - [ ] Shared `<page>` resolution (`parseNotionUuid`) and the title↔H1 splice
       helper (used by `cat`/`put` and `edit`); fail-loud on missing title H1;
       exact untitled/empty-body bytes (spec edge behavior).

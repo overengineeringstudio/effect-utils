@@ -203,6 +203,27 @@ push path:
 
 No editor plugin is shipped; `edit` works with any `$EDITOR` (decision 0003).
 
+### `edit --read-only` (inspection, never sync)
+
+`edit --read-only` (R46) is the read pipe analogue of the editor: pull and present
+the page in `$VISUAL`/`$EDITOR` exactly like `edit`, but on exit **never push and
+never write anything to the remote** — discard any edits, scope-clean the temp
+tree, and print a stderr note that changes were not synced. Steps 1–2 above run;
+steps 5–6 (splice + `syncPage` + conflict relocation) do **not**. No base-snapshot
+guard is needed (nothing is written), so a non-zero editor exit is just a clean
+no-op, not an abort. Because it never writes, the heavy engine push path is not
+required — a read-only session may use the lighter `observeRemoteEditorPage` read
+(like `cat`) into a temp file rather than a full engine pull.
+
+- `--read-only` composes with `--frontmatter` (inspect the full envelope
+  read-only).
+- `--read-only --force` is contradictory (`--force` concerns the push) and is
+  **rejected** with a bad-usage error, not silently ignored.
+- **Default lossy behavior:** read-only still refuses a not-round-trip-safe page
+  at the pull (exit 3, R30/R38), same as `edit`. Relaxing this for read-only —
+  since it never pushes, viewing a lossy page is harmless — is a deliberate **open
+  design question**, not assumed here.
+
 ### Umbrella surface
 
 The commands appear as `notion-md cat|put|edit` standalone and `notion md
