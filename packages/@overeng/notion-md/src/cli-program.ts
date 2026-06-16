@@ -28,6 +28,7 @@ import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { annotateAttrs, withOperation } from './observability.ts'
 import { planPath, statusPath, syncPath, targetKind } from './path.ts'
+import { ProgressReporterStderrLines } from './progress.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { pullPage, syncPage, type SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
@@ -805,6 +806,17 @@ const makeEditCommand = (name: string) =>
                 )
               : withNotion(editEditorPage({ pageId, mode, pageRef: page })).pipe(
                   Effect.map((result): unknown => result),
+                  /*
+                   * Staged write-path progress (R43–R45, decision 0018): wire the
+                   * live stderr-line reporter ONLY on the `edit` push path, and
+                   * only when stderr is a TTY — a piped/redirected write provides
+                   * nothing (Layer.empty → serviceOption None → silent), keeping
+                   * the path byte-identical and pipe-safe (R44/R45). Constructed
+                   * lazily inside the handler (no TUI graph, no #787 TDZ risk).
+                   */
+                  Effect.provide(
+                    process.stderr.isTTY === true ? ProgressReporterStderrLines : Layer.empty,
+                  ),
                 ),
           ),
           Effect.flatMap(logJson),

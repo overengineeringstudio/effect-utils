@@ -35,6 +35,7 @@ import {
   putResultAttrs,
   withOperation,
 } from './observability.ts'
+import { reportNote } from './progress.ts'
 import type { NmdStateStore } from './state-store.ts'
 import { buildFrontmatterV2, pullPage, syncPageReplacingBody } from './sync.ts'
 
@@ -616,6 +617,14 @@ const relocateConflict = (opts: {
         .writeFileString(durable, contents)
         .pipe(Effect.mapError(editorIoError({ pageId: opts.pageId, path: durable })))
     }
+    /*
+     * Surface the conflict on stderr with the DURABLE path (not the engine's
+     * $TMPDIR roughdraft, which `relocateConflict` has just reaped). The note is
+     * emitted here, after relocation, so the path it names still exists.
+     */
+    yield* reportNote(
+      `remote changed and overlaps your edit — wrote conflict draft to ${durable}; nothing pushed`,
+    )
     return { pageId: opts.pageId, outcome: 'conflict', conflictPath: durable }
   })
 

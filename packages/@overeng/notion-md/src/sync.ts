@@ -37,6 +37,7 @@ import {
   type WritablePageIcon,
 } from './model.ts'
 import * as Observability from './observability.ts'
+import { reportNote, reportStageSkip, withStage } from './progress.ts'
 import {
   propertyIdMap,
   readOnlyPropertyNames,
@@ -1259,11 +1260,14 @@ export const pushGuarded = (opts: {
          * adopt the freshly re-pulled remote body as the new local baseline
          * (a pull), rather than re-asserting the stale desired body.
          */
-        yield* opts.persist.persist({
-          pushedBody: local.desiredBody,
-          status,
-          adoptRemoteBody: true,
-        })
+        yield* withStage(
+          { id: 'settle', label: 'settle', doneMessage: 'verified' },
+          opts.persist.persist({
+            pushedBody: local.desiredBody,
+            status,
+            adoptRemoteBody: true,
+          }),
+        )
         return { path, pageId: status.pageId, pushed: true, status }
       }
 
@@ -1282,12 +1286,15 @@ export const pushGuarded = (opts: {
         yield* Observability.annotateAttrs(Observability.pushMarkdownCommandAttrs, {
           markdownCommand: command._tag,
         })
-        yield* gateway.updateMarkdown({
-          pageId: status.pageId,
-          command,
-          allowDeletingContent:
-            options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
-        })
+        yield* withStage(
+          { id: 'write-body', label: 'write-body', doneMessage: 'replace_content' },
+          gateway.updateMarkdown({
+            pageId: status.pageId,
+            command,
+            allowDeletingContent:
+              options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
+          }),
+        )
         if (status.localPropertiesChanged === true) {
           yield* assertSchemaUnchanged({
             path,
@@ -1303,9 +1310,20 @@ export const pushGuarded = (opts: {
           })
         }
         if (hasPageMetadataUpdate(metadataUpdate) === true) {
-          yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
+          yield* withStage(
+            { id: 'write-title', label: 'write-title', doneMessage: 'title updated' },
+            gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate }),
+          )
+        } else {
+          yield* reportStageSkip({ id: 'write-title', label: 'write-title' })
         }
-        yield* opts.persist.persist({ pushedBody: mergedBody, status })
+        yield* withStage(
+          { id: 'settle', label: 'settle', doneMessage: 'verified' },
+          opts.persist.persist({ pushedBody: mergedBody, status }),
+        )
+        yield* reportNote(
+          'remote changed since pull — auto-merged your edit with the upstream change',
+        )
         return { path, pageId: status.pageId, pushed: true, status }
       }
 
@@ -1330,60 +1348,63 @@ export const pushGuarded = (opts: {
     }
 
     if (status.localChanged === true) {
-      yield* Effect.gen(function* () {
-        const baseSnapshot = yield* readBaseSnapshot({
-          path: statePath,
-          syncState: local.syncState,
-        })
-        const remote = yield* gateway.pullPage({ pageId: status.pageId })
-        yield* assertRemoteMarkdownComplete({
-          operation: 'guarded_push_preflight',
-          path,
-          pageId: status.pageId,
-          markdown: remote.markdown,
-          allowChildPageBlocks: options.replaceContent === true,
-        })
-        /*
-         * TOCTOU: the remote must not have changed since the status pull.
-         * Compare semantically against the baseline (canonicalization-invariant).
-         * For `replaceContent` tree pushes, ignore derived child anchors only;
-         * real user-authored body edits still block the full-body replace.
-         */
-        if (
-          options.force !== true &&
-          remoteBodyUnchangedForPush({
-            remoteBody: remote.markdown.markdown,
-            baseBody: baseSnapshot.body,
-            ignoreChildAnchors: options.replaceContent === true,
-          }) === false
-        ) {
-          return yield* new NmdConflictError({
-            path,
-            page_id: status.pageId,
-            local_changed: status.localChanged,
-            remote_changed: true,
-            message: 'Remote page changed while preparing guarded Markdown push',
+      yield* withStage(
+        { id: 'write-body', label: 'write-body', doneMessage: 'replace_content' },
+        Effect.gen(function* () {
+          const baseSnapshot = yield* readBaseSnapshot({
+            path: statePath,
+            syncState: local.syncState,
           })
-        }
-        const command =
-          options.force === true || options.replaceContent === true
-            ? ({ _tag: 'replace_content', markdown: local.desiredBody } as const)
-            : planMarkdownUpdate({
-                baseBody: baseSnapshot.body,
-                remoteBody: remote.markdown.markdown,
-                desiredBody: local.desiredBody,
-              })
-        yield* Observability.annotateAttrs(Observability.pushDecisionMarkdownCommandAttrs, {
-          decision: options.force === true ? 'force_replace' : 'guarded_update',
-          markdownCommand: command._tag,
-        })
-        yield* gateway.updateMarkdown({
-          pageId: status.pageId,
-          command,
-          allowDeletingContent:
-            options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
-        })
-      })
+          const remote = yield* gateway.pullPage({ pageId: status.pageId })
+          yield* assertRemoteMarkdownComplete({
+            operation: 'guarded_push_preflight',
+            path,
+            pageId: status.pageId,
+            markdown: remote.markdown,
+            allowChildPageBlocks: options.replaceContent === true,
+          })
+          /*
+           * TOCTOU: the remote must not have changed since the status pull.
+           * Compare semantically against the baseline (canonicalization-invariant).
+           * For `replaceContent` tree pushes, ignore derived child anchors only;
+           * real user-authored body edits still block the full-body replace.
+           */
+          if (
+            options.force !== true &&
+            remoteBodyUnchangedForPush({
+              remoteBody: remote.markdown.markdown,
+              baseBody: baseSnapshot.body,
+              ignoreChildAnchors: options.replaceContent === true,
+            }) === false
+          ) {
+            return yield* new NmdConflictError({
+              path,
+              page_id: status.pageId,
+              local_changed: status.localChanged,
+              remote_changed: true,
+              message: 'Remote page changed while preparing guarded Markdown push',
+            })
+          }
+          const command =
+            options.force === true || options.replaceContent === true
+              ? ({ _tag: 'replace_content', markdown: local.desiredBody } as const)
+              : planMarkdownUpdate({
+                  baseBody: baseSnapshot.body,
+                  remoteBody: remote.markdown.markdown,
+                  desiredBody: local.desiredBody,
+                })
+          yield* Observability.annotateAttrs(Observability.pushDecisionMarkdownCommandAttrs, {
+            decision: options.force === true ? 'force_replace' : 'guarded_update',
+            markdownCommand: command._tag,
+          })
+          yield* gateway.updateMarkdown({
+            pageId: status.pageId,
+            command,
+            allowDeletingContent:
+              options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
+          })
+        }),
+      )
     }
     if (status.localPropertiesChanged === true) {
       yield* assertSchemaUnchanged({
@@ -1400,18 +1421,26 @@ export const pushGuarded = (opts: {
       })
     }
     if (hasPageMetadataUpdate(metadataUpdate) === true) {
-      yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
+      yield* withStage(
+        { id: 'write-title', label: 'write-title', doneMessage: 'title updated' },
+        gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate }),
+      )
+    } else {
+      yield* reportStageSkip({ id: 'write-title', label: 'write-title' })
     }
     /*
      * If only properties/metadata changed (the body was not pushed), adopt the
      * re-pulled remote body — it may have raced ahead during the property
      * update. When the body WAS pushed, round-trip the pushed body.
      */
-    yield* opts.persist.persist({
-      pushedBody: local.desiredBody,
-      status,
-      adoptRemoteBody: status.localChanged === false,
-    })
+    yield* withStage(
+      { id: 'settle', label: 'settle', doneMessage: 'verified' },
+      opts.persist.persist({
+        pushedBody: local.desiredBody,
+        status,
+        adoptRemoteBody: status.localChanged === false,
+      }),
+    )
 
     return { path, pageId: status.pageId, pushed: true, status }
   })
@@ -1424,7 +1453,10 @@ export const pushPageWithPolicy = (
     yield* assertSinglePageTarget(opts.path)
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
-    const remoteForStatus = yield* gateway.pullPage({ pageId: local.pageId })
+    const remoteForStatus = yield* withStage(
+      { id: 'observe', label: 'observe', doneMessage: 'remote pulled' },
+      gateway.pullPage({ pageId: local.pageId }),
+    )
     return yield* pushGuarded({
       local,
       remoteForStatus,

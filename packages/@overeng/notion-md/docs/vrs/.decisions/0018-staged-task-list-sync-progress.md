@@ -65,6 +65,17 @@ makes the existing passes legible, it does not change how many there are.
   rows, so a partial write (exit 10) is visibly the title row failing after the
   body row succeeded, rather than an opaque failure.
 
+## Implementation state
+
+The `ProgressReporter` `Context.Tag` seam and the engine stage emits are
+implemented; `edit`'s write path ships the **static-line rung** (sequential
+stderr lines via `ProgressReporterStderrLines`), deliberately *not* the animated
+`TaskList` — `edit` returns from a full-screen editor that owned the TTY, so a
+mounting TUI would fight the terminal, and lines sidestep the #787 module-load
+TDZ entirely. The animated `TaskList` Layer is the same Tag's later drop-in (zero
+engine re-touch). `put` and file-`sync` emit through the engine but do not yet
+wire a render Layer (they stay no-op until wired).
+
 ## Status
 
 accepted (composes with 0002 stderr/stdout split, 0012 two-write order, 0017

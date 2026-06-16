@@ -10,100 +10,17 @@ import { describe, expect, it } from 'vitest'
 import type { BodyCompleteness } from '@overeng/notion-core'
 
 import { editEditorPage, editReadOnlyPage } from './editor-commands.ts'
+import {
+  FakeGateway,
+  type FakeState,
+  harnessPageId as pageId,
+  pull,
+  scriptedEditor,
+} from './editor-test-harness.ts'
 import { NmdGatewayError } from './errors.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
-import {
-  NotionMdGateway,
-  type NotionMdGatewayShape,
-  type PullPageResult,
-  type RemotePageSnapshot,
-} from './model.ts'
+import { NotionMdGateway, type NotionMdGatewayShape } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
-
-const pageId = '00000000-0000-4000-8000-000000000001'
-
-interface FakeState {
-  title: string
-  body: string
-  completeness: BodyCompleteness
-}
-
-const snapshot = (s: FakeState): RemotePageSnapshot => ({
-  id: pageId,
-  title: s.title,
-  title_property_key: 'title',
-  url: 'https://notion.so/page',
-  parent: { type: 'workspace', workspace: true },
-  icon: null,
-  cover: null,
-  in_trash: false,
-  is_locked: false,
-  last_edited_time: '2026-06-15T12:00:00.000Z',
-  properties: {},
-})
-
-const pull = (s: FakeState): PullPageResult => ({
-  page: snapshot(s),
-  markdown: {
-    markdown: normalizeMarkdownLineEndings(s.body),
-    truncated: false,
-    unknown_block_ids: [],
-    completeness: s.completeness,
-  },
-  storage: { _tag: 'self_contained', unsupported_blocks: [], files: [], comments: [] },
-})
-
-class FakeGateway {
-  readonly state: FakeState
-  /** When set, the remote body switches to `body` after `afterPull` pulls. */
-  private switchBodyOnPull: { afterPull: number; body: string } | undefined
-  pullCount = 0
-  constructor(initial: { title: string; body: string; completeness?: BodyCompleteness }) {
-    this.state = {
-      title: initial.title,
-      body: normalizeMarkdownLineEndings(initial.body),
-      completeness: initial.completeness ?? { _tag: 'complete' },
-    }
-  }
-
-  /** Simulate a concurrent remote writer: after `afterPull` pulls, body becomes `body`. */
-  switchRemoteBodyAfter(afterPull: number, body: string): void {
-    this.switchBodyOnPull = { afterPull, body: normalizeMarkdownLineEndings(body) }
-  }
-
-  readonly layer = Layer.succeed(NotionMdGateway, {
-    pullPage: () =>
-      Effect.sync(() => {
-        this.pullCount += 1
-        if (
-          this.switchBodyOnPull !== undefined &&
-          this.pullCount > this.switchBodyOnPull.afterPull
-        ) {
-          this.state.body = this.switchBodyOnPull.body
-          this.switchBodyOnPull = undefined
-        }
-        return pull(this.state)
-      }),
-    updateMarkdown: ({ command }) =>
-      Effect.sync(() => {
-        if (command._tag === 'replace_content') {
-          this.state.body = normalizeMarkdownLineEndings(command.markdown)
-        }
-        return { markdown: pull(this.state).markdown }
-      }),
-    updatePageProperties: () => Effect.dieMessage('unexpected updatePageProperties'),
-    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
-    updatePageMetadata: ({ metadata }) =>
-      Effect.sync(() => {
-        if (metadata.title !== undefined) this.state.title = metadata.title.value
-        return snapshot(this.state)
-      }),
-    listChildPages: () => Effect.succeed([]),
-    createPage: () => Effect.dieMessage('unexpected createPage'),
-    movePage: () => Effect.dieMessage('unexpected movePage'),
-    archivePage: () => Effect.dieMessage('unexpected archivePage'),
-  } satisfies NotionMdGatewayShape)
-}
 
 const stateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
 
@@ -115,26 +32,6 @@ const runEdit = <A, E>(
     Effect.provide(Layer.mergeAll(gateway.layer, stateStoreLayer, NodeContext.layer)),
     Effect.runPromise,
   )
-
-/** A scripted non-interactive editor: rewrite the buffer file via a transform. */
-const scriptedEditor =
-  (transform: (buffer: string) => string, exitCode = 0) =>
-  (opts: {
-    readonly filePath: string
-  }): Effect.Effect<number, NmdGatewayError, FileSystem.FileSystem> =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      if (exitCode === 0) {
-        const buffer = yield* fs.readFileString(opts.filePath)
-        yield* fs.writeFileString(opts.filePath, transform(buffer))
-      }
-      return exitCode
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new NmdGatewayError({ operation: 'scripted_editor', message: String(cause), cause }),
-      ),
-    )
 
 describe('edit (ephemeral file-engine session)', () => {
   it('round-trips a default-mode body edit through the engine and cleans up', async () => {
