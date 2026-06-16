@@ -85,7 +85,7 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/notion-md**: Add schema-decoded Notion webhook trigger ingestion for watch mode. Page webhook payloads normalize to secret-safe trigger signals and feed the existing batch watch queue as `webhook` reasons; comment events are decoded and classified as an explicit non-body boundary until comments API/client support exists.
 
-- **CI / Nix packages**: Refresh the `oxc-config`, `genie`, and `notion-cli` pnpm fixed-output hashes to the values observed by PR #780 CI/local proof so lint, typecheck, test, and FOD validation jobs can realize their Nix dependencies again.
+- **CI / Nix packages**: Refresh the `oxc-config`, `genie`, `megarepo`, and `notion-cli` pnpm fixed-output hashes to the values observed by PR #780 CI/local proof so lint, typecheck, test, and FOD validation jobs can realize their Nix dependencies again.
 
 - **@overeng/megarepo tests**: Make the missing-remote sync error fixture deterministic by using a local `file://` clone failure instead of a fake GitHub SSH remote, and give the heavier cold store-GC liveness/archive integration case its own timeout budget.
 
