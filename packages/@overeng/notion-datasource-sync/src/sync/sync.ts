@@ -21,6 +21,7 @@ import {
   NotionGatewayError,
   type NotionGatewayError as NotionGatewayErrorType,
 } from '../core/errors.ts'
+import type { SyncEvent as SyncEventType } from '../core/events.ts'
 import {
   NotionDataSourceGateway,
   PageBodySyncPort,
@@ -578,6 +579,72 @@ const hasLocalWorkspaceChange = ({
   })
 }
 
+/**
+ * Lifecycle-divergence detection for a single observation event (decision 0018).
+ *
+ * For a `RowObserved` with remote trash state `R`, compares against the SETTLED
+ * local lifecycle target `L` (from `store.readSettledLifecycleTarget`, which reads
+ * the settled `TrashPage`/`RestorePage` outbox history — NOT `_nds_row.in_trash`,
+ * whose overloaded writes would manufacture false positives). Returns the events
+ * to append BEFORE the `RowObserved` when they diverge:
+ *
+ * - `L === undefined` (no settled lifecycle intent) → no conflict; benign remote
+ *   trash state applies normally. This covers the initial state and benign remote
+ *   toggles — the false-positive guard.
+ * - `R === L` → benign; the RowObserved applies normally.
+ * - `R !== L` → a lifecycle CONFLICT: emit a `ConflictRaised(lifecycle)` carrying
+ *   `remoteInTrash: R`, plus a `PendingIntentShadowViolation` `GuardBlocked`
+ *   diagnostic ("a remote observation would overwrite a settled local target").
+ *
+ * Non-`RowObserved` events and the no-divergence cases return an empty array.
+ */
+const lifecycleDivergenceEvents = ({
+  store,
+  event,
+  now,
+}: {
+  readonly store: NotionSyncStore
+  readonly event: SyncEventType
+  readonly now?: () => Date
+}): ReadonlyArray<SyncEventType> => {
+  if (event._tag !== 'RowObserved') return []
+
+  const localTarget = store.readSettledLifecycleTarget({
+    rootId: event.rootId,
+    pageId: event.pageId,
+  })
+  if (localTarget === undefined || localTarget === event.inTrash) return []
+
+  const surface = pageSurfaceKey(event.pageId)
+  const localHash = pageLifecycleHash({ pageId: event.pageId, inTrash: localTarget })
+  const remoteHash = pageLifecycleHash({ pageId: event.pageId, inTrash: event.inTrash })
+  const message = `Remote lifecycle observation (in_trash=${event.inTrash}) would overwrite the settled local target (in_trash=${localTarget})`
+
+  return [
+    makeConflictRaisedEvent({
+      rootId: event.rootId,
+      pageId: event.pageId,
+      surface,
+      conflictKind: 'lifecycle',
+      remoteInTrash: event.inTrash,
+      // Lifecycle has no three-way base; the local target hash is a deterministic,
+      // replay-stable base sentinel (not part of the idempotency key).
+      baseHash: localHash,
+      localHash,
+      remoteHash,
+      message,
+      ...(now === undefined ? {} : { now }),
+    }),
+    makeGuardBlockedEvent({
+      rootId: event.rootId,
+      guard: 'PendingIntentShadowViolation',
+      surface,
+      message,
+      ...(now === undefined ? {} : { now }),
+    }),
+  ]
+}
+
 /** Observe the remote data source (API, schema, rows, properties, bodies) and persist the resulting events to the local store. Resumes a partial query scan if a checkpoint cursor exists. */
 export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
   (
@@ -603,6 +670,24 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
       let appendedEvents = 0
       for (const event of observation.events) {
         if (options.dryRun === true) continue
+        // Lifecycle-divergence detection (decision 0018). A `RowObserved` whose
+        // remote trash state `R` diverges from the SETTLED local lifecycle target
+        // `L` is a conflict, not a silent flip (XC-R02). Detect here — the shared
+        // ingestion seam for one-shot AND watch (both funnel through
+        // `pullOneShotSync`) — and append the `ConflictRaised` (plus the
+        // `PendingIntentShadowViolation` diagnostic) BEFORE the `RowObserved`, so
+        // the open conflict has a LOWER sequence and is visible when the
+        // RowObserved applies during pure full-log replay. Detection is never in
+        // the apply path (projections cannot append events).
+        for (const lifecycleEvent of lifecycleDivergenceEvents({
+          store: options.store,
+          event,
+          ...(options.now === undefined ? {} : { now: options.now }),
+        })) {
+          if (options.store.appendEventWithResult(lifecycleEvent).inserted === true) {
+            appendedEvents += 1
+          }
+        }
         if (options.store.appendEventWithResult(event).inserted === true) {
           appendedEvents += 1
         }

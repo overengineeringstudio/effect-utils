@@ -1,6 +1,6 @@
 # Lifecycle (trash-state) divergence is a first-class conflict
 
-Status: proposed
+Status: accepted
 
 Page trash-state — the lifecycle surface where SQLite `_in_trash` mirrors the
 remote trash — is a bidirectional surface, so it falls under XC-R02 ("No silent
