@@ -55,7 +55,7 @@ Batch/tree orchestrator  ────────►  Editor surfaces (01-editor
 Sync coordinator (02-file-sync) ◄───────────┘
   |
   v
-Sync engine (03-sync-engine): guarded push · 3-way merge · settle · review guard
+Sync engine (03-sync-engine): guarded push · 3-way merge · update/replace selection · canonical base · post-push gate · settle · review guard
   |
   +── depends on ──► Fidelity (04-fidelity): classifier · uniform lossy refusal · media canonicalization
   |
@@ -125,14 +125,14 @@ the shared fidelity layer (04-fidelity), durable local state (05-local-state), a
 the typed property surface (06-data-source). Each subsystem `spec.md` opens with a
 link up to [../requirements.md](./requirements.md) + its own `requirements.md`.
 
-| #   | Subsystem                               | Spec covers                                                                                                                                         | Requirements                          | Decisions                                                |
-| --- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------- |
-| 01  | [editor](./01-editor/spec.md)           | `cat`/`put`/`edit` surfaces, representation modes, title↔H1 boundary, guard plumbing, exit codes, `edit` session, umbrella, sync-progress indicator | R32, R33, R34, R35, R37, R39, R43–R45 | 0001, 0002, 0003, 0004, 0008, 0009, 0012, 0017, **0018** |
-| 02  | [file-sync](./02-file-sync/spec.md)     | pull/status/push flows, CLI + batch/tree orchestration, watch lifecycle                                                                             | R20, R28                              | (traces 0017)                                            |
-| 03  | [sync-engine](./03-sync-engine/spec.md) | guarded push, 3-way Markdown merge, settle-and-re-pull, review-safety guard, force escape hatch                                                     | R09, R11, R13, R15                    | 0009, 0012, 0017                                         |
-| 04  | [fidelity](./04-fidelity/spec.md)       | sound round-trip classifier, uniform lossy-page refusal, feature mapping, server-side push strategy, hosted-media canonicalization                  | R12, R30, R31, R36, R38, R40, R41     | 0005, 0007, 0010, 0011, 0014, 0015, 0016                 |
-| 05  | [local-state](./05-local-state/spec.md) | `.nmd` envelope, frontmatter schema, `.notion-md/` content-addressed object store, base snapshots                                                   | R06, R07, R08, R10                    | 0006                                                     |
-| 06  | [data-source](./06-data-source/spec.md) | writable property values, writable page metadata, `data_source` binding, `schema_snapshot` schema-drift guard                                       | R04, R14                              | 0013                                                     |
+| #   | Subsystem                               | Spec covers                                                                                                                                                                                        | Requirements                          | Decisions                                                |
+| --- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------- |
+| 01  | [editor](./01-editor/spec.md)           | `cat`/`put`/`edit` surfaces, representation modes, title↔H1 boundary, guard plumbing, exit codes, `edit` session, umbrella, sync-progress indicator                                                | R32, R33, R34, R35, R37, R39, R43–R45 | 0001, 0002, 0003, 0004, 0008, 0009, 0012, 0017, **0018** |
+| 02  | [file-sync](./02-file-sync/spec.md)     | pull/status/push flows, CLI + batch/tree orchestration, watch lifecycle                                                                                                                            | R20, R28                              | (traces 0017)                                            |
+| 03  | [sync-engine](./03-sync-engine/spec.md) | guarded push, 3-way Markdown merge, `update_content`/`replace_content` selection, canonical base, post-push `semanticEquivalent` gate, settle-and-re-pull, review-safety guard, force escape hatch | R09, R11, R13, R15                    | 0002, 0007, 0009, 0012, 0016, 0017                       |
+| 04  | [fidelity](./04-fidelity/spec.md)       | sound round-trip classifier, uniform lossy-page refusal, feature mapping, server-side push strategy, hosted-media canonicalization                                                                 | R12, R30, R31, R36, R38, R40, R41     | 0005, 0007, 0010, 0011, 0014, 0015, 0016                 |
+| 05  | [local-state](./05-local-state/spec.md) | `.nmd` envelope, frontmatter schema, `.notion-md/` content-addressed object store, base snapshots                                                                                                  | R06, R07, R08, R10                    | 0006                                                     |
+| 06  | [data-source](./06-data-source/spec.md) | writable property values, writable page metadata, `data_source` binding, `schema_snapshot` schema-drift guard                                                                                      | R04, R14                              | 0013                                                     |
 
 The `.decisions/` directory (0001–0018) is the authoritative decision log; the
 Decisions column above is the citation map. Decision **0016** (refuse lossy pages)
@@ -140,6 +140,14 @@ supersedes the reconciler/converter records (0005, 0010, 0011, 0014, 0015);
 decision **0017** (edit = ephemeral file-engine session) supersedes 0013 (the
 stateless schema fingerprint) and broadens the refusal to uniform; decision
 **0018** adds the staged write-path sync-progress indicator.
+
+**Cross-cutting at root by design.** Observability (the OpenTelemetry conventions),
+verification expectations, and the Effect service-boundary overview deliberately
+stay at this root index rather than living in a subsystem: the 6-way split is by
+sync surface and correctness layer and has no observability/testing subsystem to own
+them, and each spans all six. A future `07-observability` subsystem could own the
+OTEL + verification surface if it grows enough to warrant its own requirements; that
+is a possible follow-up, not done now.
 
 ## OpenTelemetry (cross-cutting)
 
