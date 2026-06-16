@@ -28,7 +28,7 @@ representable-Markdown majority and refuses pages with opaque blocks uniformly;
 
 ## Group A — editor surfaces `cat` / `put` / `edit`
 
-Spec: "Editor Surfaces". Requirements: R32–R35, R37, R39.
+Spec: [01-editor](./01-editor/spec.md) "Editor Surfaces". Requirements: R32–R35, R37, R39.
 
 - [ ] `cat <page> [--frontmatter]` — default `# <title>` + body; base hash to
       stderr (decision 0002); reuse `observeRemoteBody`; `--frontmatter` is a
@@ -52,7 +52,7 @@ Prototype (validated, not production): `tmp/notion-vim/` — `pagemd-live.ts`,
 
 ## Group B — hosted-media URL canonicalization
 
-Spec: "Hosted-Media References". Decision 0007. Requirement: R36. Shared by both
+Spec: [04-fidelity](./04-fidelity/spec.md) "Hosted-Media References". Decision 0007. Requirement: R36. Shared by both
 surfaces. Live testing (experiments.md) showed media-bearing pages are otherwise
 non-idempotent and their pushes are rejected by the post-push gate.
 
@@ -65,7 +65,7 @@ non-idempotent and their pushes are rejected by the post-push gate.
 
 ## Group C — sound fidelity classification (the shared refusal gate)
 
-Spec: "Refusing Lossy Pages (uniform)". Decisions 0016, 0017. Requirement: R38.
+Spec: [04-fidelity](./04-fidelity/spec.md) "Refusing Lossy Pages (uniform)". Decisions 0016, 0017. Requirement: R38.
 **Blocking prerequisite** — and a correctness fix for the existing file path, not
 just streaming.
 
@@ -81,7 +81,7 @@ just streaming.
 
 ## Group F — `--frontmatter` schema-drift, via the engine (not a fingerprint)
 
-Spec: "Guard plumbing". Decision 0017 (supersedes 0013). Requirement R14. The
+Spec: [06-data-source](./06-data-source/spec.md) "Data-Source Binding and Schema Drift" (+ [01-editor](./01-editor/spec.md) "Guard plumbing"). Decision 0017 (supersedes 0013). Requirement R14. The
 stateless in-buffer fingerprint is **deleted**; `edit --frontmatter` detects drift
 from a base snapshot, the same way the engine detects body conflict.
 
@@ -103,9 +103,30 @@ from a base snapshot, the same way the engine detects body conflict.
       (fake gateway incl. refusal path), live E2E (round-trip, conflict, media,
       lossy-page refusal, ephemeral `edit` over the engine) — R25–R29.
 
+## Group H — write-path sync-progress indicator
+
+Spec: [01-editor](./01-editor/spec.md) "Sync Progress Indicator (write path)".
+Decision 0018. Requirements: R43–R45. Designed, not yet implemented.
+
+- [ ] `ProgressReporter` Effect service (`Context.Tag`) with a **no-op default
+      Layer** — the engine emits purpose-tagged stage events to it (observe →
+      write-body → write-title → settle); non-interactive contexts (tests, fake/live
+      E2E, non-TTY) pay zero rendering cost and see no behavior change.
+- [ ] CLI `TaskList`-backed Layer on the **write path only** (`edit`/`put`/file
+      `sync`), rendered through the TUI seam to **stderr, gated on
+      `process.stderr.isTTY`** so `cat`'s stdout stays pure and `… | put > file`
+      degrades to static. `cat` excluded.
+- [ ] Construct the TUI app **lazily inside the command handler** (memoized
+      accessor), never at module top level — a top-level `createTuiApp` re-enters the
+      #787 concurrent-module-load TDZ.
+- [ ] Map `put`'s two-write order (decision 0012) to two rows so a partial write
+      (exit 10) is visibly the title row failing after the body row.
+- [ ] Complementary perf lever: collapse the redundant 4 pulls (#788) — fewer
+      stages, same staged UI.
+
 ## notion-cli (umbrella)
 
-Decision 0004. Spec: "Umbrella surface". Requirements R17–R18.
+Decision 0004. Spec: [01-editor](./01-editor/spec.md) "Umbrella surface". Requirements R17–R18.
 
 - [ ] `notion md cat|put|edit` via existing dispatch — verify.
 - [ ] Promote top-level alias `notion edit <page>`.
@@ -117,5 +138,6 @@ C (the shared refusal gate) is the blocking prerequisite — it gates the pull o
 every surface and fixes the latent file-path bug. B (media) makes representable
 bodies idempotent. A is the surface: `cat`/`put` over the body facade, `edit` a
 thin wrapper over the `sync` engine. F is a small engine addition for
-`--frontmatter` drift. G spans everything. The reconciler/converter groups and the
-stateless schema-fingerprint group are gone (decisions 0016, 0017).
+`--frontmatter` drift. G spans everything. H (the staged sync-progress indicator)
+is independent UI polish on top of A's write path. The reconciler/converter groups
+and the stateless schema-fingerprint group are gone (decisions 0016, 0017).
