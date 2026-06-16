@@ -1,4 +1,5 @@
 import { OtlpSerialization, OtlpTracer } from '@effect/opentelemetry'
+import * as Otlp from '@effect/opentelemetry/Otlp'
 import { FetchHttpClient } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer, type Scope } from 'effect'
@@ -8,7 +9,8 @@ import type { OteliteCliError, OteliteDecodeError, OteliteSpawnError } from './e
 import { withOteliteLabelSpan, withOteliteRootSpan } from './otel.ts'
 import { Otelite } from './Otelite.ts'
 import type { CaptureHandle, CaptureOptions } from './Otelite.ts'
-import type { SpanRow } from './schema.ts'
+import type { LogRow, MetricRow, SpanRow } from './schema.ts'
+import { expectLogs, expectMetrics, type LogExpect, type MetricExpect } from './signal-expect.ts'
 import { expectTrace, type TraceExpect } from './trace-expect.ts'
 import { flushCaptureSpans } from './vitest-bridge.ts'
 
@@ -36,6 +38,24 @@ export interface OteliteTraceOptions {
   readonly spanLabelPolicy?: 'required' | 'off'
 }
 
+/**
+ * The three signal expectation builders for a captured in-process run. Each is
+ * the matcher surface already shipped for that signal — feed selectors into
+ * `trace.expectOne(...)`, `metrics.expectOne(...)`, `logs.expectOne(...)`.
+ */
+export interface AllSignalsExpect {
+  readonly trace: TraceExpect
+  readonly metrics: MetricExpect
+  readonly logs: LogExpect
+}
+
+export interface OteliteAllSignalsOptions {
+  readonly trace?: OteliteTraceOptions
+  /** Extra `inspect` filters for the metrics/logs rows (service is pinned). */
+  readonly metricsInspect?: TraceInspectOptions
+  readonly logsInspect?: TraceInspectOptions
+}
+
 export interface OteliteTestHandle {
   readonly capture: CaptureHandle
   readonly inProcessLayer: Layer.Layer<never>
@@ -56,6 +76,19 @@ export interface OteliteTestHandle {
     effect: Effect.Effect<A, E, R>,
     options?: OteliteTraceOptions,
   ) => Effect.Effect<TraceExpect, E | OteliteSpawnError | OteliteCliError | OteliteDecodeError, R>
+  /**
+   * Run an in-process program through the all-signals exporter and assert over
+   * traces + metrics + logs at once. The exporter's scope-close flush carries
+   * the final batch of every signal, so a sub-second run drops nothing.
+   */
+  readonly runInProcessAllSignals: <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+    options?: OteliteAllSignalsOptions,
+  ) => Effect.Effect<
+    AllSignalsExpect,
+    E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
+    R
+  >
   readonly provideInProcess: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
   readonly withEnv: <A, E, R>(
     effect: Effect.Effect<A, E, R>,
@@ -114,6 +147,33 @@ const makeInProcessLayer = (
   )
 }
 
+/**
+ * All-signals in-process exporter: traces + metrics + logs through ONE
+ * `Otlp.layerJson`. Unlike the traces-only {@link makeInProcessLayer} (which
+ * uses the per-signal `OtlpTracer.layer` and so must hand-append `/v1/traces`),
+ * the combined `Otlp.layerJson` takes the BARE receiver base URL and appends
+ * `/v1/{traces,metrics,logs}` itself — so all three signal URLs are correct and
+ * the verbatim-URL footgun is gone. `Effect.log` bridges to OTLP logs because
+ * `Otlp.layerJson` adds the OTLP logger by default.
+ *
+ * `Layer.suspend` keeps the exporter's scope-close finalizers (the final flush
+ * of every signal) tied to the layer scope — matching prod `otel.ts` and the
+ * traces-only path.
+ */
+const makeInProcessAllSignalsLayer = (
+  handle: CaptureHandle,
+  options: Required<Pick<OteliteTestHarnessOptions, 'serviceName' | 'exportInterval'>>,
+): Layer.Layer<never> =>
+  Layer.suspend(() =>
+    Otlp.layerJson({
+      baseUrl: handle.endpoints.http.replace(/\/$/, ''),
+      resource: { serviceName: options.serviceName },
+      tracerExportInterval: options.exportInterval,
+      metricsExportInterval: options.exportInterval,
+      loggerExportInterval: options.exportInterval,
+    }).pipe(Layer.provide(FetchHttpClient.layer)),
+  )
+
 export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
   '@overeng/utils-dev/otelite/OteliteTestHarness',
   {
@@ -134,6 +194,10 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
           const rootSpanLabel = options.rootSpanLabel ?? options.serviceName
           const captureHandle = yield* otelite.capture(options)
           const inProcessLayer = makeInProcessLayer(captureHandle, {
+            serviceName: options.serviceName,
+            exportInterval,
+          })
+          const inProcessAllSignalsLayer = makeInProcessAllSignalsLayer(captureHandle, {
             serviceName: options.serviceName,
             exportInterval,
           })
@@ -194,6 +258,46 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
               Effect.zipRight(trace(traceOptions)),
             )
 
+          const runInProcessAllSignals = <A, E, R>(
+            effect: Effect.Effect<A, E, R>,
+            allSignalsOptions?: OteliteAllSignalsOptions,
+          ): Effect.Effect<
+            AllSignalsExpect,
+            E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
+            R
+          > =>
+            Effect.gen(function* () {
+              // Scope-close on the all-signals layer force-flushes every signal's
+              // final batch, so the inspects below see the full capture.
+              yield* effect.pipe(
+                withOteliteRootSpan({ name: rootSpanName, label: rootSpanLabel }),
+                Effect.provide(inProcessAllSignalsLayer),
+              )
+              yield* flushCaptureSpans({ exportInterval })
+
+              const traceOptions = allSignalsOptions?.trace
+              const spans: ReadonlyArray<SpanRow> = yield* inspectTraces({
+                service: options.serviceName,
+                ...traceOptions?.inspect,
+              })
+              const metricRows: ReadonlyArray<MetricRow> = yield* inspect({
+                signal: 'metrics',
+                service: options.serviceName,
+                ...allSignalsOptions?.metricsInspect,
+              })
+              const logRows: ReadonlyArray<LogRow> = yield* inspect({
+                signal: 'logs',
+                service: options.serviceName,
+                ...allSignalsOptions?.logsInspect,
+              })
+
+              const trace = expectTrace(spans)
+              if ((traceOptions?.spanLabelPolicy ?? 'required') === 'required') {
+                trace.expectSpanLabels()
+              }
+              return { trace, metrics: expectMetrics(metricRows), logs: expectLogs(logRows) }
+            })
+
           const withEnvTrace = <A, E, R>(
             effect: Effect.Effect<A, E, R>,
             envOptions?: OteliteEnvOptions,
@@ -218,6 +322,7 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
             trace,
             runInProcess,
             runInProcessTrace,
+            runInProcessAllSignals,
             provideInProcess: runInProcess,
             withEnv,
             withEnvTrace,
@@ -246,6 +351,21 @@ export const captureInProcessTrace = <A, E, R>(
   Effect.scoped(
     captureTest(options).pipe(
       Effect.flatMap((otel) => otel.runInProcessTrace(effect, traceOptions)),
+    ),
+  )
+
+export const captureInProcessAllSignals = <A, E, R>(
+  options: OteliteTestHarnessOptions,
+  effect: Effect.Effect<A, E, R>,
+  allSignalsOptions?: OteliteAllSignalsOptions,
+): Effect.Effect<
+  AllSignalsExpect,
+  E | OteliteSpawnError | OteliteCliError | OteliteDecodeError,
+  R
+> =>
+  Effect.scoped(
+    captureTest(options).pipe(
+      Effect.flatMap((otel) => otel.runInProcessAllSignals(effect, allSignalsOptions)),
     ),
   )
 

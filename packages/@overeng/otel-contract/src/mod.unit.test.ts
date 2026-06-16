@@ -843,6 +843,87 @@ describe('OtelMetric', () => {
     })
   })
 
+  it('defines gauge metadata without owning runtime emission', () => {
+    const RssBytes = OtelMetric.gauge({
+      name: 'store_gc_rss_bytes',
+      description: 'Resident set size sampled during a run.',
+      unit: 'By',
+      labels: Schema.Struct({
+        operation: OtelAttr.literal('operation', 'gc', 'status'),
+      }),
+    })
+
+    expect(RssBytes).not.toHaveProperty('set')
+    expect(RssBytes.metadata).toMatchObject({
+      kind: 'metric',
+      instrument: 'gauge',
+      name: 'store_gc_rss_bytes',
+      unit: 'By',
+      labelKeys: ['operation'],
+    })
+  })
+
+  it('brands and decodes gauge metric names', async () => {
+    const Gauge = OtelMetric.gauge({
+      name: 'store_gc_rss_bytes',
+      labels: Schema.Struct({
+        operation: OtelAttr.literal('operation', 'gc', 'status'),
+      }),
+    })
+    expect(Gauge.name).toBe('store_gc_rss_bytes')
+    await expect(Effect.runPromise(Schema.decodeUnknown(OtelMetricName)(Gauge.name))).resolves.toBe(
+      'store_gc_rss_bytes',
+    )
+    expect(() => OtelMetric.gauge({ name: ' ', labels: Schema.Struct({}) })).toThrow()
+  })
+
+  it('rejects high-cardinality and unspecified-cardinality gauge labels', () => {
+    expect(() =>
+      OtelMetric.gauge({
+        name: 'bad_gauge',
+        labels: Schema.Struct({
+          path: OtelAttr.string('path', { cardinality: 'high' }),
+        }),
+      }),
+    ).toThrow(OtelAttrPlanError)
+
+    expect(() =>
+      OtelMetric.gauge({
+        name: 'bad_gauge',
+        labels: Schema.Struct({
+          path: OtelAttr.string('path'),
+        }),
+      }),
+    ).toThrow(OtelAttrPlanError)
+  })
+
+  it('bridges schema-first gauges to tagged Effect metrics that go up and down', async () => {
+    const Gauge = OtelMetric.gauge({
+      name: 'otel_contract_test_bridge_rss_bytes',
+      description: 'Test gauge bridge.',
+      unit: 'By',
+      labels: Schema.Struct({
+        operation: OtelAttr.literal('operation', 'gc', 'status'),
+      }),
+    })
+    const bridge = OtelMetric.effect.gauge(Gauge)
+
+    const snapshotValue = () => {
+      const entry = Metric.unsafeSnapshot(undefined).find((candidate) => {
+        if (candidate.metricKey.name !== 'otel_contract_test_bridge_rss_bytes') return false
+        const tags = Object.fromEntries(candidate.metricKey.tags.map((tag) => [tag.key, tag.value]))
+        return tags.operation === 'gc'
+      })
+      return (entry?.metricState as { readonly value?: number } | undefined)?.value
+    }
+
+    await Effect.runPromise(bridge.set({ operation: 'gc' }, 100))
+    expect(snapshotValue()).toBe(100)
+
+    await Effect.runPromise(bridge.trustedSet({ operation: 'gc' }, 25))
+    expect(snapshotValue()).toBe(25)
+  })
+
   it('bridges schema-first counters to tagged Effect metrics', async () => {
     const Counter = OtelMetric.counter({
       name: 'otel_contract_test_bridge_counter_total',
