@@ -353,7 +353,18 @@ const slugForView = (value: string): string => {
   return slug.length === 0 ? 'data_source' : slug
 }
 
-const createReplicaSchema = (db: DatabaseSync): void => {
+/**
+ * Install the replica schema + CDC triggers (DROP/CREATE TABLE/VIEW/TRIGGER,
+ * ALTER migrations, backfill INSERTs, and `PRAGMA user_version`).
+ *
+ * Assumes an active write transaction: the caller is responsible for the
+ * surrounding `BEGIN`/`COMMIT`/`ROLLBACK` so the whole schema commits
+ * atomically. The connection-level PRAGMAs that cannot run inside a
+ * transaction (`foreign_keys`, `journal_mode = WAL`) are applied by the
+ * `createReplicaSchema` entry point, not here; only `PRAGMA user_version`
+ * (which commits with the schema) stays inside this DDL.
+ */
+export const createReplicaSchemaInTransaction = (db: DatabaseSync): void => {
   const localChangesSchema = db
     .prepare(
       `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '_nds_replica_local_changes'`,
@@ -429,8 +440,6 @@ const createReplicaSchema = (db: DatabaseSync): void => {
     DROP VIEW IF EXISTS ${quoteIdentifier(schemaPropertiesViewName)};
     DROP VIEW IF EXISTS ${quoteIdentifier(schemaViewName)};
 
-    PRAGMA foreign_keys = ON;
-    PRAGMA journal_mode = WAL;
     PRAGMA user_version = ${replicaSchemaVersion.toString()};
 
     CREATE TABLE IF NOT EXISTS _nds_replica_data_sources (
@@ -2036,6 +2045,32 @@ const createReplicaSchema = (db: DatabaseSync): void => {
   `)
 }
 
+/**
+ * Install the replica schema + CDC triggers atomically on a fresh connection.
+ *
+ * Applies the two connection-level PRAGMAs that cannot run inside a transaction
+ * (`foreign_keys`, `journal_mode = WAL`), then runs the full DDL inside a single
+ * `BEGIN IMMEDIATE`/`COMMIT` so the schema, triggers, and `PRAGMA user_version`
+ * stamp commit together — closing the pre-existing non-transactional window
+ * where a crash mid-DDL could leave tables without their CDC triggers. On any
+ * failure the transaction is rolled back and the error rethrown, leaving the
+ * database untouched. Callers that already hold an open write transaction must
+ * use `createReplicaSchemaInTransaction` instead to avoid an illegal nested
+ * `BEGIN`.
+ */
+export const createReplicaSchema = (db: DatabaseSync): void => {
+  db.exec('PRAGMA foreign_keys = ON;')
+  db.exec('PRAGMA journal_mode = WAL;')
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    createReplicaSchemaInTransaction(db)
+    db.exec('COMMIT')
+  } catch (cause) {
+    db.exec('ROLLBACK')
+    throw cause
+  }
+}
+
 const clearProjectedReplicaTables = (db: DatabaseSync): void => {
   db.exec(`
     DROP TRIGGER IF EXISTS _nds_replica_cells_direct_value_update_intent;
@@ -3364,7 +3399,9 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         )
 
       rebuildGeneratedViews(replicaDb)
-      createReplicaSchema(replicaDb)
+      // Inside the open projection `BEGIN IMMEDIATE` (above): re-running the full
+      // schema must not issue a nested `BEGIN`, so call the in-transaction form.
+      createReplicaSchemaInTransaction(replicaDb)
       replicaDb.exec('COMMIT')
     } catch (error) {
       replicaDb.exec('ROLLBACK')
