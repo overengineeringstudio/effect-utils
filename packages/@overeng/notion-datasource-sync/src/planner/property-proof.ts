@@ -108,20 +108,21 @@ const availabilityProjection = (
  * datasource-scoped property write.
  *
  * `mode`, `localConvergence`, and `settlement` are the workspace-only signals
- * the planner derives from observed workspace state; they default to the
- * non-blocking verdicts so an ordinary shared-mode write with a settled outbox
- * and a converged local surface produces no new block.
+ * the planner derives from observed workspace state (via `withAuthorityMode`);
+ * they default to the non-blocking verdicts so an ordinary shared-mode write with
+ * a settled outbox and a converged local surface produces no new block.
  *
- * Production wiring: `writeMode` is populated from the manifest authority mode
- * (`withAuthorityMode`), so `RemoteAuthoritativeDrift` fires from real production
- * state. `localConvergence` is populated from the Phase 4 shared-mode local
- * convergence (`buildPropertyConvergenceInputs` + `convergeLocalSurfaces` +
- * `applyConvergenceVerdicts` in the CLI push path) and is ACTIVE on real data
- * (SM5d): pulls materialize the writable frontmatter properties into the `.nmd`, so
- * `LocalSurfaceDisagreement` fires on a genuine pulled-page divergence. `settlement`
- * remains WIRED-BUT-DORMANT — the outbox does not yet supply a real read-after-write
- * verdict, so it falls back to its non-blocking default and `ReadAfterWriteMismatch`
- * fires only from tests (`TODO(settlement-wiring)`).
+ * Production wiring: `withAuthorityMode` populates all three workspace signals.
+ * `writeMode` comes from the manifest authority mode, so `RemoteAuthoritativeDrift`
+ * fires from real production state. `localConvergence` comes from the Phase 4
+ * shared-mode local convergence (`buildPropertyConvergenceInputs` +
+ * `convergeLocalSurfaces` + `applyConvergenceVerdicts` in the CLI push path) and is
+ * ACTIVE on real data (SM5d): pulls materialize the writable frontmatter properties
+ * into the `.nmd`, so `LocalSurfaceDisagreement` fires on a genuine pulled-page
+ * divergence. `settlement` comes from real outbox read-after-write state: an
+ * unsettled prior write for the property (`PropertySurfaceSnapshot.pendingLocal`,
+ * derived from `#pendingPropertyIntents`) maps to `missing` in `shared` mode, so
+ * `ReadAfterWriteMismatch` fires when a new write would race an unsettled prior one.
  */
 export interface WorkspaceProofInputs {
   readonly dataSourceId: DataSourceId
@@ -239,8 +240,12 @@ export const makeWorkspaceProof = (
      */
     localConvergence: { status: inputs.localConvergence ?? 'not-applicable' },
     /*
-     * TODO(settlement-wiring): defaulted to `present` until the outbox supplies a
-     * real read-after-write settlement verdict. See the WIRED-BUT-DORMANT note.
+     * `settlement` is supplied by `withAuthorityMode` from real outbox state
+     * (unsettled prior write → `missing` in `shared` mode). The `?? 'present'`
+     * fallback is the genuinely-safe default for the no-authority-mode path
+     * (untracked/standalone stores): there is no shared outbox to settle against,
+     * so a property write carries no read-after-write requirement and must not
+     * block — matching the behavior-preserving default for those stores.
      */
     settlement: { status: inputs.settlement ?? 'present' },
   }
