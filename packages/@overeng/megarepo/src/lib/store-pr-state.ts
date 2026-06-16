@@ -25,6 +25,8 @@ import { Context, Duration, Effect, Layer, Option, Schema } from 'effect'
 
 import type { RelativeDirPath } from '@overeng/effect-path'
 
+import * as Observability from './observability.ts'
+
 /** GitHub host segment that gates PR-state resolution; any other host ⇒ all `none`. */
 export const GITHUB_HOST = 'github.com'
 
@@ -251,11 +253,7 @@ export const makePrStateResolverLayer = ({
 
           if (Option.isNone(prs) === true) return PR_STATE_NONE
           return resolvePrStateForBranch({ prs: prs.value, branch })
-        }).pipe(
-          Effect.withSpan('megarepo/store/gc/resolve-pr-state', {
-            attributes: { 'span.label': 'pr-state', branch },
-          }),
-        )
+        }).pipe(Observability.withResolvePrStateSpan(branch))
 
       return { resolve }
     }),

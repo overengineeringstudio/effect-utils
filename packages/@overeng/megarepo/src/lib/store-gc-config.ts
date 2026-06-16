@@ -12,6 +12,8 @@ import { Effect, Schema } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
+import * as Observability from './observability.ts'
+
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /** Default: a worktree must be absent from ALL live sets this long before archive eligibility. */
@@ -86,8 +88,4 @@ export const loadStoreGcConfig = ({
       Effect.catchAll(() => Effect.succeed({} as StoreGcConfigOverride)),
     )
     return mergeStoreGcConfig(override)
-  }).pipe(
-    Effect.withSpan('megarepo/store/gc/load-config', {
-      attributes: { 'span.label': 'gc-config' },
-    }),
-  )
+  }).pipe(Observability.withLabelSpan('megarepo/store/gc/load-config', 'gc-config'))
