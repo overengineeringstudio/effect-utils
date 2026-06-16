@@ -2478,11 +2478,14 @@ describe('clean-break self-contained SQLite storage contract', () => {
           ],
         })
 
-        // The re-asserted trash command lands in the outbox.
+        // The re-asserted trash command lands in the outbox, and the conflict moves
+        // to `resolving` (#775 M2a'-2): keep-local does NOT fully resolve — the
+        // conflict stays freeze-active until the re-assert genuinely settles, so
+        // the freeze still holds `_in_trash` at the local target.
         openReadOnly(statePath, (stateDb) => {
           expect(
             row(stateDb, `SELECT state FROM _nds_conflict WHERE conflict_id = ?`, conflictId),
-          ).toMatchObject({ state: 'resolved' })
+          ).toMatchObject({ state: 'resolving' })
           expect(
             rows(
               stateDb,
@@ -2592,6 +2595,227 @@ describe('clean-break self-contained SQLite storage contract', () => {
         // Rebuild projections from the persisted event log twice; the ConflictRaised
         // sits at a LOWER sequence than the RowObserved, so the freeze is replayed
         // deterministically without any L recomputation in the apply path.
+        const rebuild = () => {
+          const store = openNotionSyncStore({ path: statePath, busyTimeoutMs: 2_500 })
+          try {
+            store.rebuildProjections(rootId)
+          } finally {
+            store.close()
+          }
+        }
+        rebuild()
+        const afterFirst = snapshotState()
+        rebuild()
+        const afterSecond = snapshotState()
+
+        expect(afterFirst).toEqual(before)
+        expect(afterSecond).toEqual(before)
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    /** Read the single `resolving` conflict row from the control-plane store. */
+    const resolvingConflict = (statePath: string): SqlRow | undefined =>
+      openReadOnly(statePath, (stateDb) =>
+        row(
+          stateDb,
+          `SELECT conflict_id, page_id, state FROM _nds_conflict WHERE state = 'resolving' AND page_id = ?`,
+          testIds.pageId,
+        ),
+      )
+
+    /**
+     * Drive a lifecycle conflict to a `keep-local` resolution and return the
+     * sqlite/state paths plus the conflict id. The re-assert TrashPage lands in
+     * the outbox; the conflict is now `resolving` (#775 M2a'-2).
+     */
+    const settleArchiveThenKeepLocal = async (workspace: AbsolutePathType) => {
+      const { sqlitePath, statePath } = await settleLocalArchive(workspace)
+      // Remote restore (page active, novel propertiesHash so the RowObserved is
+      // not deduped) → lifecycle conflict.
+      const restoreGateway = makeFakeGatewayHarness({
+        pages: [pageSnapshot({ propertiesHash: hash('properties-after-remote-restore') })],
+        propertyPages: [propertyPage('Restored remotely')],
+      })
+      await runWorkspaceCommand({
+        argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+        gateway: restoreGateway,
+      })
+      const conflictId = String(openConflict(statePath)?.conflict_id)
+      // keep-local: re-assert L=1 via a fresh TrashPage push and move the conflict
+      // to `resolving` (NOT `resolved`).
+      await runWorkspaceCommand({
+        argv: [
+          'conflicts',
+          'resolve',
+          '--sqlite',
+          sqlitePath,
+          '--conflict-id',
+          conflictId,
+          '--strategy',
+          'keep-local',
+          '--value-json',
+          JSON.stringify({ _tag: 'title', plainText: 'ignored' }),
+        ],
+      })
+      return { sqlitePath, statePath, conflictId }
+    }
+
+    // THE KILL-TEST (#775 M2a'-2): keep-local moves the conflict to `resolving` and
+    // re-asserts L=1, but the remote ACTIVELY DIVERGED (it restored the page), so
+    // the re-assert TrashPage BLOCKS (its lifecycle base hash never matches the
+    // remote propertiesHash → StaleSurfaceBase, no settle). A SECOND sync re-detects
+    // the SAME R=0 vs L=1 divergence and emits a byte-identical `ConflictRaised`
+    // (lifecycle hashes are `pageLifecycleHash`, independent of `propertiesHash`),
+    // which dedups against the `resolving` row — conflict COUNT stays 1. Before the
+    // fix the conflict was `resolved`, so the freeze gate saw no open conflict and
+    // `_in_trash` silently flipped to the remote value (XC-R02). With the fix the
+    // `resolving` conflict keeps the freeze active and `_in_trash` STAYS at L=1.
+    it(
+      'KILL-TEST: keep-local re-assert BLOCKS, second sync re-detects same divergence, dedups against resolving conflict, NO silent flip',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath, conflictId } = await settleArchiveThenKeepLocal(workspace)
+        // keep-local moved the conflict to `resolving` (NOT `resolved`) — the seam
+        // that keeps the freeze active. (With the bug this is `resolved`, the freeze
+        // gate finds no conflict, and the second sync below silently flips in_trash.)
+        expect(resolvingConflict(statePath)?.conflict_id).toBe(conflictId)
+
+        // Second sync: remote still ACTIVE (R=0) with a NOVEL propertiesHash, so the
+        // RowObserved applies (not deduped) and would flip in_trash without the
+        // freeze. The re-assert TrashPage is drained but BLOCKS (StaleSurfaceBase),
+        // so no RemoteWriteSettled fires and the conflict stays `resolving`.
+        const stillActiveGateway = makeFakeGatewayHarness({
+          pages: [pageSnapshot({ propertiesHash: hash('properties-second-sync-novel') })],
+          propertyPages: [propertyPage('Still restored remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: stillActiveGateway,
+        })
+
+        openReadOnly(statePath, (stateDb) => {
+          // Dedup proof: the re-detected ConflictRaised collided with the existing
+          // row — still exactly ONE conflict on this page, still `resolving`.
+          expect(
+            rows(stateDb, `SELECT state FROM _nds_conflict WHERE page_id = ?`, testIds.pageId),
+          ).toEqual([expect.objectContaining({ state: 'resolving' })])
+          expect(
+            row(stateDb, `SELECT state FROM _nds_conflict WHERE conflict_id = ?`, conflictId),
+          ).toMatchObject({ state: 'resolving' })
+          // The re-assert never settled: the keep-local re-assert TrashPage (a
+          // distinct `cmd:resolve-lifecycle-*` command, NOT the earlier settled
+          // archive) is `blocked` (StaleSurfaceBase: its lifecycle base hash never
+          // matches the active remote propertiesHash), so no RemoteWriteSettled fires.
+          expect(
+            row(
+              stateDb,
+              `SELECT state FROM _nds_outbox WHERE command_id LIKE 'cmd:resolve-lifecycle%' AND surface = ?`,
+              `page:${testIds.pageId}`,
+            ),
+          ).toMatchObject({ state: 'blocked' })
+          // The freeze still holds the control-plane in_trash at the local target.
+          expect(
+            row(stateDb, `SELECT in_trash FROM _nds_row WHERE page_id = ?`, testIds.pageId),
+          ).toMatchObject({ in_trash: 1 })
+        })
+        // The load-bearing oracle: public _in_trash STAYS 1 — no silent flip to the
+        // remote value, even though the remote actively diverged twice.
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 1 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    // keep-local where the re-assert SETTLES: the remote re-converged to the local
+    // target (the page is trashed again when the re-assert executes), so the
+    // TrashPage settles as a verified-no-op, F8 reconverges in_trash, and the
+    // `resolving` conflict transitions to `resolved` (#775 M2a'-2 settle seam).
+    it(
+      'keep-local re-assert SETTLES (remote re-trashed): conflict transitions resolving -> resolved, _in_trash == L',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath, conflictId } = await settleArchiveThenKeepLocal(workspace)
+        // keep-local left the conflict `resolving` (freeze active) before the settle.
+        expect(resolvingConflict(statePath)?.conflict_id).toBe(conflictId)
+
+        // Second sync against a gateway whose page is ALREADY trashed: the
+        // executor's direct retrievePage sees inTrash:true, so the re-assert
+        // TrashPage's verification hash equals its desired hash → verified-no-op
+        // settle → RemoteWriteSettled → F8 transitions the conflict to `resolved`.
+        const reTrashedGateway = makeFakeGatewayHarness({
+          pages: [pageSnapshot({ inTrash: true, propertiesHash: hash('properties-re-trashed') })],
+          propertyPages: [propertyPage('Re-trashed remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: reTrashedGateway,
+        })
+
+        openReadOnly(statePath, (stateDb) => {
+          expect(
+            row(stateDb, `SELECT state FROM _nds_conflict WHERE conflict_id = ?`, conflictId),
+          ).toMatchObject({ state: 'resolved' })
+          expect(
+            row(stateDb, `SELECT in_trash FROM _nds_row WHERE page_id = ?`, testIds.pageId),
+          ).toMatchObject({ in_trash: 1 })
+        })
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 1 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    // REPLAY determinism for the frozen `resolving` state: with the re-assert
+    // blocked (no settle event), rebuilding from the event log twice yields the
+    // SAME `resolving` conflict and frozen in_trash. This proves seam 3 is
+    // event-ordered — the absence of a RemoteWriteSettled(TrashPage) is what keeps
+    // the conflict `resolving` on replay.
+    it(
+      'REPLAY determinism: a blocked keep-local re-assert keeps the conflict resolving + in_trash frozen across double rebuild',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleArchiveThenKeepLocal(workspace)
+        const stillActiveGateway = makeFakeGatewayHarness({
+          pages: [pageSnapshot({ propertiesHash: hash('properties-second-sync-novel') })],
+          propertyPages: [propertyPage('Still restored remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: stillActiveGateway,
+        })
+
+        const snapshotState = () =>
+          openReadOnly(statePath, (stateDb) => ({
+            conflicts: rows(
+              stateDb,
+              `SELECT conflict_id, page_id, state FROM _nds_conflict ORDER BY conflict_id`,
+            ),
+            inTrash: row(
+              stateDb,
+              `SELECT in_trash FROM _nds_row WHERE page_id = ?`,
+              testIds.pageId,
+            ),
+          }))
+
+        const before = snapshotState()
+        expect(before.conflicts).toEqual([expect.objectContaining({ state: 'resolving' })])
+        expect(before.inTrash).toMatchObject({ in_trash: 1 })
+
+        const rootId = decode({
+          schema: SyncRootId,
+          value: String(
+            openReadOnly(statePath, (stateDb) =>
+              row(stateDb, `SELECT root_id FROM _nds_data_source LIMIT 1`),
+            )?.root_id,
+          ),
+        })
         const rebuild = () => {
           const store = openNotionSyncStore({ path: statePath, busyTimeoutMs: 2_500 })
           try {

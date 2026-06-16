@@ -111,7 +111,7 @@ export type ConflictProjectionRow = {
   readonly pageId: PageId | undefined
   readonly propertyId: PropertyId | undefined
   readonly surface: SurfaceKey | undefined
-  readonly state: 'open' | 'resolved' | 'superseded' | 'ignored'
+  readonly state: 'open' | 'resolving' | 'resolved' | 'superseded' | 'ignored'
   readonly kind:
     | 'same-property'
     | 'property'
@@ -421,9 +421,9 @@ const readConflictState = ({
   readonly row: SqlRow
   readonly key: string
 }): ConflictProjectionRow['state'] =>
-  Schema.decodeUnknownSync(Schema.Literal('open', 'resolved', 'superseded', 'ignored'))(
-    readString({ row, key }),
-  )
+  Schema.decodeUnknownSync(
+    Schema.Literal('open', 'resolving', 'resolved', 'superseded', 'ignored'),
+  )(readString({ row, key }))
 
 const readTombstoneClassification = ({
   row,
@@ -533,6 +533,20 @@ const bodyPointerProjectionStoresProjectionPayload = (db: DatabaseSync): boolean
     .prepare(`PRAGMA table_info('_nds_body_pointer')`)
     .all()
     .some((row) => row.name === 'body_projection_json')
+
+/**
+ * True when the `_nds_conflict` CHECK constraint already admits the `resolving`
+ * state (schema v8, #775 M2a'-2). Existing stores created with `CREATE TABLE IF
+ * NOT EXISTS` keep their old CHECK, which rejects `resolving` writes, so the open
+ * path must recreate the (pure-projection) table and replay.
+ */
+const conflictProjectionAdmitsResolving = (db: DatabaseSync): boolean => {
+  const row = db
+    .prepare(`SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = '_nds_conflict'`)
+    .get()
+  const sql = row === undefined ? undefined : readOptionalString({ row, key: 'sql' })
+  return sql !== undefined && sql.includes("'resolving'")
+}
 
 /**
  * SQLite-backed store for the notion-datasource-sync event log and projections.
@@ -1612,11 +1626,15 @@ export class NotionSyncStore {
       }
     }
 
+    // `resolving` lifecycle conflicts are still freeze-active (#775 M2a'-2): the
+    // freeze gate JOINs the opened `ConflictRaised` event, so compaction must not
+    // GC that event while the re-assert is pending/blocked or the freeze would
+    // silently vanish on the next replay.
     const openConflict = this.#db
       .prepare(
         `SELECT conflict_id
          FROM _nds_conflict
-         WHERE root_id = ? AND state = 'open'
+         WHERE root_id = ? AND state IN ('open', 'resolving')
          ORDER BY conflict_id
          LIMIT 1`,
       )
@@ -1677,12 +1695,15 @@ export class NotionSyncStore {
     return {
       outbox: _nds_outbox,
       conflicts: {
+        // `resolving` lifecycle conflicts (#775 M2a'-2) are still unresolved and
+        // freeze-active, so they count as `open` for the human-facing status —
+        // the conflict must stay visibly unresolved until the re-assert settles.
         open: readCount({
           row: this.#db
             .prepare(
               `SELECT COUNT(*) AS count
                FROM _nds_conflict
-               WHERE root_id = ? AND state = 'open'`,
+               WHERE root_id = ? AND state IN ('open', 'resolving')`,
             )
             .get(rootId),
           key: 'count',
@@ -2062,12 +2083,35 @@ CREATE TABLE _nds_body_pointer (
 `)
       replayProjections = true
     }
+    if (conflictProjectionAdmitsResolving(this.#db) === false) {
+      // Recreate the pure-projection `_nds_conflict` table so its CHECK admits the
+      // `resolving` lifecycle state (#775 M2a'-2). Safe to drop+rebuild from the
+      // event log; replay below re-derives all conflict rows.
+      this.#db.exec(`
+DROP TABLE _nds_conflict;
+CREATE TABLE _nds_conflict (
+  root_id TEXT NOT NULL REFERENCES _nds_sync_root(root_id) ON DELETE CASCADE,
+  conflict_id TEXT NOT NULL,
+  page_id TEXT,
+  property_id TEXT,
+  state TEXT NOT NULL CHECK (state IN ('open', 'resolving', 'resolved', 'superseded', 'ignored')),
+  base_hash TEXT,
+  local_hash TEXT,
+  remote_hash TEXT,
+  opened_event_id TEXT NOT NULL,
+  resolution_event_id TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (root_id, conflict_id)
+);
+`)
+      replayProjections = true
+    }
     this.#db
       .prepare(
         `INSERT OR IGNORE INTO _nds_migration_history (schema_version, migration_name, applied_at)
          VALUES (?, ?, ?)`,
       )
-      .run(STORE_SCHEMA_VERSION, 'body-projection-payload', currentIso(this.#now))
+      .run(STORE_SCHEMA_VERSION, 'conflict-resolving-state', currentIso(this.#now))
 
     if (replayProjections === true) {
       for (const row of this.#db.prepare(`SELECT root_id FROM _nds_sync_root`).all()) {
@@ -2119,8 +2163,14 @@ CREATE TABLE _nds_body_pointer (
   }
 
   /**
-   * Whether the page has an OPEN `lifecycle` conflict (decision 0018). Used by
-   * the `RowObserved` apply to freeze `_nds_row.in_trash`. The `lifecycle`
+   * Whether the page has a freeze-active `lifecycle` conflict (decision 0018,
+   * #775 M2a'-2). Used by the `RowObserved` apply to freeze `_nds_row.in_trash`.
+   * Both `open` AND `resolving` count: a `keep-local` resolution moves the
+   * conflict to `resolving` and re-asserts the local target via a Trash/Restore
+   * push that may BLOCK if the remote actively diverged. Keeping the freeze active
+   * while `resolving` ensures `in_trash` stays at the local target L until the
+   * re-assert genuinely settles (F8 then transitions to `resolved`) — never a
+   * silent last-writer-wins flip to the remote value. The `lifecycle`
    * discriminator is recovered by decoding the opened `ConflictRaised` event and
    * reading `conflictKind` — `property_id IS NULL` alone is NOT sufficient because
    * `body-body-delegated` conflicts also have a null `property_id`, and freezing
@@ -2142,7 +2192,7 @@ CREATE TABLE _nds_body_pointer (
           AND opened.event_id = conflict.opened_event_id
          WHERE conflict.root_id = ?
            AND conflict.page_id = ?
-           AND conflict.state = 'open'`,
+           AND conflict.state IN ('open', 'resolving')`,
       )
       .all(rootId, pageId)
 
@@ -2977,6 +3027,24 @@ CREATE TABLE _nds_body_pointer (
                    WHERE root_id = ? AND page_id = ?`,
                 )
                 .run(inTrash, currentIso(this.#now), event.rootId, decodedPageId)
+              // #775 M2a'-2: a settled Trash/Restore re-establishes the local
+              // lifecycle target L remotely, so any freeze-active `resolving`
+              // lifecycle conflict on this page (raised by a `keep-local`
+              // resolution) is now genuinely settled — transition it to
+              // `resolved`. Only lifecycle keep-local ever reaches `resolving`, so
+              // a page-scoped `state = 'resolving'` predicate is sufficient (no
+              // kind JOIN). This piggybacks the in_trash reconvergence above, so it
+              // replays deterministically in the same event-ordered apply.
+              this.#db
+                .prepare(
+                  `UPDATE _nds_conflict
+                   SET state = 'resolved',
+                       updated_at = ?
+                   WHERE root_id = ?
+                     AND page_id = ?
+                     AND state = 'resolving'`,
+                )
+                .run(currentIso(this.#now), event.rootId, decodedPageId)
               // On restore, clear the `remote_trash` tombstone so reprojection and
               // status no longer treat the now-active row as trashed. Scoped to
               // `remote_trash` — moved_out/inaccessible are not restorable trash.
@@ -3025,17 +3093,48 @@ CREATE TABLE _nds_body_pointer (
           )
         break
       case 'ConflictResolved': {
+        // Look up the opened `ConflictRaised` before the UPDATE so the resolution
+        // target can depend on the conflict kind. A `keep-local` resolution of a
+        // `lifecycle` conflict moves to `resolving` (NOT `resolved`): it re-asserts
+        // the local target via a re-enqueued Trash/Restore push that may BLOCK
+        // (tombstone-safety/DeleteVsEdit) if the remote actively diverged. Staying
+        // `resolving` keeps the freeze active so `in_trash` cannot silently flip to
+        // the remote value on the next sync (#775 M2a'-2). The F8 settle handler
+        // transitions `resolving` -> `resolved` only once the re-assert genuinely
+        // settles remotely (L re-established, divergence gone). All other cases
+        // (property/body keep-local, and every keep-remote) go straight to
+        // `resolved`.
+        const resolveOpenedRow = this.#db
+          .prepare(
+            `SELECT opened.event_json
+             FROM _nds_conflict conflict
+             JOIN _nds_sync_event opened
+               ON opened.root_id = conflict.root_id
+              AND opened.event_id = conflict.opened_event_id
+             WHERE conflict.root_id = ?
+               AND conflict.conflict_id = ?`,
+          )
+          .get(event.rootId, event.conflictId)
+        const resolveOpenedEvent =
+          resolveOpenedRow === undefined
+            ? undefined
+            : decodeEventFromJson(readString({ row: resolveOpenedRow, key: 'event_json' }))
+        const isLifecycleKeepLocal =
+          event.resolutionChoice === 'keep-local' &&
+          resolveOpenedEvent?._tag === 'ConflictRaised' &&
+          resolveOpenedEvent.conflictKind === 'lifecycle'
+        const resolvedState = isLifecycleKeepLocal === true ? 'resolving' : 'resolved'
         this.#db
           .prepare(
             `UPDATE _nds_conflict
-             SET state = 'resolved',
+             SET state = ?,
                  resolution_event_id = ?,
                  updated_at = ?
              WHERE root_id = ?
                AND conflict_id = ?
                AND state = 'open'`,
           )
-          .run(event.eventId, currentIso(this.#now), event.rootId, event.conflictId)
+          .run(resolvedState, event.eventId, currentIso(this.#now), event.rootId, event.conflictId)
 
         // Lifecycle keep-remote reconvergence (decision 0018). A lifecycle
         // conflict froze `_nds_row.in_trash` at the settled local target. On
@@ -3045,21 +3144,8 @@ CREATE TABLE _nds_body_pointer (
         // and deterministic; `keep-local` re-asserts the local target through a
         // re-enqueued Trash/Restore push that reconverges via the F8 settle handler.
         if (event.resolutionChoice === 'keep-remote') {
-          const openedRow = this.#db
-            .prepare(
-              `SELECT opened.event_json
-               FROM _nds_conflict conflict
-               JOIN _nds_sync_event opened
-                 ON opened.root_id = conflict.root_id
-                AND opened.event_id = conflict.opened_event_id
-               WHERE conflict.root_id = ?
-                 AND conflict.conflict_id = ?`,
-            )
-            .get(event.rootId, event.conflictId)
-          if (openedRow !== undefined) {
-            const openedEvent = decodeEventFromJson(
-              readString({ row: openedRow, key: 'event_json' }),
-            )
+          const openedEvent = resolveOpenedEvent
+          if (openedEvent !== undefined) {
             if (
               openedEvent._tag === 'ConflictRaised' &&
               openedEvent.conflictKind === 'lifecycle' &&
@@ -3292,6 +3378,9 @@ CREATE TABLE _nds_body_pointer (
             `page:${event.pageId}`,
             `page:${event.pageId}:%`,
           )
+        // A forgotten page leaves sync scope entirely, so any unsettled conflict
+        // on it (including a freeze-active `resolving` lifecycle conflict, #775
+        // M2a'-2) is ignored.
         this.#db
           .prepare(
             `UPDATE _nds_conflict
@@ -3300,7 +3389,7 @@ CREATE TABLE _nds_body_pointer (
                  updated_at = ?
              WHERE root_id = ?
                AND page_id = ?
-               AND state = 'open'`,
+               AND state IN ('open', 'resolving')`,
           )
           .run(event.eventId, currentIso(this.#now), event.rootId, event.pageId)
         break
