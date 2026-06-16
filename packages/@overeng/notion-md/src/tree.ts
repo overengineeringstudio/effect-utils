@@ -21,7 +21,7 @@ import {
   type NmdError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
-import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
+import { normalizeMarkdownLineEndings, sha256Digest, stripChildAnchors } from './hash.ts'
 import { NotionMdGateway, type RemoteMarkdownSnapshot, type RemotePageSnapshot } from './model.ts'
 import { withOperation } from './observability.ts'
 import {
@@ -525,17 +525,6 @@ const composeTreePushBody = (opts: {
           ),
         ),
       )
-
-/** Strip block-level child anchors; in a tree they are derived from hierarchy. */
-const stripChildAnchors = (body: string): string =>
-  normalizeMarkdownLineEndings(
-    body
-      .split('\n')
-      .filter((line) => /^\s*<page\b[^>]*>.*<\/page>\s*$/u.test(line) === false)
-      .join('\n')
-      .replace(/\n{3,}/gu, '\n\n')
-      .replace(/\n+$/u, '\n'),
-  )
 
 /** Re-render a file with the real `page_id`/`url` bound in (keeps body + title). */
 const bindFrontmatter = (opts: {

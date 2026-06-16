@@ -25,7 +25,7 @@ import {
   type NmdError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
-import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
+import { normalizeMarkdownLineEndings, sha256Digest, stripChildAnchors } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 import {
   NotionMdGateway,
@@ -871,20 +871,6 @@ const assertLocalBodyUnchanged = (opts: {
         'Local .nmd body changed while push was in progress; refusing to overwrite it with refreshed Notion state',
     })
   })
-
-/**
- * Strip block-level `<page url=...>...</page>` child anchors from a body. The
- * anchor set is DERIVED and re-emitted on every parent push, and Notion itself
- * auto-appends an anchor whenever a child is created — so it must not count as
- * a "remote change" that would block the parent's push or trigger a 3-way
- * merge (which would duplicate the anchor). Used only for change DETECTION; the
- * push body always carries the full derived anchor set.
- */
-const stripChildAnchors = (body: string): string =>
-  body
-    .split('\n')
-    .filter((line) => /^\s*<page\b[^>]*>.*<\/page>\s*$/u.test(line) === false)
-    .join('\n')
 
 const remoteBodyUnchangedForPush = (opts: {
   readonly remoteBody: string
