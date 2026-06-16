@@ -20,6 +20,7 @@ import {
 } from '../../../lib/config.ts'
 import * as Git from '../../../lib/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
+import * as LibObservability from '../../../lib/observability.ts'
 import { classifyRef } from '../../../lib/ref.ts'
 import { archiveWorktree, reapArchive, scanArchives } from '../../../lib/store-archive.ts'
 import { loadStoreGcConfig, type StoreGcConfig } from '../../../lib/store-gc-config.ts'
@@ -850,15 +851,7 @@ const coldReclaimRepo = ({
     }
 
     return results
-  }).pipe(
-    Effect.withSpan('megarepo/store/gc/cold-reclaim-repo', {
-      attributes: {
-        'span.label': repoRelativePath,
-        'store.repo': repoRelativePath,
-        'store.bare_repo.path': bareRepoPath,
-      },
-    }),
-  )
+  }).pipe(LibObservability.withColdReclaimRepoSpan({ repoRelativePath, bareRepoPath }))
 
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>

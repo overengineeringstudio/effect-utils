@@ -33,6 +33,7 @@ import { Effect } from 'effect'
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from './git.ts'
+import * as Observability from './observability.ts'
 
 /**
  * The three lossless signals for one named-branch worktree, in the exact shape
@@ -61,9 +62,7 @@ export const unpushedCommitCount = (args: {
 }) =>
   Git.revListUnpushed({ repoPath: args.bareRepoPath, ref: args.worktreeHead }).pipe(
     Effect.map((commits) => commits.length),
-    Effect.withSpan('megarepo/store/gc/unpushed-commit-count', {
-      attributes: { 'span.label': args.worktreeHead.slice(0, 8), worktreeHead: args.worktreeHead },
-    }),
+    Observability.withUnpushedCommitCountSpan(args.worktreeHead),
   )
 
 /**
@@ -100,8 +99,4 @@ export const assessLossless = (args: {
       dirty: status.isDirty,
       hasStash: stash,
     } satisfies LosslessAssessment
-  }).pipe(
-    Effect.withSpan('megarepo/store/gc/assess-lossless', {
-      attributes: { 'span.label': 'lossless', worktreePath: args.worktreePath },
-    }),
-  )
+  }).pipe(Observability.withAssessLosslessSpan(args.worktreePath))

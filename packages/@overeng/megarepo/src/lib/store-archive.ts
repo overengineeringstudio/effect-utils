@@ -35,6 +35,7 @@ import { Effect, Option } from 'effect'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from './git.ts'
+import * as Observability from './observability.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
 
 /** Relative directory name of the per-repo archive holding area. */
@@ -224,11 +225,7 @@ export const archiveWorktree = (args: {
     )
 
     return { destPath, warnings }
-  }).pipe(
-    Effect.withSpan('megarepo/store/gc/archive-worktree', {
-      attributes: { 'span.label': args.branch, branch: args.branch, reason: args.reason },
-    }),
-  )
+  }).pipe(Observability.withArchiveWorktreeSpan({ branch: args.branch, reason: args.reason }))
 
 /**
  * Enumerate the archive entries under `<repoRoot>/.archive/`.
@@ -279,11 +276,7 @@ export const scanArchives = (args: {
     }
 
     return entries
-  }).pipe(
-    Effect.withSpan('megarepo/store/gc/scan-archives', {
-      attributes: { 'span.label': 'scan-archives', repoRoot: args.repoRoot },
-    }),
-  )
+  }).pipe(Observability.withScanArchivesSpan(args.repoRoot))
 
 /**
  * Reap (hard-delete) one archived worktree.
@@ -317,8 +310,4 @@ export const reapArchive = (args: {
     if (exists === true) {
       yield* fs.remove(args.path, { recursive: true, force: true })
     }
-  }).pipe(
-    Effect.withSpan('megarepo/store/gc/reap-archive', {
-      attributes: { 'span.label': 'reap-archive', path: args.path },
-    }),
-  )
+  }).pipe(Observability.withReapArchiveSpan(args.path))

@@ -15,6 +15,8 @@ import { Effect } from 'effect'
 
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
+import * as Observability from './observability.ts'
+
 /**
  * Derives a sibling temp path that is UNIQUE per write — the per-target name
  * alone would be shared by two concurrent writers of the same target (e.g. two
@@ -49,8 +51,4 @@ export const writeFileAtomic = ({
     yield* fs
       .rename(tempPath, path)
       .pipe(Effect.tapError(() => fs.remove(tempPath).pipe(Effect.catchAll(() => Effect.void))))
-  }).pipe(
-    Effect.withSpan('megarepo/store/fs/write-atomic', {
-      attributes: { 'span.label': 'write-atomic' },
-    }),
-  )
+  }).pipe(Observability.withLabelSpan('megarepo/store/fs/write-atomic', 'write-atomic'))

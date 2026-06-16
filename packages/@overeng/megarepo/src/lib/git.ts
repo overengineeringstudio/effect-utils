@@ -712,12 +712,7 @@ export const deleteBranch = (args: { repoPath: string; branch: string; force?: b
   runGitCommand({
     args: ['branch', args.force === true ? '-D' : '-d', args.branch],
     cwd: args.repoPath,
-  }).pipe(
-    Effect.asVoid,
-    Effect.withSpan('git/delete-branch', {
-      attributes: { 'span.label': args.branch, branch: args.branch },
-    }),
-  )
+  }).pipe(Effect.asVoid, Observability.withGitDeleteBranchSpan(args.branch))
 
 /**
  * Push a branch to the remote.
@@ -958,12 +953,7 @@ export const detachWorktreeHead = (args: { worktreePath: string }) =>
   runGitCommand({
     args: ['checkout', '--detach'],
     cwd: args.worktreePath,
-  }).pipe(
-    Effect.asVoid,
-    Effect.withSpan('git/detach-worktree-head', {
-      attributes: { 'span.label': args.worktreePath, worktreePath: args.worktreePath },
-    }),
-  )
+  }).pipe(Effect.asVoid, Observability.withGitDetachWorktreeHeadSpan(args.worktreePath))
 
 // =============================================================================
 // Megarepo Name Derivation
