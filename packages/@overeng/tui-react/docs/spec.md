@@ -811,6 +811,31 @@ Renderers guarantee terminal restoration:
 | Alternate | Exit alt buffer, restore cursor               |
 | JSON      | Flush buffer, trailing newline                |
 
+### Shutdown Flush & Exit Codes
+
+`runTuiMain` shuts down as fast as possible once any pending telemetry flush has
+completed, and never relies on a fixed timeout on the happy path. The contract:
+
+- **Flush is a scope finalizer, awaited to completion.** On natural exit, the
+  OTLP/telemetry exporter's flush runs as a scope finalizer that Effect awaits;
+  process exit happens as soon as it finishes — exit latency ≈ one collector
+  round-trip, with no fixed wait added.
+- **The shutdown cap is a ceiling, never a floor.** `makeOtelCliLayer`'s
+  `shutdownTimeout` bounds only the worst case (a black-holed collector); it
+  costs nothing when the collector is healthy. It defaults TTY-aware (30s
+  non-interactive / 10s interactive) and must not be set to a small per-CLI
+  override — a too-small cap interrupts the in-flight export and silently drops
+  the final batch.
+- **Ctrl-C bails fast.** The flush finalizer stays interruptible, so a signal
+  during a slow or dead-collector flush escapes the cap in milliseconds.
+- **Exit codes.** A signal-interrupted run exits **130** (shell convention); an
+  uncaught failure exits 1; success exits 0. (`runTuiMain` provides a custom
+  `teardown` so a signal does not clobber 130 down to 0.)
+
+See `.decisions/0001-shutdown-flush-contract.md` for the competing-goals
+resolution and the regression test
+(`test/integration/cli-shutdown-flush.test.ts`).
+
 ---
 
 ## Error Handling

@@ -173,6 +173,13 @@ export interface OtelCliLayerConfig {
  * - Exports to OTLP endpoint if configured (explicit `endpoint`, else env fallback)
  * - Zero exporter overhead when no endpoint is configured (only the lightweight
  *   {@link OtelConfig} marker is provided so command code can gate on it)
+ * - Config-free shutdown flush: the exporter's flush is a scope finalizer Effect
+ *   awaits to completion, so natural exit is as fast as the flush. `shutdownTimeout`
+ *   is a safety ceiling only (see its docs) — the final batch is delivered by the
+ *   scope-close finalizer regardless of the export intervals, so do NOT tune
+ *   intervals or the cap to make a metric "land". Known residual: a transient
+ *   mid-run export failure trips the exporter's 60s self-disable, after which the
+ *   final flush short-circuits (not solvable via `shutdownTimeout`).
  *
  * @example
  * ```typescript
