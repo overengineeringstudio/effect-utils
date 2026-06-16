@@ -1,11 +1,8 @@
 # `edit` is a discrete pull-edit-push session, not live/continuous sync
 
-> **Refined by [0017](./0017-edit-is-an-ephemeral-file-engine-session.md).** The
-> session shape below (pull once → `$EDITOR` → one guarded push on exit) is
-> unchanged, but the _implementation_ is now an ephemeral **file-engine** session:
-> the temp tree under `$TMPDIR` is a full `.nmd` + `.notion-md/` driven by
-> `syncPage`, not a gateway-only body file. Concurrency safety comes from the
-> engine's base-snapshot guard rather than a stateless base hash.
+> **Refined by [0017](./0017-edit-is-an-ephemeral-file-engine-session.md):** the
+> session shape below is unchanged, but `edit` is now an ephemeral file-engine
+> session whose concurrency safety comes from the engine's base-snapshot guard.
 
 `edit` pulls once, opens `$VISUAL`/`$EDITOR` on a `$TMPDIR` temp file, and on
 editor exit does one guarded `put`. It is not character-level or continuous

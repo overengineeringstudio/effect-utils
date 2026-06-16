@@ -198,6 +198,6 @@ Artifacts: `tmp/notion-vim/reconciler-feasibility.md`.
 - **Not redundant:** writing an unknown select-option _name_ returns **HTTP 200 and silently auto-creates the option**, corrupting the schema — the fingerprint is the only precise pre-write guard.
 - `PROPERTY_WRITE_CLASSES` (`@overeng/notion-core`) matches live writable/computed behavior.
 
-**Conclusion:** decision 0013 is sound and implementable; the fingerprint adds real value over Notion's own (silent) handling.
+**Conclusion:** the in-buffer schema fingerprint was sound and implementable, and adds real value over Notion's own (silent) handling — but the stateless fingerprint was later superseded by decision 0017 (drift is detected from the engine's base snapshot instead). The underlying value here (a precise pre-write schema-drift guard) carries over.
 
 Artifacts: `tmp/notion-vim/schema-fingerprint-verify.md`.

@@ -71,8 +71,8 @@ property-only push ([02-file-sync](../02-file-sync/spec.md#push-flow)).
 
 ## Data-Source Binding and Schema Drift
 
-Requirement trace: R14. Decision [0013](../.decisions/0013-in-buffer-schema-fingerprint.md) (the stateless in-buffer fingerprint) is
-superseded by decision [0017](../.decisions/0017-edit-is-an-ephemeral-file-engine-session.md): drift is detected from a base snapshot, not a
+Requirement trace: R14. The earlier stateless in-buffer fingerprint is superseded
+by decision [0017](../.decisions/0017-edit-is-an-ephemeral-file-engine-session.md): drift is detected from a base snapshot, not a
 re-derived stateless fingerprint.
 
 For a data-source-backed page, `pullPage` retrieves the parent data source

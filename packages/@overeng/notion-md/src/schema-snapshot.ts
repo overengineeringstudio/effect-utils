@@ -12,7 +12,7 @@ import { sha256Digest } from './hash.ts'
  * refuses with `NmdSchemaDriftError` (exit 6) rather than risk Notion silently
  * auto-creating a select option for an unknown value name.
  *
- * Why a writable-only, name-based projection (decision 0013, live-verified):
+ * Why a writable-only, name-based projection (decision 0017, live-verified):
  * - A computed-only schema change cannot affect a property *write*, so hashing
  *   only the writable subset keeps the guard from over-refusing on benign edits
  *   to formulas/rollups/etc. (consistent with the writable-projection guard,

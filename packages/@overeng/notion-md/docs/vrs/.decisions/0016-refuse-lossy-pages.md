@@ -1,11 +1,8 @@
 # The editor refuses pages with lossy blocks instead of reconciling them
 
-> **Broadened by [0017](./0017-edit-is-an-ephemeral-file-engine-session.md).**
-> Refusal is **uniform** across `cat`/`put`/`edit` _and_ the file-based `sync`
-> (enforced at the shared pull gate), not streaming-only; and `edit` is an
-> ephemeral file-engine session, not a gateway-only pipe. Read "streaming editor"
-> below as "the editor surface." 0017 also supersedes 0013 (the schema fingerprint
-> this record once called "unaffected").
+> **Broadened by [0017](./0017-edit-is-an-ephemeral-file-engine-session.md)** to
+> uniform refusal across `cat`/`put`/`edit` and the file-based `sync`. Read
+> "streaming editor" below as "the editor surface."
 
 The editor (`cat`/`put`/`edit`) targets the **representable-Markdown majority**. A page whose body contains any **not-losslessly-representable block**
 — `child_database`, `synced_block`, `table_of_contents`, `child_page`, the API
@@ -54,10 +51,12 @@ accepted
   `replace_content`) plus a typed title / property write — **two writes, not a
   block-op sequence** (decision 0012). Because the body contains no opaque blocks,
   `replace_content` can never destroy one.
-- **Supersedes** the reconciler edifice: inline placeholders (0005),
-  visible-placeholder-deletion (0010), block-level reconciliation (0011), the
-  universal reconciliation engine (0014), and the renderer-symmetric converter
-  (0015). No `<notion-block id>` token, no recreate-move.
+- **Supersedes the reconciler edifice** — inline id-carrying placeholders,
+  visible-placeholder deletion as normal editing, block-level reconciliation by
+  id, reconciliation as the universal push engine, and the renderer-symmetric
+  Markdown↔block converter are all abandoned (their decision records are removed;
+  rationale in [experiments.md](../experiments.md)). No `<notion-block id>` token,
+  no recreate-move.
 - **Exit 3 flips from a rare fallback to the defining refusal.** It names the
   refused block classes and points to the Notion UI / file-based sync. The
   reconciler-only **exit 11** (opaque-move-unsupported) is deleted.
@@ -75,5 +74,5 @@ accepted
 - The file-based path keeps its existing **Markdown** three-way merge and
   guarded `replace_content`; it is not rewritten onto a block engine.
 - Decision 0007 (media canonicalization) is unaffected; 0006 (writable-projection
-  guard) and 0008 (scope boundary) stand. (Decision 0013's schema fingerprint was
-  later superseded by 0017, which deletes it.)
+  guard) and 0008 (scope boundary) stand. (The stateless schema fingerprint this
+  record once called "unaffected" was later superseded by 0017.)

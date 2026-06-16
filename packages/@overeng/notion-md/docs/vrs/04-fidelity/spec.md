@@ -37,8 +37,8 @@ C). This is a **correctness prerequisite for the file path too**: today
 `child_database`/`toc` classify `complete`, so without the extension a
 `replace_content` push (file `sync` or `edit`) would silently destroy them.
 
-- **Refusal, not placeholdering.** The reconciler/placeholder approach (former
-  decisions 0005/0011) was abandoned: Notion's platform bars the parts of it that
+- **Refusal, not placeholdering.** The earlier reconciler/placeholder approach
+  was abandoned: Notion's platform bars the parts of it that
   matter — no backlink endpoint (a moved `synced_block` original silently breaks
   inbound references), `child_database` is uncreatable via the block API, and the
   Markdown endpoint is non-injective. Refusing is the honest, elegant scope the
@@ -100,7 +100,7 @@ and the body pushed are the **same canonical bytes**:
   construction.
 - **Push send** (`replace_content`) canonicalizes the same way.
 
-The renderer emits *parseable-not-canonical* Markdown (it joins sibling blocks
+The renderer emits _parseable-not-canonical_ Markdown (it joins sibling blocks
 with `\n\n` so they survive a reparse) and carries no spacing policy; the
 canonical layer owns spacing/list-tightness (it forces `spread = false` on lists,
 so a tight Notion list does not pull as a loose CommonMark list, and the stray

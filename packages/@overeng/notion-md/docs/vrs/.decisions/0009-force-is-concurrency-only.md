@@ -1,11 +1,8 @@
 # `--force` bypasses only the concurrency guard, not correctness guards
 
-> **Refined by [0017](./0017-edit-is-an-ephemeral-file-engine-session.md).** The
-> exit-6 schema-drift guard below is now the engine's `schema_snapshot`
-> comparison (the stateless in-buffer fingerprint it originally referenced was
-> deleted with decision 0013). The visible-placeholder consequence is historical
-> (decision 0010, superseded by 0016). The principle — `--force` is
-> concurrency-only — stands.
+> **Refined by [0017](./0017-edit-is-an-ephemeral-file-engine-session.md):** the
+> exit-6 schema-drift guard is now the engine's `schema_snapshot` comparison; the
+> principle — `--force` is concurrency-only — stands.
 
 `put --force` (and `edit --force`) bypasses **only** the exit-7 base-hash guard
 (`NotionMdBodyConflictError`) — the last-writer-wins concurrency escape. It does
@@ -25,7 +22,8 @@ accepted
 ## Consequences
 
 - Bypassing lossy/schema-drift requires their own explicit modes, not `--force`.
-- Deleting a _visible_ placeholder is normal editing, not a destructive mode at
-  all (decision 0010) — so it needs no flag and is unrelated to `--force`.
+- Under refuse-lossy (decision 0016) there is no inline placeholder to delete;
+  the historical "deleting a visible placeholder is normal editing" carve-out is
+  moot, so this is unrelated to `--force`.
 - Keeps the streaming surface aligned with the vision's "not a last-writer-wins
   backup tool" while still offering a deliberate single-purpose override.

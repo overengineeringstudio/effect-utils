@@ -1,11 +1,8 @@
 # Streaming surface scope: body + writable projection only; other surfaces stay file-based
 
-> **Refined by [0017](./0017-edit-is-an-ephemeral-file-engine-session.md).** This
-> scope boundary now applies to the **stateless pipes `cat`/`put`** only. `edit`
-> is an ephemeral file-engine session, so on _representable_ pages it widens reach
-> to the engine's extras (object store, 3-way merge, `unsupported_blocks`
-> preservation); it shares the same lossy refusal (refused at the pull). Read the
-> body of this record as the `cat`/`put` boundary.
+> **Refined by [0017](./0017-edit-is-an-ephemeral-file-engine-session.md):** this
+> scope boundary now applies to the **stateless pipes `cat`/`put`** only; `edit`
+> is an ephemeral file-engine session that widens reach on representable pages.
 
 The streaming surface (`cat`/`put`/`edit`) is stateless — no `.notion-md/`, no
 sidecar, no object store. It therefore operates on exactly the **writable
@@ -14,8 +11,9 @@ properties. Everything else stays on the file-based path (`sync`/`status`/
 `plan`):
 
 - **File bytes / object store:** no download or upload; hosted files stay
-  remote-authoritative and are referenced (canonicalized URL per decision 0007,
-  or placeholder per decision 0005).
+  remote-authoritative and are referenced by canonicalized URL (decision 0007).
+  (Originally this also covered an inline placeholder for non-representable media;
+  that placeholder approach was abandoned for refuse-lossy — decision 0016.)
 - **Comments, data-source schema, unsupported-block payload snapshots,
   base-snapshot three-way merge, tree / child-page operations:** file-only.
 

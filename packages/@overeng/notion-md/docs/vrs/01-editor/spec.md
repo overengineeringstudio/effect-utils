@@ -106,7 +106,8 @@ compared at `syncPage` push (the same guard the file path uses, decision [0017](
 hash, since the engine can auto-merge non-overlapping concurrent edits. In
 `--frontmatter` mode the engine also detects data-source **schema drift** from a
 `schema_snapshot` captured at pull ([06-data-source](../06-data-source/spec.md);
-the stateless in-buffer fingerprint of decision [0013](../.decisions/0013-in-buffer-schema-fingerprint.md) is gone). Writable vs
+the earlier stateless in-buffer fingerprint is gone — superseded by decision
+[0017](../.decisions/0017-edit-is-an-ephemeral-file-engine-session.md)). Writable vs
 read-only/computed property split is `propertyWriteClassFromType` /
 `PROPERTY_WRITE_CLASSES` (`@overeng/notion-core`), the single source of truth.
 
@@ -134,7 +135,7 @@ The error family uses the `Nmd*` prefix; the one exception is the pre-existing
 Exit 3 is checked **at the pull** on all three verbs (for `edit`, at the
 ephemeral file-engine pull) — none of them presents a body it cannot round-trip.
 Exit 6 is **redefined**: it is no longer the deleted stateless in-buffer
-fingerprint (decision 0013) but the engine's `schema_snapshot`-based schema-drift
+fingerprint but the engine's `schema_snapshot`-based schema-drift
 refusal for `edit --frontmatter` / `sync` (decision 0017, R14) — kept on its own
 axis from the exit-7 value/body conflict so it is not `--force`-able. Exit 11
 (opaque-move) is **removed** (no opaque move, decision 0016). Exit 10 applies

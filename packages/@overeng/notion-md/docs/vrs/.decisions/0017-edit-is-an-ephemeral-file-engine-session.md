@@ -38,8 +38,8 @@ machinery.
   `table_of_contents` / `synced_block` mis-classify `complete` and a
   `replace_content` push silently destroys them — in the existing file path, not
   just streaming. The uniform refusal above is only sound once R38 lands.
-- **The stateless schema-drift fingerprint is deleted** (supersedes decision
-  0013; removes R42; impl-delta Group F is repurposed from the fingerprint to a
+- **The stateless in-buffer schema-drift fingerprint is superseded and deleted**
+  (removes R42; impl-delta Group F is repurposed from the fingerprint to a
   small engine `schema_snapshot` addition). It existed solely because a stateless
   pipe has no base snapshot. `edit --frontmatter` runs over the engine's base
   snapshot, so drift is detected by snapshot comparison (a `schema_snapshot`
@@ -74,4 +74,5 @@ machinery.
 
 ## Status
 
-accepted (supersedes 0013; redefines 0003, 0008, 0012; broadens 0016 to uniform)
+accepted (supersedes the stateless in-buffer schema fingerprint; redefines 0003,
+0008, 0012; broadens 0016 to uniform)
