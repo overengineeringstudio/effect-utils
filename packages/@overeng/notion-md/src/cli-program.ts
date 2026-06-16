@@ -16,7 +16,13 @@ import {
   statusMany,
   syncMany,
 } from './batch.ts'
-import { catEditorPage, editEditorPage, putEditorPage, type EditorMode } from './editor-commands.ts'
+import {
+  catEditorPage,
+  editEditorPage,
+  editReadOnlyPage,
+  putEditorPage,
+  type EditorMode,
+} from './editor-commands.ts'
 import { NmdCliError, NmdTokenMissingError, NmdUnresolvablePageError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
@@ -684,6 +690,13 @@ const baseHashOption = Options.text('base-hash').pipe(
   Options.optional,
 )
 
+const readOnlyOption = Options.boolean('read-only').pipe(
+  Options.withDescription(
+    'Open the page in $EDITOR for inspection only; discard edits and never push (like `vim -R`)',
+  ),
+  Options.withDefault(false),
+)
+
 /** Resolve a `<page>` token to a Notion page id, failing with exit 4 when unresolvable. */
 const resolvePageArg = (page: string): Effect.Effect<string, NmdUnresolvablePageError> => {
   const parsed = parseNotionPageRef(page)
@@ -773,19 +786,34 @@ const putCommand = Command.make(
  * same engine-backed session.
  */
 const makeEditCommand = (name: string) =>
-  Command.make(name, { page: pageArg, frontmatter: frontmatterOption }, ({ page, frontmatter }) => {
-    const mode: EditorMode = frontmatter === true ? 'frontmatter' : 'default'
-    return commandSpan({
-      command: 'edit',
-      label: basename(page),
-      effect: resolvePageArg(page).pipe(
-        Effect.flatMap((pageId) => withNotion(editEditorPage({ pageId, mode, pageRef: page }))),
-        Effect.flatMap(logJson),
-      ),
-    })
-  }).pipe(
+  Command.make(
+    name,
+    { page: pageArg, frontmatter: frontmatterOption, readOnly: readOnlyOption },
+    ({ page, frontmatter, readOnly }) => {
+      const mode: EditorMode = frontmatter === true ? 'frontmatter' : 'default'
+      return commandSpan({
+        command: 'edit',
+        label: basename(page),
+        // `edit` exposes no `--force` (force lives on `put`/`sync`), so the
+        // documented `--read-only`/`--force` contradiction cannot be expressed
+        // here — there is nothing to reject.
+        effect: resolvePageArg(page).pipe(
+          Effect.flatMap((pageId) =>
+            readOnly === true
+              ? withNotion(editReadOnlyPage({ pageId, mode })).pipe(
+                  Effect.map((result): unknown => result),
+                )
+              : withNotion(editEditorPage({ pageId, mode, pageRef: page })).pipe(
+                  Effect.map((result): unknown => result),
+                ),
+          ),
+          Effect.flatMap(logJson),
+        ),
+      })
+    },
+  ).pipe(
     Command.withDescription(
-      'Edit a Notion page in $EDITOR via an ephemeral .nmd session, then push the change through the sync engine',
+      'Edit a Notion page in $EDITOR via an ephemeral .nmd session, then push the change through the sync engine; `--read-only` inspects without pushing',
     ),
   )
 

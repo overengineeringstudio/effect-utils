@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { BodyCompleteness } from '@overeng/notion-core'
 
-import { editEditorPage } from './editor-commands.ts'
+import { editEditorPage, editReadOnlyPage } from './editor-commands.ts'
 import { NmdGatewayError } from './errors.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
 import {
@@ -263,5 +263,171 @@ describe('edit (ephemeral file-engine session)', () => {
     )
     expect(result._tag).toBe('Left')
     if (result._tag === 'Left') expect(result.left._tag).toBe('NmdRemoteBodyLossyError')
+  })
+})
+
+/**
+ * A read-only fake gateway: every write path (`updateMarkdown`,
+ * `updatePageMetadata`, `updatePageProperties`) `dieMessage`s, so any push/write
+ * attempt crashes the test outright — the strongest proof that `--read-only`
+ * never writes (stronger than asserting empty call arrays).
+ */
+class ReadOnlyFakeGateway {
+  readonly state: FakeState
+  pullCount = 0
+  constructor(initial: { title: string; body: string; completeness?: BodyCompleteness }) {
+    this.state = {
+      title: initial.title,
+      body: normalizeMarkdownLineEndings(initial.body),
+      completeness: initial.completeness ?? { _tag: 'complete' },
+    }
+  }
+
+  readonly layer = Layer.succeed(NotionMdGateway, {
+    pullPage: () =>
+      Effect.sync(() => {
+        this.pullCount += 1
+        return pull(this.state)
+      }),
+    updateMarkdown: () => Effect.dieMessage('read-only must never call updateMarkdown'),
+    updatePageProperties: () => Effect.dieMessage('read-only must never call updatePageProperties'),
+    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
+    updatePageMetadata: () => Effect.dieMessage('read-only must never call updatePageMetadata'),
+    listChildPages: () => Effect.succeed([]),
+    createPage: () => Effect.dieMessage('unexpected createPage'),
+    movePage: () => Effect.dieMessage('unexpected movePage'),
+    archivePage: () => Effect.dieMessage('unexpected archivePage'),
+  } satisfies NotionMdGatewayShape)
+}
+
+/** A scripted editor that records the buffer it saw and rewrites it; tracks cleanup. */
+const recordingEditor = (opts: {
+  readonly transform?: (buffer: string) => string
+  readonly exitCode?: number
+}) => {
+  const seen: { buffer?: string; filePath?: string } = {}
+  const run = (args: {
+    readonly filePath: string
+  }): Effect.Effect<number, NmdGatewayError, FileSystem.FileSystem> =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const buffer = yield* fs.readFileString(args.filePath)
+      seen.buffer = buffer
+      seen.filePath = args.filePath
+      // Edit the buffer to prove the edits are discarded (never read back).
+      yield* fs.writeFileString(
+        args.filePath,
+        (opts.transform ?? ((b) => `${b}\nlocal edit`))(buffer),
+      )
+      return opts.exitCode ?? 0
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NmdGatewayError({ operation: 'recording_editor', message: String(cause), cause }),
+      ),
+    )
+  return { seen, run }
+}
+
+const runReadOnly = <A, E>(
+  effect: Effect.Effect<A, E, NotionMdGateway | NodeContext.NodeContext>,
+  gateway: ReadOnlyFakeGateway,
+) =>
+  Effect.either(effect).pipe(
+    // Deliberately NO stateStoreLayer: read-only's narrow R never needs it.
+    Effect.provide(Layer.mergeAll(gateway.layer, NodeContext.layer)),
+    Effect.runPromise,
+  )
+
+describe('edit --read-only (inspection-only session)', () => {
+  it('presents the body, discards edits, and never calls any write gateway method', async () => {
+    const gateway = new ReadOnlyFakeGateway({ title: 'Doc', body: 'original line' })
+    const editor = recordingEditor({ transform: (b) => b.replace('original line', 'edited line') })
+    const stderr: string[] = []
+    const result = await runReadOnly(
+      editReadOnlyPage({
+        pageId,
+        mode: 'default',
+        writeStderr: (line) => Effect.sync(() => void stderr.push(line)),
+        runEditor: editor.run,
+      }),
+      gateway,
+    )
+    // No write method was hit (else the gateway would have died, surfacing as a defect).
+    expect(result._tag).toBe('Right')
+    if (result._tag === 'Right') expect(result.right.outcome).toBe('read-only')
+    // The editor saw the cat-style projection (`# title` + body).
+    expect(editor.seen.buffer).toBe('# Doc\n\noriginal line\n')
+    // Remote body is untouched; the local edit was discarded.
+    expect(gateway.state.body).toBe('original line\n')
+    expect(stderr).toEqual(['read-only: changes were not synced'])
+  })
+
+  it('cleans up the scoped temp tree after the session', async () => {
+    const gateway = new ReadOnlyFakeGateway({ title: 'Doc', body: 'body' })
+    const editor = recordingEditor({})
+    const result = await runReadOnly(
+      editReadOnlyPage({ pageId, mode: 'default', runEditor: editor.run }),
+      gateway,
+    )
+    expect(result._tag).toBe('Right')
+    // The buffer path lived under a scoped temp dir, reaped on scope close.
+    const dir = dirname(editor.seen.filePath ?? '')
+    expect(existsSync(dir)).toBe(false)
+  })
+
+  it('a non-zero editor exit is still a clean no-op (no abort, no push), exits read-only', async () => {
+    const gateway = new ReadOnlyFakeGateway({ title: 'Doc', body: 'safe' })
+    const editor = recordingEditor({ exitCode: 1 })
+    const stderr: string[] = []
+    const result = await runReadOnly(
+      editReadOnlyPage({
+        pageId,
+        mode: 'default',
+        writeStderr: (line) => Effect.sync(() => void stderr.push(line)),
+        runEditor: editor.run,
+      }),
+      gateway,
+    )
+    expect(result._tag).toBe('Right')
+    if (result._tag === 'Right') expect(result.right.outcome).toBe('read-only')
+    expect(gateway.state.body).toBe('safe\n')
+    expect(stderr).toEqual(['read-only: changes were not synced'])
+  })
+
+  it('--read-only --frontmatter inspects the full envelope read-only, still no writes', async () => {
+    const gateway = new ReadOnlyFakeGateway({ title: 'Env', body: 'envelope body' })
+    const editor = recordingEditor({})
+    const result = await runReadOnly(
+      editReadOnlyPage({ pageId, mode: 'frontmatter', runEditor: editor.run }),
+      gateway,
+    )
+    expect(result._tag).toBe('Right')
+    if (result._tag === 'Right') expect(result.right.outcome).toBe('read-only')
+    // The editor saw the full strict `.nmd` envelope, not the `# title` form.
+    expect(editor.seen.buffer).toContain('---\n')
+    expect(editor.seen.buffer).toContain('"version": 2')
+    expect(editor.seen.buffer).toContain('envelope body')
+  })
+
+  it('refuses a lossy page at observe time (exit 3); the editor is never launched', async () => {
+    const gateway = new ReadOnlyFakeGateway({
+      title: 'Doc',
+      body: 'body',
+      completeness: {
+        _tag: 'lossy',
+        reasons: ['not_round_trip_safe_blocks'],
+        lossyBlockTypes: ['synced_block'],
+      },
+    })
+    const editor = recordingEditor({})
+    const result = await runReadOnly(
+      editReadOnlyPage({ pageId, mode: 'default', runEditor: editor.run }),
+      gateway,
+    )
+    expect(result._tag).toBe('Left')
+    if (result._tag === 'Left') expect(result.left._tag).toBe('NmdRemoteBodyLossyError')
+    // Refused before any editor launch.
+    expect(editor.seen.buffer).toBeUndefined()
   })
 })
