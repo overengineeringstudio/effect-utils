@@ -24,7 +24,7 @@ Follow-up work for feasible but unsupported surfaces is tracked in
 | Local workspace paths  | Claimed deterministic row paths with collision guards                                                                  |
 | `sync --watch` daemon  | Bounded daemon loop that processes local SQLite CDC plus remote polling, lease fencing, cancellation, restart coverage |
 | OpenTelemetry          | CLI, daemon, sync, gateway, planner, executor, and guard spans                                                         |
-| Remote adoption        | `track` establishes a local workspace from an existing data source                                                    |
+| Remote adoption        | `track` establishes a local workspace from an existing data source                                                     |
 | Local SQLite replica   | `<database-id>.sqlite` is the self-contained full-database public local read/write API and sync-state file             |
 | Local write intents    | `rows` edits are the primary write API and queue guarded intents before `sync` or `sync --watch` applies them          |
 
