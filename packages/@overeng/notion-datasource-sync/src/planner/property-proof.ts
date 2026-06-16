@@ -42,7 +42,12 @@ import {
 import type { DesiredPropertyWrite, PropertyWriteProof } from '@overeng/notion-property-write'
 
 import type { Hash } from '../core/domain.ts'
-import type { PropertyAvailability, PropertyWriteClass } from '../core/guards.ts'
+import {
+  guardExpiringFileUrl,
+  type GuardDecision,
+  type PropertyAvailability,
+  type PropertyWriteClass,
+} from '../core/guards.ts'
 
 /**
  * Project a planner {@link PropertyAvailability} onto the proof's
@@ -260,4 +265,54 @@ export const makeWorkspaceProof = (
   }
 
   return { proof, desiredWrite }
+}
+
+/**
+ * Fail closed on a `files` property write that would store a Notion-hosted
+ * (signed/expiring) file URL as durable identity (proposed decision 0016 part 2).
+ *
+ * A `CanonicalFileValue` is durable only when it carries an `externalUrl` — that
+ * is the external durable URL projected from the remote `file.external.url`
+ * (`@overeng/notion-effect-schema` `canonicalFileFromRemote`). A Notion-HOSTED
+ * file is canonicalized to `name` + `identityHash` only: its signed `file.file.url`
+ * is intentionally NOT captured, so a missing `externalUrl` IS the "notion-hosted,
+ * no stable durable ref" case. Writing such a value back would push a soon-dead
+ * signed link as the durable property identity, exactly the case the dormant
+ * `ExpiringFileUrl` guard (`core/guards.ts`) names.
+ *
+ * The block mirrors the property-encoding fail-closed posture
+ * (`canonicalFileFromRemote`'s consumer requires `externalUrl` on EVERY file to
+ * encode): block if ANY file lacks `externalUrl`. An empty `files: []` is a CLEAR,
+ * not an expiring ref, so it allows. Non-`files` writes carry no file reference
+ * and always allow.
+ *
+ * This is the load-bearing dispatch site for `ExpiringFileUrl`: the planner pushes
+ * this decision into `baseGuards` alongside `evaluatePropertyWrite`, so a notion-hosted
+ * file write that the property-write core would otherwise allow (a `files` value fits
+ * a `files` column) is surfaced as `ExpiringFileUrl` by `firstBlocked`.
+ */
+export const evaluateDesiredFileReferences = (
+  desiredValue: WorkspaceProofInputs['desiredValue'],
+): GuardDecision => {
+  if (desiredValue._tag !== 'files') {
+    return { _tag: 'allowed' }
+  }
+
+  /*
+   * A non-external (notion-hosted) file lacks a durable `externalUrl`, so the only
+   * stable ref the guard could honor is undefined. Build the snapshot per file and
+   * delegate the verdict to the dormant guard rather than re-deriving block logic.
+   */
+  for (const file of desiredValue.files) {
+    const snapshot =
+      file.externalUrl === undefined
+        ? { kind: 'notion-hosted' as const, stableRef: undefined, expiresAt: undefined }
+        : { kind: 'external' as const, stableRef: file.externalUrl, expiresAt: undefined }
+    const decision = guardExpiringFileUrl(snapshot)
+    if (decision._tag === 'blocked') {
+      return decision
+    }
+  }
+
+  return { _tag: 'allowed' }
 }
