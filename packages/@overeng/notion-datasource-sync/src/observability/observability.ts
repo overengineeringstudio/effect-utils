@@ -3,6 +3,7 @@ import { Effect, Schema, Stream } from 'effect'
 import {
   OtelAttr,
   OtelAttrs,
+  OtelMetric,
   OtelOperation,
   OtelSpan,
   type OtelAttributeValue,
@@ -366,3 +367,55 @@ export const otelCorrelationSpanAttributes = (input: {
       input.agentRunId ??
       resourceAttributeValue({ input: input.resourceAttributes, key: spanAttr.agentIterationId }),
   })
+
+/**
+ * The full set of gateway operation names that can label a `notion.api.request`
+ * span / metric, kept in lockstep with `gateway.ts`'s `GatewayOperation` union.
+ *
+ * Bounded cardinality: exactly these 13 logical endpoints, never an id.
+ */
+export const gatewayOperationNames = [
+  'preflightCapabilities',
+  'retrieveDataSource',
+  'queryRows',
+  'retrievePage',
+  'retrievePageProperty',
+  'listDataSourceViews',
+  'patchPageProperties',
+  'createPage',
+  'patchDataSourceSchema',
+  'patchDataSourceMetadata',
+  'patchDatabaseMetadata',
+  'trashPage',
+  'restorePage',
+] as const
+
+/** Operation name labelling a `notion.api.request` — the bounded `operation` metric/span dimension. */
+export type GatewayRequestOperation = (typeof gatewayOperationNames)[number]
+
+/**
+ * Production request-count metric for the call-count budget (EFF-R01, decision
+ * 0017 Half 1). Counts LOGICAL `notion.api.request` calls — one per gateway op
+ * invocation, matching the `notion.api.request` span — labelled only by the
+ * bounded `operation` endpoint (never an id), so a regression that adds a
+ * per-entity read shows up as fleet-visible request growth.
+ */
+export const notionApiRequestsTotal = OtelMetric.counter({
+  name: 'notion_datasource_api_requests_total',
+  description:
+    'Logical Notion API requests issued by the datasource-sync gateway, by operation endpoint.',
+  labels: Schema.Struct({
+    operation: OtelAttr.literal(spanAttr.operation, ...gatewayOperationNames),
+  }),
+})
+
+const notionApiRequestsTotalBridge = OtelMetric.effect.counter(notionApiRequestsTotal)
+
+/**
+ * Increment the logical-request counter for one gateway op invocation. Uses
+ * `trustedIncrement` so a (statically impossible) label encode error becomes a
+ * defect rather than leaking into the gateway methods' error channel.
+ */
+export const incrementNotionApiRequest = (
+  operation: GatewayRequestOperation,
+): Effect.Effect<void> => notionApiRequestsTotalBridge.trustedIncrement({ operation })

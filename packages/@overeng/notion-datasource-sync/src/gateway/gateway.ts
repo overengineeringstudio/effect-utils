@@ -32,6 +32,8 @@ import { guardApiVersion, type GuardName } from '../core/guards.ts'
 import { NotionDataSourceGateway, type NotionDataSourceGatewayShape } from '../core/ports.ts'
 import {
   commandKind,
+  gatewayOperationNames,
+  incrementNotionApiRequest,
   shortSpanId,
   spanAttr,
   spanLabel,
@@ -79,6 +81,17 @@ export type GatewayOperation =
   | 'patchDatabaseMetadata'
   | 'trashPage'
   | 'restorePage'
+
+/**
+ * Lockstep guard: the runtime `gatewayOperationNames` (the bounded metric/span
+ * `operation` label vocabulary) is exactly the `GatewayOperation` union. The
+ * forward direction is pinned here; the reverse holds because every gateway op
+ * passes its operation string to `incrementNotionApiRequest` (typed against
+ * `GatewayRequestOperation`), so a `GatewayOperation` not listed here fails to
+ * type-check at its increment site. A new endpoint thus cannot escape the
+ * call-count budget's label vocabulary.
+ */
+export const gatewayOperations: ReadonlyArray<GatewayOperation> = gatewayOperationNames
 
 /** Input shape for constructing a `NotionGatewayError` — all fields except `operation` are optional context. */
 export type GatewayErrorInput = {
@@ -231,6 +244,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         dataSourceId: input.dataSourceId,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('preflightCapabilities')),
         Effect.flatMap(() =>
           adapter.preflightCapabilities === undefined
             ? Effect.succeed(
@@ -253,6 +267,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         dataSourceId: id,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('retrieveDataSource')),
         Effect.flatMap(() => adapter.retrieveDataSource(id)),
         withSpan({
           span: 'gatewayRequest',
@@ -269,7 +284,7 @@ export const makeNotionDataSourceGateway = (
           operation: 'queryRows',
           configuredApiVersion,
           dataSourceId: input.dataSourceId,
-        }),
+        }).pipe(Effect.zipRight(incrementNotionApiRequest('queryRows'))),
       ).pipe(
         Stream.flatMap(() => adapter.queryRows(input)),
         withStreamSpan({
@@ -287,6 +302,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         pageId: id,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('retrievePage')),
         Effect.flatMap(() => adapter.retrievePage(id)),
         withSpan({
           span: 'gatewayRequest',
@@ -303,7 +319,7 @@ export const makeNotionDataSourceGateway = (
           operation: 'retrievePageProperty',
           configuredApiVersion,
           pageId: input.pageId,
-        }),
+        }).pipe(Effect.zipRight(incrementNotionApiRequest('retrievePageProperty'))),
       ).pipe(
         Stream.flatMap(() => adapter.retrievePageProperty(input)),
         withStreamSpan({
@@ -325,7 +341,7 @@ export const makeNotionDataSourceGateway = (
                 operation: 'listDataSourceViews',
                 configuredApiVersion,
                 dataSourceId: input.dataSourceId,
-              }),
+              }).pipe(Effect.zipRight(incrementNotionApiRequest('listDataSourceViews'))),
             ).pipe(
               Stream.flatMap(() => adapter.listDataSourceViews!(input)),
               withStreamSpan({
@@ -344,6 +360,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         pageId: command.pageId,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('patchPageProperties')),
         Effect.flatMap(() => adapter.patchPageProperties(command)),
         withSpan({
           span: 'gatewayRequest',
@@ -362,6 +379,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         dataSourceId: command.dataSourceId,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('createPage')),
         Effect.flatMap(() => adapter.createPage(command)),
         withSpan({
           span: 'gatewayRequest',
@@ -380,6 +398,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         dataSourceId: command.dataSourceId,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('patchDataSourceSchema')),
         Effect.flatMap(() => adapter.patchDataSourceSchema(command)),
         withSpan({
           span: 'gatewayRequest',
@@ -398,6 +417,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         dataSourceId: command.dataSourceId,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('patchDataSourceMetadata')),
         Effect.flatMap(() => adapter.patchDataSourceMetadata(command)),
         withSpan({
           span: 'gatewayRequest',
@@ -416,6 +436,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         dataSourceId: command.dataSourceId,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('patchDatabaseMetadata')),
         Effect.flatMap(() => adapter.patchDatabaseMetadata(command)),
         withSpan({
           span: 'gatewayRequest',
@@ -434,6 +455,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         pageId: command.pageId,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('trashPage')),
         Effect.flatMap(() => adapter.trashPage(command)),
         withSpan({
           span: 'gatewayRequest',
@@ -452,6 +474,7 @@ export const makeNotionDataSourceGateway = (
         configuredApiVersion,
         pageId: command.pageId,
       }).pipe(
+        Effect.zipRight(incrementNotionApiRequest('restorePage')),
         Effect.flatMap(() => adapter.restorePage(command)),
         withSpan({
           span: 'gatewayRequest',

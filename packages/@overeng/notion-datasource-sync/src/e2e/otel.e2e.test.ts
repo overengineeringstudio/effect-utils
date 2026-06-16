@@ -234,4 +234,79 @@ describe('notion datasource sync OTEL tracing', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  // NDS-L3-api-call-count-budget (EFF-R01 / R81, decision 0017 Half 1): the
+  // OBSERVABLE call-count budget. Counts `notion.api.request` spans (one per
+  // LOGICAL request) under the one-shot sync span and asserts a falsifiable
+  // CEILING plus the exact operation multiset, so a regression that adds a
+  // per-entity read (e.g. a per-page `retrievePage` loop) is caught test-side.
+  // COUNT SEMANTICS (decision 0017): the ceiling counts logical requests, not
+  // HTTP attempts — retries/throttle waits are the SEPARATE rate-limit signal
+  // (Half 2, `@overeng/notion-effect-client`) and never inflate this ceiling.
+  it('enforces the API call-count budget: a clean one-shot issues <= 5 logical requests and a no-change re-sync issues no writes', async () => {
+    const clock = makeFakeClock()
+    const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    const gateway = makeFakeGatewayHarness()
+    // No local observations: a clean one-shot with nothing pending locally.
+    const ports = makeHarnessPorts()
+    const dir = await mkdtemp(join(tmpdir(), 'notion-ds-sync-budget-'))
+
+    const oneShotApiOperations = (spans: ReadonlyArray<RecordedSpan>): ReadonlyArray<string> =>
+      spans
+        .filter(
+          (span) =>
+            span.name === spanNames.gatewayRequest &&
+            spanAncestors(span).includes(spanNames.syncOneShot),
+        )
+        .map((span) => String(span.attributes[spanAttr.operation]))
+        .sort()
+
+    const runOneShot = async () => {
+      const trace = makeRecordingTracer()
+      const result = await Effect.runPromise(
+        runCliCommand(
+          { _tag: 'sync', statePath: join(dir, 'watch.json') },
+          context({ store: storeFixture.store, clock }),
+        ).pipe(
+          Effect.provideService(NotionDataSourceGateway, gateway.gateway),
+          Effect.provideService(PageBodySyncPort, ports.body),
+          Effect.provideService(LocalWorkspacePort, ports.workspace),
+          Effect.withTracer(trace.tracer),
+        ),
+      )
+      return { result, operations: oneShotApiOperations(trace.spans) }
+    }
+
+    try {
+      const first = await runOneShot()
+      expect(first.result.status.state).toBe('clean')
+
+      // CEILING: the headline budget — at most 5 logical Notion requests.
+      expect(first.operations.length).toBeLessThanOrEqual(5)
+      // Exact multiset: the per-operation breakdown. Locks the efficient access
+      // pattern — exactly one of each read endpoint, and ZERO per-entity extra
+      // reads or any write op.
+      expect(first.operations).toEqual([
+        'listDataSourceViews',
+        'preflightCapabilities',
+        'queryRows',
+        'retrieveDataSource',
+        'retrievePage',
+      ])
+
+      // A no-change re-sync over the same store/state stays within the same
+      // ceiling and — critically — issues NO write operations (no per-entity
+      // re-read storm, no spurious patch/create/trash).
+      const second = await runOneShot()
+      expect(second.result.status.state).toBe('clean')
+      expect(second.operations.length).toBeLessThanOrEqual(5)
+      const writeOperations = second.operations.filter((operation) =>
+        /^(patch|create|trash|restore)/.test(operation),
+      )
+      expect(writeOperations).toEqual([])
+    } finally {
+      storeFixture.cleanup()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
