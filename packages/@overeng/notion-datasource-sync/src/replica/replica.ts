@@ -196,7 +196,11 @@ const conflictsViewName = 'conflicts'
 const syncStatusViewName = 'sync_status'
 const pendingReplicaChangeStatusesSql = "'pending', 'queued', 'planned'"
 const pendingReplicaChangesCountSql = `(SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status IN (${pendingReplicaChangeStatusesSql}))`
-const openReplicaConflictsCountSql = `(SELECT count(*) FROM _nds_replica_conflicts WHERE state = 'open')`
+// `resolving` is a frozen-but-unresolved lifecycle conflict (keep-local awaiting a
+// settled re-assert); it must count as not-clean so the public conflicts_open count
+// and the `conflicted` workspace status reflect it, matching the main store's
+// freeze/compaction/status surfaces (#775 M2a').
+const openReplicaConflictsCountSql = `(SELECT count(*) FROM _nds_replica_conflicts WHERE state IN ('open', 'resolving'))`
 
 const rowsSystemColumns = [
   '_page_id',
