@@ -27,6 +27,7 @@ import {
   filesystemWorkspacePageSidecarPath,
   makeFilesystemLocalWorkspacePort,
 } from '../local/workspace.ts'
+import { planIntent, withAuthorityMode } from '../planner/planner.ts'
 import { hashStoreBytes } from '../store/projections.ts'
 import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
 import { collectWorkspaceScan, makeTempWorkspace, testPageId } from '../testing/filesystem.ts'
@@ -346,6 +347,119 @@ describe('realistic offline workflow E2E matrix', () => {
       expect(push.status.state).toBe('clean')
     } finally {
       storeFixture.cleanup()
+    }
+  })
+
+  it('gates a shared-mode property write on the real outbox settlement verdict', async () => {
+    /*
+     * Non-vacuity proof for the settlement wiring (#775 F5): the `missing`/`present`
+     * settlement verdict is derived from REAL outbox state via `withAuthorityMode`,
+     * not hand-passed into the proof. A second shared-mode property write is blocked
+     * as `ReadAfterWriteMismatch` while a prior write is unsettled, and proceeds once
+     * the prior write settles through the real executor.
+     *
+     * `secondWrite` reuses `baseHash: hash('property-a-base')` (= the observed remote
+     * hash) so the planner skips the remoteHash-drift branch and reaches the
+     * settlement guard; its distinct `desiredHash` keeps it a real write, not an
+     * idempotent no-op.
+     */
+    const secondWrite = () =>
+      propertyEditIntent({
+        desiredHash: hash('property-a-second'),
+        expectedPropertyConfigHash: hash('config-a'),
+      })
+
+    const planSecondWrite = (store: ReturnType<typeof makeStoreFixture>['store']) =>
+      planIntent({
+        snapshot: withAuthorityMode({
+          snapshot: store.readPlannerProjectionSnapshot(testIds.rootId),
+          authorityMode: 'shared',
+        }),
+        intent: secondWrite(),
+      })
+
+    // Arm 1: prior write left UNSETTLED in the outbox -> settlement `missing` -> blocked.
+    const unsettled = initializedStore()
+    const blockedGateway = makeFakeGatewayHarness({ propertyPages: propertyPages() })
+    try {
+      await runWithPorts(
+        pullOneShotSync(
+          pullOptions({ store: unsettled.storeFixture.store, clock: unsettled.clock }),
+        ),
+        { gateway: blockedGateway.gateway },
+      )
+      const queued = await runWithPorts(
+        pushOneShotSync({
+          store: unsettled.storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot,
+          authorityMode: 'shared',
+          localIntents: [
+            propertyEditIntent({
+              desiredHash: expectedPatchHash(),
+              expectedPropertyConfigHash: hash('config-a'),
+            }),
+          ],
+          maxExecutorSteps: 0,
+          now: unsettled.clock.now,
+        }),
+        { gateway: blockedGateway.gateway },
+      )
+      expect(queued.status.state).toBe('pending')
+
+      const projected = withAuthorityMode({
+        snapshot: unsettled.storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId),
+        authorityMode: 'shared',
+      })
+      expect(projected.properties).toContainEqual(
+        expect.objectContaining({ propertyId: testIds.propertyA, settlement: 'missing' }),
+      )
+      expect(planSecondWrite(unsettled.storeFixture.store)).toMatchObject({
+        _tag: 'BlockedByGuard',
+        guard: 'ReadAfterWriteMismatch',
+      })
+    } finally {
+      unsettled.storeFixture.cleanup()
+    }
+
+    // Arm 2: prior write SETTLED through the real executor -> settlement `present` -> proceeds.
+    const settled = initializedStore()
+    const settledGateway = makeFakeGatewayHarness({ propertyPages: propertyPages() })
+    try {
+      await runWithPorts(
+        pullOneShotSync(pullOptions({ store: settled.storeFixture.store, clock: settled.clock })),
+        { gateway: settledGateway.gateway },
+      )
+      const push = await runWithPorts(
+        pushOneShotSync({
+          store: settled.storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot,
+          authorityMode: 'shared',
+          localIntents: [
+            propertyEditIntent({
+              desiredHash: expectedPatchHash(),
+              expectedPropertyConfigHash: hash('config-a'),
+            }),
+          ],
+          now: settled.clock.now,
+        }),
+        { gateway: settledGateway.gateway },
+      )
+      expect(push.executor.results).toContainEqual(
+        expect.objectContaining({ _tag: 'settled', settlementKind: 'verified-success' }),
+      )
+
+      const projected = withAuthorityMode({
+        snapshot: settled.storeFixture.store.readPlannerProjectionSnapshot(testIds.rootId),
+        authorityMode: 'shared',
+      })
+      expect(projected.properties).toContainEqual(
+        expect.objectContaining({ propertyId: testIds.propertyA, settlement: 'present' }),
+      )
+      expect(planSecondWrite(settled.storeFixture.store)).toMatchObject({ _tag: 'EnqueueCommands' })
+    } finally {
+      settled.storeFixture.cleanup()
     }
   })
 
