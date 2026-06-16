@@ -1,7 +1,11 @@
 import { describe, expect, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Metric, MetricLabel } from 'effect'
 
-import { captureInProcessTrace, OteliteTestHarness } from './test-harness.ts'
+import {
+  captureInProcessAllSignals,
+  captureInProcessTrace,
+  OteliteTestHarness,
+} from './test-harness.ts'
 
 describe('OteliteTestHarness', () => {
   it.scopedLive(
@@ -106,6 +110,63 @@ describe('OteliteTestHarness', () => {
         expect(process.env.OTELITE_TEST_SERVICE).toBe(previousCustomService)
         expect(process.env.OTELITE_TEST_EXTRA).toBe(previousExtra)
       }).pipe(Effect.provide(OteliteTestHarness.Default)),
+    30_000,
+  )
+
+  it.scopedLive(
+    'captures traces + metrics + logs in one in-process run',
+    () => {
+      const service = 'otelite-all-signals'
+      const counter = Metric.counter('otelite_all_signals_requests_total')
+      const gauge = Metric.gauge('otelite_all_signals_queue_depth', { bigint: false })
+
+      const workload = Effect.gen(function* () {
+        yield* Metric.increment(counter)
+        yield* Metric.set(
+          gauge.pipe(Metric.taggedWithLabels([MetricLabel.make('queue', 'primary')])),
+          7,
+        )
+        yield* Effect.log('all-signals demo log line')
+      }).pipe(Effect.withSpan(`${service}.child`, { attributes: { 'span.label': 'child' } }))
+
+      return captureInProcessAllSignals(
+        { serviceName: service, rootSpanName: `${service}.root`, exportInterval: 100 },
+        workload,
+      ).pipe(
+        Effect.flatMap(({ trace, metrics, logs }) =>
+          Effect.sync(() => {
+            // TRACES: root + child both present, both carry span.label.
+            const root = trace.expectOne({ name: `${service}.root` })
+            const child = trace.expectOne({ name: `${service}.child` })
+            expect(child.parent_span_id).toBe(root.span_id)
+            expect(child.attrs['span.label']).toBe('child')
+
+            // METRICS: counter (sum=1) + labeled gauge (=7) via the DSL.
+            metrics.expectOne({
+              name: 'otelite_all_signals_requests_total',
+              service,
+              type: 'sum',
+              value: 1,
+            })
+            metrics.expectOne({
+              name: 'otelite_all_signals_queue_depth',
+              service,
+              type: 'gauge',
+              value: 7,
+              attrs: { queue: 'primary' },
+            })
+
+            // LOGS: the Effect.log line bridged to OTLP, correlated to the child span.
+            const log = logs.expectOne({
+              service,
+              severityText: 'INFO',
+              body: 'all-signals demo log line',
+            })
+            expect(log.span_id).toBe(child.span_id)
+          }),
+        ),
+      )
+    },
     30_000,
   )
 })

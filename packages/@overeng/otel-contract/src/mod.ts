@@ -299,7 +299,7 @@ export interface OtelMetricLabels<S extends Schema.Schema.AnyNoContext> {
   readonly unsafeEncode: (value: Schema.Schema.Type<S>) => OtelAttributeMap
 }
 
-export type OtelMetricInstrumentKind = 'counter' | 'histogram'
+export type OtelMetricInstrumentKind = 'counter' | 'histogram' | 'gauge'
 
 /** Stable metadata for schema-backed metric definitions. */
 export interface OtelMetricMetadata {
@@ -341,8 +341,15 @@ export interface OtelHistogramDefinition<
   readonly boundaries?: ReadonlyArray<number>
 }
 
+export interface OtelGaugeDefinition<
+  S extends Schema.Schema.AnyNoContext,
+> extends OtelMetricDefinition<S> {
+  readonly instrument: 'gauge'
+}
+
 export type OtelEffectCounterMetric = Metric.Metric.Counter<number>
 export type OtelEffectHistogramMetric = Metric.Metric.Histogram<number>
+export type OtelEffectGaugeMetric = Metric.Metric.Gauge<number>
 
 /** Effect Metric runtime bridge for a schema-first counter contract. */
 export interface OtelEffectCounter<S extends Schema.Schema.AnyNoContext> {
@@ -369,6 +376,17 @@ export interface OtelEffectHistogram<S extends Schema.Schema.AnyNoContext> {
     value: number,
   ) => Effect.Effect<void, OtelAttrEncodeError>
   readonly trustedRecord: (labels: Schema.Schema.Type<S>, value: number) => Effect.Effect<void>
+}
+
+/** Effect Metric runtime bridge for a schema-first gauge contract. */
+export interface OtelEffectGauge<S extends Schema.Schema.AnyNoContext> {
+  readonly definition: OtelGaugeDefinition<S>
+  readonly metric: OtelEffectGaugeMetric
+  readonly set: (
+    labels: Schema.Schema.Type<S>,
+    value: number,
+  ) => Effect.Effect<void, OtelAttrEncodeError>
+  readonly trustedSet: (labels: Schema.Schema.Type<S>, value: number) => Effect.Effect<void>
 }
 
 const getAttrMetadata = (annotated: AST.Annotated): OtelAttrMetadata | undefined =>
@@ -1327,6 +1345,36 @@ const defineHistogram = <S extends Schema.Schema.AnyNoContext>(options: {
   }
 }
 
+const defineGauge = <S extends Schema.Schema.AnyNoContext>(options: {
+  readonly name: string
+  readonly description?: string
+  readonly unit?: string
+  readonly labels: S | OtelMetricLabels<S>
+}): OtelGaugeDefinition<S> => {
+  const name = decodeMetricNameSync(options.name)
+  const labels = metricLabelsFromInput(options.labels)
+  const tagPairs = metricTagPairs(labels.encode)
+  return {
+    instrument: 'gauge',
+    name,
+    ...(options.description === undefined ? {} : { description: options.description }),
+    ...(options.unit === undefined ? {} : { unit: options.unit }),
+    labels,
+    metadata: metricMetadata({
+      instrument: 'gauge',
+      name,
+      ...(options.description === undefined ? {} : { description: options.description }),
+      ...(options.unit === undefined ? {} : { unit: options.unit }),
+      labels,
+    }),
+    encodeLabels: labels.encode,
+    encodeLabelsSync: labels.encodeSync,
+    unsafeEncodeLabels: labels.unsafeEncode,
+    tagPairs,
+    trustedTagPairs: trustedMetricTagPairs(labels.encode),
+  }
+}
+
 const taggedMetric = <Type, In, Out>(
   metric: Metric.Metric<Type, In, Out>,
   tags: ReadonlyArray<readonly [string, string]>,
@@ -1389,6 +1437,33 @@ const effectHistogram = <S extends Schema.Schema.AnyNoContext>(
     metric,
     record,
     trustedRecord: (labels, value) => trustedMetricEmission(record(labels, value)),
+  }
+}
+
+const effectGauge = <S extends Schema.Schema.AnyNoContext>(
+  definition: OtelGaugeDefinition<S>,
+): OtelEffectGauge<S> => {
+  if (definition.instrument !== 'gauge') {
+    throw new OtelAttrPlanError({
+      path: ['instrument'],
+      message: `OtelMetric.effect.gauge requires a gauge definition, got ${definition.instrument}`,
+    })
+  }
+  const metric =
+    definition.description === undefined
+      ? Metric.gauge(definition.name)
+      : Metric.gauge(definition.name, { description: definition.description })
+  const set = (labels: Schema.Schema.Type<S>, value: number) =>
+    Effect.gen(function* () {
+      const tags = yield* definition.tagPairs(labels)
+      yield* Metric.set(taggedMetric(metric, tags), value)
+    })
+
+  return {
+    definition,
+    metric,
+    set,
+    trustedSet: (labels, value) => trustedMetricEmission(set(labels, value)),
   }
 }
 
@@ -1464,10 +1539,13 @@ export const OtelMetric = {
   labels: defineMetricLabels,
   counter: defineCounter,
   histogram: defineHistogram,
+  gauge: defineGauge,
   defineCounter,
   defineHistogram,
+  defineGauge,
   effect: {
     counter: effectCounter,
     histogram: effectHistogram,
+    gauge: effectGauge,
   },
 } as const

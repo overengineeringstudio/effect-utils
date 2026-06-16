@@ -14,9 +14,30 @@
 
 import * as Otlp from '@effect/opentelemetry/Otlp'
 import { FetchHttpClient } from '@effect/platform'
-import { Config, Context, Effect, Layer, Option, Tracer } from 'effect'
+import {
+  Clock,
+  Config,
+  Context,
+  Duration,
+  Effect,
+  Layer,
+  Metric,
+  MetricLabel,
+  Option,
+  Schedule,
+  type Scope,
+  Tracer,
+} from 'effect'
 
-import type { ServiceIdentity } from '@overeng/otel-contract'
+import { ServiceIdentity } from '@overeng/otel-contract'
+
+/**
+ * Re-exported so the typed telemetry front door ({@link withTelemetry}) and its
+ * identity type live behind one import. Construct it through
+ * `Schema.decode(ServiceIdentity)` at the composition root so a malformed
+ * `service.name` is a decode error at the edge, not a backend surprise.
+ */
+export { ServiceIdentity }
 
 export * from './otel-attrs.ts'
 
@@ -276,5 +297,241 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
     }).pipe(Layer.provide(FetchHttpClient.layer))
 
     return Layer.mergeAll(configLive, parentLive.pipe(Layer.provideMerge(exporterLive)))
+  })
+}
+
+// =============================================================================
+// Typed telemetry front door — `withTelemetry({ identity, shape, endpoint })`
+// =============================================================================
+
+/**
+ * Deployment shape — the kind of process, NOT the consumer. The shape (not each
+ * CLI) selects the export/flush mechanics so the hard-won knowledge lives in one
+ * table instead of being re-derived per consumer.
+ *
+ * - `cli`: short-lived. Short export intervals + the TTY-aware safety-ceiling
+ *   shutdown, so a sub-second run still ticks once and the scope-close finalizer
+ *   force-flushes the final batch of every signal before exit.
+ * - `service`: long-lived. Relaxed periodic export; the shutdown ceiling only
+ *   bounds a graceful stop against a black-holed collector.
+ * - `test`: deterministic short intervals against an explicit (ephemeral)
+ *   endpoint, with a tight shutdown window for fast, hermetic assertions.
+ */
+export type Shape = 'cli' | 'service' | 'test'
+
+/**
+ * The underlying {@link makeOtelCliLayer} knobs a {@link Shape} resolves. Kept as
+ * a `Partial` `overrides` escape hatch on {@link withTelemetry} for back-compat
+ * and edge cases — but reaching for it should be rare; the shape is the contract.
+ */
+export interface ShapeOverrides {
+  readonly exportInterval?: number
+  readonly metricsExportInterval?: number
+  readonly shutdownTimeout?: number
+}
+
+/**
+ * The Shape → defaults table. The `cli` row is load-bearing: small intervals so a
+ * sub-second run still ticks once, and `shutdownTimeout` left to
+ * {@link makeOtelCliLayer}'s TTY-aware default (the safety *ceiling*, not a floor —
+ * the final batch lands via the scope-close finalizer regardless). `service` and
+ * `test` are explicit since their cadence/flush intent differs.
+ */
+const shapeDefaults = (shape: Shape): ShapeOverrides => {
+  switch (shape) {
+    case 'cli':
+      // Short intervals so a fast CLI ticks; shutdownTimeout intentionally
+      // omitted → makeOtelCliLayer's TTY-aware ceiling (30s/10s) applies.
+      return { exportInterval: 250, metricsExportInterval: 1000 }
+    case 'service':
+      return { exportInterval: 5000, metricsExportInterval: 10_000, shutdownTimeout: 5000 }
+    case 'test':
+      return { exportInterval: 100, metricsExportInterval: 100, shutdownTimeout: 2000 }
+  }
+}
+
+export interface TelemetryLayerOptions {
+  /**
+   * Typed, decoded service identity stamped onto `service.{name,namespace,version}`
+   * of EVERY signal's resource. Construct it via `Schema.decode(ServiceIdentity)`
+   * so a malformed name is a type/decode error at the composition root — a raw
+   * string is a `tsc` error here.
+   */
+  readonly identity: ServiceIdentity
+  /** The process shape (see {@link Shape}) — picks export intervals + flush. */
+  readonly shape: Shape
+  /**
+   * OTLP base endpoint, resolved once at the edge (e.g. {@link otelEndpointFromConfig}).
+   * `Some(url)` exports all three signals to `url`; `None` disables export
+   * (config-only layer, zero exporter overhead — only the {@link OtelConfig}
+   * marker is provided so samplers can gate on it).
+   */
+  readonly endpoint: Option.Option<string>
+  /**
+   * Rare per-call overrides of the shape's underlying knobs. Prefer the shape;
+   * reach here only for a genuine edge case (the footgun this surface removes is
+   * every consumer hand-tuning these, so document any override).
+   */
+  readonly overrides?: ShapeOverrides
+}
+
+/**
+ * The recommended way to add telemetry to any CLI or service: ONE typed layer
+ * that wires traces + metrics + logs through {@link makeOtelCliLayer} with the
+ * {@link Shape}'s defaults and a validated {@link ServiceIdentity} on every
+ * signal. A thin typed front door over `makeOtelCliLayer`, NOT a reimplementation
+ * — it folds the ad-hoc `exportInterval`/`metricsExportInterval`/`shutdownTimeout`
+ * knobs behind the shape so the consumer says *what kind of process this is* and
+ * gets correct intervals + force-flush-on-shutdown by default.
+ *
+ * `Effect.log` bridges to OTLP logs automatically (the underlying `Otlp.layerJson`
+ * adds the OTLP logger by default; console output is NOT suppressed). The
+ * resolved endpoint is published as {@link OtelConfig} so {@link sampleResource}
+ * and {@link telemetryEnabled} gate on the same signal the exporter was built from.
+ *
+ * @example
+ * ```typescript
+ * const identity = Schema.decodeSync(ServiceIdentity)({
+ *   name: 'my-cli', namespace: 'overeng', version,
+ * })
+ * const endpoint = yield* otelEndpointFromConfig()
+ * program.pipe(Effect.provide(withTelemetry({ identity, shape: 'cli', endpoint })))
+ * ```
+ */
+export const withTelemetry = (options: TelemetryLayerOptions): Layer.Layer<OtelConfig> => {
+  const { identity, shape, endpoint, overrides } = options
+  const defaults = shapeDefaults(shape)
+  const knobs = { ...defaults, ...overrides }
+  return makeOtelCliLayer({
+    identity,
+    endpoint,
+    ...(knobs.exportInterval === undefined ? {} : { exportInterval: knobs.exportInterval }),
+    ...(knobs.metricsExportInterval === undefined
+      ? {}
+      : { metricsExportInterval: knobs.metricsExportInterval }),
+    ...(knobs.shutdownTimeout === undefined ? {} : { shutdownTimeout: knobs.shutdownTimeout }),
+  })
+}
+
+/**
+ * Alias of {@link withTelemetry} for callers that read the typed front door as a
+ * `Layer` value rather than a verb.
+ */
+export const TelemetryLayer = withTelemetry
+
+// =============================================================================
+// Telemetry-enabled gate + periodic resource-sampler primitive
+// =============================================================================
+
+/**
+ * Whether telemetry export is active, read from the same {@link OtelConfig} the
+ * exporter was built from (`Some(endpoint)` ⇒ enabled). Resolves to `false` when
+ * the layer is absent (`Effect.serviceOption`), so command code stays runnable
+ * without the layer and the tag never enters its `R`. Use this instead of
+ * hand-rolling the double-`Option` gate or reading `process.env` directly.
+ */
+export const telemetryEnabled: Effect.Effect<boolean> = Effect.serviceOption(OtelConfig).pipe(
+  Effect.map(
+    Option.match({
+      onNone: () => false,
+      onSome: (config) => Option.isSome(config.endpoint),
+    }),
+  ),
+)
+
+/**
+ * Run `effect` only when telemetry is enabled (see {@link telemetryEnabled}),
+ * otherwise no-op with `void`. Lets a consumer fork optional telemetry work
+ * (e.g. a sampler) without paying its cost — or seeing the tag in `R` — when
+ * export is off.
+ */
+export const whenTelemetryEnabled = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<void, E, R> => Effect.whenEffect(effect, telemetryEnabled).pipe(Effect.asVoid)
+
+export interface SampleResourceOptions {
+  /**
+   * The per-tick sampler — typically `Metric.set(gauge, read())`. Runs on every
+   * interval tick for the lifetime of the enclosing scope.
+   */
+  readonly sample: Effect.Effect<void>
+  /**
+   * Tick cadence on REAL wall time.
+   * @default 250ms
+   */
+  readonly interval?: Duration.Duration
+}
+
+/**
+ * Fork a fiber that runs `sample` every `interval` for the lifetime of the
+ * enclosing scope, generalizing the per-consumer RSS-gauge sampler so no consumer
+ * re-derives the two gotchas this primitive encapsulates:
+ *
+ * 1. **No-op when telemetry is off.** Gated on {@link telemetryEnabled} (the
+ *    {@link OtelConfig} marker), so when no endpoint is configured the fiber is
+ *    never forked — "zero overhead when unset" means not paying the periodic cost,
+ *    not merely a metric going nowhere.
+ * 2. **Ticks on real wall time.** `Effect.withClock(Clock.make())` overrides the
+ *    contextual (possibly test/fixed) decision clock that `Schedule.spaced`
+ *    resolves through — placed BEFORE `forkScoped` so it wraps the forked fiber,
+ *    not the fork action. `provideService` does NOT work for `Clock` (it is a
+ *    default service read via `clockWith`, not from `R`). Without this, a
+ *    zero-sleep decision clock turns the sampler into a hot loop.
+ *
+ * @example
+ * ```typescript
+ * const rss = Metric.gauge('proc_rss_bytes', { bigint: false })
+ * yield* sampleResource({ sample: Effect.sync(() => process.memoryUsage().rss)
+ *   .pipe(Effect.flatMap((v) => Metric.set(rss, v))) })
+ * ```
+ */
+export const sampleResource = (
+  options: SampleResourceOptions,
+): Effect.Effect<void, never, OtelConfig | Scope.Scope> => {
+  const { sample, interval = Duration.millis(250) } = options
+  return whenTelemetryEnabled(
+    sample.pipe(
+      Effect.repeat(Schedule.spaced(interval)),
+      // Decouple from any ambient (test/fixed) decision clock — this sampler is
+      // infrastructure and must tick on real wall time. `withClock` is placed
+      // BEFORE `forkScoped` so it wraps the forked fiber, not the fork action.
+      Effect.withClock(Clock.make()),
+      Effect.forkScoped,
+      Effect.asVoid,
+    ),
+  )
+}
+
+export interface SampleGaugeOptions {
+  /**
+   * The gauge to sample into. Construct with `Metric.gauge(...)` (the gauge
+   * constructor and `Metric.set` are NOT in the raw-OTEL banned set, unlike
+   * `Metric.counter`/`histogram`/`update`/`increment*`).
+   */
+  readonly gauge: Metric.Metric.Gauge<number>
+  /** Reads the current value on each tick (e.g. `() => process.memoryUsage().rss`). */
+  readonly read: () => number
+  /**
+   * Optional labels applied to the gauge so a sweep yields one comparable series
+   * per operating point (via `taggedWithLabels`, not the banned `Metric.tagged`).
+   */
+  readonly labels?: ReadonlyArray<MetricLabel.MetricLabel>
+  /** @default 250ms */
+  readonly interval?: Duration.Duration
+}
+
+/**
+ * Convenience over {@link sampleResource} for the common case: periodically `set`
+ * a numeric gauge from a `read()` closure. Encapsulates the labeled-gauge `set`
+ * so a consumer expresses *what to measure*, not the clock/gate/fork mechanics.
+ */
+export const sampleGauge = (
+  options: SampleGaugeOptions,
+): Effect.Effect<void, never, OtelConfig | Scope.Scope> => {
+  const { gauge, read, labels, interval } = options
+  const target = labels === undefined ? gauge : gauge.pipe(Metric.taggedWithLabels(labels))
+  return sampleResource({
+    sample: Effect.sync(read).pipe(Effect.flatMap((value) => Metric.set(target, value))),
+    ...(interval === undefined ? {} : { interval }),
   })
 }
