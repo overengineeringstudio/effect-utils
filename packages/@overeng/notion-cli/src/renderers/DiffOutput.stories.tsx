@@ -3,9 +3,11 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { DiffApp } from './DiffOutput/mod.ts'
+import { getDiffApp } from './DiffOutput/mod.ts'
 import type { DiffState } from './DiffOutput/schema.ts'
 import { DiffView } from './DiffOutput/view.tsx'
+
+const DiffApp = getDiffApp()
 
 export default {
   title: 'NotionCLI/Diff Output',

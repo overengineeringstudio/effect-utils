@@ -6,7 +6,7 @@ export type {
 } from './schema.ts'
 
 // App
-export { GenerateApp } from './app.ts'
+export { getGenerateApp } from './app.ts'
 
 // Views
 export { GenerateView, type GenerateViewProps } from './view.tsx'
