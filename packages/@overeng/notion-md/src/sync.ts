@@ -347,6 +347,13 @@ const encodePropertyValue = (opts: {
         for (const file of property.value) {
           switch (file._tag) {
             case 'external_url':
+              // Attach the external URL to the property as-is. KNOWN LIMITATION
+              // (v1): the URL can 404 or move and its durability is NOT verified
+              // here — the external analog of a Notion-hosted expiring file URL,
+              // but with no guard in v1. See docs/sync-safety.md "External-URL
+              // Durability". This stays on the property surface: it never becomes
+              // a byte-backed `storage.files` unit, so the media boundary's
+              // inert-by-construction invariant is preserved.
               files.push({ type: 'external', name: file.url, external: { url: file.url } })
               break
             case 'notion_file':

@@ -23,6 +23,7 @@ import {
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
+import { classifyMediaWrite } from './media-boundary.ts'
 import {
   NotionMdGateway,
   type MarkdownUpdateCommand,
@@ -1598,6 +1599,65 @@ describe('notion-md e2e prototype', () => {
             file_upload: { id: secondPageId },
           },
         ],
+      })
+    })
+  })
+
+  // Inert-by-construction invariant (proposed ADR 0016, Option B): the
+  // property-encoding boundary (external_url/notion_file/local_file) and the
+  // media boundary (byte-backed storage.files) are disjoint by type, so a
+  // property file ref must NEVER be lowered into a storage.files byte unit. If
+  // it were, the media boundary's "inert means durable" reasoning would silently
+  // break. This test pins that disjointness: pushing a page whose properties
+  // carry external_url/notion_file refs persists ZERO storage.files units, so the
+  // media boundary stays `inert`. A future change that lowered a property ref
+  // into storage.files would make these assertions fail.
+  it('keeps property file refs off the byte path: external_url/notion_file produce zero storage.files units', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                Attachment: {
+                  _tag: 'files',
+                  value: [
+                    { _tag: 'external_url', url: 'https://example.com/guide.pdf' },
+                    {
+                      _tag: 'notion_file',
+                      filename: 'uploaded.pdf',
+                      file_upload_id: secondPageId,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+      expect(pushed.pushed).toBe(true)
+
+      const syncState = await readSyncStateFile(path)
+      // The property refs were written, but none of them became a byte unit.
+      if (syncState.storage._tag === 'self_contained') {
+        expect(syncState.storage.files).toEqual([])
+      } else {
+        expect(syncState.storage.file_ids).toEqual([])
+      }
+
+      // Direct invariant: the media boundary classifies this storage as durable.
+      expect(classifyMediaWrite({ storage: syncState.storage, operation: 'push' })).toEqual({
+        _tag: 'inert',
       })
     })
   })

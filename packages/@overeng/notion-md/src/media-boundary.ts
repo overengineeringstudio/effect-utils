@@ -20,6 +20,21 @@
  * the empty -> inert path with no byte transfer. Any representable file unit is
  * Notion-hosted byte-backed (or ambiguous) and therefore blocks.
  *
+ * INERT-BY-CONSTRUCTION INVARIANT (the load-bearing enforcement): the
+ * empty-`storage.files` requirement below is what makes "inert means durable"
+ * true under future refactors, not merely true by the current absence of a
+ * lowering path. The property-encoding boundary (`NmdPropertyFileRef`:
+ * `local_file` | `notion_file` | `external_url`) and this media boundary
+ * ({@link NmdFileUnit}, byte-backed) are disjoint by type, so no property ref is
+ * a byte unit today. If a future change DID lower an `external_url` or
+ * `local_file` property ref into a `storage.files` unit, it would be caught here
+ * and fail closed — regardless of the unit's `role` (a `property_file`-role unit
+ * blocks exactly like any other). The role is therefore not the guard; the
+ * empty-requirement is. `sync.e2e.test.ts` proves this invariant: pushing a page
+ * whose properties carry `external_url`/`notion_file` refs persists ZERO
+ * `storage.files` units, so a regression that lowered a property ref into the
+ * byte path would fail that test.
+ *
  * @module
  */
 
