@@ -231,6 +231,10 @@ export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
     Schema.Literal(
       'property',
       'body',
+      // Engine-detected LOCAL body divergence (the convergence engine found two
+      // local body surfaces disagree). Distinct from `body`, which is the body
+      // adapter's OWN remote-staleness conflict. Decision 0013.
+      'body-body-delegated',
       'schema',
       'delete-vs-edit',
       'lifecycle',

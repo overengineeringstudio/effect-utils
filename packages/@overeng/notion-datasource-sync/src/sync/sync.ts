@@ -40,6 +40,7 @@ import {
 } from '../observability/observability.ts'
 import {
   applyConvergenceVerdicts,
+  convergeLocalSurfaces,
   type PropertyConvergenceVerdict,
 } from '../planner/local-convergence.ts'
 import {
@@ -54,6 +55,7 @@ import {
 import { pageLifecycleHash } from '../store/projections.ts'
 import type { NotionSyncStore } from '../store/store.ts'
 import { executeOutboxOnce, type OutboxExecutionResult } from './executor.ts'
+import { nmdBodyFact } from './local-convergence-inputs.ts'
 import {
   bodyPushCommandFromLocalChange,
   commandIdFor,
@@ -859,6 +861,40 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           continue
         }
 
+        /*
+         * Route the `.nmd` BODY surface through the unified convergence engine for
+         * LOCAL divergence only (decision 0013). `.nmd` is the only local body
+         * surface (the SQLite `body_patch` channel stays dormant), so this pass ALWAYS
+         * sees a single body fact → `single-surface`: no conflict, no block. The pass
+         * is purely additive — the bespoke `:857` edit-detection above stays the
+         * trigger, and the body ADAPTER (`planLocalChange`) below stays authoritative
+         * for ALL remote semantics (stale-vs-live remote, the safety contract,
+         * `BodyPushCommand`); the engine only answers "do the local body surfaces
+         * agree?".
+         *
+         * The forward-looking `body-body-delegated` conflict + per-surface block (the
+         * two-surface case) is NOT raised here: a second body surface can only arrive
+         * through the CDC `changes` the CLI drains, so it is paired and raised in
+         * `runLocalConvergenceForPush` → `raiseConvergenceConflicts`, never through
+         * `local.observations`. Raising it here would be unreachable. This call is the
+         * literal ADR routing anchor; its single-surface outcome carries no remote
+         * truth, so the adapter remains the sole body authority.
+         */
+        if (options.authorityMode === 'shared') {
+          const bodyFact = nmdBodyFact({
+            pageId: observation.pageId,
+            contentHash: observation.contentHash,
+            baseBodyIdentity: bodySurface.pointer.identity,
+          })
+          if (bodyFact !== undefined) {
+            convergeLocalSurfaces({
+              authorityMode: 'shared',
+              dataFileEdits: [],
+              nmdFacts: [bodyFact],
+            })
+          }
+        }
+
         const baseBodyPointer = bodySurface.pointer
         const bodyPlan = yield* body.planLocalChange({
           _tag: 'BodyLocalChangeInput',
@@ -880,6 +916,13 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
                     rootId: options.rootId,
                     pageId: observation.pageId,
                     surface: bodySurfaceKey(observation.pageId),
+                    // EVIDENCE digest: this is the body ADAPTER's OWN remote
+                    // conflict, a remote-reconciliation output (decision 0013's
+                    // adapter half), so it stays in the same evidence space as the
+                    // adapter command and the `_nds_body_pointer` projection. The
+                    // RENDERED-digest base belongs ONLY to the engine's LOCAL
+                    // convergence (the `nmdBodyFact` builder + `body-body-delegated`),
+                    // NOT this adapter path.
                     baseHash: bodyPointerIdentityDigest(bodyPlan.baseBodyPointer),
                     localHash: bodyPlan.localBodyHash,
                     remoteHash: bodyPlan.remoteBodyHash,
@@ -916,6 +959,14 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           surface: bodySurfaceKey(observation.pageId),
           pageId: observation.pageId,
           command,
+          // EVIDENCE digest: `intent.baseHash` feeds the planner's
+          // `guardStaleSurfaceBase`, which compares it against
+          // `bodySurface.currentHash` — read straight from the `_nds_body_pointer`
+          // projection, which stays on the evidence digest (the adapter's
+          // stale-vs-remote space, decision 0013). Both sides of that guard MUST
+          // share a space; a rendered base here would false-fire `StaleSurfaceBase`
+          // on every evidence-backed pointer. The engine's rendered-digest base is
+          // for LOCAL convergence only (`nmdBodyFact`), which never feeds this guard.
           baseHash: bodyPointerIdentityDigest(bodyPlan.baseBodyPointer),
           desiredHash: bodyPlan.nextBodyHash,
         }

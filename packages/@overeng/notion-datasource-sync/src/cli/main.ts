@@ -119,6 +119,7 @@ import {
 } from '../observability/observability.ts'
 import {
   convergeLocalSurfaces,
+  type ConvergenceOutcome,
   type LocalIdentity,
   type PropertyConvergenceVerdict,
 } from '../planner/local-convergence.ts'
@@ -386,6 +387,53 @@ const intentIdentityKey = (intent: PlannerIntent): string | undefined => {
 }
 
 /**
+ * Raise each engine-detected LOCAL convergence conflict into the read-only
+ * `conflicts` view via the normal `ConflictRaised` rail (decision 0005 — never a
+ * page-adjacent file). PROPERTY and BODY conflicts both flow here:
+ *
+ * - PROPERTY → `conflictKind: 'property'`, page- AND property-keyed.
+ * - BODY → `conflictKind: 'body-body-delegated'` (decision 0013), page-keyed with
+ *   a NULL `property_id` (no replica-schema change). This is the engine's LOCAL
+ *   body divergence, distinct from the body adapter's OWN remote-staleness `body`
+ *   conflict raised on the bespoke push path. The body adapter stays authoritative
+ *   for all remote semantics; the engine only reports that two local body surfaces
+ *   disagree.
+ *
+ * Production note: the `.nmd` artifact is the only local body surface today
+ * (decision 0013 keeps the SQLite `body_patch` channel dormant), so a body
+ * identity is always `single-surface` and this loop never raises a body conflict
+ * in production — the `body-body-delegated` arm activates only once a second body
+ * surface exists.
+ */
+export const raiseConvergenceConflicts = ({
+  outcomes,
+  store,
+  rootId,
+}: {
+  readonly outcomes: ReadonlyArray<ConvergenceOutcome>
+  readonly store: NotionSyncStore
+  readonly rootId: SyncRootIdType
+}): void => {
+  for (const outcome of outcomes) {
+    if (outcome._tag !== 'local-conflict') continue
+    const { conflict, identity } = outcome
+    store.appendEventWithResult(
+      makeConflictRaisedEvent({
+        rootId,
+        pageId: identity.pageId,
+        ...(identity.kind === 'property' ? { propertyId: identity.propertyId } : {}),
+        surface: conflict.localSurface,
+        baseHash: conflict.baseHash ?? conflict.localHash ?? conflict.remoteHash!,
+        localHash: conflict.localHash ?? conflict.remoteHash!,
+        remoteHash: conflict.remoteHash ?? conflict.localHash!,
+        conflictKind: identity.kind === 'property' ? 'property' : 'body-body-delegated',
+        message: conflict.message,
+      }),
+    )
+  }
+}
+
+/**
  * SM5c shared-mode local convergence (R06). Reconciles the SQLite `pages`
  * property edits against the page's `.nmd` frontmatter BEFORE remote planning:
  *
@@ -460,26 +508,12 @@ const runLocalConvergenceForPush = ({
   const result = convergeLocalSurfaces({ authorityMode: 'shared', dataFileEdits, nmdFacts })
   if (result._tag !== 'shared') return { verdicts: [], intents }
 
-  // Raise each local conflict into the read-only `conflicts` view via the normal
-  // ConflictRaised rail (decision 0005 — never a page-adjacent file).
   if (dryRun !== true) {
-    for (const outcome of result.outcomes) {
-      if (outcome._tag !== 'local-conflict' || outcome.identity.kind !== 'property') continue
-      const { conflict, identity } = outcome
-      context.store.appendEventWithResult(
-        makeConflictRaisedEvent({
-          rootId: context.rootId,
-          pageId: identity.pageId,
-          propertyId: identity.propertyId,
-          surface: conflict.localSurface,
-          baseHash: conflict.baseHash ?? conflict.localHash ?? conflict.remoteHash!,
-          localHash: conflict.localHash ?? conflict.remoteHash!,
-          remoteHash: conflict.remoteHash ?? conflict.localHash!,
-          conflictKind: 'property',
-          message: conflict.message,
-        }),
-      )
-    }
+    raiseConvergenceConflicts({
+      outcomes: result.outcomes,
+      store: context.store,
+      rootId: context.rootId,
+    })
   }
 
   // Diverged PROPERTY identities are blocked by the planner itself: the

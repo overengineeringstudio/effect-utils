@@ -116,6 +116,7 @@ export type ConflictProjectionRow = {
     | 'same-property'
     | 'property'
     | 'body'
+    | 'body-body-delegated'
     | 'schema'
     | 'delete-vs-edit'
     | 'lifecycle'

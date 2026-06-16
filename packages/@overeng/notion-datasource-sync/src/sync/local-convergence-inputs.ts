@@ -39,11 +39,12 @@ import { Schema } from 'effect'
 import type { NmdWritablePropertyValue } from '@overeng/notion-effect-client'
 import { parseNmdFile } from '@overeng/notion-md'
 
-import type { Hash, PageId, PropertyId } from '../core/domain.ts'
+import type { BodyIdentity, Hash, PageId, PropertyId } from '../core/domain.ts'
 import {
   Hash as HashSchema,
   PageId as PageIdSchema,
   PropertyId as PropertyIdSchema,
+  renderedBodyDigest,
 } from '../core/domain.ts'
 import type {
   DataFileLocalEdit,
@@ -144,6 +145,52 @@ export const dataFilePropertyEdits = ({
     })
   }
   return edits
+}
+
+/**
+ * Project a `.nmd` BODY observation into a body `NmdDesiredFact`, with the
+ * baseline diff against the last materialization.
+ *
+ * The `.nmd` artifact is the ONLY local body surface (the SQLite `body_patch`
+ * channel stays dormant — see decision 0013), so a body identity is always a
+ * single convergence surface; the engine handles it as `single-surface` (no false
+ * conflict). The fact still rides the engine so the body surface joins the one
+ * unified convergence mechanism instead of its bespoke channel.
+ *
+ * Both hashes live in the RENDERED-digest space — the engine's body surface key
+ * is a rendered digest (decision 0013, base sub-decision), so the base must match
+ * it:
+ *
+ * - `desiredHash` is `observation.contentHash` — already the rendered body digest
+ *   (it is compared directly against `renderedBodyDigest(pointer)` on the bespoke
+ *   path), NOT the evidence fingerprint.
+ * - `baseHash` is `renderedBodyDigest(snapshot body pointer identity)` — the
+ *   rendered digest of the last materialization, NOT `bodyPointerIdentityDigest`
+ *   (the evidence digest). An unedited pulled `.nmd` therefore yields
+ *   `desiredHash === baseHash` even when the pointer's EVIDENCE digest differs, so
+ *   it does NOT false-diverge.
+ *
+ * Returns `undefined` when the `.nmd` body has NOT diverged from the base (mirrors
+ * `nmdPropertyFacts`: only an actual local edit is a fact), so an unedited surface
+ * adds no convergence input.
+ */
+export const nmdBodyFact = ({
+  pageId,
+  contentHash,
+  baseBodyIdentity,
+}: {
+  readonly pageId: PageId
+  readonly contentHash: Hash
+  readonly baseBodyIdentity: BodyIdentity
+}): NmdDesiredFact | undefined => {
+  const desiredHash = contentHash
+  const baseHash = renderedBodyDigest(baseBodyIdentity)
+  if (desiredHash === baseHash) return undefined
+  return {
+    identity: { kind: 'body', pageId },
+    desiredHash,
+    baseHash,
+  }
 }
 
 /**
