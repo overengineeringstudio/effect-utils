@@ -1,5 +1,5 @@
 /** SQLite schema version — incremented when a migration is needed. */
-export const STORE_SCHEMA_VERSION = 7
+export const STORE_SCHEMA_VERSION = 8
 
 /** Opaque identifier stamped into every _nds_projection_metadata row to detect when projections were built by an incompatible projector. */
 export const PROJECTOR_VERSION = 'notion-datasource-sync/projector/v1'
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS _nds_conflict (
   conflict_id TEXT NOT NULL,
   page_id TEXT,
   property_id TEXT,
-  state TEXT NOT NULL CHECK (state IN ('open', 'resolved', 'superseded', 'ignored')),
+  state TEXT NOT NULL CHECK (state IN ('open', 'resolving', 'resolved', 'superseded', 'ignored')),
   base_hash TEXT,
   local_hash TEXT,
   remote_hash TEXT,
