@@ -381,7 +381,7 @@ describe.skipIf(liveDemoEnabled === false)('credentialed live demo replica contr
           dataSource.expectedRows * dataSource.expectedPropertyNames.length,
         )
         expect(replica.status).toMatchObject({
-          rows: dataSource.expectedRows,
+          pages: dataSource.expectedRows,
           cells: dataSource.expectedRows * dataSource.expectedPropertyNames.length,
           conflicts_open: 0,
           pending_local_changes: 0,
