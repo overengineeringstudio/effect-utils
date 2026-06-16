@@ -65,13 +65,18 @@ fires only from tests. The real outbox settlement verdict does not yet populate 
 `shared`-mode settlement block is exercised by unit/fake tests but is not driven by
 a real settlement outcome on production data.
 
-## F6 — Webhook fail-closed coverage nit: malformed-shape-with-valid-HMAC not unit-exercised (Phase 7)
+## F6 — Webhook fail-closed coverage nit: malformed-shape-with-valid-HMAC not unit-exercised (Phase 7) — RESOLVED
 
 Webhook payload decode is fail-closed and verified at the implementation level. The
 unit suite exercises HMAC mismatch and malformed-shape deliveries, but the specific
-cross-product cell — a payload with a malformed SHAPE yet a VALID HMAC — is not
-unit-exercised as its own case. The path is verified at the implementation level;
-this is a coverage completeness nit, not a known hole in behavior.
+cross-product cell — a payload with a malformed SHAPE yet a VALID HMAC — was not
+unit-exercised as its own case.
+
+Resolved in this PR: `src/webhook/notion.unit.test.ts` now asserts a request with a
+correct `X-Notion-Signature` over the exact raw bytes but a missing `type` field is
+still rejected with `invalid-payload-shape`, proving the shape decode runs (and
+fails closed) AFTER signature verification passes. Registered as the L0
+`NDS-L0-webhook-decode-helpers` scenario (R46/R47).
 
 ## F7 — `createReplicaSchema` non-transactional CDC-trigger window (pre-existing, shared with one-shot sync)
 
