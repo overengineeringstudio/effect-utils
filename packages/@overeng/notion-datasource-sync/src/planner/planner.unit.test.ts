@@ -1096,6 +1096,88 @@ describe('notion datasource planner', () => {
     })
   })
 
+  it('blocks restoring a moved-out page as MoveOutNotDelete (symmetric with trash)', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        rows: [
+          {
+            pageId,
+            dataSourceId,
+            propertiesHash: hash('a'),
+            inTrash: true,
+            // Moved out of the tracked source, not genuinely trashed: a restore of
+            // this row is not a legitimate trash restore and must be blocked.
+            movedOut: true,
+            localDeleteCandidate: false,
+          },
+        ],
+      }),
+      intent: {
+        _tag: 'local-delete',
+        intentEventId,
+        commandKey,
+        surface: pageSurfaceKey(pageId),
+        pageId,
+        command: {
+          _tag: 'RestorePageCommand',
+          commandId,
+          pageId,
+          basePropertiesHash: hash('a'),
+        },
+        baseHash: hash('a'),
+        desiredHash: hash('e'),
+        explicitDestructiveIntent: true,
+        policy: 'trustedRemoteTrash',
+        directRetrieve: 'accessible',
+      },
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'MoveOutNotDelete',
+    })
+  })
+
+  it('restores a genuinely-trashed page (not moved-out) by enqueuing the restore command', () => {
+    const decision = planIntent({
+      snapshot: snapshot({
+        rows: [
+          {
+            pageId,
+            dataSourceId,
+            propertiesHash: hash('a'),
+            inTrash: true,
+            movedOut: false,
+            localDeleteCandidate: false,
+          },
+        ],
+      }),
+      intent: {
+        _tag: 'local-delete',
+        intentEventId,
+        commandKey,
+        surface: pageSurfaceKey(pageId),
+        pageId,
+        command: {
+          _tag: 'RestorePageCommand',
+          commandId,
+          pageId,
+          basePropertiesHash: hash('a'),
+        },
+        baseHash: hash('a'),
+        desiredHash: hash('e'),
+        explicitDestructiveIntent: true,
+        policy: 'trustedRemoteTrash',
+        directRetrieve: 'accessible',
+      },
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'EnqueueCommands',
+      commands: [{ command: { _tag: 'RestorePageCommand' } }],
+    })
+  })
+
   it('blocks trusted local deletes when the current row projection is missing', () => {
     const decision = planIntent({
       snapshot: snapshot({

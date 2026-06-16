@@ -371,8 +371,6 @@ const identityKeyOf = (identity: LocalIdentity): string => {
       return `property ${identity.pageId} ${identity.propertyId}`
     case 'body':
       return `body ${identity.pageId}`
-    case 'lifecycle':
-      return `lifecycle ${identity.pageId}`
   }
 }
 
@@ -382,8 +380,6 @@ const intentIdentityKey = (intent: PlannerIntent): string | undefined => {
       return `property ${intent.pageId} ${intent.propertyId}`
     case 'body-edit':
       return `body ${intent.pageId}`
-    case 'local-delete':
-      return `lifecycle ${intent.pageId}`
     default:
       return undefined
   }
@@ -408,12 +404,14 @@ const intentIdentityKey = (intent: PlannerIntent): string | undefined => {
  * guard would never fire (the block would silently degrade to a side-channel
  * intent drop, masked behind `attemptedPatchPageProperties === 0`).
  *
- * Scope: only the PROPERTY surface is observed today. BODY and LIFECYCLE
- * identities have no `localConvergence` proof field, so the engine cannot block
- * them through the planner; their only block path is the intent-filter retained
- * below. They are also not yet produced by `buildPropertyConvergenceInputs`, so
- * body/lifecycle convergence is engine-ready but NOT production-observed — a
- * follow-up (body materialization is entangled with sidecar identity).
+ * Scope: only the PROPERTY surface is observed today. BODY identities have no
+ * `localConvergence` proof field, so the engine cannot block them through the
+ * planner; their only block path is the intent-filter retained below. Body facts
+ * are also not yet produced by `buildPropertyConvergenceInputs`, so body
+ * convergence is engine-ready but NOT production-observed — a follow-up (body
+ * materialization is entangled with sidecar identity). Page lifecycle
+ * (archive/restore) is NOT a convergence identity: it reaches the planner through
+ * the CDC `row_archive`/`row_restore` intents, never this engine.
  *
  * ACTIVE on production data (SM5d): a datasource pull materializes the writable
  * frontmatter properties into the pulled `.nmd` (see `observation.ts`
@@ -491,10 +489,10 @@ const runLocalConvergenceForPush = ({
   // those intents here — doing so removes them before planning, so the guard
   // never fires and the block silently degrades to a side-channel intent drop.
   //
-  // BODY and LIFECYCLE identities carry no `localConvergence` proof field, so
-  // the verdict cannot block them through the planner. For those the intent
-  // drop is the only block, so we keep filtering them (they are not yet wired
-  // through the planner — see the body/lifecycle convergence follow-up).
+  // BODY identities carry no `localConvergence` proof field, so the verdict
+  // cannot block them through the planner. For those the intent drop is the only
+  // block, so we keep filtering them (they are not yet wired through the planner
+  // — see the body convergence follow-up).
   const blocked = new Set(
     result.blockedIdentities.filter((identity) => identity.kind !== 'property').map(identityKeyOf),
   )

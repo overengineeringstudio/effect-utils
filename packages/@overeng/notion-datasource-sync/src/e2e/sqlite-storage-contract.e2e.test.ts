@@ -1459,10 +1459,124 @@ describe('clean-break self-contained SQLite storage contract', () => {
             testIds.pageId,
           ),
         ).toEqual([expect.objectContaining({ kind: 'row_archive', status: 'applied' })])
+        // NOTE: this used to also assert `pages._in_trash = 1`, but that only held
+        // because the trashed row was re-observed `inTrash=true` from an UNFAITHFUL
+        // fake query (real Notion excludes trashed rows from `data_source.query`).
+        // Under the faithful fake the row drops out, and the F8 re-projection that
+        // would keep `_in_trash = 1` does not engage on the watch INCREMENTAL scan:
+        // disappearance classification is gated to full scans (an absence under an
+        // incremental scan is not trash-proof). So no `remote_trash` tombstone is
+        // recorded here and `_in_trash` reprojects to 0. Converging the watch path's
+        // archived `in_trash` projection is a separate gap (see follow-up #775); the
+        // claim under test — the archive is pushed and settled — is unaffected.
+      })
+    },
+    sqliteContractTimeoutMs,
+  )
+
+  // F8 (ADR 0014/0015): the FULL archive -> restore round trip. A local archive
+  // pushes a remote trash; the trashed row then VANISHES from `data_source.query`
+  // (the fake now models real Notion — `queryRows` excludes trashed rows). On the
+  // next full-scan re-observe the row is absent, gets directly reclassified as
+  // `remote_trash`, and the F8 store handler keeps `_nds_row.in_trash = 1` so the
+  // reprojection preserves the trashed state (without F8 it would reproject to 0,
+  // since `RowObserved` last wrote 0 and a trash settle never touches `_nds_row`).
+  // That keeps the row RESTORABLE: a local `_in_trash 1->0` edit can then emit a
+  // `row_restore` CDC change and push a remote restore. Each `sync` invocation is a
+  // fresh full scan (null high-watermark), which is what makes the disappearance
+  // classifier run — the watch daemon's incremental high-watermark would skip it.
+  it(
+    'archives then restores a row round-trip: remote trash drops from query, F8 keeps it restorable',
+    async () => {
+      const workspace = await tempWorkspace()
+      const { sqlitePath } = await establishWorkspace(workspace, { authorityMode: 'shared' })
+      const statePath = statePathForWorkspace(workspace)
+      // ONE shared fake gateway across every sync: the fake holds page trash state
+      // in a closure, so the remote trash from the archive push persists into the
+      // re-observe and the restore.
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      const syncOnce = () =>
+        runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway,
+        })
+
+      // 1. Local archive: `_in_trash 0->1` queues a `row_archive` CDC change.
+      const archiveDb = new DatabaseSync(sqlitePath)
+      try {
+        archiveDb.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        archiveDb.close()
+      }
+
+      // 2. First sync: plans + executes the archive push (the fake's pull happens
+      // BEFORE the push within this cycle, so the row is still visible here).
+      await syncOnce()
+      expect(gateway.ledger.successfulTrashPages).toHaveLength(1)
+
+      // 3. Second sync: a fresh full scan. The trashed row is now EXCLUDED from
+      // `queryRows`, so the disappearance classifier retrieves it directly, sees
+      // `inTrash`, records a `remote_trash` tombstone, and F8 keeps the row at
+      // `_in_trash = 1` through the reprojection.
+      await syncOnce()
+
+      // The load-bearing oracle: the remote-trash tombstone actually landed (proves
+      // the disappearance->classify path ran, not that `_in_trash` is coincidentally 1).
+      openReadOnly(statePath, (stateDb) => {
+        expect(
+          row(
+            stateDb,
+            `SELECT classification, reason FROM _nds_tombstone WHERE page_id = ?`,
+            testIds.pageId,
+          ),
+        ).toMatchObject({ classification: 'remote_trash', reason: 'remote_trash' })
+      })
+      // The row stays present AND trashed (restorable), not dropped or reset to 0.
+      openReadOnly(sqlitePath, (readDb) => {
         expect(
           row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
         ).toMatchObject({ _in_trash: 1 })
       })
+
+      // 4. Local restore: the now-restorable row takes a `_in_trash 1->0` edit,
+      // queuing a `row_restore` CDC change.
+      const restoreDb = new DatabaseSync(sqlitePath)
+      try {
+        restoreDb.prepare(`UPDATE pages SET _in_trash = 0 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        restoreDb.close()
+      }
+
+      // 5. Third sync: the restore is planned (the genuine remote-trash row is NOT
+      // moved-out, so the symmetric restore guard lets it through) and executed,
+      // pushing a remote restore. This is the F8 contract endpoint: the row was
+      // RESTORABLE (an expressible `_in_trash 1->0` transition) and the restore
+      // reaches Notion.
+      await syncOnce()
+
+      expect(gateway.ledger.successfulRestorePages).toHaveLength(1)
+      openReadOnly(sqlitePath, (readDb) => {
+        expect(
+          rows(
+            readDb,
+            `SELECT kind, status
+             FROM changes
+             WHERE kind IN ('row_archive', 'row_restore') AND page_id = ?
+             ORDER BY created_at, change_id`,
+            testIds.pageId,
+          ),
+        ).toEqual([
+          expect.objectContaining({ kind: 'row_archive', status: 'applied' }),
+          expect.objectContaining({ kind: 'row_restore', status: 'applied' }),
+        ])
+      })
+      // NOTE: re-observing the now-restored row back to `pages._in_trash = 0` is a
+      // SEPARATE gap (see follow-up #775): a restore with no property change yields
+      // a byte-identical `RowObserved` that `appendEventWithResult` dedups, so the
+      // natural re-projection that would clear F8's `_nds_row.in_trash = 1` and the
+      // stale `remote_trash` tombstone never runs. Clearing them needs a design
+      // decision (which writer clears them), not one of the four F8 seams, so it is
+      // out of scope here and asserted no further.
     },
     sqliteContractTimeoutMs,
   )

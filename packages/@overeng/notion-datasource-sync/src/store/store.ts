@@ -2988,6 +2988,22 @@ CREATE TABLE _nds_body_pointer (
             event.eventId,
             currentIso(this.#now),
           )
+        // F8: a remote trash must reproject as `in_trash = 1` so the row stays a
+        // RESTORABLE row. `RowObserved` is the only other writer of `_nds_row.in_trash`,
+        // but a trashed page drops out of `data_source.query`, so without this the row
+        // would reproject to `in_trash = 0` and a 1->0 restore transition becomes
+        // inexpressible. Scoped strictly to `remote_trash`; moved_out/inaccessible/unknown
+        // are removals from scope, not restorable trash.
+        if (event.reason === 'remote_trash') {
+          this.#db
+            .prepare(
+              `UPDATE _nds_row
+               SET in_trash = 1,
+                   updated_at = ?
+               WHERE root_id = ? AND page_id = ?`,
+            )
+            .run(currentIso(this.#now), event.rootId, event.pageId)
+        }
         this.#applyQueryAbsenceEvidence({ event, defaultClassified: true })
         break
       case 'GuardBlocked':

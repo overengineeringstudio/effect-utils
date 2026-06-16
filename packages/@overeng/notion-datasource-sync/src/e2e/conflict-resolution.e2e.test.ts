@@ -1,8 +1,8 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { PagePropertyItemPage } from '../core/commands.ts'
-import { AbsolutePath } from '../core/domain.ts'
+import { PagePropertyItemPage, TrashPageCommand } from '../core/commands.ts'
+import { AbsolutePath, CommandId } from '../core/domain.ts'
 import { SyncEvent, SyncEventId } from '../core/events.ts'
 import { LocalWorkspacePort, NotionDataSourceGateway, PageBodySyncPort } from '../core/ports.ts'
 import {
@@ -430,8 +430,14 @@ describe('conflict resolution user command E2E', () => {
   it('restore from a classified tombstone enqueues restore and executor verifies restored state', async () => {
     const clock = makeFakeClock()
     const storeFixture = makeStoreFixture({ mode: 'memory', now: clock.now })
+    // Faithful Notion semantics: a trashed page is EXCLUDED from `data_source.query`,
+    // so the row projection cannot come from observing it in-trash. The page is
+    // observed while PRESENT (not trashed); the `remote_trash` tombstone recorded
+    // below then keeps `_nds_row.in_trash = 1` via the F8 reprojection, leaving the
+    // row present-and-trashed (restorable) — which is exactly what `restorePageCommand`
+    // needs (a current row projection + a `remote_trash` classification).
     const gatewayHarness = makeFakeGatewayHarness({
-      pages: [pageSnapshot({ inTrash: true })],
+      pages: [pageSnapshot({ inTrash: false })],
       propertyPages: [propertyPage()],
     })
 
@@ -454,6 +460,24 @@ describe('conflict resolution user command E2E', () => {
           now: clock.now,
         }),
         { gateway: gatewayHarness.gateway },
+      )
+      // Now trash the page remotely (it was observed while present above, so the
+      // row projection exists). This mirrors real Notion: the row was queried while
+      // present, then trashed and removed from the query window. The executor's
+      // restore below then does real work (flipping the remote page back), yielding
+      // `verified-success` rather than a no-op.
+      await Effect.runPromise(
+        gatewayHarness.gateway.trashPage(
+          decode({
+            schema: TrashPageCommand,
+            value: {
+              _tag: 'TrashPageCommand',
+              commandId: decode({ schema: CommandId, value: 'cmd:seed-trash' }),
+              pageId: testIds.pageId,
+              basePropertiesHash: hash('properties-a'),
+            },
+          }),
+        ),
       )
       storeFixture.store.appendEvent(
         decode({

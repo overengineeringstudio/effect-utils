@@ -369,6 +369,12 @@ export const makeFakeNotionDataSourceGateway = (
                 : encodeDateTimeUtc(input.queryContract.highWatermark)
             const allRows = [...pages.values()]
               .filter((page) => page.snapshot.dataSourceId === input.dataSourceId)
+              // Real Notion excludes trashed pages from `data_source.query`: an
+              // archived page vanishes from the query window entirely. Modelling that
+              // here is what makes the F8 disappearance->tombstone->reprojection path
+              // load-bearing (a trashed row drops out, gets reclassified as remote
+              // trash, and stays restorable).
+              .filter((page) => page.row.inTrash !== true)
               .filter(
                 (page) =>
                   input.queryContract.membershipScope === 'all-data-source-rows' ||
