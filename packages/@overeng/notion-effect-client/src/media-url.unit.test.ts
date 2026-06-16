@@ -73,4 +73,36 @@ describe('canonicalizeMediaUrlsInMarkdown', () => {
     const md = 'See https://example.com/x?X-Amz-Signature=abc in prose.\n'
     expect(canonicalizeMediaUrlsInMarkdown(md)).toBe(md)
   })
+
+  /*
+   * Host-gate regression (PR #786 P1): the markdown-string path cannot see
+   * `file` vs. `external`, so it must only strip signature params on known
+   * Notion-media hosts. An external signed URL on a different bucket carries
+   * load-bearing credentials and must survive untouched.
+   */
+  it('preserves an external signed S3 URL on a non-Notion bucket host', () => {
+    const externalSigned =
+      'https://my-private-bucket.s3.eu-central-1.amazonaws.com/photo.png' +
+      '?X-Amz-Algorithm=AWS4-HMAC-SHA256' +
+      '&X-Amz-Signature=deadbeef' +
+      '&X-Amz-Expires=3600'
+    const md = `![x](${externalSigned})\n`
+    expect(canonicalizeMediaUrlsInMarkdown(md)).toBe(md)
+  })
+
+  it('still canonicalizes a Notion-hosted signed URL on the gated host', () => {
+    const md = `![caption](${signedUrl})\n`
+    expect(canonicalizeMediaUrlsInMarkdown(md)).toBe(`![caption](${canonicalSignedUrl})\n`)
+  })
+
+  it('canonicalizes a signed file.notion.so URL', () => {
+    const notionSigned =
+      'https://file.notion.so/f/f/abc/def/photo.png' +
+      '?X-Amz-Signature=deadbeef' +
+      '&X-Amz-Expires=3600'
+    const md = `![caption](${notionSigned})\n`
+    expect(canonicalizeMediaUrlsInMarkdown(md)).toBe(
+      '![caption](https://file.notion.so/f/f/abc/def/photo.png)\n',
+    )
+  })
 })

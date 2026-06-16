@@ -72,14 +72,41 @@ export const canonicalizeMediaUrl = (url: string): string => {
  */
 const MARKDOWN_URL_RE = /\]\(([^)\s]+)\)/g
 
+/*
+ * Hosts that serve Notion-hosted media (the signed S3/CDN URLs whose signature
+ * params rotate per pull). An EXTERNAL signed URL (a user's own private S3
+ * bucket embedded by URL) must NOT be touched — stripping its signature breaks
+ * the credentials. So the markdown-string path (which, unlike the renderer,
+ * cannot see `file` vs `external`) only canonicalizes URLs on these hosts.
+ */
+const isNotionMediaHost = (parsed: URL): boolean =>
+  parsed.hostname === 'prod-files-secure.s3.us-west-2.amazonaws.com' ||
+  parsed.hostname === 'file.notion.so' ||
+  parsed.hostname.endsWith('.notion.so') ||
+  parsed.hostname.endsWith('.notion-static.com') ||
+  // Older bucket-in-path form: s3*.amazonaws.com/secure.notion-static.com/...
+  (parsed.hostname.endsWith('.amazonaws.com') &&
+    parsed.pathname.startsWith('/secure.notion-static.com/'))
+
 /**
  * Canonicalize every hosted-media URL embedded in a Markdown string. Used by
  * the hashing/gating path where only the rendered text (not the source block)
- * is available, so hosted vs. external is discriminated by the presence of
- * volatile query params rather than by `file` vs. `external`.
+ * is available. Unlike the renderer it cannot see `file` vs. `external`, so it
+ * restricts signature stripping to known Notion-media hosts (see
+ * `isNotionMediaHost`). External signed URLs — e.g. a user's own private S3
+ * bucket embedded by URL, whose `X-Amz-*` params are load-bearing credentials —
+ * are preserved untouched.
  */
 export const canonicalizeMediaUrlsInMarkdown = (markdown: string): string =>
   markdown.replace(MARKDOWN_URL_RE, (match, url: string) => {
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      return match
+    }
+    if (isNotionMediaHost(parsed) === false) return match
+
     const canonical = canonicalizeMediaUrl(url)
     return canonical === url ? match : `](${canonical})`
   })

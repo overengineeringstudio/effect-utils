@@ -2,8 +2,9 @@
 
 import { Command } from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Cause, Effect, Layer, Option } from 'effect'
+import { Cause, Effect, type Exit, Layer, Option } from 'effect'
 
+import { editorExitCode } from '@overeng/notion-md'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
@@ -75,6 +76,21 @@ const makeNotionRootCommand = <
     ),
   )
 
+/**
+ * Map the program `Exit` to the editor-surface exit-code contract
+ * (notion-md `exit-codes.ts`), mirroring the standalone `notion-md` binary.
+ *
+ * Without this the umbrella `notion edit` alias would collapse every tagged
+ * editor failure (e.g. 3 lossy / 6 schema-drift / 8 abort) to the framework's
+ * default exit 1, so `notion edit` and `notion-md edit` would disagree for
+ * scripts. Safe for non-editor commands (schema/db/md): `editorExitCode` falls
+ * back to 1 for any unmapped failure and 0 on success, matching the previous
+ * default teardown (Ctrl+C now maps to 130, consistent with `notion-md`).
+ */
+const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => void): void => {
+  onExit(editorExitCode(exit))
+}
+
 const runRootCli = async (argv: ReadonlyArray<string>) => {
   /*
    * These trees are imported CONCURRENTLY. That concurrency is what triggers the
@@ -128,7 +144,7 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
         makeOtelCliLayer({ serviceName: 'notion-cli' }),
       ),
     ),
-    NodeRuntime.runMain({ disableErrorReporting: true }),
+    NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown }),
   )
 }
 

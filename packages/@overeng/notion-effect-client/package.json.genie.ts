@@ -14,7 +14,10 @@ import utilsPkg from '../utils/package.json.genie.ts'
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-client' }),
   dependencies: {
-    workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg, otelContractPkg],
+    // `@overeng/utils` is a runtime import (`sha256Hex` in `config.ts`), so it
+    // must be a real runtime dependency — not a dev/peer dep that a standalone
+    // consumer could fail to provide.
+    workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg, otelContractPkg, utilsPkg],
     external: catalog.pick(
       'remark-gfm',
       'remark-parse',
@@ -24,7 +27,7 @@ const runtimeDeps = catalog.compose({
     ),
   },
   devDependencies: {
-    workspace: [utilsDevPkg, utilsPkg],
+    workspace: [utilsDevPkg],
     external: {
       ...catalog.pick(
         '@effect/platform',
@@ -35,9 +38,6 @@ const runtimeDeps = catalog.compose({
         'vitest',
       ),
     },
-  },
-  peerDependencies: {
-    workspace: [utilsPkg],
   },
 })
 
