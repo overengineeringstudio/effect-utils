@@ -51,6 +51,7 @@ export {
   NOTION_TOKEN_ENV_VARS,
   type NotionClientConfig,
   NotionConfig,
+  notionTokenFingerprint,
   NotionTokenMissing,
   resolveNotionToken,
 } from './config.ts'

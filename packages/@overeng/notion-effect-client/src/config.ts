@@ -1,5 +1,7 @@
 import { Config, Context, Effect, Option, Redacted, Schema } from 'effect'
 
+import { sha256Hex } from '@overeng/utils'
+
 export { NOTION_API_BASE_URL, NOTION_API_VERSION } from '@overeng/notion-core'
 
 /** Configuration for the Notion client */
@@ -54,3 +56,25 @@ export const resolveNotionToken = Effect.fn('resolveNotionToken')(function* () {
     envVars: NOTION_TOKEN_ENV_VARS,
   })
 })
+
+/**
+ * Produce a log-safe fingerprint of a Notion integration token so a user can
+ * tell *which* credential is active without leaking the secret.
+ *
+ * Format: `` `<scheme>…#<8hex>` `` where `<scheme>` is the public token-type
+ * prefix (everything up to and including the first `_`, e.g. `ntn_` / `secret_`)
+ * and `<8hex>` is the first 8 hex chars of `sha256(token)`. An empty token
+ * yields `<none>`. A token with no `_` yields `…#<8hex>` with an empty scheme.
+ *
+ * Security: never emits any secret bytes beyond the scheme prefix. The first-`_`
+ * split is done via `indexOf` (not `split('_')[0]`, which would return the whole
+ * token when no `_` is present).
+ */
+export const notionTokenFingerprint = (token: Redacted.Redacted<string>): string => {
+  const raw = Redacted.value(token)
+  if (raw.length === 0) return '<none>'
+  const sep = raw.indexOf('_')
+  const scheme = sep === -1 ? '' : raw.slice(0, sep + 1)
+  const digest = sha256Hex(raw).slice(0, 8)
+  return `${scheme}…#${digest}`
+}
