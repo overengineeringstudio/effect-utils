@@ -138,7 +138,10 @@ export const exportReplica = (options: ReplicaExportOptions): ReplicaExportResul
       db,
       surface: 'conflicts',
       orderBy: `${quoteIdentifier('updated_at')}, ${quoteIdentifier('conflict_id')}`,
-    }).filter((conflict) => String(conflict.state) === 'open')
+      // Include `resolving` (a frozen, keep-local-pending lifecycle conflict): it is
+      // a live, unresolved conflict that must surface in the export, matching the
+      // conflicts_open count (#775 M2a').
+    }).filter((conflict) => ['open', 'resolving'].includes(String(conflict.state)))
 
     const clean =
       readNumber({ row: syncStatus, key: 'pending_local_changes' }) === 0 &&
