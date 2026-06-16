@@ -599,6 +599,77 @@ describe('body adapter E2E boundary', () => {
     },
   )
 
+  // Decision 0013 risk #1 (adapter-authoritative): routing the body surface through
+  // the convergence engine must NOT drop the adapter's remote-staleness/safety gate.
+  // In `shared` mode the engine body pass runs for an edited `.nmd`, but `.nmd` is
+  // the only local body surface → `single-surface` → no engine block. The adapter
+  // (`planLocalChange`) must STILL fire and conflict on a stale/lossy remote.
+  it('ADAPTER-AUTHORITATIVE: a body that AGREES locally still blocks via the adapter on a lossy remote (shared mode)', async () => {
+    const storeFixture = makeStoreFixture({ mode: 'memory' })
+    const gatewayHarness = makeFakeGatewayHarness()
+    const safety = bodySafety({ truncated: true })
+    const bodyPort = makeHarnessPorts({ bodyPages: [fakeBodyPage({ safety })] }).body
+    const { body: trackedBody, pushed } = bodyPortWithPushLedger(bodyPort)
+
+    try {
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: makeFakeClock().now,
+      })
+      appendObservedBodyProjection(storeFixture.store, safety)
+
+      const result = await runWithPorts(
+        pushOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot,
+          // `shared` mode activates the engine body pass — the very path that could
+          // wrongly short-circuit the adapter if risk #1 were tripped.
+          authorityMode: 'shared',
+          now: makeFakeClock().now,
+          localWorkspaceObservation: {
+            observations: [
+              presentArtifactObservation({
+                pageId: testIds.pageId,
+                path: bodyPath,
+                contentHash: hash('body-local-edit'),
+                observedAt: bodyPointer().observedAt,
+              }),
+            ],
+          },
+        }),
+        {
+          gateway: gatewayHarness.gateway,
+          body: trackedBody,
+          workspace: makeFakeLocalWorkspacePort(),
+        },
+      )
+
+      const conflicts = storeFixture.store
+        .replay(testIds.rootId)
+        .filter((event) => event._tag === 'ConflictRaised')
+
+      // The adapter conflict — NOT an engine `body-body-delegated` block — is what
+      // stops the push. The engine saw a single body surface and emitted no block.
+      expect(result.plan).toMatchObject({ enqueuedCommands: 0, conflicts: 1 })
+      expect(pushed).toEqual([])
+      expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([])
+      expect(conflicts.at(-1)).toMatchObject({
+        _tag: 'ConflictRaised',
+        // ADAPTER conflict kind, proving the adapter ran (not the engine kind).
+        conflictKind: 'body',
+        pageId: testIds.pageId,
+      })
+      expect(conflicts.some((event) => event.conflictKind === 'body-body-delegated')).toBe(false)
+      assertNoGatewayMutations(gatewayHarness.ledger)
+    } finally {
+      storeFixture.cleanup()
+    }
+  })
+
   it('keeps queued body pushes unsettled when the adapter is absent', async () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
     const gatewayHarness = makeFakeGatewayHarness()

@@ -4,11 +4,20 @@ import { describe, expect, it } from 'vitest'
 import { makeCanonicalCodec } from '@overeng/notion-effect-schema'
 
 import { canonicalHash } from '../core/canonical.ts'
-import { Hash, PageId, PropertyId } from '../core/domain.ts'
+import {
+  Hash,
+  PageId,
+  PropertyId,
+  bodyDescriptorForDigest,
+  bodyEvidenceFingerprintFromContentDigest,
+  bodyIdentityDigest,
+  evidenceBackedBodyIdentity,
+  renderedBodyDigest,
+} from '../core/domain.ts'
 import { convergenceFormHash, nmdPropertyCanonicalValue } from '../planner/nmd-property-facts.ts'
 import type { ReplicaCellBase } from '../replica/replica.ts'
 import { hashStoreBytes } from '../store/projections.ts'
-import { dataFilePropertyEdits, nmdPropertyFacts } from './local-convergence-inputs.ts'
+import { dataFilePropertyEdits, nmdBodyFact, nmdPropertyFacts } from './local-convergence-inputs.ts'
 
 const decode = <TSchema extends Schema.Schema.AnyNoContext>(s: TSchema, v: unknown) =>
   Schema.decodeUnknownSync(s)(v)
@@ -173,6 +182,41 @@ describe('local-convergence inputs (baseline diff)', () => {
     // pristine `convergence_hash`, never re-derived from the edit-overwritten value.
     expect(edits[0]?.desiredHash).toBe(convergenceFormHash(valueJson))
     expect(edits[0]?.baseHash).toBe(cellBase('Low').convergenceHash)
+  })
+
+  describe('body fact (decision 0013 rendered-digest base)', () => {
+    const renderedHash = decode(Hash, `sha256:${'a'.repeat(64)}`)
+    const evidenceHash = decode(Hash, `sha256:${'b'.repeat(64)}`)
+
+    // An evidence-backed identity whose RENDERED digest is `renderedHash` but whose
+    // EVIDENCE fingerprint hashes to a DIFFERENT digest — exactly the pulled `.nmd`
+    // case where the evidence digest diverges but the rendered body is identical.
+    const baseBodyIdentity = evidenceBackedBodyIdentity({
+      rendered: bodyDescriptorForDigest(renderedHash),
+      evidenceFingerprint: bodyEvidenceFingerprintFromContentDigest(evidenceHash),
+      completeness: 'complete',
+    })
+
+    it('an UNEDITED pulled .nmd produces NO fact even though its evidence digest differs', () => {
+      // Sanity: the EVIDENCE digest and the RENDERED digest genuinely differ, so a
+      // (buggy) evidence-based base WOULD false-diverge here.
+      expect(renderedBodyDigest(baseBodyIdentity)).toBe(renderedHash)
+      expect(bodyIdentityDigest(baseBodyIdentity)).toBe(evidenceHash)
+      expect(bodyIdentityDigest(baseBodyIdentity)).not.toBe(renderedBodyDigest(baseBodyIdentity))
+
+      // `observation.contentHash` for an unedited file equals the RENDERED digest.
+      const fact = nmdBodyFact({ pageId, contentHash: renderedHash, baseBodyIdentity })
+      expect(fact).toBeUndefined()
+    })
+
+    it('a real .nmd body edit produces a body fact in rendered space', () => {
+      const editedHash = decode(Hash, `sha256:${'c'.repeat(64)}`)
+      const fact = nmdBodyFact({ pageId, contentHash: editedHash, baseBodyIdentity })
+      expect(fact?.identity).toEqual({ kind: 'body', pageId })
+      expect(fact?.desiredHash).toBe(editedHash)
+      // Base is the RENDERED digest, never the evidence fingerprint.
+      expect(fact?.baseHash).toBe(renderedHash)
+    })
   })
 
   it('hash sanity: convergence-form hash equals a known Hash brand format', () => {

@@ -2169,7 +2169,7 @@ describe('Notion sync SQLite store', () => {
   // OPEN `lifecycle` conflict exists for the page. The discriminator is the decoded
   // `conflictKind`, NOT a null `property_id` — a `body` (body-body merge) conflict
   // also has a null `property_id` and must NOT freeze `in_trash`.
-  const pageConflictRaised = (kind: 'lifecycle' | 'body') =>
+  const pageConflictRaised = (kind: 'lifecycle' | 'body' | 'body-body-delegated') =>
     decode(SyncEvent, {
       _tag: 'ConflictRaised',
       ...eventBase({
@@ -2250,6 +2250,53 @@ describe('Notion sync SQLite store', () => {
       )
 
       // in_trash FOLLOWS the remote observation (false): the freeze did not fire.
+      expect(store.readPlannerProjectionSnapshot(rootId).rows).toMatchObject([
+        { pageId: 'page-1', inTrash: false, propertiesHash: hash('b2') },
+      ])
+    })
+  })
+
+  // Decision 0013: an engine-detected LOCAL body divergence is `body-body-delegated`,
+  // page-keyed with a NULL property_id. It must round-trip through the event log and
+  // project as that kind, and — like `body` — must NOT freeze `in_trash` (the
+  // null-property_id discriminator trap that `#hasOpenLifecycleConflict` guards).
+  it('round-trips body-body-delegated through ConflictRaised and projects it as the conflict kind', () => {
+    withStore((store) => {
+      store.appendEvent(pageConflictRaised('body-body-delegated'))
+      const conflicts = store.readConflicts(rootId)
+      expect(conflicts).toMatchObject([
+        {
+          pageId: 'page-1',
+          propertyId: undefined,
+          kind: 'body-body-delegated',
+          state: 'open',
+        },
+      ])
+    })
+  })
+
+  it('does NOT freeze in_trash for an open body-body-delegated conflict (decision 0013 no-freeze)', () => {
+    withStore((store) => {
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-active',
+          idempotencyKey: 'row-active',
+          propertiesHash: hash('a1'),
+          inTrash: true,
+        }),
+      )
+      store.appendEvent(pageConflictRaised('body-body-delegated'))
+      store.appendEvent(
+        rowObserved({
+          eventId: 'row-restored',
+          idempotencyKey: 'row-restored',
+          propertiesHash: hash('b2'),
+          inTrash: false,
+        }),
+      )
+
+      // in_trash FOLLOWS the remote observation (false): the lifecycle freeze did
+      // not fire on a body-body-delegated conflict.
       expect(store.readPlannerProjectionSnapshot(rootId).rows).toMatchObject([
         { pageId: 'page-1', inTrash: false, propertiesHash: hash('b2') },
       ])
