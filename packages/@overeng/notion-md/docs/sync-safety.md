@@ -90,6 +90,28 @@ schema-preserved pull subset: external covers and null covers are writable,
 emoji/native/external icons and null icons are writable, and Notion-hosted files
 or custom emojis are preserved until their write behavior is proven.
 
+## File/Media Boundary
+
+File properties carry three kinds of ref. `external_url` attaches to the remote
+property as-is. `notion_file` with a `file_upload_id` attaches a pre-uploaded
+Notion file. `local_file` is refused on push (byte upload is not implemented).
+
+These property refs never become byte-backed `storage.files` units: the
+property-encoding surface and the media surface are disjoint by type, so an
+external or local property ref cannot ride the byte path. That disjointness is
+what makes the media boundary durable "by construction" — and it is enforced,
+not merely assumed. The media boundary returns `inert` (safe to proceed) only
+when `storage.files` is empty; any unit it finds, regardless of role, fails
+closed. A future change that lowered a property ref into a byte unit would
+therefore be caught at the boundary rather than silently transferring bytes.
+
+### External-URL Durability (Known Limitation)
+
+An attached `external_url` can 404 or move after it is written. v1 attaches it
+as-is and does NOT verify its durability — it is the external analog of a
+Notion-hosted expiring file URL, but with no guard in v1. Treat external URLs as
+content whose durability is the author's responsibility.
+
 ## Object Integrity
 
 `status` and `sync` validate referenced objects before trusting local
