@@ -13,7 +13,8 @@
  * boundary), docs/vrs/03-effect-runtime/spec.md §1 (determinism) + §2 (logging) and docs/vrs/04-error-boundary/spec.md §2 (cancellation↔interruption), and requirements R17 + R31.
  */
 import * as restate from '@restatedev/restate-sdk'
-import { Chunk, Clock, Effect, Layer, Logger, LogLevel, Random } from 'effect'
+import type { LogLevel } from 'effect'
+import { Chunk, Clock, Effect, Layer, Logger, Random } from 'effect'
 
 import { RestateContext } from '../authoring/RestateContext.ts'
 import { withRestateOperation } from '../observability/effect.ts'

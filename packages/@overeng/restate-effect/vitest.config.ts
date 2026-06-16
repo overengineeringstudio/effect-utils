@@ -7,5 +7,6 @@ export default defineConfig({
      * registers an SDK deployment, so give it generous headroom. */
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    fileParallelism: false,
   },
 })

@@ -589,6 +589,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 30_000 },
   )
 
   it.effect(

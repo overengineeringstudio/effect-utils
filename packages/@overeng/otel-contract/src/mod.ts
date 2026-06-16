@@ -1174,7 +1174,7 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
   ) {
     const wrap = (effect: Effect.Effect<A, E, R>) =>
       Effect.gen(function* () {
-        const encoded = yield* encode(isEffectOperationCall(call) ? call.attributes : call)
+        const encoded = yield* encode(isEffectOperationCall(call) === true ? call.attributes : call)
         return yield* effect.pipe(
           Effect.withSpan(name, {
             attributes: encoded,
@@ -1182,7 +1182,7 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
           }),
         )
       })
-    return isEffectOperationCall(call) ? wrap(call.effect) : wrap
+    return isEffectOperationCall(call) === true ? wrap(call.effect) : wrap
   }
 
   function withRootOperation<A, E, R>(
@@ -1195,7 +1195,7 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
   ) {
     const wrap = (effect: Effect.Effect<A, E, R>) =>
       Effect.gen(function* () {
-        const encoded = yield* encode(isEffectOperationCall(call) ? call.attributes : call)
+        const encoded = yield* encode(isEffectOperationCall(call) === true ? call.attributes : call)
         return yield* effect.pipe(
           Effect.withSpan(name, {
             attributes: encoded,
@@ -1203,7 +1203,7 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
           }),
         )
       })
-    return isEffectOperationCall(call) ? wrap(call.effect) : wrap
+    return isEffectOperationCall(call) === true ? wrap(call.effect) : wrap
   }
 
   function withOperationStream<A, E, R>(
@@ -1217,7 +1217,9 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
     const wrap = (stream: Stream.Stream<A, E, R>) =>
       Stream.unwrap(
         Effect.gen(function* () {
-          const encoded = yield* encode(isStreamOperationCall(call) ? call.attributes : call)
+          const encoded = yield* encode(
+            isStreamOperationCall(call) === true ? call.attributes : call,
+          )
           return stream.pipe(
             Stream.withSpan(name, {
               attributes: encoded,
@@ -1226,7 +1228,7 @@ function defineOperation<S extends Schema.Schema.AnyNoContext>(
           )
         }),
       )
-    return isStreamOperationCall(call) ? wrap(call.stream) : wrap
+    return isStreamOperationCall(call) === true ? wrap(call.stream) : wrap
   }
 
   return {

@@ -14,6 +14,7 @@
 
 import * as Otlp from '@effect/opentelemetry/Otlp'
 import { FetchHttpClient } from '@effect/platform'
+import type { MetricLabel } from 'effect'
 import {
   Clock,
   Config,
@@ -22,7 +23,6 @@ import {
   Effect,
   Layer,
   Metric,
-  MetricLabel,
   Option,
   Schedule,
   type Scope,
