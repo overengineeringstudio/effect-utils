@@ -47,6 +47,41 @@ describe('canonicalizeBlockMarkdown', () => {
     const input = 'Line one\r\nstill line one.\r\n\r\nLine two.'
     expect(canonicalizeBlockMarkdown(input)).toBe('Line one still line one.\n\nLine two.\n')
   })
+
+  /*
+   * List-tightness locking tests (decision 0018). The renderer joins sibling
+   * blocks with `\n\n`, producing a *loose* list; the canonical layer is the
+   * single place that forces lists tight (`spread = false`) while leaving the
+   * blank line before a following non-list block intact.
+   */
+  it('forces a loose bulleted list tight', () => {
+    expect(canonicalizeBlockMarkdown('- a\n\n- b\n\n- c\n')).toBe('- a\n- b\n- c\n')
+  })
+
+  it('keeps the blank line before a paragraph following a list', () => {
+    expect(canonicalizeBlockMarkdown('- a\n\n- b\n\nA paragraph after.\n')).toBe(
+      '- a\n- b\n\nA paragraph after.\n',
+    )
+  })
+
+  it('keeps consecutive headings blank-separated even from tight input', () => {
+    expect(canonicalizeBlockMarkdown('# H1\n## H2\n### H3\n')).toBe('# H1\n\n## H2\n\n### H3\n')
+  })
+
+  it('removes the stray indented blank line inside a nested list', () => {
+    // The shape `treeToMarkdown` produces for a nested list: loose siblings
+    // plus a `  ` whitespace-only line between nested items.
+    expect(canonicalizeBlockMarkdown('- A\n\n- B\n  - B1\n  \n  - B2\n\n- C\n')).toBe(
+      '- A\n- B\n  - B1\n  - B2\n- C\n',
+    )
+  })
+
+  it('is idempotent over a list + paragraph body', () => {
+    const input = '- a\n\n- b\n\nAfter.\n'
+    const once = canonicalizeBlockMarkdown(input)
+    expect(canonicalizeBlockMarkdown(once)).toBe(once)
+    expect(once).toBe('- a\n- b\n\nAfter.\n')
+  })
 })
 
 describe('semanticEquivalent', () => {

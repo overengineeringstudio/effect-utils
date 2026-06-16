@@ -32,10 +32,36 @@ const unwrapSoftBreaks: () => (tree: unknown) => void = () => (tree) => {
   })
 }
 
+/*
+ * Force every list and list item tight (`spread = false`), so remark-stringify
+ * emits a single `\n` (not a blank line) between consecutive items.
+ *
+ * The block-tree renderer (`treeToMarkdown`, notion-effect-client) joins every
+ * sibling block — including consecutive list items — with `\n\n`, producing a
+ * *loose* CommonMark list (a blank line between every bullet) plus a stray
+ * indented blank line inside nested lists. `remark-stringify` preserves list
+ * tightness from its input, so re-stringifying a loose list stays loose unless
+ * we flip `spread` off here. This is the single place that owns list-tightness
+ * policy: pull and push both route through `canonicalizeBlockMarkdown`, so the
+ * canonical body is tight regardless of how the renderer joined the siblings.
+ *
+ * It only flips `spread`; it never removes the blank line *before* a following
+ * non-list block (that boundary is structural, not list-internal), so a
+ * paragraph after a list keeps its separating blank line.
+ */
+const forceTightLists: () => (tree: unknown) => void = () => (tree) => {
+  visit(tree as never, (node: { type: string; spread?: boolean }) => {
+    if (node.type === 'list' || node.type === 'listItem') {
+      node.spread = false
+    }
+  })
+}
+
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(unwrapSoftBreaks)
+  .use(forceTightLists)
   .use(remarkStringify, {
     bullet: '-',
     emphasis: '_',
@@ -49,11 +75,25 @@ const processor = unified()
   })
 
 /**
- * Reduce arbitrary Markdown to the canonical form used for hashing and wire
- * transfer. Besides whitespace/structure normalization, hosted-media URLs are
- * canonicalized (volatile signature/expiry query params stripped, decision 0007
- * / R36) via the same shared function the renderer uses, so a rotated signed URL
- * compares equal across pulls.
+ * Reduce arbitrary Markdown to the single canonical body form, applied at BOTH
+ * Notion wire boundaries — pull receive and push send — so the body a consumer
+ * reads (`cat` / `edit` / file sync), the body hashed, and the body pushed are
+ * the same bytes (decision 0018). The steps, in order:
+ *
+ *   1. line-ending normalize (CRLF/CR → LF)
+ *   2. hosted-media URL canonicalize (volatile signature/expiry query params
+ *      stripped, decision 0007 / R36) via the same shared function the renderer
+ *      uses, so a rotated signed URL compares equal across pulls
+ *   3. remark parse + GFM
+ *   4. `unwrapSoftBreaks` — collapse intra-paragraph soft breaks
+ *   5. `forceTightLists` — `spread = false` on every list / list item
+ *   6. remark-stringify (the config above)
+ *   7. ensure a single trailing newline
+ *
+ * Spacing/tightness policy lives only here: the renderer emits parseable-not-
+ * canonical Markdown (it joins blocks with `\n\n` so they stay distinct), and
+ * this layer decides the canonical shape. The renderer joins must not be made
+ * block-type-aware — that would re-split the policy across two serializers.
  */
 export const canonicalizeBlockMarkdown = (markdown: string): string => {
   const normalized = canonicalizeMediaUrlsInMarkdown(
