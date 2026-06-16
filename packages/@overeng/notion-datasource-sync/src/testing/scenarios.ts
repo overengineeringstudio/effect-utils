@@ -197,8 +197,12 @@ export const e2eHarnessScenarios = [
     scenarioId: 'NDS-L3-realistic-local-remote-conflict',
     title:
       'pending local property intent survives remote same-property drift as a durable conflict',
+    // `PendingIntentShadowViolation` was previously claimed here, but this test
+    // file never exercises it (the guard is wired on the lifecycle-divergence
+    // path and asserted in `sqlite-storage-contract.e2e.test.ts`). Its genuine
+    // coverage moved to `NDS-L3-lifecycle-divergence-conflict`.
     requirementIds: ['R09', 'R21', 'R24', 'R25', 'R27', 'R61', 'R62'],
-    guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation'],
+    guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L3',
     file: 'src/e2e/realistic-workflows.e2e.test.ts',
@@ -279,8 +283,11 @@ export const e2eHarnessScenarios = [
   scenario({
     scenarioId: 'NDS-L4-bidi-clean-outbound-after-remote-observation',
     title: 'clean remote observations advance local bases before later SQLite property edits',
+    // `PendingIntentShadowViolation` was previously claimed here too, but this
+    // test exercises clean base advancement, not the lifecycle shadow violation.
+    // Genuine guard coverage lives in `NDS-L3-lifecycle-divergence-conflict`.
     requirementIds: ['R09', 'R10', 'R11', 'R21', 'R23', 'R24', 'R61', 'R62', 'R64', 'R79'],
-    guards: ['StaleSurfaceBase', 'PendingIntentShadowViolation'],
+    guards: ['StaleSurfaceBase'],
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
     file: 'src/e2e/realistic-workflows.e2e.test.ts',
@@ -369,6 +376,26 @@ export const e2eHarnessScenarios = [
     lowestPlannerLevel: 'L2',
     highestIntegrationLevel: 'L4',
     file: 'src/e2e/conflict-resolution.e2e.test.ts',
+  }),
+  // Decision 0018 (#775 M2a'-2 / R82 → REPLICA-R12): lifecycle divergence — a
+  // remote restore after a SETTLED local archive — is a first-class CONFLICT, not a
+  // silent last-writer-wins flip. The `PendingIntentShadowViolation` guard is WIRED
+  // in `sync.ts` and asserted here: a `lifecycle` ConflictRaised lands in
+  // `_nds_guard_block` as `PendingIntentShadowViolation`, `_in_trash` is FROZEN at
+  // the settled local target (no silent flip), the freeze is column-scoped, and
+  // `keep-local`/`keep-remote` resolution drives the conflict through the
+  // `resolving` state. This is the guard's genuine coverage (the earlier
+  // `NDS-L3-realistic-local-remote-conflict` claim was an overclaim — that test
+  // never references the guard).
+  scenario({
+    scenarioId: 'NDS-L3-lifecycle-divergence-conflict',
+    title:
+      'remote restore after a settled local archive raises a durable lifecycle conflict (PendingIntentShadowViolation): _in_trash freezes at the local target with no silent flip, and keep-local/keep-remote resolution drives the resolving state',
+    requirementIds: ['R82'],
+    guards: ['PendingIntentShadowViolation'],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/sqlite-storage-contract.e2e.test.ts',
   }),
   scenario({
     scenarioId: 'NDS-L4-bidi-rebuild-replay-safety',
@@ -829,6 +856,27 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L3',
     file: 'src/e2e/local-convergence-production.e2e.test.ts',
   }),
+  // Decision 0013 (#775 M2b): the body convergence rail is FORWARD-LOOKING and
+  // INERT in production — production keeps the SQLite body channel dormant, so the
+  // engine only ever sees a single body surface (no `body-body-delegated` conflict
+  // is raised on real data). This scenario does NOT assert a production body
+  // conflict. It supplies a SECOND, disagreeing body surface to drive the engine's
+  // local body-divergence fact, projects the resulting `body-body-delegated`
+  // conflict onto the `_nds_replica_conflicts` rail (page-keyed, NULL property_id),
+  // and proves per-surface blocking (a divergent body does not block a co-page
+  // agreeing property). No guard fires by design. The complementary
+  // no-`in_trash`-freeze isolation (a `body-body-delegated` conflict is not a
+  // lifecycle conflict) is asserted separately in `src/store/store.unit.test.ts`.
+  scenario({
+    scenarioId: 'NDS-L3-body-convergence-rail',
+    title:
+      'FORWARD-LOOKING (inert in production): a constructed second body surface drives the engine body-divergence fact, projects a body-body-delegated conflict onto the conflict rail (page-keyed, null property_id), and proves per-surface blocking — NOT a production body conflict',
+    requirementIds: ['R06', 'R08'],
+    guards: [],
+    lowestPlannerLevel: 'L2',
+    highestIntegrationLevel: 'L3',
+    file: 'src/e2e/local-convergence-production.e2e.test.ts',
+  }),
   scenario({
     scenarioId: 'NDS-L1-linked-view-read-only',
     title:
@@ -923,7 +971,7 @@ const guardScenarioIds = {
   ExpiringFileUrl: 'NDS-L1-expiring-file-url-property-write',
   ReadAfterWriteMismatch: 'NDS-L3-outbox-invalid-settlement-rejected',
   AmbiguousCommandOutcome: 'NDS-L3-outbox-invalid-settlement-rejected',
-  PendingIntentShadowViolation: 'NDS-L3-realistic-local-remote-conflict',
+  PendingIntentShadowViolation: 'NDS-L3-lifecycle-divergence-conflict',
   BodyAdapterNonBodyMutation: 'NDS-L2-body-adapter-surface-leak',
   FilesystemDeleteAutoTrashBlocked: 'NDS-L4-realistic-filesystem-delete-repair',
   CursorSameBucketIncomplete: 'NDS-L5-daemon-query-cursor-resume',
@@ -959,9 +1007,9 @@ const vrsRequirementId = (index: number): RequirementId =>
  * deferred to proposed decision 0012). For traceability:
  *   - R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline)
  *   - R82 → REPLICA-R12 (archive/restore round-trip reprojection retention)
- * No scenario cites R81/R82 yet, so both are recorded as `unmapped-requirement`
- * residuals below (mirroring R75/R76/R77) so the drift gate stays honest until
- * implementation scenarios cite them.
+ * Both are now mapped by concrete scenarios (R81 by `NDS-L3-api-call-count-budget`,
+ * R82 by `NDS-L3-lifecycle-divergence-conflict`), so neither is an
+ * `unmapped-requirement` residual anymore.
  */
 export const vrsRequirementIds = Array.from({ length: 82 }, (_, index) =>
   vrsRequirementId(index + 1),
@@ -1172,23 +1220,17 @@ export const traceabilityResiduals = [
     reason:
       'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
   },
-  // R82 (#775): the newest ratified requirement, enumerated so future
-  // implementation scenarios can cite it without tripping the legality gate.
-  // R82 → REPLICA-R12 (archive/restore round-trip reprojection retention). No
-  // scenario cites it yet — coverage lands during implementation — so it is
-  // residual'd here to keep the drift gate honest, mirroring R75/R76/R77.
-  //
   // R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline) is
   // NO LONGER a residual: the call-count half of decision 0017 is implemented and
   // R81 is now mapped by the concrete `NDS-L3-api-call-count-budget` scenario
   // (observable call-count ceilings in `src/e2e/otel.e2e.test.ts`). The rate-limit
   // half (Half 2, `@overeng/notion-effect-client`) is a separate change.
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R82',
-    reason:
-      'REPLICA-R12 archive/restore round-trip (#775); enumerated ahead of its implementation scenarios (remote-trash reprojects in_trash=1 + guarded restore, decisions 0014/0015).',
-  },
+  //
+  // R82 → REPLICA-R12 (archive/restore round-trip reprojection retention) is NO
+  // LONGER a residual either: decision 0018 lifecycle divergence (#775 M2a'-2)
+  // landed, so R82 is now mapped by the concrete `NDS-L3-lifecycle-divergence-conflict`
+  // scenario (remote restore after a settled archive raises a durable conflict with
+  // a frozen `_in_trash` in `src/e2e/sqlite-storage-contract.e2e.test.ts`).
 ] as const satisfies ReadonlyArray<TraceabilityResidual>
 
 const concreteScenarioById: ReadonlyMap<ScenarioId, ScenarioMetadata> = new Map(
