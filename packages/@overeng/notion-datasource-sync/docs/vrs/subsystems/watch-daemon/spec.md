@@ -72,11 +72,11 @@ reconciles, orthogonal to `--watch-priority`, which decides only HOW OFTEN it
 cycles. The daemon reads the mode once at start (the same read established `sync`
 uses) and does not accept a per-run `--mode` override.
 
-| Mode               | Local-first push pass | Remote pull pass | Loop promise                                                              |
-| ------------------ | --------------------- | ---------------- | ------------------------------------------------------------------------ |
-| `remote` (mirror)  | gated OFF             | always runs      | Follow remote: local intents surface as pending status/conflict, never an outbound write |
-| `local`            | runs                  | observe-only     | Local-authoritative: push local→remote; remote observation feeds conflict/preflight but does not overwrite accepted local facts |
-| `shared`           | runs                  | runs             | Bidirectional: local push + remote pull + settle                         |
+| Mode              | Local-first push pass | Remote pull pass | Loop promise                                                                                                                    |
+| ----------------- | --------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `remote` (mirror) | gated OFF             | always runs      | Follow remote: local intents surface as pending status/conflict, never an outbound write                                        |
+| `local`           | runs                  | observe-only     | Local-authoritative: push local→remote; remote observation feeds conflict/preflight but does not overwrite accepted local facts |
+| `shared`          | runs                  | runs             | Bidirectional: local push + remote pull + settle                                                                                |
 
 In `remote` mode the reconcile pass runs pull-only: no local intent reaches the
 planner, outbox, executor, or gateway, so the cycle never asks Notion to mutate.
