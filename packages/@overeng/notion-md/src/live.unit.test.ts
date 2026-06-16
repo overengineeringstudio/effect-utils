@@ -39,6 +39,14 @@ const evidenceFor = (input: {
   return { evidence, evidenceFingerprint: fingerprintBodyEvidence(evidence) }
 }
 
+/*
+ * `observeFromSnapshots` now canonicalizes `renderedMarkdown` at the source
+ * (body-observation.ts), so these inputs are the already-canonical body and
+ * `remoteMarkdownFromBodyObservation` projects it through verbatim. The
+ * canonicalization behavior itself is locked in canonical-markdown.unit.test.ts
+ * and body-observation.unit.test.ts; here we assert the projection and that the
+ * endpoint Markdown is never adopted in place of the rendered body.
+ */
 describe('remoteMarkdownFromBodyObservation', () => {
   it('adopts block-tree-rendered Markdown instead of endpoint Markdown', () => {
     const entries = [
@@ -70,13 +78,13 @@ describe('remoteMarkdownFromBodyObservation', () => {
       },
       inventory: {
         entries,
-        renderedMarkdown: '## Section\n\nParagraph that the endpoint left adjacent\n\n---',
+        renderedMarkdown: '## Section\n\nParagraph that the endpoint left adjacent\n\n---\n',
       },
       completeness: { _tag: 'complete' },
       ...evidenceFor({
         pageId: '00000000-0000-4000-8000-000000000001',
         endpointMarkdown: '## Section\nParagraph that the endpoint left adjacent\n---\n',
-        renderedMarkdown: '## Section\n\nParagraph that the endpoint left adjacent\n\n---',
+        renderedMarkdown: '## Section\n\nParagraph that the endpoint left adjacent\n\n---\n',
         entries,
         completeness: 'complete',
       }),
@@ -92,18 +100,104 @@ describe('remoteMarkdownFromBodyObservation', () => {
     })
   })
 
-  it('fails closed when block-tree-rendered Markdown is unavailable', () => {
-    const entries = [] as const
+  it('projects the canonical (tight) list body through to the pull snapshot', () => {
+    const entries = [
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        type: 'bulleted_list_item',
+        hasChildren: false,
+        inTrash: false,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000003',
+        type: 'bulleted_list_item',
+        hasChildren: false,
+        inTrash: false,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000004',
+        type: 'paragraph',
+        hasChildren: false,
+        inTrash: false,
+      },
+    ] as const
+    // `observeFromSnapshots` already canonicalized the loose renderer output to
+    // this tight form; the projection passes it through, keeping the blank line
+    // before the trailing paragraph.
+    const renderedMarkdown = '- Bullet A\n- Bullet B\n\nA paragraph after the list.\n'
     const observation: NotionBodyObservation = {
       pageId: '00000000-0000-4000-8000-000000000001',
       markdown: {
-        markdown: 'Endpoint only',
+        markdown: '- Bullet A\n- Bullet B\nA paragraph after the list.\n',
         truncated: false,
         unknownBlockIds: [],
       },
-      inventory: {
+      inventory: { entries, renderedMarkdown },
+      completeness: { _tag: 'complete' },
+      ...evidenceFor({
+        pageId: '00000000-0000-4000-8000-000000000001',
+        endpointMarkdown: '- Bullet A\n- Bullet B\nA paragraph after the list.\n',
+        renderedMarkdown,
         entries,
+        completeness: 'complete',
+      }),
+    }
+
+    expect(remoteMarkdownFromBodyObservation(observation)).toMatchObject({
+      markdown: '- Bullet A\n- Bullet B\n\nA paragraph after the list.\n',
+    })
+  })
+
+  it('never runs consecutive headings together on pull', () => {
+    // The endpoint Markdown drops inter-block blank lines (headings run
+    // together); the canonical rendered body must keep them blank-separated.
+    const entries = [
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        type: 'heading_1',
+        hasChildren: false,
+        inTrash: false,
       },
+      {
+        id: '00000000-0000-4000-8000-000000000003',
+        type: 'heading_2',
+        hasChildren: false,
+        inTrash: false,
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000004',
+        type: 'heading_3',
+        hasChildren: false,
+        inTrash: false,
+      },
+    ] as const
+    const renderedMarkdown = '# H1\n\n## H2\n\n### H3\n'
+    const observation: NotionBodyObservation = {
+      pageId: '00000000-0000-4000-8000-000000000001',
+      // Endpoint shape with headings run together — must NOT leak through.
+      markdown: { markdown: '# H1\n## H2\n### H3\n', truncated: false, unknownBlockIds: [] },
+      inventory: { entries, renderedMarkdown },
+      completeness: { _tag: 'complete' },
+      ...evidenceFor({
+        pageId: '00000000-0000-4000-8000-000000000001',
+        endpointMarkdown: '# H1\n## H2\n### H3\n',
+        renderedMarkdown,
+        entries,
+        completeness: 'complete',
+      }),
+    }
+
+    expect(remoteMarkdownFromBodyObservation(observation)).toMatchObject({
+      markdown: '# H1\n\n## H2\n\n### H3\n',
+    })
+  })
+
+  it('throws an invariant defect when block-tree-rendered Markdown is unavailable', () => {
+    const entries = [] as const
+    const observation: NotionBodyObservation = {
+      pageId: '00000000-0000-4000-8000-000000000001',
+      markdown: { markdown: 'Endpoint only', truncated: false, unknownBlockIds: [] },
+      inventory: { entries },
       completeness: { _tag: 'complete' },
       ...evidenceFor({
         pageId: '00000000-0000-4000-8000-000000000001',
@@ -114,16 +208,8 @@ describe('remoteMarkdownFromBodyObservation', () => {
       }),
     }
 
-    expect(remoteMarkdownFromBodyObservation(observation)).toMatchObject({
-      markdown: 'Endpoint only\n',
-      endpoint_markdown: 'Endpoint only\n',
-      truncated: false,
-      unknown_block_ids: [],
-      body_evidence_fingerprint: observation.evidenceFingerprint,
-      completeness: {
-        _tag: 'lossy',
-        reasons: ['rendered_markdown_unavailable'],
-      },
-    })
+    expect(() => remoteMarkdownFromBodyObservation(observation)).toThrow(
+      /has no rendered Markdown/u,
+    )
   })
 })

@@ -3,8 +3,10 @@ import { basename } from 'node:path'
 import type { FileSystem } from '@effect/platform'
 import { Effect, Option } from 'effect'
 
+import { describeBodyLossyRefusal, tolerateTreeChildPages } from '@overeng/notion-core'
 import {
   NOTION_API_VERSION,
+  type NmdDataSourceBinding,
   type NmdFrontmatterV2,
   type NmdObjectRef,
   type NmdParentRef,
@@ -19,10 +21,11 @@ import {
   NmdConflictError,
   NmdFrontmatterError,
   NmdRemoteBodyLossyError,
+  NmdSchemaDriftError,
   type NmdError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
-import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
+import { normalizeMarkdownLineEndings, sha256Digest, stripChildAnchors } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 import {
   NotionMdGateway,
@@ -34,6 +37,13 @@ import {
   type WritablePageIcon,
 } from './model.ts'
 import * as Observability from './observability.ts'
+import { reportNote, reportStageSkip, withStage } from './progress.ts'
+import {
+  propertyIdMap,
+  readOnlyPropertyNames,
+  titlePropertyName,
+  writableSchemaHash,
+} from './schema-snapshot.ts'
 import {
   NmdStateStore,
   readBaseSnapshot,
@@ -392,9 +402,18 @@ const assertRemoteMarkdownComplete = (opts: {
   readonly path?: string
   readonly pageId: string
   readonly markdown: RemoteMarkdownSnapshot
+  /**
+   * Set on tree-node call sites: tolerate the node's own `child_page` blocks
+   * (managed by the file tree engine as `<page>` anchors, R12/R30) while still
+   * refusing any other lossy block on the same page. Single-page surfaces leave
+   * this false so a child-page block in a single page's body is refused.
+   */
+  readonly allowChildPageBlocks?: boolean
 }): Effect.Effect<void, NmdRemoteBodyLossyError> => {
-  const completeness = opts.markdown.completeness
-  if (completeness === undefined || completeness._tag === 'complete') return Effect.void
+  const raw = opts.markdown.completeness
+  if (raw === undefined || raw._tag === 'complete') return Effect.void
+  const completeness = opts.allowChildPageBlocks === true ? tolerateTreeChildPages(raw) : raw
+  if (completeness._tag === 'complete') return Effect.void
 
   return Effect.fail(
     new NmdRemoteBodyLossyError({
@@ -402,7 +421,11 @@ const assertRemoteMarkdownComplete = (opts: {
       page_id: opts.pageId,
       ...(opts.path === undefined ? {} : { path: opts.path }),
       reasons: [...completeness.reasons],
-      message: `Remote Markdown body for page ${opts.pageId} is lossy (${completeness.reasons.join(', ')}); refusing to treat it as a clean notion-md base`,
+      message: describeBodyLossyRefusal({
+        pageId: opts.pageId,
+        completeness,
+        context: 'refusing to treat it as a clean notion-md base',
+      }),
     }),
   )
 }
@@ -492,7 +515,73 @@ ${fence}
   })
 }
 
-const buildFrontmatterV2 = (opts: { readonly page: RemotePageSnapshot }): NmdFrontmatterV2 => ({
+/**
+ * Build the strict V2 `.nmd` frontmatter envelope for a remote page. Exported
+ * for the stateless `cat --frontmatter` envelope dump, which renders the full
+ * envelope without writing a `.notion-md/` store (decision 0017).
+ */
+/**
+ * Capture a `schema_snapshot` of the parent data source for a
+ * data-source-backed page (decision 0017, R14). Retrieves the live property
+ * schema and projects it to the sidecar `data_source` binding — the base the
+ * push compares against to refuse a property write across schema drift.
+ *
+ * Standalone (non-data-source) pages return `null`: they have no data-source
+ * schema, so the drift check does not apply.
+ */
+const captureDataSourceBinding = (opts: {
+  readonly page: RemotePageSnapshot
+}): Effect.Effect<NmdDataSourceBinding | null, NmdError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    if (opts.page.parent.type !== 'data_source_id') return null
+    const gateway = yield* NotionMdGateway
+    const dataSourceId = opts.page.parent.data_source_id
+    const schema = yield* gateway.retrieveDataSource({ dataSourceId })
+    return {
+      database_id: schema.databaseId ?? dataSourceId,
+      data_source_id: dataSourceId,
+      schema_hash: writableSchemaHash(schema.properties),
+      title_property: titlePropertyName(schema.properties) ?? opts.page.title_property_key,
+      property_ids: propertyIdMap(schema.properties),
+      read_only_properties: readOnlyPropertyNames(schema.properties),
+    }
+  })
+
+/**
+ * Refuse a property write when the parent data source's writable schema drifted
+ * since the clean pull (decision 0017, R14). Re-retrieves the live schema and
+ * compares the recomputed hash against the sidecar `schema_snapshot`; on drift
+ * fails with `NmdSchemaDriftError` (exit 6) — distinct from the exit-7
+ * value/body conflict and not `--force`-able. Resolve by re-pulling.
+ *
+ * Standalone pages (`syncState.data_source === null`) skip the check.
+ */
+const assertSchemaUnchanged = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly dataSource: NmdDataSourceBinding | null
+}): Effect.Effect<void, NmdError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    const binding = opts.dataSource
+    if (binding === null) return
+    const gateway = yield* NotionMdGateway
+    const schema = yield* gateway.retrieveDataSource({ dataSourceId: binding.data_source_id })
+    const liveHash = writableSchemaHash(schema.properties)
+    if (liveHash === binding.schema_hash) return
+    yield* Observability.annotateAttrs(Observability.pushDecisionAttrs, {
+      decision: 'schema_drift',
+    })
+    return yield* new NmdSchemaDriftError({
+      page_id: opts.pageId,
+      data_source_id: binding.data_source_id,
+      path: opts.path,
+      message: `Data-source schema changed since the last clean pull (data source ${binding.data_source_id}); refusing the property write so an unknown value is not silently auto-created. Re-pull the page to adopt the new schema, then re-apply your edit.`,
+    })
+  })
+
+export const buildFrontmatterV2 = (opts: {
+  readonly page: RemotePageSnapshot
+}): NmdFrontmatterV2 => ({
   notion_md: {
     version: 2,
     api_version: NOTION_API_VERSION,
@@ -529,6 +618,12 @@ const buildSyncState = (opts: {
    * oracle. For single-page the fake/real round-trip makes these equal.
    */
   readonly baselineBody: string
+  /**
+   * Schema snapshot of the parent data source for a data-source-backed page
+   * (decision 0017, R14), or `null` for a standalone page. Captured at pull and
+   * compared before a property write to refuse on schema drift (exit 6).
+   */
+  readonly dataSource: NmdDataSourceBinding | null
 }): NmdSyncStateV1 => {
   const baseline = normalizeMarkdownLineEndings(opts.baselineBody)
   return {
@@ -545,7 +640,7 @@ const buildSyncState = (opts: {
     },
     storage: opts.storage,
     read_only_properties: readOnlyPropertyEchoes(opts.page.properties),
-    data_source: null,
+    data_source: opts.dataSource,
   }
 }
 
@@ -562,7 +657,7 @@ const writeNmdWithStoragePolicy = (opts: {
    * compares composed-vs-composed; for single-page it equals `fileBody`.
    */
   readonly baselineBody: string
-}): Effect.Effect<PullResult, NmdError, NmdStateStore> =>
+}): Effect.Effect<PullResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     yield* assertRemoteMarkdownComplete({
       operation: 'write_clean_base',
@@ -570,6 +665,7 @@ const writeNmdWithStoragePolicy = (opts: {
       pageId: opts.page.id,
       markdown: opts.markdown,
     })
+    const dataSource = yield* captureDataSourceBinding({ page: opts.page })
     const base = yield* writeBaseSnapshot({
       path: opts.path,
       pageId: opts.page.id,
@@ -582,6 +678,7 @@ const writeNmdWithStoragePolicy = (opts: {
       storage: opts.storage,
       base,
       baselineBody: opts.baselineBody,
+      dataSource,
     })
     const decision = decideStorage(syncState)
     let storageObjectPath: string | undefined
@@ -680,6 +777,7 @@ const establishSidecarFromRemote = (opts: {
       markdown: pulled.markdown,
     })
     const baselineBody = normalizeMarkdownLineEndings(pulled.markdown.markdown)
+    const dataSource = yield* captureDataSourceBinding({ page: pulled.page })
     const base = yield* writeBaseSnapshot({
       path: opts.path,
       pageId: opts.pageId,
@@ -693,6 +791,7 @@ const establishSidecarFromRemote = (opts: {
         storage: pulled.storage ?? emptyStorage(),
         base,
         baselineBody,
+        dataSource,
       }),
     })
   }).pipe(Observability.withOperation(Observability.EstablishSidecarSpan, { pageId: opts.pageId }))
@@ -773,20 +872,6 @@ const assertLocalBodyUnchanged = (opts: {
         'Local .nmd body changed while push was in progress; refusing to overwrite it with refreshed Notion state',
     })
   })
-
-/**
- * Strip block-level `<page url=...>...</page>` child anchors from a body. The
- * anchor set is DERIVED and re-emitted on every parent push, and Notion itself
- * auto-appends an anchor whenever a child is created — so it must not count as
- * a "remote change" that would block the parent's push or trigger a 3-way
- * merge (which would duplicate the anchor). Used only for change DETECTION; the
- * push body always carries the full derived anchor set.
- */
-const stripChildAnchors = (body: string): string =>
-  body
-    .split('\n')
-    .filter((line) => /^\s*<page\b[^>]*>.*<\/page>\s*$/u.test(line) === false)
-    .join('\n')
 
 const remoteBodyUnchangedForPush = (opts: {
   readonly remoteBody: string
@@ -987,6 +1072,7 @@ export const treeNodePersist = (opts: {
         path: opts.path,
         pageId: status.pageId,
         markdown: pulled.markdown,
+        allowChildPageBlocks: true,
       })
       yield* assertLocalBodyUnchanged({
         path: opts.path,
@@ -1001,6 +1087,7 @@ export const treeNodePersist = (opts: {
         content: renderNmdFile({ frontmatter: opts.frontmatter, body: opts.bareBody }),
       })
       /* sidecar + base snapshot live at the tree root, keyed by page id */
+      const dataSource = yield* captureDataSourceBinding({ page: pulled.page })
       const base = yield* writeBaseSnapshot({
         path: opts.statePath,
         pageId: status.pageId,
@@ -1014,6 +1101,7 @@ export const treeNodePersist = (opts: {
           storage: pulled.storage ?? emptyStorage(),
           base,
           baselineBody: pushedBody,
+          dataSource,
         }),
       })
     }),
@@ -1100,6 +1188,7 @@ export const pushGuarded = (opts: {
       path,
       pageId: status.pageId,
       markdown: remoteForStatus.markdown,
+      allowChildPageBlocks: options.replaceContent === true,
     })
 
     if (
@@ -1153,6 +1242,11 @@ export const pushGuarded = (opts: {
           yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
         }
         if (status.localPropertiesChanged === true) {
+          yield* assertSchemaUnchanged({
+            path,
+            pageId: status.pageId,
+            dataSource: local.syncState.data_source,
+          })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
@@ -1166,11 +1260,14 @@ export const pushGuarded = (opts: {
          * adopt the freshly re-pulled remote body as the new local baseline
          * (a pull), rather than re-asserting the stale desired body.
          */
-        yield* opts.persist.persist({
-          pushedBody: local.desiredBody,
-          status,
-          adoptRemoteBody: true,
-        })
+        yield* withStage(
+          { id: 'settle', label: 'settle', doneMessage: 'verified' },
+          opts.persist.persist({
+            pushedBody: local.desiredBody,
+            status,
+            adoptRemoteBody: true,
+          }),
+        )
         return { path, pageId: status.pageId, pushed: true, status }
       }
 
@@ -1189,13 +1286,21 @@ export const pushGuarded = (opts: {
         yield* Observability.annotateAttrs(Observability.pushMarkdownCommandAttrs, {
           markdownCommand: command._tag,
         })
-        yield* gateway.updateMarkdown({
-          pageId: status.pageId,
-          command,
-          allowDeletingContent:
-            options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
-        })
+        yield* withStage(
+          { id: 'write-body', label: 'write-body', doneMessage: 'replace_content' },
+          gateway.updateMarkdown({
+            pageId: status.pageId,
+            command,
+            allowDeletingContent:
+              options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
+          }),
+        )
         if (status.localPropertiesChanged === true) {
+          yield* assertSchemaUnchanged({
+            path,
+            pageId: status.pageId,
+            dataSource: local.syncState.data_source,
+          })
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: yield* encodeWritableProperties({
@@ -1205,9 +1310,20 @@ export const pushGuarded = (opts: {
           })
         }
         if (hasPageMetadataUpdate(metadataUpdate) === true) {
-          yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
+          yield* withStage(
+            { id: 'write-title', label: 'write-title', doneMessage: 'title updated' },
+            gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate }),
+          )
+        } else {
+          yield* reportStageSkip({ id: 'write-title', label: 'write-title' })
         }
-        yield* opts.persist.persist({ pushedBody: mergedBody, status })
+        yield* withStage(
+          { id: 'settle', label: 'settle', doneMessage: 'verified' },
+          opts.persist.persist({ pushedBody: mergedBody, status }),
+        )
+        yield* reportNote(
+          'remote changed since pull — auto-merged your edit with the upstream change',
+        )
         return { path, pageId: status.pageId, pushed: true, status }
       }
 
@@ -1232,61 +1348,70 @@ export const pushGuarded = (opts: {
     }
 
     if (status.localChanged === true) {
-      yield* Effect.gen(function* () {
-        const baseSnapshot = yield* readBaseSnapshot({
-          path: statePath,
-          syncState: local.syncState,
-        })
-        const remote = yield* gateway.pullPage({ pageId: status.pageId })
-        yield* assertRemoteMarkdownComplete({
-          operation: 'guarded_push_preflight',
-          path,
-          pageId: status.pageId,
-          markdown: remote.markdown,
-        })
-        /*
-         * TOCTOU: the remote must not have changed since the status pull.
-         * Compare semantically against the baseline (canonicalization-invariant).
-         * For `replaceContent` tree pushes, ignore derived child anchors only;
-         * real user-authored body edits still block the full-body replace.
-         */
-        if (
-          options.force !== true &&
-          remoteBodyUnchangedForPush({
-            remoteBody: remote.markdown.markdown,
-            baseBody: baseSnapshot.body,
-            ignoreChildAnchors: options.replaceContent === true,
-          }) === false
-        ) {
-          return yield* new NmdConflictError({
-            path,
-            page_id: status.pageId,
-            local_changed: status.localChanged,
-            remote_changed: true,
-            message: 'Remote page changed while preparing guarded Markdown push',
+      yield* withStage(
+        { id: 'write-body', label: 'write-body', doneMessage: 'replace_content' },
+        Effect.gen(function* () {
+          const baseSnapshot = yield* readBaseSnapshot({
+            path: statePath,
+            syncState: local.syncState,
           })
-        }
-        const command =
-          options.force === true || options.replaceContent === true
-            ? ({ _tag: 'replace_content', markdown: local.desiredBody } as const)
-            : planMarkdownUpdate({
-                baseBody: baseSnapshot.body,
-                remoteBody: remote.markdown.markdown,
-                desiredBody: local.desiredBody,
-              })
-        yield* Observability.annotateAttrs(Observability.pushDecisionMarkdownCommandAttrs, {
-          decision: options.force === true ? 'force_replace' : 'guarded_update',
-          markdownCommand: command._tag,
-        })
-        yield* gateway.updateMarkdown({
-          pageId: status.pageId,
-          command,
-          allowDeletingContent:
-            options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
-        })
-      })
+          const remote = yield* gateway.pullPage({ pageId: status.pageId })
+          yield* assertRemoteMarkdownComplete({
+            operation: 'guarded_push_preflight',
+            path,
+            pageId: status.pageId,
+            markdown: remote.markdown,
+            allowChildPageBlocks: options.replaceContent === true,
+          })
+          /*
+           * TOCTOU: the remote must not have changed since the status pull.
+           * Compare semantically against the baseline (canonicalization-invariant).
+           * For `replaceContent` tree pushes, ignore derived child anchors only;
+           * real user-authored body edits still block the full-body replace.
+           */
+          if (
+            options.force !== true &&
+            remoteBodyUnchangedForPush({
+              remoteBody: remote.markdown.markdown,
+              baseBody: baseSnapshot.body,
+              ignoreChildAnchors: options.replaceContent === true,
+            }) === false
+          ) {
+            return yield* new NmdConflictError({
+              path,
+              page_id: status.pageId,
+              local_changed: status.localChanged,
+              remote_changed: true,
+              message: 'Remote page changed while preparing guarded Markdown push',
+            })
+          }
+          const command =
+            options.force === true || options.replaceContent === true
+              ? ({ _tag: 'replace_content', markdown: local.desiredBody } as const)
+              : planMarkdownUpdate({
+                  baseBody: baseSnapshot.body,
+                  remoteBody: remote.markdown.markdown,
+                  desiredBody: local.desiredBody,
+                })
+          yield* Observability.annotateAttrs(Observability.pushDecisionMarkdownCommandAttrs, {
+            decision: options.force === true ? 'force_replace' : 'guarded_update',
+            markdownCommand: command._tag,
+          })
+          yield* gateway.updateMarkdown({
+            pageId: status.pageId,
+            command,
+            allowDeletingContent:
+              options.allowDeletingUnknownBlocks === true || options.replaceContent === true,
+          })
+        }),
+      )
     }
     if (status.localPropertiesChanged === true) {
+      yield* assertSchemaUnchanged({
+        path,
+        pageId: status.pageId,
+        dataSource: local.syncState.data_source,
+      })
       yield* gateway.updatePageProperties({
         pageId: status.pageId,
         properties: yield* encodeWritableProperties({
@@ -1296,18 +1421,26 @@ export const pushGuarded = (opts: {
       })
     }
     if (hasPageMetadataUpdate(metadataUpdate) === true) {
-      yield* gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate })
+      yield* withStage(
+        { id: 'write-title', label: 'write-title', doneMessage: 'title updated' },
+        gateway.updatePageMetadata({ pageId: status.pageId, metadata: metadataUpdate }),
+      )
+    } else {
+      yield* reportStageSkip({ id: 'write-title', label: 'write-title' })
     }
     /*
      * If only properties/metadata changed (the body was not pushed), adopt the
      * re-pulled remote body — it may have raced ahead during the property
      * update. When the body WAS pushed, round-trip the pushed body.
      */
-    yield* opts.persist.persist({
-      pushedBody: local.desiredBody,
-      status,
-      adoptRemoteBody: status.localChanged === false,
-    })
+    yield* withStage(
+      { id: 'settle', label: 'settle', doneMessage: 'verified' },
+      opts.persist.persist({
+        pushedBody: local.desiredBody,
+        status,
+        adoptRemoteBody: status.localChanged === false,
+      }),
+    )
 
     return { path, pageId: status.pageId, pushed: true, status }
   })
@@ -1320,7 +1453,10 @@ export const pushPageWithPolicy = (
     yield* assertSinglePageTarget(opts.path)
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
-    const remoteForStatus = yield* gateway.pullPage({ pageId: local.pageId })
+    const remoteForStatus = yield* withStage(
+      { id: 'observe', label: 'observe', doneMessage: 'remote pulled' },
+      gateway.pullPage({ pageId: local.pageId }),
+    )
     return yield* pushGuarded({
       local,
       remoteForStatus,
@@ -1350,9 +1486,18 @@ export const pushPage = (
 ): Effect.Effect<PushResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   pushPageWithPolicy(opts)
 
-/** Run one two-way reconciliation pass for a `.nmd` file. */
-export const syncPage = (
-  opts: SyncOptions,
+/**
+ * One two-way reconciliation pass for a `.nmd` file.
+ *
+ * `replaceContent` forces a full-body `replace_content` instead of the narrowest
+ * `update_content` search-replace. The `edit` editor surface sets it (decision
+ * 0017): every page `edit` accepts is fully representable (lossy pages are
+ * refused at the pull), so a full replace is safe and closes the targeted-update
+ * silent-partial-apply window for the single ephemeral session. The default
+ * file-`sync` path leaves it unset and keeps its targeted-update optimization.
+ */
+const runSyncPass = (
+  opts: SyncOptions & { readonly replaceContent?: boolean },
 ): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const status = yield* statusPage({ path: opts.path })
@@ -1362,7 +1507,10 @@ export const syncPage = (
       status.localPageMetadataChanged === true ||
       status.localPropertiesChanged === true
     ) {
-      const push = yield* pushPage(opts)
+      const push =
+        opts.replaceContent === true
+          ? yield* pushPageWithPolicy({ ...opts, replaceContent: true })
+          : yield* pushPage(opts)
       return {
         _tag: 'pushed',
         path: opts.path,
@@ -1389,7 +1537,32 @@ export const syncPage = (
       pageId: status.pageId,
       status,
     } as const
-  }).pipe(
+  })
+
+/** Run one two-way reconciliation pass for a `.nmd` file. */
+export const syncPage = (
+  opts: SyncOptions,
+): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
+  runSyncPass(opts).pipe(
+    Effect.tap((result) =>
+      Observability.annotateAttrs(Observability.syncResultAttrs, {
+        pageId: result.pageId,
+        result: result._tag,
+      }),
+    ),
+    Observability.withOperation(Observability.SyncPageSpan, { basename: basename(opts.path) }),
+  )
+
+/**
+ * `edit`-surface sync pass: forces a full-body `replace_content` (decision
+ * 0017). A thin wrapper over the same engine `syncPage` uses — not a second push
+ * path. Used by the ephemeral `edit` session after the spliced buffer is written
+ * back to the temp `.nmd`.
+ */
+export const syncPageReplacingBody = (
+  opts: SyncOptions,
+): Effect.Effect<SyncResult, NmdError, FileSystem.FileSystem | NotionMdGateway | NmdStateStore> =>
+  runSyncPass({ ...opts, replaceContent: true }).pipe(
     Effect.tap((result) =>
       Observability.annotateAttrs(Observability.syncResultAttrs, {
         pageId: result.pageId,

@@ -7,7 +7,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Deferred, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { BodyCompleteness } from '@overeng/notion-core'
+import { classifyBodyCompleteness, type BodyCompleteness } from '@overeng/notion-core'
 import type { NmdPageState, NmdStorage, NmdSyncStateV1 } from '@overeng/notion-effect-client'
 
 import { resolveNmdTargets, runBatchWatch, syncMany } from './batch.ts'
@@ -17,10 +17,16 @@ import {
   NmdFrontmatterError,
   NmdGatewayError,
   NmdObjectStoreError,
+  NmdSchemaDriftError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
-import { NotionMdGateway, type MarkdownUpdateCommand, type PullPageResult } from './model.ts'
+import {
+  NotionMdGateway,
+  type MarkdownUpdateCommand,
+  type PullPageResult,
+  type RemoteParent,
+} from './model.ts'
 import {
   NmdStateStoreLive,
   objectPath,
@@ -65,6 +71,13 @@ interface FakePage {
   readonly unknownBlockIds?: readonly string[]
   readonly completeness?: BodyCompleteness
   readonly lastEditedTime?: string
+  /** Remote parent; defaults to the shared `page_id` standalone parent. */
+  readonly parent?: RemoteParent
+  /**
+   * When set, `retrieveDataSource` resolves this property schema for the page's
+   * `data_source_id` parent — drives schema-drift coverage (Group F, R14).
+   */
+  readonly dataSourceSchema?: Record<string, unknown>
 }
 
 const unsupportedStorage = (payload: unknown = { url: 'https://www.notion.com/' }): NmdStorage => ({
@@ -113,6 +126,8 @@ const unsupportedStorage = (payload: unknown = { url: 'https://www.notion.com/' 
 
 class FakeNotion {
   private readonly pages = new Map<string, Required<FakePage>>()
+  /** Live property schema per data_source_id, recomputed against on retrieve. */
+  private readonly dataSourceSchemas = new Map<string, Record<string, unknown>>()
   private tick = 0
   private afterPagePropertiesUpdate: (() => void) | undefined
   private afterNextPullPage: (() => void) | undefined
@@ -141,9 +156,22 @@ class FakeNotion {
         inTrash: false,
         isLocked: false,
         lastEditedTime: '2026-05-22T12:00:00.000Z',
+        parent: { type: 'page_id', page_id: pageId },
+        dataSourceSchema: {},
         ...page,
       })
     }
+    /* seed the live schema registry for data-source-backed pages */
+    for (const page of pages) {
+      if (page.parent?.type === 'data_source_id' && page.dataSourceSchema !== undefined) {
+        this.dataSourceSchemas.set(page.parent.data_source_id, page.dataSourceSchema)
+      }
+    }
+  }
+
+  /** Mutate a data source's live property schema to simulate remote drift. */
+  setDataSourceSchema(dataSourceId: string, schema: Record<string, unknown>): void {
+    this.dataSourceSchemas.set(dataSourceId, schema)
   }
 
   readonly layer = Layer.succeed(NotionMdGateway, {
@@ -237,6 +265,21 @@ class FakeNotion {
         afterUpdate?.()
         return this.toPullResult(next).page
       }),
+    retrieveDataSource: ({ dataSourceId }) =>
+      Effect.sync(() => {
+        const schema = this.dataSourceSchemas.get(dataSourceId)
+        if (schema === undefined) {
+          throw new NmdGatewayError({
+            operation: 'retrieve_data_source',
+            message: `Unknown fake data source: ${dataSourceId}`,
+          })
+        }
+        return {
+          dataSourceId,
+          databaseId: undefined,
+          properties: schema,
+        }
+      }),
     updatePageMetadata: ({ pageId: id, metadata }) =>
       Effect.sync(() => {
         const page = this.requirePage(id)
@@ -278,6 +321,8 @@ class FakeNotion {
           properties: {},
           unknownBlockIds: [],
           completeness: { _tag: 'complete' },
+          parent: { type: 'page_id', page_id: parentPageId },
+          dataSourceSchema: {},
         })
         this.pages.set(parentPageId, {
           ...parent,
@@ -397,7 +442,7 @@ class FakeNotion {
         title: page.title,
         title_property_key: 'title',
         url: `https://www.notion.so/${page.pageId.replaceAll('-', '')}`,
-        parent: { type: 'page_id', page_id: pageId },
+        parent: page.parent,
         icon: page.icon,
         cover: page.cover,
         in_trash: page.inTrash,
@@ -730,6 +775,103 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  // R38 / #785: a renderable-but-not-round-trip-safe block (table_of_contents,
+  // synced_block, bookmark, child_database, …) renders to Markdown that Notion
+  // re-parses as a paragraph on push. The classifier must flag it so the pull
+  // gate refuses the page rather than letting an unrelated edit silently destroy
+  // the block. Drive the verdict through the REAL classifier from a block
+  // inventory to prove the classifier→gate wiring, not just the gate.
+  it('refuses a page whose body contains a not-round-trip-safe block (R38)', async () => {
+    await withTempDir(async (dir) => {
+      const completeness = classifyBodyCompleteness({
+        markdown: { markdown: '# Doc\n\n[TOC]\n\nProse', truncated: false, unknownBlockIds: [] },
+        inventory: {
+          entries: [
+            {
+              id: '00000000-0000-4000-8000-00000000a001',
+              type: 'heading_1',
+              hasChildren: false,
+              inTrash: false,
+            },
+            {
+              id: '00000000-0000-4000-8000-00000000a002',
+              type: 'table_of_contents',
+              hasChildren: false,
+              inTrash: false,
+            },
+            {
+              id: '00000000-0000-4000-8000-00000000a003',
+              type: 'paragraph',
+              hasChildren: false,
+              inTrash: false,
+            },
+          ],
+          renderedMarkdown: '# Doc\n\n[TOC]\n\nProse',
+        },
+      })
+      expect(completeness).toEqual({
+        _tag: 'lossy',
+        reasons: ['not_round_trip_safe_blocks'],
+        lossyBlockTypes: ['table_of_contents'],
+      })
+
+      const fake = new FakeNotion([
+        { pageId, title: 'Doc', markdown: '# Doc\n\n[TOC]\n\nProse', completeness },
+      ])
+      const path = join(dir, 'toc.nmd')
+
+      await expect(runWithFake(pullPage({ pageId, outPath: path }), fake)).rejects.toThrow(
+        'table_of_contents',
+      )
+      // Nothing was written: the page is refused before any local base exists,
+      // so no later edit can trigger the silent push-time destruction.
+      await expect(readFile(path, 'utf8')).rejects.toThrow()
+    })
+  })
+
+  // R30: a child_page block *in a single page's body* is refused (the single-page
+  // surface has no tree engine to manage it as a <page> anchor). Contrast with
+  // the tree-node tolerance covered in tree.unit.test.ts.
+  it('refuses a single page whose body contains a child_page block (R30)', async () => {
+    await withTempDir(async (dir) => {
+      const completeness = classifyBodyCompleteness({
+        markdown: { markdown: '# Doc\n\nProse', truncated: false, unknownBlockIds: [] },
+        inventory: {
+          entries: [
+            {
+              id: '00000000-0000-4000-8000-00000000b001',
+              type: 'paragraph',
+              hasChildren: false,
+              inTrash: false,
+            },
+            {
+              id: '00000000-0000-4000-8000-00000000b002',
+              type: 'child_page',
+              hasChildren: true,
+              inTrash: false,
+            },
+          ],
+          renderedMarkdown: '# Doc\n\nProse',
+        },
+      })
+      expect(completeness).toEqual({
+        _tag: 'lossy',
+        reasons: ['not_round_trip_safe_blocks'],
+        lossyBlockTypes: ['child_page'],
+      })
+
+      const fake = new FakeNotion([
+        { pageId, title: 'Doc', markdown: '# Doc\n\nProse', completeness },
+      ])
+      const path = join(dir, 'child.nmd')
+
+      await expect(runWithFake(pullPage({ pageId, outPath: path }), fake)).rejects.toThrow(
+        'child_page',
+      )
+      await expect(readFile(path, 'utf8')).rejects.toThrow()
+    })
+  })
+
   it('batch sync reconciles independent local and remote edits across files', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([
@@ -1038,6 +1180,143 @@ describe('notion-md e2e prototype', () => {
         property_type: 'unknown',
         value: { checkbox: true },
       })
+    })
+  })
+
+  it('refuses a property write when the data-source schema drifted since pull (exit 6, R14)', async () => {
+    await withTempDir(async (dir) => {
+      const dataSourceId = '00000000-0000-4000-8000-0000000000d5'
+      const schema = {
+        Name: { id: 'title', name: 'Name', type: 'title', title: {} },
+        Done: { id: 'vV%3AO', name: 'Done', type: 'checkbox', checkbox: {} },
+        Priority: {
+          id: 'm%7Bm%3C',
+          name: 'Priority',
+          type: 'select',
+          select: { options: [{ id: 'opt-low', name: 'Low', color: 'gray' }] },
+        },
+      }
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Row',
+          markdown: '# Row\n\nBody',
+          parent: { type: 'data_source_id', data_source_id: dataSourceId },
+          dataSourceSchema: schema,
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'row.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const pulledSync = await readSyncStateFile(path)
+      // the schema_snapshot was captured into the sidecar data_source binding
+      expect(pulledSync.data_source?.data_source_id).toBe(dataSourceId)
+
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      // remote schema drifts: a new select option appears after the clean pull
+      fake.setDataSourceSchema(dataSourceId, {
+        ...schema,
+        Priority: {
+          id: 'm%7Bm%3C',
+          name: 'Priority',
+          type: 'select',
+          select: {
+            options: [
+              { id: 'opt-low', name: 'Low', color: 'gray' },
+              { id: 'opt-high', name: 'High', color: 'red' },
+            ],
+          },
+        },
+      })
+
+      const result = await runEitherWithFake(pushPage({ path }), fake)
+
+      expect(result).toMatchObject({
+        _tag: 'Left',
+        left: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
+      })
+      if (result._tag !== 'Left') throw new Error('Expected pushPage to fail on schema drift')
+      expect(result.left).toBeInstanceOf(NmdSchemaDriftError)
+      // the property write was refused — remote stays at its pre-edit value
+      expect(fake.remoteProperties(pageId).Done).toEqual({ type: 'checkbox', checkbox: false })
+    })
+  })
+
+  it('allows a property write when only a benign (color-only) schema change occurred', async () => {
+    await withTempDir(async (dir) => {
+      const dataSourceId = '00000000-0000-4000-8000-0000000000d5'
+      const schema = {
+        Name: { id: 'title', name: 'Name', type: 'title', title: {} },
+        Done: { id: 'vV%3AO', name: 'Done', type: 'checkbox', checkbox: {} },
+        Priority: {
+          id: 'm%7Bm%3C',
+          name: 'Priority',
+          type: 'select',
+          select: { options: [{ id: 'opt-low', name: 'Low', color: 'gray' }] },
+        },
+      }
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Row',
+          markdown: '# Row\n\nBody',
+          parent: { type: 'data_source_id', data_source_id: dataSourceId },
+          dataSourceSchema: schema,
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'row.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      // benign drift: only an option color changed — the writable projection is unchanged
+      fake.setDataSourceSchema(dataSourceId, {
+        ...schema,
+        Priority: {
+          id: 'm%7Bm%3C',
+          name: 'Priority',
+          type: 'select',
+          select: { options: [{ id: 'opt-low', name: 'Low', color: 'purple' }] },
+        },
+      })
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteProperties(pageId).Done).toEqual({ checkbox: true })
     })
   })
 

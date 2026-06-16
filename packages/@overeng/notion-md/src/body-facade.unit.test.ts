@@ -169,6 +169,7 @@ class FakeGateway {
         this.metadataUpdateCalls.push('properties')
         throw new Error('unexpected metadata update')
       }),
+    retrieveDataSource: () => Effect.dieMessage('unexpected retrieveDataSource'),
     updatePageMetadata: () =>
       Effect.sync(() => {
         this.metadataUpdateCalls.push('metadata')

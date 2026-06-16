@@ -1,13 +1,14 @@
 import { Effect, Schema } from 'effect'
 
 import { descriptorForUtf8, type ContentDescriptor } from '@overeng/content-address'
-import type { BodyCompleteness } from '@overeng/notion-core'
+import { describeBodyLossyRefusal, type BodyCompleteness } from '@overeng/notion-core'
 import type {
   BodyEvidenceFingerprint,
   RemoteBodyObservationEvidence,
   Sha256Digest,
 } from '@overeng/notion-effect-client'
 
+import { editorBaseHash } from './editor-surface.ts'
 import { NmdFrontmatterError, NmdRemoteBodyLossyError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
@@ -104,7 +105,11 @@ const assertSnapshotComplete = (opts: {
       operation: opts.operation,
       page_id: opts.snapshot.pageId,
       reasons: [...completeness.reasons],
-      message: `Remote Markdown body for page ${opts.snapshot.pageId} is lossy (${completeness.reasons.join(', ')}); refusing verified body operation`,
+      message: describeBodyLossyRefusal({
+        pageId: opts.snapshot.pageId,
+        completeness,
+        context: 'refusing verified body operation',
+      }),
     }),
   )
 }
@@ -117,6 +122,43 @@ export const observeRemoteBody = (opts: {
     const gateway = yield* NotionMdGateway
     const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
     return remoteBodySnapshot(pulled)
+  })
+
+/**
+ * Editor-surface projection of a Notion page: title + body together, with the
+ * default-mode editor base hash over title+body (decisions 0001/0006). Unlike
+ * `observeRemoteBody` (body-only), this carries the title and its property key
+ * so `cat`/`put` can present and route the title through the typed page API.
+ * Refuses a lossy page (exit 3) at observe time, exactly like the file path.
+ */
+export interface NotionMdEditorSnapshot {
+  readonly pageId: string
+  readonly title: string
+  readonly titlePropertyKey: string
+  readonly body: string
+  readonly baseHash: Sha256Digest
+  readonly completeness?: BodyCompleteness
+}
+
+/** Observe the current remote title + body for a Notion page, refusing lossy pages. */
+export const observeRemoteEditorPage = (opts: {
+  readonly pageId: string
+}): Effect.Effect<NotionMdEditorSnapshot, NmdError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    const gateway = yield* NotionMdGateway
+    const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
+    const snapshot = remoteBodySnapshot(pulled)
+    yield* assertSnapshotComplete({ operation: 'observe_editor_page', snapshot })
+    const title = pulled.page.title
+    const body = snapshot.markdown
+    return {
+      pageId: pulled.page.id,
+      title,
+      titlePropertyKey: pulled.page.title_property_key,
+      body,
+      baseHash: editorBaseHash({ title, body }),
+      ...(snapshot.completeness === undefined ? {} : { completeness: snapshot.completeness }),
+    }
   })
 
 /** Read and hash only the parsed body from a local `.nmd` file. */
@@ -197,6 +239,44 @@ export const replaceRemoteBodyVerified = (opts: {
       operation: 'replace_remote_body_verified',
       snapshot: updated,
     })
+    return {
+      pageId: opts.pageId,
+      previousBodyHash: current.bodyHash,
+      bodyHash: updated.bodyHash,
+      bodyDescriptor: updated.bodyDescriptor,
+      ...(updated.bodyEvidence === undefined ? {} : { bodyEvidence: updated.bodyEvidence }),
+      ...(updated.bodyEvidenceFingerprint === undefined
+        ? {}
+        : { bodyEvidenceFingerprint: updated.bodyEvidenceFingerprint }),
+      markdown: updated.markdown,
+      ...(updated.completeness === undefined ? {} : { completeness: updated.completeness }),
+    }
+  })
+
+/**
+ * Replace the remote Markdown body **unconditionally** (last-writer-wins),
+ * skipping the pre-write base-hash compare — the concurrency-only `--force`
+ * escape (decision 0009). It still asserts body completeness before and after
+ * the write (the lossy refusal is correctness, not concurrency, and `--force`
+ * never bypasses it) and returns the re-pulled body so the caller's post-push
+ * `semanticEquivalent` gate (exit 9) can run.
+ */
+export const replaceRemoteBodyForced = (opts: {
+  readonly pageId: string
+  readonly markdown: string
+}): Effect.Effect<NotionMdVerifiedRemoteReplaceResult, NmdError, NotionMdGateway> =>
+  Effect.gen(function* () {
+    const gateway = yield* NotionMdGateway
+    const current = remoteBodySnapshot(yield* gateway.pullPage({ pageId: opts.pageId }))
+    yield* assertSnapshotComplete({ operation: 'replace_remote_body_forced', snapshot: current })
+
+    yield* gateway.updateMarkdown({
+      pageId: opts.pageId,
+      command: { _tag: 'replace_content', markdown: opts.markdown },
+      allowDeletingContent: false,
+    })
+    const updated = remoteBodySnapshot(yield* gateway.pullPage({ pageId: opts.pageId }))
+    yield* assertSnapshotComplete({ operation: 'replace_remote_body_forced', snapshot: updated })
     return {
       pageId: opts.pageId,
       previousBodyHash: current.bodyHash,

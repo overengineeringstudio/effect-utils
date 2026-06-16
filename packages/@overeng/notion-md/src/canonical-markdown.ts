@@ -1,57 +1,13 @@
-import remarkGfm from 'remark-gfm'
-import remarkParse from 'remark-parse'
-import remarkStringify from 'remark-stringify'
-import { unified } from 'unified'
-import { visit } from 'unist-util-visit'
+import { canonicalizeBlockMarkdown } from '@overeng/notion-effect-client'
 
 /*
- * Canonical Markdown serialization used as the wire and on-disk form.
- *
- * Why a canonical form: Notion's enhanced-Markdown endpoint reserializes any
- * pushed body into its own block model, so byte-equal roundtrips are not
- * achievable. We define one canonical shape (CommonMark + GFM, paragraphs
- * unwrapped onto a single logical line, ATX headings, hyphen list bullets) and
- * normalize both push input and pull output to it. The push-side guard then
- * checks canonical equality instead of byte equality, and the visible Notion
- * page no longer shows hard breaks from soft-wrapped source paragraphs.
+ * `canonicalizeBlockMarkdown` — the single canonical body form — now lives in
+ * `@overeng/notion-effect-client`, beside the renderer (`treeToMarkdown`) and
+ * the media-URL canonicalizer it calls, so the canonical body is produced where
+ * the bytes originate (decision 0019). This module keeps only `semanticEquivalent`,
+ * which is sync *policy* (the push integrity gate), not the wire form itself.
  */
-
-/*
- * Soft line breaks inside a paragraph (a literal `\n` in source) render as
- * hard line breaks on Notion. Collapse them to single spaces so a logical
- * paragraph survives as one Notion block. Authors who want a hard break must
- * use the explicit `break` node (two trailing spaces or a backslash).
- */
-const unwrapSoftBreaks: () => (tree: unknown) => void = () => (tree) => {
-  visit(tree as never, 'text', (node: { value: string }) => {
-    if (node.value.includes('\n') === true) {
-      node.value = node.value.replace(/[ \t]*\n[ \t]*/g, ' ')
-    }
-  })
-}
-
-const processor = unified()
-  .use(remarkParse)
-  .use(remarkGfm)
-  .use(unwrapSoftBreaks)
-  .use(remarkStringify, {
-    bullet: '-',
-    emphasis: '_',
-    strong: '*',
-    fence: '`',
-    fences: true,
-    listItemIndent: 'one',
-    rule: '-',
-    setext: false,
-    tightDefinitions: true,
-  })
-
-/** Reduce arbitrary Markdown to the canonical form used for hashing and wire transfer. */
-export const canonicalizeBlockMarkdown = (markdown: string): string => {
-  const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  const rendered = processor.processSync(normalized).toString()
-  return rendered.endsWith('\n') === true ? rendered : `${rendered}\n`
-}
+export { canonicalizeBlockMarkdown } from '@overeng/notion-effect-client'
 
 /*
  * Split markdown into alternating non-code and fenced-code segments. Lets

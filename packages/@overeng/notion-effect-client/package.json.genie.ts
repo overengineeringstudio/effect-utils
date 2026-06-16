@@ -14,10 +14,20 @@ import utilsPkg from '../utils/package.json.genie.ts'
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-client' }),
   dependencies: {
-    workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg, otelContractPkg],
+    // `@overeng/utils` is a runtime import (`sha256Hex` in `config.ts`), so it
+    // must be a real runtime dependency — not a dev/peer dep that a standalone
+    // consumer could fail to provide.
+    workspace: [contentAddressPkg, notionCorePkg, notionEffectSchemaPkg, otelContractPkg, utilsPkg],
+    external: catalog.pick(
+      'remark-gfm',
+      'remark-parse',
+      'remark-stringify',
+      'unified',
+      'unist-util-visit',
+    ),
   },
   devDependencies: {
-    workspace: [utilsDevPkg, utilsPkg],
+    workspace: [utilsDevPkg],
     external: {
       ...catalog.pick(
         '@effect/platform',
@@ -29,9 +39,10 @@ const runtimeDeps = catalog.compose({
       ),
     },
   },
-  peerDependencies: {
-    workspace: [utilsPkg],
-  },
+  // `@overeng/utils` is a runtime workspace dep that carries peer dependencies
+  // (the @effect/* cluster + @playwright/test). `mode: 'install'` makes genie
+  // install those inherited peers explicitly so a standalone consumer resolves.
+  mode: 'install',
 })
 
 export default packageJson(

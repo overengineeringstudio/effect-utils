@@ -198,6 +198,7 @@ describe('NotionBody.observeFromSnapshots', () => {
     expect(observed.completeness).toEqual({
       _tag: 'lossy',
       reasons: ['rendered_markdown_has_unobserved_suffix'],
+      lossyBlockTypes: [],
     })
     expect(observed.inventory.entries.map((entry) => entry.type)).toEqual([
       'paragraph',
@@ -348,10 +349,13 @@ describe('NotionBody.observeFromSnapshots', () => {
       }),
     )
 
-    expect(observed.inventory.renderedMarkdown).toBe('# Heading\n\nNested child')
+    // Canonical body ends in a single trailing newline (decision 0019);
+    // the lossy verdict (endpoint missing the rendered suffix) is unchanged.
+    expect(observed.inventory.renderedMarkdown).toBe('# Heading\n\nNested child\n')
     expect(observed.completeness).toEqual({
       _tag: 'lossy',
       reasons: ['rendered_markdown_has_unobserved_suffix'],
+      lossyBlockTypes: [],
     })
   })
 })
@@ -373,7 +377,8 @@ describe('NotionBody.observe', () => {
 
     expect(observed.pageId).toBe(pageId)
     expect(observed.markdown.markdown).toBe('Stable body')
-    expect(observed.inventory.renderedMarkdown).toBe('Stable body')
+    // Canonical rendered body ends in a trailing newline (decision 0019).
+    expect(observed.inventory.renderedMarkdown).toBe('Stable body\n')
     expect(observed.completeness).toEqual({ _tag: 'complete' })
     expect(test.requests).toEqual([
       { method: 'GET', path: `/v1/pages/${pageId}` },
@@ -404,7 +409,7 @@ describe('NotionBody.observe', () => {
     )
 
     expect(observed.markdown.markdown).toBe('Retry attempt body')
-    expect(observed.inventory.renderedMarkdown).toBe('Retry attempt body')
+    expect(observed.inventory.renderedMarkdown).toBe('Retry attempt body\n')
     expect(test.counts()).toEqual({
       pageCalls: 4,
       markdownCalls: 2,

@@ -35,7 +35,8 @@
 1. A user can pull a Notion page to local state, inspect and edit the body as Notion enhanced Markdown, and push changes without sending local metadata as page content.
 2. A normal push refuses to overwrite changed remote body content or delete unsupported/child content unless the user chooses an explicit destructive mode.
 3. Page properties and data-source rows round-trip through typed schemas instead of being flattened into body Markdown.
-4. Unsupported blocks and file artifacts are preserved through stable placeholders and content-addressed objects.
+4. Unsupported blocks and file artifacts are preserved through stable placeholders and content-addressed objects where they are resolvable; a page the tool cannot round-trip as Markdown is refused (uniformly across the editor and file surfaces) rather than risk silently dropping such content.
 5. Watch mode can run continuously, coalesce local and remote changes, and shut down without orphaned work.
 6. Every CLI command and watch pass produces traceable Effect spans with enough attributes to diagnose Notion API, filesystem, merge, and validation failures.
 7. Supported body features are backed by E2E fixtures that create, pull, compare, and clean up real Notion pages.
+8. A user can edit a Notion page as Markdown through their canonical `$EDITOR` with a single command, no local file in the working directory, and a guarded push — with no editor plugin required.

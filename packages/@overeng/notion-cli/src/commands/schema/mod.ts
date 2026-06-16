@@ -7,27 +7,23 @@ import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { Effect, Layer, Option, Redacted, Schema } from 'effect'
+import { Effect, Layer, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import {
-  NotionConfig,
-  NotionDatabases,
-  NotionDataSources,
-  resolveNotionToken as resolveNotionTokenFromEnv,
-} from '@overeng/notion-effect-client'
+import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'
 import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
-import { DiffApp } from '../../renderers/DiffOutput/app.ts'
+import { getDiffApp } from '../../renderers/DiffOutput/app.ts'
 import { DiffView } from '../../renderers/DiffOutput/view.tsx'
-import { GenerateConfigApp } from '../../renderers/GenerateConfigOutput/app.ts'
+import { getGenerateConfigApp } from '../../renderers/GenerateConfigOutput/app.ts'
 import { GenerateConfigView } from '../../renderers/GenerateConfigOutput/view.tsx'
-import { GenerateApp } from '../../renderers/GenerateOutput/app.ts'
+import { getGenerateApp } from '../../renderers/GenerateOutput/app.ts'
 import { GenerateView } from '../../renderers/GenerateOutput/view.tsx'
-import { IntrospectApp } from '../../renderers/IntrospectOutput/app.ts'
+import { getIntrospectApp } from '../../renderers/IntrospectOutput/app.ts'
 import { IntrospectView } from '../../renderers/IntrospectOutput/view.tsx'
+import { resolveNotionToken, tokenOption } from '../shared.ts'
 
 /** Re-export internal types for TypeScript declaration emit */
 export type { PlatformError } from '@effect/platform/Error'
@@ -37,6 +33,8 @@ import { loadConfig } from '../../config.ts'
 import { computeDiff, hasDifferences, parseGeneratedFile } from '../../diff.ts'
 import { introspectDatabase, type PropertyTransformConfig } from '../../introspect.ts'
 import { formatCode, writeSchemaToFile } from '../../output.ts'
+
+export { resolveNotionToken, tokenOption } from '../shared.ts'
 
 // -----------------------------------------------------------------------------
 // Exported Errors
@@ -74,19 +72,6 @@ const getGeneratorVersion = Effect.gen(function* () {
   const pkg = yield* Schema.decodeUnknown(Schema.parseJson(GeneratorPackageJsonSchema))(content)
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
-
-/** Resolve the Notion API token as a `Redacted` value from the CLI option or the environment. */
-export const resolveNotionToken = (token: Option.Option<string>) =>
-  Option.isSome(token) === true
-    ? Effect.succeed(Redacted.make(token.value))
-    : resolveNotionTokenFromEnv()
-
-/** CLI option for providing a Notion API token (defaults to `NOTION_API_TOKEN`). */
-export const tokenOption = Options.text('token').pipe(
-  Options.withAlias('t'),
-  Options.withDescription('Notion API token (defaults to NOTION_API_TOKEN env var)'),
-  Options.optional,
-)
 
 // -----------------------------------------------------------------------------
 // Generate Command
@@ -215,8 +200,10 @@ const generateCommand = Command.make(
         authToken: resolvedToken,
       })
 
+      const generateApp = getGenerateApp()
+
       yield* run(
-        GenerateApp,
+        generateApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
@@ -305,7 +292,7 @@ const generateCommand = Command.make(
               Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
             )
           }),
-        { view: React.createElement(GenerateView, { stateAtom: GenerateApp.stateAtom }) },
+        { view: React.createElement(GenerateView, { stateAtom: generateApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(tuiOutput)))
     }),
 ).pipe(Command.withDescription('Generate Effect schema from a Notion database'))
@@ -329,8 +316,10 @@ const introspectCommand = Command.make(
         authToken: resolvedToken,
       })
 
+      const introspectApp = getIntrospectApp()
+
       yield* run(
-        IntrospectApp,
+        introspectApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
@@ -400,7 +389,7 @@ const introspectCommand = Command.make(
               Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
             )
           }),
-        { view: React.createElement(IntrospectView, { stateAtom: IntrospectApp.stateAtom }) },
+        { view: React.createElement(IntrospectView, { stateAtom: introspectApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(Command.withDescription('Introspect a Notion database and display its schema'))
@@ -439,8 +428,10 @@ const generateFromConfigCommand = Command.make(
         authToken: resolvedToken,
       })
 
+      const generateConfigApp = getGenerateConfigApp()
+
       yield* run(
-        GenerateConfigApp,
+        generateConfigApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
@@ -529,7 +520,7 @@ const generateFromConfigCommand = Command.make(
             )
           }),
         {
-          view: React.createElement(GenerateConfigView, { stateAtom: GenerateConfigApp.stateAtom }),
+          view: React.createElement(GenerateConfigView, { stateAtom: generateConfigApp.stateAtom }),
         },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }),
@@ -571,8 +562,10 @@ const diffCommand = Command.make(
         authToken: resolvedToken,
       })
 
+      const diffApp = getDiffApp()
+
       yield* run(
-        DiffApp,
+        diffApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
@@ -634,7 +627,7 @@ const diffCommand = Command.make(
               Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
             )
           }),
-        { view: React.createElement(DiffView, { stateAtom: DiffApp.stateAtom }) },
+        { view: React.createElement(DiffView, { stateAtom: diffApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(

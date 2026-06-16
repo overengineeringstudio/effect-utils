@@ -45,6 +45,7 @@ export { richTextPlainText } from './rich-text.ts'
 
 export {
   classifyBodyCompleteness,
+  describeBodyLossyRefusal,
   type BlockInventory,
   type BlockInventoryEntry,
   type BodyCompleteness,
@@ -52,4 +53,5 @@ export {
   type BodyLossyReason,
   type MarkdownBodySnapshot,
   stableBodyFidelityStringify,
+  tolerateTreeChildPages,
 } from './body-fidelity.ts'

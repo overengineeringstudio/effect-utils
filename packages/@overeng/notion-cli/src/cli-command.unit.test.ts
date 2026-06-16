@@ -9,11 +9,12 @@ const placeholderCommand = (name: string) =>
   Command.make(name, {}, () => Effect.void).pipe(Command.withDescription(`${name} command`))
 
 describe('notion root command composition', () => {
-  it('does not expose the removed root sqlite command', async () => {
+  it('exposes md/schema/db plus the top-level edit alias, not the removed sqlite command', async () => {
     const command = makeNotionRootCommand({
       schemaCommand: placeholderCommand('schema'),
       dbCommand: placeholderCommand('db'),
       notionMdDispatchCommand: placeholderCommand('md'),
+      notionEditAliasCommand: placeholderCommand('edit'),
     })
 
     const completions = await Effect.runPromise(Command.getBashCompletions(command, 'notion'))
@@ -22,6 +23,8 @@ describe('notion root command composition', () => {
     expect(completionText).toContain('schema')
     expect(completionText).toContain('db')
     expect(completionText).toContain('md')
+    // R18: the top-level `notion edit` marquee alias is a first-level command.
+    expect(completionText).toContain('edit')
     expect(completionText).not.toContain('sqlite')
   })
 })

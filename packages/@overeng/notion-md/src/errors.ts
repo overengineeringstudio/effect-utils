@@ -48,6 +48,8 @@ export class NmdGatewayError extends Schema.TaggedError<NmdGatewayError>()('NmdG
   operation: Schema.String,
   page_id: Schema.optional(Schema.String),
   block_id: Schema.optional(Schema.String),
+  /** Log-safe fingerprint of the active Notion integration token (see `notionTokenFingerprint`). */
+  token_fingerprint: Schema.optional(Schema.String),
   message: Schema.String,
   cause: Schema.optional(Schema.Defect),
 }) {}
@@ -64,11 +66,90 @@ export class NmdRemoteBodyLossyError extends Schema.TaggedError<NmdRemoteBodyLos
   },
 ) {}
 
+/**
+ * Raised when a data-source-backed page's writable property schema changed
+ * since the clean pull and a property write was attempted (`edit --frontmatter`
+ * / file `sync`; exit 6, R14, decision 0017). Distinct from the exit-7
+ * value/body conflict and **not** `--force`-able — resolve by re-pulling.
+ */
+export class NmdSchemaDriftError extends Schema.TaggedError<NmdSchemaDriftError>()(
+  'NmdSchemaDriftError',
+  {
+    page_id: Schema.String,
+    data_source_id: Schema.String,
+    path: Schema.optional(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
 /** Raised when a command needs a Notion token and none was supplied. */
 export class NmdTokenMissingError extends Schema.TaggedError<NmdTokenMissingError>()(
   'NmdTokenMissingError',
   {
     message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when `<page>` is not a valid Notion id/URL, or the page does not exist
+ * (editor surfaces `cat`/`put`/`edit`; exit 4).
+ */
+export class NmdUnresolvablePageError extends Schema.TaggedError<NmdUnresolvablePageError>()(
+  'NmdUnresolvablePageError',
+  {
+    page: Schema.String,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+/**
+ * Raised when a default-mode editor buffer is missing its leading title H1, or a
+ * `--frontmatter` envelope is malformed (editor surfaces; exit 5).
+ */
+export class NmdInvalidDocumentError extends Schema.TaggedError<NmdInvalidDocumentError>()(
+  'NmdInvalidDocumentError',
+  {
+    page_id: Schema.optional(Schema.String),
+    message: Schema.String,
+  },
+) {}
+
+/** Raised when `$EDITOR` exits non-zero during `edit`; nothing is pushed (exit 8). */
+export class NmdEditorAbortedError extends Schema.TaggedError<NmdEditorAbortedError>()(
+  'NmdEditorAbortedError',
+  {
+    page_id: Schema.String,
+    editor: Schema.String,
+    exit_code: Schema.Number,
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when the post-push `semanticEquivalent` gate rejects a `put` result
+ * (the remote may be mutated; re-`cat`; exit 9).
+ */
+export class NmdPostPushGateError extends Schema.TaggedError<NmdPostPushGateError>()(
+  'NmdPostPushGateError',
+  {
+    page_id: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
+/**
+ * Raised when one of a `put`'s two writes (body, title) landed and the other
+ * failed; the page is in a mixed state (decision 0012; exit 10).
+ */
+export class NmdPartialWriteError extends Schema.TaggedError<NmdPartialWriteError>()(
+  'NmdPartialWriteError',
+  {
+    page_id: Schema.String,
+    body_written: Schema.Boolean,
+    title_written: Schema.Boolean,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect),
   },
 ) {}
 
@@ -85,4 +166,5 @@ export type NmdError =
   | NmdFileSystemError
   | NmdGatewayError
   | NmdRemoteBodyLossyError
+  | NmdSchemaDriftError
   | NmdCliError

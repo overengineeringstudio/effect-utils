@@ -51,6 +51,7 @@ export {
   NOTION_TOKEN_ENV_VARS,
   type NotionClientConfig,
   NotionConfig,
+  notionTokenFingerprint,
   NotionTokenMissing,
   resolveNotionToken,
 } from './config.ts'
@@ -140,10 +141,10 @@ export {
   getEquationExpression,
   getTableRowCells,
   isTodoChecked,
-  markdownToBlocks,
   NotionMarkdown,
-  parseInlineMarkdown,
 } from './markdown.ts'
+export { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
+export { canonicalizeMediaUrl, canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
 // Notion Markdown local format
 export type {
   ClassifyNmdFrontmatterPayloadOptions,

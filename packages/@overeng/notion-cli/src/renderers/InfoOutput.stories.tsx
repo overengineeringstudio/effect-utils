@@ -7,9 +7,11 @@ import React from 'react'
 
 import { TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { InfoApp } from './InfoOutput/mod.ts'
+import { getInfoApp } from './InfoOutput/mod.ts'
 import type { InfoState } from './InfoOutput/schema.ts'
 import { InfoView } from './InfoOutput/view.tsx'
+
+const InfoApp = getInfoApp()
 
 // =============================================================================
 // State Factories

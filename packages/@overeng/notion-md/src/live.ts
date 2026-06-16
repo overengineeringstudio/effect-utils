@@ -6,6 +6,8 @@ import {
   NotionBody,
   type NotionBodyObservation,
   NotionConfig,
+  NotionDataSources,
+  notionTokenFingerprint,
   NotionPages,
   type NmdStorage,
   type UpdateMarkdownOptions,
@@ -127,36 +129,53 @@ const unknownPlaceholders = (markdown: string): readonly string[] =>
 export const remoteMarkdownFromBodyObservation = (
   body: NotionBodyObservation,
 ): RemoteMarkdownSnapshot => {
+  /*
+   * `observeFromSnapshots` renders the block tree and canonicalizes it once at
+   * the source (`body-observation.ts`), so `renderedMarkdown` is already the
+   * single canonical body form — the same bytes the evidence fingerprint, the
+   * fidelity classifier, hash, and push see (decision 0019, "agree by
+   * construction"). It is total on the pull path; a missing value is an
+   * invariant violation, not a recoverable state — fail as a defect rather than
+   * silently falling back to the endpoint Markdown (which runs headings together
+   * and drops inter-block blanks, the latent symptom-2 trap).
+   */
   const renderedMarkdown = body.inventory.renderedMarkdown
+  if (renderedMarkdown === undefined) {
+    throw new Error(
+      `Body observation for page ${body.pageId} has no rendered Markdown; ` +
+        'observeFromSnapshots must always render the block tree.',
+    )
+  }
   return {
-    markdown: normalizeMarkdownLineEndings(renderedMarkdown ?? body.markdown.markdown),
+    markdown: renderedMarkdown,
     endpoint_markdown: normalizeMarkdownLineEndings(body.markdown.markdown),
     truncated: body.markdown.truncated,
     unknown_block_ids: body.markdown.unknownBlockIds,
     body_evidence: body.evidence,
     body_evidence_fingerprint: body.evidenceFingerprint,
-    completeness:
-      renderedMarkdown === undefined
-        ? {
-            _tag: 'lossy',
-            reasons: ['rendered_markdown_unavailable'],
-          }
-        : body.completeness,
+    completeness: body.completeness,
   }
 }
 
 const mapGatewayError =
-  (opts: { readonly operation: string; readonly pageId?: string; readonly blockId?: string }) =>
+  (opts: {
+    readonly operation: string
+    readonly tokenFp: string
+    readonly pageId?: string
+    readonly blockId?: string
+  }) =>
   (cause: unknown): NmdGatewayError =>
     new NmdGatewayError({
       operation: opts.operation,
       page_id: opts.pageId,
       block_id: opts.blockId,
+      token_fingerprint: opts.tokenFp,
       cause,
       message:
-        opts.pageId === undefined
+        (opts.pageId === undefined
           ? `Notion gateway operation failed: ${opts.operation}`
-          : `Notion gateway operation failed for page ${opts.pageId}: ${opts.operation}`,
+          : `Notion gateway operation failed for page ${opts.pageId}: ${opts.operation}`) +
+        ` [integration token ${opts.tokenFp}]`,
     })
 
 const toNotionUpdateMarkdownOptions = (opts: {
@@ -205,6 +224,12 @@ export const NotionMdGatewayLive = Layer.effect(
   Effect.gen(function* () {
     const config = yield* NotionConfig
     const client = yield* HttpClient.HttpClient
+    /*
+     * Log-safe fingerprint of the active integration token. Surfaced on every
+     * gateway error so a user can tell *which* credential is in use (e.g. when
+     * a `secrets-run` token resolves to a different integration than expected).
+     */
+    const tokenFp = notionTokenFingerprint(config.authToken)
     const provideHttp = <A, E>(
       effect: Effect.Effect<A, E, NotionConfig | HttpClient.HttpClient>,
     ): Effect.Effect<A, E> =>
@@ -237,7 +262,7 @@ export const NotionMdGatewayLive = Layer.effect(
                 }),
               }
         }).pipe(
-          Effect.mapError(mapGatewayError({ operation: 'pull_page', pageId })),
+          Effect.mapError(mapGatewayError({ operation: 'pull_page', tokenFp, pageId })),
           Observability.withOperation(Observability.GatewayPullPageSpan, { pageId }),
         ),
       updateMarkdown: ({ pageId, command, allowDeletingContent }) =>
@@ -273,7 +298,8 @@ export const NotionMdGatewayLive = Layer.effect(
                           new NmdGatewayError({
                             operation: 'update_markdown',
                             page_id: pageId,
-                            message: `Notion gateway operation failed for page ${pageId}: update_markdown returned unexpected Markdown`,
+                            token_fingerprint: tokenFp,
+                            message: `Notion gateway operation failed for page ${pageId}: update_markdown returned unexpected Markdown [integration token ${tokenFp}]`,
                           }),
                         ),
                   ),
@@ -290,7 +316,7 @@ export const NotionMdGatewayLive = Layer.effect(
           Effect.mapError((cause) =>
             cause instanceof NmdGatewayError
               ? cause
-              : mapGatewayError({ operation: 'update_markdown', pageId })(cause),
+              : mapGatewayError({ operation: 'update_markdown', tokenFp, pageId })(cause),
           ),
           Observability.withOperation(Observability.GatewayUpdateMarkdownSpan, {
             pageId,
@@ -303,8 +329,23 @@ export const NotionMdGatewayLive = Layer.effect(
       updatePageProperties: ({ pageId, properties }) =>
         provideHttp(NotionPages.update({ pageId, properties })).pipe(
           Effect.map(toRemotePage),
-          Effect.mapError(mapGatewayError({ operation: 'update_page_properties', pageId })),
+          Effect.mapError(
+            mapGatewayError({ operation: 'update_page_properties', tokenFp, pageId }),
+          ),
           Observability.withOperation(Observability.GatewayUpdatePagePropertiesSpan, { pageId }),
+        ),
+      retrieveDataSource: ({ dataSourceId }) =>
+        provideHttp(NotionDataSources.retrieve({ dataSourceId })).pipe(
+          Effect.map((dataSource) => ({
+            dataSourceId: dataSource.id,
+            databaseId:
+              dataSource.parent.type === 'database_id' ? dataSource.parent.database_id : undefined,
+            properties: dataSource.properties,
+          })),
+          Effect.mapError(mapGatewayError({ operation: 'retrieve_data_source', tokenFp })),
+          Observability.withOperation(Observability.GatewayRetrieveDataSourceSpan, {
+            dataSourceId,
+          }),
         ),
       updatePageMetadata: ({ pageId, metadata }) =>
         provideHttp(
@@ -333,7 +374,7 @@ export const NotionMdGatewayLive = Layer.effect(
           }),
         ).pipe(
           Effect.map(toRemotePage),
-          Effect.mapError(mapGatewayError({ operation: 'update_page_metadata', pageId })),
+          Effect.mapError(mapGatewayError({ operation: 'update_page_metadata', tokenFp, pageId })),
           Observability.withOperation(Observability.GatewayUpdatePageMetadataSpan, {
             pageId,
             hasTitle: metadata.title !== undefined,
@@ -354,7 +395,7 @@ export const NotionMdGatewayLive = Layer.effect(
               return childPage === undefined ? [] : [childPage]
             }),
           ),
-          Effect.mapError(mapGatewayError({ operation: 'list_child_pages', pageId })),
+          Effect.mapError(mapGatewayError({ operation: 'list_child_pages', tokenFp, pageId })),
           Observability.withOperation(Observability.GatewayListChildPagesSpan, { pageId }),
         ),
       createPage: ({ parentPageId, title, markdown }) =>
@@ -371,7 +412,9 @@ export const NotionMdGatewayLive = Layer.effect(
           }),
         ).pipe(
           Effect.map(toRemotePage),
-          Effect.mapError(mapGatewayError({ operation: 'create_page', pageId: parentPageId })),
+          Effect.mapError(
+            mapGatewayError({ operation: 'create_page', tokenFp, pageId: parentPageId }),
+          ),
           Observability.withOperation(Observability.GatewayCreatePageSpan, { parentPageId }),
         ),
       movePage: ({ pageId, parentPageId }) =>
@@ -379,13 +422,13 @@ export const NotionMdGatewayLive = Layer.effect(
           NotionPages.move({ pageId, parent: { type: 'page_id', page_id: parentPageId } }),
         ).pipe(
           Effect.map(toRemotePage),
-          Effect.mapError(mapGatewayError({ operation: 'move_page', pageId })),
+          Effect.mapError(mapGatewayError({ operation: 'move_page', tokenFp, pageId })),
           Observability.withOperation(Observability.GatewayMovePageSpan, { pageId }),
         ),
       archivePage: ({ pageId }) =>
         provideHttp(NotionPages.update({ pageId, in_trash: true })).pipe(
           Effect.map(toRemotePage),
-          Effect.mapError(mapGatewayError({ operation: 'archive_page', pageId })),
+          Effect.mapError(mapGatewayError({ operation: 'archive_page', tokenFp, pageId })),
           Observability.withOperation(Observability.GatewayArchivePageSpan, { pageId }),
         ),
     }

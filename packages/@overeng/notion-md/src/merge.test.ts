@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@effect/vitest'
 import * as fc from 'effect/FastCheck'
 
+import { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 
@@ -92,6 +93,28 @@ describe('notion-md merge planning', () => {
       _tag: 'replace_content',
       markdown: '# Probe\n\nLocal line A\nLine B\n',
     })
+  })
+
+  it('plans an update over a canonical base/remote and reconstructs the desired body', () => {
+    // Post-consolidation, base and remote come from pull → they are already the
+    // canonical (tight-list) form. The user's desired buffer is raw. The plan's
+    // `oldStr`/`newStr` are deliberately raw substrings Notion matches verbatim,
+    // so `desired` is NOT canonicalized — applying the plan to the canonical
+    // remote must reconstruct exactly the desired body (decision 0019, §3.3).
+    const base = canonicalizeBlockMarkdown('# Notes\n\n- alpha\n\n- beta\n')
+    const remote = base
+    expect(base).toBe('# Notes\n\n- alpha\n- beta\n') // canonical: tight list
+    const desired = '# Notes\n\n- alpha\n- gamma\n'
+
+    const command = planMarkdownUpdate({ baseBody: base, remoteBody: remote, desiredBody: desired })
+    expect(command).toEqual({
+      _tag: 'update_content',
+      contentUpdates: [{ oldStr: 'bet', newStr: 'gamm' }],
+      expectedMarkdown: '# Notes\n\n- alpha\n- gamma\n',
+    })
+    expect(applyMarkdownUpdate({ baseBody: base, remoteBody: remote, desiredBody: desired })).toBe(
+      normalizeMarkdownLineEndings(desired),
+    )
   })
 
   it.prop(

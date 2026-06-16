@@ -13,7 +13,7 @@ import {
 } from '@overeng/notion-datasource-sync/cli/effect-command'
 import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
-import { InfoApp } from '../../renderers/InfoOutput/app.ts'
+import { getInfoApp } from '../../renderers/InfoOutput/app.ts'
 import { InfoView } from '../../renderers/InfoOutput/view.tsx'
 
 /** Re-export internal types for TypeScript declaration emit */
@@ -24,7 +24,7 @@ export type { PlatformError } from '@effect/platform/Error'
 import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'
 
-import { resolveNotionToken, tokenOption } from '../schema/mod.ts'
+import { resolveNotionToken, tokenOption } from '../shared.ts'
 
 const databaseIdArg = Args.text({ name: 'database-id' }).pipe(
   Args.withDescription('The Notion database ID to operate on'),
@@ -49,8 +49,10 @@ const infoCommand = Command.make(
         authToken: resolvedToken,
       })
 
+      const infoApp = getInfoApp()
+
       yield* run(
-        InfoApp,
+        infoApp,
         (tui) =>
           Effect.gen(function* () {
             const program = Effect.gen(function* () {
@@ -90,7 +92,7 @@ const infoCommand = Command.make(
               Effect.provide(Layer.merge(configLayer, FetchHttpClient.layer)),
             )
           }),
-        { view: React.createElement(InfoView, { stateAtom: InfoApp.stateAtom }) },
+        { view: React.createElement(InfoView, { stateAtom: infoApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(Command.withDescription('Display information about a Notion database'))

@@ -26,6 +26,8 @@ This document defines package-level requirements for `@overeng/notion-cli`. It i
 - **R04 Database namespace:** Database metadata, replica sync, status, conflict, diagnostics, and export workflows must live under `notion db`.
 - **R05 Markdown namespace:** Markdown page workflows must live under `notion md` and be composed from `@overeng/notion-md`.
 - **R06 Schema namespace:** Schema generation, introspection, config generation, and drift detection must live under `notion schema`.
+- **R17 Markdown editor surface:** `notion md` must expose the `@overeng/notion-md` editor commands `cat`, `put`, and `edit` for editor-based two-way page editing (the stateless `cat`/`put` pipes and the engine-backed `edit`).
+- **R18 Editor alias:** The root must expose a top-level `notion edit <page>` alias that delegates to `notion md edit`. This is an intentional marquee verb, not a legacy compatibility alias under R03; it is the only first-level command outside the `md`/`schema`/`db` namespaces.
 
 ### Must Preserve Runtime Boundaries
 

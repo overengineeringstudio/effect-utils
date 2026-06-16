@@ -474,8 +474,12 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
     },
   )
 
-  liveIt('guards unresolved unknown blocks when Notion exposes them', async () => {
-    await withScratchPage('unknown-block-guard', async (pageId) => {
+  // R38 / #785 (decisions 0016/0017): a not-round-trip-safe body block such as a
+  // bookmark renders to Markdown that Notion re-parses as a paragraph on push, so
+  // it is refused at the PULL (not preserved and guarded at push, which live
+  // testing proved silently corrupts). Refusal names the block class.
+  liveIt('refuses a page with a not-round-trip-safe block at pull (R38)', async () => {
+    await withScratchPage('not-round-trip-safe-block', async (pageId) => {
       await runLive(
         NotionBlocks.append({
           blockId: pageId,
@@ -489,20 +493,10 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
       )
 
       await withTempDir(async (dir) => {
-        const path = join(dir, 'unknown.nmd')
-        const pulled = await runLive(pullPage({ pageId, outPath: path }))
-        const content = await readFile(path, 'utf8')
-        await writeFile(path, content.replace('Initial body', 'Local body'))
-
-        expect(pulled.storage).toBe('self_contained')
-        const status = await runLive(statusPage({ path }))
-        if (status.unresolvedUnknownBlocks.length > 0) {
-          await expect(runLive(pushPage({ path }))).rejects.toThrow(
-            'Page contains unresolved unknown Notion blocks',
-          )
-        } else {
-          await expect(runLive(pushPage({ path }))).resolves.toMatchObject({ pushed: true })
-        }
+        const path = join(dir, 'lossy.nmd')
+        await expect(runLive(pullPage({ pageId, outPath: path }))).rejects.toThrow('bookmark')
+        // No local base is written, so no later edit can silently destroy the block.
+        await expect(readFile(path, 'utf8')).rejects.toThrow()
       })
     })
   })
