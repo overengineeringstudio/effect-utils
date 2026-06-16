@@ -189,9 +189,8 @@ describe('notion datasource sync observability', () => {
 
   it('keeps CLI, one-shot, and daemon spans wired through the shared catalog', () => {
     expect(source('cli/main.ts')).toContain('Effect.fn(spanNames.cliCommand, {')
-    expect(source('cli/main.ts')).toContain(
-      'makeOtelCliLayer({ serviceName: serviceNameForArgv(argv) })',
-    )
+    expect(source('cli/main.ts')).toContain('name: serviceNameForArgv(argv),')
+    expect(source('cli/main.ts')).toContain("withTelemetry({ identity, shape: 'cli', endpoint })")
     expect(source('sync/sync.ts')).toContain('Effect.fn(spanNames.syncPull)')
     expect(source('sync/sync.ts')).toContain('Effect.fn(spanNames.syncPush)')
     expect(source('sync/sync.ts')).toContain('Effect.fn(spanNames.syncOneShot)')

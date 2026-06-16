@@ -1,9 +1,16 @@
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { expect } from 'vitest'
 
+import { ServiceIdentity } from '@overeng/otel-contract'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { makeOtelCliLayer, OtelConfig, parentSpanFromTraceparent } from './otel.ts'
+
+const testIdentity = Schema.decodeSync(ServiceIdentity)({
+  name: 'test-cli',
+  namespace: 'overeng',
+  version: '0.0.0',
+})
 
 Vitest.describe('otel-cli', () => {
   Vitest.describe('parentSpanFromTraceparent', () => {
@@ -120,7 +127,7 @@ Vitest.describe('otel-cli', () => {
         delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT
         delete process.env.TRACEPARENT
 
-        const layer = makeOtelCliLayer({ serviceName: 'test-cli' })
+        const layer = makeOtelCliLayer({ identity: testIdentity })
 
         const cfg = yield* OtelConfig.pipe(Effect.provide(layer))
         expect(Option.isNone(cfg.endpoint)).toBe(true)
@@ -134,7 +141,7 @@ Vitest.describe('otel-cli', () => {
         delete process.env.TRACEPARENT
 
         const layer = makeOtelCliLayer({
-          serviceName: 'test-cli',
+          identity: testIdentity,
           endpointEnvVar: 'CUSTOM_OTEL_ENDPOINT',
         })
 
@@ -151,7 +158,7 @@ Vitest.describe('otel-cli', () => {
         delete process.env.TRACEPARENT
 
         const layer = makeOtelCliLayer({
-          serviceName: 'test-cli',
+          identity: testIdentity,
           endpoint: Option.none(),
         })
 

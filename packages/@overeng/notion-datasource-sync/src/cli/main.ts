@@ -24,8 +24,9 @@ import {
   NotionMdGateway,
   NotionMdGatewayLive,
 } from '@overeng/notion-md'
+import { ServiceIdentity } from '@overeng/otel-contract'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
-import { makeOtelCliLayer } from '@overeng/utils/node/otel'
+import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
 import { makeUnsupportedPageBodySyncPort } from '../body/adapter.ts'
 import {
@@ -2607,10 +2608,23 @@ const serviceNameForArgv = (argv: ReadonlyArray<string>): string => {
 
 if (import.meta.main) {
   const argv = process.argv.slice(2)
-  runCliMain({ argv }).pipe(
-    Effect.tapError((error) => Effect.sync(() => process.stderr.write(renderCliErrorJson(error)))),
-    Effect.scoped,
-    Effect.provide(makeOtelCliLayer({ serviceName: serviceNameForArgv(argv) })),
-    NodeRuntime.runMain({ disableErrorReporting: true }),
-  )
+  // The CLI vs daemon service NAME is chosen per-subcommand (sync --watch ⇒
+  // daemon), then decoded into a branded ServiceIdentity at the edge. The
+  // process SHAPE stays `cli` regardless of the name — name is identity, shape
+  // is export/flush mechanics.
+  const identity = Schema.decodeSync(ServiceIdentity)({
+    name: serviceNameForArgv(argv),
+    namespace: 'overeng',
+    version: cliVersion,
+  })
+  Effect.gen(function* () {
+    const endpoint = yield* otelEndpointFromConfig()
+    yield* runCliMain({ argv }).pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() => process.stderr.write(renderCliErrorJson(error))),
+      ),
+      Effect.scoped,
+      Effect.provide(withTelemetry({ identity, shape: 'cli', endpoint })),
+    )
+  }).pipe(NodeRuntime.runMain({ disableErrorReporting: true }))
 }

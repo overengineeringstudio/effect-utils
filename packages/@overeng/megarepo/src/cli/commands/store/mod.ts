@@ -11,7 +11,6 @@ import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { OutputModeTag, run } from '@overeng/tui-react'
-import { OtelConfig } from '@overeng/utils/node/otel'
 
 import {
   parseSourceString,
@@ -1325,19 +1324,11 @@ const storeGcCommand = Cli.Command.make(
           repoConcurrencyForMetrics = repoConcurrency
 
           // Sample RSS into the `megarepo_store_gc_rss_bytes` gauge across the run
-          // so the OTEL sweep can plot memory vs concurrency. Fork ONLY when an
-          // OTLP endpoint is configured — zero overhead (no periodic fiber) when
-          // not, matching the empty-exporter behaviour. The signal is the SAME
-          // resolved endpoint the exporter was built from (provided as `OtelConfig`
-          // by `makeOtelCliLayer`), read here via `Effect.serviceOption` so command
-          // code never touches `process.env` and stays runnable without the layer
-          // (absent tag ≡ telemetry disabled, so this is a no-op in the bulk tests).
-          const otelConfig = yield* Effect.serviceOption(OtelConfig)
-          const otelEnabled =
-            Option.isSome(otelConfig) === true && Option.isSome(otelConfig.value.endpoint) === true
-          if (otelEnabled === true) {
-            yield* Observability.sampleStoreGcRss({ repoConcurrency })
-          }
+          // so the OTEL sweep can plot memory vs concurrency. The foundation
+          // `sampleResource` primitive (wrapped by `sampleStoreGcRss`) owns the
+          // gate: it no-ops with zero overhead (no periodic fiber) when telemetry
+          // is off, so no double-gate is needed here.
+          yield* Observability.sampleStoreGcRss({ repoConcurrency })
 
           statusMessage = 'collecting liveness registry'
           if (progressive === true) {

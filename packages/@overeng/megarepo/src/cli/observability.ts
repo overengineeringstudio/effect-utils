@@ -1,15 +1,17 @@
 import path from 'node:path'
 
-import { Clock, Duration, Effect, Metric, MetricLabel, Schedule, Schema } from 'effect'
+import { Duration, Effect, Option, Schema } from 'effect'
 
 import {
   OtelAttr,
   OtelAttrs,
+  OtelMetric,
   OtelOperation,
   OtelSpan,
   type OtelAttrEncodeError,
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
+import { OtelConfig, sampleResource } from '@overeng/utils/node/otel'
 
 const basename = (value: string): string =>
   value.split('/').findLast((part) => part.length > 0) ?? value
@@ -474,25 +476,33 @@ export const withStoreGcPhaseSpan = ({
  * `repo_concurrency` is a label so a parameter sweep produces one comparable
  * series per operating point (decision 0007 — the sweep plots RSS-vs-concurrency).
  *
- * Built with `Metric.gauge` + `Metric.set` (the gauge constructor and `set` are
- * NOT in the `no-raw-otel-primitives` banned set; `Metric.counter`/`histogram`/
- * `update`/`increment*` are). The schema-first OTEL contract (`@overeng/otel-
- * contract`) has no gauge primitive yet, so this short-lived CLI gauge is emitted
- * directly here rather than through a contract. Flows to the OTLP exporter when
- * one is configured and is a no-op otherwise.
+ * Defined through the schema-first contract (`OtelMetric.gauge`) — the sanctioned
+ * path that brands the name + enforces the label cardinality policy — and bridged
+ * to a typed Effect `Metric` via `OtelMetric.effect.gauge`. `trustedSet` encodes
+ * the `repo_concurrency` label through the schema (no raw `MetricLabel`).
  */
-const storeGcRssGauge = Metric.gauge('megarepo_store_gc_rss_bytes', {
+const storeGcRssGauge = OtelMetric.gauge({
+  name: 'megarepo_store_gc_rss_bytes',
   description: 'Resident set size (bytes) sampled during mr store gc/status',
-  bigint: false,
+  unit: 'By',
+  labels: Schema.Struct({
+    repoConcurrency: OtelAttr.number('repo_concurrency', { cardinality: 'bounded' }),
+  }),
 })
+
+const storeGcRssGaugeBridge = OtelMetric.effect.gauge(storeGcRssGauge)
 
 /**
  * Fork a fiber that samples `process.memoryUsage().rss` into
  * {@link storeGcRssGauge} every `interval` for the lifetime of the enclosing
- * scope. Tagged with `repo_concurrency` so sweep runs are comparable.
+ * scope, tagged with `repo_concurrency` so sweep runs are comparable.
  *
- * Gated by the caller on `OTEL_EXPORTER_OTLP_ENDPOINT` being set: the periodic
- * fiber has a (small) cost, so "zero overhead when unset" means not forking it.
+ * The clock/gate/fork mechanics are owned by the foundation `sampleResource`
+ * primitive: it ticks on a real wall clock and no-ops when telemetry is off. The
+ * `Effect.serviceOption(OtelConfig)` read here only DISCHARGES the primitive's
+ * `OtelConfig` requirement (defaulting to a telemetry-off config when absent) so
+ * the gc command stays runnable without the layer — the gating decision itself
+ * lives inside the primitive, not here.
  */
 export const sampleStoreGcRss = ({
   repoConcurrency,
@@ -501,28 +511,18 @@ export const sampleStoreGcRss = ({
   repoConcurrency: number
   interval?: Duration.Duration
 }) =>
-  Effect.sync(() => process.memoryUsage().rss).pipe(
-    Effect.flatMap((rss) =>
-      Metric.set(
-        // `taggedWithLabels` (not the banned `Metric.tagged`) adds the
-        // `repo_concurrency` label so a sweep yields one series per operating
-        // point.
-        storeGcRssGauge.pipe(
-          Metric.taggedWithLabels([MetricLabel.make('repo_concurrency', String(repoConcurrency))]),
+  Effect.serviceOption(OtelConfig).pipe(
+    Effect.flatMap((config) =>
+      sampleResource({
+        sample: Effect.sync(() => process.memoryUsage().rss).pipe(
+          Effect.flatMap((rss) => storeGcRssGaugeBridge.trustedSet({ repoConcurrency }, rss)),
         ),
-        rss,
+        interval,
+      }).pipe(
+        Effect.provideService(
+          OtelConfig,
+          Option.getOrElse(config, () => ({ endpoint: Option.none<string>() })),
+        ),
       ),
     ),
-    Effect.repeat(Schedule.spaced(interval)),
-    // Decouple the sampler from the contextual (possibly test/fixed) decision
-    // clock: this RSS sampler is infrastructure and must tick on real wall time
-    // regardless of any ambient clock. `Effect.withClock` overrides the
-    // `defaultServices` FiberRef that `Clock.sleep`/`Schedule.spaced` resolve
-    // through (the same one `Layer.setClock` populates) — `provideService` does
-    // NOT work for Clock, since it is a default service read via `clockWith`, not
-    // from the environment `R`. Placed BEFORE `forkScoped` so it wraps the forked
-    // fiber, not the fork action.
-    Effect.withClock(Clock.make()),
-    Effect.forkScoped,
-    Effect.asVoid,
   )

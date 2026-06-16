@@ -174,7 +174,8 @@ const pushSafetyOptions = {
   allowReviewMarkup: allowReviewMarkupOption,
 } as const
 const buildStamp = '__CLI_BUILD_STAMP__'
-const cliVersion = resolveCliVersion({
+/** Resolved CLI build-version identity, reused by the binary edge to stamp telemetry. */
+export const cliVersion = resolveCliVersion({
   baseVersion: NOTION_MD_VERSION,
   buildStamp,
 })
