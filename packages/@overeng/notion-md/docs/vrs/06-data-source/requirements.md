@@ -24,4 +24,4 @@ owned by the standalone [Notion datasource sync spec](../../../../notion-datasou
 
 ### Must Prevent Data Loss
 
-- **R14 Schema drift safety:** Property writes must refuse or require explicit acceptance when the data-source schema has changed since the last clean pull. The drift is detected by comparing the live schema against a pull-time `schema_snapshot` (decision [0013](../.decisions/0013-in-buffer-schema-fingerprint.md) superseded by [0017](../.decisions/0017-edit-is-an-ephemeral-file-engine-session.md)) and refuses with a distinct exit code that is **not** `--force`-able; resolve by re-pulling.
+- **R14 Schema drift safety:** Property writes must refuse or require explicit acceptance when the data-source schema has changed since the last clean pull, with a distinct exit code that is **not** `--force`-able; the user resolves by re-pulling. Mechanism (the pull-time schema capture the live schema is compared against) in [06-data-source spec](./spec.md#data-source-binding-and-schema-drift), decision [0013](../.decisions/0013-in-buffer-schema-fingerprint.md) superseded by [0017](../.decisions/0017-edit-is-an-ephemeral-file-engine-session.md).
