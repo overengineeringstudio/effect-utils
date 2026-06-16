@@ -9,7 +9,9 @@ let cached: TuiApp<DiffState, DiffAction> | undefined
  *
  * Constructed lazily (and memoized) rather than at module top level: building it
  * eagerly is a module-load side-effect that crashes the umbrella `notion` binary
- * under Bun's concurrent command-tree import (#787).
+ * under Bun's concurrent command-tree import (#787, upstream oven-sh/bun#30634).
+ * The five renderer `get*App()` accessors share this workaround; see `cli.ts` for
+ * the trigger + the TODO to drop it once the Bun fix lands.
  */
 export const getDiffApp = (): TuiApp<DiffState, DiffAction> =>
   (cached ??= createTuiApp({
