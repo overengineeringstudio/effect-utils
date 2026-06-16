@@ -749,6 +749,16 @@ export const e2eHarnessScenarios = [
     file: 'src/e2e/daemon.e2e.test.ts',
   }),
   scenario({
+    scenarioId: 'NDS-L5-otel-safe-nested-trace',
+    title:
+      'a full CLI→daemon→daemonPass→syncOneShot→syncPull/syncPush→gateway/fakeGateway→outboxAttempt span tree nests correctly with every `notion.*` span ended, carries asserted trace attributes (processRole, command, cycle, result, enqueuedCommands, outboxQueuedCount, statusState, spanLabel, …), and upholds the SAFE no-payload-leak invariant: no secret/token/workspace_root attribute keys, no secret/token/`op://` or temp-dir-path values, and `spanLabel` length ≤ 39',
+    requirementIds: ['R57', 'R58', 'R59'],
+    guards: [],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L5',
+    file: 'src/e2e/otel.e2e.test.ts',
+  }),
+  scenario({
     scenarioId: 'NDS-L2-hidden-control-plane-isolation',
     title:
       'control plane is split into `.notion/v1/state.sqlite`: the public `data/v1/<source>.sqlite` exposes only product views + `_nds_replica_*` cache (no `_nds_outbox`/`_nds_guard_block`/`_nds_sync_event`/`_nds_workspace_binding`/etc), both files are standalone-queryable, and CDC edits in the data file drain across the boundary into the state event log and re-project',
@@ -1104,21 +1114,6 @@ export const traceabilityResiduals = [
     _tag: 'unmapped-requirement',
     requirementId: 'R56',
     reason: 'Worker optionality is future integration scope.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R57',
-    reason: 'Span coverage requires telemetry-specific checks.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R58',
-    reason: 'Trace attributes require telemetry-specific checks.',
-  },
-  {
-    _tag: 'unmapped-requirement',
-    requirementId: 'R59',
-    reason: 'Safe telemetry requires telemetry-specific checks.',
   },
   // R74-R80 are now inside the enumerated range (length bumped to 80 to close the
   // drift gate). R74/R78/R79/R80 are mapped by concrete scenarios. R75/R76/R77 are
