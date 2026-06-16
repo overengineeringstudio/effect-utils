@@ -42,24 +42,24 @@ request count, remaining quota when present, reset timing, and retry delay.
 
 ## Shared Flags
 
-| Flag                       | Meaning                                                                                                 |
-| -------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `--mode`                   | `track`-only: workspace authority mode `local`, `remote`, or `shared`; persisted once. Default `remote` |
-| `--limit`, `--max-rows`    | Dry-run-only `track` preview row cap; writes nothing and reports capped query state                     |
+| Flag                       | Meaning                                                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `--mode`                   | `track`-only: workspace authority mode `local`, `remote`, or `shared`; persisted once. Default `remote`         |
+| `--limit`, `--max-rows`    | Dry-run-only `track` preview row cap; writes nothing and reports capped query state                             |
 | `--dry-run`                | Mutating commands preview without writing; `export --dry-run` reports the plan/counts but writes no output file |
-| `--output`                 | `export` output file path                                                                               |
-| `--refresh`                | `export`-only: refresh the local data file via remote observe/project before exporting                  |
-| `--schema-properties-json` | Advanced/debug override for schema-property observations; normal sync discovers schema from Notion      |
-| `--required-capabilities`  | Comma-separated capability preflight list                                                               |
-| `--max-executor-steps`     | Bound outbox execution in `sync` and `sync --watch`                                                     |
-| `--no-materialize-bodies`  | Observe properties/schema without local body materialization                                            |
-| `--watch`                  | Run `sync` as a long-lived daemon loop                                                                  |
-| `--state`                  | Override the `sync --watch` daemon state JSON path                                                      |
-| `--max-cycles`             | Bound `sync --watch` cycles for tests, demos, and supervised runs                                       |
-| `--watch-priority`         | Select `sync --watch` daemon backoff: `development`, `normal`, or `low-priority`                        |
-| `--webhook`                | Optional `sync --watch` wakeup status mode: `none`, `tailscale`, or `manual`                            |
-| `--webhook-required`       | Require the selected webhook provider to report usable status before the daemon starts                  |
-| `--non-interactive`        | Reserve provider setup for non-interactive runs; current webhook status checks never prompt             |
+| `--output`                 | `export` output file path                                                                                       |
+| `--refresh`                | `export`-only: refresh the local data file via remote observe/project before exporting                          |
+| `--schema-properties-json` | Advanced/debug override for schema-property observations; normal sync discovers schema from Notion              |
+| `--required-capabilities`  | Comma-separated capability preflight list                                                                       |
+| `--max-executor-steps`     | Bound outbox execution in `sync` and `sync --watch`                                                             |
+| `--no-materialize-bodies`  | Observe properties/schema without local body materialization                                                    |
+| `--watch`                  | Run `sync` as a long-lived daemon loop                                                                          |
+| `--state`                  | Override the `sync --watch` daemon state JSON path                                                              |
+| `--max-cycles`             | Bound `sync --watch` cycles for tests, demos, and supervised runs                                               |
+| `--watch-priority`         | Select `sync --watch` daemon backoff: `development`, `normal`, or `low-priority`                                |
+| `--webhook`                | Optional `sync --watch` wakeup status mode: `none`, `tailscale`, or `manual`                                    |
+| `--webhook-required`       | Require the selected webhook provider to report usable status before the daemon starts                          |
+| `--non-interactive`        | Reserve provider setup for non-interactive runs; current webhook status checks never prompt                     |
 
 ## Commands
 
