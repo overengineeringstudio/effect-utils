@@ -923,88 +923,88 @@ const setupWatchWebhook = ({
           onSignalEnqueued: () => wakeNotifier.wake(),
           effectRuntime,
         })
-      context.webhookReceiverStarted?.(receiver)
+        context.webhookReceiverStarted?.(receiver)
 
-      if (provider === 'manual') {
-        const manual = makeManualWebhookRelayProvider({
-          publicUrl: receiver.url,
-          localTarget: `${receiver.hostname}:${receiver.port.toString()}`,
-          path: receiver.path,
-        })
-        const exposure = await manual.start()
-        return {
-          status: {
-            _tag: 'WebhookManualStatus',
-            provider: 'manual',
-            state: 'running',
-            message:
-              'Manual webhook receiver is running locally; configure an external relay to deliver Notion webhooks to the callback URL.',
-            receiver,
-            exposure,
-            signals: signalStatus(context),
-          },
-          wakeNotifier,
-          close: () => closeWebhookResources({ receiver, providerStop: manual.stop }),
-        } satisfies ActiveWatchWebhook
-      }
-
-      const tailscale = makeTailscaleFunnelProvider({
-        localPort: receiver.port,
-        path: receiver.path,
-        run: context.tailscaleProcessRunner ?? defaultTailscaleProcessRunner,
-      })
-      let shouldStopTailscale = false
-      try {
-        const exposure = await tailscale.start()
-        shouldStopTailscale = true
-        return {
-          status: {
-            _tag: 'WebhookTailscaleStatus',
-            provider: 'tailscale',
-            state: 'running',
-            message:
-              'Tailscale Funnel is exposing the local webhook receiver; webhook hints still require reconciliation before planning.',
-            receiver,
-            exposure,
-            signals: signalStatus(context),
-          },
-          wakeNotifier,
-          close: () =>
-            closeWebhookResources({
-              receiver,
-              providerStop: shouldStopTailscale === true ? tailscale.stop : undefined,
-            }),
-        } satisfies ActiveWatchWebhook
-      } catch (cause) {
-        if (cause instanceof CliArgumentError) throw cause
-        if (command.webhookRequired === true) {
-          await closeWebhookResources({ receiver, providerStop: undefined })
-          throw new CliArgumentError({
-            message: 'sync --watch --webhook-required could not start Tailscale Funnel',
+        if (provider === 'manual') {
+          const manual = makeManualWebhookRelayProvider({
+            publicUrl: receiver.url,
+            localTarget: `${receiver.hostname}:${receiver.port.toString()}`,
+            path: receiver.path,
           })
+          const exposure = await manual.start()
+          return {
+            status: {
+              _tag: 'WebhookManualStatus',
+              provider: 'manual',
+              state: 'running',
+              message:
+                'Manual webhook receiver is running locally; configure an external relay to deliver Notion webhooks to the callback URL.',
+              receiver,
+              exposure,
+              signals: signalStatus(context),
+            },
+            wakeNotifier,
+            close: () => closeWebhookResources({ receiver, providerStop: manual.stop }),
+          } satisfies ActiveWatchWebhook
         }
-        return {
-          status: {
-            _tag: 'WebhookTailscaleStatus',
-            provider: 'tailscale',
-            state: 'degraded',
-            message:
-              'Local webhook receiver is running, but Tailscale Funnel could not be started; continuing with polling reconciliation.',
-            receiver,
-            signals: signalStatus(context),
-          },
-          wakeNotifier,
-          close: () => closeWebhookResources({ receiver, providerStop: undefined }),
-        } satisfies ActiveWatchWebhook
-      }
-    },
-    catch: (cause) =>
-      cause instanceof CliArgumentError
-        ? cause
-        : new CliArgumentError({
-            message: 'Unable to initialize sync --watch webhook status',
-          }),
-  }),
+
+        const tailscale = makeTailscaleFunnelProvider({
+          localPort: receiver.port,
+          path: receiver.path,
+          run: context.tailscaleProcessRunner ?? defaultTailscaleProcessRunner,
+        })
+        let shouldStopTailscale = false
+        try {
+          const exposure = await tailscale.start()
+          shouldStopTailscale = true
+          return {
+            status: {
+              _tag: 'WebhookTailscaleStatus',
+              provider: 'tailscale',
+              state: 'running',
+              message:
+                'Tailscale Funnel is exposing the local webhook receiver; webhook hints still require reconciliation before planning.',
+              receiver,
+              exposure,
+              signals: signalStatus(context),
+            },
+            wakeNotifier,
+            close: () =>
+              closeWebhookResources({
+                receiver,
+                providerStop: shouldStopTailscale === true ? tailscale.stop : undefined,
+              }),
+          } satisfies ActiveWatchWebhook
+        } catch (cause) {
+          if (cause instanceof CliArgumentError) throw cause
+          if (command.webhookRequired === true) {
+            await closeWebhookResources({ receiver, providerStop: undefined })
+            throw new CliArgumentError({
+              message: 'sync --watch --webhook-required could not start Tailscale Funnel',
+            })
+          }
+          return {
+            status: {
+              _tag: 'WebhookTailscaleStatus',
+              provider: 'tailscale',
+              state: 'degraded',
+              message:
+                'Local webhook receiver is running, but Tailscale Funnel could not be started; continuing with polling reconciliation.',
+              receiver,
+              signals: signalStatus(context),
+            },
+            wakeNotifier,
+            close: () => closeWebhookResources({ receiver, providerStop: undefined }),
+          } satisfies ActiveWatchWebhook
+        }
+      },
+      catch: (cause) =>
+        cause instanceof CliArgumentError
+          ? cause
+          : new CliArgumentError({
+              message: 'Unable to initialize sync --watch webhook status',
+            }),
+    }),
   )
 }
 
@@ -2531,12 +2531,18 @@ export const parseCliContext = ({
             commandDryRun === true || existsSync(storePath) === false
               ? undefined
               : readSelfContainedBinding(storePath)
+          // One `.notion/v1/state.sqlite` holds one binding row per tracked data
+          // source (keyed by the derived `data-source:<id>` root id), so adding a
+          // second source to the same workspace is allowed (VRS multi-source
+          // workspace). The discriminator is the workspace root: every binding in
+          // a given state store shares it, so a mismatch on the latest binding
+          // signals a moved or copied control-plane store and is refused.
           if (
             existingBinding !== undefined &&
-            existingBinding.dataSourceId !== command.dataSourceId
+            existingBinding.workspaceRoot !== command.workspaceRoot
           )
             throw new CliArgumentError({
-              message: `Control-plane store is already bound to data source ${existingBinding.dataSourceId}; refusing to establish ${command.dataSourceId}`,
+              message: `Control-plane store at ${storePath} is bound to workspace ${existingBinding.workspaceRoot}; refusing to establish ${command.dataSourceId} under ${command.workspaceRoot}`,
             })
           if (commandDryRun !== true) {
             establishManifestSource = {

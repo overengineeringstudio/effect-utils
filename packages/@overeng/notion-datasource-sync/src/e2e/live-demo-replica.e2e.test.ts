@@ -30,8 +30,12 @@ const expectedDemoPageId =
 
 const normalizeNotionId = (id: string): string => id.replaceAll('-', '').toLowerCase()
 
-const readCount = (database: DatabaseSync, sql: string): number => {
-  const row = database.prepare(sql).get() as { readonly count: number } | undefined
+const readCount = (
+  database: DatabaseSync,
+  sql: string,
+  ...params: ReadonlyArray<string>
+): number => {
+  const row = database.prepare(sql).get(...params) as { readonly count: number } | undefined
   if (row === undefined || typeof row.count !== 'number') {
     throw new Error(`SQLite count query did not return a numeric count: ${sql}`)
   }
@@ -266,11 +270,18 @@ const inspectReplica = ({
     const rowCount = readCount(database, 'SELECT count(*) AS count FROM pages')
     const propertyCount = readCount(database, 'SELECT count(*) AS count FROM schema_properties')
     // The control-plane property shadow lives in the split `.notion/v1/state.sqlite`
-    // store, not the public projection data file (ADR 0011).
+    // store, not the public projection data file (ADR 0011). A multi-source
+    // workspace shares one state store across every tracked source, so scope the
+    // shadow count to this source's root id (`data-source:<id>`) rather than the
+    // whole store.
     const stateDatabase = new DatabaseSync(statePath, { readOnly: true })
     let cellCount: number
     try {
-      cellCount = readCount(stateDatabase, 'SELECT count(*) AS count FROM _nds_property_shadow')
+      cellCount = readCount(
+        stateDatabase,
+        'SELECT count(*) AS count FROM _nds_property_shadow WHERE root_id = ?',
+        `data-source:${dataSource.dataSourceId}`,
+      )
     } finally {
       stateDatabase.close()
     }
