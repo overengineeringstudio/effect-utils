@@ -46,7 +46,7 @@ default teardown forces exit code 0 on a signal, clobbering the conventional
 - Healthy collector: the cap is never reached; 10s vs 30s is invisible.
 - Black-holed collector: worst-case natural-exit latency is the cap, and only
   then — Ctrl-C escapes it in milliseconds.
-- **Known residual (out of scope):** a transient *mid-run* export failure trips
+- **Known residual (out of scope):** a transient _mid-run_ export failure trips
   the exporter's 60s self-disable, after which the final flush short-circuits
   regardless of the cap. Tracked separately; not solvable via `shutdownTimeout`.
 
