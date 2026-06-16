@@ -111,7 +111,19 @@ export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>()
 // =============================================================================
 
 const shouldSkipStoreRootEntry = (entry: string): boolean =>
-  entry.startsWith('.') === true || entry === 'tmp'
+  // Dot-dirs are store-internal (`.state`, `.locks`, …). `_`-prefixed dirs are
+  // internal/scratch areas (e.g. `_iso/` holding isolated experiment stores) —
+  // no real host or owner segment starts with `_`, so this never excludes a
+  // member. `tmp` is a conventional scratch dir.
+  entry.startsWith('.') === true || entry.startsWith('_') === true || entry === 'tmp'
+
+// Backstop depth for the `listRepos` layout walk. The documented store layout is
+// `<host>/<owner>/<repo>/.bare` (repos at depth ~2–3 from the store root); this
+// generous bound lets nested namespaces (e.g. GitLab subgroups) resolve while
+// guaranteeing the walk can never descend into a checked-out working tree
+// (node_modules, build output) and exhaust memory. Hitting it is logged, never
+// silent.
+const STORE_REPO_WALK_MAX_DEPTH = 8
 
 const make = ({
   config,
@@ -246,7 +258,10 @@ const make = ({
           fullPath: AbsoluteDirPath
         }> = []
 
-        const walk = (dir: AbsoluteDirPath): Effect.Effect<void, PlatformError.PlatformError> =>
+        const walk = (
+          dir: AbsoluteDirPath,
+          depth: number,
+        ): Effect.Effect<void, PlatformError.PlatformError> =>
           Effect.gen(function* () {
             yield* Effect.yieldNow()
             const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
@@ -257,6 +272,33 @@ const make = ({
                 relativePath: EffectPath.unsafe.relativeDir(relativePath),
                 fullPath: dir,
               })
+              return
+            }
+
+            // Membership-contract stops (a member is `<host>/<owner>/<repo>/.bare`).
+            // Without these the walk descends into directories that are NOT part of
+            // this store and enumerates their entire contents — exhausting memory on
+            // a real store and mis-claiming non-members:
+            //  - `.git` present  → a checked-out worktree, never a namespace dir;
+            //    its working tree (node_modules, …) must never be walked.
+            //  - `.state`/`.locks` present → a NESTED megarepo store (e.g. an
+            //    isolated experiment store), whose repos belong to it, not here.
+            const hasGit = yield* fs.exists(
+              EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile('.git')),
+            )
+            if (hasGit === true) return
+            const isNestedStore = yield* Effect.all([
+              fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.state/'))),
+              fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.locks/'))),
+            ]).pipe(Effect.map(([state, locks]) => state === true || locks === true))
+            if (isNestedStore === true) return
+
+            // Backstop: never descend past the layout's plausible repo depth, so a
+            // pathological non-git directory tree can't drive an unbounded walk.
+            if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
+              yield* Effect.logWarning(
+                'store listRepos: walk depth limit reached; not descending',
+              ).pipe(Effect.annotateLogs({ dir, depth }))
               return
             }
 
@@ -277,7 +319,7 @@ const make = ({
                     .pipe(Effect.catchAll(() => Effect.succeed(null)))
                   if (entryStat?.type !== 'Directory') return
 
-                  yield* walk(entryPath)
+                  yield* walk(entryPath, depth + 1)
                 }),
               ),
               { concurrency: 32 },
@@ -301,7 +343,7 @@ const make = ({
                 .pipe(Effect.catchAll(() => Effect.succeed(null)))
               if (entryStat?.type !== 'Directory') return
 
-              yield* walk(entryPath)
+              yield* walk(entryPath, 1)
             }),
           ),
           { concurrency: 32 },
