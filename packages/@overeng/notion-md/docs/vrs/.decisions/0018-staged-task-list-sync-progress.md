@@ -69,7 +69,7 @@ makes the existing passes legible, it does not change how many there are.
 
 The `ProgressReporter` `Context.Tag` seam and the engine stage emits are
 implemented; `edit`'s write path ships the **static-line rung** (sequential
-stderr lines via `ProgressReporterStderrLines`), deliberately *not* the animated
+stderr lines via `ProgressReporterStderrLines`), deliberately _not_ the animated
 `TaskList` — `edit` returns from a full-screen editor that owned the TTY, so a
 mounting TUI would fight the terminal, and lines sidestep the #787 module-load
 TDZ entirely. The animated `TaskList` Layer is the same Tag's later drop-in (zero

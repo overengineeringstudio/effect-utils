@@ -107,7 +107,7 @@ export type TerminalError = BadRequest | Forbidden | NotFound | MalformedUpstrea
 const retryAfterMillisOf = (header: string | undefined): number => {
   if (header === undefined) return 0
   const seconds = Number(header)
-  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : 0
+  return Number.isFinite(seconds) === true && seconds > 0 ? Math.round(seconds * 1000) : 0
 }
 
 /** A 4xx the binding treats as DETERMINISTIC (no retry): 400 / 403 / 404. */
@@ -144,7 +144,8 @@ const decodeWidget = (
     Effect.catchAll(
       (e) =>
         new MalformedUpstream({
-          detail: ParseResult.isParseError(e) ? 'body did not match Widget schema' : String(e),
+          detail:
+            ParseResult.isParseError(e) === true ? 'body did not match Widget schema' : String(e),
         }),
     ),
   )
@@ -219,7 +220,7 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
                     Effect.succeed<Definitive>({ _tag: 'malformed', detail: e.detail }),
                   ),
                 )
-              if (isTerminalStatus(status))
+              if (isTerminalStatus(status) === true)
                 return Effect.succeed<Definitive>({
                   _tag: 'terminal',
                   status,
@@ -272,7 +273,7 @@ export const WidgetApiLive = RestateService.implement<typeof WidgetApi, HttpClie
           )
         const status = response.status
         if (status === 200) return yield* decodeWidget(response)
-        if (isTerminalStatus(status))
+        if (isTerminalStatus(status) === true)
           return yield* terminalError(status, `HTTP ${status}`, widgetId)
         /* TRANSIENT (429 / 5xx) → the retryable error, `Retry-After` projected. */
         return yield* new UpstreamUnavailable({

@@ -19,16 +19,16 @@ driving a black-box `$EDITOR` that owns its buffer **and** the terminal:
 
 - **No live feedback (local→remote).** The editor is spawned with the real TTY
   inherited (`editor-commands.ts` `defaultRunEditor`, `stdin/stdout/stderr:
-  'inherit'`) and the CLI blocks on its exit. Nothing can render to that terminal
+'inherit'`) and the CLI blocks on its exit. Nothing can render to that terminal
   while the editor is up without corrupting its screen. So per-save sync status
-  could only ever appear *after* the editor exits — which defeats watch mode.
+  could only ever appear _after_ the editor exits — which defeats watch mode.
 - **No live reflection (remote→local).** Even if the CLI detects an upstream
   change (cheap via `last_edited_time`) and rewrites the temp file, it **cannot
   make the editor reload it**. Spiked in vim/nvim: `:set autoread` alone never
   reloads an idle buffer (needs `:checktime`, which only the user's own
   `CursorHold` autocmd fires, clean-buffer only); the CLI has no channel to send
   it because the editor owns the TTY. VS Code auto-reloads clean buffers;
-  emacs/nano do not by default. A remote change against an *unsaved* buffer is a
+  emacs/nano do not by default. A remote change against an _unsaved_ buffer is a
   destructive 3-way merge (vim throws a blocking `W12` modal).
 
 Watch mode also forfeits the clean-abort guarantee (once a save lands, content is

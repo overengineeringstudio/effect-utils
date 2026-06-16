@@ -6,7 +6,7 @@
  * `Config.redacted`, so it never prints). We mock `connect` to capture the
  * connection options it receives.
  */
-import * as clients from '@restatedev/restate-sdk-clients'
+import type * as clients from '@restatedev/restate-sdk-clients'
 import { ConfigProvider, Effect, Layer, Redacted } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

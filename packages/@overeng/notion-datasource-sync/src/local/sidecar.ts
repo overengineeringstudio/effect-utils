@@ -4,8 +4,8 @@ import { Schema } from 'effect'
 
 import { sha256Hex } from '@overeng/utils'
 
+import type { AbsolutePath } from '../core/domain.ts'
 import {
-  AbsolutePath,
   Hash,
   OwnWriteSuppressionToken,
   PageId,

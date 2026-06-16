@@ -7,16 +7,11 @@ import { fileURLToPath } from 'node:url'
 
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
-import { Effect, Layer, Option, Redacted, Schema } from 'effect'
+import { Effect, Layer, Option, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import {
-  NotionConfig,
-  NotionDatabases,
-  NotionDataSources,
-  resolveNotionToken as resolveNotionTokenFromEnv,
-} from '@overeng/notion-effect-client'
+import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'
 import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
@@ -28,6 +23,7 @@ import { getGenerateApp } from '../../renderers/GenerateOutput/app.ts'
 import { GenerateView } from '../../renderers/GenerateOutput/view.tsx'
 import { getIntrospectApp } from '../../renderers/IntrospectOutput/app.ts'
 import { IntrospectView } from '../../renderers/IntrospectOutput/view.tsx'
+import { resolveNotionToken, tokenOption } from '../shared.ts'
 
 /** Re-export internal types for TypeScript declaration emit */
 export type { PlatformError } from '@effect/platform/Error'
@@ -37,6 +33,8 @@ import { loadConfig } from '../../config.ts'
 import { computeDiff, hasDifferences, parseGeneratedFile } from '../../diff.ts'
 import { introspectDatabase, type PropertyTransformConfig } from '../../introspect.ts'
 import { formatCode, writeSchemaToFile } from '../../output.ts'
+
+export { resolveNotionToken, tokenOption } from '../shared.ts'
 
 // -----------------------------------------------------------------------------
 // Exported Errors
@@ -74,19 +72,6 @@ const getGeneratorVersion = Effect.gen(function* () {
   const pkg = yield* Schema.decodeUnknown(Schema.parseJson(GeneratorPackageJsonSchema))(content)
   return pkg.version
 }).pipe(Effect.orElseSucceed(() => 'unknown'))
-
-/** Resolve the Notion API token as a `Redacted` value from the CLI option or the environment. */
-export const resolveNotionToken = (token: Option.Option<string>) =>
-  Option.isSome(token) === true
-    ? Effect.succeed(Redacted.make(token.value))
-    : resolveNotionTokenFromEnv()
-
-/** CLI option for providing a Notion API token (defaults to `NOTION_API_TOKEN`). */
-export const tokenOption = Options.text('token').pipe(
-  Options.withAlias('t'),
-  Options.withDescription('Notion API token (defaults to NOTION_API_TOKEN env var)'),
-  Options.optional,
-)
 
 // -----------------------------------------------------------------------------
 // Generate Command

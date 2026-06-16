@@ -24,7 +24,7 @@ export type { PlatformError } from '@effect/platform/Error'
 import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'
 
-import { resolveNotionToken, tokenOption } from '../schema/mod.ts'
+import { resolveNotionToken, tokenOption } from '../shared.ts'
 
 const databaseIdArg = Args.text({ name: 'database-id' }).pipe(
   Args.withDescription('The Notion database ID to operate on'),
