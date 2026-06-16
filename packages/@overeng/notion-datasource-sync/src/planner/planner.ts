@@ -45,7 +45,7 @@ import {
   type SafeDiagnostic,
   type SchemaIntentSafety,
 } from '../core/guards.ts'
-import { makeWorkspaceProof } from './property-proof.ts'
+import { evaluateDesiredFileReferences, makeWorkspaceProof } from './property-proof.ts'
 
 /** Planner-visible view of a single property column in the remote data source schema. */
 export type SchemaPropertySurface = {
@@ -808,6 +808,15 @@ const planPropertyEdit = ({
     ...(propertySurface.settlement !== undefined ? { settlement: propertySurface.settlement } : {}),
   })
   baseGuards.push(evaluatePropertyWrite(proof, desiredWrite))
+
+  /*
+   * Fail closed on a `files` write that would store a Notion-hosted signed/expiring
+   * URL as durable identity (proposed decision 0016 part 2). The property-write core
+   * allows a `files` value into a `files` column (tag-fit is a no-op), so the
+   * `ExpiringFileUrl` guard is dispatched HERE from the desired file references; an
+   * external durable `externalUrl` proceeds. `firstBlocked` surfaces it in order.
+   */
+  baseGuards.push(evaluateDesiredFileReferences(desiredWrite.value))
 
   if (propertySurface.remoteHash !== intent.baseHash) {
     if (

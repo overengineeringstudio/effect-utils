@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { evaluatePropertyWrite } from '@overeng/notion-property-write'
 
 import { hash, testIds } from '../testing/harness.ts'
-import { makeWorkspaceProof, type WorkspaceProofInputs } from './property-proof.ts'
+import {
+  evaluateDesiredFileReferences,
+  makeWorkspaceProof,
+  type WorkspaceProofInputs,
+} from './property-proof.ts'
 
 const baseInputs = (overrides: Partial<WorkspaceProofInputs> = {}): WorkspaceProofInputs => ({
   dataSourceId: testIds.dataSourceId,
@@ -118,5 +122,77 @@ describe('makeWorkspaceProof', () => {
     const { proof, desiredWrite } = makeWorkspaceProof(baseInputs())
     expect(desiredWrite.propertyId).toBe(proof.identity.propertyId)
     expect(desiredWrite.dataSourceId).toBe(proof.dataSourceId)
+  })
+})
+
+const fileValue = (file: {
+  name: string
+  externalUrl?: string
+}): WorkspaceProofInputs['desiredValue'] => ({
+  _tag: 'files',
+  files: [
+    {
+      _tag: 'CanonicalFileValue',
+      name: file.name,
+      identityHash: `sha256:${file.name}`,
+      ...(file.externalUrl === undefined ? {} : { externalUrl: file.externalUrl }),
+    },
+  ],
+})
+
+describe('evaluateDesiredFileReferences (ExpiringFileUrl dispatch — decision 0016 part 2)', () => {
+  it('blocks a files write whose value carries a Notion-hosted (no externalUrl) file', () => {
+    expect(evaluateDesiredFileReferences(fileValue({ name: 'report.pdf' }))).toMatchObject({
+      _tag: 'blocked',
+      guard: 'ExpiringFileUrl',
+    })
+  })
+
+  it('allows a files write whose value carries an external durable URL', () => {
+    expect(
+      evaluateDesiredFileReferences(
+        fileValue({ name: 'report.pdf', externalUrl: 'https://example.com/report.pdf' }),
+      ),
+    ).toEqual({ _tag: 'allowed' })
+  })
+
+  it('blocks when ANY file lacks an externalUrl (mirrors the encode-path fail-closed posture)', () => {
+    expect(
+      evaluateDesiredFileReferences({
+        _tag: 'files',
+        files: [
+          {
+            _tag: 'CanonicalFileValue',
+            name: 'a.pdf',
+            identityHash: 'sha256:a',
+            externalUrl: 'https://x/a.pdf',
+          },
+          { _tag: 'CanonicalFileValue', name: 'b.pdf', identityHash: 'sha256:b' },
+        ],
+      }),
+    ).toMatchObject({ _tag: 'blocked', guard: 'ExpiringFileUrl' })
+  })
+
+  it('allows an empty files value (a clear, not an expiring ref)', () => {
+    expect(evaluateDesiredFileReferences({ _tag: 'files', files: [] })).toEqual({ _tag: 'allowed' })
+  })
+
+  it('allows non-files writes (no file reference to evaluate)', () => {
+    expect(evaluateDesiredFileReferences({ _tag: 'title', plainText: 'x' })).toEqual({
+      _tag: 'allowed',
+    })
+    expect(evaluateDesiredFileReferences({ _tag: 'empty' })).toEqual({ _tag: 'allowed' })
+  })
+
+  it('the property-write core ALLOWS a notion-hosted files write, so the file-ref guard is what fails closed', () => {
+    // Regression: the core's tag-fit is a no-op (a `files` value fits a `files`
+    // column), so `evaluatePropertyWrite` allows. The ExpiringFileUrl block must
+    // therefore come from the separate file-reference dispatch, not the core.
+    const desiredValue = fileValue({ name: 'report.pdf' })
+    expect(evaluate({ writeClass: 'writable', desiredValue })).toEqual({ _tag: 'allowed' })
+    expect(evaluateDesiredFileReferences(desiredValue)).toMatchObject({
+      _tag: 'blocked',
+      guard: 'ExpiringFileUrl',
+    })
   })
 })

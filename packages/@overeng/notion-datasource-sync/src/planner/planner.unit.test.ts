@@ -609,6 +609,90 @@ describe('notion datasource planner', () => {
     })
   })
 
+  it('blocks a files property write whose value carries a Notion-hosted (signed/expiring) URL with ExpiringFileUrl', () => {
+    // Decision 0016 part 2 (#775 M3b): a `CanonicalFileValue` is durable identity
+    // only with an `externalUrl`; a Notion-hosted file is canonicalized without one,
+    // so a missing `externalUrl` is the signed/expiring case. The base is clean
+    // (`baseHash === remoteHash === hash('a')`), so planning reaches the guard rather
+    // than yielding to a StaleSurfaceBase/OpenConflict block first.
+    const filesCommand = decode(PatchPagePropertiesCommand, {
+      _tag: 'PatchPagePropertiesCommand',
+      commandId,
+      pageId,
+      basePropertiesHash: hash('a'),
+      propertyPatch: {
+        'prop-a': {
+          _tag: 'files',
+          files: [
+            { _tag: 'CanonicalFileValue', name: 'report.pdf', identityHash: 'sha256:report' },
+          ],
+        },
+      },
+    })
+
+    const decision = planIntent({
+      snapshot: snapshot(),
+      intent: {
+        _tag: 'property-edit',
+        intentEventId,
+        commandKey,
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
+        pageId,
+        propertyId: propertyA,
+        command: filesCommand,
+        baseHash: hash('a'),
+        desiredHash: hash('f'),
+        expectedPropertyConfigHash: hash('c'),
+      },
+    })
+
+    expect(decision).toMatchObject({
+      _tag: 'BlockedByGuard',
+      guard: 'ExpiringFileUrl',
+    })
+  })
+
+  it('allows a files property write whose value carries an external durable URL (not blocked by ExpiringFileUrl)', () => {
+    const filesCommand = decode(PatchPagePropertiesCommand, {
+      _tag: 'PatchPagePropertiesCommand',
+      commandId,
+      pageId,
+      basePropertiesHash: hash('a'),
+      propertyPatch: {
+        'prop-a': {
+          _tag: 'files',
+          files: [
+            {
+              _tag: 'CanonicalFileValue',
+              name: 'report.pdf',
+              identityHash: 'sha256:report',
+              externalUrl: 'https://example.com/report.pdf',
+            },
+          ],
+        },
+      },
+    })
+
+    const decision = planIntent({
+      snapshot: snapshot(),
+      intent: {
+        _tag: 'property-edit',
+        intentEventId,
+        commandKey,
+        surface: propertySurfaceKey({ pageId: pageId, propertyId: propertyA }),
+        pageId,
+        propertyId: propertyA,
+        command: filesCommand,
+        baseHash: hash('a'),
+        desiredHash: hash('f'),
+        expectedPropertyConfigHash: hash('c'),
+      },
+    })
+
+    // An external durable URL clears the file-reference guard; the write proceeds.
+    expect(decision).toMatchObject({ _tag: 'EnqueueCommands' })
+  })
+
   it('blocks property edits when the current property projection is missing', () => {
     const decision = planIntent({
       snapshot: snapshot({

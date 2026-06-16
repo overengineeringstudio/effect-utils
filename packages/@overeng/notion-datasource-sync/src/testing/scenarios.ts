@@ -725,6 +725,23 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L1',
     file: 'src/planner/planner.unit.test.ts',
   }),
+  // Decision 0016 part 2 (#775 M3b): the planner dispatches the dormant
+  // `ExpiringFileUrl` guard from the desired `files` property value
+  // (`evaluateDesiredFileReferences`). A `CanonicalFileValue` is durable only with
+  // an `externalUrl`; a Notion-hosted file is canonicalized without one, so a
+  // missing `externalUrl` IS the signed/expiring case — block it, allow external
+  // durable URLs. The property-write core allows the same value (tag-fit no-op), so
+  // this separate file-reference dispatch is what fails closed.
+  scenario({
+    scenarioId: 'NDS-L1-expiring-file-url-property-write',
+    title:
+      'planner fails closed on a files property write that would store a Notion-hosted signed/expiring URL as durable identity; an external durable URL proceeds',
+    requirementIds: ['R20', 'R52', 'R59'],
+    guards: ['ExpiringFileUrl'],
+    lowestPlannerLevel: 'L1',
+    highestIntegrationLevel: 'L1',
+    file: 'src/planner/planner.unit.test.ts',
+  }),
   scenario({
     scenarioId: 'NDS-L2-pages-clean-break-surface',
     title:
@@ -903,7 +920,7 @@ const guardScenarioIds = {
   DeleteVsEdit: 'NDS-GUARD-delete-vs-edit',
   MoveOutNotDelete: 'NDS-L2-membership-lost-restored',
   UnavailableRelationTarget: 'NDS-GUARD-unavailable-relation-target',
-  ExpiringFileUrl: 'NDS-GUARD-expiring-file-url',
+  ExpiringFileUrl: 'NDS-L1-expiring-file-url-property-write',
   ReadAfterWriteMismatch: 'NDS-L3-outbox-invalid-settlement-rejected',
   AmbiguousCommandOutcome: 'NDS-L3-outbox-invalid-settlement-rejected',
   PendingIntentShadowViolation: 'NDS-L3-realistic-local-remote-conflict',
@@ -1030,13 +1047,6 @@ export const traceabilityResiduals = [
     scenarioId: 'NDS-GUARD-unavailable-relation-target',
     requirementIds: ['R19', 'R27'],
     reason: 'Unavailable relation target coverage needs relation pagination fixtures.',
-  },
-  {
-    _tag: 'placeholder-guard-scenario',
-    guard: 'ExpiringFileUrl',
-    scenarioId: 'NDS-GUARD-expiring-file-url',
-    requirementIds: ['R20', 'R52', 'R59'],
-    reason: 'Expiring file URLs are not yet represented in fake property fixtures.',
   },
   {
     _tag: 'placeholder-guard-scenario',
