@@ -48,6 +48,35 @@ export const OtelServiceName = Schema.NonEmptyTrimmedString.pipe(
 )
 export type OtelServiceName = typeof OtelServiceName.Type
 
+/** Resource attribute key `service.namespace` — a logical grouping for related services. */
+export const OtelServiceNamespace = Schema.NonEmptyTrimmedString.pipe(
+  Schema.maxLength(255),
+  Schema.brand('OtelServiceNamespace'),
+  Schema.annotations({ identifier: 'Otel.ServiceNamespace' }),
+)
+export type OtelServiceNamespace = typeof OtelServiceNamespace.Type
+
+/** Resource attribute key `service.version` — the build/release version of the service. */
+export const OtelServiceVersion = Schema.NonEmptyTrimmedString.pipe(
+  Schema.maxLength(255),
+  Schema.brand('OtelServiceVersion'),
+  Schema.annotations({ identifier: 'Otel.ServiceVersion' }),
+)
+export type OtelServiceVersion = typeof OtelServiceVersion.Type
+
+/**
+ * Typed service identity stamped onto the OTLP `Resource` for every signal
+ * (traces, metrics, logs). `name` is validated via the {@link OtelServiceName}
+ * brand so a malformed service name fails at the composition root rather than
+ * silently in a backend.
+ */
+export const ServiceIdentity = Schema.Struct({
+  name: OtelServiceName,
+  namespace: OtelServiceNamespace,
+  version: OtelServiceVersion,
+}).annotations({ identifier: 'Otel.ServiceIdentity' })
+export type ServiceIdentity = typeof ServiceIdentity.Type
+
 /** Attribute value shape accepted by Effect's span annotation API and otelite flat rows. */
 export type OtelAttributeValue = OtelPrimitive
 

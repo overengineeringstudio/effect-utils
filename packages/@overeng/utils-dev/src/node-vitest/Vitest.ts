@@ -95,26 +95,27 @@ export const makeOtelVitestLayer = (
     rootSpanName,
   } = config
 
-  return Layer.unwrapEffect(
-    Effect.sync(() => {
-      const endpoint = explicitEndpoint ?? process.env[endpointEnvVar]
-      if (endpoint === undefined) {
-        return Layer.span(rootSpanName)
-      }
+  // Use Layer.suspend (not Layer.unwrapEffect) so the OTLP exporter's scope-close
+  // flush finalizer is reliably tied to the layer scope, matching prod `otel.ts`.
+  // `Layer.suspend` is the scope-correct primitive for a lazily-built exporter.
+  return Layer.suspend(() => {
+    const endpoint = explicitEndpoint ?? process.env[endpointEnvVar]
+    if (endpoint === undefined) {
+      return Layer.span(rootSpanName)
+    }
 
-      const exporterLive = OtlpTracer.layer({
-        // Full traces URL: OtlpTracer POSTs `url` verbatim (no suffix appended).
-        url: otlpTracesUrl(endpoint),
-        resource: { serviceName },
-        exportInterval,
-      }).pipe(
-        Layer.provideMerge(FetchHttpClient.layer),
-        Layer.provideMerge(OtlpSerialization.layerJson),
-      )
+    const exporterLive = OtlpTracer.layer({
+      // Full traces URL: OtlpTracer POSTs `url` verbatim (no suffix appended).
+      url: otlpTracesUrl(endpoint),
+      resource: { serviceName },
+      exportInterval,
+    }).pipe(
+      Layer.provideMerge(FetchHttpClient.layer),
+      Layer.provideMerge(OtlpSerialization.layerJson),
+    )
 
-      return Layer.mergeAll(Layer.span(rootSpanName), exporterLive)
-    }),
-  )
+    return Layer.mergeAll(Layer.span(rootSpanName), exporterLive)
+  })
 }
 
 /** Dummy OTEL layer that does nothing (for when OTEL is disabled). */
