@@ -19,7 +19,6 @@ const propertyId = decode(PropertyId, 'prop-status')
 
 const propertyIdentity: LocalIdentity = { kind: 'property', pageId, propertyId }
 const bodyIdentity: LocalIdentity = { kind: 'body', pageId }
-const lifecycleIdentity: LocalIdentity = { kind: 'lifecycle', pageId }
 
 describe('local-surface convergence', () => {
   it('is not-applicable outside shared mode (single-source mirror)', () => {
@@ -110,22 +109,6 @@ describe('local-surface convergence', () => {
     expect(result.conflicts[0]?.kind).toBe('body-body-delegated')
     expect(result.propertyVerdicts).toHaveLength(0)
     expect(result.blockedIdentities).toEqual([bodyIdentity])
-  })
-
-  it('classifies lifecycle divergence as a delete-vs-edit conflict with no property verdict', () => {
-    const result = convergeLocalSurfaces({
-      authorityMode: 'shared',
-      dataFileEdits: [
-        { identity: lifecycleIdentity, desiredHash: hash('a'), lifecycleAction: 'trash' },
-      ],
-      nmdFacts: [
-        { identity: lifecycleIdentity, desiredHash: hash('b'), lifecycleAction: 'restore' },
-      ],
-    })
-    if (result._tag !== 'shared') throw new Error('expected shared')
-    expect(result.conflicts[0]?.kind).toBe('delete-vs-edit')
-    expect(result.propertyVerdicts).toHaveLength(0)
-    expect(result.blockedIdentities).toEqual([lifecycleIdentity])
   })
 
   it('overlays property verdicts onto planner surfaces, leaving unevaluated surfaces untouched', () => {

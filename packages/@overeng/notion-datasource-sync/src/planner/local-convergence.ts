@@ -34,15 +34,19 @@
  *
  * Identity is content-stable, never path- or title-derived (R06):
  *
- * - page lifecycle → `(pageId, lifecycle)` keyed by the Notion `page_id`.
  * - property → `(pageId, propertyId)` keyed by the stable `property_id`.
  * - body → `(pageId, body)` keyed by the rendered body digest (`renderedBodyDigest`).
+ *
+ * Page lifecycle (archive/restore/create) is NOT a convergence identity: those
+ * transitions reach the planner through the CDC `row_archive`/`row_restore`
+ * intents (`replicaChangesToPlannerIntents` → `Trash`/`RestorePageCommand`),
+ * never through this engine, so there is no second surface to reconcile here.
  *
  * Only the PROPERTY identity has a `localConvergence` verdict on the
  * property-write proof: a property divergence sets
  * `PropertySurfaceSnapshot.localConvergence = 'disagrees'`, which the shared
- * PropertyWriteCore surfaces as `LocalSurfaceDisagreement`. Body and lifecycle
- * divergences have no proof field — they surface ONLY as conflicts.
+ * PropertyWriteCore surfaces as `LocalSurfaceDisagreement`. A body divergence
+ * has no proof field — it surfaces ONLY as a conflict.
  *
  * Convergence runs in `shared` mode ONLY. In `local`/`remote` mode a single
  * source mirrors the other, so there is nothing to converge and the verdict is
@@ -51,7 +55,7 @@
  * @module
  */
 
-import { bodySurfaceKey, pageSurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
+import { bodySurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
 import type { ConflictPayload } from '../core/conflicts.ts'
 import { classifyConflict } from '../core/conflicts.ts'
 import type { Hash, PageId, PropertyId } from '../core/domain.ts'
@@ -64,10 +68,6 @@ import type { Hash, PageId, PropertyId } from '../core/domain.ts'
 export type LocalIdentity =
   | { readonly kind: 'property'; readonly pageId: PageId; readonly propertyId: PropertyId }
   | { readonly kind: 'body'; readonly pageId: PageId }
-  | { readonly kind: 'lifecycle'; readonly pageId: PageId }
-
-/** Lifecycle transition expressed by a local edit. */
-export type LifecycleAction = 'create' | 'trash' | 'restore'
 
 /**
  * One drained SQLite data-file edit, projected to its stable identity and the
@@ -81,8 +81,6 @@ export type DataFileLocalEdit = {
   readonly desiredHash: Hash
   /** Hash of the base state the edit was authored against, when carried. */
   readonly baseHash?: Hash
-  /** Lifecycle transition, for `lifecycle` identities. */
-  readonly lifecycleAction?: LifecycleAction
 }
 
 /**
@@ -95,7 +93,6 @@ export type NmdDesiredFact = {
   readonly identity: LocalIdentity
   readonly desiredHash: Hash
   readonly baseHash?: Hash
-  readonly lifecycleAction?: LifecycleAction
 }
 
 /** Which physical surface authored a single-surface intent. */
@@ -115,7 +112,6 @@ export type ConvergenceOutcome =
       readonly identity: LocalIdentity
       readonly desiredHash: Hash
       readonly baseHash: Hash | undefined
-      readonly lifecycleAction: LifecycleAction | undefined
     }
   | {
       readonly _tag: 'single-surface'
@@ -123,7 +119,6 @@ export type ConvergenceOutcome =
       readonly surface: ConvergenceSurface
       readonly desiredHash: Hash
       readonly baseHash: Hash | undefined
-      readonly lifecycleAction: LifecycleAction | undefined
     }
   | {
       readonly _tag: 'local-conflict'
@@ -170,8 +165,6 @@ const identityKey = (identity: LocalIdentity): string => {
       return `property:${identity.pageId}:${identity.propertyId}`
     case 'body':
       return `body:${identity.pageId}`
-    case 'lifecycle':
-      return `lifecycle:${identity.pageId}`
   }
 }
 
@@ -181,8 +174,6 @@ const surfaceKeyForIdentity = (identity: LocalIdentity) => {
       return propertySurfaceKey({ pageId: identity.pageId, propertyId: identity.propertyId })
     case 'body':
       return bodySurfaceKey(identity.pageId)
-    case 'lifecycle':
-      return pageSurfaceKey(identity.pageId)
   }
 }
 
@@ -268,16 +259,6 @@ const conflictFor = ({
             message: 'Local SQLite and `.nmd` surfaces disagree on the page body',
           }
     }
-    case 'lifecycle':
-      return {
-        kind: 'delete-vs-edit',
-        localSurface: surface,
-        remoteSurface: surface,
-        baseHash: sqlite.baseHash,
-        localHash: sqlite.desiredHash,
-        remoteHash: nmd.desiredHash,
-        message: 'Local SQLite and `.nmd` surfaces disagree on the page lifecycle',
-      }
   }
 }
 
@@ -356,7 +337,6 @@ export const convergeLocalSurfaces = ({
           identity,
           desiredHash: sqlite.desiredHash,
           baseHash: sqlite.baseHash ?? nmd.baseHash,
-          lifecycleAction: sqlite.lifecycleAction ?? nmd.lifecycleAction,
         })
         if (identity.kind === 'property') {
           propertyVerdicts.push({
@@ -390,7 +370,6 @@ export const convergeLocalSurfaces = ({
       surface,
       desiredHash: edit.desiredHash,
       baseHash: edit.baseHash,
-      lifecycleAction: edit.lifecycleAction,
     })
     // No `converged` verdict for a single-surface edit: only one surface asserted
     // a desired state, so there was no second surface to cross-check. `converged`

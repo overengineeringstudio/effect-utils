@@ -1141,6 +1141,21 @@ const planLocalDelete = ({
     }
   }
 
+  // A restore must be guarded symmetrically with a trash: restoring a page that
+  // moved out of the tracked source (rather than being genuinely trashed) is not a
+  // legitimate restore and is blocked as `MoveOutNotDelete`. A genuinely-trashed
+  // page (reason `remote_trash`) carries no `movedOut` flag, so it proceeds. The
+  // delete-vs-edit / permission-ambiguous arms do not apply to a restore: the row
+  // is not currently in the query window, so it carries no concurrent remote
+  // edit, and permission ambiguity is a trash-classification concern.
+  if (intent.command._tag === 'RestorePageCommand' && row?.movedOut === true) {
+    return blockDecision({
+      guard: 'MoveOutNotDelete',
+      surface: intent.surface,
+      summary: 'Moved-out page is not a restorable trash',
+    })
+  }
+
   if (
     intent.command._tag === 'TrashPageCommand' &&
     (intent.explicitDestructiveIntent === false ||
