@@ -84,6 +84,31 @@ The pipe base hash ([01-editor](../01-editor/spec.md#guard-plumbing)) and the
 engine's base snapshot ([03-sync-engine](../03-sync-engine/spec.md)) both depend on
 this canonicalization for idempotence.
 
+## Canonical Body Form (one function, both boundaries)
+
+Decision [0019](../.decisions/0019-one-canonical-body-at-both-wire-boundaries.md).
+
+There is **one renderer** (`treeToMarkdown`) and **one canonicalizer**
+(`canonicalizeBlockMarkdown`, in `@overeng/notion-effect-client` beside the
+renderer). Both Notion wire boundaries route the body through the canonicalizer,
+so the body a surface reads (`cat`/`edit`/file sync), the body hashed/compared,
+and the body pushed are the **same canonical bytes**:
+
+- **Pull receive** canonicalizes at the source: `observeFromSnapshots`
+  canonicalizes the rendered body once, before it feeds the inventory, the
+  fidelity classifier, and the evidence fingerprint — so all of them agree by
+  construction.
+- **Push send** (`replace_content`) canonicalizes the same way.
+
+The renderer emits *parseable-not-canonical* Markdown (it joins sibling blocks
+with `\n\n` so they survive a reparse) and carries no spacing policy; the
+canonical layer owns spacing/list-tightness (it forces `spread = false` on lists,
+so a tight Notion list does not pull as a loose CommonMark list, and the stray
+indented blank line inside nested lists is removed). Hosted-media URL
+canonicalization (above) is a sub-step. `semanticEquivalent` (the push gate) is
+whitespace-insensitive outside fenced code and is invariant across this — it
+already masked the prior pull-loose / push-tight divergence.
+
 ## Push Strategy (fidelity intersection)
 
 Refuse-lossy is what makes the **server-side `replace_content` push** safe: because

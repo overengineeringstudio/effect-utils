@@ -49,7 +49,7 @@ describe('canonicalizeBlockMarkdown', () => {
   })
 
   /*
-   * List-tightness locking tests (decision 0018). The renderer joins sibling
+   * List-tightness locking tests (decision 0019). The renderer joins sibling
    * blocks with `\n\n`, producing a *loose* list; the canonical layer is the
    * single place that forces lists tight (`spread = false`) while leaving the
    * blank line before a following non-list block intact.

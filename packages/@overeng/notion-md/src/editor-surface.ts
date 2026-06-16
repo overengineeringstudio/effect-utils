@@ -23,7 +23,7 @@ import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
  *
  * The body arrives here already in the single canonical form (pull routes every
  * body through `canonicalizeBlockMarkdown`, hosted-media URL canonicalization /
- * Group B included — decision 0018). This module frames that canonical body
+ * Group B included — decision 0019). This module frames that canonical body
  * verbatim and must NOT re-canonicalize it: the `# <title>` line is a
  * presentation affordance, not body Markdown, and routing the title-framed
  * buffer back through the Markdown parser would break the load-bearing H1

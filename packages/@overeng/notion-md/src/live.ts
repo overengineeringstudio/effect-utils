@@ -130,17 +130,10 @@ export const remoteMarkdownFromBodyObservation = (
   body: NotionBodyObservation,
 ): RemoteMarkdownSnapshot => {
   /*
-   * `observeFromSnapshots` always renders the block tree into `renderedMarkdown`
-   * (`body-observation.ts`), so it is total on the pull path. A missing value
-   * is an invariant violation, not a recoverable state — fail as a defect rather
-   * than silently falling back to the endpoint Markdown (which runs headings
-   * together and drops inter-block blanks, the latent symptom-2 trap).
-   */
-  /*
    * `observeFromSnapshots` renders the block tree and canonicalizes it once at
    * the source (`body-observation.ts`), so `renderedMarkdown` is already the
    * single canonical body form — the same bytes the evidence fingerprint, the
-   * fidelity classifier, hash, and push see (decision 0018, "agree by
+   * fidelity classifier, hash, and push see (decision 0019, "agree by
    * construction"). It is total on the pull path; a missing value is an
    * invariant violation, not a recoverable state — fail as a defect rather than
    * silently falling back to the endpoint Markdown (which runs headings together

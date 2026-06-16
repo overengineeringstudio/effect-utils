@@ -100,7 +100,7 @@ describe('notion-md merge planning', () => {
     // canonical (tight-list) form. The user's desired buffer is raw. The plan's
     // `oldStr`/`newStr` are deliberately raw substrings Notion matches verbatim,
     // so `desired` is NOT canonicalized — applying the plan to the canonical
-    // remote must reconstruct exactly the desired body (decision 0018, §3.3).
+    // remote must reconstruct exactly the desired body (decision 0019, §3.3).
     const base = canonicalizeBlockMarkdown('# Notes\n\n- alpha\n\n- beta\n')
     const remote = base
     expect(base).toBe('# Notes\n\n- alpha\n- beta\n') // canonical: tight list

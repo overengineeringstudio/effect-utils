@@ -4,7 +4,7 @@ import { canonicalizeBlockMarkdown } from '@overeng/notion-effect-client'
  * `canonicalizeBlockMarkdown` — the single canonical body form — now lives in
  * `@overeng/notion-effect-client`, beside the renderer (`treeToMarkdown`) and
  * the media-URL canonicalizer it calls, so the canonical body is produced where
- * the bytes originate (decision 0018). This module keeps only `semanticEquivalent`,
+ * the bytes originate (decision 0019). This module keeps only `semanticEquivalent`,
  * which is sync *policy* (the push integrity gate), not the wire form itself.
  */
 export { canonicalizeBlockMarkdown } from '@overeng/notion-effect-client'

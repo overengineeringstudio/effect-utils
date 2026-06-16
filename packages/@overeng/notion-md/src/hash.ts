@@ -5,10 +5,15 @@ import { sha256Hex } from '@overeng/utils'
  * Lightweight line-ending normalizer for body hashing and on-disk storage.
  *
  * Folds CRLF/CR to LF, trims trailing whitespace, ensures a final newline.
- * Block-level *canonicalization* — paragraph unwrap, GFM rules, hyphen
- * bullets — lives in `canonical-markdown.ts` and is applied separately at
- * the Notion wire boundary (push send + post-push compare + pull receive).
- * Two functions, two responsibilities: never collapse them.
+ * Block-level *canonicalization* — paragraph unwrap, GFM rules, hyphen bullets,
+ * tight lists — is `canonicalizeBlockMarkdown` in `@overeng/notion-effect-client`
+ * (beside the renderer it canonicalizes), applied at BOTH Notion wire boundaries:
+ * pull receive (`observeFromSnapshots` canonicalizes the rendered body at the
+ * source) and push send + post-push compare (decision 0019). This line-ending
+ * normalize is a *sub-step* of that canonical form, but is also used on its own
+ * for on-disk / title-frame / hash-prep where a full re-canonicalization would be
+ * wrong (it must preserve verbatim line/substring identity). Two responsibilities,
+ * one a step of the other: never substitute one for the other.
  */
 export const normalizeMarkdownLineEndings = (markdown: string): string =>
   markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\s+$/u, '') + '\n'

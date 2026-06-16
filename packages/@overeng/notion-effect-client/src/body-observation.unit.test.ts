@@ -349,7 +349,7 @@ describe('NotionBody.observeFromSnapshots', () => {
       }),
     )
 
-    // Canonical body ends in a single trailing newline (decision 0018);
+    // Canonical body ends in a single trailing newline (decision 0019);
     // the lossy verdict (endpoint missing the rendered suffix) is unchanged.
     expect(observed.inventory.renderedMarkdown).toBe('# Heading\n\nNested child\n')
     expect(observed.completeness).toEqual({
@@ -377,7 +377,7 @@ describe('NotionBody.observe', () => {
 
     expect(observed.pageId).toBe(pageId)
     expect(observed.markdown.markdown).toBe('Stable body')
-    // Canonical rendered body ends in a trailing newline (decision 0018).
+    // Canonical rendered body ends in a trailing newline (decision 0019).
     expect(observed.inventory.renderedMarkdown).toBe('Stable body\n')
     expect(observed.completeness).toEqual({ _tag: 'complete' })
     expect(test.requests).toEqual([

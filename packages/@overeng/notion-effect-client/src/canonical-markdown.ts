@@ -22,7 +22,7 @@ import { canonicalizeMediaUrlsInMarkdown } from './media-url.ts'
  * canonicalizer (`media-url.ts`) it calls, so the canonical body is produced
  * where the bytes originate: `body-observation` emits an already-canonical
  * `renderedMarkdown`, and the evidence fingerprint, the fidelity classifier,
- * pull, hash, and push all see the same canonical string (decision 0018).
+ * pull, hash, and push all see the same canonical string (decision 0019).
  */
 
 /*
@@ -85,7 +85,7 @@ const processor = unified()
  * Reduce arbitrary Markdown to the single canonical body form, applied at BOTH
  * Notion wire boundaries — pull receive and push send — so the body a consumer
  * reads (`cat` / `edit` / file sync), the body hashed, and the body pushed are
- * the same bytes (decision 0018). The steps, in order:
+ * the same bytes (decision 0019). The steps, in order:
  *
  *   1. line-ending normalize (CRLF/CR → LF)
  *   2. hosted-media URL canonicalize (volatile signature/expiry query params
