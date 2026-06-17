@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **repo**: Add a no-op Hypermerge production canary for schickling/dotfiles#1072.
+
 - **Notion docs**: Ratify the durable Notion DB Markdown Sync VRS decisions into
   `context/notion-db-markdown-sync/decisions/0014` through `0026` and remove the
   provisional `decisions/proposed` ledger.
