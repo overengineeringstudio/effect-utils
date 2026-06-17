@@ -28,7 +28,10 @@ export default oxlintConfig({
       files: ['**/genie/src/runtime/**/*.test.ts'],
       rules: { 'overeng/no-external-imports': 'off' },
     },
-    // jsdoc-require-exports governs PUBLISHED package API documentation. The
+    // jsdoc-require-exports is ENFORCED as `error` (base rule, oxlint-base.ts):
+    // every published package `src` export must carry JSDoc. The exemptions here
+    // + the base test/story/config exemptions keep non-API surfaces off.
+    //
     // config-generation tooling (the `genie/` dirs + `*.genie.ts` generator
     // sources) and illustrative `examples/` code are not published API, so the
     // rule is scoped off there. `**/genie/**` also matches the `@overeng/genie`
