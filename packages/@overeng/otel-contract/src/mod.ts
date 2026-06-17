@@ -8,6 +8,7 @@ import {
   Metric,
   MetricBoundaries,
   Option,
+  ParseResult,
   Redacted,
   Schema,
   Stream,
@@ -76,6 +77,93 @@ export const ServiceIdentity = Schema.Struct({
   version: OtelServiceVersion,
 }).annotations({ identifier: 'Otel.ServiceIdentity' })
 export type ServiceIdentity = typeof ServiceIdentity.Type
+
+/**
+ * Pre-validation parts of the conventional `<project>-<role>` service name. The
+ * parts are plain {@link Schema.NonEmptyTrimmedString} rather than dedicated
+ * brands: that is the LIGHTEST typing that still rejects empty/whitespace parts,
+ * and it is load-bearing for correctness. {@link OtelServiceName}'s pattern
+ * (`^[A-Za-z][A-Za-z0-9_.:-]*$`) admits a TRAILING hyphen, so an empty `role`
+ * would compose to `"<project>-"` and pass a naive single decode of the joined
+ * string. Validating the parts here first closes that trap; the joined string is
+ * then decoded through {@link OtelServiceName} so the leading-letter + charset
+ * naming law (shared with the rest of the contract) still applies.
+ */
+export const ServiceNameParts = Schema.Struct({
+  project: Schema.NonEmptyTrimmedString,
+  role: Schema.NonEmptyTrimmedString,
+}).annotations({ identifier: 'Otel.ServiceNameParts' })
+export type ServiceNameParts = typeof ServiceNameParts.Type
+
+/**
+ * Builds `service.name = `${project}-${role}`` from typed parts, validated end to
+ * end: parts decode through {@link ServiceNameParts} (rejects empty/whitespace),
+ * the joined string decodes through the {@link OtelServiceName} brand (the same
+ * naming law as every other contract name). A malformed part is a decode error at
+ * the composition root, never a backend surprise. Decode it like any other brand:
+ * `Schema.decode(ServiceNameFromParts)({ project, role })`.
+ */
+export const ServiceNameFromParts = Schema.transformOrFail(ServiceNameParts, OtelServiceName, {
+  strict: true,
+  decode: (parts, _options, ast) =>
+    ParseResult.decodeUnknown(OtelServiceName)(`${parts.project}-${parts.role}`).pipe(
+      Effect.mapError(
+        (issue) =>
+          new ParseResult.Type(ast, parts, ParseResult.TreeFormatter.formatIssueSync(issue)),
+      ),
+    ),
+  encode: (name, _options, ast) =>
+    ParseResult.fail(
+      new ParseResult.Forbidden(
+        ast,
+        name,
+        'A composed service name cannot be split back into parts',
+      ),
+    ),
+}).annotations({ identifier: 'Otel.ServiceNameFromParts' })
+
+/**
+ * The SHAPE a private fleet configuration supplies to produce a
+ * {@link ServiceIdentity}. This PUBLIC repo owns the TYPE and the constructor
+ * ({@link serviceIdentityFromBinding}); the private fleet config supplies the
+ * VALUES. Fields are plain pre-validation `string`s on purpose — branding them
+ * here would defeat the decode-at-the-edge story — so the binding is the raw
+ * input the composition root decodes once. This repo contains ZERO fleet values;
+ * a private repo binds against this seam.
+ */
+export interface FleetServiceBinding {
+  /** Logical project the service belongs to (left of the `<project>-<role>` name). */
+  readonly project: string
+  /** Role the process plays within the project (right of the `<project>-<role>` name). */
+  readonly role: string
+  /** `service.namespace` — logical grouping for related services. */
+  readonly namespace: string
+  /** `service.version` — build/release version of the service. */
+  readonly version: string
+}
+
+/**
+ * Assembles a validated {@link ServiceIdentity} from a {@link FleetServiceBinding}:
+ * the `<project>-<role>` name is built + validated via {@link ServiceNameFromParts}
+ * and `namespace`/`version` decode through their brands. Removes the hand-rolled
+ * `Schema.decode(ServiceIdentity)({ name: `${project}-${role}`, … })` at every
+ * composition root. A malformed part/namespace/version is a decode error here, at
+ * the edge.
+ */
+export const serviceIdentityFromBinding = (
+  binding: FleetServiceBinding,
+): Effect.Effect<ServiceIdentity, ParseResult.ParseError> =>
+  Effect.gen(function* () {
+    const name = yield* Schema.decode(ServiceNameFromParts)({
+      project: binding.project,
+      role: binding.role,
+    })
+    return yield* Schema.decode(ServiceIdentity)({
+      name,
+      namespace: binding.namespace,
+      version: binding.version,
+    })
+  })
 
 /** Attribute value shape accepted by Effect's span annotation API and otelite flat rows. */
 export type OtelAttributeValue = OtelPrimitive
