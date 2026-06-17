@@ -3,10 +3,13 @@ import { basename, dirname, resolve } from 'node:path'
 import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem, Path } from '@effect/platform'
 import { Cause, Console, Duration, Effect, Layer, Option, Queue, Schema, Stream } from 'effect'
+import React from 'react'
 
 import { NotionConfigLive, resolveNotionToken } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
 import { OtelAttr, OtelAttrs, OtelOperation } from '@overeng/otel-contract'
+import { run } from '@overeng/tui-react'
+import { outputModeLayer, outputOption } from '@overeng/tui-react/node'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import {
@@ -16,6 +19,9 @@ import {
   statusMany,
   syncMany,
 } from './batch.ts'
+import { getEditApp } from './cli-output/edit/app.ts'
+import { EditView } from './cli-output/edit/view.tsx'
+import { progressReporterTui } from './cli-output/progress-bridge.ts'
 import {
   catEditorPage,
   editEditorPage,
@@ -28,7 +34,6 @@ import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { annotateAttrs, withOperation } from './observability.ts'
 import { planPath, statusPath, syncPath, targetKind } from './path.ts'
-import { ProgressReporterStderrLines } from './progress.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { pullPage, syncPage, type SyncOptions } from './sync.ts'
 import { NOTION_MD_VERSION } from './version.ts'
@@ -789,8 +794,13 @@ const putCommand = Command.make(
 const makeEditCommand = (name: string) =>
   Command.make(
     name,
-    { page: pageArg, frontmatter: frontmatterOption, readOnly: readOnlyOption },
-    ({ page, frontmatter, readOnly }) => {
+    {
+      page: pageArg,
+      frontmatter: frontmatterOption,
+      readOnly: readOnlyOption,
+      output: outputOption,
+    },
+    ({ page, frontmatter, readOnly, output }) => {
       const mode: EditorMode = frontmatter === true ? 'frontmatter' : 'default'
       return commandSpan({
         command: 'edit',
@@ -801,25 +811,53 @@ const makeEditCommand = (name: string) =>
         effect: resolvePageArg(page).pipe(
           Effect.flatMap((pageId) =>
             readOnly === true
-              ? withNotion(editReadOnlyPage({ pageId, mode })).pipe(
+              ? // Read-only does no push (no stages, no result to render): keep its
+                // existing minimal JSON path so its e2e behavior is unchanged.
+                withNotion(editReadOnlyPage({ pageId, mode })).pipe(
                   Effect.map((result): unknown => result),
+                  Effect.flatMap(logJson),
                 )
-              : withNotion(editEditorPage({ pageId, mode, pageRef: page })).pipe(
-                  Effect.map((result): unknown => result),
-                  /*
-                   * Staged write-path progress (R43–R45, decision 0018): wire the
-                   * live stderr-line reporter ONLY on the `edit` push path, and
-                   * only when stderr is a TTY — a piped/redirected write provides
-                   * nothing (Layer.empty → serviceOption None → silent), keeping
-                   * the path byte-identical and pipe-safe (R44/R45). Constructed
-                   * lazily inside the handler (no TUI graph, no #787 TDZ risk).
-                   */
-                  Effect.provide(
-                    process.stderr.isTTY === true ? ProgressReporterStderrLines : Layer.empty,
-                  ),
-                ),
+              : /*
+                 * Push path: route the staged write-progress + outcome through the
+                 * tui-react OutputMode seam (Slice B). The engine emits stages via
+                 * the `ProgressReporter` Tag; `progressReporterTui` bridges each
+                 * transition onto `tui.dispatch`, and `SetResult` carries the final
+                 * `EditResult` into the terminal view state. Under `run`, the human
+                 * view AND json both go to stdout, switched by `--output` (auto
+                 * detects non-tty → json/log), so a pipe stays clean. The app is
+                 * built lazily inside the handler (no #787 TDZ risk).
+                 */
+                run(
+                  getEditApp(),
+                  (tui) =>
+                    withNotion(editEditorPage({ pageId, mode, pageRef: page })).pipe(
+                      Effect.tap((result) =>
+                        Effect.sync(() =>
+                          tui.dispatch({
+                            _tag: 'SetResult',
+                            result: {
+                              outcome: result.outcome,
+                              ...(result.conflictPath === undefined
+                                ? {}
+                                : { conflictPath: result.conflictPath }),
+                            },
+                          }),
+                        ),
+                      ),
+                      Effect.tapErrorCause((cause) =>
+                        Option.match(Cause.failureOption(cause), {
+                          onNone: () => Effect.void,
+                          onSome: (error) =>
+                            Effect.sync(() =>
+                              tui.dispatch({ _tag: 'SetError', message: String(error) }),
+                            ),
+                        }),
+                      ),
+                      Effect.provide(progressReporterTui(tui.dispatch)),
+                    ),
+                  { view: React.createElement(EditView, { stateAtom: getEditApp().stateAtom }) },
+                ).pipe(Effect.provide(outputModeLayer(output))),
           ),
-          Effect.flatMap(logJson),
         ),
       })
     },
