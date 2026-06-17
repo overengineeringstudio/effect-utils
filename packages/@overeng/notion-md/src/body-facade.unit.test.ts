@@ -19,7 +19,7 @@ import {
   replaceRemoteBodyVerified,
   settleVerifiedBodyPush,
 } from './body-facade.ts'
-import { renderNmdFile } from './frontmatter.ts'
+import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import {
   NotionMdGateway,
@@ -318,6 +318,35 @@ describe('notion-md body facade', () => {
     expect(store.writeNmdFileCalls[0]?.content).toContain(body)
     expect(gateway.updateMarkdownCalls).toEqual([])
     expect(gateway.metadataUpdateCalls).toEqual([])
+  })
+
+  it('preserves writable frontmatter properties during verified body settlement', async () => {
+    const body = normalizeMarkdownLineEndings('Pushed body\n')
+    const content = renderNmdFile({
+      frontmatter: {
+        ...frontmatter('Local title'),
+        notion_md: {
+          ...frontmatter('Local title').notion_md,
+          properties: { Status: { _tag: 'select', value: 'In progress' } },
+        },
+      },
+      body,
+    })
+    const gateway = new FakeGateway(body)
+    const store = new FakeStore(new Map([[path, content]]))
+
+    await runWithGatewayAndStore(
+      settleVerifiedBodyPush({ pageId, path, expectedLocalBodyHash: sha256Digest(body) }),
+      gateway,
+      store,
+    )
+
+    const written = store.writeNmdFileCalls[0]?.content
+    expect(written).toBeDefined()
+    const parsed = await runWithStore(parseNmdFile({ path, content: written ?? '' }), store)
+    expect(parsed.frontmatter.notion_md.properties).toEqual({
+      Status: { _tag: 'select', value: 'In progress' },
+    })
   })
 
   it('refuses settlement without writing when the local body changed', async () => {

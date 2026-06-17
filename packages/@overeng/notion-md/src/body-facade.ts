@@ -32,6 +32,7 @@ export class NotionMdBodyConflictError extends Schema.TaggedError<NotionMdBodyCo
   },
 ) {}
 
+/** Remote body-only observation with hashes and optional fidelity evidence. */
 export interface NotionMdBodySnapshot {
   readonly pageId: string
   readonly markdown: string
@@ -42,15 +43,19 @@ export interface NotionMdBodySnapshot {
   readonly completeness?: BodyCompleteness
 }
 
+/** Parsed local `.nmd` body observation, including the editable property frontmatter. */
 export interface NotionMdLocalBodySnapshot extends NotionMdBodySnapshot {
   readonly path: string
   readonly fileContentHash: Sha256Digest
+  readonly properties: Readonly<Record<string, NmdWritablePropertyValue>>
 }
 
+/** Result of materializing a remote body through the shared NotionMD track path. */
 export interface NotionMdMaterializedBody extends NotionMdLocalBodySnapshot {
   readonly track: TrackResult
 }
 
+/** Remote body replacement result after the write has been re-observed. */
 export interface NotionMdVerifiedRemoteReplaceResult {
   readonly pageId: string
   readonly previousBodyHash: Sha256Digest
@@ -62,6 +67,7 @@ export interface NotionMdVerifiedRemoteReplaceResult {
   readonly completeness?: BodyCompleteness
 }
 
+/** Local body settlement result after a verified remote body push. */
 export interface NotionMdSettledBodyPush {
   readonly pageId: string
   readonly path: string
@@ -190,6 +196,7 @@ export const readLocalBody = (opts: {
         schemaVersion: 1,
       }),
       fileContentHash: sha256Digest(content),
+      properties: parsed.frontmatter.notion_md.properties,
     }
   })
 
@@ -333,7 +340,11 @@ export const settleVerifiedBodyPush = (opts: {
       })
     }
 
-    const materialized = yield* materializeBody({ pageId: opts.pageId, outPath: opts.path })
+    const materialized = yield* materializeBody({
+      pageId: opts.pageId,
+      outPath: opts.path,
+      properties: local.properties,
+    })
     return {
       pageId: opts.pageId,
       path: opts.path,

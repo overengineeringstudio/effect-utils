@@ -109,6 +109,7 @@ const markdownStringifyOptions = {
   fence: '`',
   fences: true,
   listItemIndent: 'one',
+  resourceLink: true,
   rule: '-',
   setext: false,
   tightDefinitions: true,

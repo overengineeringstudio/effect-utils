@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -55,14 +55,7 @@ import {
 } from '../core/ports.ts'
 import { makeGatewayError, makeNotionApiContract } from '../gateway/gateway.ts'
 import type { NotionGatewayClient, NotionGatewayPage } from '../gateway/notion.ts'
-import {
-  dataFilePath,
-  dataFileRelativePath,
-  loadWorkspaceManifest,
-  pagesDirRelativePath,
-  stateSqlitePath,
-  writeWorkspaceManifestSync,
-} from '../local/manifest.ts'
+import { loadWorkspaceManifest, pagesDirRelativePath } from '../local/manifest.ts'
 import { presentArtifactObservation } from '../local/workspace.ts'
 import { projectReplicaFromSyncStore } from '../replica/replica.ts'
 import { NotionSyncStore, openNotionSyncStore } from '../store/store.ts'
@@ -362,38 +355,27 @@ const createBoundSqlite = async ({
   })
 }
 
-/**
- * Establishes a split workspace (ADR 0011): the control plane in
- * `.notion/v1/state.sqlite` and the public projection in the data file. Mirrors
- * what `sync --from-notion` produces, for tests that exercise workspace-rooted
- * discovery rather than a standalone `--sqlite` file.
- */
-const createSplitWorkspaceStore = async (workspace: typeof AbsolutePath.Type): Promise<void> => {
-  const statePath = stateSqlitePath(workspace)
-  const dataPath = dataFilePath({ workspaceRoot: workspace, name: testIds.databaseId })
-  await mkdir(dirname(statePath), { recursive: true })
-  await mkdir(dirname(dataPath), { recursive: true })
-  const clock = makeFakeClock()
-  const store = openNotionSyncStore({ path: statePath, now: clock.now })
+const establishTrackedWorkspace = async ({
+  workspace,
+  mode = 'shared',
+}: {
+  readonly workspace: typeof AbsolutePath.Type
+  readonly mode?: 'local' | 'remote' | 'shared'
+}): Promise<void> => {
+  const argv = ['track', testIds.dataSourceId, workspace, '--mode', mode, '--no-materialize-bodies']
+  const command = parseCliCommand(argv)
+  const context = parseCliContext({ argv, resolvedCommand: command })
   try {
-    initOneShotSync({
-      store,
-      rootId: testIds.rootId,
-      dataSourceId: testIds.dataSourceId,
-      workspaceRoot: workspace,
-      now: clock.now,
-    })
-    await runWithPorts(pullOneShotSync(context({ store, clock, workspaceRoot: workspace })), {
-      gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway,
-    })
+    await Effect.runPromise(
+      runCliCommandWithRuntime({
+        command,
+        context,
+        options: { gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway },
+      }),
+    )
   } finally {
-    store.close()
+    context.store.close()
   }
-  projectReplicaFromSyncStore({
-    syncStorePath: statePath,
-    replicaPath: dataPath,
-    rootId: testIds.rootId,
-  })
 }
 
 describe('CLI command surface', () => {
@@ -1014,28 +996,12 @@ describe('CLI command surface', () => {
       // that points at the canonical adoption verb (`track`).
       expect(() => parseCliContext({ argv: ['sync', dir] })).toThrow(/Run track <database-url>/)
 
-      // Establish a split workspace (ADR 0011): control plane in state.sqlite,
-      // public projection in the data file, mirroring the adoption path.
-      await createSplitWorkspaceStore(workspaceRootDir)
-      writeWorkspaceManifestSync({
-        workspaceRoot: workspaceRootDir,
-        manifest: {
-          namespace_version: 'v1',
-          authority_mode: 'shared',
-          data_sources: [
-            {
-              name: testIds.databaseId,
-              data_source_id: testIds.dataSourceId,
-              database_id: testIds.databaseId,
-              data_file: dataFileRelativePath(testIds.databaseId),
-              pages_dir: pagesDirRelativePath(testIds.databaseId),
-            },
-          ],
-        },
-      })
+      // Establish through the public adoption command so the manifest and hidden
+      // control-plane binding are created together.
+      await establishTrackedWorkspace({ workspace: workspaceRootDir })
       const ctx = parseCliContext({ argv: ['sync', dir] })
       try {
-        expect(ctx.rootId).toBe(testIds.rootId)
+        expect(ctx.rootId).toBe(`data-source:${testIds.dataSourceId}`)
         expect(ctx.dataSourceId).toBe(testIds.dataSourceId)
         expect(ctx.workspaceRoot).toBe(dir)
       } finally {
@@ -1052,15 +1018,22 @@ describe('CLI command surface', () => {
       // `track --mode shared` establishes the workspace (closing the SM2 M3 gap:
       // track has the data_source_id to write a complete manifest entry) and
       // records the workspace-wide authority mode.
-      const command = parseCliCommand(['track', 'data-source-1', dir, '--mode', 'shared'])
+      const command = parseCliCommand([
+        'track',
+        'data-source-1',
+        dir,
+        '--mode',
+        'shared',
+        '--no-materialize-bodies',
+      ])
       const ctx = parseCliContext({
-        argv: ['track', 'data-source-1', dir],
+        argv: ['track', 'data-source-1', dir, '--no-materialize-bodies'],
         resolvedCommand: command,
       })
       try {
         expect(ctx.dataSourceId).toBe('data-source-1')
         expect(ctx.workspaceRoot).toBe(dir)
-        // The persisted authority mode is read back onto the context...
+        // The selected authority mode is available to the pending establish run...
         expect(ctx.authorityMode).toBe('shared')
         // SM5b: the source's page directory is read onto the context too, so the
         // CLI materializes `.nmd` page files under `pages/v1/<name>/`. This pins
@@ -1070,7 +1043,30 @@ describe('CLI command surface', () => {
       } finally {
         ctx.store.close()
       }
-      // ...and durably written into notion.workspace.v1.json.
+      // Parsing only prepares the manifest entry; it must not leave a tracked
+      // workspace behind before remote establishment succeeds.
+      expect(loadWorkspaceManifest(decode({ schema: AbsolutePath, value: dir }))._tag).toBe(
+        'untracked',
+      )
+
+      const runCtx = parseCliContext({
+        argv: ['track', 'data-source-1', dir, '--mode', 'shared', '--no-materialize-bodies'],
+        resolvedCommand: command,
+      })
+      try {
+        await Effect.runPromise(
+          runCliCommandWithRuntime({
+            command,
+            context: runCtx,
+            options: {
+              gateway: makeFakeGatewayHarness({ propertyPages: [propertyPage()] }).gateway,
+            },
+          }),
+        )
+      } finally {
+        runCtx.store.close()
+      }
+      // ...and a successful track durably writes notion.workspace.v1.json.
       const manifest = loadWorkspaceManifest(decode({ schema: AbsolutePath, value: dir }))
       expect(manifest._tag).toBe('tracked')
       if (manifest._tag === 'tracked') {
@@ -1093,6 +1089,10 @@ describe('CLI command surface', () => {
         resolvedCommand: command,
       })
       ctx.store.close()
+      await establishTrackedWorkspace({
+        workspace: decode({ schema: AbsolutePath, value: dir }),
+        mode: 'local',
+      })
       const manifest = loadWorkspaceManifest(decode({ schema: AbsolutePath, value: dir }))
       expect(manifest._tag === 'tracked' && manifest.manifest.authority_mode).toBe('local')
     } finally {

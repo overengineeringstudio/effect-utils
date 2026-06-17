@@ -95,6 +95,7 @@ import {
   dataFileRelativePath,
   hiddenStateDirectoryName,
   loadWorkspaceManifest,
+  manifestPath,
   pagesDirRelativePath,
   stateSqlitePath,
   writeWorkspaceManifestSync,
@@ -363,6 +364,15 @@ export type CliContext = {
   readonly webhookReceiverPort?: number
   readonly webhookReceiverPath?: string
   readonly webhookReceiverStarted?: (status: NotionWebhookReceiverStatus) => void
+  readonly pendingManifestSource?: EstablishManifestSource
+}
+
+type EstablishManifestSource = {
+  readonly workspaceRoot: typeof AbsolutePath.Type
+  readonly name: string
+  readonly dataSourceId: typeof DataSourceId.Type
+  readonly databaseId: string
+  readonly authorityMode?: AuthorityMode
 }
 
 const identityKeyOf = (identity: LocalIdentity): string => {
@@ -832,6 +842,12 @@ const withOptionalCommandOptions = ({
 const withOptionalObservationLimit = (context: CliContext): { readonly rowLimit?: number } =>
   context.rowLimit === undefined ? {} : { rowLimit: context.rowLimit }
 
+const writePendingManifestAfterEstablish = (context: CliContext): void => {
+  if (context.pendingManifestSource !== undefined) {
+    writeEstablishedWorkspaceManifest(context.pendingManifestSource)
+  }
+}
+
 // Watch daemon state is hidden implementation state (R02): it always lives under
 // the versioned `.notion/v1` namespace, never inside the public `data/v1` SQL
 // surface dir alongside the data file.
@@ -1121,6 +1137,7 @@ const runCliCommandEffect = ({
             })
           }),
         ),
+        Effect.tap(() => Effect.sync(() => writePendingManifestAfterEstablish(context))),
         Effect.map((result) => envelope({ command: command._tag, context, result })),
       )
     case 'push':
@@ -2116,7 +2133,13 @@ type DiscoveredSelfContainedStore = {
   readonly pagesDir?: string
 }
 
-const readSelfContainedBinding = (storePath: string): WorkspaceBindingRow | undefined => {
+const readSelfContainedBinding = ({
+  storePath,
+  rootId,
+}: {
+  readonly storePath: string
+  readonly rootId?: SyncRootIdType
+}): WorkspaceBindingRow | undefined => {
   if (existsSync(storePath) === false) return undefined
   const db = new DatabaseSync(storePath, { readOnly: true })
   try {
@@ -2132,14 +2155,23 @@ const readSelfContainedBinding = (storePath: string): WorkspaceBindingRow | unde
         .get(table)
       if (row === undefined) return undefined
     }
-    const row = db
-      .prepare(
-        `SELECT root_id, data_source_id, database_id, workspace_root, store_identity
-         FROM _nds_workspace_binding
-         ORDER BY updated_at DESC
-         LIMIT 1`,
-      )
-      .get() as Record<string, unknown> | undefined
+    const row =
+      rootId === undefined
+        ? (db
+            .prepare(
+              `SELECT root_id, data_source_id, database_id, workspace_root, store_identity
+               FROM _nds_workspace_binding
+               ORDER BY updated_at DESC
+               LIMIT 1`,
+            )
+            .get() as Record<string, unknown> | undefined)
+        : (db
+            .prepare(
+              `SELECT root_id, data_source_id, database_id, workspace_root, store_identity
+               FROM _nds_workspace_binding
+               WHERE root_id = ?`,
+            )
+            .get(rootId) as Record<string, unknown> | undefined)
     if (row === undefined) return undefined
     return {
       rootId: decode({ schema: SyncRootId, value: row.root_id }),
@@ -2306,13 +2338,7 @@ const requireCompatibleWorkspaceNamespace = (workspaceRoot: typeof AbsolutePath.
  * already-tracked workspace OVERWRITES the persisted `authority_mode` with `<m>`
  * (the legacy establish path, with `authorityMode` omitted, preserves it).
  */
-const writeEstablishedWorkspaceManifest = (source: {
-  readonly workspaceRoot: typeof AbsolutePath.Type
-  readonly name: string
-  readonly dataSourceId: typeof DataSourceId.Type
-  readonly databaseId: string
-  readonly authorityMode?: AuthorityMode
-}): void => {
+const writeEstablishedWorkspaceManifest = (source: EstablishManifestSource): void => {
   const existing = loadWorkspaceManifest(source.workspaceRoot)
   const entry: WorkspaceManifestDataSourceV1 = {
     name: source.name,
@@ -2370,11 +2396,12 @@ const discoverSelfContainedStore = (
 
   const source = sources[0]!
   const dataFilePath = join(workspaceRoot, source.data_file)
+  const rootId = rootIdForDataSource(source.data_source_id)
   // The control plane lives in the hidden `.notion/v1/state.sqlite`; the public
   // data file holds only the projection. The binding moved with the control
   // plane, so integrity is verified against the state store. ADR 0011.
   const storePath = stateSqlitePath(workspaceRoot)
-  const binding = readSelfContainedBinding(storePath)
+  const binding = readSelfContainedBinding({ storePath, rootId })
   if (binding === undefined) {
     throw new CliArgumentError({
       message: `Workspace control-plane store ${storePath} is missing or has corrupt datasource-sync internals; pass --sqlite <path> after repair`,
@@ -2393,7 +2420,60 @@ const discoverSelfContainedStore = (
   return {
     storePath: decode({ schema: AbsolutePath, value: storePath }),
     dataFilePath: decode({ schema: AbsolutePath, value: dataFilePath }),
-    rootId: binding.rootId,
+    rootId,
+    dataSourceId: binding.dataSourceId,
+    workspaceRoot,
+    pagesDir: source.pages_dir,
+  }
+}
+
+const discoverExplicitSplitWorkspaceStore = ({
+  explicitSqlitePath,
+  workspaceRoot,
+}: {
+  readonly explicitSqlitePath: string
+  readonly workspaceRoot: typeof AbsolutePath.Type
+}): DiscoveredSelfContainedStore => {
+  const result = requireCompatibleWorkspaceNamespace(workspaceRoot)
+  if (result._tag === 'untracked') {
+    throw new WorkspaceNotTracked({
+      message: `No workspace manifest at ${result.manifestPath}; this directory is not a tracked datasource workspace. Run track <database-url> ${workspaceRoot} to establish it.`,
+    })
+  }
+
+  const source = result.manifest.data_sources.find(
+    (candidate) =>
+      normalizeAbsolutePath(join(workspaceRoot, candidate.data_file)) === explicitSqlitePath,
+  )
+  if (source === undefined) {
+    throw new CliArgumentError({
+      message: `SQLite file ${explicitSqlitePath} is not declared in workspace manifest ${manifestPath(workspaceRoot)}`,
+    })
+  }
+
+  const storePath = stateSqlitePath(workspaceRoot)
+  const rootId = rootIdForDataSource(source.data_source_id)
+  const binding = readSelfContainedBinding({ storePath, rootId })
+  if (binding === undefined) {
+    throw new CliArgumentError({
+      message: `Workspace control-plane store ${storePath} is missing a binding for ${source.data_source_id}; refusing to open`,
+    })
+  }
+  if (binding.workspaceRoot !== workspaceRoot) {
+    throw new CliArgumentError({
+      message: `SQLite binding workspace mismatch for ${storePath}; refusing to open it from ${workspaceRoot}`,
+    })
+  }
+  if (binding.dataSourceId !== source.data_source_id) {
+    throw new CliArgumentError({
+      message: `Workspace control-plane store ${storePath} root ${rootId} is bound to ${binding.dataSourceId} but the manifest declares ${source.data_source_id}; refusing to open`,
+    })
+  }
+
+  return {
+    storePath: decode({ schema: AbsolutePath, value: storePath }),
+    dataFilePath: decode({ schema: AbsolutePath, value: explicitSqlitePath }),
+    rootId,
     dataSourceId: binding.dataSourceId,
     workspaceRoot,
     pagesDir: source.pages_dir,
@@ -2420,7 +2500,7 @@ const resolveExplicitSqliteStore = ({
   readonly explicitSqlitePath: string
   readonly fallbackWorkspaceRoot?: typeof AbsolutePath.Type
 }): DiscoveredSelfContainedStore => {
-  const binding = readSelfContainedBinding(explicitSqlitePath)
+  const binding = readSelfContainedBinding({ storePath: explicitSqlitePath })
   if (binding !== undefined) {
     // Self-contained file: control plane + projection live together (unified).
     const path = decode({ schema: AbsolutePath, value: explicitSqlitePath })
@@ -2436,13 +2516,19 @@ const resolveExplicitSqliteStore = ({
   // No embedded control plane: the file may be a split workspace's data file at
   // `<root>/data/v1/<name>.sqlite`. Derive the workspace root by stripping that
   // fixed suffix. When the file sits in the versioned data directory, route
-  // through `discoverSelfContainedStore`, which fails closed on a mixed/unknown
-  // namespace (WorkspaceNamespaceError) and confirms the manifest tracks exactly
-  // this data file before resolving the sibling control-plane store.
+  // through explicit manifest-source selection, which works for multi-source
+  // workspaces and confirms the manifest tracks exactly this data file before
+  // resolving the sibling control-plane store.
   const candidateRoot = dirname(dirname(dirname(explicitSqlitePath)))
   const inVersionedDataDir = join(candidateRoot, dataDirectoryName) === dirname(explicitSqlitePath)
   if (inVersionedDataDir === true) {
-    return discoverSelfContainedStore(decode({ schema: AbsolutePath, value: candidateRoot }))
+    const workspaceRoot = decode({ schema: AbsolutePath, value: candidateRoot })
+    if (fallbackWorkspaceRoot !== undefined && workspaceRoot !== fallbackWorkspaceRoot) {
+      throw new CliArgumentError({
+        message: `SQLite file ${explicitSqlitePath} is under ${workspaceRoot}, but command workspace root is ${fallbackWorkspaceRoot}`,
+      })
+    }
+    return discoverExplicitSplitWorkspaceStore({ explicitSqlitePath, workspaceRoot })
   }
   throw new CliArgumentError({
     message: `SQLite file ${explicitSqlitePath} is missing datasource-sync internals`,
@@ -2501,15 +2587,7 @@ export const parseCliContext = ({
   // Captured when a workspace-rooted command establishes a tracked source, so
   // the v1 manifest can be (re)written after the store is opened. `authorityMode`
   // is carried only by `track --mode`, which sets the workspace-wide mode.
-  let establishManifestSource:
-    | {
-        readonly workspaceRoot: typeof AbsolutePath.Type
-        readonly name: string
-        readonly dataSourceId: typeof DataSourceId.Type
-        readonly databaseId: string
-        readonly authorityMode?: AuthorityMode
-      }
-    | undefined
+  let establishManifestSource: EstablishManifestSource | undefined
   const discovered =
     command._tag === 'sync-from-notion' || command._tag === 'track'
       ? (() => {
@@ -2534,7 +2612,7 @@ export const parseCliContext = ({
           const existingBinding =
             commandDryRun === true || existsSync(storePath) === false
               ? undefined
-              : readSelfContainedBinding(storePath)
+              : readSelfContainedBinding({ storePath })
           // One `.notion/v1/state.sqlite` holds one binding row per tracked data
           // source (keyed by the derived `data-source:<id>` root id), so adding a
           // second source to the same workspace is allowed (VRS multi-source
@@ -2669,21 +2747,18 @@ export const parseCliContext = ({
     }
   }
 
-  if (establishManifestSource !== undefined) {
-    writeEstablishedWorkspaceManifest(establishManifestSource)
-  }
-
-  // Read the workspace-wide authority mode from the manifest (now reflecting any
-  // freshly-written `track --mode`). Absent for a standalone `--sqlite` file or a
-  // dry run; the planner keeps its `shared` default in that case.
+  // Read the workspace-wide authority mode from the manifest. For a fresh
+  // establish command, parse only carries the pending manifest entry; the command
+  // writes it after remote establishment succeeds.
   const manifestResult =
     discovered.storePath === ':memory:'
       ? undefined
       : loadWorkspaceManifest(discovered.workspaceRoot)
   const authorityMode =
-    manifestResult !== undefined && manifestResult._tag === 'tracked'
+    establishManifestSource?.authorityMode ??
+    (manifestResult !== undefined && manifestResult._tag === 'tracked'
       ? manifestResult.manifest.authority_mode
-      : undefined
+      : undefined)
 
   return {
     store,
@@ -2703,6 +2778,9 @@ export const parseCliContext = ({
       ? {}
       : { materializeBodies: false }),
     ...(rowLimit === undefined ? {} : { rowLimit }),
+    ...(establishManifestSource === undefined
+      ? {}
+      : { pendingManifestSource: establishManifestSource }),
     ...(maxExecutorSteps === undefined ? {} : { maxExecutorSteps }),
   }
 }
