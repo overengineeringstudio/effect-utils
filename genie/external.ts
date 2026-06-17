@@ -186,7 +186,12 @@ export const catalog = defineCatalog({
   shiki: '4.0.2',
 
   // Markdown (notion-md canonical markdown pipeline)
-  'remark-gfm': '4.0.1',
+  'mdast-util-gfm-strikethrough': '2.0.0',
+  'mdast-util-gfm-table': '2.0.0',
+  'mdast-util-gfm-task-list-item': '2.0.0',
+  'micromark-extension-gfm-strikethrough': '2.1.0',
+  'micromark-extension-gfm-table': '2.1.1',
+  'micromark-extension-gfm-task-list-item': '2.1.0',
   'remark-parse': '11.0.0',
   'remark-stringify': '11.0.0',
   unified: '11.0.5',

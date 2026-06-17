@@ -37,6 +37,33 @@ describe('canonicalizeBlockMarkdown', () => {
     expect(canonicalizeBlockMarkdown(input)).toBe('```ts\nconst x = 1\nconst y = 2\n```\n')
   })
 
+  it('does not turn email-like plain text into angle autolinks', () => {
+    const once = canonicalizeBlockMarkdown('0@.A')
+    expect(once).toBe('0@.A\n')
+    expect(canonicalizeBlockMarkdown(once)).toBe(once)
+  })
+
+  it('keeps bare URLs plain so preview-link text is not rewritten', () => {
+    const once = canonicalizeBlockMarkdown('https://example.com/preview')
+    expect(once).toBe('https://example.com/preview\n')
+    expect(canonicalizeBlockMarkdown(once)).toBe(once)
+  })
+
+  it('preserves explicit markdown links', () => {
+    expect(canonicalizeBlockMarkdown('[Example](https://example.com)')).toBe(
+      '[Example](https://example.com)\n',
+    )
+  })
+
+  it('keeps selected GFM features available', () => {
+    const input = ['- [x] task', '', '~~done~~', '', '| A | B |', '| - | - |', '| 1 | 2 |'].join(
+      '\n',
+    )
+    expect(canonicalizeBlockMarkdown(input)).toBe(
+      ['- [x] task', '', '~~done~~', '', '| A | B |', '| - | - |', '| 1 | 2 |', ''].join('\n'),
+    )
+  })
+
   it('is idempotent', () => {
     const input = 'Paragraph one wraps\nacross lines.\n\nParagraph two.'
     const once = canonicalizeBlockMarkdown(input)
