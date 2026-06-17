@@ -2835,4 +2835,384 @@ describe('clean-break self-contained SQLite storage contract', () => {
       sqliteContractTimeoutMs,
     )
   })
+
+  // Decision 0018, the SYMMETRIC (tombstone) direction of XC-R02: a remote TRASH
+  // (`R = 1`) arriving AFTER a SETTLED local RESTORE (`L = 0`) is a first-class
+  // CONFLICT, not a silent flip. The remote trash does not arrive via `RowObserved`
+  // (a trashed page drops out of `data_source.query`) — it arrives via the
+  // disappearance->classify->`TombstoneRecorded(remote_trash)` path. Without the
+  // symmetric detector + freeze the tombstone's `in_trash = 1` write would silently
+  // override the settled local restore.
+  describe('lifecycle divergence is a conflict — tombstone direction (decision 0018)', () => {
+    /**
+     * Drive a local archive THEN a local restore to settlement ON THE WATCH PATH,
+     * so the SETTLED local lifecycle target is RESTORE (`L = 0`) and NO prior
+     * `remote_trash` tombstone EVENT is ever recorded: the watch incremental scan
+     * converges `in_trash` purely from the settled intent, never from disappearance
+     * classification (the ADR's watch-path property). This keeps the event log free
+     * of an earlier `TombstoneRecorded(remote_trash)` whose idempotency key would
+     * otherwise dedupe the genuinely-NEW remote trash under test. Returns the
+     * sqlite/state paths with `L = 0` settled and the page active remotely.
+     */
+    const settleLocalRestore = async (workspace: AbsolutePathType) => {
+      const { sqlitePath, statePath } = await establishWorkspace(workspace, {
+        authorityMode: 'shared',
+      })
+      const watchStatePath = join(workspace, 'watch.json')
+      // ONE shared gateway across both watch cycles: trash state persists in its
+      // closure, so the archive push's remote trash carries into the restore cycle.
+      const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+      const watchOnce = () =>
+        runWorkspaceCommand({
+          argv: [
+            'sync',
+            '--watch',
+            '--sqlite',
+            sqlitePath,
+            '--state',
+            watchStatePath,
+            '--max-cycles',
+            '1',
+            '--no-materialize-bodies',
+          ],
+          gateway,
+        })
+
+      // 1. Local archive on watch -> settle TrashPage; settled intent converges
+      // in_trash = 1 (no tombstone on the incremental scan).
+      const archiveDb = new DatabaseSync(sqlitePath)
+      try {
+        archiveDb.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        archiveDb.close()
+      }
+      await watchOnce()
+      expect(gateway.ledger.successfulTrashPages).toHaveLength(1)
+      // 2. Local restore on watch -> settle RestorePage; settled intent converges
+      // in_trash = 0 AND establishes L = 0. Still no remote_trash tombstone event.
+      const restoreDb = new DatabaseSync(sqlitePath)
+      try {
+        restoreDb.prepare(`UPDATE pages SET _in_trash = 0 WHERE _page_id = ?`).run(testIds.pageId)
+      } finally {
+        restoreDb.close()
+      }
+      await watchOnce()
+      expect(gateway.ledger.successfulRestorePages).toHaveLength(1)
+      return { sqlitePath, statePath }
+    }
+
+    /** Read the single open conflict row from the control-plane store. */
+    const openConflict = (statePath: string): SqlRow | undefined =>
+      openReadOnly(statePath, (stateDb) =>
+        row(
+          stateDb,
+          `SELECT conflict_id, page_id, state FROM _nds_conflict WHERE state = 'open' AND page_id = ?`,
+          testIds.pageId,
+        ),
+      )
+
+    // (a) The freeze test: a remote trash after a settled local restore raises ONE
+    // open lifecycle conflict and does NOT silently flip `_in_trash` from 0 to 1.
+    it(
+      'raises ONE open lifecycle conflict on remote trash after settled restore; _in_trash stays 0, no silent flip',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleLocalRestore(workspace)
+
+        // Independent remote TRASH, modeled by a FRESH gateway whose page is trashed
+        // (`inTrash: true`): the page is excluded from `data_source.query`, so the
+        // disappearance classifier directly retrieves it, sees inTrash, and records a
+        // `remote_trash` tombstone (`R = 1`). With the settled local target `L = 0`,
+        // detection raises a lifecycle conflict BEFORE the tombstone applies and the
+        // projection freezes `_in_trash` at 0.
+        const trashGateway = makeFakeGatewayHarness({
+          pages: [
+            pageSnapshot({ inTrash: true, propertiesHash: hash('properties-remote-trashed') }),
+          ],
+          propertyPages: [propertyPage('Trashed remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: trashGateway,
+        })
+
+        openReadOnly(statePath, (stateDb) => {
+          // Exactly one open lifecycle conflict + the shadow guard diagnostic.
+          expect(
+            rows(
+              stateDb,
+              `SELECT page_id FROM _nds_conflict WHERE state = 'open' AND page_id = ?`,
+              testIds.pageId,
+            ),
+          ).toHaveLength(1)
+          expect(
+            row(
+              stateDb,
+              `SELECT guard FROM _nds_guard_block WHERE guard = 'PendingIntentShadowViolation'`,
+            ),
+          ).toMatchObject({ guard: 'PendingIntentShadowViolation' })
+          // Determinism invariant: the ConflictRaised sits at a LOWER sequence than
+          // the tombstone it gates, so on full-log replay the freeze is already in
+          // effect when the tombstone applies.
+          const conflictSeq = row(
+            stateDb,
+            `SELECT MAX(sequence) AS sequence FROM _nds_sync_event WHERE event_type = 'ConflictRaised'`,
+          )?.sequence
+          const tombstoneSeq = row(
+            stateDb,
+            `SELECT MAX(sequence) AS sequence FROM _nds_sync_event WHERE event_type = 'TombstoneRecorded'`,
+          )?.sequence
+          expect(Number(conflictSeq)).toBeLessThan(Number(tombstoneSeq))
+          // The remote_trash tombstone DID land (proves the classify path ran), yet
+          // the freeze held in_trash at the local target.
+          expect(
+            row(stateDb, `SELECT reason FROM _nds_tombstone WHERE page_id = ?`, testIds.pageId),
+          ).toMatchObject({ reason: 'remote_trash' })
+          expect(
+            row(stateDb, `SELECT in_trash FROM _nds_row WHERE page_id = ?`, testIds.pageId),
+          ).toMatchObject({ in_trash: 0 })
+        })
+        // Public in_trash is frozen at the settled local target (0), no silent flip.
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 0 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    // (b) keep-remote: accept the remote trash (R=1) -> _in_trash flips to 1.
+    it(
+      'keep-remote resolves the tombstone-origin lifecycle conflict and flips _in_trash to 1',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleLocalRestore(workspace)
+        const trashGateway = makeFakeGatewayHarness({
+          pages: [
+            pageSnapshot({ inTrash: true, propertiesHash: hash('properties-remote-trashed') }),
+          ],
+          propertyPages: [propertyPage('Trashed remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: trashGateway,
+        })
+        const conflictId = String(openConflict(statePath)?.conflict_id)
+
+        // keep-remote: adopt the remote trash target. The tombstone stands.
+        await runWorkspaceCommand({
+          argv: [
+            'conflicts',
+            'resolve',
+            '--sqlite',
+            sqlitePath,
+            '--conflict-id',
+            conflictId,
+            '--strategy',
+            'keep-remote',
+          ],
+        })
+
+        openReadOnly(statePath, (stateDb) => {
+          expect(
+            row(stateDb, `SELECT state FROM _nds_conflict WHERE conflict_id = ?`, conflictId),
+          ).toMatchObject({ state: 'resolved' })
+          // The remote_trash tombstone stands (remote target is trash, not active).
+          expect(
+            row(stateDb, `SELECT reason FROM _nds_tombstone WHERE page_id = ?`, testIds.pageId),
+          ).toMatchObject({ reason: 'remote_trash' })
+        })
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 1 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    // (c) keep-local: re-assert the local restore (L=0) -> RestorePage re-enqueued,
+    // conflict `resolving`, _in_trash stays 0 (freeze held by the resolving state).
+    it(
+      'keep-local resolves the tombstone-origin conflict, re-enqueues a Restore push, and keeps _in_trash at 0',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleLocalRestore(workspace)
+        const trashGateway = makeFakeGatewayHarness({
+          pages: [
+            pageSnapshot({ inTrash: true, propertiesHash: hash('properties-remote-trashed') }),
+          ],
+          propertyPages: [propertyPage('Trashed remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: trashGateway,
+        })
+        const conflictId = String(openConflict(statePath)?.conflict_id)
+
+        // keep-local: re-assert the local restore (L=0) via a fresh RestorePage push.
+        await runWorkspaceCommand({
+          argv: [
+            'conflicts',
+            'resolve',
+            '--sqlite',
+            sqlitePath,
+            '--conflict-id',
+            conflictId,
+            '--strategy',
+            'keep-local',
+            '--value-json',
+            JSON.stringify({ _tag: 'title', plainText: 'ignored' }),
+          ],
+        })
+
+        openReadOnly(statePath, (stateDb) => {
+          // keep-local does NOT fully resolve — the conflict stays `resolving` until
+          // the re-assert settles, keeping the freeze active.
+          expect(
+            row(stateDb, `SELECT state FROM _nds_conflict WHERE conflict_id = ?`, conflictId),
+          ).toMatchObject({ state: 'resolving' })
+          expect(
+            rows(
+              stateDb,
+              `SELECT command_tag FROM _nds_outbox WHERE command_tag = 'RestorePage' AND command_id LIKE 'cmd:resolve-lifecycle%' AND surface = ?`,
+              `page:${testIds.pageId}`,
+            ).length,
+          ).toBeGreaterThanOrEqual(1)
+        })
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 0 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    // (d) BENIGN false-positive guard: a remote trash with NO settled lifecycle
+    // intent (`L = undefined`) raises NO conflict and the tombstone applies normally
+    // (in_trash = 1).
+    it(
+      'BENIGN: remote trash with no settled lifecycle target applies normally (in_trash=1), NO conflict',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath } = await establishWorkspace(workspace, { authorityMode: 'shared' })
+        const statePath = statePathForWorkspace(workspace)
+        // ONE shared gateway: a local archive settles a TrashPage, the trashed row
+        // drops from query, and the re-observe records a `remote_trash` tombstone.
+        // The only settled lifecycle intent is TRASH (L=1), which MATCHES the remote
+        // trash (R=1) — benign, no conflict. (No restore is ever settled, so the
+        // tombstone direction has no divergent L.)
+        const gateway = makeFakeGatewayHarness({ propertyPages: [propertyPage('Initial task')] })
+        const syncOnce = () =>
+          runWorkspaceCommand({
+            argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+            gateway,
+          })
+        const archiveDb = new DatabaseSync(sqlitePath)
+        try {
+          archiveDb.prepare(`UPDATE pages SET _in_trash = 1 WHERE _page_id = ?`).run(testIds.pageId)
+        } finally {
+          archiveDb.close()
+        }
+        await syncOnce()
+        expect(gateway.ledger.successfulTrashPages).toHaveLength(1)
+        await syncOnce()
+
+        openReadOnly(statePath, (stateDb) => {
+          // No false-positive conflict, no shadow guard: L=1 matches R=1.
+          expect(
+            rows(
+              stateDb,
+              `SELECT conflict_id FROM _nds_conflict WHERE page_id = ?`,
+              testIds.pageId,
+            ),
+          ).toEqual([])
+          expect(
+            rows(
+              stateDb,
+              `SELECT guard FROM _nds_guard_block WHERE guard = 'PendingIntentShadowViolation'`,
+            ),
+          ).toEqual([])
+          // The tombstone applied normally — its in_trash=1 write was NOT frozen.
+          expect(
+            row(stateDb, `SELECT reason FROM _nds_tombstone WHERE page_id = ?`, testIds.pageId),
+          ).toMatchObject({ reason: 'remote_trash' })
+          expect(
+            row(stateDb, `SELECT in_trash FROM _nds_row WHERE page_id = ?`, testIds.pageId),
+          ).toMatchObject({ in_trash: 1 })
+        })
+        openReadOnly(sqlitePath, (readDb) => {
+          expect(
+            row(readDb, `SELECT _in_trash FROM pages WHERE _page_id = ?`, testIds.pageId),
+          ).toMatchObject({ _in_trash: 1 })
+        })
+      },
+      sqliteContractTimeoutMs,
+    )
+
+    // (e) REPLAY determinism: the ConflictRaised sits at a LOWER sequence than the
+    // tombstone, so rebuilding projections twice yields the SAME open conflict and
+    // frozen in_trash (the tombstone's in_trash=1 write stays gated on replay).
+    it(
+      'REPLAY determinism: rebuilding projections twice yields identical _nds_conflict and frozen _nds_row.in_trash',
+      async () => {
+        const workspace = await tempWorkspace()
+        const { sqlitePath, statePath } = await settleLocalRestore(workspace)
+        const trashGateway = makeFakeGatewayHarness({
+          pages: [
+            pageSnapshot({ inTrash: true, propertiesHash: hash('properties-remote-trashed') }),
+          ],
+          propertyPages: [propertyPage('Trashed remotely')],
+        })
+        await runWorkspaceCommand({
+          argv: ['sync', '--sqlite', sqlitePath, '--no-materialize-bodies'],
+          gateway: trashGateway,
+        })
+
+        const snapshotState = () =>
+          openReadOnly(statePath, (stateDb) => ({
+            conflicts: rows(
+              stateDb,
+              `SELECT conflict_id, page_id, state FROM _nds_conflict ORDER BY conflict_id`,
+            ),
+            inTrash: row(
+              stateDb,
+              `SELECT in_trash FROM _nds_row WHERE page_id = ?`,
+              testIds.pageId,
+            ),
+          }))
+
+        const before = snapshotState()
+        expect(before.conflicts).toHaveLength(1)
+        expect(before.inTrash).toMatchObject({ in_trash: 0 })
+
+        const rootId = decode({
+          schema: SyncRootId,
+          value: String(
+            openReadOnly(statePath, (stateDb) =>
+              row(stateDb, `SELECT root_id FROM _nds_data_source LIMIT 1`),
+            )?.root_id,
+          ),
+        })
+        const rebuild = () => {
+          const store = openNotionSyncStore({ path: statePath, busyTimeoutMs: 2_500 })
+          try {
+            store.rebuildProjections(rootId)
+          } finally {
+            store.close()
+          }
+        }
+        rebuild()
+        const afterFirst = snapshotState()
+        rebuild()
+        const afterSecond = snapshotState()
+
+        expect(afterFirst).toEqual(before)
+        expect(afterSecond).toEqual(before)
+      },
+      sqliteContractTimeoutMs,
+    )
+  })
 })
