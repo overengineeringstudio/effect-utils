@@ -1,4 +1,4 @@
-# Lossless capture via `.archive/`; safety never depends on classifying dirt
+# Lossless capture via `.archive/`
 
 ## Status
 
@@ -6,41 +6,30 @@ accepted
 
 ## Context
 
-A real-store survey proved that classifying uncommitted changes as "generated" vs
-"source" by path is unreliable both ways (`src/build/app.ts` matched a `build/`
-pattern but is hand-written; `*.d.ts.map` / `*.genie.js` are generated but matched
-nothing). `mr` is generic and cannot know a repo's generated set, yet nearly every
-cold worktree carries ~10 dirty files of regenerated drift — so "any dirt blocks
-deletion" reclaims almost nothing.
+Path-based classification of dirty files as generated vs source is unreliable in
+a generic repository manager. Blocking on any dirt reclaims little, but deleting
+dirt directly can lose user work.
 
-Separately, gc had a blind spot: archived worktrees. An external worktree tool's
-`archive` moves a worktree to `<repo>/.archive/<name>/` (keeps `.git`, logs
-metadata), but gc walks only `refs/{heads,tags,commits}` and skips dotdirs, so
-`.archive/` accumulated unboundedly. That convention already implements exactly the
-"move aside, keep recoverable" behaviour capture needs.
+The store already has an `.archive/` convention: move a worktree aside while
+keeping its files and git metadata recoverable.
 
 ## Decision
 
-Deletion safety must NOT depend on the gen/source classifier. The lossless floor:
-delete only when nothing irreplaceable is lost — every local commit is reachable
-on a remote (`git rev-list <head> --not --remotes` empty after `fetch --prune`),
-no unpushed commits, and **no stash** (stash refs live in the bare and do not
-travel with a dir move). Any uncommitted/untracked dirt travels intact with the
-move, so it does not block deletion.
+Deletion safety depends on a lossless floor, not on classifying dirt:
 
-Capture-then-delete is implemented AS **archiving to `.archive/`**: a qualifying
-worktree is `git worktree move`d there (recoverable), its branch ref freed (so
-`mr apply` can re-materialize it), then **reaped** (hard-deleted) once past the
-retention TTL ([0005](0005-three-reclamation-timers.md)). gc grows awareness of
-`.archive/` to reap it. "Generated vs source" is demoted to a UX-only filter.
+- every local commit is reachable from a remote after fetch
+- there are no unpushed commits
+- there is no stash in the bare repository
+- uncommitted and untracked files travel with the archived worktree
+
+A qualifying worktree is moved to `<repo>/.archive/<name>/`, its branch ref is
+freed so `mr apply` can re-materialize it, and the archive is hard-deleted only
+after the retention TTL ([0005](0005-three-reclamation-timers.md)).
 
 ## Consequences
 
-- Provably lossless regardless of classifier accuracy; a wrongly-archived worktree
-  is restorable until reaped.
-- gc must scan `.archive/` (a known store convention, documented in the layout) for
-  retention reaping, never treating it as a live `refs/*` worktree, and must
-  re-check the cross-megarepo veto under lock before reaping.
-- **Stash is checked repo-globally, kept that way** (validation): per-worktree
-  stash would lift eligibility from 6 to ~61 worktrees (~7.9G), but the over-keep
-  is conservative (never risks a stash) and per-worktree attribution is fuzzy.
+- A wrongly archived worktree stays restorable until retention reaping.
+- GC must scan `.archive/` and must re-check the cross-megarepo veto under lock
+  before reaping.
+- Stash detection stays repo-global; it over-keeps but never risks losing a
+  stash.
