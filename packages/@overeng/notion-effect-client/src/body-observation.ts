@@ -22,6 +22,7 @@ import type { NotionApiError } from './error.ts'
 import { NotionMarkdown } from './markdown.ts'
 import { NotionPages } from './pages.ts'
 
+/** One observed page body: rendered markdown, block inventory, completeness, and the evidence + fingerprint that pin this observation. */
 export interface NotionBodyObservation {
   readonly pageId: string
   readonly markdown: {
@@ -66,6 +67,7 @@ const inventoryEntries = (tree: BlockTree): readonly BlockInventoryEntry[] => {
   return entries
 }
 
+/** Builds an observation from already-fetched markdown + block-tree snapshots; canonicalizes the rendered body once so evidence, classifier, and fingerprint see identical bytes (decision 0019). */
 export const observeFromSnapshots = Effect.fn('NotionBody.observeFromSnapshots')(function* (opts: {
   readonly pageId: string
   readonly markdown: PageMarkdown
@@ -117,9 +119,7 @@ export const observeFromSnapshots = Effect.fn('NotionBody.observeFromSnapshots')
   }
 })
 
-export const observe = Effect.fn('NotionBody.observe')(function* (opts: {
-  readonly pageId: string
-}) {
+const observe = Effect.fn('NotionBody.observe')(function* (opts: { readonly pageId: string }) {
   return yield* observeStable({ pageId: opts.pageId, attempt: 0 })
 })
 
@@ -161,6 +161,7 @@ const observeStable = (opts: {
     })
   })
 
+/** Live body-observation entry point: `observe` re-fetches a page until its metadata window is stable; `observeFromSnapshots` works from pre-fetched snapshots. */
 export const NotionBody = {
   observe,
   observeFromSnapshots,

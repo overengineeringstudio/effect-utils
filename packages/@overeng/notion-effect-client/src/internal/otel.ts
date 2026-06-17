@@ -94,6 +94,7 @@ const annotateAttrs = <S extends Schema.Schema.AnyNoContext>(
     Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
   )
 
+/** Wraps an HTTP effect in the per-method `NotionHttp.<method>` span, attaching route/operation attributes and the span label. */
 export const withNotionHttpSpan =
   ({
     method,
@@ -112,6 +113,7 @@ export const withNotionHttpSpan =
       }),
     )
 
+/** Annotates the current span with retry/quota/rate-limit attributes for one Notion HTTP attempt (absent rate-limit headers set `present: false`). */
 export const annotateNotionHttpRateLimitSpan = (input: {
   readonly method: BuildRequestOptions['method']
   readonly route: NotionHttpRouteInfo
@@ -139,8 +141,10 @@ export const annotateNotionHttpRateLimitSpan = (input: {
   })
 }
 
+/** Wraps a data-source query effect in the `NotionDatabases.query` span, labeled by data source id. */
 export const withNotionDatabasesQuerySpan = (dataSourceId: string) =>
   withOperation(NotionDatabasesQuerySpan, { dataSourceId })
 
+/** Wraps a page-retrieve effect in the `NotionPages.retrieve` span, labeled by page id. */
 export const withNotionPagesRetrieveSpan = (pageId: string) =>
   withOperation(NotionPagesRetrieveSpan, { pageId })

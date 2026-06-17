@@ -1,8 +1,6 @@
 import { Schema } from 'effect'
 
 import {
-  canonicalJsonCodec,
-  canonicalJsonMediaType,
   ContentDescriptor,
   descriptorForCanonicalJson,
   descriptorForUtf8,
@@ -12,11 +10,12 @@ import {
 
 import { NOTION_API_VERSION } from './config.ts'
 
-export const BodyCompletenessEvidence = Schema.Literal('complete', 'lossy').annotations({
+const BodyCompletenessEvidence = Schema.Literal('complete', 'lossy').annotations({
   identifier: 'NotionBodyEvidence.BodyCompleteness',
 })
-export type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type
+type BodyCompletenessEvidence = typeof BodyCompletenessEvidence.Type
 
+/** `sha256:<hex>` branded fingerprint of a body observation's identity evidence (excludes `observedAt`, so re-observing unchanged content yields the same value). */
 export const BodyEvidenceFingerprint = Schema.String.pipe(
   Schema.pattern(/^sha256:[a-f0-9]{64}$/),
   Schema.brand('NotionBodyEvidence.BodyEvidenceFingerprint'),
@@ -24,6 +23,7 @@ export const BodyEvidenceFingerprint = Schema.String.pipe(
 )
 export type BodyEvidenceFingerprint = typeof BodyEvidenceFingerprint.Type
 
+/** Content-addressed evidence for one remote page body observation: endpoint markdown, block tree, rendered body, and inventory as content descriptors plus the stability window. */
 export const RemoteBodyObservationEvidence = Schema.TaggedStruct('RemoteBodyObservationEvidence', {
   schemaVersion: Schema.Literal(1),
   notionApiVersion: Schema.NonEmptyTrimmedString,
@@ -81,7 +81,7 @@ const BlockTreeEvidence = Schema.Struct({
   entries: Schema.Array(BlockTreeEntryEvidence),
 }).annotations({ identifier: 'NotionBodyEvidence.BlockTree' })
 
-export type BodyEvidenceBlockTree = ReadonlyArray<{
+type BodyEvidenceBlockTree = ReadonlyArray<{
   readonly block: {
     readonly id: string
     readonly type: string
@@ -109,6 +109,7 @@ const treeEntries = (
     ...treeEntries(node.children, depth + 1),
   ])
 
+/** Computes the identity fingerprint of an evidence record by hashing its canonical JSON with the volatile `observedAt` stripped. */
 export const fingerprintBodyEvidence = (
   evidence: RemoteBodyObservationEvidence,
 ): BodyEvidenceFingerprint => {
@@ -118,6 +119,7 @@ export const fingerprintBodyEvidence = (
   )
 }
 
+/** Builds a `RemoteBodyObservationEvidence` from raw observation inputs, deriving content descriptors and defaulting `notionApiVersion` to the client's pinned version. */
 export const makeRemoteBodyObservationEvidence = (opts: {
   readonly pageId: string
   readonly observedAt: string
@@ -170,10 +172,6 @@ export const makeRemoteBodyObservationEvidence = (opts: {
   })
 }
 
+/** Extracts the content digest from a content descriptor, e.g. to compare evidence descriptors without their codec/media-type metadata. */
 export const descriptorDigest = (descriptor: typeof ContentDescriptor.Type): ContentDigest =>
   descriptor.digest
-
-export const bodyEvidenceDescriptorDefaults = {
-  mediaType: canonicalJsonMediaType,
-  codec: canonicalJsonCodec,
-} as const
