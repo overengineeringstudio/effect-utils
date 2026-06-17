@@ -14,6 +14,7 @@ import { expectLogs, expectMetrics, type LogExpect, type MetricExpect } from './
 import { expectTrace, type TraceExpect } from './trace-expect.ts'
 import { flushCaptureSpans } from './vitest-bridge.ts'
 
+/** Capture options plus the in-process exporter knobs; `exportInterval` is the per-signal flush cadence (defaults to 100ms). */
 export interface OteliteTestHarnessOptions extends CaptureOptions {
   readonly serviceName: string
   readonly rootSpanName?: string
@@ -21,18 +22,21 @@ export interface OteliteTestHarnessOptions extends CaptureOptions {
   readonly exportInterval?: number
 }
 
+/** Overrides for the env-var path: which names carry the endpoint/service-name and any `extra` vars to set for the run. */
 export interface OteliteEnvOptions {
   readonly endpointVar?: string
   readonly serviceNameVar?: string
   readonly extra?: Readonly<Record<string, string | undefined>>
 }
 
+/** Server-side `otelite inspect` row filters; the harness pins `service` to the run's service name unless overridden here. */
 export interface TraceInspectOptions {
   readonly service?: string
   readonly name?: string
   readonly attrs?: Readonly<Record<string, string>>
 }
 
+/** Trace-assertion options; `spanLabelPolicy` defaults to `'required'`, failing the run if any captured span lacks `span.label`. */
 export interface OteliteTraceOptions {
   readonly inspect?: TraceInspectOptions
   readonly spanLabelPolicy?: 'required' | 'off'
@@ -49,6 +53,7 @@ export interface AllSignalsExpect {
   readonly logs: LogExpect
 }
 
+/** Per-signal inspect filters for an all-signals run; metrics/logs inherit the pinned service while `trace` carries label policy. */
 export interface OteliteAllSignalsOptions {
   readonly trace?: OteliteTraceOptions
   /** Extra `inspect` filters for the metrics/logs rows (service is pinned). */
@@ -56,6 +61,7 @@ export interface OteliteAllSignalsOptions {
   readonly logsInspect?: TraceInspectOptions
 }
 
+/** A booted capture: the spawned receiver plus run/inspect/assert closures bound to its endpoints and service name. */
 export interface OteliteTestHandle {
   readonly capture: CaptureHandle
   readonly inProcessLayer: Layer.Layer<never>
@@ -191,6 +197,7 @@ const makeInProcessAllSignalsLayer = (
     }).pipe(Layer.provide(FetchHttpClient.layer)),
   )
 
+/** Effect service whose `capture` boots a scoped otelite receiver and yields an {@link OteliteTestHandle}; provides its own `Otelite.Default`. */
 export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
   '@overeng/utils-dev/otelite/OteliteTestHarness',
   {
@@ -352,6 +359,7 @@ export class OteliteTestHarness extends Effect.Service<OteliteTestHarness>()(
   },
 ) {}
 
+/** Scoped one-shot {@link OteliteTestHandle}: provides `OteliteTestHarness.Default` so callers needn't wire the layer. */
 export const captureTest = (
   options: OteliteTestHarnessOptions,
 ): Effect.Effect<
@@ -360,6 +368,7 @@ export const captureTest = (
   Scope.Scope
 > => OteliteTestHarness.capture(options).pipe(Effect.provide(OteliteTestHarness.Default))
 
+/** All-in-one: boot a capture, run `effect` through the in-process traces exporter, flush, and return a {@link TraceExpect}. */
 export const captureInProcessTrace = <A, E, R>(
   options: OteliteTestHarnessOptions,
   effect: Effect.Effect<A, E, R>,
@@ -371,6 +380,7 @@ export const captureInProcessTrace = <A, E, R>(
     ),
   )
 
+/** All-in-one all-signals variant: run `effect` through the combined OTLP exporter and assert over traces + metrics + logs at once. */
 export const captureInProcessAllSignals = <A, E, R>(
   options: OteliteTestHarnessOptions,
   effect: Effect.Effect<A, E, R>,
@@ -386,6 +396,7 @@ export const captureInProcessAllSignals = <A, E, R>(
     ),
   )
 
+/** All-in-one env-var variant: export via `OTEL_*` env vars (for out-of-process/SDK code under test) rather than an injected layer. */
 export const captureEnvTrace = <A, E, R>(
   options: OteliteTestHarnessOptions,
   effect: Effect.Effect<A, E, R>,

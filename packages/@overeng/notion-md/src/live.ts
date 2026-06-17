@@ -126,6 +126,7 @@ const storageFromUnknownBlocks = (opts: {
 const unknownPlaceholders = (markdown: string): readonly string[] =>
   [...markdown.matchAll(/<unknown\b[^>]*\/>/giu)].map((match) => match[0])
 
+/** Project a body observation into a remote snapshot using its canonical rendered markdown (throws if unrendered). */
 export const remoteMarkdownFromBodyObservation = (
   body: NotionBodyObservation,
 ): RemoteMarkdownSnapshot => {

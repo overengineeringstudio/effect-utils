@@ -37,6 +37,7 @@ const withSpan =
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     effect.pipe(Effect.withSpan(name, { attributes, ...(root === undefined ? {} : { root }) }))
 
+/** Wraps a child-process exec in an `otelite.exec` span; `span.label` is the binary, `otelite.argv` is the JSON-encoded argv. */
 export const withOteliteExecSpan = (argv: ReadonlyArray<string>) =>
   withSpan({
     name: 'otelite.exec',
@@ -49,6 +50,7 @@ export const withOteliteExecSpan = (argv: ReadonlyArray<string>) =>
     })(),
   })
 
+/** Wraps an effect in a named span whose `span.label` defaults to the name minus its `otelite.` prefix. */
 export const withOteliteLabelSpan = (name: string, label: string = name.replace('otelite.', '')) =>
   withSpan({
     name,
@@ -58,6 +60,7 @@ export const withOteliteLabelSpan = (name: string, label: string = name.replace(
     })(),
   })
 
+/** Spans an `otelite inspect --summary` call; carries the signal both as `span.label` and a `signal` attribute. */
 export const withOteliteInspectSummarySpan = (signal: Signal) =>
   withSpan({
     name: 'otelite.inspect.summary',
@@ -67,6 +70,7 @@ export const withOteliteInspectSummarySpan = (signal: Signal) =>
     })(),
   })
 
+/** Spans a row-level `otelite inspect` call (vs. the `--summary` variant); carries the signal as `span.label` and a `signal` attribute. */
 export const withOteliteInspectSpan = (signal: Signal) =>
   withSpan({
     name: 'otelite.inspect',
@@ -76,6 +80,7 @@ export const withOteliteInspectSpan = (signal: Signal) =>
     })(),
   })
 
+/** Like {@link withOteliteLabelSpan} but forces `root: true`, starting a fresh trace instead of joining the caller's. */
 export const withOteliteRootSpan =
   ({ name, label }: { readonly name: string; readonly label: string }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>

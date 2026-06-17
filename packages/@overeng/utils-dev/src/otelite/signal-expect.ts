@@ -2,10 +2,13 @@ import { Either, Schema } from 'effect'
 
 import type { LogRow, MetricRow } from './schema.ts'
 
+/** Literal attribute expectation for metric/log rows; `null` matches the literal string `'null'` (rows are flat strings). */
 export type TelemetryAttrPrimitive = string | number | boolean | null
 
+/** Custom matcher run against an attribute's raw string value plus its owning metric or log row. */
 export type TelemetryAttrPredicate<Row> = (actual: string, row: Row) => boolean
 
+/** Row-generic counterpart to the trace `AttrMatcher`: primitive, `RegExp`, presence, predicate, or schema decode. */
 export type TelemetryAttrMatcher<Row> =
   | TelemetryAttrPrimitive
   | RegExp
@@ -28,8 +31,10 @@ type StructuredTelemetryAttrMatcher<Row> = Exclude<
   TelemetryAttrPrimitive | RegExp
 >
 
+/** Map of attribute key to matcher; every entry must match (and its key be present) for a row to pass. */
 export type TelemetryAttrExpectations<Row> = Readonly<Record<string, TelemetryAttrMatcher<Row>>>
 
+/** Assertion over a metric's numeric `value`: exact number, presence-only, or a custom predicate. */
 export type MetricValueMatcher =
   | number
   | {
@@ -41,6 +46,7 @@ export type MetricValueMatcher =
       readonly predicate: (actual: number, row: MetricRow) => boolean
     }
 
+/** Metric filter predicate; set fields narrow, and `value` matches the numeric data point rather than an attribute. */
 export interface MetricSelector {
   readonly name?: string
   readonly service?: string
@@ -50,6 +56,7 @@ export interface MetricSelector {
   readonly value?: MetricValueMatcher
 }
 
+/** Log-record filter predicate; `body` accepts a string or `RegExp`, and `scope`/`traceId`/`spanId` may be `null` to match unset. */
 export interface LogSelector {
   readonly service?: string
   readonly scope?: string | null
@@ -66,6 +73,7 @@ export interface OtelMetricLabelsContract<A> {
   readonly unsafeEncode: (value: A) => Readonly<Record<string, string | number | boolean>>
 }
 
+/** Selector that derives a metric's name, unit, type, and label matchers from a compiled schema-backed contract. */
 export interface ContractMetricSelector<A> {
   readonly metric: {
     readonly name: string
@@ -77,10 +85,12 @@ export interface ContractMetricSelector<A> {
   readonly selector?: Omit<MetricSelector, 'name' | 'attrs' | 'unit' | 'type'>
 }
 
+/** Thrown by every failing `MetricExpect`/`LogExpect` assertion; the message names the accumulated selector chain. */
 export class TelemetryExpectError extends Error {
   readonly _tag = 'TelemetryExpectError'
 }
 
+/** Row-generic matcher constructors for {@link TelemetryAttrExpectations}; `boolean`/`int` stringify (rows store attrs as strings). */
 export const telemetryAttr = {
   present: <Row>(): TelemetryAttrMatcher<Row> => ({ _tag: 'Present' }),
   boolean: <Row>(expected: boolean): TelemetryAttrMatcher<Row> => String(expected),
@@ -112,6 +122,7 @@ export const telemetryAttr = {
   }),
 } as const
 
+/** Constructors for {@link MetricValueMatcher} (presence or predicate); pass a bare number for an exact-value match. */
 export const metricValue = {
   present: (): MetricValueMatcher => ({ _tag: 'Present' }),
   predicate: (
@@ -124,10 +135,13 @@ export const metricValue = {
   }),
 } as const
 
+/** Entry point: lift captured metric rows into a chainable {@link MetricExpect}. */
 export const expectMetrics = (metrics: readonly MetricRow[]) => MetricExpect.from(metrics)
 
+/** Entry point: lift captured log rows into a chainable {@link LogExpect}. */
 export const expectLogs = (logs: readonly LogRow[]) => LogExpect.from(logs)
 
+/** Immutable, chainable assertion builder over captured metric rows; each filter step returns a narrowed copy. */
 export class MetricExpect {
   static from(metrics: readonly MetricRow[]): MetricExpect {
     return new MetricExpect(metrics, [])
@@ -196,6 +210,7 @@ export class MetricExpect {
   }
 }
 
+/** Immutable, chainable assertion builder over captured log rows; each filter step returns a narrowed copy. */
 export class LogExpect {
   static from(logs: readonly LogRow[]): LogExpect {
     return new LogExpect(logs, [])

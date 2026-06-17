@@ -30,6 +30,7 @@ export class NotionMdBodyConflictError extends Schema.TaggedError<NotionMdBodyCo
   },
 ) {}
 
+/** Canonical body view of a page: markdown plus its hash, descriptor, and optional remote evidence. */
 export interface NotionMdBodySnapshot {
   readonly pageId: string
   readonly markdown: string
@@ -40,15 +41,18 @@ export interface NotionMdBodySnapshot {
   readonly completeness?: BodyCompleteness
 }
 
+/** A body snapshot bound to an on-disk file (adds path and the file's content hash). */
 export interface NotionMdLocalBodySnapshot extends NotionMdBodySnapshot {
   readonly path: string
   readonly fileContentHash: Sha256Digest
 }
 
+/** A local body snapshot produced by materializing a page, carrying the originating pull result. */
 export interface NotionMdMaterializedBody extends NotionMdLocalBodySnapshot {
   readonly pull: PullResult
 }
 
+/** Result of a verified remote body replace: the new body alongside the `previousBodyHash` it replaced. */
 export interface NotionMdVerifiedRemoteReplaceResult {
   readonly pageId: string
   readonly previousBodyHash: Sha256Digest
@@ -60,6 +64,7 @@ export interface NotionMdVerifiedRemoteReplaceResult {
   readonly completeness?: BodyCompleteness
 }
 
+/** Outcome of settling a verified body push: the reconciled local and remote body hashes. */
 export interface NotionMdSettledBodyPush {
   readonly pageId: string
   readonly path: string

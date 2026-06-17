@@ -579,6 +579,7 @@ const assertSchemaUnchanged = (opts: {
     })
   })
 
+/** Build the v2 frontmatter block from a freshly pulled remote page snapshot. */
 export const buildFrontmatterV2 = (opts: {
   readonly page: RemotePageSnapshot
 }): NmdFrontmatterV2 => ({
