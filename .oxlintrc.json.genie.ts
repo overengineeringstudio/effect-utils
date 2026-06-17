@@ -102,6 +102,9 @@ export default oxlintConfig({
       rules: {
         'overeng/no-raw-nondeterminism': 'off',
         'overeng/no-non-durable-wait': 'off',
+        // The testing harness polls the restate-server lifecycle (deadlines,
+        // readiness) with intentionally sequential awaits in a loop.
+        'no-await-in-loop': 'off',
       },
     },
     // effect-utils specific: react-inspector is a fork with its own style

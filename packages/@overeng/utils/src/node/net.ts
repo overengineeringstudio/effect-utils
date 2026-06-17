@@ -103,9 +103,14 @@ export const withFreePort = async <A>(
 ): Promise<A> => {
   const retries = opts?.retries ?? 5
   let lastErr: unknown
+  // Retry-on-collision: each attempt binds a fresh port and depends on the prior
+  // attempt having failed (EADDRINUSE), so the awaits are intentionally
+  // sequential — parallelizing the retries is nonsensical.
   for (let attempt = 0; attempt <= retries; attempt++) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- intentional sequential retry (see above)
     const port = await freePort()
     try {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- intentional sequential retry (see above)
       return await fn(port)
     } catch (cause) {
       lastErr = cause

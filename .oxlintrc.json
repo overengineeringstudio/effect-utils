@@ -131,7 +131,8 @@
         "overeng/no-raw-otel-primitives": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
-        "require-yield": "off"
+        "require-yield": "off",
+        "no-await-in-loop": "off"
       }
     },
     {
@@ -224,7 +225,8 @@
       ],
       "rules": {
         "overeng/no-raw-nondeterminism": "off",
-        "overeng/no-non-durable-wait": "off"
+        "overeng/no-non-durable-wait": "off",
+        "no-await-in-loop": "off"
       }
     },
     {
