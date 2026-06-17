@@ -239,7 +239,7 @@ export const NotionMdGatewayLive = Layer.effect(
       )
 
     return {
-      pullPage: ({ pageId }) =>
+      pullPage: ({ pageId, purpose = 'other' }) =>
         Effect.gen(function* () {
           const page = yield* provideHttp(NotionPages.retrieve({ pageId }))
           const body = yield* provideHttp(NotionBody.observe({ pageId }))
@@ -263,7 +263,7 @@ export const NotionMdGatewayLive = Layer.effect(
               }
         }).pipe(
           Effect.mapError(mapGatewayError({ operation: 'pull_page', tokenFp, pageId })),
-          Observability.withOperation(Observability.GatewayPullPageSpan, { pageId }),
+          Observability.withOperation(Observability.GatewayPullPageSpan, { pageId, purpose }),
         ),
       updateMarkdown: ({ pageId, command, allowDeletingContent }) =>
         provideHttp(

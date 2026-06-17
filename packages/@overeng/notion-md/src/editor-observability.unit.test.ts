@@ -52,6 +52,7 @@ import {
   type PullPageResult,
   type RemotePageSnapshot,
 } from './model.ts'
+import { GatewayPullPageSpan, withOperation } from './observability.ts'
 import { NmdStateStoreLive } from './state-store.ts'
 
 const exportInterval = 100
@@ -111,7 +112,10 @@ class FakeGateway {
   }
 
   readonly layer = Layer.succeed(NotionMdGateway, {
-    pullPage: () =>
+    pullPage: ({ purpose = 'other' }) =>
+      // Mirror the live gateway: wrap the pull in `GatewayPullPageSpan` carrying
+      // the caller's `purpose`, so the capture proves the purpose discriminator
+      // reaches the trace (the fake otherwise emits no gateway span at all).
       Effect.sync(() => {
         this.pullCount += 1
         if (
@@ -122,7 +126,7 @@ class FakeGateway {
           this.switchBodyOnPull = undefined
         }
         return pull(this.state)
-      }),
+      }).pipe(withOperation(GatewayPullPageSpan, { pageId, purpose })),
     updateMarkdown: ({ command }) =>
       Effect.sync(() => {
         if (command._tag === 'replace_content') {
@@ -273,6 +277,36 @@ layer(CaptureLayer, { excludeTestServices: true })('editor span shapes (Group G)
       const pushPage = yield* cap.inspect({ signal: 'traces', name: 'notion-md.push-page' })
       expect(pushPage.length).toBeGreaterThanOrEqual(1)
       expect(pushPage[0]!.trace_id).toBe(root.trace_id)
+
+      // The editor wait is its own leaf under the edit root (P2), separable from
+      // the push, labelled by the editor command.
+      const editorSessions = yield* cap.inspect({
+        signal: 'traces',
+        name: 'notion-md.editor.session',
+      })
+      expect(editorSessions.length).toBeGreaterThanOrEqual(1)
+      const editorSession = editorSessions.find((s) => s.trace_id === root.trace_id)
+      expect(editorSession).toBeDefined()
+      expect(editorSession!.attrs['notion_md.editor.mode']).toBe('default')
+      expect(editorSession!.attrs['span.label']).toBe(
+        editorSession!.attrs['notion_md.editor.command'],
+      )
+
+      // The gateway pulls this changed-buffer edit performs are now
+      // distinguishable by `notion_md.pull.purpose` (P1): a seed `init` pull, a
+      // `status` pull, the push `observe`/`preflight` pulls, and the `settle`
+      // re-pull. The label folds the purpose in so sibling pull bars read apart.
+      const pulls = (yield* cap.inspect({
+        signal: 'traces',
+        name: 'notion-md.gateway.pull-page',
+      })).filter((s) => s.trace_id === root.trace_id)
+      const purposes = new Set(pulls.map((s) => s.attrs['notion_md.pull.purpose']))
+      expect(purposes).toEqual(new Set(['init', 'status', 'observe', 'preflight', 'settle']))
+      for (const span of pulls) {
+        expect(span.attrs['span.label']).toBe(
+          `${span.attrs['notion_md.pull.purpose']}·${pageId.slice(0, 8)}`,
+        )
+      }
 
       // R24 across the whole tree, including the wrapped engine spans.
       assertNoSensitiveAttrs(yield* cap.inspect({ signal: 'traces' }))
