@@ -45,6 +45,16 @@ export default oxlintConfig({
       files: ['packages/@overeng/genie/src/**'],
       rules: { 'overeng/jsdoc-require-exports': 'warn' },
     },
+    // The otelite test-assertion harness is a fluent matcher DSL
+    // (`attr.predicate('label', pred)`, `expectTrace(...).expectOne(...)`) where
+    // positional arguments read idiomatically and an options object would make
+    // every OTEL-test assertion across the repo more verbose. It is already
+    // rawOtel-exempt test-assertion infra (above), so exempt it from named-args
+    // too — the convention governs product API, not the test DSL.
+    {
+      files: ['**/utils-dev/src/otelite/**'],
+      rules: { 'overeng/named-args': 'off' },
+    },
     // effect-utils: production code must use schema-backed OTEL contracts instead
     // of raw Effect/Stream span primitives. Keep boundary/runtime/test exceptions
     // narrow and explicit so repo-wide adoption remains mechanically checkable.

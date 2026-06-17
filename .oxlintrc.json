@@ -182,6 +182,12 @@
       }
     },
     {
+      "files": ["**/utils-dev/src/otelite/**"],
+      "rules": {
+        "overeng/named-args": "off"
+      }
+    },
+    {
       "files": ["packages/@overeng/*/src/**/*.ts", "packages/@overeng/*/src/**/*.tsx"],
       "rules": {
         "overeng/no-raw-otel-primitives": "error"
