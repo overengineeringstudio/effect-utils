@@ -445,9 +445,14 @@ describe('mr store gc', () => {
 describe('store discovery is bounded to the layout', () => {
   // Regression: the store-layer fs walks must never descend into a checked-out
   // working tree or a non-member directory. Before these guards a single broken
-  // worktree (no `.git`) or a stray dir under `~/.megarepo` (e.g. `_iso/` holding
-  // isolated experiment stores) made the walk enumerate the entire subtree,
-  // exhausting memory on the real store.
+  // worktree (no `.git`) or a non-member co-tenant dir in the store root made the
+  // walk enumerate the entire subtree, exhausting memory on the real store.
+  //
+  // `_`-prefixed roots are the relevant real case: external tooling continuously
+  // checks out isolated worktrees into `_iso/<slug>/` co-tenant namespaces under
+  // the shared store root (each a worktree CLIENT: a `.git` FILE pointing at a
+  // bare, with a full working tree). The `_`-prefix skip is the PRIMARY
+  // membership boundary that keeps them out — they are co-tenants, never members.
 
   it.effect(
     'listRepos returns only layout members, excluding _-prefixed dirs, nested stores, and worktrees',
@@ -466,10 +471,21 @@ describe('store discovery is bounded to the layout', () => {
         // Legit member at depth 2 (a bare repo placed directly under a pseudo-host
         // dir, like the real store's `other/contrib-bare`) — must be INCLUDED.
         yield* mkdirp('other/contrib/.bare')
-        // `_`-prefixed scratch dir holding a NESTED store with a deep working tree:
-        // root-skipped, so its `.bare` is never discovered AND its subtree never walked.
+        // `_`-prefixed co-tenant namespace holding a NESTED store with a deep working
+        // tree: root-skipped, so its `.bare` is never discovered AND its subtree
+        // never walked.
         yield* mkdirp('_iso/exp/github.com/x/y/.bare')
         yield* mkdirp('_iso/exp/github.com/x/y/refs/heads/b/node_modules/a/b/c')
+        // The real `_iso/<slug>` shape: a worktree CLIENT — a `.git` FILE (not a
+        // dir) pointing at a bare, with a full checked-out working tree. Excluded by
+        // the `_`-prefix root skip BEFORE the `.git` shape ever matters, so the
+        // working tree is never descended.
+        yield* mkdirp('_iso/iso-slug/src/deep/nested')
+        yield* mkdirp('_iso/iso-slug/node_modules/a/b/c')
+        yield* fs.writeFileString(
+          EffectPath.ops.join(storePath, EffectPath.unsafe.relativeFile('_iso/iso-slug/.git')),
+          'gitdir: /somewhere/.bare/worktrees/iso-slug\n',
+        )
         // A nested megarepo store (own `.state`/`.locks`): its repos are its members,
         // not ours — must be EXCLUDED, not walked.
         yield* mkdirp('evergreen/.state')
