@@ -166,7 +166,7 @@ export const annotateNotionHttpRateLimitSpan = (input: {
  * method/operation slice already rides the request span's other attributes.
  */
 export const annotateNotionRateLimitWaitSpan = (rateLimitWaitMs: number): Effect.Effect<void> =>
-  annotateAttrs(HttpRateLimitWaitAttrs, { rateLimitWaitMs })
+  annotateAttrs({ attributes: HttpRateLimitWaitAttrs, value: { rateLimitWaitMs } })
 
 /** Wraps a data-source query effect in the `NotionDatabases.query` span, labeled by data source id. */
 export const withNotionDatabasesQuerySpan = (dataSourceId: string) =>

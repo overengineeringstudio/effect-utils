@@ -60,7 +60,10 @@ export const NotionThrottleLive = (options: NotionThrottleOptions): Layer.Layer<
               Effect.gen(function* () {
                 const waitMs = (yield* Clock.currentTimeMillis) - before
                 yield* annotateNotionRateLimitWaitSpan(waitMs)
-                yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({}, waitMs)
+                yield* NotionRateLimitMetricBridges.rateLimitWaitMs.trustedRecord({
+                  labels: {},
+                  value: waitMs,
+                })
                 return yield* effect
               }),
             )
