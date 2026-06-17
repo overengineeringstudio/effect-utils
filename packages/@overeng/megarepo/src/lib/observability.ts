@@ -41,27 +41,27 @@ const labelOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
-export const labelAttrs = OtelAttrs.defineSync(
+const labelAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
   }),
 )
 
-export const repoPathAttrs = OtelAttrs.defineSync(
+const repoPathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     repoPath: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.repo_path' })),
   }),
 )
 
-export const worktreePathAttrs = OtelAttrs.defineSync(
+const worktreePathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     worktreePath: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.worktree_path' })),
   }),
 )
 
-export const gitUrlAttrs = OtelAttrs.defineSync(
+const gitUrlAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     url: Schema.String.pipe(OtelAttr.key({ key: 'git.url' })),
@@ -80,35 +80,35 @@ export const gitCmdAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const gitCmdOutputAttrs = OtelAttrs.defineSync(
+const gitCmdOutputAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     outputBytes: Schema.Number.pipe(OtelAttr.key({ key: 'git.output.bytes' })),
     outputLines: Schema.Number.pipe(OtelAttr.key({ key: 'git.output.lines' })),
   }),
 )
 
-export const gitBranchAttrs = OtelAttrs.defineSync(
+const gitBranchAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     branch: Schema.String.pipe(OtelAttr.key({ key: 'git.branch' })),
   }),
 )
 
-export const gitCommitAttrs = OtelAttrs.defineSync(
+const gitCommitAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     commit: Schema.String.pipe(OtelAttr.key({ key: 'git.commit' })),
   }),
 )
 
-export const workspaceAttrs = OtelAttrs.defineSync(
+const workspaceAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     workspaceRoot: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.workspace_root' })),
   }),
 )
 
-export const storeLiveSetAttrs = OtelAttrs.defineSync(
+const storeLiveSetAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     hasCurrentWorkspace: Schema.Boolean.pipe(
@@ -123,7 +123,7 @@ export const storeLiveSetAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const nixFlakeMetadataAttrs = OtelAttrs.defineSync(
+const nixFlakeMetadataAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     owner: Schema.String.pipe(OtelAttr.key({ key: 'nix.flake.owner' })),
@@ -132,7 +132,7 @@ export const nixFlakeMetadataAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const nixLockFileAttrs = OtelAttrs.defineSync(
+const nixLockFileAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     path: Schema.String.pipe(OtelAttr.key({ key: 'nix.lock.path' })),
@@ -140,7 +140,7 @@ export const nixLockFileAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const nixLockPathTypeAttrs = OtelAttrs.defineSync(
+const nixLockPathTypeAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     path: Schema.String.pipe(OtelAttr.key({ key: 'path' })),
@@ -148,21 +148,21 @@ export const nixLockPathTypeAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const nixLockPathAttrs = OtelAttrs.defineSync(
+const nixLockPathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     path: Schema.String.pipe(OtelAttr.key({ key: 'path' })),
   }),
 )
 
-export const syncMemberCloneAttrs = OtelAttrs.defineSync(
+const syncMemberCloneAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     bareExists: Schema.Boolean.pipe(OtelAttr.key({ key: 'megarepo.sync.member.bare_exists' })),
   }),
 )
 
-export const syncMemberRefAttrs = OtelAttrs.defineSync(
+const syncMemberRefAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     ref: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.member.ref' })),
@@ -172,7 +172,7 @@ export const syncMemberRefAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const syncMemberAttrs = OtelAttrs.defineSync(
+const syncMemberAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     label: Schema.NonEmptyString.pipe(OtelAttr.spanLabel()),
     name: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.member.name' })),
@@ -180,7 +180,7 @@ export const syncMemberAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const syncMemberActionAttrs = OtelAttrs.defineSync(
+const syncMemberActionAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     action: Schema.Literal(
       'clone',
@@ -201,26 +201,19 @@ type SyncMemberAction =
   | 'fetch-missing-commit'
   | 'noop'
 
-export const syncMemberResultAttrs = OtelAttrs.defineSync(
+const syncMemberResultAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     status: Schema.String.pipe(OtelAttr.key({ key: 'megarepo.sync.member.result_status' })),
   }),
 )
 
-export const label = (value: string) => labelAttrs.encodeSync({ label: value })
-
-export const repoPath = (path: string) =>
-  repoPathAttrs.encodeSync({ label: basename(path), repoPath: path })
-
-export const worktreePath = (path: string) =>
-  worktreePathAttrs.encodeSync({ label: basename(path), worktreePath: path })
-
-export const workspaceRoot = (path: string) =>
-  workspaceAttrs.encodeSync({ label: basename(path), workspaceRoot: path })
-
+/** Wrap an effect in a `<name>` span carrying only an explicit display label —
+ *  the generic span helper for sites with no other structured attributes. */
 export const withLabelSpan = (name: string, labelValue: string) =>
   trustedWith(labelOperation(name), { label: labelValue })
 
+/** Wrap an effect in a `<name>` span tagged with `megarepo.repo_path`; the label
+ *  is the path's basename. */
 export const withRepoPathSpan = (name: string, path: string) =>
   trustedWith(
     OtelOperation.define({
@@ -238,6 +231,8 @@ const worktreePathOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap an effect in a `<name>` span tagged with `megarepo.worktree_path`; the
+ *  label defaults to the worktree path's basename. */
 export const withWorktreePathSpan = ({
   name,
   worktreePath,
@@ -286,6 +281,8 @@ const gitUrlOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap a git operation in a `<name>` span carrying the remote `git.url` and
+ *  optional `git.bare` flag. */
 export const withGitUrlSpan = ({
   name,
   label,
@@ -310,6 +307,7 @@ const gitBranchOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap a git operation in a `<name>` span tagged + labelled with `git.branch`. */
 export const withGitBranchSpan = ({
   name,
   branch,
@@ -325,6 +323,7 @@ const gitCommitOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap a git operation in a `<name>` span carrying the resolved `git.commit`. */
 export const withGitCommitSpan = ({
   name,
   label,
@@ -342,6 +341,8 @@ const workspaceOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap an effect in a `<name>` span tagged with `megarepo.workspace_root`; the
+ *  label defaults to the workspace root's basename. */
 export const withWorkspaceSpan = ({
   name,
   workspaceRoot,
@@ -359,6 +360,8 @@ const storeLiveSetOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap the store live-set computation in a `<name>` span recording which
+ *  liveness inputs (current workspace, stale-registry prune, refresh) were active. */
 export const withStoreLiveSetSpan = ({
   name,
   hasCurrentWorkspace,
@@ -383,6 +386,8 @@ const nixFlakeMetadataOperation = OtelOperation.define({
   label: ({ label }) => label,
 })
 
+/** Wrap a `nix flake metadata` fetch in its span; the label is `owner/repo@rev`
+ *  with the rev abbreviated to 8 chars. */
 export const withNixFlakeMetadataSpan = ({
   owner,
   repo,
@@ -405,6 +410,8 @@ const nixLockFileOperation = OtelOperation.define({
   label: ({ label }) => label,
 })
 
+/** Wrap processing of one nix lock file in a `megarepo/nix-lock/file` span,
+ *  tagged with its `nix.lock.path` and `nix.lock.type`. */
 export const withNixLockFileSpan = ({
   lockPath,
   lockType,
@@ -425,6 +432,8 @@ const nixLockPathTypeOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap an effect in a `<name>` span carrying a lock entry's `path`/`type`
+ *  (intentionally unprefixed attribute keys). */
 export const withNixLockPathTypeSpan = ({
   name,
   path,
@@ -442,6 +451,7 @@ const nixLockPathOperation = (name: string) =>
     label: ({ label }) => label,
   })
 
+/** Wrap an effect in a `<name>` span carrying a single lock `path` (unprefixed key). */
 export const withNixLockPathSpan = ({
   name,
   path,
@@ -456,6 +466,8 @@ const syncMemberCloneOperation = OtelOperation.define({
   label: ({ label }) => label,
 })
 
+/** Wrap a member clone-or-fetch in a `megarepo/sync/member/clone-or-fetch` span;
+ *  `bareExists` distinguishes the fetch path from the initial clone. */
 export const withSyncMemberCloneSpan = ({
   name,
   bareExists,
@@ -470,6 +482,7 @@ const syncMemberResolveRefOperation = OtelOperation.define({
   label: ({ label }) => label,
 })
 
+/** Wrap ref resolution for a member in a `megarepo/sync/member/resolve-ref` span. */
 export const withSyncMemberResolveRefSpan = (ref: string) =>
   trustedWith(syncMemberResolveRefOperation, { label: ref, ref })
 
@@ -479,6 +492,8 @@ const syncMemberCreateWorktreeOperation = OtelOperation.define({
   label: ({ label }) => label,
 })
 
+/** Wrap worktree creation for a member in a `megarepo/sync/member/create-worktree`
+ *  span carrying the target `ref` and its `refType`. */
 export const withSyncMemberCreateWorktreeSpan = ({
   ref,
   refType,
@@ -493,6 +508,8 @@ const syncMemberOperation = OtelOperation.define({
   label: ({ label }) => label,
 })
 
+/** Wrap the whole per-member sync in a `megarepo/sync/member` span; the enclosing
+ *  span for the clone/resolve/create-worktree child spans. */
 export const withSyncMemberSpan = ({
   name,
   source,
@@ -501,6 +518,8 @@ export const withSyncMemberSpan = ({
   readonly source: string
 }) => trustedWith(syncMemberOperation, { label: name, name, source })
 
+/** Annotate the enclosing member span with the action actually taken
+ *  (clone / fetch / noop / …), so the chosen path is queryable per member. */
 export const annotateSyncMemberAction = (action: SyncMemberAction) =>
   trustOtelContract<void, never, never>(
     OtelSpan.annotate({
@@ -509,6 +528,7 @@ export const annotateSyncMemberAction = (action: SyncMemberAction) =>
     }),
   )
 
+/** Annotate the enclosing member span with the final result status string. */
 export const annotateSyncMemberResult = (status: string) =>
   trustOtelContract<void, never, never>(
     OtelSpan.annotate({
