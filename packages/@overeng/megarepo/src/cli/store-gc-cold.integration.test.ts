@@ -81,6 +81,8 @@ const StoreGcJsonOutput = Schema.Struct({
       message: Schema.optional(Schema.String),
       reason: Schema.optional(Schema.String),
       recoverPath: Schema.optional(Schema.String),
+      pathRef: Schema.optional(Schema.String),
+      actualHeadBranch: Schema.optional(Schema.String),
     }),
   ),
 })
@@ -705,7 +707,7 @@ describe('mr store gc — cold named-branch reclamation', () => {
   )
 
   it.effect(
-    'ref_mismatch (HEAD on a different branch) ⇒ kept',
+    'ref_mismatch within absence grace ⇒ kept',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -734,6 +736,105 @@ describe('mr store gc — cold named-branch reclamation', () => {
         const result = findByRef(results, 'feature/claimed')
         expect(result?.status).toBe('kept')
         expect(result?.reason).toBe('ref_mismatch')
+        expect(result?.pathRef).toBe('feature/claimed')
+        expect(result?.actualHeadBranch).toBe('feature/other')
+        expect(yield* fs.exists(worktreePath)).toBe(true)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'clean ref_mismatch + grace-met ⇒ archived without deleting either branch ref',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          { ...REPO, branches: ['feature/claimed'], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const worktreePath = worktreePaths[`${REPO_KEY}#feature/claimed`]!
+        const commit = yield* getWorktreeCommit(worktreePath)
+
+        yield* materializeBranchRef({ bareRepoPath, branch: 'feature/claimed', commit })
+        yield* git(bareRepoPath, 'branch', 'feature/other', commit)
+        yield* git(worktreePath, 'checkout', 'feature/other')
+
+        const cwd = yield* outsideCwd()
+        yield* seedColdObservation({ cwd, storePath })
+        const { results } = yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
+        })
+
+        const result = findByRef(results, 'feature/claimed')
+        expect(result?.status).toBe('archived')
+        expect(result?.reason).toBe('ref_mismatch_clean')
+        expect(result?.pathRef).toBe('feature/claimed')
+        expect(result?.actualHeadBranch).toBe('feature/other')
+        expect(result?.recoverPath).toContain('/.archive/feature/claimed--')
+        expect(yield* fs.exists(worktreePath)).toBe(false)
+
+        const archivePath = EffectPath.unsafe.absoluteDir(
+          `${result!.recoverPath!.replace(/\/+$/, '')}/`,
+        )
+        expect(yield* fs.exists(archivePath)).toBe(true)
+        expect(yield* git(archivePath, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('HEAD')
+        expect(yield* git(bareRepoPath, 'rev-parse', 'refs/heads/feature/claimed')).toBe(commit)
+        expect(yield* git(bareRepoPath, 'rev-parse', 'refs/heads/feature/other')).toBe(commit)
+
+        const repoRoot = EffectPath.ops.join(
+          storePath,
+          EffectPath.unsafe.relativeDir(REPO_RELATIVE),
+        )
+        const readme = yield* fs.readFileString(
+          EffectPath.ops.join(
+            EffectPath.ops.join(repoRoot, EffectPath.unsafe.relativeDir('.archive/')),
+            EffectPath.unsafe.relativeFile('README.md'),
+          ),
+        )
+        expect(readme).toContain('feature/claimed')
+        expect(readme).toContain('ref_mismatch_clean')
+        expect(readme).toContain('actualHeadBranch=feature/other')
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'dry-run clean ref_mismatch + grace-met ⇒ reports archive intent without moving',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          { ...REPO, branches: ['feature/claimed'], withRemote: true },
+        ])
+        const bareRepoPath = bareRepoPaths[REPO_KEY]!
+        const worktreePath = worktreePaths[`${REPO_KEY}#feature/claimed`]!
+        const commit = yield* getWorktreeCommit(worktreePath)
+
+        yield* materializeBranchRef({ bareRepoPath, branch: 'feature/claimed', commit })
+        yield* git(bareRepoPath, 'branch', 'feature/other', commit)
+        yield* git(worktreePath, 'checkout', 'feature/other')
+
+        const cwd = yield* outsideCwd()
+        yield* seedColdObservation({ cwd, storePath })
+        const { results } = yield* runGc({
+          cwd,
+          storePath,
+          prRepos: [{ relativePath: REPO_RELATIVE, prs: [] }],
+          args: ['--dry-run'],
+        })
+
+        const result = findByRef(results, 'feature/claimed')
+        expect(result?.status).toBe('archived')
+        expect(result?.reason).toBe('ref_mismatch_clean')
+        expect(result?.pathRef).toBe('feature/claimed')
+        expect(result?.actualHeadBranch).toBe('feature/other')
+        expect(result?.recoverPath).toBeUndefined()
         expect(yield* fs.exists(worktreePath)).toBe(true)
       },
       Effect.provide(NodeContext.layer),

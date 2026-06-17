@@ -15,11 +15,14 @@
  *    preserves dirty + untracked work intact and fixes the absolute gitlink, so
  *    no `git worktree repair` is needed. A metadata line is appended to
  *    `<repoRoot>/.archive/README.md`.
- * 2. {@link scanArchives} — enumerate archive entries via `Git.listWorktrees`
+ * 2. {@link archiveRefMismatchWorktree} — same recoverable move, but it only
+ *    detaches the archived worktree and records both refs. It does NOT delete
+ *    either branch ref because the path ref and actual HEAD branch disagree.
+ * 3. {@link scanArchives} — enumerate archive entries via `Git.listWorktrees`
  *    (git's own worktree registry already lists them — that is exactly why they
  *    are excluded from the live set), filtered to paths under `<repoRoot>/.archive/`,
  *    parsing `archivedAtMs` from the strict trailing `--<ISO8601>` segment.
- * 3. {@link reapArchive} — `git worktree remove --force` then ensure the dir is
+ * 4. {@link reapArchive} — `git worktree remove --force` then ensure the dir is
  *    gone. The retention-TTL gate and under-lock veto re-check are the caller's
  *    responsibility (this is the mechanism, not the policy).
  *
@@ -226,6 +229,92 @@ export const archiveWorktree = (args: {
 
     return { destPath, warnings }
   }).pipe(Observability.withArchiveWorktreeSpan({ branch: args.branch, reason: args.reason }))
+
+/**
+ * Archive a clean ref-mismatch worktree without guessing which branch ref is
+ * disposable.
+ *
+ * A mismatch has two names: `pathRef` (from the store path) and
+ * `actualHeadBranch` (the checked-out branch). Normal archive cleanup would
+ * detach and delete `pathRef`; that is unsafe here because `pathRef` is not the
+ * checked-out branch and may still be useful evidence. This helper therefore
+ * moves the directory to `.archive/`, detaches the archived HEAD to release the
+ * actual branch lock, records both refs, and leaves both branch refs intact.
+ */
+export const archiveRefMismatchWorktree = (args: {
+  /** The repo root in the store: `<store>/<host>/<owner>/<repo>/`. */
+  readonly repoRoot: AbsoluteDirPath
+  /** The bare repo path: `<repoRoot>/.bare/`. */
+  readonly bareRepoPath: AbsoluteDirPath
+  /** Source worktree directory to archive. */
+  readonly worktreePath: AbsoluteDirPath
+  /** Branch name implied by the store path. */
+  readonly pathRef: string
+  /** Branch actually checked out in the worktree. */
+  readonly actualHeadBranch: string
+  /** The worktree HEAD commit, recorded in the metadata log. */
+  readonly commit: string
+  /** Epoch-ms decision time; drives the archive dir name + README timestamp. */
+  readonly now: number
+}): Effect.Effect<
+  ArchiveOutcome,
+  Git.GitCommandError | PlatformError.PlatformError,
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    const reason = 'ref_mismatch_clean'
+    const iso = new Date(args.now).toISOString()
+    const archiveDir = archiveDirPath(args.repoRoot)
+    const destPath = EffectPath.ops.join(
+      archiveDir,
+      EffectPath.unsafe.relativeDir(`${args.pathRef}--${iso}/`),
+    )
+
+    const destParent = EffectPath.ops.parent(destPath) ?? archiveDir
+    yield* fs.makeDirectory(destParent, { recursive: true })
+
+    yield* Git.moveWorktree({
+      repoPath: args.bareRepoPath,
+      fromPath: args.worktreePath,
+      toPath: destPath,
+    })
+
+    const warnings: Array<string> = []
+
+    yield* Git.detachWorktreeHead({ worktreePath: destPath }).pipe(
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          warnings.push(
+            `archived worktree HEAD could not be detached (branch refs were preserved): ${error.message}`,
+          )
+        }),
+      ),
+    )
+
+    const readmePath = EffectPath.ops.join(
+      archiveDir,
+      EffectPath.unsafe.relativeFile(ARCHIVE_README_NAME),
+    )
+    const line = `${args.pathRef}\t${iso}\t${args.commit}\t${reason}\tactualHeadBranch=${args.actualHeadBranch}\n`
+    yield* fs.readFileString(readmePath).pipe(
+      Effect.catchAll(() => Effect.succeed('')),
+      Effect.flatMap((existing) => writeFileAtomic({ path: readmePath, content: existing + line })),
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          warnings.push(`archive README metadata not recorded: ${error.message}`)
+        }),
+      ),
+    )
+
+    return { destPath, warnings }
+  }).pipe(
+    Observability.withArchiveWorktreeSpan({
+      branch: args.pathRef,
+      reason: 'ref_mismatch_clean',
+    }),
+  )
 
 /**
  * Enumerate the archive entries under `<repoRoot>/.archive/`.

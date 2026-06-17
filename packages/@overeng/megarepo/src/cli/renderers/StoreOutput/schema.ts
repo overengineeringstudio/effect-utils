@@ -67,6 +67,10 @@ export const StoreGcResult = Schema.Struct({
   reason: Schema.optional(Schema.String),
   /** For `archived`: the `.archive/` location the worktree was moved to (recovery hint). */
   recoverPath: Schema.optional(Schema.String),
+  /** For ref-mismatch archives: the branch implied by the store path. */
+  pathRef: Schema.optional(Schema.String),
+  /** For ref-mismatch archives: the branch actually checked out in the worktree. */
+  actualHeadBranch: Schema.optional(Schema.String),
 })
 
 /** Inferred type for a store GC result. */
