@@ -51,4 +51,9 @@ export const writeFileAtomic = ({
     yield* fs
       .rename(tempPath, path)
       .pipe(Effect.tapError(() => fs.remove(tempPath).pipe(Effect.catchAll(() => Effect.void))))
-  }).pipe(Observability.withLabelSpan('megarepo/store/fs/write-atomic', 'write-atomic'))
+  }).pipe(
+    Observability.withLabelSpan({
+      name: 'megarepo/store/fs/write-atomic',
+      labelValue: 'write-atomic',
+    }),
+  )

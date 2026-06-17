@@ -264,7 +264,10 @@ export const NotionMdGatewayLive = Layer.effect(
               }
         }).pipe(
           Effect.mapError(mapGatewayError({ operation: 'pull_page', tokenFp, pageId })),
-          Observability.withOperation(Observability.GatewayPullPageSpan, { pageId }),
+          Observability.withOperation({
+            operation: Observability.GatewayPullPageSpan,
+            attributes: { pageId },
+          }),
         ),
       updateMarkdown: ({ pageId, command, allowDeletingContent }) =>
         provideHttp(
@@ -319,12 +322,15 @@ export const NotionMdGatewayLive = Layer.effect(
               ? cause
               : mapGatewayError({ operation: 'update_markdown', tokenFp, pageId })(cause),
           ),
-          Observability.withOperation(Observability.GatewayUpdateMarkdownSpan, {
-            pageId,
-            type: command._tag,
-            allowDeletingContent,
-            contentUpdateCount:
-              command._tag === 'update_content' ? command.contentUpdates.length : 0,
+          Observability.withOperation({
+            operation: Observability.GatewayUpdateMarkdownSpan,
+            attributes: {
+              pageId,
+              type: command._tag,
+              allowDeletingContent,
+              contentUpdateCount:
+                command._tag === 'update_content' ? command.contentUpdates.length : 0,
+            },
           }),
         ),
       updatePageProperties: ({ pageId, properties }) =>
@@ -333,7 +339,10 @@ export const NotionMdGatewayLive = Layer.effect(
           Effect.mapError(
             mapGatewayError({ operation: 'update_page_properties', tokenFp, pageId }),
           ),
-          Observability.withOperation(Observability.GatewayUpdatePagePropertiesSpan, { pageId }),
+          Observability.withOperation({
+            operation: Observability.GatewayUpdatePagePropertiesSpan,
+            attributes: { pageId },
+          }),
         ),
       retrieveDataSource: ({ dataSourceId }) =>
         provideHttp(NotionDataSources.retrieve({ dataSourceId })).pipe(
@@ -359,8 +368,11 @@ export const NotionMdGatewayLive = Layer.effect(
             properties: dataSource.properties,
           })),
           Effect.mapError(mapGatewayError({ operation: 'retrieve_data_source', tokenFp })),
-          Observability.withOperation(Observability.GatewayRetrieveDataSourceSpan, {
-            dataSourceId,
+          Observability.withOperation({
+            operation: Observability.GatewayRetrieveDataSourceSpan,
+            attributes: {
+              dataSourceId,
+            },
           }),
         ),
       updatePageMetadata: ({ pageId, metadata }) =>
@@ -391,13 +403,16 @@ export const NotionMdGatewayLive = Layer.effect(
         ).pipe(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'update_page_metadata', tokenFp, pageId })),
-          Observability.withOperation(Observability.GatewayUpdatePageMetadataSpan, {
-            pageId,
-            hasTitle: metadata.title !== undefined,
-            hasIcon: metadata.icon !== undefined,
-            hasCover: metadata.cover !== undefined,
-            inTrash: metadata.in_trash !== undefined,
-            isLocked: metadata.is_locked !== undefined,
+          Observability.withOperation({
+            operation: Observability.GatewayUpdatePageMetadataSpan,
+            attributes: {
+              pageId,
+              hasTitle: metadata.title !== undefined,
+              hasIcon: metadata.icon !== undefined,
+              hasCover: metadata.cover !== undefined,
+              inTrash: metadata.in_trash !== undefined,
+              isLocked: metadata.is_locked !== undefined,
+            },
           }),
         ),
       listChildPages: ({ pageId }) =>
@@ -412,7 +427,10 @@ export const NotionMdGatewayLive = Layer.effect(
             }),
           ),
           Effect.mapError(mapGatewayError({ operation: 'list_child_pages', tokenFp, pageId })),
-          Observability.withOperation(Observability.GatewayListChildPagesSpan, { pageId }),
+          Observability.withOperation({
+            operation: Observability.GatewayListChildPagesSpan,
+            attributes: { pageId },
+          }),
         ),
       createPage: ({ parentPageId, title, markdown }) =>
         provideHttp(
@@ -431,7 +449,10 @@ export const NotionMdGatewayLive = Layer.effect(
           Effect.mapError(
             mapGatewayError({ operation: 'create_page', tokenFp, pageId: parentPageId }),
           ),
-          Observability.withOperation(Observability.GatewayCreatePageSpan, { parentPageId }),
+          Observability.withOperation({
+            operation: Observability.GatewayCreatePageSpan,
+            attributes: { parentPageId },
+          }),
         ),
       movePage: ({ pageId, parentPageId }) =>
         provideHttp(
@@ -439,13 +460,19 @@ export const NotionMdGatewayLive = Layer.effect(
         ).pipe(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'move_page', tokenFp, pageId })),
-          Observability.withOperation(Observability.GatewayMovePageSpan, { pageId }),
+          Observability.withOperation({
+            operation: Observability.GatewayMovePageSpan,
+            attributes: { pageId },
+          }),
         ),
       archivePage: ({ pageId }) =>
         provideHttp(NotionPages.update({ pageId, in_trash: true })).pipe(
           Effect.map(toRemotePage),
           Effect.mapError(mapGatewayError({ operation: 'archive_page', tokenFp, pageId })),
-          Observability.withOperation(Observability.GatewayArchivePageSpan, { pageId }),
+          Observability.withOperation({
+            operation: Observability.GatewayArchivePageSpan,
+            attributes: { pageId },
+          }),
         ),
     }
   }),

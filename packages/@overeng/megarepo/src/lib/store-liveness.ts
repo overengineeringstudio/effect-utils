@@ -94,20 +94,22 @@ const collectWorkspaceSymlinkTargets = ({
     const fs = yield* FileSystem.FileSystem
     const targets = new Set<string>()
     const membersRoot = getMembersRoot(workspaceRoot)
-    const membersRootExists = strict
-      ? yield* fs.exists(membersRoot)
-      : yield* fs.exists(membersRoot).pipe(Effect.catchAll(() => Effect.succeed(false)))
+    const membersRootExists =
+      strict === true
+        ? yield* fs.exists(membersRoot)
+        : yield* fs.exists(membersRoot).pipe(Effect.catchAll(() => Effect.succeed(false)))
     if (membersRootExists === false) return targets
 
     // Workspace-level read failures (unreadable members dir) surface in strict
     // mode so a present-but-unreadable workspace fails safe upstream. A
     // per-entry `readLink` failure is always tolerated: a non-symlink directory
     // entry (e.g. a local repo) legitimately has no store target.
-    const entries = strict
-      ? yield* fs.readDirectory(membersRoot)
-      : yield* fs
-          .readDirectory(membersRoot)
-          .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+    const entries =
+      strict === true
+        ? yield* fs.readDirectory(membersRoot)
+        : yield* fs
+            .readDirectory(membersRoot)
+            .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
     for (const entry of entries) {
       if (entry.startsWith('.') === true) continue
       const memberPath = EffectPath.ops.join(membersRoot, EffectPath.unsafe.relativeFile(entry))
@@ -364,7 +366,12 @@ const readRegistryRecords = ({
     }
 
     return { records, uncleanReconcilePaths }
-  }).pipe(Observability.withLabelSpan('megarepo/store/liveness/read-registry', 'registry'))
+  }).pipe(
+    Observability.withLabelSpan({
+      name: 'megarepo/store/liveness/read-registry',
+      labelValue: 'registry',
+    }),
+  )
 
 /**
  * Collects the store-wide protected path set from the workspace registry.

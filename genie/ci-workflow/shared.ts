@@ -87,7 +87,7 @@ const ciCancelInProgress = (opts?: Pick<CiConcurrencyOptions, 'measurementBaseli
     ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
     : "${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
 
-export const ciJobConcurrency = (jobId: string, opts?: CiConcurrencyOptions) =>
+export const ciJobConcurrency = ({ jobId, ...opts }: { jobId: string } & CiConcurrencyOptions) =>
   ({
     group:
       '${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-' +
@@ -138,15 +138,18 @@ const supportsMeasurementBaselineBackfill = (on: GitHubWorkflowArgs['on']) =>
   'workflow_dispatch' in on &&
   on.workflow_dispatch !== null
 
-const withDefaultJobConcurrency = (
-  jobs: GitHubWorkflowArgs['jobs'],
-  opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>,
-): GitHubWorkflowArgs['jobs'] =>
+const withDefaultJobConcurrency = ({
+  jobs,
+  ...opts
+}: { jobs: GitHubWorkflowArgs['jobs'] } & Pick<
+  CiConcurrencyOptions,
+  'measurementBaselineBackfill'
+>): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
     Object.entries(jobs).map(([jobId, job]) => [
       jobId,
       job.concurrency === undefined
-        ? { ...job, concurrency: ciJobConcurrency(jobId, { ...opts, matrix: isMatrixJob(job) }) }
+        ? { ...job, concurrency: ciJobConcurrency({ jobId, ...opts, matrix: isMatrixJob(job) }) }
         : job,
     ]),
   )
@@ -173,7 +176,8 @@ export const ciWorkflow = (args: GitHubWorkflowArgs) =>
       actionlint: actionlint ?? defaultActionlintConfig,
       jobs:
         concurrency === undefined
-          ? withDefaultJobConcurrency(jobs, {
+          ? withDefaultJobConcurrency({
+              jobs,
               measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
             })
           : jobs,

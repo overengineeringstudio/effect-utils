@@ -7,8 +7,13 @@ export const jobLocalMegarepoStore =
 const appendGitHubPathLine = (valueExpression: string) =>
   `printf '%s\\n' ${valueExpression} >> "$GITHUB_PATH"`
 
-const appendGitHubEnvLine = (name: string, valueExpression: string) =>
-  `printf '${name}=%s\\n' ${valueExpression} >> "$GITHUB_ENV"`
+const appendGitHubEnvLine = ({
+  name,
+  valueExpression,
+}: {
+  name: string
+  valueExpression: string
+}) => `printf '${name}=%s\\n' ${valueExpression} >> "$GITHUB_ENV"`
 
 /**
  * Install the megarepo CLI into a job-local bin directory.
@@ -51,7 +56,7 @@ export const syncMegarepoWorkspaceStep = (opts?: { skip?: string[] }) => {
     run: `mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
 if [ -n "${'${GITHUB_ENV:-}'}" ]; then
-  ${appendGitHubEnvLine('MEGAREPO_STORE', '"$MEGAREPO_STORE"')}
+  ${appendGitHubEnvLine({ name: 'MEGAREPO_STORE', valueExpression: '"$MEGAREPO_STORE"' })}
 fi
 ${args.join(' ')}`,
     shell: 'bash',
@@ -73,7 +78,7 @@ export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
     skipCsv === ''
       ? ''
       : `if [ -n "${'${GITHUB_ENV:-}'}" ]; then
-  ${appendGitHubEnvLine('MEGAREPO_SKIP_MEMBERS', quotedSkipCsv)}
+  ${appendGitHubEnvLine({ name: 'MEGAREPO_SKIP_MEMBERS', valueExpression: quotedSkipCsv })}
 fi`
   return {
     name: 'Sync megarepo dependencies',
@@ -86,7 +91,7 @@ fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
 if [ -n "${'${GITHUB_ENV:-}'}" ]; then
-  ${appendGitHubEnvLine('MEGAREPO_STORE', '"$MEGAREPO_STORE"')}
+  ${appendGitHubEnvLine({ name: 'MEGAREPO_STORE', valueExpression: '"$MEGAREPO_STORE"' })}
 fi
 ${exportSkipMembersScript}
 nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,

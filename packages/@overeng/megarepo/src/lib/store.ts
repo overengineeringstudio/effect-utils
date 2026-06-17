@@ -288,10 +288,13 @@ const make = ({
           fullPath: AbsoluteDirPath
         }> = []
 
-        const walk = (
-          dir: AbsoluteDirPath,
-          depth: number,
-        ): Effect.Effect<void, PlatformError.PlatformError> =>
+        const walk = ({
+          dir,
+          depth,
+        }: {
+          dir: AbsoluteDirPath
+          depth: number
+        }): Effect.Effect<void, PlatformError.PlatformError> =>
           Effect.gen(function* () {
             yield* Effect.yieldNow()
             const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
@@ -349,7 +352,7 @@ const make = ({
                     .pipe(Effect.catchAll(() => Effect.succeed(null)))
                   if (entryStat?.type !== 'Directory') return
 
-                  yield* walk(entryPath, depth + 1)
+                  yield* walk({ dir: entryPath, depth: depth + 1 })
                 }),
               ),
               { concurrency: 32 },
@@ -373,11 +376,13 @@ const make = ({
                 .pipe(Effect.catchAll(() => Effect.succeed(null)))
               if (entryStat?.type !== 'Directory') return
 
-              yield* walk(entryPath, 1)
+              yield* walk({ dir: entryPath, depth: 1 })
             }),
           ),
           { concurrency: 32 },
-        ).pipe(Observability.withLabelSpan('megarepo/store/list-repos', 'repos'))
+        ).pipe(
+          Observability.withLabelSpan({ name: 'megarepo/store/list-repos', labelValue: 'repos' }),
+        )
 
         return result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
       }),
