@@ -37,6 +37,8 @@ export const namespaceRootDirectoryName = '.notion'
  * object store live under `.notion/v1`.
  */
 export const metadataDirectoryName = join(namespaceRootDirectoryName, 'v1')
+
+/** Subdirectory under {@link metadataDirectoryName} holding per-page JSON sidecars. */
 export const pageSidecarDirectoryName = 'pages'
 
 /**
@@ -88,6 +90,7 @@ export const FilesystemWorkspaceSidecar = Schema.Struct({
 }).annotations({ identifier: 'NotionDatasourceSync.FilesystemWorkspaceSidecar' })
 export type FilesystemWorkspaceSidecar = typeof FilesystemWorkspaceSidecar.Type
 
+/** Constructs a sidecar record, deriving the own-write suppression token from `pageId`/`path`/`bodyHash` and stamping `observedAt` (defaults to now). */
 export const makeFilesystemWorkspaceSidecar = ({
   pageId,
   path,

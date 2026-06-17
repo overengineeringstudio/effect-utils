@@ -70,6 +70,7 @@ const hashFromNotionMdDigest = (value: string): Hash => decode({ schema: Hash, v
 
 const observedAtNow = () => decode({ schema: Schema.DateTimeUtc, value: new Date().toISOString() })
 
+/** Structural (duck-typed) view of NotionMD fidelity info, decoupling this adapter from the exact upstream `@overeng/notion-md` body type. */
 export type NotionBodyFidelityLike = {
   readonly markdown?: {
     readonly truncated?: boolean
@@ -78,6 +79,7 @@ export type NotionBodyFidelityLike = {
   readonly completeness?: BodyCompleteness
 }
 
+/** Structural view of a NotionMD remote body accepted by this adapter; fidelity may arrive under `fidelity` or `bodyFidelity` depending on the source. */
 export type NotionMdRemoteBodyLike = {
   readonly pageId: string
   readonly bodyHash: string
