@@ -230,11 +230,11 @@ export const ConflictRaised = Schema.TaggedStruct('ConflictRaised', {
   conflictKind: Schema.optional(
     Schema.Literal(
       'property',
+      // The body adapter's remote-vs-local body conflict. Body is single-surface
+      // and adapter-owned (decision 0013); it is NOT routed through the property
+      // convergence engine. Resolved via keep-local re-push / keep-remote
+      // re-materialize.
       'body',
-      // Engine-detected LOCAL body divergence (the convergence engine found two
-      // local body surfaces disagree). Distinct from `body`, which is the body
-      // adapter's OWN remote-staleness conflict. Decision 0013.
-      'body-body-delegated',
       'schema',
       'delete-vs-edit',
       'lifecycle',

@@ -99,24 +99,6 @@ describe('local-surface convergence', () => {
     expect(outcome.surface).toBe('nmd')
   })
 
-  it('routes a single-surface body edit through without a false conflict (decision 0013)', () => {
-    // `.nmd` is the only local body surface in production: the engine sees ONE
-    // body fact and must emit `single-surface`, never a `body-body-delegated`
-    // conflict, and must not block the identity.
-    const result = convergeLocalSurfaces({
-      authorityMode: 'shared',
-      dataFileEdits: [],
-      nmdFacts: [{ identity: bodyIdentity, desiredHash: hash('a'), baseHash: hash('0') }],
-    })
-    if (result._tag !== 'shared') throw new Error('expected shared')
-    const [outcome] = result.outcomes
-    expect(outcome?._tag).toBe('single-surface')
-    if (outcome?._tag !== 'single-surface') return
-    expect(outcome.surface).toBe('nmd')
-    expect(result.conflicts).toHaveLength(0)
-    expect(result.blockedIdentities).toHaveLength(0)
-  })
-
   it('classifies body divergence as a body conflict with no property verdict', () => {
     const result = convergeLocalSurfaces({
       authorityMode: 'shared',

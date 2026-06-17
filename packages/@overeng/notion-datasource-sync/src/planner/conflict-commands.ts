@@ -1,13 +1,13 @@
 import { Schema } from 'effect'
 
-import { pageSurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
+import { bodySurfaceKey, pageSurfaceKey, propertySurfaceKey } from '../core/canonical.ts'
 import {
   type CanonicalPropertyValue,
   PatchPagePropertiesCommand,
   RestorePageCommand,
   TrashPageCommand,
 } from '../core/commands.ts'
-import { CommandId, PageId } from '../core/domain.ts'
+import { CommandId, PageId, bodyPointerIdentityDigest } from '../core/domain.ts'
 import {
   IdempotencyKey,
   SurfaceKey,
@@ -22,10 +22,15 @@ import { readOneShotSyncStatus } from '../core/status.ts'
 import type { AuthorityMode } from '../local/manifest.ts'
 import { hashStoreBytes, pageLifecycleHash } from '../store/projections.ts'
 import type { ConflictProjectionRow, NotionSyncStore } from '../store/store.ts'
-import { makeGuardBlockedEvent, makeRemoteWritePlannedEvent } from '../sync/observation.ts'
+import {
+  bodyPushCommandFromLocalChange,
+  makeGuardBlockedEvent,
+  makeRemoteWritePlannedEvent,
+} from '../sync/observation.ts'
 import {
   planIntent,
   withAuthorityMode,
+  type BodyEditIntent,
   type OutboxCommandEnvelope,
   type PropertyEditIntent,
 } from './planner.ts'
@@ -359,6 +364,120 @@ const resolveLifecycleConflict = ({
   }
 }
 
+/**
+ * Resolve an open `body` conflict (decision 0013). Body is single-surface and
+ * adapter-owned: it carries no engine-mergeable value (it is content), so
+ * resolution is NOT a value merge but a re-push (local) / re-materialize (remote):
+ *
+ * - `keep-local`: re-assert the local `.nmd` body by re-enqueueing a
+ *   `BodyPushCommand` against the current body pointer (read from the snapshot's
+ *   body surface), routed through the planner so the normal body-edit guards
+ *   (`StaleSurfaceBase`, `BodyAdapterConflict`, capability) apply. The conflict's
+ *   `localHash` is the local body target. On settlement the body pointer
+ *   reconverges and the divergence is gone, mirroring the bespoke push path.
+ * - `keep-remote` (and `manual`): accept the remote body. Emit
+ *   `ConflictResolved(keep-remote)`; the store `body` apply arm retires the
+ *   conflict and records the re-materialization intent so the next pull rewrites
+ *   the `.nmd` from the remote observation (a DEFERRED remote effect, exactly as
+ *   lifecycle keep-remote defers its remote reconvergence).
+ */
+const resolveBodyConflict = ({
+  store,
+  rootId,
+  conflict,
+  choice,
+  authorityMode,
+  now,
+}: UserActionOptions & {
+  readonly conflict: ConflictProjectionRow
+  readonly choice: ConflictResolutionChoice
+  readonly now: () => Date
+}): PlannedUserAction => {
+  const pageId = conflict.pageId ?? decode({ schema: PageId, value: 'unknown-page' })
+
+  if (choice._tag !== 'keep-local') {
+    // keep-remote / manual: accept the remote body. The store `body` apply arm
+    // retires the conflict and records the re-materialization intent; the actual
+    // `.nmd` rewrite is the next pull's materialization.
+    return {
+      events: [makeConflictResolvedEvent({ rootId, conflict, choice, now })],
+      commands: [],
+      guards: [],
+    }
+  }
+
+  // keep-local: re-push the local `.nmd` body. The base is the current body
+  // pointer from the projection; the desired body hash is the conflict's recorded
+  // `localHash` (the local body the user is re-asserting).
+  const snapshot = withAuthorityMode({
+    snapshot: store.readPlannerProjectionSnapshot(rootId),
+    authorityMode,
+  })
+  const bodySurface = snapshot.bodies.find((candidate) => candidate.pageId === pageId)
+  if (bodySurface === undefined || conflict.localHash === undefined) {
+    return guardPlan({
+      guard: 'CurrentSurfaceMissing',
+      surface: conflict.surface ?? bodySurfaceKey(pageId),
+      message: 'Body conflict resolution requires a current body pointer and a local body hash',
+    })
+  }
+
+  const baseHash = bodyPointerIdentityDigest(bodySurface.pointer)
+  const command = bodyPushCommandFromLocalChange({
+    pageId,
+    baseBodyPointer: bodySurface.pointer,
+    localBodyHash: conflict.localHash,
+  })
+  const intent: BodyEditIntent = {
+    _tag: 'body-edit',
+    intentEventId: intentEventIdFor(`resolve-body:${conflict.conflictId}:keep-local`),
+    commandKey: decode({
+      schema: IdempotencyKey,
+      value: `resolve-body:${eventIdPart(conflict.conflictId)}:keep-local`,
+    }),
+    surface: bodySurfaceKey(pageId),
+    pageId,
+    command,
+    baseHash,
+    desiredHash: conflict.localHash,
+  }
+  const decision = planIntent({ snapshot, intent })
+
+  switch (decision._tag) {
+    case 'EnqueueCommands': {
+      const followupCommand = decision.commands[0]
+      return {
+        events:
+          followupCommand === undefined
+            ? []
+            : [makeConflictResolvedEvent({ rootId, conflict, choice, followupCommand, now })],
+        commands: decision.commands,
+        guards: [],
+      }
+    }
+    case 'BlockedByGuard':
+      return {
+        events: [],
+        commands: [],
+        guards: [
+          { guard: decision.guard, surface: decision.surface, message: decision.detail.summary },
+        ],
+      }
+    case 'OpenConflict':
+      return guardPlan({
+        guard: 'StaleSurfaceBase',
+        surface: decision.conflict.localSurface,
+        message: decision.conflict.message,
+      })
+    case 'AppendEvents':
+      return {
+        events: [makeConflictResolvedEvent({ rootId, conflict, choice, now })],
+        commands: [],
+        guards: [],
+      }
+  }
+}
+
 const conflictResolutionPlan = ({
   store,
   rootId,
@@ -385,6 +504,21 @@ const conflictResolutionPlan = ({
   // them to their own resolver before the property-only refuse block below.
   if (conflict.kind === 'lifecycle' && conflict.pageId !== undefined) {
     return resolveLifecycleConflict({ rootId, conflict, choice, now })
+  }
+
+  // Body conflicts (decision 0013) are page-keyed with a null `propertyId` and are
+  // adapter-owned: resolution is re-push (keep-local) / re-materialize
+  // (keep-remote), NOT a property value merge. Route them to their own resolver
+  // before the property-only refuse block below.
+  if (conflict.kind === 'body' && conflict.pageId !== undefined) {
+    return resolveBodyConflict({
+      store,
+      rootId,
+      conflict,
+      choice,
+      now,
+      ...(authorityMode === undefined ? {} : { authorityMode }),
+    })
   }
 
   if (conflict.pageId === undefined || conflict.propertyId === undefined) {

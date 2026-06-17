@@ -116,7 +116,6 @@ export type ConflictProjectionRow = {
     | 'same-property'
     | 'property'
     | 'body'
-    | 'body-body-delegated'
     | 'schema'
     | 'delete-vs-edit'
     | 'lifecycle'
@@ -2174,8 +2173,8 @@ CREATE TABLE _nds_conflict (
    * silent last-writer-wins flip to the remote value. The `lifecycle`
    * discriminator is recovered by decoding the opened `ConflictRaised` event and
    * reading `conflictKind` — `property_id IS NULL` alone is NOT sufficient because
-   * `body-body-delegated` conflicts also have a null `property_id`, and freezing
-   * `in_trash` on an open body conflict would be a bug.
+   * `body` conflicts also have a null `property_id`, and freezing `in_trash` on an
+   * open body conflict would be a bug.
    */
   #hasOpenLifecycleConflict({
     rootId,
@@ -3177,6 +3176,26 @@ CREATE TABLE _nds_conflict (
                   )
                   .run(event.rootId, event.pageId)
               }
+            }
+
+            // Body keep-remote re-materialization intent (decision 0013). Body is
+            // single-surface and adapter-owned: keep-remote accepts the remote body
+            // and DROPS the local `.nmd` divergence. There is no engine-owned
+            // mergeable value to reconverge in the projection (body is content), so
+            // the intent is recorded by clearing `sidecar_identity_proven` on the
+            // body pointer — the local sidecar is no longer trusted, so the next
+            // pull re-materializes the `.nmd` from the remote observation (a deferred
+            // remote effect, exactly as the lifecycle arm defers its reconvergence).
+            // The conflict is already retired to `resolved` above.
+            if (openedEvent._tag === 'ConflictRaised' && openedEvent.conflictKind === 'body') {
+              this.#db
+                .prepare(
+                  `UPDATE _nds_body_pointer
+                   SET sidecar_identity_proven = 0,
+                       updated_at = ?
+                   WHERE root_id = ? AND page_id = ?`,
+                )
+                .run(currentIso(this.#now), event.rootId, event.pageId)
             }
           }
         }

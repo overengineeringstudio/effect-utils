@@ -39,7 +39,7 @@ import {
   type BodySafetySnapshot,
 } from '../core/domain.ts'
 import { BodySyncError } from '../core/errors.ts'
-import { RowObserved, SyncEvent } from '../core/events.ts'
+import { RowObserved, SyncEvent, SyncEventId } from '../core/events.ts'
 import {
   LocalWorkspacePort,
   NotionDataSourceGateway,
@@ -49,6 +49,7 @@ import {
   type PageBodySyncPortShape,
 } from '../core/ports.ts'
 import { makeFakeLocalWorkspacePort, presentArtifactObservation } from '../local/workspace.ts'
+import { resolveConflictCommand } from '../planner/user-commands.ts'
 import { executeOutboxOnce } from '../sync/executor.ts'
 import { initOneShotSync, pullOneShotSync, pushOneShotSync, syncOneShot } from '../sync/sync.ts'
 import {
@@ -63,6 +64,7 @@ import {
   makeFakeGatewayHarness,
   makeHarnessPorts,
   makeStoreFixture,
+  propertyPatchValue,
   testIds,
 } from '../testing/harness.ts'
 import { scenarioImplementationGaps, type ScenarioId } from '../testing/scenarios.ts'
@@ -599,12 +601,205 @@ describe('body adapter E2E boundary', () => {
     },
   )
 
-  // Decision 0013 risk #1 (adapter-authoritative): routing the body surface through
-  // the convergence engine must NOT drop the adapter's remote-staleness/safety gate.
-  // In `shared` mode the engine body pass runs for an edited `.nmd`, but `.nmd` is
-  // the only local body surface → `single-surface` → no engine block. The adapter
-  // (`planLocalChange`) must STILL fire and conflict on a stale/lossy remote.
-  it('ADAPTER-AUTHORITATIVE: a body that AGREES locally still blocks via the adapter on a lossy remote (shared mode)', async () => {
+  // Decision 0013: a reachable adapter `body` conflict (a real remote-vs-local body
+  // divergence from `planLocalChange` → `BodyConflict`) IS resolvable. Body is
+  // single-surface and adapter-owned, so resolution is re-push (keep-local) /
+  // re-materialize (keep-remote), NOT a value merge. These tests raise the conflict
+  // through the real push path, then resolve it both ways.
+  describe('body conflict resolution (decision 0013)', () => {
+    // Raise a reachable adapter `body` conflict and return the store fixture + the
+    // open conflict id. A genuine remote-vs-local body divergence: the remote body
+    // identity (`body-remote`) differs from the observed local base (`body-a`), so
+    // `planLocalChange` returns a `BodyConflict` with reason `StaleSurfaceBase` and
+    // CLEAN safety — the keep-local re-push is therefore not blocked by a safety
+    // guard, only gated on the (matching) current base.
+    const raiseBodyConflict = async () => {
+      const storeFixture = makeStoreFixture({ mode: 'memory' })
+      const gatewayHarness = makeFakeGatewayHarness()
+      const safety = bodySafety()
+      const bodyPort = makeHarnessPorts({
+        bodyPages: [fakeBodyPage({ safety, pointer: bodyPointer(hash('body-remote')) })],
+      }).body
+      const { body: trackedBody, pushed } = bodyPortWithPushLedger(bodyPort)
+
+      initOneShotSync({
+        store: storeFixture.store,
+        rootId: testIds.rootId,
+        dataSourceId: testIds.dataSourceId,
+        workspaceRoot,
+        now: makeFakeClock().now,
+      })
+      appendObservedBodyProjection(storeFixture.store, safety)
+      // Planner preflight evidence so the keep-local re-push clears the API/capability
+      // guards and reaches `EnqueueCommands` (the conflict raise itself does not need it).
+      appendPlannerPreflightEvidence(storeFixture.store)
+
+      await runWithPorts(
+        pushOneShotSync({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          workspaceRoot,
+          now: makeFakeClock().now,
+        }),
+        {
+          gateway: gatewayHarness.gateway,
+          body: trackedBody,
+          workspace: makeHarnessPorts({
+            localObservations: [
+              presentArtifactObservation({
+                pageId: testIds.pageId,
+                path: bodyPath,
+                contentHash: hash('body-local-edit'),
+                observedAt: bodyPointer().observedAt,
+              }),
+            ],
+          }).workspace,
+        },
+      )
+
+      const conflict = storeFixture.store
+        .readConflicts(testIds.rootId)
+        .find((row) => row.kind === 'body' && row.state === 'open')
+      expect(conflict).toMatchObject({
+        kind: 'body',
+        pageId: testIds.pageId,
+        propertyId: undefined,
+      })
+      return {
+        storeFixture,
+        gatewayHarness,
+        bodyPort,
+        pushed,
+        conflictId: decode({ schema: SyncEventId, value: conflict!.conflictId }),
+      }
+    }
+
+    it('keep-local re-enqueues a BodyPushCommand re-asserting the local .nmd body', async () => {
+      const { storeFixture, conflictId } = await raiseBodyConflict()
+      try {
+        const resolved = resolveConflictCommand({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          conflictId,
+          choice: { _tag: 'keep-local', value: propertyPatchValue() },
+          now: makeFakeClock().now,
+        })
+
+        // A re-push command is enqueued and the resolution is recorded.
+        expect(resolved.applied.events).toMatchObject([
+          { _tag: 'ConflictResolved', resolutionChoice: 'keep-local' },
+        ])
+        expect(resolved.applied.commands).toMatchObject([
+          { command: { _tag: 'BodyPushCommand', pageId: testIds.pageId } },
+        ])
+        const outbox = storeFixture.store.readOutbox(testIds.rootId)
+        expect(outbox).toMatchObject([
+          { commandTag: 'BodyPush', surface: bodySurfaceKey(testIds.pageId) },
+        ])
+        expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
+          { kind: 'body', state: 'resolved' },
+        ])
+      } finally {
+        storeFixture.cleanup()
+      }
+    })
+
+    it('keep-remote re-materializes (resets sidecar identity) and clears the conflict', async () => {
+      const { storeFixture, gatewayHarness, bodyPort, conflictId } = await raiseBodyConflict()
+      try {
+        // Before resolution the body sidecar identity is proven (the materialized
+        // pull matched the local sidecar).
+        expect(
+          storeFixture.store
+            .readPlannerProjectionSnapshot(testIds.rootId)
+            .bodies.find((body) => body.pageId === testIds.pageId)?.sidecarIdentityProven,
+        ).toBe(true)
+
+        const resolved = resolveConflictCommand({
+          store: storeFixture.store,
+          rootId: testIds.rootId,
+          conflictId,
+          choice: { _tag: 'keep-remote' },
+          now: makeFakeClock().now,
+        })
+
+        // No push: keep-remote accepts the remote body. The conflict clears and the
+        // re-materialization intent is recorded (sidecar identity reset → the next
+        // pull rewrites the `.nmd` from the remote observation).
+        expect(resolved.applied.events).toMatchObject([
+          { _tag: 'ConflictResolved', resolutionChoice: 'keep-remote' },
+        ])
+        expect(resolved.applied.commands).toEqual([])
+        expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([])
+        expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
+          { kind: 'body', state: 'resolved' },
+        ])
+        expect(
+          storeFixture.store
+            .readPlannerProjectionSnapshot(testIds.rootId)
+            .bodies.find((body) => body.pageId === testIds.pageId)?.sidecarIdentityProven,
+        ).toBe(false)
+
+        // PROOF the intent is CONSUMED: a pull with the mirror's global
+        // `materializeBodyArtifacts: false` suppression STILL re-materializes this
+        // page, because its cleared `sidecarIdentityProven` forces it through the
+        // per-page override. Without keep-remote (sidecar still proven) the
+        // suppression would skip materialization entirely.
+        const { workspace, materializeCalls } = trackedWorkspace()
+        await runWithPorts(
+          pullOneShotSync({
+            ...pullOptions(storeFixture.store),
+            materializeBodyArtifacts: false,
+          }),
+          { gateway: gatewayHarness.gateway, body: bodyPort, workspace },
+        )
+        expect(materializeCalls()).toBe(1)
+        expect(
+          storeFixture.store
+            .readPlannerProjectionSnapshot(testIds.rootId)
+            .bodies.find((body) => body.pageId === testIds.pageId)?.sidecarIdentityProven,
+        ).toBe(true)
+      } finally {
+        storeFixture.cleanup()
+      }
+    })
+
+    it.each([
+      ['keep-local', { _tag: 'keep-local', value: propertyPatchValue() }],
+      ['keep-remote', { _tag: 'keep-remote' }],
+    ] as const)(
+      'replay determinism: %s body resolution survives a projection rebuild',
+      async (_name, choice) => {
+        const { storeFixture, conflictId } = await raiseBodyConflict()
+        try {
+          resolveConflictCommand({
+            store: storeFixture.store,
+            rootId: testIds.rootId,
+            conflictId,
+            choice,
+            now: makeFakeClock().now,
+          })
+          const before = storeFixture.store.readConflicts(testIds.rootId)
+
+          storeFixture.store.clearProjectionTables()
+          storeFixture.store.rebuildProjections(testIds.rootId)
+
+          expect(storeFixture.store.readConflicts(testIds.rootId)).toEqual(before)
+          expect(storeFixture.store.readConflicts(testIds.rootId)).toMatchObject([
+            { kind: 'body', state: 'resolved' },
+          ])
+        } finally {
+          storeFixture.cleanup()
+        }
+      },
+    )
+  })
+
+  // Decision 0013 (adapter-authoritative): body is single-surface and adapter-owned;
+  // it is NOT routed through the convergence engine. The adapter (`planLocalChange`)
+  // is the sole body authority and must fire and conflict on a stale/lossy remote
+  // even in `shared` mode (where the property convergence engine runs for properties).
+  it('ADAPTER-AUTHORITATIVE: an edited body blocks via the adapter on a lossy remote (shared mode)', async () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
     const gatewayHarness = makeFakeGatewayHarness()
     const safety = bodySafety({ truncated: true })
@@ -626,8 +821,8 @@ describe('body adapter E2E boundary', () => {
           store: storeFixture.store,
           rootId: testIds.rootId,
           workspaceRoot,
-          // `shared` mode activates the engine body pass — the very path that could
-          // wrongly short-circuit the adapter if risk #1 were tripped.
+          // `shared` mode runs the property convergence engine; the body path stays
+          // adapter-owned and must not be short-circuited by it.
           authorityMode: 'shared',
           now: makeFakeClock().now,
           localWorkspaceObservation: {
@@ -652,18 +847,15 @@ describe('body adapter E2E boundary', () => {
         .replay(testIds.rootId)
         .filter((event) => event._tag === 'ConflictRaised')
 
-      // The adapter conflict — NOT an engine `body-body-delegated` block — is what
-      // stops the push. The engine saw a single body surface and emitted no block.
+      // The adapter `body` conflict stops the push (body is adapter-owned).
       expect(result.plan).toMatchObject({ enqueuedCommands: 0, conflicts: 1 })
       expect(pushed).toEqual([])
       expect(storeFixture.store.readOutbox(testIds.rootId)).toEqual([])
       expect(conflicts.at(-1)).toMatchObject({
         _tag: 'ConflictRaised',
-        // ADAPTER conflict kind, proving the adapter ran (not the engine kind).
         conflictKind: 'body',
         pageId: testIds.pageId,
       })
-      expect(conflicts.some((event) => event.conflictKind === 'body-body-delegated')).toBe(false)
       assertNoGatewayMutations(gatewayHarness.ledger)
     } finally {
       storeFixture.cleanup()

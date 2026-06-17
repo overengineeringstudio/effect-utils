@@ -858,27 +858,6 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L3',
     file: 'src/e2e/local-convergence-production.e2e.test.ts',
   }),
-  // Decision 0013 (#775 M2b): the body convergence rail is FORWARD-LOOKING and
-  // INERT in production — production keeps the SQLite body channel dormant, so the
-  // engine only ever sees a single body surface (no `body-body-delegated` conflict
-  // is raised on real data). This scenario does NOT assert a production body
-  // conflict. It supplies a SECOND, disagreeing body surface to drive the engine's
-  // local body-divergence fact, projects the resulting `body-body-delegated`
-  // conflict onto the `_nds_replica_conflicts` rail (page-keyed, NULL property_id),
-  // and proves per-surface blocking (a divergent body does not block a co-page
-  // agreeing property). No guard fires by design. The complementary
-  // no-`in_trash`-freeze isolation (a `body-body-delegated` conflict is not a
-  // lifecycle conflict) is asserted separately in `src/store/store.unit.test.ts`.
-  scenario({
-    scenarioId: 'NDS-L3-body-convergence-rail',
-    title:
-      'FORWARD-LOOKING (inert in production): a constructed second body surface drives the engine body-divergence fact, projects a body-body-delegated conflict onto the conflict rail (page-keyed, null property_id), and proves per-surface blocking — NOT a production body conflict',
-    requirementIds: ['R06', 'R08'],
-    guards: [],
-    lowestPlannerLevel: 'L2',
-    highestIntegrationLevel: 'L3',
-    file: 'src/e2e/local-convergence-production.e2e.test.ts',
-  }),
   scenario({
     scenarioId: 'NDS-L1-linked-view-read-only',
     title:
