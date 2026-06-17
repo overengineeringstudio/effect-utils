@@ -22,7 +22,12 @@ import * as Git from '../../../lib/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import * as LibObservability from '../../../lib/observability.ts'
 import { classifyRef } from '../../../lib/ref.ts'
-import { archiveWorktree, reapArchive, scanArchives } from '../../../lib/store-archive.ts'
+import {
+  archiveRefMismatchWorktree,
+  archiveWorktree,
+  reapArchive,
+  scanArchives,
+} from '../../../lib/store-archive.ts'
 import { loadStoreGcConfig, type StoreGcConfig } from '../../../lib/store-gc-config.ts'
 import {
   coldSinceMs as coldSinceMsFor,
@@ -524,12 +529,16 @@ const coldResult = ({
   reason,
   message,
   recoverPath,
+  pathRef,
+  actualHeadBranch,
 }: {
   target: NamedWorktreeTarget
   status: StoreGcResult['status']
   reason?: string | undefined
   message?: string | undefined
   recoverPath?: string | undefined
+  pathRef?: string | undefined
+  actualHeadBranch?: string | undefined
 }): StoreGcResult => ({
   repo: target.repoRelativePath,
   ref: target.worktree.ref,
@@ -539,6 +548,8 @@ const coldResult = ({
   ...(reason !== undefined ? { reason } : {}),
   ...(message !== undefined ? { message } : {}),
   ...(recoverPath !== undefined ? { recoverPath } : {}),
+  ...(pathRef !== undefined ? { pathRef } : {}),
+  ...(actualHeadBranch !== undefined ? { actualHeadBranch } : {}),
 })
 
 /**
@@ -668,21 +679,157 @@ const coldReclaimRepo = ({
         continue
       }
 
-      // ref_mismatch gate: the store path claims `<ref>` but the worktree HEAD is
-      // on a different branch. Archiving frees `refs/heads/<ref>`, which is NOT
-      // the branch actually checked out — keep and surface the divergence.
+      // Ref-mismatch fork: the store path claims `<ref>` but the worktree HEAD
+      // is on a different branch. The normal cold path is unsafe because it frees
+      // `refs/heads/<ref>`, which is NOT the branch actually checked out. Only a
+      // clean, lossless, absent mismatch takes the separate archive-only path.
       const headBranch = yield* Git.getCurrentBranch(worktree.path).pipe(
         Effect.catchAll(() => Effect.succeed(Option.none<string>())),
       )
       if (Option.isSome(headBranch) === true && headBranch.value !== worktree.ref) {
-        results.push(
+        const actualHeadBranch = headBranch.value
+        const actualBranchPath = EffectPath.ops.join(
+          repoFullPath,
+          EffectPath.unsafe.relativeDir(`refs/heads/${actualHeadBranch}/`),
+        )
+
+        const refMismatchMeta = {
+          pathRef: worktree.ref,
+          actualHeadBranch,
+        }
+        const keepRefMismatch = (message: string) =>
           coldResult({
             target,
             status: 'kept',
             reason: 'ref_mismatch',
-            message: `HEAD is '${headBranch.value}'`,
-          }),
+            message,
+            ...refMismatchMeta,
+          })
+
+        if (defaultBranch !== undefined && actualHeadBranch === defaultBranch) {
+          results.push(keepRefMismatch(`HEAD is default branch '${actualHeadBranch}'`))
+          continue
+        }
+
+        if (
+          isPathProtected({ liveSet, path: worktree.path }) === true ||
+          isPathProtected({ liveSet, path: actualBranchPath }) === true
+        ) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' and path is live`))
+          continue
+        }
+
+        const head = yield* Git.getCurrentCommit(worktree.path).pipe(
+          Effect.map(Option.some),
+          Effect.catchAll(() => Effect.succeed(Option.none<string>())),
         )
+        if (Option.isNone(head) === true) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' but commit is unreadable`))
+          continue
+        }
+        const worktreeHead = head.value
+
+        const lossless = yield* assessLossless({
+          bareRepoPath,
+          worktreePath: worktree.path,
+          worktreeHead,
+        }).pipe(
+          Effect.map(Option.some),
+          Effect.catchAll(() => Effect.succeed(Option.none<never>())),
+        )
+        if (Option.isNone(lossless) === true) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' but lossless probe failed`))
+          continue
+        }
+        if (lossless.value.dirty === true) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' with dirty worktree`))
+          continue
+        }
+        if (lossless.value.unpushed > 0 || lossless.value.hasStash === true) {
+          results.push(
+            keepRefMismatch(`HEAD is '${actualHeadBranch}' with unrecoverable local work`),
+          )
+          continue
+        }
+        const coldSinceMs = coldSinceMsFor({ ledger, path: worktree.path })
+        if (coldSinceMs === undefined || now - coldSinceMs < config.absenceGraceMs) {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' within absence grace`))
+          continue
+        }
+
+        if (dryRun === true) {
+          results.push(
+            coldResult({
+              target,
+              status: 'archived',
+              reason: 'ref_mismatch_clean',
+              ...refMismatchMeta,
+            }),
+          )
+          continue
+        }
+
+        const archiveOutcome = yield* storeLock
+          .withWorktreeLock(worktree.path)(
+            Effect.gen(function* () {
+              const freshLiveSet = yield* reReconcileLiveSet({ store, root, now })
+              if (
+                isPathProtected({ liveSet: freshLiveSet, path: worktree.path }) === true ||
+                isPathProtected({ liveSet: freshLiveSet, path: actualBranchPath }) === true
+              ) {
+                return { _tag: 'kept-live' as const }
+              }
+              const outcome = yield* archiveRefMismatchWorktree({
+                repoRoot: repoFullPath,
+                bareRepoPath,
+                worktreePath: worktree.path,
+                pathRef: worktree.ref,
+                actualHeadBranch,
+                commit: worktreeHead,
+                now,
+              })
+              return {
+                _tag: 'archived' as const,
+                recoverPath: outcome.destPath,
+                warnings: outcome.warnings,
+              }
+            }),
+          )
+          .pipe(
+            Effect.catchAll((error) =>
+              Effect.succeed({
+                _tag: 'error' as const,
+                message: error instanceof Error === true ? error.message : String(error),
+              }),
+            ),
+          )
+
+        if (archiveOutcome._tag === 'kept-live') {
+          results.push(keepRefMismatch(`HEAD is '${actualHeadBranch}' and path is live`))
+        } else if (archiveOutcome._tag === 'error') {
+          results.push(
+            coldResult({
+              target,
+              status: 'error',
+              reason: 'ref_mismatch_clean',
+              message: archiveOutcome.message,
+              ...refMismatchMeta,
+            }),
+          )
+        } else {
+          results.push(
+            coldResult({
+              target,
+              status: 'archived',
+              reason: 'ref_mismatch_clean',
+              recoverPath: archiveOutcome.recoverPath,
+              ...(archiveOutcome.warnings.length > 0
+                ? { message: archiveOutcome.warnings.join('; ') }
+                : {}),
+              ...refMismatchMeta,
+            }),
+          )
+        }
         continue
       }
 
@@ -1665,6 +1812,9 @@ const storeGcCommand = Cli.Command.make(
         resultRemoved: results.filter((result) => result.status === 'removed').length,
         resultSkippedInUse: results.filter((result) => result.status === 'skipped_in_use').length,
         resultSkippedDirty: results.filter((result) => result.status === 'skipped_dirty').length,
+        resultArchived: results.filter((result) => result.status === 'archived').length,
+        resultReaped: results.filter((result) => result.status === 'reaped').length,
+        resultKept: results.filter((result) => result.status === 'kept').length,
         candidateCommits: results.filter((result) => result.refType === 'commits').length,
         candidateNamedRefs: results.filter(
           (result) => result.refType === 'heads' || result.refType === 'tags',

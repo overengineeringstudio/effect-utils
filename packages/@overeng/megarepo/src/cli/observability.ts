@@ -152,6 +152,9 @@ const storeGcResultAttrs = OtelAttrs.defineSync(
     resultSkippedDirty: Schema.Number.pipe(
       OtelAttr.key({ key: 'megarepo.store.gc.result_skipped_dirty' }),
     ),
+    resultArchived: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_archived' })),
+    resultReaped: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_reaped' })),
+    resultKept: Schema.Number.pipe(OtelAttr.key({ key: 'megarepo.store.gc.result_kept' })),
     candidateCommits: Schema.Number.pipe(
       OtelAttr.key({ key: 'megarepo.store.gc.candidate_commits' }),
     ),
