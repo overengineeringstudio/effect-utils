@@ -8,7 +8,7 @@
  *
  * - `harness.ingress.*` — the typed ingress client, pre-bound to the spawned
  *   server (you never thread `RestateIngress`).
- * - `harness.stateOf(contract, key)` — a typed State proxy (`get` / `getAll` /
+ * - `harness.stateOf({ contract, key })` — a typed State proxy (`get` / `getAll` /
  *   `set` / `setAll`) keyed AND value-typed against the contract's `state` block,
  *   over the Admin API, to seed pre-conditions and assert post-conditions without
  *   going through a handler.

@@ -244,6 +244,7 @@ export const makeTestContext = (options: TestContextOptions = {}): TestContextHa
     )
   }
 
+  // oxlint-disable-next-line overeng/named-args -- implements the SDK `restate.Context.sleep(millis, name)` interface signature (positional)
   const sleep = (duration: number, name?: string): restate.RestatePromise<void> =>
     restate.RestatePromise.resolve(onSleep(typeof duration === 'number' ? duration : 0, name))
 
@@ -256,10 +257,12 @@ export const makeTestContext = (options: TestContextOptions = {}): TestContextHa
     return { id, promise: restate.RestatePromise.resolve(promise) }
   }
 
+  // oxlint-disable-next-line overeng/named-args -- implements the SDK `restate.Context.resolveAwakeable(id, payload)` interface signature (positional)
   const resolveAwakeable = <T>(id: string, payload?: T): void => {
     awakeables.get(id)?.resolve(payload)
   }
 
+  // oxlint-disable-next-line overeng/named-args -- implements the SDK `restate.Context.rejectAwakeable(id, reason)` interface signature (positional)
   const rejectAwakeable = (id: string, reason: string): void => {
     awakeables.get(id)?.reject(new restate.TerminalError(reason))
   }
@@ -292,6 +295,7 @@ export const makeTestContext = (options: TestContextOptions = {}): TestContextHa
     /* State KV (real Map). `get` returns the stored value or `null` (the SDK's
      * "unset" sentinel the combinator maps to `undefined`). */
     get: (name: string) => Promise.resolve(state.has(name) === true ? state.get(name) : null),
+    // oxlint-disable-next-line overeng/named-args -- implements the SDK `restate.ObjectContext.set(name, value)` interface signature (positional)
     set: (name: string, value: unknown) => {
       state.set(name, value)
     },
@@ -316,11 +320,15 @@ type TestContextServices = RestateContext | ObjectKey | StateRead | StateWrite |
  * SAME subset the real boundary provides per handler kind — so a `State.set` in an
  * `objectShared`/`workflowShared` test still fails to compile (no `StateWrite`).
  * The markers are phantom empty values; only their presence gates type-legality. */
-const buildContext = (
-  context: restate.ObjectContext,
-  kind: TestHandlerKind,
-  key: string,
-): Context.Context<TestContextServices> => {
+const buildContext = ({
+  context,
+  kind,
+  key,
+}: {
+  context: restate.ObjectContext
+  kind: TestHandlerKind
+  key: string
+}): Context.Context<TestContextServices> => {
   let ctx = Context.make(RestateContext, context) as Context.Context<TestContextServices>
   if (kind !== 'service') {
     ctx = Context.add(ctx, ObjectKey, { key })
@@ -362,9 +370,9 @@ export const makeTestContextLayer = (
   options: TestContextOptions = {},
 ): Layer.Layer<TestContextServices> =>
   Layer.succeedContext(
-    buildContext(
-      makeTestContext(options).context,
-      options.handlerKind ?? 'objectExclusive',
-      options.key ?? 'test-key',
-    ),
+    buildContext({
+      context: makeTestContext(options).context,
+      kind: options.handlerKind ?? 'objectExclusive',
+      key: options.key ?? 'test-key',
+    }),
   )

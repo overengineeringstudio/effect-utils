@@ -25,20 +25,23 @@ import { aesGcmRedactionLayer, Restate, RestateService } from '../src/mod.ts'
 export class NotFound extends Schema.TaggedError<NotFound>('example/NotFound')('NotFound', {
   id: Schema.String,
 }) {}
-export const NotFoundTerminal = Restate.terminal(NotFound, { errorCode: 404 })
+export const NotFoundTerminal = Restate.terminal({ self: NotFound, errorCode: 404 })
 
 /** Retryable: Restate re-runs the handler rather than propagating to the caller. */
 export class Throttled extends Schema.TaggedError<Throttled>('example/Throttled')(
   'Throttled',
   {},
 ) {}
-export const ThrottledRetryable = Restate.retryable(Throttled)
+export const ThrottledRetryable = Restate.retryable({ self: Throttled })
 
 /* ── Retention on the input schema (mapped to SDK retention at materialize) ── */
 
-export const LookupInput = Restate.retention(Schema.Struct({ id: Schema.String }), {
-  idempotency: '5 minutes',
-  journal: '1 hour',
+export const LookupInput = Restate.retention({
+  self: Schema.Struct({ id: Schema.String }),
+  options: {
+    idempotency: '5 minutes',
+    journal: '1 hour',
+  },
 })
 
 /* ── Field-level redaction: `sensitive` encrypts the field on the wire/journal ── */
@@ -59,32 +62,38 @@ export const RedactionLayer = aesGcmRedactionLayer(new Uint8Array(32).fill(7))
 
 /* ── A contract using the annotated schemas + per-handler retry/timeout options ── */
 
-export const Vault = RestateService.contract('vault', {
-  lookup: {
-    input: LookupInput,
-    success: Schema.String,
-    error: NotFoundTerminal,
-    /* Restate's durable retry policy + timeouts are TYPED builder options. Durable
-     * retries are Restate's — never wrap a durable op in `Effect.retry`. */
-    options: {
-      retryPolicy: {
-        maxAttempts: 5,
-        initialIntervalMillis: 100,
-        maxIntervalMillis: 5_000,
-        exponentiationFactor: 2,
-        onMaxAttempts: 'pause', // resumable from the CLI/UI on giving up
+export const Vault = RestateService.contract({
+  name: 'vault',
+  handlers: {
+    lookup: {
+      input: LookupInput,
+      success: Schema.String,
+      error: NotFoundTerminal,
+      /* Restate's durable retry policy + timeouts are TYPED builder options. Durable
+       * retries are Restate's — never wrap a durable op in `Effect.retry`. */
+      options: {
+        retryPolicy: {
+          maxAttempts: 5,
+          initialIntervalMillis: 100,
+          maxIntervalMillis: 5_000,
+          exponentiationFactor: 2,
+          onMaxAttempts: 'pause', // resumable from the CLI/UI on giving up
+        },
+        inactivityTimeoutMillis: 30_000,
       },
-      inactivityTimeoutMillis: 30_000,
     },
+    store: { input: StoreSecret, success: Schema.Void },
   },
-  store: { input: StoreSecret, success: Schema.Void },
 })
 
-export const VaultLive = RestateService.implement<typeof Vault>(Vault, {
-  lookup: ({ id }) =>
-    Effect.gen(function* () {
-      if (id === 'missing') return yield* new NotFound({ id })
-      return `value-for-${id}`
-    }),
-  store: () => Effect.void,
+export const VaultLive = RestateService.implement<typeof Vault>({
+  contractValue: Vault,
+  impl: {
+    lookup: ({ id }) =>
+      Effect.gen(function* () {
+        if (id === 'missing') return yield* new NotFound({ id })
+        return `value-for-${id}`
+      }),
+    store: () => Effect.void,
+  },
 })

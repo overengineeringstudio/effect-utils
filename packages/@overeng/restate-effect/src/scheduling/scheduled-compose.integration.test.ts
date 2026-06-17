@@ -63,9 +63,12 @@ const ComposedDomain = {
   wakeCount: Schema.Number,
 } as const
 const DomainProbe = (name: string) =>
-  RestateObject.contract(name, {
-    state: ComposedDomain,
-    handlers: { noop: { input: Schema.Void, success: Schema.Void, shared: true } },
+  RestateObject.contract({
+    name,
+    def: {
+      state: ComposedDomain,
+      handlers: { noop: { input: Schema.Void, success: Schema.Void, shared: true } },
+    },
   })
 const NoWakeDomain = DomainProbe('cmp-nowake')
 const WakeDomain = DomainProbe('cmp-wake')
@@ -96,17 +99,29 @@ interface Status {
 }
 
 const statusOf = (d: { readonly contract: any }, key: string): Promise<Status> =>
-  live(harness().ingress.objectCall(d.contract, key, 'status', undefined)) as Promise<Status>
+  live(
+    harness().ingress.objectCall({ contract: d.contract, key, method: 'status', input: undefined }),
+  ) as Promise<Status>
 const wakeIdOf = (d: { readonly contract: any }, key: string): Promise<string> =>
-  live(harness().ingress.objectCall(d.contract, key, 'wakeId', undefined)) as Promise<string>
+  live(
+    harness().ingress.objectCall({ contract: d.contract, key, method: 'wakeId', input: undefined }),
+  ) as Promise<string>
 const start = (d: { readonly contract: any }, key: string): Promise<unknown> =>
-  live(harness().ingress.objectCall(d.contract, key, 'start', undefined))
+  live(
+    harness().ingress.objectCall({ contract: d.contract, key, method: 'start', input: undefined }),
+  )
 const stop = (d: { readonly contract: any }, key: string): Promise<unknown> =>
-  live(harness().ingress.objectCall(d.contract, key, 'stop', undefined))
+  live(
+    harness().ingress.objectCall({ contract: d.contract, key, method: 'stop', input: undefined }),
+  )
 const cursorOf = (probe: any, key: string): Promise<number> =>
-  live(harness().stateOf(probe, key).get('cursor')).then((v) => (v as number | undefined) ?? 0)
+  live(harness().stateOf({ contract: probe, key }).get('cursor')).then(
+    (v) => (v as number | undefined) ?? 0,
+  )
 const wakeCountOf = (probe: any, key: string): Promise<number> =>
-  live(harness().stateOf(probe, key).get('wakeCount')).then((v) => (v as number | undefined) ?? 0)
+  live(harness().stateOf({ contract: probe, key }).get('wakeCount')).then(
+    (v) => (v as number | undefined) ?? 0,
+  )
 
 /* The standalone ingress resolve needs a `RestateIngress` layer; build it from the
  * booted server's ingress URL (the same connected server the harness drives). */
@@ -115,9 +130,11 @@ const ingressLayer = (): Layer.Layer<RestateIngress> =>
 
 const resolveWake = (id: string, reason: string): Promise<void> =>
   Effect.runPromise(
-    ingressResolveAwakeable(WakePayload, id as AwakeableId<WakePayload>, { reason }).pipe(
-      Effect.provide(ingressLayer()),
-    ),
+    ingressResolveAwakeable({
+      schema: WakePayload,
+      id: id as AwakeableId<WakePayload>,
+      payload: { reason },
+    }).pipe(Effect.provide(ingressLayer())),
   )
 
 const waitUntil = async (
@@ -160,12 +177,15 @@ describe.skipIf(!serverAvailable)(
     it('retryAfter: a 429 re-arms after Retry-After (NOT fixedDelay), cursor unchanged (no-wake)', async () => {
       const key = 'ra-1'
       let limited = 0
-      installComposedSource(key, (cursor) => {
-        if (cursor === 2 && limited === 0) {
-          limited += 1
-          return { _rateLimited: true, retryAfterMillis: RETRY_AFTER }
-        }
-        return { nextCursor: cursor + 1, itemCount: 1, done: false }
+      installComposedSource({
+        key,
+        behavior: (cursor) => {
+          if (cursor === 2 && limited === 0) {
+            limited += 1
+            return { _rateLimited: true, retryAfterMillis: RETRY_AFTER }
+          }
+          return { nextCursor: cursor + 1, itemCount: 1, done: false }
+        },
       })
       await start(NoWake, key)
       await waitUntil(NoWake, key, (s) => s.retryBackoffs >= 1 || s.iteration >= 3)
@@ -190,11 +210,13 @@ describe.skipIf(!serverAvailable)(
       /* PERMANENT 429 at cursor 1 with a LONG 3s Retry-After. In no-wake mode the
        * backoff is a delayed send (lock released), so stop returns immediately even
        * mid-backoff — the wedge-free contrast to the wake-mode held race. */
-      installComposedSource(key, (cursor) =>
-        cursor >= 1
-          ? { _rateLimited: true, retryAfterMillis: 3_000 }
-          : { nextCursor: cursor + 1, itemCount: 1, done: false },
-      )
+      installComposedSource({
+        key,
+        behavior: (cursor) =>
+          cursor >= 1
+            ? { _rateLimited: true, retryAfterMillis: 3_000 }
+            : { nextCursor: cursor + 1, itemCount: 1, done: false },
+      })
       await start(NoWake, key)
       await waitUntil(NoWake, key, (s) => s.retryBackoffs >= 1, 10_000)
       const tStop = Date.now()
@@ -216,12 +238,15 @@ describe.skipIf(!serverAvailable)(
     it('union classification: a TERMINAL member hits onCycleError (skip), loop advances past it', async () => {
       const key = 'term-1'
       let terminalAtCursor1 = 0
-      installComposedSource(key, (cursor) => {
-        if (cursor === 1 && terminalAtCursor1 === 0) {
-          terminalAtCursor1 += 1
-          return { _terminal: 'boom at cursor 1' }
-        }
-        return { nextCursor: cursor + 1, itemCount: 1, done: false }
+      installComposedSource({
+        key,
+        behavior: (cursor) => {
+          if (cursor === 1 && terminalAtCursor1 === 0) {
+            terminalAtCursor1 += 1
+            return { _terminal: 'boom at cursor 1' }
+          }
+          return { nextCursor: cursor + 1, itemCount: 1, done: false }
+        },
       })
       await start(NoWake, key)
       /* skipToNext: the terminal error is recorded and the loop ADVANCES (it does NOT
@@ -238,11 +263,14 @@ describe.skipIf(!serverAvailable)(
 
     it('wake: resolving the live awakeable fires the next cycle EARLY', async () => {
       const key = 'wake-1'
-      installComposedSource(key, (cursor) => ({
-        nextCursor: cursor + 1,
-        itemCount: 1,
-        done: false,
-      }))
+      installComposedSource({
+        key,
+        behavior: (cursor) => ({
+          nextCursor: cursor + 1,
+          itemCount: 1,
+          done: false,
+        }),
+      })
       await start(Wake, key)
       const id = await waitForWakeId(Wake, key)
       expect(id).not.toBe('')
@@ -268,11 +296,14 @@ describe.skipIf(!serverAvailable)(
 
     it('wake: the id ROTATES per cycle and stays externally resolvable', async () => {
       const key = 'wake-rotate'
-      installComposedSource(key, (cursor) => ({
-        nextCursor: cursor + 1,
-        itemCount: 1,
-        done: false,
-      }))
+      installComposedSource({
+        key,
+        behavior: (cursor) => ({
+          nextCursor: cursor + 1,
+          itemCount: 1,
+          done: false,
+        }),
+      })
       await start(WakeFast, key)
       const idA = await waitForWakeId(WakeFast, key)
       await resolveWake(idA, 'wake-A')
@@ -293,11 +324,14 @@ describe.skipIf(!serverAvailable)(
 
     it('wake: a STALE id (from a prior cycle) resolves harmlessly (loop stays healthy)', async () => {
       const key = 'wake-stale'
-      installComposedSource(key, (cursor) => ({
-        nextCursor: cursor + 1,
-        itemCount: 1,
-        done: false,
-      }))
+      installComposedSource({
+        key,
+        behavior: (cursor) => ({
+          nextCursor: cursor + 1,
+          itemCount: 1,
+          done: false,
+        }),
+      })
       await start(WakeFast, key)
       const staleId = await waitForWakeId(WakeFast, key)
       /* Let the loop ROTATE past this id (a couple cycles via the timer). */

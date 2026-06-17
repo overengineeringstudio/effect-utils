@@ -35,7 +35,13 @@ import { withRestateOperation } from '../observability/effect.ts'
  *   `Effect.sleep` stays a non-durable in-process timer (the default Clock's
  *   sleep), so this Clock delegates `sleep` to the default Clock.
  */
-const makeJournaledClock = (ctx: restate.Context, frozenBaseMillis: number): Clock.Clock => {
+const makeJournaledClock = ({
+  ctx,
+  frozenBaseMillis,
+}: {
+  ctx: restate.Context
+  frozenBaseMillis: number
+}): Clock.Clock => {
   const millisToNanos = (millis: number): bigint => BigInt(Math.trunc(millis)) * 1_000_000n
   const base = Clock.make()
   /* PROTOTYPE-PRESERVING clone: `Clock.make()` puts `sleep` and the sync
@@ -74,6 +80,7 @@ const makeJournaledRandom = (ctx: restate.Context): Random.Random => {
    * `PRNG.integer(bound)`, but over the journaled float source. */
   const nextIntBounded = (bound: number): Effect.Effect<number> =>
     Effect.map(next, (n) => Math.floor(n * bound))
+  // oxlint-disable-next-line overeng/named-args -- assigned to `Random.nextIntBetween`, whose Effect interface signature is positional (min, max)
   const nextIntBetween = (min: number, max: number): Effect.Effect<number> =>
     Effect.map(nextIntBounded(max - min), (n) => n + min)
   /* Fisher-Yates over the journaled int source — mirrors Effect's `shuffleWith`. */
@@ -103,6 +110,7 @@ const makeJournaledRandom = (ctx: restate.Context): Random.Random => {
     next,
     nextBoolean: Effect.map(next, (n) => n > 0.5),
     nextInt: nextIntBounded(Number.MAX_SAFE_INTEGER),
+    // oxlint-disable-next-line overeng/named-args -- implements `Random.nextRange`, whose Effect interface signature is positional (min, max)
     nextRange: (min, max) => Effect.map(next, (n) => (max - min) * n + min),
     nextIntBetween,
     shuffle,
@@ -116,12 +124,15 @@ const makeJournaledRandom = (ctx: restate.Context): Random.Random => {
  * entry from `ctx.date.now()` so the sync `unsafeCurrentTime*` reads are
  * replay-stable. Requires `RestateContext` so it shares the per-invocation `ctx`.
  */
-export const determinismLayer = (
-  ctx: restate.Context,
-  frozenBaseMillis: number,
-): Layer.Layer<never> =>
+export const determinismLayer = ({
+  ctx,
+  frozenBaseMillis,
+}: {
+  ctx: restate.Context
+  frozenBaseMillis: number
+}): Layer.Layer<never> =>
   Layer.merge(
-    Layer.setClock(makeJournaledClock(ctx, frozenBaseMillis)),
+    Layer.setClock(makeJournaledClock({ ctx, frozenBaseMillis })),
     Layer.setRandom(makeJournaledRandom(ctx)),
   )
 
@@ -199,10 +210,13 @@ export const loggerLayer = (ctx: restate.Context): Layer.Layer<never> =>
  * genuine `Interrupt` (not a domain failure or defect) — `toTerminal` then
  * neither terminalizes nor retries it (docs/vrs/04-error-boundary/spec.md §1/§2).
  */
-export const withAttemptInterruption = <A, E, R>(
-  ctx: restate.Context,
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> => {
+export const withAttemptInterruption = <A, E, R>({
+  ctx,
+  effect,
+}: {
+  ctx: restate.Context
+  effect: Effect.Effect<A, E, R>
+}): Effect.Effect<A, E, R> => {
   const signal = ctx.request().attemptCompletedSignal
   /* A watcher that COMPLETES (resolving `Effect.interrupt`) exactly when the
    * AbortSignal fires. Racing it against the user effect via `raceFirst` means
@@ -220,7 +234,7 @@ export const withAttemptInterruption = <A, E, R>(
     return Effect.sync(() => signal.removeEventListener('abort', onAbort))
   })
   return Effect.raceFirst(effect, onAttemptComplete).pipe(
-    withRestateOperation('restate.attemptInterruption', 'attemptInterruption'),
+    withRestateOperation({ name: 'restate.attemptInterruption', label: 'attemptInterruption' }),
   )
 }
 
@@ -237,7 +251,7 @@ export const cancel = (invocationId: string): Effect.Effect<void, never, Restate
   Effect.gen(function* () {
     const ctx = yield* RestateContext
     ctx.cancel(restate.InvocationIdParser.fromString(invocationId))
-  }).pipe(withRestateOperation('restate.cancel', invocationId))
+  }).pipe(withRestateOperation({ name: 'restate.cancel', label: invocationId }))
 
 /**
  * Observe the current invocation's cancellation as an Effect that SUCCEEDS when
@@ -254,4 +268,4 @@ export const onCancellation: Effect.Effect<void, never, RestateContext> = Effect
   const ctx = yield* RestateContext
   const ctxInternal = ctx as restate.internal.ContextInternal
   yield* Effect.promise(() => ctxInternal.cancellation())
-}).pipe(withRestateOperation('restate.onCancellation', 'cancellation'))
+}).pipe(withRestateOperation({ name: 'restate.onCancellation', label: 'cancellation' }))

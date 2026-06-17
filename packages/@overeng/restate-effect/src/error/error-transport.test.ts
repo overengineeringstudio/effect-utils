@@ -20,12 +20,15 @@ import { toTerminal } from './Boundary.ts'
 class NotFound extends Schema.TaggedError<NotFound>('test/NotFound')('NotFound', {
   id: Schema.String,
 }) {}
-const NotFoundSchema = Restate.terminal(Schema.asSchema(NotFound), { errorCode: 404 })
+const NotFoundSchema = Restate.terminal({ self: Schema.asSchema(NotFound), errorCode: 404 })
 
 const LookupInput = Schema.Struct({ id: Schema.String })
 const LookupSuccess = Schema.Struct({ value: Schema.String })
-const Registry = RestateService.contract('registry', {
-  lookup: { input: LookupInput, success: LookupSuccess, error: NotFoundSchema },
+const Registry = RestateService.contract({
+  name: 'registry',
+  handlers: {
+    lookup: { input: LookupInput, success: LookupSuccess, error: NotFoundSchema },
+  },
 })
 
 /**
@@ -35,7 +38,7 @@ const Registry = RestateService.contract('registry', {
  * the envelope's `message` (the JSON-encoded `toTerminal` body) before decoding.
  */
 const simulateIngressFailure = (error: NotFound): RestateError => {
-  const terminal = toTerminal(Cause.fail(error), NotFoundSchema)
+  const terminal = toTerminal({ cause: Cause.fail(error), errorSchema: NotFoundSchema })
   if (!(terminal instanceof restate.TerminalError)) {
     throw new Error('expected toTerminal to yield a TerminalError')
   }
@@ -58,7 +61,10 @@ const simulateIngressFailure = (error: NotFound): RestateError => {
 
 describe('error transport (contract layer, server-free)', () => {
   it('toTerminal encodes the _tag + fields in the body with the per-error errorCode', () => {
-    const terminal = toTerminal(Cause.fail(new NotFound({ id: 'x_1' })), NotFoundSchema)
+    const terminal = toTerminal({
+      cause: Cause.fail(new NotFound({ id: 'x_1' })),
+      errorSchema: NotFoundSchema,
+    })
     expect(terminal).toBeInstanceOf(restate.TerminalError)
     const t = terminal as restate.TerminalError
     expect(t.code).toBe(404)
@@ -72,7 +78,7 @@ describe('error transport (contract layer, server-free)', () => {
     const failing = Effect.fail(simulateIngressFailure(new NotFound({ id: 'x_2' })))
     const recovered = await Effect.runPromise(
       failing.pipe(
-        decodeTerminalError(Registry, 'lookup'),
+        decodeTerminalError({ contract: Registry, method: 'lookup' }),
         Effect.map(() => 'unexpected' as const),
         Effect.catchTag('NotFound', (e) => Effect.succeed(`recovered:${e.id}` as const)),
       ),
@@ -87,7 +93,7 @@ describe('error transport (contract layer, server-free)', () => {
       cause: new clients.HttpCallError(500, '{"_tag":"Other"}', '{"_tag":"Other"}'),
     })
     const exit = await Effect.runPromiseExit(
-      Effect.fail(unrelated).pipe(decodeTerminalError(Registry, 'lookup')),
+      Effect.fail(unrelated).pipe(decodeTerminalError({ contract: Registry, method: 'lookup' })),
     )
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit) === true) {
@@ -99,8 +105,8 @@ describe('error transport (contract layer, server-free)', () => {
 
   it('a retryable-annotated error throws RetryableError instead of terminalizing', () => {
     class Throttled extends Schema.TaggedError<Throttled>('test/Throttled')('Throttled', {}) {}
-    const ThrottledSchema = Restate.retryable(Schema.asSchema(Throttled))
-    const out = toTerminal(Cause.fail(new Throttled()), ThrottledSchema)
+    const ThrottledSchema = Restate.retryable({ self: Schema.asSchema(Throttled) })
+    const out = toTerminal({ cause: Cause.fail(new Throttled()), errorSchema: ThrottledSchema })
     expect(out).toBeInstanceOf(restate.RetryableError)
     expect(out).not.toBeInstanceOf(restate.TerminalError)
   })
@@ -111,21 +117,22 @@ describe('error transport (contract layer, server-free)', () => {
     class RateLimited extends Schema.TaggedError<RateLimited>('test/RateLimited')('RateLimited', {
       retryAfterMillis: Schema.Number,
     }) {}
-    const RateLimitedSchema = Restate.retryable(Schema.asSchema(RateLimited), {
+    const RateLimitedSchema = Restate.retryable({
+      self: Schema.asSchema(RateLimited),
       retryAfter: (e) => e.retryAfterMillis,
     })
-    const out = toTerminal(
-      Cause.fail(new RateLimited({ retryAfterMillis: 7_500 })),
-      RateLimitedSchema,
-    )
+    const out = toTerminal({
+      cause: Cause.fail(new RateLimited({ retryAfterMillis: 7_500 })),
+      errorSchema: RateLimitedSchema,
+    })
     expect(out).toBeInstanceOf(restate.RetryableError)
     expect((out as restate.RetryableError).retryAfter).toBe(7_500)
   })
 
   it('retryAfter accepts a static Duration shorthand', () => {
     class Slow extends Schema.TaggedError<Slow>('test/Slow')('Slow', {}) {}
-    const SlowSchema = Restate.retryable(Schema.asSchema(Slow), { retryAfter: '2 seconds' })
-    const out = toTerminal(Cause.fail(new Slow()), SlowSchema)
+    const SlowSchema = Restate.retryable({ self: Schema.asSchema(Slow), retryAfter: '2 seconds' })
+    const out = toTerminal({ cause: Cause.fail(new Slow()), errorSchema: SlowSchema })
     expect((out as restate.RetryableError).retryAfter).toBe(2_000)
   })
 
@@ -133,8 +140,11 @@ describe('error transport (contract layer, server-free)', () => {
     class Maybe extends Schema.TaggedError<Maybe>('test/Maybe')('Maybe', {
       after: Schema.optional(Schema.Number),
     }) {}
-    const MaybeSchema = Restate.retryable(Schema.asSchema(Maybe), { retryAfter: (e) => e.after })
-    const out = toTerminal(Cause.fail(new Maybe({})), MaybeSchema)
+    const MaybeSchema = Restate.retryable({
+      self: Schema.asSchema(Maybe),
+      retryAfter: (e) => e.after,
+    })
+    const out = toTerminal({ cause: Cause.fail(new Maybe({})), errorSchema: MaybeSchema })
     expect(out).toBeInstanceOf(restate.RetryableError)
     expect((out as restate.RetryableError).retryAfter).toBeUndefined()
   })
@@ -150,18 +160,27 @@ describe('error transport (contract layer, server-free)', () => {
     }) {}
     class Gone extends Schema.TaggedError<Gone>('test/Gone')('Gone', { id: Schema.String }) {}
     const UnionSchema = Schema.Union(
-      Restate.retryable(Schema.asSchema(RateLimited), { retryAfter: (e) => e.retryAfterMillis }),
-      Restate.terminal(Schema.asSchema(Gone), { errorCode: 404 }),
+      Restate.retryable({
+        self: Schema.asSchema(RateLimited),
+        retryAfter: (e) => e.retryAfterMillis,
+      }),
+      Restate.terminal({ self: Schema.asSchema(Gone), errorCode: 404 }),
     )
 
     /* The RETRYABLE member → a RetryableError honoring its projected retryAfter. */
-    const retry = toTerminal(Cause.fail(new RateLimited({ retryAfterMillis: 1_200 })), UnionSchema)
+    const retry = toTerminal({
+      cause: Cause.fail(new RateLimited({ retryAfterMillis: 1_200 })),
+      errorSchema: UnionSchema,
+    })
     expect(retry).toBeInstanceOf(restate.RetryableError)
     expect(retry).not.toBeInstanceOf(restate.TerminalError)
     expect((retry as restate.RetryableError).retryAfter).toBe(1_200)
 
     /* The TERMINAL member → a TerminalError with its per-member errorCode (404). */
-    const terminal = toTerminal(Cause.fail(new Gone({ id: 'g_1' })), UnionSchema)
+    const terminal = toTerminal({
+      cause: Cause.fail(new Gone({ id: 'g_1' })),
+      errorSchema: UnionSchema,
+    })
     expect(terminal).toBeInstanceOf(restate.TerminalError)
     const t = terminal as restate.TerminalError
     expect(t.code).toBe(404)
@@ -175,7 +194,10 @@ describe('error transport (contract layer, server-free)', () => {
     class Foreign extends Schema.TaggedError<Foreign>('test/Foreign')('Foreign', {
       whatever: Schema.String,
     }) {}
-    const out = toTerminal(Cause.fail(new Foreign({ whatever: 'x' })), NotFoundSchema)
+    const out = toTerminal({
+      cause: Cause.fail(new Foreign({ whatever: 'x' })),
+      errorSchema: NotFoundSchema,
+    })
     expect(out).not.toBeInstanceOf(restate.TerminalError)
     expect(out).toBeInstanceOf(Foreign)
   })

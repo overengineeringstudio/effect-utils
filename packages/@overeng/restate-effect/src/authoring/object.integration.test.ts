@@ -21,30 +21,36 @@ import { serverAvailable, withRestateServer } from '../testing/testing.ts'
 const CounterState = { count: Schema.Number } as const
 const Counter = State.for(CounterState)
 
-const CounterObj = RestateObject.contract('counter', {
-  state: CounterState,
-  handlers: {
-    add: { input: Schema.Number, success: Schema.Number }, // exclusive (default)
-    get: { input: Schema.Void, success: Schema.Number, shared: true }, // read-only
+const CounterObj = RestateObject.contract({
+  name: 'counter',
+  def: {
+    state: CounterState,
+    handlers: {
+      add: { input: Schema.Number, success: Schema.Number }, // exclusive (default)
+      get: { input: Schema.Void, success: Schema.Number, shared: true }, // read-only
+    },
   },
 })
 
-const CounterLive = RestateObject.implement<typeof CounterObj>(CounterObj, {
-  /* Exclusive: read-modify-write the typed `count` State. Wrapper `RestateError`s
-   * are infra → `orDie` (the handler declares no domain error). */
-  add: (amount) =>
-    Effect.gen(function* () {
-      const current = (yield* Counter.get('count')) ?? 0
-      const next = current + amount
-      yield* Counter.set('count', next)
-      return next
-    }).pipe(Effect.orDie),
-  /* Shared (read-only): a `State.set` here would not typecheck. */
-  get: () =>
-    Counter.get('count').pipe(
-      Effect.map((c) => c ?? 0),
-      Effect.orDie,
-    ),
+const CounterLive = RestateObject.implement<typeof CounterObj>({
+  contractValue: CounterObj,
+  impl: {
+    /* Exclusive: read-modify-write the typed `count` State. Wrapper `RestateError`s
+     * are infra → `orDie` (the handler declares no domain error). */
+    add: (amount) =>
+      Effect.gen(function* () {
+        const current = (yield* Counter.get('count')) ?? 0
+        const next = current + amount
+        yield* Counter.set({ key: 'count', value: next })
+        return next
+      }).pipe(Effect.orDie),
+    /* Shared (read-only): a `State.set` here would not typecheck. */
+    get: () =>
+      Counter.get('count').pipe(
+        Effect.map((c) => c ?? 0),
+        Effect.orDie,
+      ),
+  },
 })
 
 /* One held native server for the suite (collapses the copy-pasted scope/ingress
@@ -61,9 +67,24 @@ describe('restate-effect virtual object (counter)', () => {
   it.skipIf(!serverAvailable)('add mutates per-key State; get reads it back', async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const afterFirst = yield* objectCall(CounterObj, 'cart-a', 'add', 3)
-        const afterSecond = yield* objectCall(CounterObj, 'cart-a', 'add', 4)
-        const read = yield* objectCall(CounterObj, 'cart-a', 'get', undefined)
+        const afterFirst = yield* objectCall({
+          contract: CounterObj,
+          key: 'cart-a',
+          method: 'add',
+          input: 3,
+        })
+        const afterSecond = yield* objectCall({
+          contract: CounterObj,
+          key: 'cart-a',
+          method: 'add',
+          input: 4,
+        })
+        const read = yield* objectCall({
+          contract: CounterObj,
+          key: 'cart-a',
+          method: 'get',
+          input: undefined,
+        })
         return { afterFirst, afterSecond, read }
       }).pipe(Effect.provide(ingressLayer())),
     )
@@ -75,10 +96,20 @@ describe('restate-effect virtual object (counter)', () => {
   it.skipIf(!serverAvailable)('two keys are isolated', async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* objectCall(CounterObj, 'key-x', 'add', 10)
-        yield* objectCall(CounterObj, 'key-y', 'add', 1)
-        const x = yield* objectCall(CounterObj, 'key-x', 'get', undefined)
-        const y = yield* objectCall(CounterObj, 'key-y', 'get', undefined)
+        yield* objectCall({ contract: CounterObj, key: 'key-x', method: 'add', input: 10 })
+        yield* objectCall({ contract: CounterObj, key: 'key-y', method: 'add', input: 1 })
+        const x = yield* objectCall({
+          contract: CounterObj,
+          key: 'key-x',
+          method: 'get',
+          input: undefined,
+        })
+        const y = yield* objectCall({
+          contract: CounterObj,
+          key: 'key-y',
+          method: 'get',
+          input: undefined,
+        })
         return { x, y }
       }).pipe(Effect.provide(ingressLayer())),
     )

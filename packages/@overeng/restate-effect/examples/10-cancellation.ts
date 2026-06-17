@@ -18,27 +18,33 @@ import { Effect, Schema } from 'effect'
 
 import { Restate, RestateObject } from '../src/mod.ts'
 
-export const Job = RestateObject.contract('cancellable-job', {
-  state: {},
-  handlers: {
-    run: { input: Schema.Void, success: Schema.Void },
+export const Job = RestateObject.contract({
+  name: 'cancellable-job',
+  def: {
+    state: {},
+    handlers: {
+      run: { input: Schema.Void, success: Schema.Void },
+    },
   },
 })
 
-export const JobLive = RestateObject.implement<typeof Job>(Job, {
-  run: () =>
-    Effect.gen(function* () {
-      /* Acquire a resource; the RELEASE runs on success, error, OR interruption —
-       * including a Restate cancellation that interrupts the durable wait below. */
-      yield* Effect.acquireRelease(Effect.logInfo('acquired external resource'), () =>
-        Effect.logInfo('released external resource (runs on cancel too)'),
-      )
-      /* A long durable timer: the invocation durably suspends here. A cancellation
-       * interrupts the fiber at this point → the release above runs → the boundary
-       * terminalizes a `CancelledError` (no silent retry). `Restate.sleep`'s `E` is
-       * CLEAN (#1) — no `orDie`. */
-      yield* Restate.sleep(60_000, 'long-wait')
-    }).pipe(Effect.scoped),
+export const JobLive = RestateObject.implement<typeof Job>({
+  contractValue: Job,
+  impl: {
+    run: () =>
+      Effect.gen(function* () {
+        /* Acquire a resource; the RELEASE runs on success, error, OR interruption —
+         * including a Restate cancellation that interrupts the durable wait below. */
+        yield* Effect.acquireRelease(Effect.logInfo('acquired external resource'), () =>
+          Effect.logInfo('released external resource (runs on cancel too)'),
+        )
+        /* A long durable timer: the invocation durably suspends here. A cancellation
+         * interrupts the fiber at this point → the release above runs → the boundary
+         * terminalizes a `CancelledError` (no silent retry). `Restate.sleep`'s `E` is
+         * CLEAN (#1) — no `orDie`. */
+        yield* Restate.sleep({ millis: 60_000, name: 'long-wait' })
+      }).pipe(Effect.scoped),
+  },
 })
 
 /** Cancel ANOTHER invocation cooperatively (the target surfaces an interruption

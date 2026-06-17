@@ -38,9 +38,12 @@ const C = State.for(CounterState)
  * plane. This same-named contract lets `harness.stateOf` read the domain `n` key
  * to assert exactly-once (cursor == iteration). */
 const DomainProbe = (name: string) =>
-  RestateObject.contract(name, {
-    state: CounterState,
-    handlers: { noop: { input: Schema.Void, success: Schema.Void, shared: true } },
+  RestateObject.contract({
+    name,
+    def: {
+      state: CounterState,
+      handlers: { noop: { input: Schema.Void, success: Schema.Void, shared: true } },
+    },
   })
 const BasicDomain = DomainProbe('sched-basic')
 
@@ -52,12 +55,12 @@ const Basic = RestateScheduled.make<typeof CounterState>({
   cycle: ({ key }) =>
     Effect.gen(function* () {
       const n = (yield* C.get('n')) ?? 0
-      yield* Restate.run(
-        `work(${key}@${n})`,
-        Effect.sync(() => n),
-        { maxRetryAttempts: 1 },
-      )
-      yield* C.set('n', n + 1)
+      yield* Restate.run({
+        name: `work(${key}@${n})`,
+        effect: Effect.sync(() => n),
+        options: { maxRetryAttempts: 1 },
+      })
+      yield* C.set({ key: 'n', value: n + 1 })
       return { stop: false }
     }),
 })
@@ -71,7 +74,7 @@ const Bounded = RestateScheduled.make<typeof CounterState>({
   cycle: () =>
     Effect.gen(function* () {
       const n = (yield* C.get('n')) ?? 0
-      yield* C.set('n', n + 1)
+      yield* C.set({ key: 'n', value: n + 1 })
       return { stop: false }
     }),
 })
@@ -94,14 +97,14 @@ const Skip = RestateScheduled.make<typeof CounterState>({
   onCycleError: RestateScheduled.OnCycleError.skipToNext(),
   cycle: ({ iteration }) =>
     Effect.gen(function* () {
-      yield* Restate.run(
-        `skip-poll@${iteration}`,
-        Effect.sync(() => {
+      yield* Restate.run({
+        name: `skip-poll@${iteration}`,
+        effect: Effect.sync(() => {
           if (iteration === 1) throw new Error('transient blip at iteration 1')
           return 0
         }),
-        { maxRetryAttempts: 1 },
-      )
+        options: { maxRetryAttempts: 1 },
+      })
       return { stop: false }
     }),
 })
@@ -114,14 +117,14 @@ const StopOnError = RestateScheduled.make<typeof CounterState>({
   onCycleError: RestateScheduled.OnCycleError.stopLoop(),
   cycle: ({ iteration }) =>
     Effect.gen(function* () {
-      yield* Restate.run(
-        `stop-poll@${iteration}`,
-        Effect.sync(() => {
+      yield* Restate.run({
+        name: `stop-poll@${iteration}`,
+        effect: Effect.sync(() => {
           if (iteration === 2) throw new Error('fatal at iteration 2')
           return 0
         }),
-        { maxRetryAttempts: 1 },
-      )
+        options: { maxRetryAttempts: 1 },
+      })
       return { stop: false }
     }),
 })
@@ -134,9 +137,12 @@ const OptionalState = {
   highWatermark: Schema.optional(Schema.Number),
 } as const
 const Opt = State.for(OptionalState)
-const OptionalDomain = RestateObject.contract('sched-optional', {
-  state: OptionalState,
-  handlers: { noop: { input: Schema.Void, success: Schema.Void, shared: true } },
+const OptionalDomain = RestateObject.contract({
+  name: 'sched-optional',
+  def: {
+    state: OptionalState,
+    handlers: { noop: { input: Schema.Void, success: Schema.Void, shared: true } },
+  },
 })
 const Optional = RestateScheduled.make<typeof OptionalState>({
   name: 'sched-optional',
@@ -148,10 +154,10 @@ const Optional = RestateScheduled.make<typeof OptionalState>({
       const hw = yield* Opt.get('highWatermark')
       if (iteration >= 2) {
         /* Clear the nullable cursor (write `undefined` ≡ remove the key) and stop. */
-        yield* Opt.set('highWatermark', undefined)
+        yield* Opt.set({ key: 'highWatermark', value: undefined })
         return { stop: true }
       }
-      yield* Opt.set('highWatermark', (hw ?? 0) + 10)
+      yield* Opt.set({ key: 'highWatermark', value: (hw ?? 0) + 10 })
       return { stop: false }
     }),
 })
@@ -188,13 +194,32 @@ type Status = { readonly status: string; readonly iteration: number; readonly la
 
 const statusOf = (scheduled: { readonly contract: any }, key: string): Promise<Status> =>
   live(
-    harness().ingress.objectCall(scheduled.contract, key, 'status', undefined),
+    harness().ingress.objectCall({
+      contract: scheduled.contract,
+      key,
+      method: 'status',
+      input: undefined,
+    }),
   ) as Promise<Status>
 
 const start = (scheduled: { readonly contract: any }, key: string): Promise<unknown> =>
-  live(harness().ingress.objectCall(scheduled.contract, key, 'start', undefined))
+  live(
+    harness().ingress.objectCall({
+      contract: scheduled.contract,
+      key,
+      method: 'start',
+      input: undefined,
+    }),
+  )
 const stop = (scheduled: { readonly contract: any }, key: string): Promise<unknown> =>
-  live(harness().ingress.objectCall(scheduled.contract, key, 'stop', undefined))
+  live(
+    harness().ingress.objectCall({
+      contract: scheduled.contract,
+      key,
+      method: 'stop',
+      input: undefined,
+    }),
+  )
 
 const waitUntil = async (
   scheduled: { readonly contract: any },
@@ -237,7 +262,7 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
      * `iteration` `a`) makes the comparison atomic — sampling both mid-flight against
      * a still-advancing loop is an inherently racy invariant and was the source of an
      * intermittent `n !== iteration` flake under CPU contention. */
-    expect((await live(harness().stateOf(BasicDomain, key).get('n'))) ?? 0).toBe(a)
+    expect((await live(harness().stateOf({ contract: BasicDomain, key }).get('n'))) ?? 0).toBe(a)
   }, 40_000)
 
   it('maxIterations: runs exactly N cycles, then completed', async () => {
@@ -260,14 +285,18 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
   it('optional domainState: a nullable cursor advances then clears (set undefined) (#2)', async () => {
     const key = 'opt-1'
     /* The cursor is ABSENT before the first cycle reads it. */
-    expect(await live(harness().stateOf(OptionalDomain, key).get('highWatermark'))).toBeUndefined()
+    expect(
+      await live(harness().stateOf({ contract: OptionalDomain, key }).get('highWatermark')),
+    ).toBeUndefined()
     await start(Optional, key)
     /* Iterations 0,1 set the nullable cursor (10, 20); iteration 2 CLEARS it
      * (`set(undefined)` ≡ remove the key) and stops. */
     const s = await waitUntil(Optional, key, (st) => st.status === 'completed')
     expect(s.status).toBe('completed')
     /* After the clearing cycle the optional key is ABSENT again (`undefined`). */
-    expect(await live(harness().stateOf(OptionalDomain, key).get('highWatermark'))).toBeUndefined()
+    expect(
+      await live(harness().stateOf({ contract: OptionalDomain, key }).get('highWatermark')),
+    ).toBeUndefined()
   }, 40_000)
 
   it('stop then restart resumes the chain (generation re-arm)', async () => {
@@ -293,7 +322,7 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
   it('generation idempotency: a duplicate start never overlaps the chain', async () => {
     const key = 'dup-1'
     const readN = (): Promise<number> =>
-      live(harness().stateOf(BasicDomain, key).get('n')).then((v) => v ?? 0)
+      live(harness().stateOf({ contract: BasicDomain, key }).get('n')).then((v) => v ?? 0)
     await start(Basic, key)
     await waitUntil(Basic, key, (st) => st.iteration >= 2)
     /* A duplicate start bumps the generation and re-arms; the per-key write lock +
@@ -342,7 +371,14 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
     /* Drives the EXACT exported example so the README snippet is CI-verified. The
      * default stub source reports `done` at cursor >= 4 → the loop ends cleanly. */
     const key = 'notion-1'
-    await live(harness().ingress.objectCall(NotionWatcher.contract, key, 'start', undefined))
+    await live(
+      harness().ingress.objectCall({
+        contract: NotionWatcher.contract,
+        key,
+        method: 'start',
+        input: undefined,
+      }),
+    )
     const s = await waitUntil(NotionWatcher, key, (st) => st.status === 'completed')
     expect(s.status).toBe('completed')
     expect(s.iteration).toBeGreaterThanOrEqual(5)
@@ -351,11 +387,25 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
   it('reschedule building block: the hand-rolled RawWatcher loops and stops', async () => {
     const key = 'raw-1'
     const read = (): Promise<{ running: boolean; cursor: number }> =>
-      live(harness().ingress.objectCall(RawWatcherObj, key, 'read', undefined)) as Promise<{
+      live(
+        harness().ingress.objectCall({
+          contract: RawWatcherObj,
+          key,
+          method: 'read',
+          input: undefined,
+        }),
+      ) as Promise<{
         running: boolean
         cursor: number
       }>
-    await live(harness().ingress.objectCall(RawWatcherObj, key, 'start', undefined))
+    await live(
+      harness().ingress.objectCall({
+        contract: RawWatcherObj,
+        key,
+        method: 'start',
+        input: undefined,
+      }),
+    )
     const deadline = Date.now() + 12_000
     let snap = await read()
     while (snap.cursor < 4 && Date.now() < deadline) {
@@ -364,7 +414,14 @@ describe.skipIf(!serverAvailable)('self-reschedule (pollLoop + reschedule)', () 
     }
     expect(snap.cursor).toBeGreaterThanOrEqual(4)
     expect(snap.running).toBe(true)
-    await live(harness().ingress.objectCall(RawWatcherObj, key, 'stop', undefined))
+    await live(
+      harness().ingress.objectCall({
+        contract: RawWatcherObj,
+        key,
+        method: 'stop',
+        input: undefined,
+      }),
+    )
     await liveSleep(500)
     const after = await read()
     expect(after.running).toBe(false)

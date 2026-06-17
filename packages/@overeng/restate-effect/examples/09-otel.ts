@@ -13,7 +13,7 @@
  * 3. `RestateOtel.inboundBridge` — reparents each handler's Effect program under
  *    the active attempt span.
  *
- * `RestateOtel.withOtel(endpointOptions)` composes the hook + bridge + the boundary
+ * `RestateOtel.withOtel({ opts: endpointOptions })` composes the hook + bridge + the boundary
  * observer onto the core `EndpointOptions`; pair it with `RestateOtel.layer`
  * provided over the application Layer. The otel packages live behind this subpath
  * only, so the core `.` export stays dependency-light.
@@ -60,8 +60,10 @@ export const OtelLayer = RestateOtel.layer({
  * failure, `restate.error.{tag,class}` on the attempt span) to every served
  * handler. */
 export const tracedEndpointOptions = RestateOtel.withOtel({
-  services: [GreeterLive],
-  port: 9080,
+  opts: {
+    services: [GreeterLive],
+    port: 9080,
+  },
 })
 
 /**

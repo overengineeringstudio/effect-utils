@@ -28,37 +28,43 @@ export const StatusState = {
 } as const
 const Status = State.for(StatusState)
 
-export const ApprovalWf = RestateWorkflow.contract('approval', {
-  state: StatusState,
-  /* `payload` is the `run` handler's I/O. */
-  payload: { input: Schema.String, success: Schema.Boolean },
-  signals: {
-    approve: { input: Schema.Void, success: Schema.Void },
-    reject: { input: Schema.Void, success: Schema.Void },
-  },
-  queries: {
-    status: { input: Schema.Void, success: Schema.String },
+export const ApprovalWf = RestateWorkflow.contract({
+  name: 'approval',
+  def: {
+    state: StatusState,
+    /* `payload` is the `run` handler's I/O. */
+    payload: { input: Schema.String, success: Schema.Boolean },
+    signals: {
+      approve: { input: Schema.Void, success: Schema.Void },
+      reject: { input: Schema.Void, success: Schema.Void },
+    },
+    queries: {
+      status: { input: Schema.Void, success: Schema.String },
+    },
   },
 })
 
-export const ApprovalLive = RestateWorkflow.implement<typeof ApprovalWf>(ApprovalWf, {
-  /* The single `run` (full caps): mark pending, AWAIT the durable promise (the
-   * invocation durably suspends here until a signal resolves it), record the
-   * outcome. The await survives process restarts — it is journaled, not in-memory. */
-  run: () =>
-    Effect.gen(function* () {
-      /* `State.*` and `DurablePromise.*` have a CLEAN `E` (#1) — no `orDie`. A
-       * promise `reject` arrives terminally at the boundary (the `'rejected'` path),
-       * an infra failure is a defect there. */
-      yield* Status.set('status', 'pending')
-      const decision = yield* Approval.get('decision') // blocks until resolved
-      yield* Status.set('status', decision.approved ? 'approved' : 'rejected')
-      return decision.approved
-    }),
-  /* Signals (shared): resolve the durable promise. `reject` drives the
-   * `'rejected'` State path, observable via the `status` query. */
-  approve: () => Approval.resolve('decision', { approved: true }),
-  reject: () => Approval.resolve('decision', { approved: false }),
-  /* Query (shared, read-only State). */
-  status: () => Status.get('status').pipe(Effect.map((s) => s ?? 'pending')),
+export const ApprovalLive = RestateWorkflow.implement<typeof ApprovalWf>({
+  contractValue: ApprovalWf,
+  impl: {
+    /* The single `run` (full caps): mark pending, AWAIT the durable promise (the
+     * invocation durably suspends here until a signal resolves it), record the
+     * outcome. The await survives process restarts — it is journaled, not in-memory. */
+    run: () =>
+      Effect.gen(function* () {
+        /* `State.*` and `DurablePromise.*` have a CLEAN `E` (#1) — no `orDie`. A
+         * promise `reject` arrives terminally at the boundary (the `'rejected'` path),
+         * an infra failure is a defect there. */
+        yield* Status.set({ key: 'status', value: 'pending' })
+        const decision = yield* Approval.get('decision') // blocks until resolved
+        yield* Status.set({ key: 'status', value: decision.approved ? 'approved' : 'rejected' })
+        return decision.approved
+      }),
+    /* Signals (shared): resolve the durable promise. `reject` drives the
+     * `'rejected'` State path, observable via the `status` query. */
+    approve: () => Approval.resolve({ name: 'decision', value: { approved: true } }),
+    reject: () => Approval.resolve({ name: 'decision', value: { approved: false } }),
+    /* Query (shared, read-only State). */
+    status: () => Status.get('status').pipe(Effect.map((s) => s ?? 'pending')),
+  },
 })

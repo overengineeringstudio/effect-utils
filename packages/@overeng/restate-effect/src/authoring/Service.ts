@@ -124,11 +124,15 @@ export interface ServiceImplementation<C extends Contract<string, HandlerSpecMap
  * handler map (`H`) on the returned `Contract<Name, H>` (it must NOT widen to
  * `Record<string, …>`).
  */
-const contract = <const Name extends string, const H extends HandlerSpecMap>(
-  name: Name,
-  handlers: H,
-  options?: ServiceLevelOptions,
-): Contract<Name, H> => ({
+const contract = <const Name extends string, const H extends HandlerSpecMap>({
+  name,
+  handlers,
+  options,
+}: {
+  name: Name
+  handlers: H
+  options?: ServiceLevelOptions
+}): Contract<Name, H> => ({
   _tag: 'Contract',
   name,
   handlers,
@@ -141,10 +145,13 @@ const contract = <const Name extends string, const H extends HandlerSpecMap>(
  * `AppR` is an EXPLICIT type param: pass it as the app `R` the captured
  * `Runtime<AppR>` satisfies (decision 0002).
  */
-const implement = <C extends Contract<string, HandlerSpecMap>, AppR = never>(
-  contractValue: C,
-  impl: ServiceImpl<C, AppR>,
-): ServiceImplementation<C, AppR> => ({
+const implement = <C extends Contract<string, HandlerSpecMap>, AppR = never>({
+  contractValue,
+  impl,
+}: {
+  contractValue: C
+  impl: ServiceImpl<C, AppR>
+}): ServiceImplementation<C, AppR> => ({
   _tag: 'ServiceImplementation',
   contract: contractValue,
   impl,
@@ -154,11 +161,16 @@ const implement = <C extends Contract<string, HandlerSpecMap>, AppR = never>(
  * `contract` + `implement` in one expression for the single-package case (R36).
  * The separable `contract` artifact stays available for cross-package clients.
  */
-const define = <const Name extends string, const H extends HandlerSpecMap, AppR = never>(
-  name: Name,
-  handlers: H,
-  impl: ServiceImpl<Contract<Name, H>, AppR>,
-): ServiceImplementation<Contract<Name, H>, AppR> => implement(contract(name, handlers), impl)
+const define = <const Name extends string, const H extends HandlerSpecMap, AppR = never>({
+  name,
+  handlers,
+  impl,
+}: {
+  name: Name
+  handlers: H
+  impl: ServiceImpl<Contract<Name, H>, AppR>
+}): ServiceImplementation<Contract<Name, H>, AppR> =>
+  implement({ contractValue: contract({ name, handlers }), impl })
 
 /** Declarative, Schema-typed stateless Service authoring (contract / implement). */
 export const RestateService = { contract, implement, define } as const
@@ -232,10 +244,13 @@ const objectContract = <
   const Name extends string,
   const S extends StateSchemas,
   const H extends ObjectHandlerSpecMap,
->(
-  name: Name,
-  def: { readonly state: S; readonly handlers: H; readonly options?: ServiceLevelOptions },
-): ObjectContract<Name, S, H> => ({
+>({
+  name,
+  def,
+}: {
+  name: Name
+  def: { readonly state: S; readonly handlers: H; readonly options?: ServiceLevelOptions }
+}): ObjectContract<Name, S, H> => ({
   _tag: 'ObjectContract',
   name,
   state: def.state,
@@ -252,10 +267,13 @@ const objectContract = <
 const objectImplement = <
   C extends ObjectContract<string, StateSchemas, ObjectHandlerSpecMap>,
   AppR = never,
->(
-  contractValue: C,
-  impl: C extends ObjectContract<string, infer _S, infer H> ? ObjectImpl<H, AppR> : never,
-): ObjectImplementation<C, AppR> => ({
+>({
+  contractValue,
+  impl,
+}: {
+  contractValue: C
+  impl: C extends ObjectContract<string, infer _S, infer H> ? ObjectImpl<H, AppR> : never
+}): ObjectImplementation<C, AppR> => ({
   _tag: 'ObjectImplementation',
   contract: contractValue,
   impl,
@@ -356,16 +374,19 @@ const workflowContract = <
   const Run extends WorkflowHandlerSpec,
   const Signals extends WorkflowHandlerSpecMap,
   const Queries extends WorkflowHandlerSpecMap,
->(
-  name: Name,
+>({
+  name,
+  def,
+}: {
+  name: Name
   def: {
     readonly state: S
     readonly payload: Run
     readonly signals?: Signals
     readonly queries?: Queries
     readonly options?: ServiceLevelOptions
-  },
-): WorkflowContract<Name, S, Run, Signals, Queries> => ({
+  }
+}): WorkflowContract<Name, S, Run, Signals, Queries> => ({
   _tag: 'WorkflowContract',
   name,
   state: def.state,
@@ -384,12 +405,15 @@ const workflowContract = <
 const workflowImplement = <
   C extends WorkflowContract<string, StateSchemas, WorkflowHandlerSpec, any, any>,
   AppR = never,
->(
-  contractValue: C,
+>({
+  contractValue,
+  impl,
+}: {
+  contractValue: C
   impl: C extends WorkflowContract<string, infer _S, infer Run, infer Sig, infer Qry>
     ? WorkflowImpl<Run, Sig, Qry, AppR>
-    : never,
-): WorkflowImplementation<C, AppR> => ({
+    : never
+}): WorkflowImplementation<C, AppR> => ({
   _tag: 'WorkflowImplementation',
   contract: contractValue,
   impl,

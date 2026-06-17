@@ -22,28 +22,34 @@ import { RestateTestHarness, serverAvailable } from '../testing/testing.ts'
  * resolves SOONER than `A` (a longer artificial delay on `A`), so a source-order
  * tuple (`['A', 'B']`) proves the journal order is the source order, not the
  * resolution order. */
-const Concurrent = RestateService.contract('concurrency-demo', {
-  all: { input: Schema.Void, success: Schema.Tuple(Schema.String, Schema.String) },
-  race: { input: Schema.Void, success: Schema.String },
+const Concurrent = RestateService.contract({
+  name: 'concurrency-demo',
+  handlers: {
+    all: { input: Schema.Void, success: Schema.Tuple(Schema.String, Schema.String) },
+    race: { input: Schema.Void, success: Schema.String },
+  },
 })
 
 const slowResolve = (value: string, delayMillis: number): Promise<string> =>
   new Promise((resolve) => setTimeout(() => resolve(value), delayMillis))
 
-const ConcurrentLive = RestateService.implement<typeof Concurrent>(Concurrent, {
-  /* `A` is issued FIRST but resolves LAST (40ms vs 5ms). The tuple must still be
-   * `['A', 'B']` — source order, fixed by the synchronous in-order issue. */
-  all: () =>
-    Restate.all([
-      Restate.runDescriptor('op-a', () => slowResolve('A', 40)),
-      Restate.runDescriptor('op-b', () => slowResolve('B', 5)),
-    ]),
-  /* The faster descriptor wins the race regardless of source position. */
-  race: () =>
-    Restate.race([
-      Restate.runDescriptor('slow', () => slowResolve('slow', 50)),
-      Restate.runDescriptor('fast', () => slowResolve('fast', 5)),
-    ]),
+const ConcurrentLive = RestateService.implement<typeof Concurrent>({
+  contractValue: Concurrent,
+  impl: {
+    /* `A` is issued FIRST but resolves LAST (40ms vs 5ms). The tuple must still be
+     * `['A', 'B']` — source order, fixed by the synchronous in-order issue. */
+    all: () =>
+      Restate.all([
+        Restate.runDescriptor({ name: 'op-a', action: () => slowResolve('A', 40) }),
+        Restate.runDescriptor({ name: 'op-b', action: () => slowResolve('B', 5) }),
+      ]),
+    /* The faster descriptor wins the race regardless of source position. */
+    race: () =>
+      Restate.race([
+        Restate.runDescriptor({ name: 'slow', action: () => slowResolve('slow', 50) }),
+        Restate.runDescriptor({ name: 'fast', action: () => slowResolve('fast', 5) }),
+      ]),
+  },
 })
 
 const HarnessLayer = RestateTestHarness.layer({
@@ -57,7 +63,11 @@ describe.skipIf(!serverAvailable)('deterministic durable concurrency (real serve
     it.effect('Restate.all preserves SOURCE order despite resolution order', () =>
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
-        const tuple = yield* harness.ingress.call(Concurrent, 'all', undefined)
+        const tuple = yield* harness.ingress.call({
+          contract: Concurrent,
+          method: 'all',
+          input: undefined,
+        })
         /* Source order, NOT resolution order — `B` resolved first but is second. */
         expect(tuple).toEqual(['A', 'B'])
       }),
@@ -66,7 +76,11 @@ describe.skipIf(!serverAvailable)('deterministic durable concurrency (real serve
     it.effect('Restate.race resolves to the first descriptor to COMPLETE', () =>
       Effect.gen(function* () {
         const harness = yield* RestateTestHarness
-        const winner = yield* harness.ingress.call(Concurrent, 'race', undefined)
+        const winner = yield* harness.ingress.call({
+          contract: Concurrent,
+          method: 'race',
+          input: undefined,
+        })
         expect(winner).toBe('fast')
       }),
     )

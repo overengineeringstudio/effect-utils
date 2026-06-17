@@ -38,7 +38,7 @@ describe('field-level redaction (sensitive/redacted)', () => {
 
   it('encodes CIPHERTEXT for the sensitive field and PLAINTEXT for others, and round-trips', () => {
     const cipher = xorCipher()
-    const serde = effectSerde(SecretMessage, 'internal', { redaction: cipher })
+    const serde = effectSerde({ schema: SecretMessage, slot: 'internal', redaction: cipher })
     const value = { to: 'alice', body: 'launch codes' }
 
     const bytes = serde.serialize(value)
@@ -57,7 +57,7 @@ describe('field-level redaction (sensitive/redacted)', () => {
   })
 
   it('fails with a CLEAR error when a sensitive field has no cipher (never plaintext)', () => {
-    const serde = effectSerde(SecretMessage) // no redaction provided
+    const serde = effectSerde({ schema: SecretMessage }) // no redaction provided
     expect(() => serde.serialize({ to: 'alice', body: 'secret' })).toThrow(
       RedactionCipherMissingError,
     )
@@ -66,7 +66,7 @@ describe('field-level redaction (sensitive/redacted)', () => {
 
   it('leaves a schema with no sensitive field completely untouched', () => {
     const plain = Schema.Struct({ a: Schema.String })
-    const serde = effectSerde(plain, 'internal', { redaction: xorCipher() })
+    const serde = effectSerde({ schema: plain, slot: 'internal', redaction: xorCipher() })
     const value = { a: 'hello' }
     const wire = JSON.parse(new TextDecoder().decode(serde.serialize(value))) as { a: string }
     expect(wire.a).toBe('hello')
@@ -93,7 +93,7 @@ describe('aesGcmCipher reference (node:crypto)', () => {
 
   it('end-to-end: AES-GCM redacted field is ciphertext on the wire and decodes back', () => {
     const cipher = aesGcmCipher(crypto.randomBytes(32))
-    const serde = effectSerde(SecretMessage, 'internal', { redaction: cipher })
+    const serde = effectSerde({ schema: SecretMessage, slot: 'internal', redaction: cipher })
     const value = { to: 'bob', body: 'classified' }
     const wire = JSON.parse(new TextDecoder().decode(serde.serialize(value))) as {
       to: string

@@ -29,12 +29,18 @@ const Secret = Schema.Struct({
   token: Restate.sensitive(Schema.String),
 })
 
-const Vault = RestateService.contract('redact-vault', {
-  reveal: { input: Schema.Void, success: Secret },
+const Vault = RestateService.contract({
+  name: 'redact-vault',
+  handlers: {
+    reveal: { input: Schema.Void, success: Secret },
+  },
 })
 
-const VaultLive = RestateService.implement<typeof Vault>(Vault, {
-  reveal: () => Effect.succeed({ label: 'plain', token: PLAINTEXT }),
+const VaultLive = RestateService.implement<typeof Vault>({
+  contractValue: Vault,
+  impl: {
+    reveal: () => Effect.succeed({ label: 'plain', token: PLAINTEXT }),
+  },
 })
 
 /* ── descriptor peer-call redaction: a `sensitive` field on the DESCRIPTOR call path
@@ -46,28 +52,44 @@ const DESC_SECRET = 'descriptor-secret-99'
 const SecretIO = Schema.Struct({ value: Restate.sensitive(Schema.String) })
 
 /* The callee echoes a `sensitive` field in BOTH its input and output. */
-const DescEcho = RestateService.contract('redact-desc-echo', {
-  echo: { input: SecretIO, success: SecretIO },
+const DescEcho = RestateService.contract({
+  name: 'redact-desc-echo',
+  handlers: {
+    echo: { input: SecretIO, success: SecretIO },
+  },
 })
-const DescEchoLive = RestateService.implement<typeof DescEcho>(DescEcho, {
-  echo: ({ value }) => Effect.succeed({ value }),
+const DescEchoLive = RestateService.implement<typeof DescEcho>({
+  contractValue: DescEcho,
+  impl: {
+    echo: ({ value }) => Effect.succeed({ value }),
+  },
 })
 
 /* The caller issues the peer call as a DESCRIPTOR inside `Restate.all` (the path that
  * dropped the cipher) and returns the round-tripped value as a NON-sensitive success
  * — so the assertion needs no ingress-side decryption. Under the bug the descriptor's
  * serde had no cipher, so encoding the sensitive `value` threw → the caller failed. */
-const DescCaller = RestateService.contract('redact-desc-caller', {
-  start: { input: Schema.Void, success: Schema.String },
+const DescCaller = RestateService.contract({
+  name: 'redact-desc-caller',
+  handlers: {
+    start: { input: Schema.Void, success: Schema.String },
+  },
 })
-const DescCallerLive = RestateService.implement<typeof DescCaller>(DescCaller, {
-  start: () =>
-    Effect.gen(function* () {
-      const [echoed] = yield* Restate.all([
-        Restate.callDescriptor(DescEcho, 'echo', { value: DESC_SECRET }),
-      ])
-      return echoed.value
-    }),
+const DescCallerLive = RestateService.implement<typeof DescCaller>({
+  contractValue: DescCaller,
+  impl: {
+    start: () =>
+      Effect.gen(function* () {
+        const [echoed] = yield* Restate.all([
+          Restate.callDescriptor({
+            contract: DescEcho,
+            method: 'echo',
+            input: { value: DESC_SECRET },
+          }),
+        ])
+        return echoed.value
+      }),
+  },
 })
 
 /**
@@ -154,7 +176,11 @@ describe.skipIf(!serverAvailable)('sensitive-field redaction on the wire (real s
           /* Under the bug the descriptor serde had no cipher → `RedactionCipherMissingError`
            * → the caller fails. Post-fix the cipher is resolved at issue time and the
            * sensitive field round-trips on the s2s wire. */
-          const result = yield* harness.ingress.call(DescCaller, 'start', undefined)
+          const result = yield* harness.ingress.call({
+            contract: DescCaller,
+            method: 'start',
+            input: undefined,
+          })
           expect(result).toBe(DESC_SECRET)
         }),
     )

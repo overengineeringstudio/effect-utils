@@ -268,7 +268,7 @@ describe('annotateSpanFrom strips sensitive fields (server-free)', () => {
   }
 
   it('stamps non-sensitive fields but NEVER the sensitive one (default projection)', async () => {
-    const attrs = await runAndRead(annotateSpanFrom(Input, value))
+    const attrs = await runAndRead(annotateSpanFrom({ schema: Input, value }))
     expect(attrs['dataSourceId']).toBe('ds-42')
     expect(attrs['pageCount']).toBe(7)
     /* The redacted field is NEVER stamped — the leak path is closed by default. */
@@ -276,7 +276,9 @@ describe('annotateSpanFrom strips sensitive fields (server-free)', () => {
   })
 
   it('refuses to stamp a sensitive field even when explicitly picked (rule wins)', async () => {
-    const attrs = await runAndRead(annotateSpanFrom(Input, value, ['dataSourceId', 'apiToken']))
+    const attrs = await runAndRead(
+      annotateSpanFrom({ schema: Input, value, pick: ['dataSourceId', 'apiToken'] }),
+    )
     expect(attrs['dataSourceId']).toBe('ds-42')
     expect(attrs['apiToken']).toBeUndefined()
     /* A field NOT picked is simply absent (not stamped), distinct from being stripped. */
@@ -341,19 +343,21 @@ describe('replay-aware baseline metrics', () => {
       const ctx = fakeCtx(true)
       await Effect.runPromise(
         Effect.all([
-          emitAttempt(ctx, {
+          emitAttempt({
+            ctx,
             service: 'Counter',
             handler: 'bump',
           }),
-          emitInvocationMetrics(ctx, {
+          emitInvocationMetrics({
+            ctx,
             service: 'Counter',
             handler: 'bump',
             outcome: 'success',
             durationMs: 12,
           }),
-          emitDurableStep(ctx, 'charge'),
-          emitAwakeableWait(ctx, 42),
-          emitPollLoopCycle(ctx, { name: 'invoice-poller', outcome: 'ok' }),
+          emitDurableStep({ ctx, step: 'charge' }),
+          emitAwakeableWait({ ctx, waitMs: 42 }),
+          emitPollLoopCycle({ ctx, name: 'invoice-poller', outcome: 'ok' }),
         ]),
       )
       return reader.collect()
@@ -404,9 +408,9 @@ describe('replay-aware baseline metrics', () => {
     const result = await withOtelLayer(async () => {
       /* One REAL execution + two REPLAYS of the same durable step: only the real
        * one counts (the gate suppresses the replays), so the counter reads 1. */
-      await Effect.runPromise(emitDurableStep(fakeCtx(true), step))
-      await Effect.runPromise(emitDurableStep(fakeCtx(false), step))
-      await Effect.runPromise(emitDurableStep(fakeCtx(false), step))
+      await Effect.runPromise(emitDurableStep({ ctx: fakeCtx(true), step }))
+      await Effect.runPromise(emitDurableStep({ ctx: fakeCtx(false), step }))
+      await Effect.runPromise(emitDurableStep({ ctx: fakeCtx(false), step }))
       return reader.collect()
     })
 

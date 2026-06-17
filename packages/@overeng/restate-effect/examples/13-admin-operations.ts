@@ -41,30 +41,36 @@ export const IncidentState = {
 
 const Incident = State.for(IncidentState)
 
-export const IncidentObj = RestateObject.contract('incident', {
-  state: IncidentState,
-  handlers: {
-    /** Open (or re-open) the incident — exclusive single-writer transition. */
-    open: { input: Schema.String, success: Schema.Void },
-    /** Acknowledge — exclusive transition. */
-    acknowledge: { input: Schema.String, success: Schema.Void },
-    /** Read the current status — shared, read-only (a `State.set` here is a compile error). */
-    status: { input: Schema.Void, success: Schema.String, shared: true },
+export const IncidentObj = RestateObject.contract({
+  name: 'incident',
+  def: {
+    state: IncidentState,
+    handlers: {
+      /** Open (or re-open) the incident — exclusive single-writer transition. */
+      open: { input: Schema.String, success: Schema.Void },
+      /** Acknowledge — exclusive transition. */
+      acknowledge: { input: Schema.String, success: Schema.Void },
+      /** Read the current status — shared, read-only (a `State.set` here is a compile error). */
+      status: { input: Schema.Void, success: Schema.String, shared: true },
+    },
   },
 })
 
-export const IncidentLive = RestateObject.implement<typeof IncidentObj>(IncidentObj, {
-  open: (note) =>
-    Effect.gen(function* () {
-      yield* Incident.set('status', 'open')
-      yield* Incident.set('note', note)
-    }),
-  acknowledge: (note) =>
-    Effect.gen(function* () {
-      yield* Incident.set('status', 'acknowledged')
-      yield* Incident.set('note', note)
-    }),
-  status: () => Incident.get('status').pipe(Effect.map((s) => s ?? 'open')),
+export const IncidentLive = RestateObject.implement<typeof IncidentObj>({
+  contractValue: IncidentObj,
+  impl: {
+    open: (note) =>
+      Effect.gen(function* () {
+        yield* Incident.set({ key: 'status', value: 'open' })
+        yield* Incident.set({ key: 'note', value: note })
+      }),
+    acknowledge: (note) =>
+      Effect.gen(function* () {
+        yield* Incident.set({ key: 'status', value: 'acknowledged' })
+        yield* Incident.set({ key: 'note', value: note })
+      }),
+    status: () => Incident.get('status').pipe(Effect.map((s) => s ?? 'open')),
+  },
 })
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -95,50 +101,57 @@ export class DiscordUnavailable extends Schema.TaggedError<DiscordUnavailable>(
   'example/DiscordUnavailable',
 )('DiscordUnavailable', { retryAfterMillis: Schema.Number }) {}
 
-export const DiscordUnavailableRetryable = Restate.retryable(DiscordUnavailable, {
+export const DiscordUnavailableRetryable = Restate.retryable({
+  self: DiscordUnavailable,
   retryAfter: (e: DiscordUnavailable) => e.retryAfterMillis,
 })
 
-export const DeliveryWf = RestateWorkflow.contract('delivery', {
-  state: DeliveryState,
-  payload: { input: Schema.Struct({ wedge: Schema.Boolean }), success: Schema.Boolean },
-  signals: {
-    /** Release a wedged delivery — resolves the durable promise so `run` proceeds. */
-    release: { input: Schema.Void, success: Schema.Void },
-  },
-  queries: {
-    /** Read the delivery phase — shared, read-only. */
-    phase: { input: Schema.Void, success: Schema.String },
+export const DeliveryWf = RestateWorkflow.contract({
+  name: 'delivery',
+  def: {
+    state: DeliveryState,
+    payload: { input: Schema.Struct({ wedge: Schema.Boolean }), success: Schema.Boolean },
+    signals: {
+      /** Release a wedged delivery — resolves the durable promise so `run` proceeds. */
+      release: { input: Schema.Void, success: Schema.Void },
+    },
+    queries: {
+      /** Read the delivery phase — shared, read-only. */
+      phase: { input: Schema.Void, success: Schema.String },
+    },
   },
 })
 
-export const DeliveryLive = RestateWorkflow.implement<typeof DeliveryWf>(DeliveryWf, {
-  /**
-   * The single `run`. When `wedge` is set it parks on a long DURABLE SLEEP — the
-   * invocation durably SUSPENDS (`sys_invocation.status = 'suspended'`), modeling a
-   * delivery blocked on a long backoff/dependency wait, the realistic "stuck
-   * delivery" shape an operator surfaces and then CANCELS (the cancel surfaces as an
-   * interruption so finalizers run, R31). Otherwise it delivers immediately. A real
-   * consumer would instead `Restate.run` the HttpClient Discord call and fail with
-   * {@link DiscordUnavailable} on a 429/5xx (Restate then backs off + retries,
-   * landing in `status = 'backing-off'`) — see `examples/14-http-error-classification.ts`.
-   */
-  run: ({ wedge }) =>
-    Effect.gen(function* () {
-      yield* Delivery.set('phase', 'delivering')
-      if (wedge) {
-        /* Suspend on a long durable timer until the operator cancels/kills the
-         * invocation (or it eventually fires). */
-        yield* Restate.sleep(600_000, 'delivery-backoff')
-      }
-      yield* Delivery.set('phase', 'delivered')
-      return true
-    }),
-  /* A `release` signal resolves a durable promise — the rendezvous shape used when
-   * a delivery waits on an UPSTREAM dependency rather than a timer. Kept as the
-   * unwedge building block for that variant. */
-  release: () => Release.resolve('release', { go: true }),
-  phase: () => Delivery.get('phase').pipe(Effect.map((p) => p ?? 'delivering')),
+export const DeliveryLive = RestateWorkflow.implement<typeof DeliveryWf>({
+  contractValue: DeliveryWf,
+  impl: {
+    /**
+     * The single `run`. When `wedge` is set it parks on a long DURABLE SLEEP — the
+     * invocation durably SUSPENDS (`sys_invocation.status = 'suspended'`), modeling a
+     * delivery blocked on a long backoff/dependency wait, the realistic "stuck
+     * delivery" shape an operator surfaces and then CANCELS (the cancel surfaces as an
+     * interruption so finalizers run, R31). Otherwise it delivers immediately. A real
+     * consumer would instead `Restate.run` the HttpClient Discord call and fail with
+     * {@link DiscordUnavailable} on a 429/5xx (Restate then backs off + retries,
+     * landing in `status = 'backing-off'`) — see `examples/14-http-error-classification.ts`.
+     */
+    run: ({ wedge }) =>
+      Effect.gen(function* () {
+        yield* Delivery.set({ key: 'phase', value: 'delivering' })
+        if (wedge) {
+          /* Suspend on a long durable timer until the operator cancels/kills the
+           * invocation (or it eventually fires). */
+          yield* Restate.sleep({ millis: 600_000, name: 'delivery-backoff' })
+        }
+        yield* Delivery.set({ key: 'phase', value: 'delivered' })
+        return true
+      }),
+    /* A `release` signal resolves a durable promise — the rendezvous shape used when
+     * a delivery waits on an UPSTREAM dependency rather than a timer. Kept as the
+     * unwedge building block for that variant. */
+    release: () => Release.resolve({ name: 'release', value: { go: true } }),
+    phase: () => Delivery.get('phase').pipe(Effect.map((p) => p ?? 'delivering')),
+  },
 })
 
 /* ════════════════════════════════════════════════════════════════════════

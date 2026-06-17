@@ -30,43 +30,55 @@ class Greeting extends Context.Tag('test-env/Greeting')<Greeting, { readonly pre
 
 class EmptyName extends Schema.TaggedError<EmptyName>('test-env/EmptyName')('EmptyName', {}) {}
 
-const Greeter = RestateService.contract('test-env-greeter', {
-  greet: {
-    input: Schema.Struct({ name: Schema.String }),
-    success: Schema.Struct({ message: Schema.String }),
-    error: EmptyName,
+const Greeter = RestateService.contract({
+  name: 'test-env-greeter',
+  handlers: {
+    greet: {
+      input: Schema.Struct({ name: Schema.String }),
+      success: Schema.Struct({ message: Schema.String }),
+      error: EmptyName,
+    },
   },
 })
 
-const GreeterLive = RestateService.implement<typeof Greeter, Greeting>(Greeter, {
-  greet: ({ name }) =>
-    Effect.gen(function* () {
-      if (name === '') return yield* new EmptyName()
-      const prefix = (yield* Greeting).prefix
-      return { message: `${prefix} ${name}` }
-    }),
+const GreeterLive = RestateService.implement<typeof Greeter, Greeting>({
+  contractValue: Greeter,
+  impl: {
+    greet: ({ name }) =>
+      Effect.gen(function* () {
+        if (name === '') return yield* new EmptyName()
+        const prefix = (yield* Greeting).prefix
+        return { message: `${prefix} ${name}` }
+      }),
+  },
 })
 
 const CounterState = { count: Schema.Number } as const
 const Counter = State.for(CounterState)
 
-const CounterObj = RestateObject.contract('test-env-counter', {
-  state: CounterState,
-  handlers: {
-    add: { input: Schema.Number, success: Schema.Number },
-    get: { input: Schema.Void, success: Schema.Number, shared: true },
+const CounterObj = RestateObject.contract({
+  name: 'test-env-counter',
+  def: {
+    state: CounterState,
+    handlers: {
+      add: { input: Schema.Number, success: Schema.Number },
+      get: { input: Schema.Void, success: Schema.Number, shared: true },
+    },
   },
 })
 
-const CounterLive = RestateObject.implement<typeof CounterObj>(CounterObj, {
-  add: (amount) =>
-    Effect.gen(function* () {
-      const current = (yield* Counter.get('count')) ?? 0
-      const next = current + amount
-      yield* Counter.set('count', next)
-      return next
-    }),
-  get: () => Counter.get('count').pipe(Effect.map((c) => c ?? 0)),
+const CounterLive = RestateObject.implement<typeof CounterObj>({
+  contractValue: CounterObj,
+  impl: {
+    add: (amount) =>
+      Effect.gen(function* () {
+        const current = (yield* Counter.get('count')) ?? 0
+        const next = current + amount
+        yield* Counter.set({ key: 'count', value: next })
+        return next
+      }),
+    get: () => Counter.get('count').pipe(Effect.map((c) => c ?? 0)),
+  },
 })
 
 /* ── a cursor Object with a NULLABLE `highWatermark` (optional State field) ── */
@@ -86,27 +98,33 @@ const Cursor = State.for(CursorState)
  * nullable surface (#1). */
 const PeekOutput = Schema.Struct({ highWatermark: Schema.optional(Schema.Number) })
 
-const CursorObj = RestateObject.contract('test-env-cursor', {
-  state: CursorState,
-  handlers: {
-    /** Set the nullable watermark to a present value. */
-    advance: { input: Schema.Number, success: Schema.Void },
-    /** Clear the watermark by writing `undefined` (≡ remove the key). */
-    reset: { input: Schema.Void, success: Schema.Void },
-    /** Read the watermark (`{ highWatermark }` omitted when unset). */
-    peek: { input: Schema.Void, success: PeekOutput, shared: true },
+const CursorObj = RestateObject.contract({
+  name: 'test-env-cursor',
+  def: {
+    state: CursorState,
+    handlers: {
+      /** Set the nullable watermark to a present value. */
+      advance: { input: Schema.Number, success: Schema.Void },
+      /** Clear the watermark by writing `undefined` (≡ remove the key). */
+      reset: { input: Schema.Void, success: Schema.Void },
+      /** Read the watermark (`{ highWatermark }` omitted when unset). */
+      peek: { input: Schema.Void, success: PeekOutput, shared: true },
+    },
   },
 })
 
-const CursorLive = RestateObject.implement<typeof CursorObj>(CursorObj, {
-  advance: (value) => Cursor.set('highWatermark', value),
-  /* `set(..., undefined)` removes the key (the symmetric write of the "absent →
-   * undefined" read) — no separate clear API needed inside the handler. */
-  reset: () => Cursor.set('highWatermark', undefined),
-  peek: () =>
-    Cursor.get('highWatermark').pipe(
-      Effect.map((highWatermark) => (highWatermark !== undefined ? { highWatermark } : {})),
-    ),
+const CursorLive = RestateObject.implement<typeof CursorObj>({
+  contractValue: CursorObj,
+  impl: {
+    advance: (value) => Cursor.set({ key: 'highWatermark', value: value }),
+    /* `set(..., undefined)` removes the key (the symmetric write of the "absent →
+     * undefined" read) — no separate clear API needed inside the handler. */
+    reset: () => Cursor.set({ key: 'highWatermark', value: undefined }),
+    peek: () =>
+      Cursor.get('highWatermark').pipe(
+        Effect.map((highWatermark) => (highWatermark !== undefined ? { highWatermark } : {})),
+      ),
+  },
 })
 
 const services = [GreeterLive, CounterLive, CursorLive] as const
@@ -128,7 +146,11 @@ describe.each(backends)('RestateTestEnv ($kind)', ({ kind, layer }) => {
         Effect.gen(function* () {
           const env = yield* RestateTestEnv
           expect(env.kind).toBe(kind)
-          const ok = yield* env.invokeService(Greeter, 'greet', { name: 'Sarah' })
+          const ok = yield* env.invokeService({
+            contract: Greeter,
+            method: 'greet',
+            input: { name: 'Sarah' },
+          })
           expect(ok.message).toBe('Hello Sarah')
         }),
       )
@@ -138,10 +160,12 @@ describe.each(backends)('RestateTestEnv ($kind)', ({ kind, layer }) => {
           const env = yield* RestateTestEnv
           /* `catchTag('EmptyName', …)` compiles + recovers identically — the env's
            * `invokeService` carries `RestateError | EmptyName` on mock AND real. */
-          const recovered = yield* env.invokeService(Greeter, 'greet', { name: '' }).pipe(
-            Effect.map(() => 'unexpected' as const),
-            Effect.catchTag('EmptyName', () => Effect.succeed('recovered' as const)),
-          )
+          const recovered = yield* env
+            .invokeService({ contract: Greeter, method: 'greet', input: { name: '' } })
+            .pipe(
+              Effect.map(() => 'unexpected' as const),
+              Effect.catchTag('EmptyName', () => Effect.succeed('recovered' as const)),
+            )
           expect(recovered).toBe('recovered')
         }),
       )
@@ -150,17 +174,42 @@ describe.each(backends)('RestateTestEnv ($kind)', ({ kind, layer }) => {
         Effect.gen(function* () {
           const env = yield* RestateTestEnv
           /* SEED a pre-condition via stateOf (typed against `count`). */
-          yield* env.stateOf(CounterObj, `${kind}-a`).set('count', 40)
-          const bumped = yield* env.invokeObject(CounterObj, `${kind}-a`, 'add', 2)
+          yield* env
+            .stateOf({ contract: CounterObj, key: `${kind}-a` })
+            .set({ key: 'count', value: 40 })
+          const bumped = yield* env.invokeObject({
+            contract: CounterObj,
+            key: `${kind}-a`,
+            method: 'add',
+            input: 2,
+          })
           expect(bumped).toBe(42)
           /* ASSERT the post-condition via the shared read AND via stateOf. */
-          expect(yield* env.invokeObject(CounterObj, `${kind}-a`, 'get', undefined)).toBe(42)
-          expect(yield* env.stateOf(CounterObj, `${kind}-a`).get('count')).toBe(42)
+          expect(
+            yield* env.invokeObject({
+              contract: CounterObj,
+              key: `${kind}-a`,
+              method: 'get',
+              input: undefined,
+            }),
+          ).toBe(42)
+          expect(yield* env.stateOf({ contract: CounterObj, key: `${kind}-a` }).get('count')).toBe(
+            42,
+          )
 
           /* Per-key isolation: a second key is independent. */
-          yield* env.invokeObject(CounterObj, `${kind}-b`, 'add', 5)
-          expect(yield* env.stateOf(CounterObj, `${kind}-a`).get('count')).toBe(42)
-          expect(yield* env.stateOf(CounterObj, `${kind}-b`).get('count')).toBe(5)
+          yield* env.invokeObject({
+            contract: CounterObj,
+            key: `${kind}-b`,
+            method: 'add',
+            input: 5,
+          })
+          expect(yield* env.stateOf({ contract: CounterObj, key: `${kind}-a` }).get('count')).toBe(
+            42,
+          )
+          expect(yield* env.stateOf({ contract: CounterObj, key: `${kind}-b` }).get('count')).toBe(
+            5,
+          )
         }),
       )
 
@@ -170,39 +219,54 @@ describe.each(backends)('RestateTestEnv ($kind)', ({ kind, layer }) => {
           Effect.gen(function* () {
             const env = yield* RestateTestEnv
             const key = `${kind}-cursor`
-            const proxy = env.stateOf(CursorObj, key)
+            const proxy = env.stateOf({ contract: CursorObj, key })
 
             /* ABSENT key reads back as `undefined` (both via stateOf AND the handler). */
             expect(yield* proxy.get('highWatermark')).toBeUndefined()
             expect(
-              (yield* env.invokeObject(CursorObj, key, 'peek', undefined)).highWatermark,
+              (yield* env.invokeObject({
+                contract: CursorObj,
+                key,
+                method: 'peek',
+                input: undefined,
+              })).highWatermark,
             ).toBeUndefined()
 
             /* SEED a present value via stateOf, observe it through the handler (serde
              * round-trip across the boundary), then advance via the handler. */
-            yield* proxy.set('highWatermark', 100)
+            yield* proxy.set({ key: 'highWatermark', value: 100 })
             expect(yield* proxy.get('highWatermark')).toBe(100)
-            expect((yield* env.invokeObject(CursorObj, key, 'peek', undefined)).highWatermark).toBe(
-              100,
-            )
-            yield* env.invokeObject(CursorObj, key, 'advance', 250)
+            expect(
+              (yield* env.invokeObject({
+                contract: CursorObj,
+                key,
+                method: 'peek',
+                input: undefined,
+              })).highWatermark,
+            ).toBe(100)
+            yield* env.invokeObject({ contract: CursorObj, key, method: 'advance', input: 250 })
             expect(yield* proxy.get('highWatermark')).toBe(250)
 
             /* CLEAR via the handler's `set(undefined)` → the key is removed (absent ⇒
              * undefined again), and a NON-optional sibling field is untouched. */
-            yield* proxy.set('name', 'watcher')
-            yield* env.invokeObject(CursorObj, key, 'reset', undefined)
+            yield* proxy.set({ key: 'name', value: 'watcher' })
+            yield* env.invokeObject({ contract: CursorObj, key, method: 'reset', input: undefined })
             expect(yield* proxy.get('highWatermark')).toBeUndefined()
             expect(
-              (yield* env.invokeObject(CursorObj, key, 'peek', undefined)).highWatermark,
+              (yield* env.invokeObject({
+                contract: CursorObj,
+                key,
+                method: 'peek',
+                input: undefined,
+              })).highWatermark,
             ).toBeUndefined()
             expect(yield* proxy.get('name')).toBe('watcher')
 
             /* CLEAR directly via the stateOf proxy (`set(undefined)` and `clear`). */
-            yield* proxy.set('highWatermark', 7)
-            yield* proxy.set('highWatermark', undefined)
+            yield* proxy.set({ key: 'highWatermark', value: 7 })
+            yield* proxy.set({ key: 'highWatermark', value: undefined })
             expect(yield* proxy.get('highWatermark')).toBeUndefined()
-            yield* proxy.set('highWatermark', 9)
+            yield* proxy.set({ key: 'highWatermark', value: 9 })
             yield* proxy.clear('highWatermark')
             expect(yield* proxy.get('highWatermark')).toBeUndefined()
           }),
@@ -217,22 +281,28 @@ const Payload = Schema.Struct({ token: Schema.String })
 const WaiterState = { awakeableId: Schema.String } as const
 const Waiter = State.for(WaiterState)
 
-const WaiterObj = RestateObject.contract('test-env-waiter', {
-  state: WaiterState,
-  handlers: {
-    start: { input: Schema.Void, success: Payload },
-    awakeableId: { input: Schema.Void, success: Schema.String, shared: true },
+const WaiterObj = RestateObject.contract({
+  name: 'test-env-waiter',
+  def: {
+    state: WaiterState,
+    handlers: {
+      start: { input: Schema.Void, success: Payload },
+      awakeableId: { input: Schema.Void, success: Schema.String, shared: true },
+    },
   },
 })
 
-const WaiterLive = RestateObject.implement<typeof WaiterObj>(WaiterObj, {
-  start: () =>
-    Effect.gen(function* () {
-      const { id, promise } = yield* Awakeable.make(Payload)
-      yield* Waiter.set('awakeableId', id)
-      return yield* promise
-    }),
-  awakeableId: () => Waiter.get('awakeableId').pipe(Effect.map((id) => id ?? '')),
+const WaiterLive = RestateObject.implement<typeof WaiterObj>({
+  contractValue: WaiterObj,
+  impl: {
+    start: () =>
+      Effect.gen(function* () {
+        const { id, promise } = yield* Awakeable.make(Payload)
+        yield* Waiter.set({ key: 'awakeableId', value: id })
+        return yield* promise
+      }),
+    awakeableId: () => Waiter.get('awakeableId').pipe(Effect.map((id) => id ?? '')),
+  },
 })
 
 describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
@@ -243,12 +313,24 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
         Effect.gen(function* () {
           const env = yield* RestateTestEnv
           /* Fork the suspending `start` (it parks on the awakeable promise). */
-          const fiber = yield* Effect.fork(env.invokeObject(WaiterObj, 'job-1', 'start', undefined))
+          const fiber = yield* Effect.fork(
+            env.invokeObject({
+              contract: WaiterObj,
+              key: 'job-1',
+              method: 'start',
+              input: undefined,
+            }),
+          )
           /* Poll the shared query until `start` has registered the awakeable id in
            * State (the forked handler runs up to its suspension first). */
           const id = yield* Effect.gen(function* () {
             for (let attempt = 0; attempt < 50; attempt++) {
-              const read = yield* env.invokeObject(WaiterObj, 'job-1', 'awakeableId', undefined)
+              const read = yield* env.invokeObject({
+                contract: WaiterObj,
+                key: 'job-1',
+                method: 'awakeableId',
+                input: undefined,
+              })
               if (read !== '') return read
               yield* Effect.yieldNow()
             }
@@ -257,11 +339,11 @@ describe('RestateTestEnv (mock) awakeable resolve from outside', () => {
           expect(id).not.toBe('')
           /* Resolve it from "outside" — the env-scoped shared registry completes the
            * promise the suspended handler is awaiting. */
-          yield* env.resolveAwakeable(
-            Payload,
-            id as AwakeableId<Schema.Schema.Type<typeof Payload>>,
-            { token: 'resumed-ok' },
-          )
+          yield* env.resolveAwakeable({
+            schema: Payload,
+            id: id as AwakeableId<Schema.Schema.Type<typeof Payload>>,
+            payload: { token: 'resumed-ok' },
+          })
           const resumed = yield* fiber.await
           expect(resumed._tag).toBe('Success')
         }),
