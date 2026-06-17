@@ -58,6 +58,10 @@ describe('canonicalizeBlockMarkdown', () => {
     expect(canonicalizeBlockMarkdown('- a\n\n- b\n\n- c\n')).toBe('- a\n- b\n- c\n')
   })
 
+  it('preserves ordered-list start numbers in the wire body form', () => {
+    expect(canonicalizeBlockMarkdown('2. a\n3. b\n')).toBe('2. a\n3. b\n')
+  })
+
   it('keeps the blank line before a paragraph following a list', () => {
     expect(canonicalizeBlockMarkdown('- a\n\n- b\n\nA paragraph after.\n')).toBe(
       '- a\n- b\n\nA paragraph after.\n',

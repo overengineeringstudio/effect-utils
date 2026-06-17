@@ -107,7 +107,7 @@ describe('createReplicaSchema', () => {
       // wrapper's catch issues ROLLBACK. Keyed on SQL content, not call-count,
       // and the ROLLBACK exec itself passes through.
       db.exec = ((sql: string) => {
-        if (injected === false && sql.includes('CREATE TRIGGER')) {
+        if (injected === false && sql.includes('CREATE TRIGGER') === true) {
           injected = true
           realExec(sql)
           throw new Error('injected mid-schema failure')

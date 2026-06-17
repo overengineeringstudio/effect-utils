@@ -1,7 +1,6 @@
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { hashCanonicalJson } from '@overeng/content-address'
 import type { NmdWritablePropertyValue } from '@overeng/notion-effect-client'
 import { evaluatePropertyWrite } from '@overeng/notion-property-write'
 
@@ -12,6 +11,7 @@ import {
   type RemoteDataSourceSchema,
 } from './model.ts'
 import { buildStandaloneLiveProof, makeStandaloneLiveProof } from './property-proof.ts'
+import { writableSchemaHash } from './schema-snapshot.ts'
 
 const dataSourceId = '00000000-0000-4000-8000-0000000000ds'
 const pageId = '00000000-0000-4000-8000-000000000001'
@@ -20,6 +20,7 @@ const configHash = `sha256:${'b'.repeat(64)}`
 /** A live data-source schema with a single writable `Status` select property. */
 const statusSchema: RemoteDataSourceSchema = {
   id: dataSourceId,
+  databaseId: dataSourceId,
   properties: {
     Status: { id: 'prop_status', name: 'Status', type: 'select', select: { options: [] } },
   },
@@ -32,8 +33,7 @@ const livePageProperties: Record<string, unknown> = {
 
 const selectValue = (value: string | null): NmdWritablePropertyValue => ({ _tag: 'select', value })
 
-const schemaHash = (schema: RemoteDataSourceSchema): string =>
-  hashCanonicalJson(Schema.Unknown, schema.properties)
+const schemaHash = (schema: RemoteDataSourceSchema): string => writableSchemaHash(schema.properties)
 
 /** Evaluate a built proof for the `Status` select write, returning the decision. */
 const evaluateStatus = (opts: {
@@ -150,6 +150,7 @@ describe('evaluatePropertyWrite via standalone provider — block paths', () => 
   it('blocks PropertyIdentityAmbiguous when the display name maps to two properties', () => {
     const ambiguousSchema: RemoteDataSourceSchema = {
       id: dataSourceId,
+      databaseId: dataSourceId,
       properties: {
         a: { id: 'prop_a', name: 'Status', type: 'select' },
         b: { id: 'prop_b', name: 'Status', type: 'select' },
@@ -163,6 +164,7 @@ describe('evaluatePropertyWrite via standalone provider — block paths', () => 
   it('blocks ComputedPropertyWrite for a computed (verification) write class', () => {
     const computedSchema: RemoteDataSourceSchema = {
       id: dataSourceId,
+      databaseId: dataSourceId,
       properties: { Status: { id: 'prop_status', name: 'Status', type: 'verification' } },
     }
     const decision = evaluateStatus({ schema: computedSchema })
@@ -173,6 +175,7 @@ describe('evaluatePropertyWrite via standalone provider — block paths', () => 
   it('blocks UnsupportedRemoteShape for an unrecognized (button) write class', () => {
     const unsupportedSchema: RemoteDataSourceSchema = {
       id: dataSourceId,
+      databaseId: dataSourceId,
       properties: { Status: { id: 'prop_status', name: 'Status', type: 'button' } },
     }
     const decision = evaluateStatus({ schema: unsupportedSchema })
@@ -198,6 +201,7 @@ describe('evaluatePropertyWrite via standalone provider — block paths', () => 
     // is currently allowed. This documents the intended block site.
     const relationSchema: RemoteDataSourceSchema = {
       id: dataSourceId,
+      databaseId: dataSourceId,
       properties: { Rel: { id: 'prop_rel', name: 'Rel', type: 'relation' } },
     }
     const built = buildStandaloneLiveProof({
@@ -243,7 +247,7 @@ const fakeGateway = (opts: {
   retrieveDataSource: ({ dataSourceId: id }) =>
     Effect.sync(() => {
       opts.onRetrieve?.()
-      return { id, properties: opts.schema.properties }
+      return { id, databaseId: opts.schema.databaseId, properties: opts.schema.properties }
     }),
   listChildPages: () => Effect.succeed([]),
   createPage: () => Effect.die('createPage not used'),
@@ -313,7 +317,10 @@ describe('makeStandaloneLiveProof — Effect provider', () => {
   it('blocks an unresolvable display name as PropertyIdentityAmbiguous', async () => {
     const layer = Layer.succeed(
       NotionMdGateway,
-      fakeGateway({ schema: { id: dataSourceId, properties: {} }, page: {} }),
+      fakeGateway({
+        schema: { id: dataSourceId, databaseId: dataSourceId, properties: {} },
+        page: {},
+      }),
     )
     const decision = await Effect.runPromise(
       makeStandaloneLiveProof({

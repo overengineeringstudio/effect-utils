@@ -309,7 +309,7 @@ export const withAuthorityMode = ({
               ? property.pendingLocal !== undefined &&
                 (PENDING_INTENT_IN_FLIGHT_STATES as ReadonlySet<string>).has(
                   property.pendingLocal.state,
-                )
+                ) === true
                 ? 'missing'
                 : 'present'
               : 'not-required',

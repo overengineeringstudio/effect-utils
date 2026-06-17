@@ -984,14 +984,14 @@ yet emitted (impl-delta Group G follow-up).
 
 ## Verification (cross-cutting)
 
-| Layer           | Required coverage                                                                 |
-| --------------- | --------------------------------------------------------------------------------- |
-| Unit            | schemas, canonicalization, merge planner, hash stability, object refs             |
-| Fake E2E        | track/status/sync/watch, source dispatch, tree guards, unknown-block guards       |
-| State integrity | corrupt hashes, stale objects, path traversal, inventory mismatch, legacy rejects |
+| Layer           | Required coverage                                                                  |
+| --------------- | ---------------------------------------------------------------------------------- |
+| Unit            | schemas, canonicalization, merge planner, hash stability, object refs              |
+| Fake E2E        | track/status/sync/watch, source dispatch, tree guards, unknown-block guards        |
+| State integrity | corrupt hashes, stale objects, path traversal, inventory mismatch, legacy rejects  |
 | Live Notion E2E | track/status/sync, stale overwrite rejection, unknown blocks, merge, property edit |
-| CLI             | command parsing, invalid options, missing token, output contracts                 |
-| OTEL            | expected spans and safe attributes                                                |
+| CLI             | command parsing, invalid options, missing token, output contracts                  |
+| OTEL            | expected spans and safe attributes                                                 |
 
 Verification includes:
 

@@ -7,7 +7,10 @@ import { canonicalizeBlockMarkdown } from '@overeng/notion-effect-client'
  * the bytes originate (decision 0019). This module keeps only `semanticEquivalent`,
  * which is sync *policy* (the push integrity gate), not the wire form itself.
  */
-export { canonicalizeBlockMarkdown } from '@overeng/notion-effect-client'
+export {
+  canonicalizeBlockMarkdown,
+  canonicalizeSemanticMarkdown,
+} from '@overeng/notion-effect-client'
 
 /*
  * Split markdown into alternating non-code and fenced-code segments. Lets

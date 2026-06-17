@@ -11,10 +11,10 @@ import { nmdObjectRelativePath, type NmdSyncStateV1 } from '@overeng/notion-effe
 
 import { readAllSyncStates } from './cli-program.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
+import type { NmdStateStore } from './state-store.ts'
 import {
   garbageCollectObjects,
   isSafeRelativePath,
-  NmdStateStore,
   NmdStateStoreLive,
   objectPath,
   writeBaseSnapshot,

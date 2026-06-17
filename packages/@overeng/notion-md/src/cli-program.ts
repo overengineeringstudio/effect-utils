@@ -33,12 +33,8 @@ import {
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { annotateAttrs, ObjectGcSpan, objectGcResultAttrs, withOperation } from './observability.ts'
-import {
-  reconcileFile,
-  reconcileTree,
-  statusTree,
-  trackPage,
-} from './reconcile.ts'
+import { ProgressReporterStderrLines } from './progress.ts'
+import { reconcileFile, reconcileTree, statusTree, trackPage } from './reconcile.ts'
 import {
   garbageCollectObjects,
   NmdStateStoreLive,

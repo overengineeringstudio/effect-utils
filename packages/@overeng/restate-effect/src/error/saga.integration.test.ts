@@ -39,7 +39,7 @@ const ChargeLive = RestateService.implement<typeof Charge>(Charge, {
         maxRetryAttempts: 1,
       })
 
-      if (Exit.isFailure(payExit)) {
+      if (Exit.isFailure(payExit) === true) {
         /* The failure rode as a `Cause.Die` carrying the wrapper `RestateError`
          * (a durable-op infra defect, not a domain `E`). The saga seam: read it. */
         const die = Cause.dieOption(payExit.cause)

@@ -40,6 +40,33 @@ const unwrapSoftBreaks: () => (tree: unknown) => void = () => (tree) => {
 }
 
 /*
+ * Treat authored hard-break syntax as cosmetic for the reconciliation oracle:
+ * Notion's Markdown round-trip can lose the exact trailing-space/backslash
+ * spelling, while the visible text remains the same logical paragraph.
+ */
+const foldHardBreaks: () => (tree: unknown) => void = () => (tree) => {
+  visit(
+    tree as never,
+    'break',
+    (_node: unknown, index: number | undefined, parent: { children?: unknown[] } | undefined) => {
+      if (typeof index !== 'number' || parent?.children === undefined) return
+      parent.children.splice(index, 1, { type: 'text', value: ' ' })
+    },
+  )
+}
+
+/** Normalize common code-fence language aliases to their long names. */
+const normalizeCodeLanguages: () => (tree: unknown) => void = () => (tree) => {
+  visit(tree as never, 'code', (node: { lang?: string | null }) => {
+    if (node.lang === 'js') {
+      node.lang = 'javascript'
+    } else if (node.lang === 'ts') {
+      node.lang = 'typescript'
+    }
+  })
+}
+
+/*
  * Force every list and list item tight (`spread = false`), so remark-stringify
  * emits a single `\n` (not a blank line) between consecutive items.
  *
@@ -64,22 +91,51 @@ const forceTightLists: () => (tree: unknown) => void = () => (tree) => {
   })
 }
 
+/*
+ * Ordered lists start at `1` in the semantic reconciliation form because
+ * Notion normalizes visible ordinal labels during round-trip and the authored
+ * start number is not a durable body identity signal.
+ */
+const normalizeOrderedListStarts: () => (tree: unknown) => void = () => (tree) => {
+  visit(tree as never, 'list', (node: { ordered?: boolean; start?: number }) => {
+    if (node.ordered === true) node.start = 1
+  })
+}
+
+const markdownStringifyOptions = {
+  bullet: '-',
+  emphasis: '_',
+  strong: '*',
+  fence: '`',
+  fences: true,
+  listItemIndent: 'one',
+  rule: '-',
+  setext: false,
+  tightDefinitions: true,
+} as const
+
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(unwrapSoftBreaks)
   .use(forceTightLists)
-  .use(remarkStringify, {
-    bullet: '-',
-    emphasis: '_',
-    strong: '*',
-    fence: '`',
-    fences: true,
-    listItemIndent: 'one',
-    rule: '-',
-    setext: false,
-    tightDefinitions: true,
-  })
+  .use(remarkStringify, markdownStringifyOptions)
+
+const semanticProcessor = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(unwrapSoftBreaks)
+  .use(foldHardBreaks)
+  .use(normalizeCodeLanguages)
+  .use(forceTightLists)
+  .use(normalizeOrderedListStarts)
+  .use(remarkStringify, markdownStringifyOptions)
+
+const normalizeInput = (markdown: string): string =>
+  canonicalizeMediaUrlsInMarkdown(markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n'))
+
+const ensureTrailingNewline = (markdown: string): string =>
+  markdown.endsWith('\n') === true ? markdown : `${markdown}\n`
 
 /**
  * Reduce arbitrary Markdown to the single canonical body form, applied at BOTH
@@ -103,9 +159,19 @@ const processor = unified()
  * block-type-aware — that would re-split the policy across two serializers.
  */
 export const canonicalizeBlockMarkdown = (markdown: string): string => {
-  const normalized = canonicalizeMediaUrlsInMarkdown(
-    markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n'),
-  )
-  const rendered = processor.processSync(normalized).toString()
-  return rendered.endsWith('\n') === true ? rendered : `${rendered}\n`
+  const rendered = processor.processSync(normalizeInput(markdown)).toString()
+  return ensureTrailingNewline(rendered)
+}
+
+/**
+ * Canonical form for semantic reconciliation, not for preserving authored wire
+ * bytes. It starts from the same parser/stringifier policy as
+ * {@link canonicalizeBlockMarkdown}, then folds Notion round-trip cosmetics that
+ * do not change the visible body: hard-break spelling and common code-fence
+ * language aliases, plus ordered-list start ordinals. Use this for
+ * equality/hash oracles, not for writing a body back to disk.
+ */
+export const canonicalizeSemanticMarkdown = (markdown: string): string => {
+  const rendered = semanticProcessor.processSync(normalizeInput(markdown)).toString()
+  return ensureTrailingNewline(rendered)
 }

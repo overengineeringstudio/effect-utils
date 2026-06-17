@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { NmdFrontmatterV2, NmdStorage } from '@overeng/notion-effect-client'
 
-import { canonicalize } from './canonicalizer.ts'
+import { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
 import { NmdDestructiveBodyBlockedError } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings } from './hash.ts'
@@ -160,7 +160,8 @@ class FakeGateway {
       }),
     updatePageProperties: ({ pageId: id }) => Effect.sync(() => this.toPull(id).page),
     updatePageMetadata: ({ pageId: id }) => Effect.sync(() => this.toPull(id).page),
-    retrieveDataSource: ({ dataSourceId }) => Effect.succeed({ id: dataSourceId, properties: {} }),
+    retrieveDataSource: ({ dataSourceId }) =>
+      Effect.succeed({ id: dataSourceId, databaseId: dataSourceId, properties: {} }),
     listChildPages: () => Effect.succeed([]),
     createPage: ({ parentPageId, title, markdown }) =>
       Effect.sync(() => {
@@ -198,9 +199,9 @@ const runFailure = async <A, E>(
   const exit = await Effect.runPromiseExit(
     effect.pipe(Effect.provide(Layer.mergeAll(fake.layer, stateStoreLayer, NodeContext.layer))),
   )
-  if (Exit.isSuccess(exit)) throw new Error('expected the effect to fail')
+  if (Exit.isSuccess(exit) === true) throw new Error('expected the effect to fail')
   const failure = Cause.failureOption(exit.cause)
-  if (Option.isNone(failure)) throw new Error('expected an expected failure, got a defect')
+  if (Option.isNone(failure) === true) throw new Error('expected an expected failure, got a defect')
   return failure.value
 }
 
@@ -871,7 +872,7 @@ describe('canonicalize body sent on push', () => {
       const fake = new FakeGateway([[pageId, { title: 'Doc', markdown: 'unrelated' }]])
 
       await run(reconcileFile({ path }), fake)
-      expect(fake.remoteMarkdown(pageId)).toBe(canonicalize('2. a\n3. b'))
+      expect(fake.remoteMarkdown(pageId)).toBe(canonicalizeBlockMarkdown('2. a\n3. b'))
 
       const status = await run(statusFile({ path }), fake)
       expect(status.status).toBe('in-sync')

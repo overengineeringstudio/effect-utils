@@ -16,7 +16,7 @@ import {
 } from '@overeng/notion-effect-client'
 
 import { runBatch, type BatchResult } from './batch.ts'
-import { canonicalize } from './canonicalizer.ts'
+import { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
 import { classifyCommentWrite, type CommentWriteOperation } from './comment-boundary.ts'
 import {
   NmdCliError,
@@ -611,7 +611,7 @@ export const reconcileFile = (
       const page = yield* gateway.createPage({
         parentPageId,
         title: local.frontmatter.notion_md.page.title,
-        markdown: canonicalize(rendered),
+        markdown: canonicalizeBlockMarkdown(rendered),
       })
       yield* writeFile({
         path: opts.path,
@@ -711,7 +711,7 @@ export const reconcileFile = (
         }
         yield* gateway.updateMarkdown({
           pageId,
-          command: { _tag: 'replace_content', markdown: canonicalize(rendered) },
+          command: { _tag: 'replace_content', markdown: canonicalizeBlockMarkdown(rendered) },
           allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
         })
         return result(
@@ -862,7 +862,7 @@ const reconcileSharedFile = (opts: {
       }
       yield* gateway.updateMarkdown({
         pageId: opts.pageId,
-        command: { _tag: 'replace_content', markdown: canonicalize(opts.rendered) },
+        command: { _tag: 'replace_content', markdown: canonicalizeBlockMarkdown(opts.rendered) },
         allowDeletingContent: opts.allowDeletingUnknownBlocks,
       })
       const syncState = yield* settleSharedBase({
@@ -946,7 +946,7 @@ const reconcileSharedFile = (opts: {
         }
         yield* gateway.updateMarkdown({
           pageId: opts.pageId,
-          command: { _tag: 'replace_content', markdown: canonicalize(outcome.merged) },
+          command: { _tag: 'replace_content', markdown: canonicalizeBlockMarkdown(outcome.merged) },
           allowDeletingContent: opts.allowDeletingUnknownBlocks,
         })
         yield* writeFile({ path: opts.path, frontmatter: opts.frontmatter, body: outcome.merged })

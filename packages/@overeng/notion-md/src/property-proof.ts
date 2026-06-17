@@ -27,7 +27,7 @@
  * SCOPE (sub-milestone 3b): whole-schema staleness is observable when the
  * sidecar carries the data-source binding hash. The provider always computes
  * `observedSchemaHash` from the freshly re-read live schema using the same
- * canonical JSON hash primitive as datasource-sync, and threads
+ * writable-schema projection as the sidecar data-source binding, and threads
  * `expectedSchemaHash` only when the sidecar supplies it. Config drift and
  * relation-target completeness are still not observable here, so
  * `observedConfigHash` remains omitted and relation availability stays
@@ -36,9 +36,8 @@
  * @module
  */
 
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 
-import { hashCanonicalJson } from '@overeng/content-address'
 import { isNotionPropertyType } from '@overeng/notion-core'
 import type { NmdWritablePropertyValue, NmdSource } from '@overeng/notion-effect-client'
 import {
@@ -61,6 +60,7 @@ import {
 
 import { NmdPropertyWriteBlockedError } from './errors.ts'
 import { NotionMdGateway, type RemoteDataSourceSchema } from './model.ts'
+import { writableSchemaHash } from './schema-snapshot.ts'
 
 /**
  * A single live property-schema entry as Notion returns it on a data source.
@@ -217,14 +217,14 @@ export const buildStandaloneLiveProof = (
   /*
    * Whole-schema staleness is observable when the sidecar carries
    * `data_source.schema_hash`: compare it with the live schema hash computed via
-   * the same content-address canonical JSON primitive that datasource-sync uses.
+   * the same writable-schema projection the sidecar binding uses. Color-only
+   * option changes and other non-write-affecting display fields do not block a
+   * property write; renames, writable type changes, and option-name changes do.
    * Config staleness remains only half-observable: the descriptor carries the
    * authored `config_hash`, but this layer does not yet recompute an observed
    * per-property config hash, so check 5 still skips honestly.
    */
-  const observedSchemaHash = SchemaHash.make(
-    hashCanonicalJson(Schema.Unknown, inputs.schema.properties),
-  )
+  const observedSchemaHash = SchemaHash.make(writableSchemaHash(inputs.schema.properties))
   const expectedSchemaHash =
     inputs.expectedSchemaHash === undefined ? undefined : SchemaHash.make(inputs.expectedSchemaHash)
   const expectedConfigHash =

@@ -1416,6 +1416,7 @@ describe('notion-md e2e prototype', () => {
 
   it('refuses datasource property writes when the sidecar schema hash is stale', async () => {
     await withTempDir(async (dir) => {
+      const dataSourceId = '00000000-0000-4000-8000-0000000000d5'
       const schema = {
         Name: { id: 'title', name: 'Name', type: 'title', title: {} },
         Done: { id: 'prop_done', name: 'Done', type: 'checkbox', checkbox: {} },
