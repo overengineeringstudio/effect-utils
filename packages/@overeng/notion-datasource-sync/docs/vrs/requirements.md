@@ -17,7 +17,8 @@ These requirements serve [vision.md](./vision.md). They define the production co
 - **A09 Local replica:** The user-facing local data API is a separate SQLite replica file, not the internal sync-control store.
 - **A10 Clean body identity break:** Body sync may reject stores written with a different body identity model; users track the workspace again instead of decoding multiple historical shapes.
 - **A11 Integrated workspace target:** The long-term integrated Markdown/SQLite workspace design is defined by
-  [`context/notion-db-markdown-sync`](../../../../../context/notion-db-markdown-sync/requirements.md).
+  the datasource Markdown workspace realization in
+  [`context/notion-sync-architecture/02-realizations/01-datasource-markdown-workspace`](../../../../../context/notion-sync-architecture/02-realizations/01-datasource-markdown-workspace/requirements.md).
   The public SQL product surface is `pages`; alternate public `rows` aliases and
   unversioned workspace layouts are not product targets.
 
@@ -40,7 +41,7 @@ These constraints apply across every sub-system and stay single-sourced here.
 
 ### Efficiency & Resourcefulness
 
-- **EFF-R01 API resourcefulness & rate-limit discipline:** Sync minimizes and bounds external API usage and is observable. All Notion access flows through the token-bucket rate limiter honoring retry-after; reads prefer incremental last-edited-time polling and batch/query endpoints over per-entity probes; observations are reused within a sync pass; the watch daemon coalesces/debounces dirty hints; a webhook hint triggers a bounded fresh read, never a per-hint full rescan. Enforced by an observable budget: key paths carry a falsifiable logical-request ceiling (one `notion.api.request` span per logical request, counted under the operation span), and rate-limit pressure — HTTP-attempt count, throttle-wait time, retry-after backoffs — is emitted as distinct OTEL spans + metrics. A path that issues unbounded or per-entity reads where a bounded/batched alternative exists is a defect. _(Enforced by the observable budget recorded in [decision 0025](../../../../../context/notion-db-markdown-sync/decisions/0025-api-efficiency-observable-budget.md).)_
+- **EFF-R01 API resourcefulness & rate-limit discipline:** Sync minimizes and bounds external API usage and is observable. All Notion access flows through the token-bucket rate limiter honoring retry-after; reads prefer incremental last-edited-time polling and batch/query endpoints over per-entity probes; observations are reused within a sync pass; the watch daemon coalesces/debounces dirty hints; a webhook hint triggers a bounded fresh read, never a per-hint full rescan. Enforced by an observable budget: key paths carry a falsifiable logical-request ceiling (one `notion.api.request` span per logical request, counted under the operation span), and rate-limit pressure — HTTP-attempt count, throttle-wait time, retry-after backoffs — is emitted as distinct OTEL spans + metrics. A path that issues unbounded or per-entity reads where a bounded/batched alternative exists is a defect. _(Enforced by the observable budget recorded in [decision 0025](../../../../../context/notion-sync-architecture/02-realizations/01-datasource-markdown-workspace/.decisions/0025-api-efficiency-observable-budget.md).)_
 
 ### Verification
 
@@ -68,15 +69,15 @@ Only cross-cutting tradeoffs live here; subsystem-specific tradeoffs live in the
 
 | Sub-system               | Namespaced id range                                          | Requirements slice                                                                    |
 | ------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| domain-model             | DOMAIN-R01–R10                                               | [domain-model/requirements.md](./subsystems/domain-model/requirements.md)             |
-| sync-store               | STORE-R01–R08, STORE-T01                                     | [sync-store/requirements.md](./subsystems/sync-store/requirements.md)                 |
-| notion-gateway           | GW-R01–R08, GW-T01                                           | [notion-gateway/requirements.md](./subsystems/notion-gateway/requirements.md)         |
-| body-adapter             | BODY-R01–R02                                                 | [body-adapter/requirements.md](./subsystems/body-adapter/requirements.md)             |
-| local-workspace          | FS-R01–R02                                                   | [local-workspace/requirements.md](./subsystems/local-workspace/requirements.md)       |
-| replica-api              | REPLICA-R01–R12, REPLICA-T01                                 | [replica-api/requirements.md](./subsystems/replica-api/requirements.md)               |
-| planner-guards           | PLAN-R01–R13, PLAN-T01–T02                                   | [planner-guards/requirements.md](./subsystems/planner-guards/requirements.md)         |
-| schema-migration         | SCHEMA-R01–R06, SCHEMA-T01                                   | [schema-migration/requirements.md](./subsystems/schema-migration/requirements.md)     |
-| sync-orchestration       | SYNC-R01–R02                                                 | [sync-orchestration/requirements.md](./subsystems/sync-orchestration/requirements.md) |
-| watch-daemon             | DAEMON-R01–R10, DAEMON-T01                                   | [watch-daemon/requirements.md](./subsystems/watch-daemon/requirements.md)             |
-| cli                      | CLI-R01–R07                                                  | [cli/requirements.md](./subsystems/cli/requirements.md)                               |
+| domain-model             | DOMAIN-R01–R10                                               | [domain-model/requirements.md](./subsystems/01-domain-model/requirements.md)             |
+| sync-store               | STORE-R01–R08, STORE-T01                                     | [sync-store/requirements.md](./subsystems/02-sync-store/requirements.md)                 |
+| notion-gateway           | GW-R01–R08, GW-T01                                           | [notion-gateway/requirements.md](./subsystems/03-notion-gateway/requirements.md)         |
+| body-adapter             | BODY-R01–R02                                                 | [body-adapter/requirements.md](./subsystems/04-body-adapter/requirements.md)             |
+| local-workspace          | FS-R01–R02                                                   | [local-workspace/requirements.md](./subsystems/05-local-workspace/requirements.md)       |
+| replica-api              | REPLICA-R01–R12, REPLICA-T01                                 | [replica-api/requirements.md](./subsystems/06-replica-api/requirements.md)               |
+| planner-guards           | PLAN-R01–R13, PLAN-T01–T02                                   | [planner-guards/requirements.md](./subsystems/07-planner-guards/requirements.md)         |
+| schema-migration         | SCHEMA-R01–R06, SCHEMA-T01                                   | [schema-migration/requirements.md](./subsystems/08-schema-migration/requirements.md)     |
+| sync-orchestration       | SYNC-R01–R02                                                 | [sync-orchestration/requirements.md](./subsystems/09-sync-orchestration/requirements.md) |
+| watch-daemon             | DAEMON-R01–R10, DAEMON-T01                                   | [watch-daemon/requirements.md](./subsystems/10-watch-daemon/requirements.md)             |
+| cli                      | CLI-R01–R07                                                  | [cli/requirements.md](./subsystems/11-cli/requirements.md)                               |
 | cross-cutting (this doc) | XC-R01–R04, OBS-R01–R03, EFF-R01, VERIFY-R01–R10, VERIFY-T01 | this file                                                                             |

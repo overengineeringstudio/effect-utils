@@ -17,17 +17,17 @@ This spec is decomposed into per-subsystem slices under [`subsystems/`](./subsys
 
 | Sub-system         | Spec                                            | Requirements                                                    |
 | ------------------ | ----------------------------------------------- | --------------------------------------------------------------- |
-| Domain Model       | [spec](./subsystems/domain-model/spec.md)       | [requirements](./subsystems/domain-model/requirements.md)       |
-| Sync Store         | [spec](./subsystems/sync-store/spec.md)         | [requirements](./subsystems/sync-store/requirements.md)         |
-| Notion Gateway     | [spec](./subsystems/notion-gateway/spec.md)     | [requirements](./subsystems/notion-gateway/requirements.md)     |
-| Body Adapter       | [spec](./subsystems/body-adapter/spec.md)       | [requirements](./subsystems/body-adapter/requirements.md)       |
-| Local Workspace    | [spec](./subsystems/local-workspace/spec.md)    | [requirements](./subsystems/local-workspace/requirements.md)    |
-| Replica API        | [spec](./subsystems/replica-api/spec.md)        | [requirements](./subsystems/replica-api/requirements.md)        |
-| Planner Guards     | [spec](./subsystems/planner-guards/spec.md)     | [requirements](./subsystems/planner-guards/requirements.md)     |
-| Schema Migration   | [spec](./subsystems/schema-migration/spec.md)   | [requirements](./subsystems/schema-migration/requirements.md)   |
-| Sync Orchestration | [spec](./subsystems/sync-orchestration/spec.md) | [requirements](./subsystems/sync-orchestration/requirements.md) |
-| Watch Daemon       | [spec](./subsystems/watch-daemon/spec.md)       | [requirements](./subsystems/watch-daemon/requirements.md)       |
-| CLI                | [spec](./subsystems/cli/spec.md)                | [requirements](./subsystems/cli/requirements.md)                |
+| Domain Model       | [spec](./subsystems/01-domain-model/spec.md)       | [requirements](./subsystems/01-domain-model/requirements.md)       |
+| Sync Store         | [spec](./subsystems/02-sync-store/spec.md)         | [requirements](./subsystems/02-sync-store/requirements.md)         |
+| Notion Gateway     | [spec](./subsystems/03-notion-gateway/spec.md)     | [requirements](./subsystems/03-notion-gateway/requirements.md)     |
+| Body Adapter       | [spec](./subsystems/04-body-adapter/spec.md)       | [requirements](./subsystems/04-body-adapter/requirements.md)       |
+| Local Workspace    | [spec](./subsystems/05-local-workspace/spec.md)    | [requirements](./subsystems/05-local-workspace/requirements.md)    |
+| Replica API        | [spec](./subsystems/06-replica-api/spec.md)        | [requirements](./subsystems/06-replica-api/requirements.md)        |
+| Planner Guards     | [spec](./subsystems/07-planner-guards/spec.md)     | [requirements](./subsystems/07-planner-guards/requirements.md)     |
+| Schema Migration   | [spec](./subsystems/08-schema-migration/spec.md)   | [requirements](./subsystems/08-schema-migration/requirements.md)   |
+| Sync Orchestration | [spec](./subsystems/09-sync-orchestration/spec.md) | [requirements](./subsystems/09-sync-orchestration/requirements.md) |
+| Watch Daemon       | [spec](./subsystems/10-watch-daemon/spec.md)       | [requirements](./subsystems/10-watch-daemon/requirements.md)       |
+| CLI                | [spec](./subsystems/11-cli/spec.md)                | [requirements](./subsystems/11-cli/requirements.md)                |
 
 ## Scope
 
@@ -41,15 +41,15 @@ This top-level spec defines:
 
 It does not define:
 
-- SQLite store details, event families, projections, or outbox lifecycle -- see `subsystems/sync-store`,
-- the public versioned data-file replica or write intent contract -- see `subsystems/replica-api`,
-- the canonical domain model, hashers, and path semantics -- see `subsystems/domain-model` and `subsystems/local-workspace`,
-- planner flow, guard matrix, delete/move/restore semantics -- see `subsystems/planner-guards`,
-- schema-migration semantics -- see `subsystems/schema-migration`,
-- body-adapter semantics -- see `subsystems/body-adapter`,
-- watch-daemon loop, polling, leases -- see `subsystems/watch-daemon`,
-- CLI command shape and structured output -- see `subsystems/cli`,
-- remote query/property completeness and API version contract -- see `subsystems/notion-gateway`,
+- SQLite store details, event families, projections, or outbox lifecycle -- see `subsystems/02-sync-store`,
+- the public versioned data-file replica or write intent contract -- see `subsystems/06-replica-api`,
+- the canonical domain model, hashers, and path semantics -- see `subsystems/01-domain-model` and `subsystems/05-local-workspace`,
+- planner flow, guard matrix, delete/move/restore semantics -- see `subsystems/07-planner-guards`,
+- schema-migration semantics -- see `subsystems/08-schema-migration`,
+- body-adapter semantics -- see `subsystems/04-body-adapter`,
+- watch-daemon loop, polling, leases -- see `subsystems/10-watch-daemon`,
+- CLI command shape and structured output -- see `subsystems/11-cli`,
+- remote query/property completeness and API version contract -- see `subsystems/03-notion-gateway`,
 - fail-closed capability boundaries -- see [`capability-gaps.md`](./capability-gaps.md).
 
 ## Package Shape

@@ -2,7 +2,7 @@
 
 ## Context
 
-This document defines package-level requirements for `@overeng/notion-cli`. It is constrained by the datasource-sync CLI and export contracts in [../notion-datasource-sync/docs/vrs/subsystems/cli/spec.md](../../notion-datasource-sync/docs/vrs/subsystems/cli/spec.md).
+This document defines package-level requirements for `@overeng/notion-cli`. It is constrained by the datasource-sync CLI and export contracts in [../notion-datasource-sync/docs/vrs/subsystems/11-cli/spec.md](../../notion-datasource-sync/docs/vrs/subsystems/11-cli/spec.md).
 
 ## Assumptions
 
