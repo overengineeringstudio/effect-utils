@@ -3270,7 +3270,18 @@ CREATE TABLE _nds_conflict (
         // would reproject to `in_trash = 0` and a 1->0 restore transition becomes
         // inexpressible. Scoped strictly to `remote_trash`; moved_out/inaccessible/unknown
         // are removals from scope, not restorable trash.
-        if (event.reason === 'remote_trash') {
+        //
+        // Lifecycle-conflict suppression (decision 0018, tombstone direction): when
+        // an open `lifecycle` conflict exists for this page, the remote trash must
+        // NOT silently flip the settled local restore target (in_trash = 0) to 1 —
+        // keep the existing `in_trash`. Same gate the `RowObserved` apply uses, and
+        // replay-pure: the gating `ConflictRaised` is persisted at a LOWER sequence
+        // (appended at detection time), so reprojection sees the open conflict
+        // before this tombstone applies.
+        if (
+          event.reason === 'remote_trash' &&
+          this.#hasOpenLifecycleConflict({ rootId: event.rootId, pageId: event.pageId }) === false
+        ) {
           this.#db
             .prepare(
               `UPDATE _nds_row

@@ -647,6 +647,74 @@ const lifecycleDivergenceEvents = ({
   ]
 }
 
+/**
+ * Symmetric lifecycle-divergence detection for a `TombstoneRecorded(remote_trash)`
+ * event (decision 0018, the tombstone direction mirroring `lifecycleDivergenceEvents`).
+ *
+ * A remote-initiated trash arrives as a tombstone (`R = 1`, in_trash), NOT a
+ * `RowObserved` (a trashed page drops out of `data_source.query`). It is compared
+ * against the SETTLED local lifecycle target `L` (via `store.readSettledLifecycleTarget`,
+ * NOT `_nds_row.in_trash`, whose overloaded writes would manufacture false positives):
+ *
+ * - `L === undefined` (no settled lifecycle intent) → no conflict; the tombstone
+ *   applies normally (in_trash = 1). Covers the initial/benign remote trash — the
+ *   false-positive guard.
+ * - `L === true` (settled local TRASH; matches `R = 1`) → benign; no conflict.
+ * - `L === false` (settled local RESTORE) → divergence from `R = 1`: emit a
+ *   `ConflictRaised(lifecycle, remoteInTrash: true)` plus a
+ *   `PendingIntentShadowViolation` `GuardBlocked` diagnostic — the remote trash
+ *   would otherwise silently override the settled local restore (XC-R02).
+ *
+ * Non-`TombstoneRecorded`, non-`remote_trash`, and no-divergence cases return `[]`.
+ */
+const tombstoneLifecycleDivergenceEvents = ({
+  store,
+  event,
+  now,
+}: {
+  readonly store: NotionSyncStore
+  readonly event: SyncEventType
+  readonly now?: () => Date
+}): ReadonlyArray<SyncEventType> => {
+  if (event._tag !== 'TombstoneRecorded' || event.reason !== 'remote_trash') return []
+
+  const localTarget = store.readSettledLifecycleTarget({
+    rootId: event.rootId,
+    pageId: event.pageId,
+  })
+  // Remote trash implies R = in_trash = true; benign when no settled intent or L matches R.
+  if (localTarget === undefined || localTarget === true) return []
+
+  const surface = pageSurfaceKey(event.pageId)
+  const localHash = pageLifecycleHash({ pageId: event.pageId, inTrash: localTarget })
+  const remoteHash = pageLifecycleHash({ pageId: event.pageId, inTrash: true })
+  const message = `Remote trash (in_trash=true) would overwrite the settled local target (in_trash=${localTarget})`
+
+  return [
+    makeConflictRaisedEvent({
+      rootId: event.rootId,
+      pageId: event.pageId,
+      surface,
+      conflictKind: 'lifecycle',
+      remoteInTrash: true,
+      // Lifecycle has no three-way base; the local target hash is a deterministic,
+      // replay-stable base sentinel (not part of the idempotency key).
+      baseHash: localHash,
+      localHash,
+      remoteHash,
+      message,
+      ...(now === undefined ? {} : { now }),
+    }),
+    makeGuardBlockedEvent({
+      rootId: event.rootId,
+      guard: 'PendingIntentShadowViolation',
+      surface,
+      message,
+      ...(now === undefined ? {} : { now }),
+    }),
+  ]
+}
+
 /** Observe the remote data source (API, schema, rows, properties, bodies) and persist the resulting events to the local store. Resumes a partial query scan if a checkpoint cursor exists. */
 export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
   (
@@ -697,6 +765,23 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
       const absenceEvents = yield* disappearanceCandidateEvents({ options, observation })
       for (const event of absenceEvents) {
         if (options.dryRun === true) continue
+        // Symmetric lifecycle-divergence detection (decision 0018, tombstone
+        // direction). A `TombstoneRecorded(remote_trash)` whose remote trash
+        // (`R = 1`) diverges from the SETTLED local restore target (`L = 0`) is a
+        // conflict, not a silent flip (XC-R02). Append the `ConflictRaised` (plus
+        // the `PendingIntentShadowViolation` diagnostic) BEFORE the tombstone, so
+        // the open conflict has a LOWER sequence and freezes the tombstone's
+        // `in_trash = 1` write during full-log replay. Mirrors the `RowObserved`
+        // restore-after-archive seam above.
+        for (const lifecycleEvent of tombstoneLifecycleDivergenceEvents({
+          store: options.store,
+          event,
+          ...(options.now === undefined ? {} : { now: options.now }),
+        })) {
+          if (options.store.appendEventWithResult(lifecycleEvent).inserted === true) {
+            appendedEvents += 1
+          }
+        }
         if (options.store.appendEventWithResult(event).inserted === true) {
           appendedEvents += 1
         }
