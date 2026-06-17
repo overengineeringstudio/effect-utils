@@ -1,10 +1,10 @@
 # Webhook scope boundary: accept decoded dirty hints only; provisioning out of scope
 
-Status: proposed
+Status: accepted
 
-The package surface for Phase 7 (webhooks) accepts decoded dirty hints only.
-Subscription provisioning, hosted-receiver lifecycle, and Worker lifecycle stay
-out of PR #775 (deferred to the external-signals epic and a dedicated decision).
+The package surface for webhooks accepts decoded dirty hints only. Subscription
+provisioning, hosted-receiver lifecycle, and Worker lifecycle stay outside this
+VRS decision and belong to the external-signals design.
 
 Hints received via webhook are followed by fresh reads before planning. Webhooks
 are never a correctness source — they are acceleration signals only. This matches

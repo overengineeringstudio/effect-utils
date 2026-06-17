@@ -1,12 +1,12 @@
 # Archive→restore: retain the trashed observed state across reprojection
 
-Status: proposed
+Status: accepted
 
-This record closes F8 (decision 0012): a row archived via the public SQLite
-surface pushes and applies end to end, but the inverse — restoring that row by
-toggling `_in_trash` back to `0` — is not supported, because the archived page
-drops out of Notion's data-source query window and the next reprojection rebuilds
-the row as `in_trash = 0`.
+This record closes the archived-row restore gap from the provisional follow-up
+ledger: a row archived via the public SQLite surface pushes and applies end to
+end, but the inverse — restoring that row by toggling `_in_trash` back to `0` —
+is not supported, because the archived page drops out of Notion's data-source
+query window and the next reprojection rebuilds the row as `in_trash = 0`.
 
 ## The reprojection invariant
 
@@ -51,8 +51,7 @@ archive (`0 → 1`) is expressible, never a restore.
 - `TombstoneClassified(remote-trash)` gains an `in_trash = 1` projection effect.
 - Trashed rows remain in the replica as restorable rows rather than vanishing on
   reprojection.
-- Cross-reference decision 0014 for the restore guard (`RestorePageCommand`
-  through `guardTombstoneSafety`) and the fake-gateway query fidelity that makes
-  this testable at the fake level.
+- Cross-reference decision 0022 for the restore-specific moved-out guard and the
+  fake-gateway query fidelity that makes this testable at the fake level.
 - The permanent-delete edge (page deleted past the 30-day trash window while
   locally archived) is a tracked fail-closed follow-up, not a v1 guarantee.

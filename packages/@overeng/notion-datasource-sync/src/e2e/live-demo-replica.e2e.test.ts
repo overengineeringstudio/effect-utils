@@ -270,7 +270,7 @@ const inspectReplica = ({
     const rowCount = readCount(database, 'SELECT count(*) AS count FROM pages')
     const propertyCount = readCount(database, 'SELECT count(*) AS count FROM schema_properties')
     // The control-plane property shadow lives in the split `.notion/v1/state.sqlite`
-    // store, not the public projection data file (ADR 0011). A multi-source
+    // store, not the public projection data file (decision 0020). A multi-source
     // workspace shares one state store across every tracked source, so scope the
     // shadow count to this source's root id (`data-source:<id>`) rather than the
     // whole store.

@@ -111,7 +111,7 @@ export type RemoteObservationOptions = {
   /**
    * Page ids whose body MUST be re-materialized even under the global
    * `materializeBodyArtifacts: false` suppression — a body keep-remote resolution
-   * (decision 0013) accepts the remote body and re-materializes the `.nmd`.
+   * (decision 0021) accepts the remote body and re-materializes the `.nmd`.
    */
   readonly forceMaterializePageIds?: ReadonlySet<PageIdType>
   readonly rowLimit?: number
@@ -557,7 +557,7 @@ export const makeConflictRaisedEvent = (input: {
     SyncEventType,
     { readonly _tag: 'ConflictRaised' }
   >['conflictKind']
-  /** Remote trash target, recorded for `lifecycle` conflicts so `keep-remote` can reconverge `in_trash` deterministically (decision 0018). */
+  /** Remote trash target, recorded for `lifecycle` conflicts so `keep-remote` can reconverge `in_trash` deterministically (decision 0026). */
   readonly remoteInTrash?: boolean
   readonly message: string
   readonly now?: () => Date
@@ -1009,7 +1009,7 @@ export const observeRemoteDataSource = Effect.fn(spanNames.observationRemote, {
           // The global `materializeBodyArtifacts: false` suppression (the mirror
           // path sets it when the local workspace changed, to avoid clobbering a
           // local edit) is OVERRIDDEN per-page for a `forceMaterializePageIds`
-          // entry: a body keep-remote resolution (decision 0013) accepts the remote
+          // entry: a body keep-remote resolution (decision 0021) accepts the remote
           // body and must re-materialize the `.nmd` even though the local `.nmd`
           // still diverges. Without this the divergence would persist silently after
           // keep-remote.

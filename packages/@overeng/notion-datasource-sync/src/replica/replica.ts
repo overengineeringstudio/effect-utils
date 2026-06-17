@@ -113,7 +113,7 @@ export type ApplyReplicaConflictResolutionsOptions = {
   readonly rootId: SyncRootId
   readonly dryRun?: boolean
   /**
-   * Workspace-wide authority mode (decisions 0003, 0010), forwarded to
+   * Workspace-wide authority mode (decisions 0015, 0019), forwarded to
    * `resolveConflictCommand`. Today CDC `conflict_resolution` rows only ever
    * resolve `keep-remote` (local/manual actions short-circuit as `unsupported`
    * before planning), and `keep-remote` enqueues no remote write — so no drift
@@ -460,7 +460,7 @@ export const createReplicaSchemaInTransaction = (db: DatabaseSync): void => {
       updated_at TEXT NOT NULL,
       -- Materialized from the control-plane _nds_workspace_binding at projection
       -- time so the public schema view stays standalone-queryable once the
-      -- control plane moves to .notion/v1/state.sqlite (DD-A/DD-B, ADR 0011).
+      -- control plane moves to .notion/v1/state.sqlite (DD-A/DD-B, decision 0020).
       workspace_binding_database_id TEXT,
       workspace_root TEXT
     );
@@ -872,7 +872,7 @@ export const createReplicaSchemaInTransaction = (db: DatabaseSync): void => {
       conflicts_open INTEGER NOT NULL,
       pending_local_changes INTEGER NOT NULL,
       -- Control-plane aggregate counts materialized from state.sqlite at
-      -- projection time (DD-B, ADR 0011): the sync_status view reads ONLY this
+      -- projection time (DD-B, decision 0020): the sync_status view reads ONLY this
       -- projection table so the data file never ATTACHes the control plane.
       pending_outbox INTEGER NOT NULL DEFAULT 0,
       blocked_outbox INTEGER NOT NULL DEFAULT 0,
@@ -1076,7 +1076,7 @@ export const createReplicaSchemaInTransaction = (db: DatabaseSync): void => {
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'conflict') AS conflicted_local_changes,
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'unsupported') AS unsupported_local_changes,
           (SELECT count(*) FROM ${quoteIdentifier(changesViewName)} WHERE status = 'needs_reconciliation') AS reconciliation_local_changes,
-          -- DD-B (ADR 0011): control-plane counts are materialized into this
+          -- DD-B (decision 0020): control-plane counts are materialized into this
           -- projection table at projection time; the view never reaches the
           -- control plane (which now lives in .notion/v1/state.sqlite).
           status.pending_outbox,
@@ -2923,7 +2923,7 @@ type ControlPlaneStatusCounts = {
 
 /**
  * Computes the `sync_status` aggregate counts that source from control-plane
- * tables (DD-B, ADR 0011). Run against the sync store (`state.sqlite` once the
+ * tables (DD-B, decision 0020). Run against the sync store (`state.sqlite` once the
  * control plane is split out) so the data file's `sync_status` view can read
  * only the materialized projection table.
  */
@@ -2972,7 +2972,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
     const valueJsonByCell = latestPropertyValueJson({ syncDb, rootId: options.rootId })
     // Materialize the control-plane workspace binding (lives in state.sqlite once
     // the control plane is split out) so the public `schema`/`sync_status` views
-    // stay standalone-queryable against the data file (DD-A/DD-B, ADR 0011).
+    // stay standalone-queryable against the data file (DD-A/DD-B, decision 0020).
     const workspaceBinding = readWorkspaceBindingForProjection({ syncDb, rootId: options.rootId })
     replicaDb.exec('BEGIN IMMEDIATE')
     try {
@@ -3033,7 +3033,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
         const metadataRow = metadata.get(dataSourceId)
         // The binding is root-keyed; it materializes onto exactly the data source
         // it names, matching the prior `binding.data_source_id = ds.data_source_id`
-        // join (ADR 0011). Other sources in a multi-source root carry no binding.
+        // join (decision 0020). Other sources in a multi-source root carry no binding.
         const bindingForSource =
           workspaceBinding?.dataSourceId === dataSourceId ? workspaceBinding : undefined
         replicaDb
@@ -3375,7 +3375,7 @@ export const projectReplicaFromSyncStore = (options: ProjectReplicaOptions): voi
              ${pendingReplicaChangesCountSql} AS pending_local_changes`,
         )
         .get() as SqlRow
-      // DD-B (ADR 0011): aggregate counts sourced from control-plane tables are
+      // DD-B (decision 0020): aggregate counts sourced from control-plane tables are
       // computed against `syncDb` (state.sqlite) here and materialized into the
       // projection table, so the public `sync_status` view never reaches across
       // the file boundary.

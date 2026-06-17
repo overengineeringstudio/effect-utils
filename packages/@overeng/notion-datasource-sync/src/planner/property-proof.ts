@@ -279,7 +279,7 @@ const GCS_PRESIGN_PARAMS = ['x-goog-signature', 'x-goog-expires']
 
 /**
  * Detect OBVIOUS ephemeral/presigned signatures in an external URL's query string
- * (proposed decision 0016 part 3 — the durability-not-source upgrade). Durability
+ * (decision 0024 part 3 — the durability-not-source upgrade). Durability
  * is a property of the URL, not of its source: an S3 presigned link, an Azure SAS,
  * or a GCS signed URL expires just like a Notion-hosted signed link, so it must
  * fail closed alongside the Notion-hosted case rather than be attached as durable.
@@ -348,7 +348,7 @@ export const isExpiringExternalUrl = (url: string): boolean => {
 
 /**
  * Fail closed on a `files` property write that would store a NON-DURABLE file URL
- * as durable identity (proposed decision 0016 parts 2 + 3).
+ * as durable identity (decision 0024 parts 2 + 3).
  *
  * Durability is a property of the URL, not of its source. Two cases fail closed:
  *
@@ -362,7 +362,7 @@ export const isExpiringExternalUrl = (url: string): boolean => {
  *   but the URL expires, so attaching it as durable would push a soon-dead link
  *   (part 3). {@link isExpiringExternalUrl} detects the signature.
  *
- * Both route through the dormant `ExpiringFileUrl` guard (`core/guards.ts`) rather
+ * Both route through the `ExpiringFileUrl` guard (`core/guards.ts`) rather
  * than re-deriving block logic: a non-durable URL maps to a snapshot the guard
  * blocks (`kind: 'notion-hosted'`, `stableRef: undefined`), and a durable external
  * URL maps to an `external` snapshot the guard allows.
@@ -389,7 +389,7 @@ export const evaluateDesiredFileReferences = (
    * A file is durable only with an `externalUrl` that carries no expiring
    * signature. A notion-hosted file (no `externalUrl`) and an obviously-expiring
    * external URL are both non-durable, so both map to the `notion-hosted` snapshot
-   * the guard blocks. Delegate the verdict to the dormant guard rather than
+   * the guard blocks. Delegate the verdict to the guard rather than
    * re-deriving block logic.
    */
   for (const file of desiredValue.files) {

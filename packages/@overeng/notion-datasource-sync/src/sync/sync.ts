@@ -103,7 +103,7 @@ export type OneShotPushOptions = {
   readonly now?: () => Date
   readonly dryRun?: boolean
   /**
-   * Workspace-wide authority mode (decisions 0003, 0010), threaded onto every
+   * Workspace-wide authority mode (decisions 0015, 0019), threaded onto every
    * planner property snapshot's `writeMode`. `remote` makes local property edits
    * drift (`RemoteAuthoritativeDrift`); `local`/`shared` reach the property-write
    * proof. Absent leaves the planner's `shared` default.
@@ -580,7 +580,7 @@ const hasLocalWorkspaceChange = ({
 }
 
 /**
- * Lifecycle-divergence detection for a single observation event (decision 0018).
+ * Lifecycle-divergence detection for a single observation event (decision 0026).
  *
  * For a `RowObserved` with remote trash state `R`, compares against the SETTLED
  * local lifecycle target `L` (from `store.readSettledLifecycleTarget`, which reads
@@ -647,7 +647,7 @@ const lifecycleDivergenceEvents = ({
 
 /**
  * Symmetric lifecycle-divergence detection for a `TombstoneRecorded(remote_trash)`
- * event (decision 0018, the tombstone direction mirroring `lifecycleDivergenceEvents`).
+ * event (decision 0026, the tombstone direction mirroring `lifecycleDivergenceEvents`).
  *
  * A remote-initiated trash arrives as a tombstone (`R = 1`, in_trash), NOT a
  * `RowObserved` (a trashed page drops out of `data_source.query`). It is compared
@@ -730,7 +730,7 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       })
       yield* reportSyncProgress({ _tag: 'phase', phase: 'pulling' })
-      // Body keep-remote re-materialization (decision 0013). A body pointer whose
+      // Body keep-remote re-materialization (decision 0021). A body pointer whose
       // `sidecarIdentityProven` was cleared by a keep-remote resolution must be
       // re-materialized from the remote observation even under the mirror path's
       // global `materializeBodyArtifacts: false` suppression — keep-remote accepted
@@ -750,7 +750,7 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
       let appendedEvents = 0
       for (const event of observation.events) {
         if (options.dryRun === true) continue
-        // Lifecycle-divergence detection (decision 0018). A `RowObserved` whose
+        // Lifecycle-divergence detection (decision 0026). A `RowObserved` whose
         // remote trash state `R` diverges from the SETTLED local lifecycle target
         // `L` is a conflict, not a silent flip (XC-R02). Detect here — the shared
         // ingestion seam for one-shot AND watch (both funnel through
@@ -775,7 +775,7 @@ export const pullOneShotSync = Effect.fn(spanNames.syncPull)(
       const absenceEvents = yield* disappearanceCandidateEvents({ options, observation })
       for (const event of absenceEvents) {
         if (options.dryRun === true) continue
-        // Symmetric lifecycle-divergence detection (decision 0018, tombstone
+        // Symmetric lifecycle-divergence detection (decision 0026, tombstone
         // direction). A `TombstoneRecorded(remote_trash)` whose remote trash
         // (`R = 1`) diverges from the SETTLED local restore target (`L = 0`) is a
         // conflict, not a silent flip (XC-R02). Append the `ConflictRaised` (plus
@@ -958,7 +958,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
 
         /*
          * The `.nmd` artifact is the SINGLE local body surface and the body ADAPTER
-         * owns it (decision 0013). Body is NOT routed through the property
+         * owns it (decision 0021). Body is NOT routed through the property
          * convergence engine — that was a false symmetry (the engine adds no handling
          * the adapter does not already do). The adapter (`planLocalChange`) is
          * authoritative for ALL body semantics: stale-vs-live remote, the safety
@@ -988,7 +988,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
                     pageId: observation.pageId,
                     surface: bodySurfaceKey(observation.pageId),
                     // EVIDENCE digest: the body adapter's `body` conflict is a
-                    // remote-reconciliation output (decision 0013), so it stays in the
+                    // remote-reconciliation output (decision 0021), so it stays in the
                     // same evidence space as the adapter command and the
                     // `_nds_body_pointer` projection.
                     baseHash: bodyPointerIdentityDigest(bodyPlan.baseBodyPointer),
@@ -1031,7 +1031,7 @@ export const pushOneShotSync = Effect.fn(spanNames.syncPush)(
           // `guardStaleSurfaceBase`, which compares it against
           // `bodySurface.currentHash` — read straight from the `_nds_body_pointer`
           // projection, which stays on the evidence digest (the adapter's
-          // stale-vs-remote space, decision 0013). Both sides of that guard MUST
+          // stale-vs-remote space, decision 0021). Both sides of that guard MUST
           // share a space; a rendered base here would false-fire `StaleSurfaceBase`
           // on every evidence-backed pointer.
           baseHash: bodyPointerIdentityDigest(bodyPlan.baseBodyPointer),

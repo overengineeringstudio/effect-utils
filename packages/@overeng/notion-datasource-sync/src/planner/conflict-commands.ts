@@ -62,7 +62,7 @@ type UserActionOptions = {
   readonly dryRun?: boolean
   readonly now?: () => Date
   /**
-   * Workspace-wide authority mode (decisions 0003, 0010). Threaded onto the
+   * Workspace-wide authority mode (decisions 0015, 0019). Threaded onto the
    * planner snapshot so a `keep-local`/`manual` conflict resolution against a
    * `remote`-authoritative workspace is refused as `RemoteAuthoritativeDrift`
    * rather than silently enqueuing a property patch.
@@ -283,7 +283,7 @@ const resolveValue = (choice: ConflictResolutionChoice): CanonicalPropertyValue 
 }
 
 /**
- * Resolve an open `lifecycle` conflict (decision 0018). Unlike property conflicts
+ * Resolve an open `lifecycle` conflict (decision 0026). Unlike property conflicts
  * this never enqueues a `PatchPageProperties`:
  *
  * - `keep-remote` (and `manual`): emit `ConflictResolved(keep-remote)`. The store
@@ -365,7 +365,7 @@ const resolveLifecycleConflict = ({
 }
 
 /**
- * Resolve an open `body` conflict (decision 0013). Body is single-surface and
+ * Resolve an open `body` conflict (decision 0021). Body is single-surface and
  * adapter-owned: it carries no engine-mergeable value (it is content), so
  * resolution is NOT a value merge but a re-push (local) / re-materialize (remote):
  *
@@ -499,14 +499,14 @@ const conflictResolutionPlan = ({
     })
   }
 
-  // Lifecycle conflicts (decision 0018) have a `pageId` but no `propertyId`, and
+  // Lifecycle conflicts (decision 0026) have a `pageId` but no `propertyId`, and
   // do NOT mirror the property resolution path (no PatchPageProperties). Route
   // them to their own resolver before the property-only refuse block below.
   if (conflict.kind === 'lifecycle' && conflict.pageId !== undefined) {
     return resolveLifecycleConflict({ rootId, conflict, choice, now })
   }
 
-  // Body conflicts (decision 0013) are page-keyed with a null `propertyId` and are
+  // Body conflicts (decision 0021) are page-keyed with a null `propertyId` and are
   // adapter-owned: resolution is re-push (keep-local) / re-materialize
   // (keep-remote), NOT a property value merge. Route them to their own resolver
   // before the property-only refuse block below.

@@ -1,6 +1,6 @@
 # Body is single-surface and adapter-owned
 
-Status: proposed
+Status: accepted
 
 In `shared` mode the SQLite `pages` property surface flows through the
 `convergeLocalSurfaces` engine. An earlier iteration also routed the `.nmd` BODY
@@ -25,9 +25,11 @@ blocks, would-delete-children, synced-page-unsupported, non-body-mutation), and
 (`conflictKind: 'body'`, from `planLocalChange` → `BodyConflict`), never by the
 convergence engine.
 
-The convergence engine is for PROPERTIES only. In `shared` mode it reconciles the
-SQLite `pages` property edits against the `.nmd` frontmatter and is fed property
-facts exclusively; it is never fed a body fact.
+The production planner feeds the convergence engine PROPERTIES only. In `shared`
+mode it reconciles the SQLite `pages` property edits against the `.nmd`
+frontmatter and does not feed body facts. The lower-level convergence library may
+retain a forward-looking `body` rail for constructed tests or a future second
+body surface; that rail is not production authority for body writes.
 
 ## Body conflict resolution
 
@@ -53,7 +55,7 @@ so resolution is NOT a value merge but a re-push (local) / re-materialize
   on the next pull), exactly as the lifecycle keep-remote arm defers its
   reconvergence.
 
-This mirrors the lifecycle conflict resolver (decision 0018): a page-keyed,
+This mirrors the lifecycle conflict resolver (decision 0026): a page-keyed,
 null-`propertyId` conflict routed to its own resolver before the property-only
 refuse block, with a re-push for keep-local and a deterministic projection
 reconvergence for keep-remote.
@@ -63,20 +65,17 @@ reconvergence for keep-remote.
 | Option                                             | Result   | Reason                                                                                                                                                                                                     |
 | -------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Route the body surface through the engine          | Rejected | False symmetry: `.nmd` is the only local body surface, so the engine always sees a single body fact and adds no handling the adapter does not already do — dead-weight ceremony plus a latent stuck-state. |
-| Body is single-surface and adapter-owned           | Selected | One authority for the body (the adapter), no inert engine rail, no stuck-state. The engine stays property-only.                                                                                            |
+| Body is single-surface and adapter-owned           | Selected | One production authority for the body (the adapter), no inert production engine rail, no stuck-state.                                                                                                      |
 | Body conflict as an engine value-merge             | Rejected | Body is content, not an engine-mergeable value. There is nothing for the engine to merge.                                                                                                                  |
 | Body conflict resolved by re-push / re-materialize | Selected | The principled shape for content: keep-local re-pushes the local body, keep-remote re-materializes from the remote observation. No value merge.                                                            |
 
 ## Consequences
 
-- The convergence engine is property-only; it is never fed a body fact and never
-  raises a body conflict. The body adapter is the sole body authority.
+- Production convergence is property-only; the production planner never feeds a
+  body fact to the engine. The body adapter is the sole body authority.
 - A `body` conflict (raised by the adapter) is resolvable via keep-local re-push /
   keep-remote re-materialize. The `ConflictResolved` store apply has a `body` arm
   that retires the conflict and, for keep-remote, records the re-materialization
   intent.
-- The lifecycle conflict machinery (decision 0018) and the property convergence
+- The lifecycle conflict machinery (decision 0026) and the property convergence
   engine are untouched by this decision.
-
-This record stays `proposed` until the body conflict resolution path is exercised
-end-to-end against a live Notion workspace.

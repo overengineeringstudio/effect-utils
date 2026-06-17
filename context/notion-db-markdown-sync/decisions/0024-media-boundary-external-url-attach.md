@@ -1,8 +1,8 @@
 # Files/media boundary: external-URL attach (already works), hardened
 
-Status: proposed
+Status: accepted
 
-Contrary to follow-up 0012's F3 wording ("structural-only / does not genuinely
+Contrary to follow-up ledger's F3 wording ("structural-only / does not genuinely
 attach"), external-URL file attach ALREADY works end to end on the PROPERTY
 surface. An `external_url` `NmdPropertyFileRef` encodes to a real Notion
 external-file property write (`@overeng/notion-md/src/sync.ts:339`, proven by
@@ -22,8 +22,8 @@ absence, not by a guard.
 
 ## Decision
 
-Take Option B — harden the existing boundary and wire the dormant guard, in
-three parts.
+Take Option B — harden the existing boundary and wire the property-file
+durability guard, in three parts.
 
 (1) Make the "inert-means-durable" invariant EXPLICIT and ENFORCED. Add a
 fail-closed assertion/guard at the point where a property file-ref would be
@@ -34,10 +34,9 @@ posture is preserved, but the load-bearing guard moves to the byte-path lowering
 seam so it pre-empts a future lower-to-byte path rather than guarding one layer
 up.
 
-(2) Wire the currently-dormant `ExpiringFileUrl` guard. It is defined at
-`core/guards.ts:514` and unit-tested, but has NO production dispatch. Wire it
-into the production property-write path so a Notion-hosted expiring URL pulled
-into a property is caught rather than silently written as a soon-dead link.
+(2) Wire the `ExpiringFileUrl` guard into the production property-write path so
+a Notion-hosted expiring URL pulled into a property is caught rather than
+silently written as a soon-dead link.
 
 (3) Take an explicit URL-DURABILITY stance — durability is a property of the
 URL, NOT of its source. The guard does not ask "is this URL Notion-hosted vs
@@ -84,8 +83,8 @@ The honest v1 headline is "external-URL attach PLUS pre-uploaded `notion_file`
 A validation agent traced that external-URL attach already works on the property
 path (`sync.ts:339`, `sync.e2e.test.ts:1284`), that the media seam already exists
 (`guardMediaWrite`), that `local_file` already fails closed (`sync.ts:355`), and
-that `ExpiringFileUrl` is defined but dormant — present as a placeholder scenario
-with no production dispatch.
+that `ExpiringFileUrl` is the right production guard for property-file URL
+durability.
 
 ## Considered Options
 

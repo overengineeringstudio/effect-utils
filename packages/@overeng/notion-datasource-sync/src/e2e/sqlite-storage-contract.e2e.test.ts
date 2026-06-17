@@ -141,7 +141,7 @@ const makeDatabaseResolverClient = (calls: { retrieveDatabase: number }): Notion
 const sqlitePathForWorkspace = (workspace: string): string =>
   join(workspace, 'data', 'v1', `${testIds.databaseId}.sqlite`)
 
-// Control-plane store (ADR 0011): the binding, event log, and all `_nds_*`
+// Control-plane store (decision 0020): the binding, event log, and all `_nds_*`
 // control-plane tables live here, split out of the public data file.
 const statePathForWorkspace = (workspace: string): string =>
   join(workspace, '.notion', 'v1', 'state.sqlite')
@@ -202,7 +202,7 @@ const publicSafeNames = new Set([
 ])
 
 // Control-plane tables (defined in store/schema.ts) that MUST NOT appear in the
-// public data file post control-plane split (DD-A, ADR 0011). The public data
+// public data file post control-plane split (DD-A, decision 0020). The public data
 // file is created only by `createReplicaSchema`, so the invariant is: every
 // `_nds_*` object is `_nds_replica_*` and none of these control-plane tables
 // leak in. The authoritative guard is the structural `ndsLeaks` check below
@@ -234,7 +234,7 @@ const assertStorageTaxonomy = (db: DatabaseSync): void => {
   const names = objects.map((object) => String(object.name))
 
   expect(names).toEqual(expect.arrayContaining([...publicSafeNames]))
-  // DD-A (ADR 0011): the control-plane binding moved to state.sqlite; it must
+  // DD-A (decision 0020): the control-plane binding moved to state.sqlite; it must
   // not appear in the public data file.
   expect(names).not.toContain('_nds_workspace_binding')
   expect(names.some((name) => name.startsWith('debug_'))).toBe(true)
@@ -267,7 +267,7 @@ const assertStorageTaxonomy = (db: DatabaseSync): void => {
 }
 
 // Asserts the control-plane store holds the control-plane tables and exposes no
-// public views; standalone-queryable with no ATTACH (DD-A, ADR 0011).
+// public views; standalone-queryable with no ATTACH (DD-A, decision 0020).
 const assertControlPlaneTaxonomy = (db: DatabaseSync): void => {
   const names = sqliteMasterObjects(db).map((object) => String(object.name))
   for (const table of [
@@ -532,7 +532,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
         })
       }
 
-      // The control-plane store splits out of the data file (ADR 0011): the
+      // The control-plane store splits out of the data file (decision 0020): the
       // binding lives in state.sqlite, the public projection in the data file.
       expect(await exists(statePathForWorkspace(workspace))).toBe(true)
       openReadOnly(statePathForWorkspace(workspace), (db) => {
@@ -900,7 +900,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
         expect(() => db.prepare(`UPDATE schema SET name = 'Unsafe'`).run()).toThrow(
           /read-only|schema/i,
         )
-        // DD-A (ADR 0011): the control-plane binding is not in the data file at
+        // DD-A (decision 0020): the control-plane binding is not in the data file at
         // all, so a direct write fails because the table is absent here.
         expect(() => db.prepare(`INSERT INTO _nds_workspace_binding DEFAULT VALUES`).run()).toThrow(
           /no such table/i,
@@ -1168,7 +1168,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
         dataDb.close()
       }
 
-      // DD-B (ADR 0011): the control-plane tables that feed sync_status moved to
+      // DD-B (decision 0020): the control-plane tables that feed sync_status moved to
       // state.sqlite, and the view reads only the materialized projection table.
       // So these buckets must be exercised by mutating the control plane and
       // re-projecting, not by writing the data file and reading it live.
@@ -1473,7 +1473,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
     sqliteContractTimeoutMs,
   )
 
-  // F8 (ADR 0014/0015): the FULL archive -> restore round trip. A local archive
+  // F8 (decisions 0022/0023): the FULL archive -> restore round trip. A local archive
   // pushes a remote trash; the trashed row then VANISHES from `data_source.query`
   // (the fake now models real Notion — `queryRows` excludes trashed rows). On the
   // next full-scan re-observe the row is absent, gets directly reclassified as
@@ -1858,7 +1858,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
       )
 
       // Tamper cases corrupt objects that now live in one of the two split
-      // files (ADR 0011): control-plane tables in the state store, public views
+      // files (decision 0020): control-plane tables in the state store, public views
       // and CDC triggers in the data file. Each runs in its own fresh workspace
       // and tampers the manifest-resolved file in place; `--sqlite <data file>`
       // resolves the sibling control-plane store, so each tampering trips the
@@ -1937,7 +1937,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
       const workspace = await tempWorkspace()
       const movedWorkspace = await tempWorkspace()
       const { sqlitePath } = await establishWorkspace(workspace)
-      // A backup of just the public data file: the control plane (ADR 0011)
+      // A backup of just the public data file: the control plane (decision 0020)
       // lives in `.notion/v1/state.sqlite` and is NOT copied along.
       const copyPath = join(movedWorkspace, `${testIds.databaseId}.sqlite`)
       await copyFile(sqlitePath, copyPath)
@@ -2026,7 +2026,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
       const { sqlitePath, statePath } = await establishWorkspace(workspace)
 
       // The public data file: product views + `_nds_replica_*` cache, and NO
-      // control-plane tables (DD-A, ADR 0011). Standalone-queryable (no ATTACH).
+      // control-plane tables (DD-A, decision 0020). Standalone-queryable (no ATTACH).
       openReadOnly(sqlitePath, (db) => {
         const names = sqliteMasterObjects(db).map((object) => String(object.name))
         for (const view of [
@@ -2137,7 +2137,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
 
       // The data file is a rebuildable cache: deleting it and re-projecting from
       // the control plane restores the public surface (correctness lives in the
-      // event log, not the data file). ADR 0011.
+      // event log, not the data file). decision 0020.
       const projectedPagesBefore = openReadOnly(sqlitePath, (db) =>
         Number(row(db, `SELECT count(*) AS count FROM pages`)?.count),
       )
@@ -2188,7 +2188,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
       // Re-projecting the data file (a pure read-model rebuild — the projector
       // opens the control-plane store read-only) must NOT consume or duplicate
       // the un-settled CDC inbox: the same edit stays pending, and re-reading it
-      // yields the same single change id (no duplication). ADR 0011.
+      // yields the same single change id (no duplication). decision 0020.
       projectReplicaFromSyncStore({ syncStorePath: statePath, replicaPath: sqlitePath, rootId })
       projectReplicaFromSyncStore({ syncStorePath: statePath, replicaPath: sqlitePath, rootId })
 
@@ -2234,7 +2234,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
 
       // Second sync against a FRESH gateway: the settled CDC must not re-drain.
       // Zero remote writes is the direct proof that crossing the file boundary
-      // does not double-apply the user's edit. ADR 0011.
+      // does not double-apply the user's edit. decision 0020.
       const secondGateway = makeFakeGatewayHarness({
         propertyPages: [propertyPage('Initial task')],
       })
@@ -2269,7 +2269,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
   // first gateway settles the archive (the trashed row drops out of its query),
   // a second sync against the fresh gateway observes the row ACTIVE — exactly the
   // post-settlement remote restore the ADR motivates.
-  describe('lifecycle divergence is a conflict (decision 0018)', () => {
+  describe('lifecycle divergence is a conflict (decision 0026)', () => {
     /** Drive a local archive to settlement, then return the sqlite/state paths. */
     const settleLocalArchive = async (workspace: AbsolutePathType) => {
       const { sqlitePath, statePath } = await establishWorkspace(workspace, {
@@ -2843,7 +2843,7 @@ describe('clean-break self-contained SQLite storage contract', () => {
   // disappearance->classify->`TombstoneRecorded(remote_trash)` path. Without the
   // symmetric detector + freeze the tombstone's `in_trash = 1` write would silently
   // override the settled local restore.
-  describe('lifecycle divergence is a conflict — tombstone direction (decision 0018)', () => {
+  describe('lifecycle divergence is a conflict — tombstone direction (decision 0026)', () => {
     /**
      * Drive a local archive THEN a local restore to settlement ON THE WATCH PATH,
      * so the SETTLED local lifecycle target is RESTORE (`L = 0`) and NO prior

@@ -60,7 +60,7 @@ const rowObserved = () =>
   })
 
 /**
- * A lifecycle `ConflictRaised` (decision 0018): no `propertyId`,
+ * A lifecycle `ConflictRaised` (decision 0026): no `propertyId`,
  * `conflictKind: 'lifecycle'`, and a recorded `remoteInTrash`. `L = !remoteInTrash`.
  */
 const lifecycleConflictEvent = (remoteInTrash: boolean): SyncEventType =>
@@ -77,7 +77,7 @@ const lifecycleConflictEvent = (remoteInTrash: boolean): SyncEventType =>
     now: () => new Date('2026-05-25T00:00:00.000Z'),
   })
 
-describe('lifecycle conflict resolution (decision 0018)', () => {
+describe('lifecycle conflict resolution (decision 0026)', () => {
   it('surfaces the lifecycle kind and remoteInTrash through readConflicts', () => {
     const storeFixture = makeStoreFixture({ mode: 'memory' })
     try {

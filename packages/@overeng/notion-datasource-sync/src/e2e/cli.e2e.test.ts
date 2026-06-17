@@ -587,7 +587,7 @@ describe('CLI command surface', () => {
 
   it('rejects a per-run --mode on established commands (authority is workspace-wide)', () => {
     // Authority mode is set once by `track`; every established command refuses a
-    // per-run override (decisions 0003, 0010) instead of silently ignoring it.
+    // per-run override (decisions 0015, 0019) instead of silently ignoring it.
     const rejected = 'authority mode is workspace-wide; set it with `track --mode`'
     expect(() => parseCliCommand(['sync', '/tmp/ws', '--mode', 'shared'])).toThrow(rejected)
     expect(() => parseCliCommand(['sync', '--watch', '--mode', 'local'])).toThrow(rejected)

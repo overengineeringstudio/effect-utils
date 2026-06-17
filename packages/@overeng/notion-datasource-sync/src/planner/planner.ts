@@ -236,7 +236,7 @@ export type PlannerProjectionSnapshot = {
 }
 
 /**
- * Overlays the workspace-wide authority mode (decisions 0003, 0010) onto every
+ * Overlays the workspace-wide authority mode (decisions 0015, 0019) onto every
  * property snapshot's `writeMode`, and derives each property's `settlement`
  * verdict from real outbox read-after-write state. This is the single chokepoint
  * applied wherever a `readPlannerProjectionSnapshot` result is handed to
@@ -811,7 +811,7 @@ const planPropertyEdit = ({
 
   /*
    * Fail closed on a `files` write that would store a Notion-hosted signed/expiring
-   * URL as durable identity (proposed decision 0016 part 2). The property-write core
+   * URL as durable identity (decision 0024 part 2). The property-write core
    * allows a `files` value into a `files` column (tag-fit is a no-op), so the
    * `ExpiringFileUrl` guard is dispatched HERE from the desired file references; an
    * external durable `externalUrl` proceeds. `firstBlocked` surfaces it in order.

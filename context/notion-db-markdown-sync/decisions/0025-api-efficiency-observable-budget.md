@@ -1,6 +1,6 @@
 # API efficiency: rate-limit discipline enforced by an observable budget
 
-Status: proposed
+Status: accepted
 
 API resourcefulness and rate-limit discipline are a first-class NFR, not a
 best-effort aspiration. This record decides to enforce them via an OBSERVABLE
@@ -76,4 +76,4 @@ rate-limit signals need a fault-injecting stub for CI.
 - The logical-vs-HTTP-attempt distinction must be stated in the requirement so
   the budget stays falsifiable — a logical ceiling must not be conflated with
   HTTP-attempt count.
-- Ties to the new efficiency requirement, to be ratified.
+- Ties to the new efficiency requirement.

@@ -1290,7 +1290,7 @@ export class NotionSyncStore {
    * `0` (RestorePage settled), or `undefined` (no settled lifecycle intent).
    *
    * This is the authoritative source of `L` for lifecycle-divergence detection
-   * (decision 0018). It deliberately does NOT read `_nds_row.in_trash`, which is
+   * (decision 0026). It deliberately does NOT read `_nds_row.in_trash`, which is
    * overloaded — written by `RowObserved`, `TombstoneRecorded`, AND settled local
    * intent — so reading it for `L` would manufacture false-positive conflicts on
    * benign remote changes. The settlement is identified by a non-null
@@ -2163,7 +2163,7 @@ CREATE TABLE _nds_conflict (
   }
 
   /**
-   * Whether the page has a freeze-active `lifecycle` conflict (decision 0018,
+   * Whether the page has a freeze-active `lifecycle` conflict (decision 0026,
    * #775 M2a'-2). Used by the `RowObserved` apply to freeze `_nds_row.in_trash`.
    * Both `open` AND `resolving` count: a `keep-local` resolution moves the
    * conflict to `resolving` and re-asserts the local target via a Trash/Restore
@@ -2714,7 +2714,7 @@ CREATE TABLE _nds_conflict (
       }
       case 'RowObserved': {
         const payload = decodePayload({ event: event, decode: decodeRowProjectionPayload })
-        // Lifecycle-conflict suppression (decision 0018): when an open `lifecycle`
+        // Lifecycle-conflict suppression (decision 0026): when an open `lifecycle`
         // conflict exists for this page, a `RowObserved` must NOT overwrite the
         // settled local lifecycle target — keep the existing `in_trash`. Properties,
         // body, moved-out, etc. still converge unconditionally. This is replay-pure:
@@ -3136,7 +3136,7 @@ CREATE TABLE _nds_conflict (
           )
           .run(resolvedState, event.eventId, currentIso(this.#now), event.rootId, event.conflictId)
 
-        // Lifecycle keep-remote reconvergence (decision 0018). A lifecycle
+        // Lifecycle keep-remote reconvergence (decision 0026). A lifecycle
         // conflict froze `_nds_row.in_trash` at the settled local target. On
         // `keep-remote` the projection must adopt the remote trash state recorded
         // on the opened `ConflictRaised` (`remoteInTrash`) — read from the recorded
@@ -3178,7 +3178,7 @@ CREATE TABLE _nds_conflict (
               }
             }
 
-            // Body keep-remote re-materialization intent (decision 0013). Body is
+            // Body keep-remote re-materialization intent (decision 0021). Body is
             // single-surface and adapter-owned: keep-remote accepts the remote body
             // and DROPS the local `.nmd` divergence. There is no engine-owned
             // mergeable value to reconverge in the projection (body is content), so
@@ -3290,7 +3290,7 @@ CREATE TABLE _nds_conflict (
         // inexpressible. Scoped strictly to `remote_trash`; moved_out/inaccessible/unknown
         // are removals from scope, not restorable trash.
         //
-        // Lifecycle-conflict suppression (decision 0018, tombstone direction): when
+        // Lifecycle-conflict suppression (decision 0026, tombstone direction): when
         // an open `lifecycle` conflict exists for this page, the remote trash must
         // NOT silently flip the settled local restore target (in_trash = 0) to 1 —
         // keep the existing `in_trash`. Same gate the `RowObserved` apply uses, and

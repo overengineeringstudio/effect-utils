@@ -606,7 +606,7 @@ describe('body adapter E2E boundary', () => {
   // single-surface and adapter-owned, so resolution is re-push (keep-local) /
   // re-materialize (keep-remote), NOT a value merge. These tests raise the conflict
   // through the real push path, then resolve it both ways.
-  describe('body conflict resolution (decision 0013)', () => {
+  describe('body conflict resolution (decision 0021)', () => {
     // Raise a reachable adapter `body` conflict and return the store fixture + the
     // open conflict id. A genuine remote-vs-local body divergence: the remote body
     // identity (`body-remote`) differs from the observed local base (`body-a`), so

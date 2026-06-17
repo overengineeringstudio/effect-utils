@@ -141,7 +141,7 @@ const fileValue = (file: {
   ],
 })
 
-describe('evaluateDesiredFileReferences (ExpiringFileUrl dispatch — decision 0016 part 2)', () => {
+describe('evaluateDesiredFileReferences (ExpiringFileUrl dispatch — decision 0024 part 2)', () => {
   it('blocks a files write whose value carries a Notion-hosted (no externalUrl) file', () => {
     expect(evaluateDesiredFileReferences(fileValue({ name: 'report.pdf' }))).toMatchObject({
       _tag: 'blocked',
@@ -248,7 +248,7 @@ describe('evaluateDesiredFileReferences (ExpiringFileUrl dispatch — decision 0
   })
 })
 
-describe('isExpiringExternalUrl (decision 0016 part 3 — URL durability, not source)', () => {
+describe('isExpiringExternalUrl (decision 0024 part 3 — URL durability, not source)', () => {
   it('flags AWS S3 presigned URLs (any of X-Amz-Signature/Expires/Credential)', () => {
     expect(isExpiringExternalUrl('https://b.s3.amazonaws.com/o?X-Amz-Signature=x')).toBe(true)
     expect(isExpiringExternalUrl('https://b.s3.amazonaws.com/o?X-Amz-Expires=3600')).toBe(true)

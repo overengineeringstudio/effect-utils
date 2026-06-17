@@ -752,7 +752,7 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L1',
     file: 'src/planner/planner.unit.test.ts',
   }),
-  // Decision 0016 parts 2 + 3 (#775): the planner dispatches the dormant
+  // Decision 0024 parts 2 + 3 (#775): the planner dispatches the
   // `ExpiringFileUrl` guard from the desired `files` property value
   // (`evaluateDesiredFileReferences`). Durability is a property of the URL, not its
   // source. A Notion-hosted file is canonicalized without an `externalUrl`, so a
@@ -821,7 +821,7 @@ export const e2eHarnessScenarios = [
     highestIntegrationLevel: 'L5',
     file: 'src/e2e/otel.e2e.test.ts',
   }),
-  // EFF-R01 / R81 (#775, decision 0017 Half 1): the OBSERVABLE call-count budget.
+  // EFF-R01 / R81 (#775, decision 0025 Half 1): the OBSERVABLE call-count budget.
   // Counts `notion.api.request` spans (one per LOGICAL request) under the one-shot
   // sync span and asserts a falsifiable CEILING (<= 5) plus the exact read-endpoint
   // multiset, so a regression that adds a per-entity read is caught test-side. A
@@ -985,7 +985,7 @@ const vrsRequirementId = (index: number): RequirementId =>
  * flat matrix ids and the namespaced requirements.md ids are parallel
  * enumerations — there is no global mapping table, only per-scenario
  * `requirementIds` citations and residual reasons (global reconciliation is
- * deferred to proposed decision 0012). For traceability:
+ * deferred to follow-up ledger). For traceability:
  *   - R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline)
  *   - R82 → REPLICA-R12 (archive/restore round-trip reprojection retention)
  * Both are now mapped by concrete scenarios (R81 by `NDS-L3-api-call-count-budget`,
@@ -1180,35 +1180,35 @@ export const traceabilityResiduals = [
   // enumeration slots that no current scenario cites; they have no `**RNN` marker
   // in the cross-cutting requirements.md (which defines only R01-R15 in marker
   // form), so — like R16-R73 — they are matrix-internal ids whose reconciliation
-  // with requirements.md is flagged for human ratification (proposed decision
-  // 0012). Residual'd here so the gate stays honest rather than silently
+  // with requirements.md is tracked as a non-VRS ratification follow-up (#797).
+  // Residual'd here so the gate stays honest rather than silently
   // un-checking them again.
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R75',
     reason:
-      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (follow-up ledger).',
   },
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R76',
     reason:
-      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (follow-up ledger).',
   },
   {
     _tag: 'unmapped-requirement',
     requirementId: 'R77',
     reason:
-      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (proposed decision 0012).',
+      'Matrix enumeration slot with no current scenario citation; pending requirements.md/RNN reconciliation (follow-up ledger).',
   },
   // R81 → EFF-R01 (cross-cutting API resourcefulness & rate-limit discipline) is
-  // NO LONGER a residual: the call-count half of decision 0017 is implemented and
+  // NO LONGER a residual: the call-count half of decision 0025 is implemented and
   // R81 is now mapped by the concrete `NDS-L3-api-call-count-budget` scenario
   // (observable call-count ceilings in `src/e2e/otel.e2e.test.ts`). The rate-limit
   // half (Half 2, `@overeng/notion-effect-client`) is a separate change.
   //
   // R82 → REPLICA-R12 (archive/restore round-trip reprojection retention) is NO
-  // LONGER a residual either: decision 0018 lifecycle divergence (#775 M2a'-2)
+  // LONGER a residual either: decision 0026 lifecycle divergence (#775 M2a'-2)
   // landed, so R82 is now mapped by the concrete `NDS-L3-lifecycle-divergence-conflict`
   // scenario (remote restore after a settled archive raises a durable conflict with
   // a frozen `_in_trash` in `src/e2e/sqlite-storage-contract.e2e.test.ts`).

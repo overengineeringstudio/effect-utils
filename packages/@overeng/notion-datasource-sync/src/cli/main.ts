@@ -328,7 +328,7 @@ export type CliContext = {
   /**
    * Path to the public projection / CDC data file (`data/v1/<source>.sqlite`).
    * Equal to `storePath` in the standalone `--sqlite` case (unified projection),
-   * distinct from it for a tracked workspace (control-plane file split, ADR 0011).
+   * distinct from it for a tracked workspace (control-plane file split, decision 0020).
    */
   readonly replicaPath?: string
   readonly rootId: SyncRootIdType
@@ -336,7 +336,7 @@ export type CliContext = {
   readonly workspaceRoot: typeof AbsolutePath.Type
   /**
    * Workspace-wide authority mode read from `notion.workspace.v1.json` for a
-   * tracked workspace (decisions 0003, 0010). Threads into the planner's
+   * tracked workspace (decisions 0015, 0019). Threads into the planner's
    * per-property `writeMode`: `remote` makes local edits drift, `local`/`shared`
    * reach the property-write proof. Absent for a standalone `--sqlite` file or an
    * untracked establish run; the planner then keeps its `shared` default.
@@ -473,7 +473,7 @@ const runLocalConvergenceForPush = ({
   // Raise each local PROPERTY conflict into the read-only `conflicts` view via the
   // normal ConflictRaised rail (decision 0005 — never a page-adjacent file). Only
   // PROPERTY conflicts flow here: body is single-surface and adapter-owned
-  // (decision 0013), so the convergence engine is never fed a body fact and never
+  // (decision 0021), so the convergence engine is never fed a body fact and never
   // produces a body conflict on this path.
   if (dryRun !== true) {
     for (const outcome of result.outcomes) {
@@ -555,7 +555,7 @@ const defaultSqlitePath = ({
 /**
  * Resolves the public projection / CDC data file. For a tracked workspace this
  * is the data file (distinct from the control-plane store); for a standalone
- * `--sqlite` file it falls back to the store path (unified). ADR 0011.
+ * `--sqlite` file it falls back to the store path (unified). decision 0020.
  */
 const replicaPathForContext = (context: CliContext): string | undefined =>
   context.replicaPath ?? context.storePath
@@ -1143,7 +1143,7 @@ const runCliCommandEffect = ({
     case 'push':
       return Effect.sync(() => {
         // CDC + planning intents target the public data file; the event log is
-        // appended through `context.store` (control-plane state.sqlite). ADR 0011.
+        // appended through `context.store` (control-plane state.sqlite). decision 0020.
         const replicaPath = replicaPathForContext(context)
         if (replicaPath === undefined)
           return {
@@ -1293,7 +1293,7 @@ const runCliCommandEffect = ({
       }
       return Effect.sync(() => {
         // CDC + planning intents target the public data file; the event log is
-        // appended through `context.store` (control-plane state.sqlite). ADR 0011.
+        // appended through `context.store` (control-plane state.sqlite). decision 0020.
         const replicaPath = replicaPathForContext(context)
         if (replicaPath === undefined)
           return { changes: [] as const, intents: [] as const, replicaPath: ':memory:' }
@@ -1442,12 +1442,12 @@ const runCliCommandEffect = ({
           choice: command.choice,
           // Authority mode must reach the conflict-resolution planner: a
           // `keep-local`/`manual` resolution in a `remote`-mode workspace is
-          // refused as `RemoteAuthoritativeDrift` (decisions 0003, 0010).
+          // refused as `RemoteAuthoritativeDrift` (decisions 0014, 0019).
           ...(context.authorityMode === undefined ? {} : { authorityMode: context.authorityMode }),
           ...withOptionalCommandOptions({ command, context }),
         })
         // Reproject the public data file so a lifecycle `keep-remote` resolution
-        // (decision 0018) — which reconverges `_nds_row.in_trash` in the apply
+        // (decision 0026) — which reconverges `_nds_row.in_trash` in the apply
         // path — is immediately reflected in the public `pages._in_trash`,
         // instead of remaining stale until the next sync.
         projectReplicaIfWritable({
@@ -1906,7 +1906,7 @@ export const parseCliCommand = (argv: ReadonlyArray<string>): CliCommand => {
   const words = parsePositionals(argv)
   const [command, subcommand] = words
   // Authority `--mode` is accepted ONLY by `track`; every other command rejects
-  // a per-run override before any further parsing (decisions 0003, 0010).
+  // a per-run override before any further parsing (decisions 0015, 0019).
   if (command !== 'track') rejectPerRunAuthorityMode(flags)
   switch (command) {
     case 'track': {
@@ -2116,7 +2116,7 @@ type DiscoveredSelfContainedStore = {
   /**
    * Public projection / CDC data file (`data/v1/<source>.sqlite`). Distinct from
    * `storePath` for a tracked workspace; equal to it for a standalone `--sqlite`
-   * file (unified projection). ADR 0011.
+   * file (unified projection). decision 0020.
    */
   readonly dataFilePath: typeof AbsolutePath.Type
   readonly rootId: SyncRootIdType
@@ -2207,7 +2207,7 @@ const readSelfContainedBinding = ({
  * `storePath` (`.notion/v1/state.sqlite` for a tracked workspace) and the public
  * projection in `dataFilePath` (`data/v1/<source>.sqlite`). For a standalone
  * `--sqlite` file the two paths coincide and a single file is checked, exactly
- * as before the control-plane split. ADR 0011.
+ * as before the control-plane split. decision 0020.
  */
 const validateSelfContainedSqlite = ({
   storePath,
@@ -2280,7 +2280,7 @@ const validateSelfContainedSqlite = ({
       .prepare(`SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger'`)
       .get() as { readonly count?: unknown } | undefined
     // Floor calibrated to the data file's freshly-projected CDC/write-intent
-    // trigger count (34 post control-plane split, ADR 0011): dropping any one
+    // trigger count (34 post control-plane split, decision 0020): dropping any one
     // trips this fail-closed guard.
     if (typeof triggerCount?.count !== 'number' || triggerCount.count < 34) {
       throw new CliArgumentError({
@@ -2399,7 +2399,7 @@ const discoverSelfContainedStore = (
   const rootId = rootIdForDataSource(source.data_source_id)
   // The control plane lives in the hidden `.notion/v1/state.sqlite`; the public
   // data file holds only the projection. The binding moved with the control
-  // plane, so integrity is verified against the state store. ADR 0011.
+  // plane, so integrity is verified against the state store. decision 0020.
   const storePath = stateSqlitePath(workspaceRoot)
   const binding = readSelfContainedBinding({ storePath, rootId })
   if (binding === undefined) {
@@ -2482,7 +2482,7 @@ const discoverExplicitSplitWorkspaceStore = ({
 
 /**
  * Resolves an explicit `--sqlite <path>` to a control-plane store and a public
- * data file (ADR 0011). Two cases:
+ * data file (decision 0020). Two cases:
  *
  * - The file is genuinely self-contained (carries its own control plane and
  *   binding): unified — both paths are the file, exactly as before the split.
@@ -2603,7 +2603,7 @@ export const parseCliContext = ({
           // `track` (and the legacy `sync --from-notion`) always establishes
           // inside a workspace (--sqlite is rejected above), so the control plane
           // lives in the hidden state.sqlite and the public projection in the
-          // data file. ADR 0011.
+          // data file. decision 0020.
           const dataFile = defaultSqlitePath({ workspaceRoot: command.workspaceRoot, databaseId })
           const storePath = decode({
             schema: AbsolutePath,

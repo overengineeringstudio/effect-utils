@@ -28,7 +28,7 @@ workspace convergence, outbox, conflicts, or live proof acquisition.
 Standalone NotionMD may mutate datasource-scoped properties only when invoked
 with, or able to derive, a datasource property-mutation proof. Otherwise it fails
 closed with a guard such as `RemoteSchemaRequired`,
-`PropertyIdentityAmbiguous`, `RelationTargetsUnavailable`,
+`PropertyIdentityAmbiguous`, `UnavailableRelationTarget`,
 `LocalSurfaceDisagreement`, or `StaleRemoteSchema`.
 
 `.nmd` files may carry compact non-authoritative property descriptors such as

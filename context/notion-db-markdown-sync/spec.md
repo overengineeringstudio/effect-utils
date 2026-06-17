@@ -1,8 +1,9 @@
 # Notion DB Markdown Sync Spec
 
 This document specifies the local Markdown and SQLite user surfaces for Notion
-data-source pages. It builds on [requirements.md](./requirements.md), plus the
-package contracts in
+data-source pages. It builds on [requirements.md](./requirements.md) and is the
+integrated-system contract that composes and constrains the package-scoped
+contracts in
 [`packages/@overeng/notion-datasource-sync/docs/vrs/requirements.md`](../../packages/@overeng/notion-datasource-sync/docs/vrs/requirements.md)
 and [`packages/@overeng/notion-md/docs/vrs/spec.md`](../../packages/@overeng/notion-md/docs/vrs/spec.md).
 
@@ -216,7 +217,7 @@ datasource-sync would require:
 
 If any proof is missing, the mutation fails closed with a specific guard. Example
 guards include `RemoteSchemaRequired`, `PropertyIdentityAmbiguous`,
-`RelationTargetsUnavailable`, `LocalSurfaceDisagreement`, and
+`UnavailableRelationTarget`, `LocalSurfaceDisagreement`, and
 `StaleRemoteSchema`.
 
 Unsupported, computed, paginated, lossy, or ambiguous values must not look

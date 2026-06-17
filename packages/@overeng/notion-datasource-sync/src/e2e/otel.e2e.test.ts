@@ -235,12 +235,12 @@ describe('notion datasource sync OTEL tracing', () => {
     }
   })
 
-  // NDS-L3-api-call-count-budget (EFF-R01 / R81, decision 0017 Half 1): the
+  // NDS-L3-api-call-count-budget (EFF-R01 / R81, decision 0025 Half 1): the
   // OBSERVABLE call-count budget. Counts `notion.api.request` spans (one per
   // LOGICAL request) under the one-shot sync span and asserts a falsifiable
   // CEILING plus the exact operation multiset, so a regression that adds a
   // per-entity read (e.g. a per-page `retrievePage` loop) is caught test-side.
-  // COUNT SEMANTICS (decision 0017): the ceiling counts logical requests, not
+  // COUNT SEMANTICS (decision 0025): the ceiling counts logical requests, not
   // HTTP attempts — retries/throttle waits are the SEPARATE rate-limit signal
   // (Half 2, `@overeng/notion-effect-client`) and never inflate this ceiling.
   it('enforces the API call-count budget: a clean one-shot issues <= 5 logical requests and a no-change re-sync issues no writes', async () => {

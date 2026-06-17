@@ -267,7 +267,7 @@ const cleanBreakSqlitePath = ({
 /**
  * Control-plane store path for a tracked workspace. The `_nds_*` control-plane
  * tables (outbox, shadow, sync events) live here, split from the public
- * projection in the `data/v1/<source>.sqlite` data file (ADR 0011).
+ * projection in the `data/v1/<source>.sqlite` data file (decision 0020).
  */
 const cleanBreakStatePath = ({ workspaceRoot }: { readonly workspaceRoot: string }): string =>
   join(workspaceRoot, '.notion', 'v1', 'state.sqlite')
@@ -430,7 +430,7 @@ const readReplicaHealth = ({
     }
 
     // The control-plane outbox lives in the split `.notion/v1/state.sqlite`
-    // store, not the public projection data file (ADR 0011).
+    // store, not the public projection data file (decision 0020).
     const stateDb = new DatabaseSync(statePath, { readOnly: true })
     let pendingOutboxCount: number
     try {
@@ -1691,7 +1691,7 @@ describe('notion datasource sync live Notion E2E skeleton', () => {
           // next reprojection rebuilds the row without the archive and the local
           // replica reads `_in_trash = 0`. A `UPDATE pages SET _in_trash = 0` is
           // then a no-op and emits no `row_restore` intent. This is a tracked
-          // fidelity gap (decisions/proposed/0012 F8: archived-row restore round
+          // fidelity gap (decision 0023: archived-row restore round
           // trip); the live gate asserts the observed behavior rather than a
           // contrived restore.
           {

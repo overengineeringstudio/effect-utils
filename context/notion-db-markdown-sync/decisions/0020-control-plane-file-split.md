@@ -1,6 +1,6 @@
 # Control-plane file split: hidden state.sqlite vs public data file
 
-Status: proposed
+Status: accepted
 
 The workspace SQLite layout splits into two files (Phase 4 SM3):
 

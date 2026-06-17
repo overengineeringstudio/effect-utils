@@ -1,6 +1,6 @@
 # Lifecycle (trash-state) divergence is a first-class conflict
 
-Status: proposed
+Status: accepted
 
 Page trash-state — the lifecycle surface where SQLite `_in_trash` mirrors the
 remote trash — is a bidirectional surface, so it falls under XC-R02 ("No silent
@@ -28,7 +28,7 @@ resolution path (keep-local / keep-remote).
 
 ## Decision
 
-**`in_trash` converges from three sources.** ADR 0015 set `in_trash` from the
+**`in_trash` converges from three sources.** ADR 0023 set `in_trash` from the
 remote-trash tombstone only. It is extended to converge from three sources:
 `RowObserved` (remote active state), `TombstoneRecorded(reason='remote_trash')`
 (remote-initiated trash), AND `RemoteWriteSettled` for a SETTLED local
@@ -90,7 +90,7 @@ stale-after-restore and watch-path gaps on epic #698.
   path is direction-agnostic — keep-local re-asserts `L` (a `TrashPage` when
   `L = 1`, a `RestorePage` when `L = 0`) and keep-remote adopts the recorded
   `remoteInTrash`, so it serves BOTH the `RowObserved` and tombstone seams.
-- ADR 0015's tombstone-only `in_trash` projection is augmented with
+- ADR 0023's tombstone-only `in_trash` projection is augmented with
   settled-intent convergence, closing the stale-after-restore correctness bug
   and the watch local round-trip.
 - Lifecycle-conflict detection is BIDIRECTIONAL: the `TombstoneRecorded(remote_trash)`
@@ -100,6 +100,4 @@ stale-after-restore and watch-path gaps on epic #698.
   path. (Remote-INITIATED trash on the watch INCREMENTAL scan, which records no
   `remote_trash` tombstone, still surfaces on watch's periodic full reconcile per
   VERIFY-R06; the incremental scan is not a new silent-LWW hole.)
-- This is the correct realization of REPLICA-R12 and XC-R02, so it needs no
-  re-ratification.
-- Cross-reference decisions 0014 and 0015.
+- Cross-reference decisions 0022 and 0023.

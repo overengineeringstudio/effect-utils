@@ -125,7 +125,7 @@ export type WatchDaemonOptions = {
   readonly storePath?: string
   /**
    * Public projection / CDC data file. Distinct from `storePath` for a tracked
-   * workspace (control-plane split, ADR 0011); equal to it for a standalone file.
+   * workspace (control-plane split, decision 0020); equal to it for a standalone file.
    */
   readonly replicaPath?: string
   readonly rootId: SyncRootId
@@ -135,7 +135,7 @@ export type WatchDaemonOptions = {
   readonly schemaProperties?: ReadonlyArray<SchemaPropertyObservation>
   readonly requiredCapabilities?: ReadonlyArray<CapabilityName>
   readonly materializeBodies?: boolean
-  /** Workspace-wide authority mode threaded into the planner's `writeMode` (decisions 0003, 0010). */
+  /** Workspace-wide authority mode threaded into the planner's `writeMode` (decisions 0015, 0019). */
   readonly authorityMode?: AuthorityMode
   /**
    * When `true`, run the cycle as an observe/plan/report loop with ZERO durable
@@ -462,7 +462,7 @@ const interruptOnTimeout = <TValue, TError, TContext>({
 
 const readPendingReplicaPlannerInputs = ({ options }: { readonly options: WatchDaemonOptions }) => {
   // CDC + planner intents target the public data file; the event log is the
-  // control-plane store (`options.store`). ADR 0011.
+  // control-plane store (`options.store`). decision 0020.
   const replicaPath = options.replicaPath ?? options.storePath
   if (
     replicaPath === undefined ||
@@ -504,7 +504,7 @@ const projectReplicaIfWritable = ({
 }): void => {
   if (replicaPath === undefined || replicaPath === ':memory:') return
   // The control-plane store and the public projection may be distinct files
-  // (ADR 0011); project FROM the store INTO the data file. When they coincide
+  // (decision 0020); project FROM the store INTO the data file. When they coincide
   // (standalone) this is the in-place unified projection.
   projectReplicaFromSyncStore({
     syncStorePath: options.storePath ?? replicaPath,

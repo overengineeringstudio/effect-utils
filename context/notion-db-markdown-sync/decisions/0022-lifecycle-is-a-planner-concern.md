@@ -1,6 +1,6 @@
 # Lifecycle reconciliation is a planner/outbox concern; remove the vestigial convergence path
 
-Status: proposed
+Status: accepted
 
 `convergeLocalSurfaces` carries `kind:'lifecycle'` / `lifecycleAction` branches
 that imply page archive/restore is a local-convergence problem. It is not. Page
@@ -22,15 +22,14 @@ their presence advertises a convergence capability that never runs in
 production; the convergence matrix should stop gesturing at a non-running path.
 
 Lifecycle correctness is delivered instead by three concrete items, two of which
-cross-reference decision 0015 (F8):
+cross-reference decision 0023 (F8):
 
-- (a) F8 (decision 0015): remote-trash reprojects the row with `in_trash = 1`,
+- (a) F8 (decision 0023): remote-trash reprojects the row with `in_trash = 1`,
   so an archived row survives reprojection and a local restore becomes
   expressible.
-- (b) Guard `RestorePageCommand` through tombstone safety. Today it bypasses
-  `guardTombstoneSafety`, which is gated on `TrashPageCommand` only. Restoring a
-  page that was moved out gets no `MoveOutNotDelete` / `DeleteVsEdit` protection
-  — a found gap. The guard must cover restore as well as trash.
+- (b) Guard `RestorePageCommand` through the restore-specific moved-out safety
+  path. Trash still uses `guardTombstoneSafety`; restore must at minimum fail
+  closed when a page was moved out of the tracked data source.
 - (c) Fix the fake gateway so `queryRows` excludes trashed rows. Today it returns
   them, which masks the F8 restore gap from tests (the fake re-observes a trashed
   row, so the archive-drops-out-of-window behavior that motivates F8 never
@@ -46,16 +45,16 @@ cross-reference decision 0015 (F8):
 
 A validation trace proved the lifecycle convergence branch is unreachable in
 production — the CDC-to-planner path bypasses the engine — and that lifecycle is
-mono-surface locally. The same trace surfaced the `RestorePageCommand` guard gap
-and the fake-gateway query-fidelity gap via a pure-SQLite probe plus a code
-trace.
+mono-surface locally. The same trace surfaced the `RestorePageCommand` moved-out
+guard gap and the fake-gateway query-fidelity gap via a pure-SQLite probe plus a
+code trace.
 
 ## Consequences
 
 - The four items above land: remove the convergence lifecycle branches; deliver
-  F8 (decision 0015) so remote-trash reprojects `in_trash = 1`; extend
-  `guardTombstoneSafety` to cover `RestorePageCommand`; fix the fake gateway's
-  `queryRows` to exclude trashed rows.
+  F8 (decision 0023) so remote-trash reprojects `in_trash = 1`; add the
+  restore-specific moved-out guard; fix the fake gateway's `queryRows` to
+  exclude trashed rows.
 - The fake-fidelity fix (c) is a prerequisite for testing F8 restore at the fake
   level — without it the archive-then-restore round trip can only be exercised
   live.

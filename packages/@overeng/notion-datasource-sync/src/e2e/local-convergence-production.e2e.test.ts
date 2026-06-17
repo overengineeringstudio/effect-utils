@@ -227,7 +227,7 @@ const openConflictsCount = (sqlitePath: string): number => {
  * The guard names recorded for the active blocks. For a tracked workspace the
  * guard-block events live in the hidden control-plane store (`state.sqlite`),
  * NOT the public data file (which holds only the `conflicts`/`pages`
- * projection). ADR 0011.
+ * projection). decision 0020.
  */
 const guardBlockNames = (workspace: AbsolutePathType): readonly string[] => {
   const db = new DatabaseSync(stateSqlitePath(workspace), { readOnly: true })

@@ -1,6 +1,6 @@
 # Clean break v1: delete legacy datasource-sync public surfaces, no compat shims
 
-Status: proposed
+Status: accepted
 
 The already-landed datasource-sync exposes `rows`/`_nds_*`-style surfaces and
 unversioned layouts. R05 mandates only the v1 surface (`pages`, versioned paths,
