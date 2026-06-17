@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
 import { Effect, Schema } from 'effect'
 
+/** Branded SHA-256 content digest in lowercase-hex `sha256:<64 hex>` form. */
 export const ContentDigest = Schema.String.pipe(
   Schema.pattern(/^sha256:[a-f0-9]{64}$/),
   Schema.brand('ContentAddress.ContentDigest'),
@@ -9,18 +10,21 @@ export const ContentDigest = Schema.String.pipe(
 )
 export type ContentDigest = typeof ContentDigest.Type
 
+/** Branded non-empty media (MIME) type describing the encoded byte payload. */
 export const MediaType = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('ContentAddress.MediaType'),
   Schema.annotations({ identifier: 'ContentAddress.MediaType' }),
 )
 export type MediaType = typeof MediaType.Type
 
+/** Branded codec tag naming the byte-encoding scheme (e.g. `canonical-json`). */
 export const Codec = Schema.NonEmptyTrimmedString.pipe(
   Schema.brand('ContentAddress.Codec'),
   Schema.annotations({ identifier: 'ContentAddress.Codec' }),
 )
 export type Codec = typeof Codec.Type
 
+/** Self-describing content-address record: digest + byte length + media type (optional codec/schema version). */
 export const ContentDescriptor = Schema.TaggedStruct('ContentDescriptor', {
   digest: ContentDigest,
   byteLength: Schema.NonNegativeInt,
@@ -30,6 +34,7 @@ export const ContentDescriptor = Schema.TaggedStruct('ContentDescriptor', {
 }).annotations({ identifier: 'ContentAddress.ContentDescriptor' })
 export type ContentDescriptor = typeof ContentDescriptor.Type
 
+/** Raised by {@link verifyDescriptor} when bytes fail the descriptor's digest or byte-length check (fail-closed). */
 export class ContentDescriptorMismatchError extends Schema.TaggedError<ContentDescriptorMismatchError>()(
   'ContentDescriptorMismatchError',
   {
@@ -48,15 +53,21 @@ const decodeMediaType = Schema.decodeUnknownSync(MediaType)
 const decodeCodec = Schema.decodeUnknownSync(Codec)
 const decodeDescriptor = Schema.decodeUnknownSync(ContentDescriptor)
 
+/** Codec tag stamped on descriptors hashed via the canonical-JSON encoding. */
 export const canonicalJsonCodec = decodeCodec('canonical-json')
+/** Media type for canonical-JSON payloads. */
 export const canonicalJsonMediaType = decodeMediaType('application/json')
+/** Default media type for plain UTF-8 text payloads. */
 export const utf8TextMediaType = decodeMediaType('text/plain; charset=utf-8')
 
+/** Encode a string to its UTF-8 byte representation. */
 export const utf8Bytes = (value: string): Uint8Array => textEncoder.encode(value)
 
+/** Compute the SHA-256 {@link ContentDigest} of raw bytes. */
 export const hashBytes = (bytes: Uint8Array): ContentDigest =>
   decodeDigest(`sha256:${bytesToHex(sha256(bytes))}`)
 
+/** Hash a string by its UTF-8 bytes; equivalent to `hashBytes(utf8Bytes(value))`. */
 export const hashUtf8 = (value: string): ContentDigest => hashBytes(utf8Bytes(value))
 
 const canonicalizeJson = (value: unknown): string => {
@@ -85,21 +96,25 @@ const canonicalizeJson = (value: unknown): string => {
   return JSON.stringify(value)
 }
 
+/** Encode `value` and render it as canonical JSON with object keys sorted, for stable hashing across key-insertion order. */
 export const canonicalJsonString = <TSchema extends Schema.Schema.AnyNoContext>(
   schema: TSchema,
   value: typeof schema.Type,
 ): string => canonicalizeJson(Schema.encodeSync(schema)(value))
 
+/** UTF-8 bytes of {@link canonicalJsonString} — the exact bytes that get hashed. */
 export const canonicalJsonBytes = <TSchema extends Schema.Schema.AnyNoContext>(
   schema: TSchema,
   value: typeof schema.Type,
 ): Uint8Array => utf8Bytes(canonicalJsonString(schema, value))
 
+/** Content digest of a value's canonical-JSON encoding; stable regardless of object key order. */
 export const hashCanonicalJson = <TSchema extends Schema.Schema.AnyNoContext>(
   schema: TSchema,
   value: typeof schema.Type,
 ): ContentDigest => hashBytes(canonicalJsonBytes(schema, value))
 
+/** Build a {@link ContentDescriptor} from raw bytes, hashing them and recording their byte length and media type. */
 export const descriptorForBytes = ({
   bytes,
   mediaType,
@@ -120,6 +135,7 @@ export const descriptorForBytes = ({
     ...(schemaVersion === undefined ? {} : { schemaVersion }),
   })
 
+/** Build a descriptor for a UTF-8 string, defaulting the media type to {@link utf8TextMediaType}. */
 export const descriptorForUtf8 = ({
   value,
   mediaType = utf8TextMediaType,
@@ -138,6 +154,7 @@ export const descriptorForUtf8 = ({
     ...(schemaVersion === undefined ? {} : { schemaVersion }),
   })
 
+/** Build a descriptor for a value's canonical-JSON encoding; stamps the canonical-JSON codec and media type and requires an explicit `schemaVersion`. */
 export const descriptorForCanonicalJson = <TSchema extends Schema.Schema.AnyNoContext>({
   schema,
   value,
@@ -154,6 +171,7 @@ export const descriptorForCanonicalJson = <TSchema extends Schema.Schema.AnyNoCo
     schemaVersion,
   })
 
+/** Re-hash bytes and fail with {@link ContentDescriptorMismatchError} if digest or byte length disagree with the descriptor. */
 export const verifyDescriptor = Effect.fn('ContentAddress.verifyDescriptor')(function* ({
   descriptor,
   bytes,
@@ -174,6 +192,7 @@ export const verifyDescriptor = Effect.fn('ContentAddress.verifyDescriptor')(fun
   }
 })
 
+/** Derive a fan-out object-store path (`sha256/<first 2 hex>/<rest>`) from a digest, splitting on the first hex byte to avoid huge flat dirs. */
 export const objectPathForDigest = (digest: ContentDigest | string): string => {
   const hex = Schema.decodeUnknownSync(ContentDigest)(digest).slice('sha256:'.length)
   return `sha256/${hex.slice(0, 2)}/${hex.slice(2)}`
