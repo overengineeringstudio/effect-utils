@@ -105,6 +105,7 @@ export interface ReconcileStatus {
   readonly status: PorcelainStatus
 }
 
+/** Options for a single-page reconcile/sync pass: target path plus the destructive-write and dry-run gates. */
 export interface ReconcileOptions {
   readonly path: string
   readonly force?: boolean
@@ -199,7 +200,7 @@ const assertReviewMarkupAllowed = (opts: {
   const blocked =
     containsRoughdraftReviewMarkup(opts.body) === true && opts.allowReviewMarkup !== true
   return Effect.gen(function* () {
-    if (blocked) {
+    if (blocked === true) {
       return yield* new NmdDestructiveBodyBlockedError({
         page_id: opts.pageId,
         guard: 'ReviewMarkupAsContent',
@@ -214,7 +215,7 @@ const assertReviewMarkupAllowed = (opts: {
       attributes: {
         guard: 'ReviewMarkupAsContent',
         blockCount: 0,
-        verdict: blocked ? 'blocked' : 'inert',
+        verdict: blocked === true ? 'blocked' : 'inert',
       },
     }),
   )
@@ -228,7 +229,7 @@ const assertUnknownDeletionAllowed = (opts: {
 }): Effect.Effect<void, NmdDestructiveBodyBlockedError> => {
   const blocked = opts.unknownBlockIds.length > 0 && opts.allowDeletingUnknownBlocks !== true
   return Effect.gen(function* () {
-    if (blocked) {
+    if (blocked === true) {
       return yield* new NmdDestructiveBodyBlockedError({
         page_id: opts.pageId,
         guard: 'UnknownBlockDeletion',
@@ -243,7 +244,7 @@ const assertUnknownDeletionAllowed = (opts: {
       attributes: {
         guard: 'UnknownBlockDeletion',
         blockCount: opts.unknownBlockIds.length,
-        verdict: blocked ? 'blocked' : 'inert',
+        verdict: blocked === true ? 'blocked' : 'inert',
       },
     }),
   )
@@ -263,10 +264,13 @@ const maybeGcObjects = (opts: {
       })
     : Effect.succeed(undefined)
 
-const withObjectGc = <R extends ReconcileResult>(
-  r: R,
-  objectGc: NmdObjectGcResult | undefined,
-): R => (objectGc === undefined ? r : ({ ...r, objectGc } as R))
+const withObjectGc = <R extends ReconcileResult>({
+  result,
+  objectGc,
+}: {
+  readonly result: R
+  readonly objectGc: NmdObjectGcResult | undefined
+}): R => (objectGc === undefined ? result : ({ ...result, objectGc } as R))
 
 const remoteBodyFor = (pageId: string) =>
   Effect.gen(function* () {
@@ -608,16 +612,16 @@ export const reconcileFile = (
           dryRun: true,
         })
         return result(
-          withObjectGc(
-            {
+          withObjectGc({
+            result: {
               _tag: 'created',
               path: opts.path,
               pageId: undefined,
               parentPageId,
               dryRun: true,
             },
-            objectGc,
-          ),
+            objectGc: objectGc,
+          }),
         )
       }
       const page = yield* gateway.createPage({
@@ -636,7 +640,12 @@ export const reconcileFile = (
         enabled: opts.gcObjects,
         dryRun: false,
       })
-      return result(withObjectGc({ _tag: 'created', path: opts.path, pageId: page.id }, objectGc))
+      return result(
+        withObjectGc({
+          result: { _tag: 'created', path: opts.path, pageId: page.id },
+          objectGc: objectGc,
+        }),
+      )
     }
 
     const pageId = local.pageId
@@ -668,20 +677,20 @@ export const reconcileFile = (
     switch (decision._tag) {
       case 'noop':
         return result(
-          withObjectGc(
-            {
+          withObjectGc({
+            result: {
               _tag: 'noop',
               path: opts.path,
               pageId,
               ...(opts.dryRun === true ? { dryRun: true as const } : {}),
             },
-            yield* maybeGcObjects({
+            objectGc: yield* maybeGcObjects({
               path: opts.path,
               syncStates: [],
               enabled: opts.gcObjects,
               dryRun: opts.dryRun === true,
             }),
-          ),
+          }),
         )
       case 'push': {
         yield* guardMediaWrite({
@@ -710,15 +719,15 @@ export const reconcileFile = (
         })
         if (opts.dryRun === true) {
           return result(
-            withObjectGc(
-              { _tag: 'pushed', path: opts.path, pageId, dryRun: true },
-              yield* maybeGcObjects({
+            withObjectGc({
+              result: { _tag: 'pushed', path: opts.path, pageId, dryRun: true },
+              objectGc: yield* maybeGcObjects({
                 path: opts.path,
                 syncStates: [],
                 enabled: opts.gcObjects,
                 dryRun: true,
               }),
-            ),
+            }),
           )
         }
         yield* gateway.updateMarkdown({
@@ -727,15 +736,15 @@ export const reconcileFile = (
           allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
         })
         return result(
-          withObjectGc(
-            { _tag: 'pushed', path: opts.path, pageId },
-            yield* maybeGcObjects({
+          withObjectGc({
+            result: { _tag: 'pushed', path: opts.path, pageId },
+            objectGc: yield* maybeGcObjects({
               path: opts.path,
               syncStates: [],
               enabled: opts.gcObjects,
               dryRun: false,
             }),
-          ),
+          }),
         )
       }
       case 'pull': {
@@ -751,15 +760,15 @@ export const reconcileFile = (
         })
         if (opts.dryRun === true) {
           return result(
-            withObjectGc(
-              { _tag: 'pulled', path: opts.path, pageId, dryRun: true },
-              yield* maybeGcObjects({
+            withObjectGc({
+              result: { _tag: 'pulled', path: opts.path, pageId, dryRun: true },
+              objectGc: yield* maybeGcObjects({
                 path: opts.path,
                 syncStates: [],
                 enabled: opts.gcObjects,
                 dryRun: true,
               }),
-            ),
+            }),
           )
         }
         yield* writeFile({
@@ -771,15 +780,15 @@ export const reconcileFile = (
           body: remote,
         })
         return result(
-          withObjectGc(
-            { _tag: 'pulled', path: opts.path, pageId },
-            yield* maybeGcObjects({
+          withObjectGc({
+            result: { _tag: 'pulled', path: opts.path, pageId },
+            objectGc: yield* maybeGcObjects({
               path: opts.path,
               syncStates: [],
               enabled: opts.gcObjects,
               dryRun: false,
             }),
-          ),
+          }),
         )
       }
       case 'refuse':
@@ -856,20 +865,20 @@ const reconcileSharedFile = (opts: {
       })
       if (opts.dryRun === true) {
         return result(
-          withObjectGc(
-            {
+          withObjectGc({
+            result: {
               _tag: 'shared-merged',
               path: opts.path,
               pageId: opts.pageId,
               dryRun: true,
             },
-            yield* maybeGcObjects({
+            objectGc: yield* maybeGcObjects({
               path: opts.path,
               syncStates: [opts.syncState],
               enabled: opts.gcObjects,
               dryRun: true,
             }),
-          ),
+          }),
         )
       }
       yield* gateway.updateMarkdown({
@@ -884,15 +893,15 @@ const reconcileSharedFile = (opts: {
         body: opts.rendered,
       })
       return result(
-        withObjectGc(
-          { _tag: 'shared-merged', path: opts.path, pageId: opts.pageId },
-          yield* maybeGcObjects({
+        withObjectGc({
+          result: { _tag: 'shared-merged', path: opts.path, pageId: opts.pageId },
+          objectGc: yield* maybeGcObjects({
             path: opts.path,
             syncStates: [syncState],
             enabled: opts.gcObjects,
             dryRun: false,
           }),
-        ),
+        }),
       )
     }
 
@@ -905,20 +914,20 @@ const reconcileSharedFile = (opts: {
     switch (outcome._tag) {
       case 'noop':
         return result(
-          withObjectGc(
-            {
+          withObjectGc({
+            result: {
               _tag: 'noop',
               path: opts.path,
               pageId: opts.pageId,
               ...(opts.dryRun === true ? { dryRun: true as const } : {}),
             },
-            yield* maybeGcObjects({
+            objectGc: yield* maybeGcObjects({
               path: opts.path,
               syncStates: [opts.syncState],
               enabled: opts.gcObjects,
               dryRun: opts.dryRun,
             }),
-          ),
+          }),
         )
       case 'merge': {
         yield* guardCommentWrite({
@@ -940,20 +949,20 @@ const reconcileSharedFile = (opts: {
         })
         if (opts.dryRun === true) {
           return result(
-            withObjectGc(
-              {
+            withObjectGc({
+              result: {
                 _tag: 'shared-merged',
                 path: opts.path,
                 pageId: opts.pageId,
                 dryRun: true,
               },
-              yield* maybeGcObjects({
+              objectGc: yield* maybeGcObjects({
                 path: opts.path,
                 syncStates: [opts.syncState],
                 enabled: opts.gcObjects,
                 dryRun: true,
               }),
-            ),
+            }),
           )
         }
         yield* gateway.updateMarkdown({
@@ -969,35 +978,35 @@ const reconcileSharedFile = (opts: {
           body: outcome.merged,
         })
         return result(
-          withObjectGc(
-            { _tag: 'shared-merged', path: opts.path, pageId: opts.pageId },
-            yield* maybeGcObjects({
+          withObjectGc({
+            result: { _tag: 'shared-merged', path: opts.path, pageId: opts.pageId },
+            objectGc: yield* maybeGcObjects({
               path: opts.path,
               syncStates: [syncState],
               enabled: opts.gcObjects,
               dryRun: false,
             }),
-          ),
+          }),
         )
       }
       case 'conflict': {
         if (opts.dryRun === true) {
           return result(
-            withObjectGc(
-              {
+            withObjectGc({
+              result: {
                 _tag: 'shared-conflict',
                 path: opts.path,
                 pageId: opts.pageId,
                 conflictPath: conflictPathFor(opts.path),
                 dryRun: true,
               },
-              yield* maybeGcObjects({
+              objectGc: yield* maybeGcObjects({
                 path: opts.path,
                 syncStates: [opts.syncState],
                 enabled: opts.gcObjects,
                 dryRun: true,
               }),
-            ),
+            }),
           )
         }
         const conflictPath = yield* writeSharedConflict({
@@ -1006,20 +1015,20 @@ const reconcileSharedFile = (opts: {
           outcome,
         })
         return result(
-          withObjectGc(
-            {
+          withObjectGc({
+            result: {
               _tag: 'shared-conflict',
               path: opts.path,
               pageId: opts.pageId,
               conflictPath,
             },
-            yield* maybeGcObjects({
+            objectGc: yield* maybeGcObjects({
               path: opts.path,
               syncStates: [opts.syncState],
               enabled: opts.gcObjects,
               dryRun: false,
             }),
-          ),
+          }),
         )
       }
     }

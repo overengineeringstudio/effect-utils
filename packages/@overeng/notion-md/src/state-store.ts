@@ -43,6 +43,7 @@ export const NmdBaseSnapshotV2 = Schema.Struct({
 
 export type NmdBaseSnapshotV2 = typeof NmdBaseSnapshotV2.Type
 
+/** Result of an object-store GC pass for one sync root: reachable/removed content-addressed object ids, `dryRun` when plan-only. */
 export interface NmdObjectGcResult {
   readonly root: string
   readonly reachable: readonly string[]

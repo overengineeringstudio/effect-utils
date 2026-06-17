@@ -9,6 +9,8 @@
  * NOTION_MD_CAPTURE_CORPUS=1 NOTION_API_TOKEN=... NOTION_TEST_PARENT_PAGE_ID=... \
  *   pnpm --dir packages/@overeng/notion-md exec vitest run src/corpus-live.integration.test.ts --config vitest.integration.config.ts
  */
+
+/** Golden fidelity corpus captured from live Notion (R35) — `captured` records provenance; replayed by the corpus harness in `corpus.ts`. */
 export const fidelityCorpusData = {
   captured: 'live-notion:2026-06-12T10:12:19.371Z',
   entries: [

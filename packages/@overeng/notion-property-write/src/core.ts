@@ -65,10 +65,13 @@ const canonicalTagFitsPropertyType = ({
  * 9. local surface disagrees -> `LocalSurfaceDisagreement`
  * 10. required settlement missing -> `ReadAfterWriteMismatch`
  */
-export const evaluatePropertyWrite = (
-  proof: PropertyWriteProof,
-  desiredWrite: DesiredPropertyWrite,
-): PropertyWriteGuardDecision => {
+export const evaluatePropertyWrite = ({
+  proof,
+  desiredWrite,
+}: {
+  readonly proof: PropertyWriteProof
+  readonly desiredWrite: DesiredPropertyWrite
+}): PropertyWriteGuardDecision => {
   const { identity, schemaConsistency, baseCompleteness, relationAvailability } = proof
 
   // 1. Datasource-scoped writes require a freshly observed remote schema.

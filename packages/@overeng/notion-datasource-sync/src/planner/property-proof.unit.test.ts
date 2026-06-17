@@ -24,7 +24,7 @@ const baseInputs = (overrides: Partial<WorkspaceProofInputs> = {}): WorkspacePro
 
 const evaluate = (overrides: Partial<WorkspaceProofInputs> = {}) => {
   const { proof, desiredWrite } = makeWorkspaceProof(baseInputs(overrides))
-  return evaluatePropertyWrite(proof, desiredWrite)
+  return evaluatePropertyWrite({ proof: proof, desiredWrite: desiredWrite })
 }
 
 describe('makeWorkspaceProof', () => {

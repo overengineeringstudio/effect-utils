@@ -359,7 +359,7 @@ export const makeStandaloneLiveProof = (args: {
       return decision
     }
 
-    return evaluatePropertyWrite(built.proof, built.desiredWrite)
+    return evaluatePropertyWrite({ proof: built.proof, desiredWrite: built.desiredWrite })
   }).pipe(
     Effect.catchTag(
       'NmdGatewayError',

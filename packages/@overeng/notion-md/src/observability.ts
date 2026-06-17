@@ -517,7 +517,7 @@ export const objectGcResultAttrs = OtelAttrs.defineSync(
 export const ObjectGcSpan = OtelOperation.define({
   name: 'notion-md.object-gc',
   attributes: objectGcAttrs,
-  label: ({ dryRun }) => (dryRun ? 'plan' : 'prune'),
+  label: ({ dryRun }) => (dryRun === true ? 'plan' : 'prune'),
 })
 
 /** Operation span emitted when a webhook signal is mapped to watch triggers. */
