@@ -28,6 +28,20 @@ export default oxlintConfig({
       files: ['**/genie/src/runtime/**/*.test.ts'],
       rules: { 'overeng/no-external-imports': 'off' },
     },
+    // jsdoc-require-exports governs PUBLISHED package API documentation. The
+    // config-generation tooling (the `genie/` dirs + `*.genie.ts` generator
+    // sources) and illustrative `examples/` code are not published API, so the
+    // rule is scoped off there. `**/genie/**` also matches the `@overeng/genie`
+    // PACKAGE, which IS published API — the next override re-enables it for that
+    // package's `src` so its surface stays covered (overrides apply in order).
+    {
+      files: ['**/genie/**', '**/*.genie.ts', '**/examples/**'],
+      rules: { 'overeng/jsdoc-require-exports': 'off' },
+    },
+    {
+      files: ['packages/@overeng/genie/src/**'],
+      rules: { 'overeng/jsdoc-require-exports': 'warn' },
+    },
     // effect-utils: production code must use schema-backed OTEL contracts instead
     // of raw Effect/Stream span primitives. Keep boundary/runtime/test exceptions
     // narrow and explicit so repo-wide adoption remains mechanically checkable.

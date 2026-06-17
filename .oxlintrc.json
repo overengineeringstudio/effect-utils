@@ -169,6 +169,18 @@
       }
     },
     {
+      "files": ["**/genie/**", "**/*.genie.ts", "**/examples/**"],
+      "rules": {
+        "overeng/jsdoc-require-exports": "off"
+      }
+    },
+    {
+      "files": ["packages/@overeng/genie/src/**"],
+      "rules": {
+        "overeng/jsdoc-require-exports": "warn"
+      }
+    },
+    {
       "files": ["packages/@overeng/*/src/**/*.ts", "packages/@overeng/*/src/**/*.tsx"],
       "rules": {
         "overeng/no-raw-otel-primitives": "error"
