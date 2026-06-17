@@ -145,14 +145,14 @@ export const emitInvocationMetrics = ({
           handler,
           outcome,
         }),
-        invocationDurationMsBridge.trustedRecord(
-          {
+        invocationDurationMsBridge.trustedRecord({
+          labels: {
             service,
             handler,
             outcome,
           },
-          durationMs,
-        ),
+          value: durationMs,
+        }),
       ],
       { discard: true },
     ),
@@ -200,7 +200,10 @@ export const emitAwakeableWait = ({
   ctx: restate.Context
   waitMs: number
 }): Effect.Effect<void> =>
-  emitWhenProcessing({ ctx, emit: awakeableWaitMsBridge.trustedRecord({}, waitMs) })
+  emitWhenProcessing({
+    ctx,
+    emit: awakeableWaitMsBridge.trustedRecord({ labels: {}, value: waitMs }),
+  })
 
 /** Emit a `pollLoop` cycle outcome counter, gated on non-replay. */
 export const emitPollLoopCycle = ({

@@ -457,7 +457,10 @@ const storeGcRssGauge = OtelMetric.gauge({
   description: 'Resident set size (bytes) sampled during mr store gc/status',
   unit: 'By',
   labels: Schema.Struct({
-    repoConcurrency: OtelAttr.number('repo_concurrency', { cardinality: 'bounded' }),
+    repoConcurrency: OtelAttr.number({
+      key: 'repo_concurrency',
+      metadata: { cardinality: 'bounded' },
+    }),
   }),
 })
 
@@ -486,7 +489,9 @@ export const sampleStoreGcRss = ({
     Effect.flatMap((config) =>
       sampleResource({
         sample: Effect.sync(() => process.memoryUsage().rss).pipe(
-          Effect.flatMap((rss) => storeGcRssGaugeBridge.trustedSet({ repoConcurrency }, rss)),
+          Effect.flatMap((rss) =>
+            storeGcRssGaugeBridge.trustedSet({ labels: { repoConcurrency }, value: rss }),
+          ),
         ),
         interval,
       }).pipe(

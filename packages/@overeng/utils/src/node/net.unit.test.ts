@@ -31,16 +31,18 @@ Vitest.describe('net port helpers', () => {
 
   Vitest.it('withFreePort retries on EADDRINUSE then succeeds', async () => {
     let attempts = 0
-    const result = await withFreePort((port) => {
-      attempts++
-      if (attempts < 3) {
-        const err = new Error('listen EADDRINUSE: address already in use') as Error & {
-          code: string
+    const result = await withFreePort({
+      fn: (port) => {
+        attempts++
+        if (attempts < 3) {
+          const err = new Error('listen EADDRINUSE: address already in use') as Error & {
+            code: string
+          }
+          err.code = 'EADDRINUSE'
+          return Promise.reject(err)
         }
-        err.code = 'EADDRINUSE'
-        return Promise.reject(err)
-      }
-      return Promise.resolve(`bound:${port}`)
+        return Promise.resolve(`bound:${port}`)
+      },
     })
     expect(attempts).toBe(3)
     expect(result.startsWith('bound:')).toBe(true)
@@ -49,9 +51,11 @@ Vitest.describe('net port helpers', () => {
   Vitest.it('withFreePort propagates a non-collision error immediately', async () => {
     let attempts = 0
     await expect(
-      withFreePort(() => {
-        attempts++
-        return Promise.reject(new Error('something else failed'))
+      withFreePort({
+        fn: () => {
+          attempts++
+          return Promise.reject(new Error('something else failed'))
+        },
       }),
     ).rejects.toThrow('something else failed')
     expect(attempts).toBe(1)
@@ -60,15 +64,15 @@ Vitest.describe('net port helpers', () => {
   Vitest.it('withFreePort gives up after exhausting retries', async () => {
     let attempts = 0
     await expect(
-      withFreePort(
-        () => {
+      withFreePort({
+        fn: () => {
           attempts++
           const err = new Error('EADDRINUSE') as Error & { code: string }
           err.code = 'EADDRINUSE'
           return Promise.reject(err)
         },
-        { retries: 2 },
-      ),
+        opts: { retries: 2 },
+      }),
     ).rejects.toThrow('EADDRINUSE')
     /* retries: 2 → initial attempt + 2 retries = 3 total */
     expect(attempts).toBe(3)

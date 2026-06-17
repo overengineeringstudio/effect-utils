@@ -25,12 +25,16 @@ export const restateOperation = (name: string) =>
  */
 export const BoundaryAttemptAttrs = OtelAttrs.defineSync(
   Schema.Struct({
-    service: OtelAttr.string('restate.service', { cardinality: 'bounded' }),
-    handler: OtelAttr.string('restate.handler', { cardinality: 'bounded' }),
-    objectKey: Schema.optional(OtelAttr.string('restate.object.key', { cardinality: 'high' })),
-    workflowId: Schema.optional(OtelAttr.string('restate.workflow.id', { cardinality: 'high' })),
+    service: OtelAttr.string({ key: 'restate.service', metadata: { cardinality: 'bounded' } }),
+    handler: OtelAttr.string({ key: 'restate.handler', metadata: { cardinality: 'bounded' } }),
+    objectKey: Schema.optional(
+      OtelAttr.string({ key: 'restate.object.key', metadata: { cardinality: 'high' } }),
+    ),
+    workflowId: Schema.optional(
+      OtelAttr.string({ key: 'restate.workflow.id', metadata: { cardinality: 'high' } }),
+    ),
     idempotencyKey: Schema.optional(
-      OtelAttr.string('restate.idempotency.key', { cardinality: 'high' }),
+      OtelAttr.string({ key: 'restate.idempotency.key', metadata: { cardinality: 'high' } }),
     ),
   }),
 )
@@ -46,29 +50,31 @@ export const BoundaryOutcomeAttrs = OtelAttrs.defineSync(
     errorClass: Schema.optional(
       OtelAttr.literal('restate.error.class', 'terminal', 'retryable', 'cancelled'),
     ),
-    errorTag: Schema.optional(OtelAttr.string('restate.error.tag', { cardinality: 'bounded' })),
+    errorTag: Schema.optional(
+      OtelAttr.string({ key: 'restate.error.tag', metadata: { cardinality: 'bounded' } }),
+    ),
   }),
 )
 
 const InvocationLabels = Schema.Struct({
-  service: OtelAttr.string('service', { cardinality: 'bounded' }),
-  handler: OtelAttr.string('handler', { cardinality: 'bounded' }),
+  service: OtelAttr.string({ key: 'service', metadata: { cardinality: 'bounded' } }),
+  handler: OtelAttr.string({ key: 'handler', metadata: { cardinality: 'bounded' } }),
   outcome: OtelAttr.literal('outcome', 'success', 'terminal', 'retryable', 'cancelled'),
 })
 
 const HandlerLabels = Schema.Struct({
-  service: OtelAttr.string('service', { cardinality: 'bounded' }),
-  handler: OtelAttr.string('handler', { cardinality: 'bounded' }),
+  service: OtelAttr.string({ key: 'service', metadata: { cardinality: 'bounded' } }),
+  handler: OtelAttr.string({ key: 'handler', metadata: { cardinality: 'bounded' } }),
 })
 
 const DurableStepLabels = Schema.Struct({
-  step: OtelAttr.string('step', { cardinality: 'bounded' }),
+  step: OtelAttr.string({ key: 'step', metadata: { cardinality: 'bounded' } }),
 })
 
 const NoLabels = Schema.Struct({})
 
 const PollLoopCycleLabels = Schema.Struct({
-  name: OtelAttr.string('name', { cardinality: 'bounded' }),
+  name: OtelAttr.string({ key: 'name', metadata: { cardinality: 'bounded' } }),
   outcome: OtelAttr.literal('outcome', 'ok', 'error', 'stopped'),
 })
 

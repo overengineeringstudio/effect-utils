@@ -454,37 +454,43 @@ export interface OtelEffectCounter<S extends Schema.Schema.AnyNoContext> {
   readonly definition: OtelMetricDefinition<S>
   readonly metric: OtelEffectCounterMetric
   readonly increment: (labels: Schema.Schema.Type<S>) => Effect.Effect<void, OtelAttrEncodeError>
-  readonly incrementBy: (
-    labels: Schema.Schema.Type<S>,
-    amount: number,
-  ) => Effect.Effect<void, OtelAttrEncodeError>
+  readonly incrementBy: (options: {
+    labels: Schema.Schema.Type<S>
+    amount: number
+  }) => Effect.Effect<void, OtelAttrEncodeError>
   readonly trustedIncrement: (labels: Schema.Schema.Type<S>) => Effect.Effect<void>
-  readonly trustedIncrementBy: (
-    labels: Schema.Schema.Type<S>,
-    amount: number,
-  ) => Effect.Effect<void>
+  readonly trustedIncrementBy: (options: {
+    labels: Schema.Schema.Type<S>
+    amount: number
+  }) => Effect.Effect<void>
 }
 
 /** Effect Metric runtime bridge for a schema-first histogram contract. */
 export interface OtelEffectHistogram<S extends Schema.Schema.AnyNoContext> {
   readonly definition: OtelHistogramDefinition<S>
   readonly metric: OtelEffectHistogramMetric
-  readonly record: (
-    labels: Schema.Schema.Type<S>,
-    value: number,
-  ) => Effect.Effect<void, OtelAttrEncodeError>
-  readonly trustedRecord: (labels: Schema.Schema.Type<S>, value: number) => Effect.Effect<void>
+  readonly record: (options: {
+    labels: Schema.Schema.Type<S>
+    value: number
+  }) => Effect.Effect<void, OtelAttrEncodeError>
+  readonly trustedRecord: (options: {
+    labels: Schema.Schema.Type<S>
+    value: number
+  }) => Effect.Effect<void>
 }
 
 /** Effect Metric runtime bridge for a schema-first gauge contract. */
 export interface OtelEffectGauge<S extends Schema.Schema.AnyNoContext> {
   readonly definition: OtelGaugeDefinition<S>
   readonly metric: OtelEffectGaugeMetric
-  readonly set: (
-    labels: Schema.Schema.Type<S>,
-    value: number,
-  ) => Effect.Effect<void, OtelAttrEncodeError>
-  readonly trustedSet: (labels: Schema.Schema.Type<S>, value: number) => Effect.Effect<void>
+  readonly set: (options: {
+    labels: Schema.Schema.Type<S>
+    value: number
+  }) => Effect.Effect<void, OtelAttrEncodeError>
+  readonly trustedSet: (options: {
+    labels: Schema.Schema.Type<S>
+    value: number
+  }) => Effect.Effect<void>
 }
 
 const getAttrMetadata = (annotated: AST.Annotated): OtelAttrMetadata | undefined =>
@@ -547,19 +553,28 @@ export const OtelAttr = {
   encode: (encode: OtelAttrEncodePolicy) => withAttrMetadata({ encode }),
   cardinality: (cardinality: NonNullable<OtelAttrMetadata['cardinality']>) =>
     withAttrMetadata({ cardinality }),
-  string: (
-    key: string,
-    metadata: Omit<OtelAttrMetadata, 'key' | 'encode'> = {},
-  ): Schema.Schema<string> => Schema.String.pipe(OtelAttr.key({ ...metadata, key })),
-  boolean: (
-    key: string,
-    metadata: Omit<OtelAttrMetadata, 'key' | 'encode'> = {},
-  ): Schema.Schema<boolean> =>
+  string: ({
+    key,
+    metadata = {},
+  }: {
+    key: string
+    metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
+  }): Schema.Schema<string> => Schema.String.pipe(OtelAttr.key({ ...metadata, key })),
+  boolean: ({
+    key,
+    metadata = {},
+  }: {
+    key: string
+    metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
+  }): Schema.Schema<boolean> =>
     Schema.Boolean.pipe(OtelAttr.key({ cardinality: 'low', ...metadata, key })),
-  number: (
-    key: string,
-    metadata: Omit<OtelAttrMetadata, 'key' | 'encode'> = {},
-  ): Schema.Schema<number> => Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
+  number: ({
+    key,
+    metadata = {},
+  }: {
+    key: string
+    metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
+  }): Schema.Schema<number> => Schema.Number.pipe(OtelAttr.key({ ...metadata, key })),
   literal: <Literals extends readonly [AST.LiteralValue, ...Array<AST.LiteralValue>]>(
     key: string,
     ...values: Literals
@@ -570,11 +585,15 @@ export const OtelAttr = {
   optional: <S extends Schema.Schema.AnyNoContext>(schema: S) => Schema.optional(schema),
   redacted: (key: string): Schema.Schema<Redacted.Redacted<string>, string, never> =>
     Schema.Redacted(Schema.String).pipe(OtelAttr.key({ key, encode: 'redacted' })),
-  json: <S extends Schema.Schema.AnyNoContext>(
-    key: string,
-    schema: S,
-    metadata: Omit<OtelAttrMetadata, 'key' | 'encode'> = {},
-  ): S => schema.pipe(OtelAttr.key({ ...metadata, key, encode: 'json' })) as S,
+  json: <S extends Schema.Schema.AnyNoContext>({
+    key,
+    schema,
+    metadata = {},
+  }: {
+    key: string
+    schema: S
+    metadata?: Omit<OtelAttrMetadata, 'key' | 'encode'>
+  }): S => schema.pipe(OtelAttr.key({ ...metadata, key, encode: 'json' })) as S,
   drop: <S extends Schema.Schema.AnyNoContext>(schema: S): S =>
     schema.pipe(OtelAttr.encode('drop')) as S,
 } as const
@@ -1114,7 +1133,13 @@ const metricLabelsMetadata = <S extends Schema.Schema.AnyNoContext>(
   labelKeys: Array.from(attributes.keys),
 })
 
-const invalidMetricLabel = (field: OtelAttrFieldMetadata, message: string) =>
+const invalidMetricLabel = ({
+  field,
+  message,
+}: {
+  field: OtelAttrFieldMetadata
+  message: string
+}) =>
   new OtelAttrPlanError({
     path: [field.sourceKey],
     message,
@@ -1125,16 +1150,22 @@ const assertMetricLabels = <S extends Schema.Schema.AnyNoContext>(
 ): OtelMetricLabels<S> => {
   for (const field of attributes.fields) {
     if (field.encodePolicy === 'drop') {
-      throw invalidMetricLabel(field, `Metric label ${field.attrKey} cannot use a drop encoder`)
+      throw invalidMetricLabel({
+        field,
+        message: `Metric label ${field.attrKey} cannot use a drop encoder`,
+      })
     }
     if (field.cardinality === undefined) {
-      throw invalidMetricLabel(
+      throw invalidMetricLabel({
         field,
-        `Metric label ${field.attrKey} must declare or infer low/bounded cardinality`,
-      )
+        message: `Metric label ${field.attrKey} must declare or infer low/bounded cardinality`,
+      })
     }
     if (field.cardinality === 'high') {
-      throw invalidMetricLabel(field, `Metric label ${field.attrKey} cannot use high cardinality`)
+      throw invalidMetricLabel({
+        field,
+        message: `Metric label ${field.attrKey} cannot use high cardinality`,
+      })
     }
   }
   const metadata = metricLabelsMetadata(attributes)
@@ -1475,10 +1506,13 @@ const defineGauge = <S extends Schema.Schema.AnyNoContext>(options: {
   }
 }
 
-const taggedMetric = <Type, In, Out>(
-  metric: Metric.Metric<Type, In, Out>,
-  tags: ReadonlyArray<readonly [string, string]>,
-): Metric.Metric<Type, In, Out> =>
+const taggedMetric = <Type, In, Out>({
+  metric,
+  tags,
+}: {
+  metric: Metric.Metric<Type, In, Out>
+  tags: ReadonlyArray<readonly [string, string]>
+}): Metric.Metric<Type, In, Out> =>
   tags.reduce<Metric.Metric<Type, In, Out>>(
     (tagged, [key, value]) => Metric.tagged(tagged, key, value),
     metric,
@@ -1502,19 +1536,20 @@ const effectCounter = <S extends Schema.Schema.AnyNoContext>(
     definition.description === undefined
       ? Metric.counter(definition.name)
       : Metric.counter(definition.name, { description: definition.description })
-  const incrementBy = (labels: Schema.Schema.Type<S>, amount: number) =>
+  const incrementBy = ({ labels, amount }: { labels: Schema.Schema.Type<S>; amount: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
-      yield* Metric.incrementBy(taggedMetric(metric, tags), amount)
+      yield* Metric.incrementBy(taggedMetric({ metric, tags }), amount)
     })
 
   return {
     definition,
     metric,
-    increment: (labels) => incrementBy(labels, 1),
+    increment: (labels) => incrementBy({ labels, amount: 1 }),
     incrementBy,
-    trustedIncrement: (labels) => trustedMetricEmission(incrementBy(labels, 1)),
-    trustedIncrementBy: (labels, amount) => trustedMetricEmission(incrementBy(labels, amount)),
+    trustedIncrement: (labels) => trustedMetricEmission(incrementBy({ labels, amount: 1 })),
+    trustedIncrementBy: ({ labels, amount }) =>
+      trustedMetricEmission(incrementBy({ labels, amount })),
   }
 }
 
@@ -1526,17 +1561,17 @@ const effectHistogram = <S extends Schema.Schema.AnyNoContext>(
     MetricBoundaries.fromIterable(definition.boundaries ?? []),
     definition.description,
   )
-  const record = (labels: Schema.Schema.Type<S>, value: number) =>
+  const record = ({ labels, value }: { labels: Schema.Schema.Type<S>; value: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
-      yield* Metric.update(taggedMetric(metric, tags), value)
+      yield* Metric.update(taggedMetric({ metric, tags }), value)
     })
 
   return {
     definition,
     metric,
     record,
-    trustedRecord: (labels, value) => trustedMetricEmission(record(labels, value)),
+    trustedRecord: ({ labels, value }) => trustedMetricEmission(record({ labels, value })),
   }
 }
 
@@ -1553,17 +1588,17 @@ const effectGauge = <S extends Schema.Schema.AnyNoContext>(
     definition.description === undefined
       ? Metric.gauge(definition.name)
       : Metric.gauge(definition.name, { description: definition.description })
-  const set = (labels: Schema.Schema.Type<S>, value: number) =>
+  const set = ({ labels, value }: { labels: Schema.Schema.Type<S>; value: number }) =>
     Effect.gen(function* () {
       const tags = yield* definition.tagPairs(labels)
-      yield* Metric.set(taggedMetric(metric, tags), value)
+      yield* Metric.set(taggedMetric({ metric, tags }), value)
     })
 
   return {
     definition,
     metric,
     set,
-    trustedSet: (labels, value) => trustedMetricEmission(set(labels, value)),
+    trustedSet: ({ labels, value }) => trustedMetricEmission(set({ labels, value })),
   }
 }
 

@@ -106,10 +106,13 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
@@ -262,7 +265,12 @@ export const logStream: Stream.Stream<BroadcastLogEntry, never, Scope.Scope> =
           channel.close()
         }),
       )
-    }).pipe(trustedWith(BroadcastLoggerLogStreamSetupOperation, { label: 'setup' })),
+    }).pipe(
+      trustedWith({
+        operation: BroadcastLoggerLogStreamSetupOperation,
+        attributes: { label: 'setup' },
+      }),
+    ),
   )
 
 /** Options for creating a log bridge layer. */

@@ -67,10 +67,13 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
@@ -136,7 +139,7 @@ export const url: Effect.Effect<string, PwOpError, PwPage> = Effect.gen(function
     op: 'pw.page.url',
     effect: () => Promise.resolve(page.url()),
   })
-}).pipe(trustedWith(PwPageUrlOperation, { label: 'url' }))
+}).pipe(trustedWith({ operation: PwPageUrlOperation, attributes: { label: 'url' } }))
 
 /** Waits for a specific load state. */
 export const waitForLoadState: (args: {
@@ -289,7 +292,7 @@ export const jitter: (args?: {
 export const isClosed: Effect.Effect<boolean, never, PwPage> = Effect.gen(function* () {
   const page = yield* PwPage
   return page.isClosed()
-}).pipe(trustedWith(PwPageIsClosedOperation, { label: 'isClosed' }))
+}).pipe(trustedWith({ operation: PwPageIsClosedOperation, attributes: { label: 'isClosed' } }))
 
 /** Sets the page viewport size. */
 export const setViewportSize: (args: {
