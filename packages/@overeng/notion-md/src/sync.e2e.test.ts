@@ -154,8 +154,6 @@ class FakeNotion {
   private tick = 0
   private afterPagePropertiesUpdate: (() => void) | undefined
   private afterNextPullPage: (() => void) | undefined
-  /* Live data-source property schema served to the property-write proof provider. */
-  dataSourceProperties: Record<string, unknown> = {}
   readonly updateMarkdownCalls: Array<{
     readonly pageId: string
     readonly allowDeletingContent: boolean
@@ -300,7 +298,7 @@ class FakeNotion {
           })
         }
         return {
-          dataSourceId,
+          id: dataSourceId,
           databaseId: undefined,
           properties: schema,
         }
@@ -319,8 +317,6 @@ class FakeNotion {
         this.pages.set(id, next)
         return this.toPullResult(next).page
       }),
-    retrieveDataSource: ({ dataSourceId }) =>
-      Effect.succeed({ id: dataSourceId, properties: this.dataSourceProperties }),
     listChildPages: ({ pageId: id }) =>
       Effect.sync(() => {
         const page = this.requirePage(id)
@@ -1414,6 +1410,72 @@ describe('notion-md e2e prototype', () => {
       if (result._tag !== 'Left') throw new Error('Expected pushPage to fail on schema drift')
       expect(result.left).toBeInstanceOf(NmdSchemaDriftError)
       // the property write was refused — remote stays at its pre-edit value
+      expect(fake.remoteProperties(pageId).Done).toEqual({ type: 'checkbox', checkbox: false })
+    })
+  })
+
+  it('refuses datasource property writes when the sidecar schema hash is stale', async () => {
+    await withTempDir(async (dir) => {
+      const schema = {
+        Name: { id: 'title', name: 'Name', type: 'title', title: {} },
+        Done: { id: 'prop_done', name: 'Done', type: 'checkbox', checkbox: {} },
+      }
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          parent: { type: 'data_source_id', data_source_id: dataSourceId },
+          dataSourceSchema: schema,
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+      const syncState = await readSyncStateFile(path)
+      await writeFile(
+        syncStatePath({ path, pageId }),
+        JSON.stringify(
+          {
+            ...syncState,
+            data_source:
+              syncState.data_source === null
+                ? null
+                : {
+                    ...syncState.data_source,
+                    schema_hash: `sha256:${'0'.repeat(64)}`,
+                  },
+          },
+          null,
+          2,
+        ),
+      )
+
+      const result = await runEitherWithFake(pushPage({ path }), fake)
+
+      expect(result).toMatchObject({
+        _tag: 'Left',
+        left: { _tag: 'NmdSchemaDriftError', page_id: pageId, data_source_id: dataSourceId, path },
+      })
+      if (result._tag !== 'Left') throw new Error('Expected pushPage to fail on schema drift')
+      expect(result.left).toBeInstanceOf(NmdSchemaDriftError)
       expect(fake.remoteProperties(pageId).Done).toEqual({ type: 'checkbox', checkbox: false })
     })
   })
