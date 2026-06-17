@@ -55,6 +55,23 @@ export default oxlintConfig({
       files: ['**/utils-dev/src/otelite/**'],
       rules: { 'overeng/named-args': 'off' },
     },
+    // `utils/src/node/otel.ts` is the `./node/otel` subpath entry and
+    // `otel-attrs.ts` a deliberate convenience barrel re-exporting the OTEL
+    // contract for node consumers — intentional entry barrels (like `mod.ts`,
+    // already exempt). The only code "fix" is de-barreling = breaking the public
+    // import surface, so the barrel rule is scoped off for these two files.
+    {
+      files: ['**/utils/src/node/otel.ts', '**/utils/src/node/otel-attrs.ts'],
+      rules: { 'oxc/no-barrel-file': 'off' },
+    },
+    // restate-effect's `./testing` harness has a benign barrel-induced cycle:
+    // `testing.ts` aggregates and re-exports `RestateTestEnv`, which imports the
+    // harness back from `testing.ts`. Test-infra aggregation, not a runtime
+    // import cycle; scope `no-cycle` off here (cf. the kdl port's waiver).
+    {
+      files: ['**/restate-effect/src/testing/**'],
+      rules: { 'import/no-cycle': 'off' },
+    },
     // effect-utils: production code must use schema-backed OTEL contracts instead
     // of raw Effect/Stream span primitives. Keep boundary/runtime/test exceptions
     // narrow and explicit so repo-wide adoption remains mechanically checkable.

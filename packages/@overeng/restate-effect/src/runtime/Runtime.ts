@@ -35,6 +35,8 @@ import { withRestateOperation } from '../observability/effect.ts'
  *   `Effect.sleep` stays a non-durable in-process timer (the default Clock's
  *   sleep), so this Clock delegates `sleep` to the default Clock.
  */
+const millisToNanos = (millis: number): bigint => BigInt(Math.trunc(millis)) * 1_000_000n
+
 const makeJournaledClock = ({
   ctx,
   frozenBaseMillis,
@@ -42,7 +44,6 @@ const makeJournaledClock = ({
   ctx: restate.Context
   frozenBaseMillis: number
 }): Clock.Clock => {
-  const millisToNanos = (millis: number): bigint => BigInt(Math.trunc(millis)) * 1_000_000n
   const base = Clock.make()
   /* PROTOTYPE-PRESERVING clone: `Clock.make()` puts `sleep` and the sync
    * `unsafeCurrentTime*` on the Clock PROTOTYPE (only the async `currentTime*`

@@ -253,6 +253,7 @@ export class Otelite extends Effect.Service<Otelite>()('@overeng/utils-dev/oteli
         return yield* decode(stdout)
       })
 
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- co-located with the inspect methods + runCli/exec it serves in the service factory
     const inspectArgs = (signal: Signal, base: InspectBase, summary: boolean) => {
       const args: Array<string> = ['inspect', base.src, '--signal', signal]
       if (base.service !== undefined) args.push('--service', base.service)

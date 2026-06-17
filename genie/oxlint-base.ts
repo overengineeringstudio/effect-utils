@@ -79,8 +79,10 @@ export const baseOxlintRules = {
   // Disallow re-exports except in mod.ts entry points
   'oxc/no-barrel-file': ['warn', { threshold: 0 }],
 
-  // Enforce named arguments (options objects) instead of positional parameters
-  'overeng/named-args': 'warn',
+  // Enforce named arguments (options objects) instead of positional parameters.
+  // Enforced (error): product code is swept clean; test DSLs / external-interface
+  // impls are exempted by override or inline disable.
+  'overeng/named-args': 'error',
 
   // Disallow CommonJS (require/module.exports) - enforce ESM
   'import/no-commonjs': 'error',
@@ -88,14 +90,18 @@ export const baseOxlintRules = {
   // Detect circular dependencies
   'import/no-cycle': 'warn',
 
-  // Prefer function expressions over declarations
-  'func-style': ['warn', 'expression', { allowArrowFunctions: true }],
+  // Avoid sequential awaits in loops; enforced (error). Tests + intentional
+  // retry/poll loops are exempted by override or inline disable.
+  'no-await-in-loop': 'error',
 
-  // Enforce explicit boolean-literal comparisons in condition positions
-  'overeng/explicit-boolean-compare': 'warn',
+  // Prefer function expressions over declarations. Enforced (error).
+  'func-style': ['error', 'expression', { allowArrowFunctions: true }],
 
-  // Enforce exported declarations come before non-exported declarations
-  'overeng/exports-first': 'warn',
+  // Enforce explicit boolean-literal comparisons in condition positions. Enforced (error).
+  'overeng/explicit-boolean-compare': 'error',
+
+  // Enforce exported declarations come before non-exported declarations. Enforced (error).
+  'overeng/exports-first': 'error',
 
   // Require JSDoc comments on exported declarations. Enforced (error): every
   // published package `src` export must carry JSDoc. Non-API surfaces (test
