@@ -34,10 +34,13 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
@@ -73,11 +76,14 @@ export const step: {
       const run =
         parentSpan._tag === 'Some' ? self.pipe(Effect.withParentSpan(parentSpan.value)) : self
       const traced = run.pipe(
-        trustedWith(PwStepOperation(name), {
-          label: name,
-          step: true,
-          stepName: name,
-          ...(parentSpan._tag === 'Some' ? { parentSpanTag: parentSpan.value._tag } : {}),
+        trustedWith({
+          operation: PwStepOperation(name),
+          attributes: {
+            label: name,
+            step: true,
+            stepName: name,
+            ...(parentSpan._tag === 'Some' ? { parentSpanTag: parentSpan.value._tag } : {}),
+          },
         }),
       )
 

@@ -61,7 +61,7 @@ export const querySurfaceKey = ({
 
 /** SHA-256 hash for canonicalized datasource-sync contract and surface data. */
 export const canonicalHash = (value: unknown) =>
-  hashFromContentDigest(hashCanonicalJson(Schema.Unknown, value))
+  hashFromContentDigest(hashCanonicalJson({ schema: Schema.Unknown, value }))
 
 /** Hash data-source metadata independently from the property schema surface. */
 export const dataSourceMetadataHash = (metadata: CanonicalDataSourceMetadata) =>

@@ -97,10 +97,13 @@ const isAddrInUse = (cause: unknown): boolean =>
  * contains `EADDRINUSE` / `address in use`) when its bind loses the race; any
  * other rejection propagates immediately (it is not a port collision).
  */
-export const withFreePort = async <A>(
-  fn: (port: number) => Promise<A>,
-  opts?: { readonly retries?: number },
-): Promise<A> => {
+export const withFreePort = async <A>({
+  fn,
+  opts,
+}: {
+  readonly fn: (port: number) => Promise<A>
+  readonly opts?: { readonly retries?: number }
+}): Promise<A> => {
   const retries = opts?.retries ?? 5
   let lastErr: unknown
   // Retry-on-collision: each attempt binds a fresh port and depends on the prior

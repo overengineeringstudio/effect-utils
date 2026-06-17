@@ -118,7 +118,7 @@ export const fingerprintBodyEvidence = (
 ): BodyEvidenceFingerprint => {
   const { observedAt: _observedAt, ...identityEvidence } = evidence
   return decodeFingerprint(
-    hashCanonicalJson(RemoteBodyObservationIdentityEvidence, identityEvidence),
+    hashCanonicalJson({ schema: RemoteBodyObservationIdentityEvidence, value: identityEvidence }),
   )
 }
 

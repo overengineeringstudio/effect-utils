@@ -24,7 +24,9 @@ describe('@overeng/content-address', () => {
     const left = Payload.make({ alpha: 'a', nested: { zed: 1, beta: ['b'] } })
     const right = { nested: { beta: ['b'], zed: 1 }, alpha: 'a' }
 
-    expect(hashCanonicalJson(Payload, left)).toBe(hashCanonicalJson(Payload, right))
+    expect(hashCanonicalJson({ schema: Payload, value: left })).toBe(
+      hashCanonicalJson({ schema: Payload, value: right }),
+    )
   })
 
   it('describes canonical JSON with descriptor metadata', () => {

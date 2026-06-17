@@ -41,10 +41,13 @@ const trustOtelContract = <A, E, R>(
   effect.pipe(Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)))
 
 const trustedWith =
-  <S extends Schema.Schema.AnyNoContext>(
-    operation: OtelOperationDefinition<S>,
-    attributes: Schema.Schema.Type<S>,
-  ) =>
+  <S extends Schema.Schema.AnyNoContext>({
+    operation,
+    attributes,
+  }: {
+    operation: OtelOperationDefinition<S>
+    attributes: Schema.Schema.Type<S>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     trustOtelContract<A, E, R>(operation.with({ attributes, effect }))
 
@@ -131,7 +134,7 @@ export const logActiveHandles = Effect.gen(function* () {
     requests: info.requests,
   })
   return info
-}).pipe(trustedWith(ActiveHandlesLogOperation, { label: 'dump' }))
+}).pipe(trustedWith({ operation: ActiveHandlesLogOperation, attributes: { label: 'dump' } }))
 
 /**
  * Monitors active handles periodically and logs when the count changes.

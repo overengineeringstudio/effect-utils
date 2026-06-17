@@ -97,22 +97,31 @@ const canonicalizeJson = (value: unknown): string => {
 }
 
 /** Encode `value` and render it as canonical JSON with object keys sorted, for stable hashing across key-insertion order. */
-export const canonicalJsonString = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: typeof schema.Type,
-): string => canonicalizeJson(Schema.encodeSync(schema)(value))
+export const canonicalJsonString = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: Schema.Schema.Type<TSchema>
+}): string => canonicalizeJson(Schema.encodeSync(schema)(value))
 
 /** UTF-8 bytes of {@link canonicalJsonString} — the exact bytes that get hashed. */
-export const canonicalJsonBytes = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: typeof schema.Type,
-): Uint8Array => utf8Bytes(canonicalJsonString(schema, value))
+export const canonicalJsonBytes = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: Schema.Schema.Type<TSchema>
+}): Uint8Array => utf8Bytes(canonicalJsonString({ schema, value }))
 
 /** Content digest of a value's canonical-JSON encoding; stable regardless of object key order. */
-export const hashCanonicalJson = <TSchema extends Schema.Schema.AnyNoContext>(
-  schema: TSchema,
-  value: typeof schema.Type,
-): ContentDigest => hashBytes(canonicalJsonBytes(schema, value))
+export const hashCanonicalJson = <TSchema extends Schema.Schema.AnyNoContext>({
+  schema,
+  value,
+}: {
+  readonly schema: TSchema
+  readonly value: Schema.Schema.Type<TSchema>
+}): ContentDigest => hashBytes(canonicalJsonBytes({ schema, value }))
 
 /** Build a {@link ContentDescriptor} from raw bytes, hashing them and recording their byte length and media type. */
 export const descriptorForBytes = ({
@@ -165,7 +174,7 @@ export const descriptorForCanonicalJson = <TSchema extends Schema.Schema.AnyNoCo
   readonly schemaVersion: number
 }): ContentDescriptor =>
   descriptorForBytes({
-    bytes: canonicalJsonBytes(schema, value),
+    bytes: canonicalJsonBytes({ schema, value }),
     mediaType: canonicalJsonMediaType,
     codec: canonicalJsonCodec,
     schemaVersion,

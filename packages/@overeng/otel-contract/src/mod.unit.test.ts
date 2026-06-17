@@ -46,7 +46,7 @@ describe('OTEL schema names', () => {
         Effect.either(
           OtelAttrs.define(
             Schema.Struct({
-              value: OtelAttr.string('bad key'),
+              value: OtelAttr.string({ key: 'bad key' }),
             }),
           ),
         ),
@@ -58,7 +58,7 @@ describe('OTEL schema names', () => {
 
     const SpanAttrs = OtelAttrs.defineSync(
       Schema.Struct({
-        label: OtelAttr.string('span.label', { role: 'span.label' }),
+        label: OtelAttr.string({ key: 'span.label', metadata: { role: 'span.label' } }),
       }),
     )
 
@@ -66,7 +66,7 @@ describe('OTEL schema names', () => {
     expect(() =>
       OtelOperation.define({
         name: 'bad\noperation',
-        schema: Schema.Struct({ value: OtelAttr.string('test.value') }),
+        schema: Schema.Struct({ value: OtelAttr.string({ key: 'test.value' }) }),
         label: ({ value }) => value,
       }),
     ).toThrow(OtelAttrPlanError)
@@ -500,9 +500,12 @@ describe('OtelAttrs', () => {
         Schema.Struct({
           label: Schema.NonEmptyTrimmedString.pipe(OtelAttr.spanLabel()),
           outcome: OtelAttr.literal('op.outcome', 'success', 'retryable', 'terminal'),
-          cacheHit: OtelAttr.boolean('op.cache_hit'),
-          requestId: OtelAttr.string('request.id', { cardinality: 'high' }),
-          payload: OtelAttr.json('op.payload', Schema.Struct({ id: Schema.String })),
+          cacheHit: OtelAttr.boolean({ key: 'op.cache_hit' }),
+          requestId: OtelAttr.string({ key: 'request.id', metadata: { cardinality: 'high' } }),
+          payload: OtelAttr.json({
+            key: 'op.payload',
+            schema: Schema.Struct({ id: Schema.String }),
+          }),
         }),
       ),
     )
@@ -634,8 +637,8 @@ describe('OtelSpan', () => {
     const span = OtelSpan.defineSync({
       name: 'test.stream',
       schema: Schema.Struct({
-        label: OtelAttr.string('span.label', { role: 'span.label' }),
-        count: OtelAttr.number('stream.count'),
+        label: OtelAttr.string({ key: 'span.label', metadata: { role: 'span.label' } }),
+        count: OtelAttr.number({ key: 'stream.count' }),
       }),
     })
 
@@ -655,9 +658,9 @@ describe('OtelOperation', () => {
     const PullPage = OtelOperation.define({
       name: 'notion-md.pull-page',
       schema: Schema.Struct({
-        pageId: OtelAttr.string('notion_md.page_id', { cardinality: 'high' }),
-        basename: OtelAttr.string('notion_md.path.basename'),
-        cacheHit: OtelAttr.boolean('notion_md.cache_hit'),
+        pageId: OtelAttr.string({ key: 'notion_md.page_id', metadata: { cardinality: 'high' } }),
+        basename: OtelAttr.string({ key: 'notion_md.path.basename' }),
+        cacheHit: OtelAttr.boolean({ key: 'notion_md.cache_hit' }),
         outcome: OtelAttr.literal('notion_md.outcome', 'created', 'updated', 'skipped'),
       }),
       label: ({ basename }) => basename,
@@ -726,7 +729,7 @@ describe('OtelOperation', () => {
     const Operation = OtelOperation.define({
       name: 'test.empty-label',
       schema: Schema.Struct({
-        value: OtelAttr.string('test.value'),
+        value: OtelAttr.string({ key: 'test.value' }),
       }),
       label: () => '   ',
     })
@@ -743,7 +746,7 @@ describe('OtelOperation', () => {
     const Operation = OtelOperation.define({
       name: 'test.operation.stream',
       schema: Schema.Struct({
-        value: OtelAttr.string('test.value'),
+        value: OtelAttr.string({ key: 'test.value' }),
       }),
       label: ({ value }) => value,
     })
@@ -775,8 +778,8 @@ describe('OtelMetric', () => {
       description: 'Restate invocations by service, handler, and outcome.',
       unit: '1',
       labels: Schema.Struct({
-        service: OtelAttr.string('restate.service', { cardinality: 'bounded' }),
-        handler: OtelAttr.string('restate.handler', { cardinality: 'bounded' }),
+        service: OtelAttr.string({ key: 'restate.service', metadata: { cardinality: 'bounded' } }),
+        handler: OtelAttr.string({ key: 'restate.handler', metadata: { cardinality: 'bounded' } }),
         outcome: OtelAttr.literal(
           'restate.outcome',
           'success',
@@ -784,7 +787,7 @@ describe('OtelMetric', () => {
           'retryable',
           'cancelled',
         ),
-        cacheHit: OtelAttr.boolean('restate.cache_hit'),
+        cacheHit: OtelAttr.boolean({ key: 'restate.cache_hit' }),
       }),
     })
 
@@ -952,7 +955,7 @@ describe('OtelMetric', () => {
       OtelMetric.gauge({
         name: 'bad_gauge',
         labels: Schema.Struct({
-          path: OtelAttr.string('path', { cardinality: 'high' }),
+          path: OtelAttr.string({ key: 'path', metadata: { cardinality: 'high' } }),
         }),
       }),
     ).toThrow(OtelAttrPlanError)
@@ -961,7 +964,7 @@ describe('OtelMetric', () => {
       OtelMetric.gauge({
         name: 'bad_gauge',
         labels: Schema.Struct({
-          path: OtelAttr.string('path'),
+          path: OtelAttr.string({ key: 'path' }),
         }),
       }),
     ).toThrow(OtelAttrPlanError)
@@ -987,10 +990,10 @@ describe('OtelMetric', () => {
       return (entry?.metricState as { readonly value?: number } | undefined)?.value
     }
 
-    await Effect.runPromise(bridge.set({ operation: 'gc' }, 100))
+    await Effect.runPromise(bridge.set({ labels: { operation: 'gc' }, value: 100 }))
     expect(snapshotValue()).toBe(100)
 
-    await Effect.runPromise(bridge.trustedSet({ operation: 'gc' }, 25))
+    await Effect.runPromise(bridge.trustedSet({ labels: { operation: 'gc' }, value: 25 }))
     expect(snapshotValue()).toBe(25)
   })
 
@@ -999,8 +1002,8 @@ describe('OtelMetric', () => {
       name: 'otel_contract_test_bridge_counter_total',
       description: 'Test counter bridge.',
       labels: Schema.Struct({
-        service: OtelAttr.string('service', { cardinality: 'bounded' }),
-        cacheHit: OtelAttr.boolean('cache_hit'),
+        service: OtelAttr.string({ key: 'service', metadata: { cardinality: 'bounded' } }),
+        cacheHit: OtelAttr.boolean({ key: 'cache_hit' }),
       }),
     })
     const bridge = OtelMetric.effect.counter(Counter)
@@ -1008,7 +1011,7 @@ describe('OtelMetric', () => {
     await Effect.runPromise(
       Effect.all(
         [
-          bridge.incrementBy({ service: 'api', cacheHit: true }, 2),
+          bridge.incrementBy({ labels: { service: 'api', cacheHit: true }, amount: 2 }),
           bridge.trustedIncrement({ service: 'api', cacheHit: true }),
         ],
         { discard: true },
@@ -1035,7 +1038,7 @@ describe('OtelMetric', () => {
     })
     const bridge = OtelMetric.effect.histogram(Histogram)
 
-    await Effect.runPromise(bridge.trustedRecord({ route: 'sync' }, 42))
+    await Effect.runPromise(bridge.trustedRecord({ labels: { route: 'sync' }, value: 42 }))
 
     const pair = Metric.unsafeSnapshot(undefined).find((entry) => {
       if (entry.metricKey.name !== 'otel_contract_test_bridge_duration_ms') return false
@@ -1049,7 +1052,10 @@ describe('OtelMetric', () => {
     expect(() =>
       OtelMetric.labels(
         Schema.Struct({
-          workflowId: OtelAttr.string('restate.workflow.id', { cardinality: 'high' }),
+          workflowId: OtelAttr.string({
+            key: 'restate.workflow.id',
+            metadata: { cardinality: 'high' },
+          }),
         }),
       ),
     ).toThrow(OtelAttrPlanError)
@@ -1057,7 +1063,7 @@ describe('OtelMetric', () => {
     expect(() =>
       OtelMetric.labels(
         Schema.Struct({
-          service: OtelAttr.string('restate.service'),
+          service: OtelAttr.string({ key: 'restate.service' }),
         }),
       ),
     ).toThrow(OtelAttrPlanError)
