@@ -2,10 +2,13 @@ import { Either, Schema } from 'effect'
 
 import type { SpanRow } from './schema.ts'
 
+/** Literal expectation for an attribute; `null` matches the literal string `'null'` since otelite rows are flat strings. */
 export type AttrPrimitive = string | number | boolean | null
 
+/** Custom matcher run against an attribute's raw string value plus its owning span. */
 export type AttrPredicate = (actual: string, span: SpanRow) => boolean
 
+/** All ways to assert one attribute: a primitive, a `RegExp`, presence-only, a predicate, or a schema decode. */
 export type AttrMatcher =
   | AttrPrimitive
   | RegExp
@@ -25,8 +28,10 @@ export type AttrMatcher =
 
 type StructuredAttrMatcher = Exclude<AttrMatcher, AttrPrimitive | RegExp>
 
+/** Map of attribute key to matcher; every entry must match (the key must be present) for a span to pass. */
 export type AttrExpectations = Readonly<Record<string, AttrMatcher>>
 
+/** Span filter predicate; each set field narrows, and `requireLabel` additionally gates on a present `span.label`. */
 export interface SpanSelector {
   readonly name?: string
   readonly service?: string
@@ -60,10 +65,12 @@ export interface ContractSpanSelector<A> {
   readonly selector?: Omit<SpanSelector, 'name' | 'attrs' | 'requireLabel'>
 }
 
+/** Thrown by every failing `TraceExpect` assertion; the message names the accumulated selector chain. */
 export class TraceExpectError extends Error {
   readonly _tag = 'TraceExpectError'
 }
 
+/** Matcher constructors for {@link AttrExpectations}; `boolean`/`int` stringify since otelite rows store all attrs as strings. */
 export const attr = {
   present: (): AttrMatcher => ({ _tag: 'Present' }),
   boolean: (expected: boolean): AttrMatcher => String(expected),
@@ -92,12 +99,15 @@ export const attr = {
   }),
 } as const
 
+/** Shorthand for an `AttrExpectations` over the `span.label` key; defaults to presence-only. */
 export const spanLabel = (matcher: AttrMatcher = attr.present()): AttrExpectations => ({
   'span.label': matcher,
 })
 
+/** Entry point: lift captured spans into a chainable {@link TraceExpect}. */
 export const expectTrace = (spans: readonly SpanRow[]) => TraceExpect.from(spans)
 
+/** Immutable, chainable assertion builder over captured spans; each `filter`/`span`/`service` returns a narrowed copy. */
 export class TraceExpect {
   static from(spans: readonly SpanRow[]): TraceExpect {
     return new TraceExpect(spans, [])

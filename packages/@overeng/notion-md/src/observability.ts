@@ -1,5 +1,3 @@
-import { basename } from 'node:path'
-
 import { Effect, Schema } from 'effect'
 
 import {
@@ -10,45 +8,45 @@ import {
   type OtelOperationDefinition,
 } from '@overeng/otel-contract'
 
-export const pageAttrs = OtelAttrs.defineSync(
+const pageAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
   }),
 )
 
-export const parentPageAttrs = OtelAttrs.defineSync(
+const parentPageAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     parentPageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.parent_page_id' })),
   }),
 )
 
-export const dataSourceAttrs = OtelAttrs.defineSync(
+const dataSourceAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     dataSourceId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.data_source_id' })),
   }),
 )
 
-export const pathAttrs = OtelAttrs.defineSync(
+const pathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
   }),
 )
 
-export const pathRecursiveAttrs = OtelAttrs.defineSync(
+const pathRecursiveAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
     recursive: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.path.recursive' })),
   }),
 )
 
-export const pathPlanAttrs = OtelAttrs.defineSync(
+const pathPlanAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
     fromRemote: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.tree.from_remote' })),
   }),
 )
 
-export const pathSyncAttrs = OtelAttrs.defineSync(
+const pathSyncAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
     recursive: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.path.recursive' })),
@@ -56,13 +54,14 @@ export const pathSyncAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const pagePathAttrs = OtelAttrs.defineSync(
+const pagePathAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
   }),
 )
 
+/** Status-comparison flags (per local/remote dimension) annotated onto a status span. */
 export const statusAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
@@ -86,7 +85,7 @@ export const statusAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const pushSpanAttrs = OtelAttrs.defineSync(
+const pushSpanAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
     force: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.push.force' })),
@@ -96,6 +95,7 @@ export const pushSpanAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Outcome of a push: resolved page id plus whether anything was actually pushed. */
 export const pushResultAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
@@ -103,6 +103,7 @@ export const pushResultAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Terminal sync outcome (`result` is the reconciliation verdict string). */
 export const syncResultAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
@@ -110,20 +111,21 @@ export const syncResultAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const stateFileAttrs = OtelAttrs.defineSync(
+const stateFileAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     operation: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.state.operation' })),
     basename: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' })),
   }),
 )
 
+/** Content-object identity carried as a short hash prefix (full hash is high-cardinality). */
 export const objectHashAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     hashPrefix: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.object.hash_prefix' })),
   }),
 )
 
-export const objectRoleAttrs = OtelAttrs.defineSync(
+const objectRoleAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     role: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.object.role' })),
     basename: Schema.optional(Schema.String.pipe(OtelAttr.key({ key: 'notion_md.path.basename' }))),
@@ -133,7 +135,7 @@ export const objectRoleAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const markdownUpdateAttrs = OtelAttrs.defineSync(
+const markdownUpdateAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
     type: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.markdown_update.type' })),
@@ -146,7 +148,7 @@ export const markdownUpdateAttrs = OtelAttrs.defineSync(
   }),
 )
 
-export const metadataUpdateAttrs = OtelAttrs.defineSync(
+const metadataUpdateAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     pageId: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.page_id' })),
     hasTitle: Schema.Boolean.pipe(OtelAttr.key({ key: 'notion_md.page_metadata.title' })),
@@ -157,18 +159,21 @@ export const metadataUpdateAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** The storage/push decision verdict annotated onto a push span. */
 export const pushDecisionAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     decision: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.decision' })),
   }),
 )
 
+/** Which markdown-update command shape a push resolved to (e.g. replace vs patch). */
 export const pushMarkdownCommandAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     markdownCommand: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.markdown_command' })),
   }),
 )
 
+/** Combined push decision + resolved markdown-command annotated together on one span. */
 export const pushDecisionMarkdownCommandAttrs = OtelAttrs.defineSync(
   Schema.Struct({
     decision: Schema.String.pipe(OtelAttr.key({ key: 'notion_md.push.decision' })),
@@ -226,6 +231,7 @@ export const commentBoundaryAttrs = OtelAttrs.defineSync(
   }),
 )
 
+/** Wrap an effect in an OTEL operation span; an attribute-encode failure is a defect, not a recoverable error. */
 export const withOperation =
   <S extends Schema.Schema.AnyNoContext>(
     operation: OtelOperationDefinition<S>,
@@ -237,6 +243,7 @@ export const withOperation =
       Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
     )
 
+/** Annotate the current span with typed attributes; an attribute-encode failure is a defect, not a recoverable error. */
 export const annotateAttrs = <S extends Schema.Schema.AnyNoContext>(
   attributes: OtelAttrs<S>,
   value: Schema.Schema.Type<S>,
@@ -245,24 +252,28 @@ export const annotateAttrs = <S extends Schema.Schema.AnyNoContext>(
     Effect.catchTag('OtelAttrEncodeError', (error) => Effect.die(error)),
   )
 
+/** Span for `status` over a filesystem path (file or recursive tree). */
 export const StatusPathSpan = OtelOperation.define({
   name: 'notion-md.status-path',
   attributes: pathRecursiveAttrs,
   label: ({ basename }) => basename,
 })
 
+/** Span for planning a tree sync over a path (`fromRemote` picks the plan direction). */
 export const PlanPathSpan = OtelOperation.define({
   name: 'notion-md.plan-path',
   attributes: pathPlanAttrs,
   label: ({ basename }) => basename,
 })
 
+/** Span for `sync` over a filesystem path (recursive tree or single file). */
 export const SyncPathSpan = OtelOperation.define({
   name: 'notion-md.sync-path',
   attributes: pathSyncAttrs,
   label: ({ basename }) => basename,
 })
 
+/** Build a state-file span whose name is parameterized by the state operation performed. */
 export const stateFileSpan = (operation: string) =>
   OtelOperation.define({
     name: `notion-md.state.${operation}`,
@@ -270,102 +281,119 @@ export const stateFileSpan = (operation: string) =>
     label: ({ basename }) => basename,
   })
 
+/** Span for reading the `.nmd` sidecar state file. */
 export const ReadNmdStateSpan = OtelOperation.define({
   name: 'notion-md.state.read-nmd',
   attributes: stateFileAttrs,
   label: ({ basename }) => basename,
 })
 
+/** Span for writing a content object into the state store (labelled by object role). */
 export const WriteObjectStateSpan = OtelOperation.define({
   name: 'notion-md.state.write-object',
   attributes: objectRoleAttrs,
   label: ({ role }) => role,
 })
 
+/** Span for reading a content object from the state store (labelled by object role). */
 export const ReadObjectStateSpan = OtelOperation.define({
   name: 'notion-md.state.read-object',
   attributes: objectRoleAttrs,
   label: ({ role }) => role,
 })
 
+/** Span for pulling a single page from Notion into a local file. */
 export const PullPageSpan = OtelOperation.define({
   name: 'notion-md.pull-page',
   attributes: pagePathAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/** Span for establishing the `.nmd` sidecar baseline for a page on first contact. */
 export const EstablishSidecarSpan = OtelOperation.define({
   name: 'notion-md.establish-sidecar',
   attributes: pageAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/** Span for computing status of a single page against its baseline. */
 export const StatusPageSpan = OtelOperation.define({
   name: 'notion-md.status-page',
   attributes: pathAttrs,
   label: ({ basename }) => basename,
 })
 
+/** Span for pushing a single local page to Notion. */
 export const PushPageSpan = OtelOperation.define({
   name: 'notion-md.push-page',
   attributes: pushSpanAttrs,
   label: ({ basename }) => basename,
 })
 
+/** Span for the full reconcile (status + pull/push) of a single page. */
 export const SyncPageSpan = OtelOperation.define({
   name: 'notion-md.sync-page',
   attributes: pathAttrs,
   label: ({ basename }) => basename,
 })
 
+/** Gateway-level span for the Notion API call that pulls a page's content. */
 export const GatewayPullPageSpan = OtelOperation.define({
   name: 'notion-md.gateway.pull-page',
   attributes: pageAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/** Gateway-level span for applying a markdown body update to a page. */
 export const GatewayUpdateMarkdownSpan = OtelOperation.define({
   name: 'notion-md.gateway.update-markdown',
   attributes: markdownUpdateAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/** Gateway-level span for updating a page's database properties. */
 export const GatewayUpdatePagePropertiesSpan = OtelOperation.define({
   name: 'notion-md.gateway.update-page-properties',
   attributes: pageAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/** Gateway-level span for retrieving a data source (database) schema. */
 export const GatewayRetrieveDataSourceSpan = OtelOperation.define({
   name: 'notion-md.gateway.retrieve-data-source',
   attributes: dataSourceAttrs,
   label: ({ dataSourceId }) => dataSourceId.slice(0, 8),
 })
 
+/** Gateway-level span for updating page metadata (title/icon/cover/trash/lock). */
 export const GatewayUpdatePageMetadataSpan = OtelOperation.define({
   name: 'notion-md.gateway.update-page-metadata',
   attributes: metadataUpdateAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/** Gateway-level span for listing a page's direct child pages. */
 export const GatewayListChildPagesSpan = OtelOperation.define({
   name: 'notion-md.gateway.list-child-pages',
   attributes: pageAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/** Gateway-level span for creating a new child page under a parent. */
 export const GatewayCreatePageSpan = OtelOperation.define({
   name: 'notion-md.gateway.create-page',
   attributes: parentPageAttrs,
   label: ({ parentPageId }) => parentPageId.slice(0, 8),
 })
 
+/** Gateway-level span for moving a page to a new parent. */
 export const GatewayMovePageSpan = OtelOperation.define({
   name: 'notion-md.gateway.move-page',
   attributes: pageAttrs,
   label: ({ pageId }) => pageId.slice(0, 8),
 })
 
+/** Gateway-level span for archiving (trashing) a page. */
 export const GatewayArchivePageSpan = OtelOperation.define({
   name: 'notion-md.gateway.archive-page',
   attributes: pageAttrs,
@@ -492,16 +520,3 @@ export const WebhookTriggerSpan = OtelOperation.define({
   attributes: webhookTriggerAttrs,
   label: ({ surface, eventType }) => `${surface}:${eventType}`,
 })
-
-export const page = (pageId: string) => GatewayPullPageSpan.encodeSync({ pageId })
-
-export const parentPage = (parentPageId: string) =>
-  GatewayCreatePageSpan.encodeSync({ parentPageId })
-
-export const path = (filePath: string) => SyncPageSpan.encodeSync({ basename: basename(filePath) })
-
-export const pagePath = (input: { readonly pageId: string; readonly path: string }) =>
-  PullPageSpan.encodeSync({
-    pageId: input.pageId,
-    basename: basename(input.path),
-  })
